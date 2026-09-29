@@ -101,11 +101,13 @@ class FakeWeb:
         self.responses = dict(RESPONSES if responses is None else responses)
         self.calls: list[str] = []
 
-    def __call__(self, url, timeout=30):
+    def __call__(self, url, timeout=30, body=None):
         self.calls.append(url)
         if url not in self.responses:
             raise sources.NotFound(url)
         value = self.responses[url]
+        if callable(value):  # answers a POST: value(body)
+            value = value(body)
         if isinstance(value, Exception):
             raise value
         return value

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 @dataclass
 class Job:
-    source: str                 # greenhouse | lever | ashby
+    source: str                 # greenhouse | lever | ashby | workday | eightfold
     company: str                # the company's board name on that system, e.g. "anthropic"
     id: str                     # the posting's id on that system
     title: str

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from . import sources
 from .config import Board, Config
 from .contacts import Contacts
-from .filters import reject_reason, relevance
+from .filters import reject_reason, relevance, search_terms, title_ok
 from .models import Job
 from .score import resume_id, score_jobs
 from .store import Store
@@ -27,10 +27,13 @@ class FetchReport:
 def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None) -> FetchReport:
     """Pull every board in the watchlist and record what is new. Boards that fail are reported and skipped."""
     report = FetchReport()
+    # Big boards are searched for the watchlist's titles, and a posting is read in full once: the store has it.
+    search, wanted = search_terms(cfg.filters), (lambda title: title_ok(title, cfg.filters))
+    known = {b: store.board_jobs(b.source, b.board) for b in cfg.boards if sources.SOURCES[b.source].search}
 
     def one(b: Board):
         try:
-            return b, sources.fetch(b.source, b.board, get), None
+            return b, sources.fetch(b.source, b.board, get, search=search, wanted=wanted, known=known.get(b)), None
         except sources.SourceError as e:
             return b, None, str(e)
 
@@ -40,7 +43,9 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None) -> FetchRep
                 report.errors[f"{b.source}:{b.board}"] = err
                 continue
             for j in jobs:
-                j.company_name = j.company_name or b.name
+                # A searched board's name is only its tenant id ("acme"): the watchlist's name reads better.
+                j.company_name = (b.name or j.company_name) if sources.SOURCES[b.source].search else \
+                    (j.company_name or b.name)
             report.boards += 1
             report.jobs += len(jobs)
             report.new += store.sync(b.source, b.board, jobs)

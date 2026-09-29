@@ -21,14 +21,18 @@ Keywords: Python, RAG, agents
 
 ## Why company boards
 
-Most tech companies post jobs through Greenhouse, Lever or Ashby. All three publish open roles as public
-JSON so anyone can build a careers page, with no API key or scraping. jobwatch reads those feeds for the
-companies on your watchlist:
+Most tech companies post jobs through Greenhouse, Lever or Ashby, and most large employers through Workday
+(some through Eightfold). Each publishes open roles as public JSON so anyone can build a careers page, with
+no API key or scraping. jobwatch reads those feeds for the companies on your watchlist:
 
 - **Complete and fresh:** a role appears as soon as the company posts it, not when an aggregator picks it up.
 - **Pay ranges:** read from the board's structured fields where they exist (Lever, Ashby), otherwise from
   the posting text.
-- **Polite:** one request per company per run.
+- **Polite:** one request per company per run on Greenhouse, Lever and Ashby. A Workday or Eightfold board can
+  list thousands of roles, most of them nothing like yours, so jobwatch searches it for your
+  `filters.titles` words and reads a posting in full only when its title passes your title filters, once:
+  after that, a run costs a few searches per company. Titles written as regexes can't be searched for, so
+  keep a plain word or two ("engineer", "forward deployed") among them.
 - **Within the rules:** it reads public APIs meant for this. It doesn't scrape LinkedIn or Indeed, which
   forbid it.
 
@@ -90,8 +94,10 @@ jobwatch find "Anthropic" "Scale AI"  # find each company's board
 jobwatch find https://jobs.lever.co/spotify/4f1c2a9e-...   # or paste any job link
 ```
 
-`find` prints a line like `Anthropic: greenhouse:anthropic (627 open roles)`. Add those entries under
-`companies:`, adjust the filters, then:
+`find` prints a line like `Anthropic: greenhouse:anthropic (627 open roles)`. For a Workday company it tries
+the usual site names; if that finds nothing, paste a job link from their careers site (it has
+`myworkdayjobs.com` in it) and `find` reads the board from it: `workday:nvidia.wd5/NVIDIAExternalCareerSite`. Add those
+entries under `companies:`, adjust the filters, then:
 
 ```
 jobwatch run                          # fetch every board, then show the digest
@@ -106,6 +112,8 @@ companies:
   - greenhouse:anthropic
   - lever:spotify
   - {source: ashby, board: openai, name: OpenAI}
+  - {source: workday, board: nvidia.wd5/NVIDIAExternalCareerSite, name: NVIDIA}  # tenant.wdN/site
+  - {source: eightfold, board: acme, name: Acme}      # tenant (or tenant/domain), from a link
 
 filters:
   titles: ["engineer", "architect"]       # regexes; the title must match one

@@ -45,6 +45,18 @@ def _remote_ok(job: Job, country: str) -> bool:
     return bool(job.remote) and (anywhere or not job.locations or any(in_us(loc) for loc in job.locations))
 
 
+def title_ok(title: str, f: Filters) -> bool:
+    """The title rules alone: what a searched board (Workday, Eightfold) reads in full."""
+    return (not f.titles or bool(_any(f.titles, title))) and not _any(f.exclude_titles, title)
+
+
+def search_terms(f: Filters) -> list[str]:
+    """What to search a big board for: the title filters that are plain words ("engineer", "forward deployed").
+
+    A title written as a regex can't be searched for; with none plain, the whole board is listed (capped)."""
+    return [t for t in f.titles if not re.search(r"[\\^$.*+?()\[\]{}|]", t)]
+
+
 def reject_reason(job: Job, f: Filters) -> str | None:
     """Why the job fails the filters, or None if it passes."""
     if f.titles and not _any(f.titles, job.title):

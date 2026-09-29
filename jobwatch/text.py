@@ -81,7 +81,10 @@ _US_NAMES = re.compile(r"\bunited states\b|\bnorth america\b|\bamericas\b|\b(?:"
                        re.I)
 # Case-sensitive: "us", "or", "in" and "me" are also words.
 _US_CODES = re.compile(r"\bU\.S\.(?:A\.)?|\bUSA?\b|,\s*(?:" + "|".join(STATES) + r")\b")
-_REMOTE_WORDS = re.compile(r"\b(?:remote|friendly|fully|first|only|anywhere|hybrid|or|and)\b|[^\w]+", re.I)
+_REMOTE_WORDS = re.compile(r"\b(?:remote|friendly|fully|first|only|anywhere|hybrid|or|and|work|from|at|home?)\b|[^\w]+",
+                           re.I)
+# Workday boards say "Work At Home-Texas" and "TX - Work from home" (sometimes cut short: "Work from hom").
+_REMOTE = re.compile(r"remote|anywhere|work[\s-]+(?:from|at)[\s-]+hom|telecommut", re.I)
 
 
 def in_us(location: str) -> bool:
@@ -90,7 +93,7 @@ def in_us(location: str) -> bool:
 
 
 def is_remote(location: str) -> bool:
-    return "remote" in location.lower() or "anywhere" in location.lower()
+    return bool(_REMOTE.search(location))
 
 
 def names_no_place(location: str) -> bool:

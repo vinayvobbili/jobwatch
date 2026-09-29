@@ -99,7 +99,7 @@ class App:
         if not query:
             raise ApiError("Type a company name or paste a job link.")
         return [{"source": s, "board": b, "name": next((j.company_name for j in jobs if j.company_name), ""),
-                 "open_roles": len(jobs), "careers": sources.SOURCES[s].careers.format(board=b),
+                 "open_roles": sources.open_roles(jobs), "careers": sources.careers_url(s, b),
                  "sample_titles": list(dict.fromkeys(j.title for j in jobs))[:5]}
                 for s, b, jobs in sources.probe(query)]
 
