@@ -1603,7 +1603,7 @@ function renderSettings() {
               companies.push({ source: hit.source, board: hit.board, name: hit.name || findInput.value.trim() });
               drawCompanies(); e.target.replaceWith(h("span", { class: "muted small" }, "added"));
             } }, "Add")))
-        : [h("div", { class: "muted small" }, "No Greenhouse, Lever or Ashby board found. Try pasting a link to one " +
+        : [h("div", { class: "muted small" }, "No Greenhouse, Lever, Ashby, Workday or Eightfold board found. Try pasting a link to one " +
             "of their job postings. Some companies use other systems that jobwatch can't read yet.")]));
     } catch (e) { findOut.replaceChildren(h("div", { class: "error small" }, e.message)); }
     findBtn.disabled = false;

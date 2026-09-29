@@ -27,7 +27,7 @@ def test_find(web, capsys):
     assert ("Globex: lever:globex  (2 open roles)  https://jobs.lever.co/globex\n"
             "    e.g. Machine Learning Engineer") in out
     assert "Acme: greenhouse:acme  (2 open roles, Acme)" in run(capsys, "find", "Acme").out
-    assert "Nobody: no Greenhouse, Lever or Ashby board found" in out
+    assert "Nobody: no Greenhouse, Lever, Ashby, Workday or Eightfold board found" in out
 
 
 def test_run_then_digest_shows_only_new_jobs(web, watchlist, capsys):
@@ -64,8 +64,8 @@ def test_errors_are_one_line(web, watchlist, tmp_path):
 
 def test_config_validation(tmp_path):
     p = tmp_path / "c.yaml"
-    p.write_text("companies: [workday:acme]\n")
-    with pytest.raises(config.ConfigError, match="unknown source 'workday'"):
+    p.write_text("companies: [monster:acme]\n")
+    with pytest.raises(config.ConfigError, match="unknown source 'monster'"):
         config.load(p)
     p.write_text("companies: [lever:a, lever:a]\n")
     with pytest.raises(config.ConfigError, match="listed twice"):

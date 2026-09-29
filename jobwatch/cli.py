@@ -37,12 +37,12 @@ def cmd_find(args):
         results = list(pool.map(sources.probe, args.company))
     for query, hits in zip(args.company, results, strict=True):
         if not hits:
-            print(f"{query}: no Greenhouse, Lever or Ashby board found. Paste a job link from their careers "
-                  "page to check, or the company may use another system.")
+            print(f"{query}: no Greenhouse, Lever, Ashby, Workday or Eightfold board found. Paste a job link "
+                  "from their careers page to check, or the company may use another system.")
         for source, board, jobs in hits:
             name = next((j.company_name for j in jobs if j.company_name), "")
-            print(f"{query}: {source}:{board}  ({len(jobs)} open roles{', ' + name if name else ''})  "
-                  f"{sources.SOURCES[source].careers.format(board=board)}\n    e.g. {jobs[0].title}")
+            print(f"{query}: {source}:{board}  ({sources.open_roles(jobs)} open roles{', ' + name if name else ''})  "
+                  f"{sources.careers_url(source, board)}\n    e.g. {jobs[0].title}")
 
 
 def _digest(args, cfg, store):
@@ -207,7 +207,7 @@ def _tracking(p: argparse.ArgumentParser):
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="jobwatch", description="Watch company job boards (Greenhouse, Lever, "
-                                 "Ashby) and get a ranked digest of new matches.")
+                                 "Ashby, Workday, Eightfold) and get a ranked digest of new matches.")
     ap.add_argument("--version", action="version", version=f"jobwatch {__version__}")
     ap.add_argument("-c", "--config", help="watchlist file (default: ./jobwatch.yaml, $JOBWATCH_CONFIG, "
                     "~/.config/jobwatch/config.yaml)")

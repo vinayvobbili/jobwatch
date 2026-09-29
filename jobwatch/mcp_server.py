@@ -16,16 +16,18 @@ from .watch import build_digest, fetch_all, load_contacts, queue
 server = MCPServer(
     "jobwatch",
     instructions=(
-        "Watches company job boards (Greenhouse, Lever, Ashby) from a watchlist file. fetch_jobs checks every "
-        "board; digest ranks the new matches (optionally fit-scored with shortlist-ai); job_details gives a "
-        "posting's full text for tailoring a resume; mark_job records queued/applied/skipped and later stages "
-        "(screening, interviewing, offer, rejected, withdrawn) with a next step and follow-up day; apply_queue "
+        "Watches company job boards (Greenhouse, Lever, Ashby, Workday, Eightfold) from a watchlist file. "
+        "fetch_jobs checks every board; digest ranks the new matches (optionally fit-scored with shortlist-ai); "
+        "job_details gives a posting's full text for tailoring a resume; mark_job records queued/applied/skipped "
+        "and later stages (screening, interviewing, offer, rejected, withdrawn) with a next step and follow-up "
+        "day; apply_queue "
         "lists the jobs queued to apply to next, with people the user knows there (ask them for a referral "
         "before applying). add_application tracks one found elsewhere; "
         "applications shows where each stands. After the person submits, save_application_package keeps the "
         "resume, cover letter and form answers they sent; application_package reads them back before a call or "
         "interview. skill_gaps lists what the matching jobs ask for that the resume doesn't show, with "
-        "courses and certifications to close each gap. find_board looks up a company's board to add to the watchlist. "
+        "courses and certifications to close each gap. find_board looks up a company's board to add to the "
+        "watchlist. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
 )
@@ -40,7 +42,7 @@ def _open():
 def find_board(company: str) -> list[dict]:
     """Find a company's job board by name or by a job/careers link. Returns entries for the watchlist.
     A guessed board name can belong to another company: check the sample titles before adding one."""
-    return [{"entry": f"{s}:{b}", "open_roles": len(jobs), "careers": sources.SOURCES[s].careers.format(board=b),
+    return [{"entry": f"{s}:{b}", "open_roles": sources.open_roles(jobs), "careers": sources.careers_url(s, b),
              "sample_titles": [j.title for j in jobs[:5]]}
             for s, b, jobs in sources.probe(company)]
 

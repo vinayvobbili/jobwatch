@@ -116,6 +116,11 @@ class Store:
             self.db.executemany("UPDATE jobs SET closed=? WHERE key=? AND closed IS NULL", [(now, k) for k in gone])
         return new
 
+    def board_jobs(self, source: str, company: str) -> dict[str, Job]:
+        """Every job ever seen on one board, open or closed, by key."""
+        rows = self.db.execute("SELECT key, data FROM jobs WHERE source=? AND company=?", (source, company))
+        return {r["key"]: Job.from_dict(json.loads(r["data"])) for r in rows}
+
     def jobs(self, statuses: tuple[str, ...] | None = None, include_closed: bool = False) -> list[tuple[Job, dict]]:
         """(job, record) pairs; the record has status, first_seen, closed, note, and for applications applied_at,
         next_step and follow_up."""
