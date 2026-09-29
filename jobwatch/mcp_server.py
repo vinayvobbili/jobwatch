@@ -8,7 +8,7 @@ from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
-from . import config, contacts, learn, report, sources
+from . import config, contacts, learn, prep, report, sources
 from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue
@@ -25,9 +25,9 @@ server = MCPServer(
         "before applying). add_application tracks one found elsewhere; "
         "applications shows where each stands. After the person submits, save_application_package keeps the "
         "resume, cover letter and form answers they sent; application_package reads them back before a call or "
-        "interview. skill_gaps lists what the matching jobs ask for that the resume doesn't show, with "
-        "courses and certifications to close each gap. find_board looks up a company's board to add to the "
-        "watchlist. "
+        "interview, and interview_prep puts the posting, the resume and what was sent on one sheet. skill_gaps "
+        "lists what the matching jobs ask for that the resume doesn't show, with courses and certifications to "
+        "close each gap. find_board looks up a company's board to add to the watchlist. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
 )
@@ -193,6 +193,20 @@ def application_package(key: str) -> dict:
     _, store = _open()
     try:
         return store.package(key).data()
+    finally:
+        store.close()
+
+
+@server.tool()
+def interview_prep(key: str) -> dict:
+    """A prep sheet for a recruiter call or interview: stage and next step, each requirement and responsibility
+    in the posting next to the closest resume line (quoted, never written), gaps to be honest about, what was
+    sent, questions to expect and to ask, and the posting. For an application added by hand, the posting is found
+    on a watched board by its requisition id. markdown is the sheet ready to read."""
+    cfg, store = _open()
+    try:
+        sheet = prep.build(cfg, store, key)
+        return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet)}
     finally:
         store.close()
 

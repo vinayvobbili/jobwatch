@@ -434,6 +434,20 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .chat-pop { position: fixed; right: 28px; bottom: 28px; z-index: 9; width: min(440px, calc(100vw - 32px));
   height: min(700px, calc(100vh - 110px)); border-radius: 18px; box-shadow: 0 30px 80px -24px rgba(0, 0, 0, .5);
   transform-origin: bottom right; animation: pop .28s cubic-bezier(.2, .8, .2, 1) both; }
+.prep { max-width: 920px; }
+.prep h3 { font-size: 15px; margin: 22px 0 8px; }
+.prep .ask { margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.prep .ask .kind { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.prep .ask .you { margin-top: 6px; padding-left: 10px; border-left: 3px solid var(--accent, #5a5cf2); font-size: 14px; }
+.prep .ask .none { margin-top: 6px; font-size: 13px; color: var(--muted); font-style: italic; }
+.prep ul { margin: 4px 0; padding-left: 20px; } .prep li { margin: 3px 0; }
+@media print {
+  body > *:not(#overlay) { display: none !important; }
+  .overlay { position: static; background: none; backdrop-filter: none; padding: 0; display: block !important; }
+  .dialog { box-shadow: none; border: 0; max-width: none; padding: 0; animation: none; }
+  .prep .no-print { display: none !important; }
+  .prep .ask { break-inside: avoid; }
+}
 .dialog.with-chat { max-width: 1280px; display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 24px; align-items: start; }
 .dialog.with-chat .posting { max-height: calc(100vh - 330px); }
 .job-chat { position: sticky; top: 0; height: min(760px, calc(100vh - 124px)); }
@@ -822,6 +836,8 @@ async function openDetails(key) {
           (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
         knowLine(j, 10),
         h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"),
+          APPLIED.includes(j.status) ? h("button", { class: "btn", onclick: () => openPrep(j.key),
+            title: "Their asks next to your resume, gaps, what you sent, questions to expect" }, "Prep sheet") : null,
           h("span", { class: "muted small" }, "· key "), h("code", { class: "small" }, j.key)),
         APPLIED.includes(j.status) || hasPackage(j.package) ? sentSection(j) : null,
         gapChips(j.skills),
@@ -835,6 +851,51 @@ async function openDetails(key) {
             "What are they likely to ask in interviews?", "Draft a short note to a recruiter here"],
       })));
   } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
+}
+// A prep sheet for a call: the posting's asks next to the closest resume line, gaps, what was sent, questions.
+async function openPrep(key) {
+  const dialog = document.getElementById("dialog");
+  dialog.classList.remove("with-chat");
+  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  try {
+    const p = await api("/api/prep?key=" + encodeURIComponent(key));
+    const list = items => h("ul", {}, ...items.map(i => h("li", {}, i)));
+    const KIND = { need: "They ask for", do: "You'd be doing", nice: "Nice to have" };
+    const which = { sent: "the resume you sent", base: "your resume" }[p.resume_used];
+    const gaps = [...(p.fit?.gaps || []), ...p.gaps.filter(g => g.must_have).map(g => g.name + " (a must-have)"),
+      ...p.gaps.filter(g => !g.must_have).map(g => g.name)];
+    const sent = p.sent.files.length || p.sent.answers.length || p.sent.note;
+    const copy = h("button", { class: "btn" }, "Copy as text");
+    copy.onclick = async () => {
+      try { await navigator.clipboard.writeText(p.markdown); toast("Copied the prep sheet"); }
+      catch { toast("Couldn't copy: your browser blocked it"); }
+    };
+    fill(dialog, h("div", { class: "prep" },
+      h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openDetails(key) }, "← Details"),
+        h("span", { style: "flex:1" }), copy, h("button", { class: "btn", onclick: () => print() }, "Print"),
+        h("button", { class: "btn", onclick: closeDetails }, "Close")),
+      h("h2", {}, `Prep: ${p.title}`),
+      h("div", { class: "meta" }, [p.company, `Stage: ${p.status}`, p.applied_at && `applied ${p.applied_at}`,
+        p.next_step && `next: ${p.next_step}`, p.follow_up && `follow up ${p.follow_up}`].filter(Boolean).join(" · ")),
+      p.note ? h("div", { class: "small muted", style: "margin-top:6px" }, p.note) : null,
+      p.url ? h("div", { class: "small", style: "margin-top:6px" }, link(p.url, "The posting ↗"),
+        p.posting_key ? h("span", { class: "muted" }, " · found on a watched board by its requisition id") : null) : null,
+      p.fit ? [h("h3", {}, "Fit"), h("div", {}, `${Math.round(p.fit.score || 0)}/100, ${p.fit.must_haves_met || 0} of ` +
+        `${p.fit.must_haves_total || 0} must-haves.`), p.fit.summary ? h("p", { class: "small muted" }, p.fit.summary) : null] : null,
+      p.matches.length ? [h("h3", {}, "Their asks and your closest line" + (which ? ` (${which})` : "")),
+        ...p.matches.map(m => h("div", { class: "ask" }, h("div", { class: "kind" }, KIND[m.kind]), h("div", {}, m.ask),
+          m.resume ? h("div", { class: "you" }, m.resume)
+            : h("div", { class: "none" }, "Nothing close on the resume: have a story, or say plainly how you'd get there.")))]
+        : h("p", { class: "muted" }, "No requirements found in the posting text."),
+      gaps.length ? [h("h3", {}, "Be ready to be honest about"),
+        h("div", { class: "small muted" }, "Say what's closest and how you'd ramp up. Don't claim what you haven't done."),
+        list(gaps)] : null,
+      sent ? [h("h3", {}, "What you sent"), p.sent.files.length ? h("div", { class: "small" }, "Files: " + p.sent.files.join(", ")) : null,
+        p.sent.answers.length ? list(p.sent.answers.map(a => h("span", {}, h("b", {}, a.question + " "), a.answer))) : null,
+        p.sent.note ? h("div", { class: "posting", style: "max-height:none" }, p.sent.note) : null] : null,
+      h("h3", {}, "They'll likely ask"), list(p.expect),
+      h("h3", {}, "Ask them"), list(p.ask)));
+  } catch (e) { showError(dialog, e); }
 }
 // Skills this posting asks for that the resume doesn't show; solid = a must-have a fit score found missing.
 function gapChips(skills) {
