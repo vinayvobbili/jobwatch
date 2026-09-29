@@ -11,7 +11,7 @@ from . import __version__, config, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
 from .store import STATUSES, Store
-from .watch import build_digest, fetch_all
+from .watch import build_digest, fetch_all, load_contacts, queue
 
 
 def _write(text: str, out: Path | None):
@@ -69,6 +69,8 @@ def cmd_show(args, cfg, store):
     status = rec["status"] + (f" ({rec['note']})" if rec.get("note") else "")
     closed = f", closed {rec['closed'][:10]}" if rec["closed"] else ""
     print(f"{job.to_text()}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{closed}")
+    if (contacts := load_contacts(cfg)) and (known := contacts.at(job.display_company, job.company)):
+        print(f"You know: {report.people(known, most=10)}")
 
 
 def cmd_mark(args, cfg, store):
@@ -76,6 +78,13 @@ def cmd_mark(args, cfg, store):
     store.set_status(keys, args.status, args.note)
     for k in keys:
         print(f"{k}: {args.status}")
+
+
+def cmd_queue(args, cfg, store):
+    if args.keys:
+        args.status = "queued"
+        return cmd_mark(args, cfg, store)
+    _write(report.queue_markdown(queue(cfg, store)), args.out)
 
 
 def cmd_list(args, cfg, store):
@@ -125,11 +134,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("key", help="job key, or its posting id")
     p.set_defaults(func=cmd_show)
 
-    p = sub.add_parser("mark", help="record that you applied to (or skipped) jobs")
+    p = sub.add_parser("mark", help="record that you queued, applied to or skipped jobs")
     p.add_argument("status", choices=STATUSES)
     p.add_argument("keys", nargs="+")
     p.add_argument("--note")
     p.set_defaults(func=cmd_mark)
+
+    p = sub.add_parser("queue", help="jobs to apply to next: `queue <key>...` adds, `queue` lists")
+    p.add_argument("keys", nargs="*")
+    p.add_argument("--note", help="e.g. 'ask Ana for a referral first'")
+    p.add_argument("-o", "--out", type=Path)
+    p.set_defaults(func=cmd_queue)
 
     p = sub.add_parser("list", help="jobs by status, e.g. `jobwatch list --status applied`")
     p.add_argument("--status", choices=STATUSES, action="append")

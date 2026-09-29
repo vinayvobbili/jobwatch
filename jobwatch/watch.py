@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 from . import sources
 from .config import Board, Config
+from .contacts import Contacts
 from .filters import reject_reason, relevance
 from .models import Job
 from .score import resume_id, score_jobs
@@ -54,6 +55,7 @@ class Entry:
     keywords: list[str]
     fit: dict | None = None
     same_title: list[Job] = field(default_factory=list)  # the company's other postings with this title
+    contacts: list[dict] = field(default_factory=list)  # people you know there
 
     @property
     def keys(self) -> list[str]:
@@ -67,6 +69,30 @@ class Digest:
     scored: int = 0
     score_errors: dict[str, str] = field(default_factory=dict)
     note: str = ""
+
+
+def load_contacts(cfg: Config) -> Contacts | None:
+    """The watchlist's connections file, if it has one. A missing file only warns: it's a hint, not a filter."""
+    if not cfg.connections:
+        return None
+    try:
+        return Contacts.load(cfg.connections)
+    except (OSError, ValueError) as e:
+        print(f"jobwatch: connections skipped: {e}", file=sys.stderr)
+        return None
+
+
+def queue(cfg: Config, store: Store) -> list[Entry]:
+    """Jobs queued to apply to, in the order they were queued, with fit scores and contacts where known."""
+    rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
+    contacts = load_contacts(cfg)
+    out = []
+    for job, rec in sorted(store.jobs(("queued",), include_closed=True), key=lambda r: r[1]["status_at"] or ""):
+        rel, hits = relevance(job, cfg.keywords)
+        e = Entry(job, rec, rel, hits, fit=store.score(job.key, rid) if rid else None)
+        e.contacts = contacts.at(job.display_company, job.company) if contacts else []
+        out.append(e)
+    return out
 
 
 def _rank(e: Entry):
@@ -92,6 +118,10 @@ def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_to
         entries.append(Entry(job, record, rel, hits))
 
     digest = Digest(entries, rejected)
+    contacts = load_contacts(cfg)
+    if contacts:
+        for e in entries:
+            e.contacts = contacts.at(e.job.display_company, e.job.company)
     rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
     if rid:
         for e in entries:

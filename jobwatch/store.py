@@ -1,4 +1,4 @@
-"""What has been seen, shown, applied to or skipped, and fit scores: one SQLite file."""
+"""What has been seen, shown, queued, applied to or skipped, and fit scores: one SQLite file."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .models import Job
 
-STATUSES = ("new", "shown", "applied", "skipped")
+STATUSES = ("new", "shown", "queued", "applied", "skipped")  # queued: to apply to next
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS scores (
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")  # orders actions within a second
 
 
 class Store:
