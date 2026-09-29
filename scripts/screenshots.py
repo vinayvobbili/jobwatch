@@ -18,7 +18,7 @@ from playwright.sync_api import sync_playwright
 
 from jobwatch.web import serve
 
-SIZES = {"desktop": (1280, 900), "phone": (390, 844)}
+SIZES = {"wide": (1920, 1080), "desktop": (1280, 900), "phone": (390, 844)}
 TABS = ("today", "queue", "applied", "settings")
 
 

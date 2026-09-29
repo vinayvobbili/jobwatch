@@ -67,7 +67,7 @@ class App:
                 "status": e.record.get("status"), "note": e.record.get("note"), "closed": e.record.get("closed"),
                 "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
                 "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
-                "find_referral": contacts.linkedin_search(j.display_company)}
+                "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max}
 
     # -- endpoints
 
