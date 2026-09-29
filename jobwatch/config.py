@@ -73,6 +73,53 @@ def find_config(explicit: str | Path | None = None) -> Path:
                       "create one with `jobwatch init`")
 
 
+def locate(explicit: str | Path | None = None) -> Path:
+    """The watchlist to use, even if it doesn't exist yet (then: where a new one goes)."""
+    try:
+        return find_config(explicit)
+    except ConfigError:
+        if explicit or os.environ.get("JOBWATCH_CONFIG"):
+            return Path(explicit or os.environ["JOBWATCH_CONFIG"]).expanduser()
+        return DEFAULT_PATHS[1]
+
+
+SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring")
+
+
+def save(path: Path, settings: dict) -> Config:
+    """Update the watchlist's settings (other keys, such as state, are kept) and write it.
+
+    The new file is checked before it replaces the old one, which is kept as <name>.bak.
+    Comments in a hand-written file are not kept."""
+    unknown = set(settings) - set(SETTINGS)
+    if unknown:
+        raise ConfigError(f"unknown setting(s): {', '.join(sorted(unknown))}")
+    raw = (yaml.safe_load(path.read_text()) or {}) if path.is_file() else {}
+    for key, value in settings.items():
+        if value in (None, "", [], {}):
+            raw.pop(key, None)
+        else:
+            raw[key] = value
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = "# jobwatch watchlist, saved by `jobwatch ui`. Docs: https://github.com/vinayvobbili/jobwatch\n" + \
+        yaml.safe_dump(raw, sort_keys=False, allow_unicode=True)
+    tmp = path.with_name(path.name + ".new")
+    tmp.write_text(text, encoding="utf-8")
+    try:
+        cfg = load(tmp)
+    except ConfigError as e:
+        tmp.unlink()
+        raise ConfigError(str(e).replace(str(tmp), str(path))) from None
+    except Exception:
+        tmp.unlink()
+        raise
+    if path.is_file():
+        path.replace(path.with_name(path.name + ".bak"))
+    tmp.replace(path)
+    cfg.path = path
+    return cfg
+
+
 def load(explicit: str | Path | None = None) -> Config:
     path = find_config(explicit)
     raw = yaml.safe_load(path.read_text()) or {}

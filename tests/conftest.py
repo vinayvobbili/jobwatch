@@ -116,6 +116,17 @@ def no_network(monkeypatch):
     monkeypatch.setattr(sources.urllib.request, "urlopen", refuse)
 
 
+@pytest.fixture(autouse=True)
+def no_real_state(tmp_path, monkeypatch):
+    """A watchlist without `state:` uses the default database: in tests, never the real one in $HOME."""
+    from jobwatch import config
+
+    monkeypatch.setattr(config, "DEFAULT_STATE", tmp_path / "default-state" / "state.db")
+    monkeypatch.setattr(config, "DEFAULT_CACHE", tmp_path / "default-cache")
+    monkeypatch.setattr(config, "DEFAULT_PATHS", (tmp_path / "jobwatch.yaml", tmp_path / "home-config.yaml"))
+    monkeypatch.delenv("JOBWATCH_CONFIG", raising=False)
+
+
 @pytest.fixture
 def web(monkeypatch):
     fake = FakeWeb()
