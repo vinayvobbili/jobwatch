@@ -274,6 +274,21 @@ jobwatch package c1                                         # show it
 Packages live in `packages/<job>/` next to the state file. Removing a file moves it to `.removed/` there
 rather than deleting it.
 
+### Prep sheets
+
+Before a recruiter call or an interview, open the application's **Details** and press **Prep sheet** (or run
+`jobwatch prep c1`). One page, ready to print, with:
+- the stage, next step and your notes;
+- each requirement and responsibility in the posting, next to the line on your resume closest to it (the
+  resume you sent, if you kept it), or a plain "nothing close" so you can prepare a story or an honest answer;
+- skills they ask for that your resume doesn't show, with the fit score's missing must-haves;
+- what you sent;
+- questions to expect and questions to ask, for a screen or for interviews.
+
+Nothing on it is written for you: it quotes the posting and your resume. For an application you added by hand,
+jobwatch looks for the posting on your watched boards by the requisition id in its title (`R0123456`,
+`REQ-4711`, `Job 20769`), so a Workday posting fetched later fills in the sheet.
+
 ## Who you know there
 
 A referral gets read before an application does. Download your LinkedIn data (Settings → Data privacy →
@@ -298,8 +313,8 @@ marking them shown. Roles that disappear from a board are marked closed.
 ## MCP server
 
 `jobwatch-mcp` offers `find_board`, `fetch_jobs`, `digest`, `job_details`, `mark_job`, `apply_queue`,
-`add_application`, `applications`, `save_application_package`, `application_package`, `skill_gaps` and
-`list_jobs` to Claude Code or any MCP client. The watchlist comes
+`add_application`, `applications`, `save_application_package`, `application_package`, `interview_prep`,
+`skill_gaps` and `list_jobs` to Claude Code or any MCP client. The watchlist comes
 from `JOBWATCH_CONFIG`:
 
 ```

@@ -72,6 +72,18 @@ def day(value: str | date | None, today: date | None = None) -> str | None:
         raise ValueError(f"{value!r} isn't a date: use YYYY-MM-DD, today, tomorrow or +N days") from None
 
 
+# A requisition id: R0123456, REQ-4711, JR12345, WD00104836, Job 20769 (at least four digits).
+_REQ = re.compile(r"(?<![a-z0-9])((?:req|jr|wd|job|r)?[-_ #]?\d{4,}(?:-\d{1,2})?)(?![a-z0-9])", re.I)
+
+
+def _same_req(req: str, posting_id: str) -> bool:
+    """Does a requisition id from a title name this posting? Letters and separators aside the numbers must match;
+    a posting's copy suffix (R0123456-1) still counts."""
+    a, b = re.sub(r"\D", "", req.split("-")[0] if re.search(r"\d-\d{1,2}$", req) else req), posting_id
+    b = re.sub(r"-\d{1,2}$", "", b)
+    return bool(a) and a == re.sub(r"\D", "", b) and len(re.sub(r"[^A-Za-z]", "", b)) <= 3
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60] or "job"
 
@@ -224,6 +236,24 @@ class Store:
         self.set_status([job.key], status, note, on=applied)
         self.track(job.key, next_step=next_step, follow_up=follow_up)
         return job
+
+    def linked(self, job: Job) -> Job | None:
+        """For an application added by hand, the posting a watched board has for the same job: same company, and
+        the requisition id in the title or link ("R0123456", "REQ-4711", "Job 20769") is the posting's id."""
+        if job.source != MANUAL:
+            return None
+        found = {}
+        for req in {m.group(1).upper() for m in _REQ.finditer(f"{job.title} {job.url} {job.id}")}:
+            digits = re.sub(r"\D", "", req)
+            rows = self.db.execute("SELECT data FROM jobs WHERE source!=? AND json_extract(data, '$.id') LIKE ?",
+                                   (MANUAL, f"%{digits}%"))
+            for r in rows:
+                other = Job.from_dict(json.loads(r["data"]))
+                same_company = job.company.replace("-", "") in (_slug(other.display_company).replace("-", "")
+                                                                + other.company.replace("-", ""))
+                if same_company and _same_req(req, other.id):
+                    found[other.key] = other
+        return next(iter(found.values())) if len(found) == 1 else None
 
     def score(self, key: str, resume: str) -> dict | None:
         row = self.db.execute("SELECT result FROM scores WHERE key=? AND resume=?", (key, resume)).fetchone()

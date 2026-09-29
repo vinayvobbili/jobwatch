@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
-from . import __version__, chat, config, contacts, learn, report, sources
+from . import __version__, chat, config, contacts, learn, prep, report, sources
 from .config import ConfigError
 from .package import Package
 from .score import ScoringUnavailable, resume_id, score_jobs
@@ -187,6 +187,14 @@ class App:
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
         return self._with_store(run)
 
+    def get_prep(self, q) -> dict:
+        key = (q.get("key") or [""])[0]
+
+        def run(cfg, store):
+            sheet = prep.build(cfg, store, key)
+            return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet)}
+        return self._with_store(run)
+
     def get_skills(self, q) -> dict:
         timeline = (q.get("timeline") or [None])[0]
         if timeline and timeline not in config.TIMELINES:
@@ -313,6 +321,7 @@ ROUTES = {
     ("POST", "/api/score"): App.post_score,
     ("GET", "/api/chat"): App.get_chat,
     ("GET", "/api/skills"): App.get_skills,
+    ("GET", "/api/prep"): App.get_prep,
     ("POST", "/api/package"): App.post_package,
     ("POST", "/api/package/remove"): App.post_package_remove,
 }

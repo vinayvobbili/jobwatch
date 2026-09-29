@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, chat, config, learn, report, sources
+from . import __version__, chat, config, learn, prep, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
 from .store import STAGES, STATUSES, Store
@@ -140,6 +140,10 @@ def cmd_ask(args, cfg, store):
         sys.stdout.write(text)
         sys.stdout.flush()
     sys.stdout.write("\n")
+
+
+def cmd_prep(args, cfg, store):
+    _write(prep.markdown(prep.build(cfg, store, args.key)), args.out)
 
 
 def cmd_skills(args, cfg, store):
@@ -282,6 +286,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("question", nargs="+")
     p.add_argument("--job", metavar="KEY", help="ask about this job (its key, or the end of it)")
     p.set_defaults(func=cmd_ask)
+
+    p = sub.add_parser("prep", help="a prep sheet for a recruiter call or interview: their asks next to your "
+                                    "resume lines, gaps to be honest about, what you sent, questions to expect")
+    p.add_argument("key")
+    p.add_argument("-o", "--out", type=Path)
+    p.set_defaults(func=cmd_prep)
 
     p = sub.add_parser("skills", help="skills your matching jobs ask for that your resume doesn't show, and "
                                       "courses and certifications to learn them")
