@@ -104,7 +104,7 @@ keywords:                                 # relevance: title hits count double
   "re:agent(s|ic)?": 2                    # "re:" prefix = regex
 
 resume: ~/Documents/resume.pdf            # for fit scores
-connections: ~/Downloads/Connections.csv  # who you know at each company (see below)
+connections: ~/Downloads/linkedin.zip     # who you know at each company (see below)
 scoring:
   backend: claude                         # or local
   top: 5                                  # score the 5 most relevant new jobs per digest
@@ -153,16 +153,21 @@ Queued jobs leave the digest. The queue flags any posting that has since closed.
 
 ## Who you know there
 
-A referral gets read before an application does. Export your LinkedIn connections (Settings → Data
-privacy → Get a copy of your data → Connections) and point `connections:` at the CSV. Each digest and queue
-entry then lists your connections who work there:
+A referral gets read before an application does. Download your LinkedIn data (Settings → Data privacy →
+Get a copy of your data) and upload the archive in `jobwatch ui`, or point `connections:` at the .zip or
+at its Connections.csv. Each digest and queue entry then lists your connections who work there:
 
 ```
-You know: Ana Li (Staff Engineer), Bo Chen (Recruiter)
+You know: Ana Li (Staff Engineer) [messaged 14×, last 2025-03-02]; Bo Chen (Recruiter)
 ```
 
-Companies are matched by name, ignoring suffixes like "Inc." and "Corporation". The file is only read
-locally.
+With the full archive, people you actually talk to come first. jobwatch counts the messages you exchanged,
+recommendations and endorsements, so a close colleague ranks above someone who only accepted a connection
+request. Only those counts are kept, never your messages. When you know nobody at a company, the page links
+to a LinkedIn search of your 2nd-degree network there, to find someone who can introduce you.
+
+Companies are matched by name, ignoring suffixes like "Inc." and "Corporation". Your LinkedIn data is only
+read on your machine.
 
 A digest lists each job once. Use `digest --all` to include jobs already shown, or `--peek` to look without
 marking them shown. Roles that disappear from a board are marked closed.

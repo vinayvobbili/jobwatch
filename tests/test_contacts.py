@@ -50,7 +50,7 @@ def test_not_a_connections_file(tmp_path):
 
 def test_people_line():
     people = [{"name": n, "position": "Engineer" if n == "A" else ""} for n in "ABCDE"]
-    assert report.people(people) == "A (Engineer), B, C and 2 more"
+    assert report.people(people) == "A (Engineer); B; C and 2 more"
 
 
 def add_connections(watchlist, path):
@@ -61,7 +61,7 @@ def test_digest_shows_who_you_know(web, watchlist, connections, capsys):
     add_connections(watchlist, connections)
     cli.main(["-c", str(watchlist), "run"])
     out = capsys.readouterr().out
-    assert "You know: Ana Li (Staff Engineer), Bo Chen (Recruiter)" in out
+    assert "You know: Ana Li (Staff Engineer); Bo Chen (Recruiter)" in out
     assert "Cy Diaz (Engineering Manager)" in out  # lever:globex matched by board slug
 
 
@@ -110,4 +110,85 @@ def test_show_lists_contacts(web, watchlist, connections, capsys):
     add_connections(watchlist, connections)
     cli.main(["-c", str(watchlist), "fetch"])
     cli.main(["-c", str(watchlist), "show", "c1"])
-    assert "You know: Ana Li (Staff Engineer), Bo Chen (Recruiter)" in capsys.readouterr().out
+    assert "You know: Ana Li (Staff Engineer); Bo Chen (Recruiter)" in capsys.readouterr().out
+
+
+# A LinkedIn archive, trimmed to the files jobwatch reads (and one it must ignore).
+IN = "https://www.linkedin.com/in/example-"
+MESSAGE_COLUMNS = ("CONVERSATION ID,CONVERSATION TITLE,FROM,SENDER PROFILE URL,TO,RECIPIENT PROFILE URLS,DATE,"
+                   "SUBJECT,CONTENT,FOLDER")
+ARCHIVE_MESSAGES = "\n".join([
+    MESSAGE_COLUMNS,
+    f"c1,,Me,{IN}me,Bo Chen,{IN}bo,2025-03-01 10:00:00 UTC,,secret text,INBOX",
+    f"c1,,Bo Chen,{IN}bo,Me,{IN}me,2025-03-02 10:00:00 UTC,,more secret,INBOX",
+    f"c2,,Me,{IN}me,Cy Diaz,{IN}cy,2024-01-05 10:00:00 UTC,,hi,INBOX",
+]) + "\n"
+ARCHIVE_RECS = ("First Name,Last Name,Company,Job Title,Text,Creation Date,Status\n"
+                "Dee,Park,Umbrella,Analyst,x,1/1/24,VISIBLE\n")
+ARCHIVE_ENDORSE = ("Endorsement Date,Skill Name,Endorser First Name,Endorser Last Name,Endorser Public Url,"
+                   "Endorsement Status\n2024/01/01,Python,Ana,Li,www.linkedin.com/in/example-ana,ACCEPTED\n")
+
+
+def make_archive(tmp_path, files=None):
+    import zipfile
+
+    path = tmp_path / "Basic_LinkedInDataExport.zip"
+    files = files if files is not None else {
+        "Connections.csv": CONNECTIONS, "messages.csv": ARCHIVE_MESSAGES,
+        "Recommendations_Received.csv": ARCHIVE_RECS, "Endorsement_Received_Info.csv": ARCHIVE_ENDORSE,
+        "Profile.csv": "First Name,Last Name\nMe,Myself\n"}
+    with zipfile.ZipFile(path, "w") as z:
+        for name, text in files.items():
+            z.writestr(name, text)
+    return path
+
+
+def test_archive_ranks_people_you_actually_talk_to_first(tmp_path):
+    contacts = Contacts.load(make_archive(tmp_path))
+    initech = contacts.at("Initech")
+    # Bo exchanged messages; Ana only endorsed once. Bo comes first despite the file order.
+    assert [p["name"] for p in initech] == ["Bo Chen", "Ana Li"]
+    assert initech[0]["why"] == "messaged 2×, last 2025-03-02"
+    assert initech[1]["why"] == "endorsed you 1×"
+    assert contacts.at("Umbrella")[0]["why"] == "recommendation"
+    assert contacts.at("Globex")[0]["why"] == "messaged 1×, last 2024-01-05"
+
+
+def test_import_keeps_counts_but_never_messages(tmp_path):
+    from jobwatch import contacts as mod
+
+    out, people, known = mod.import_archive(make_archive(tmp_path).read_bytes(), tmp_path / "wl")
+    assert (people, known) == (4, 4)
+    saved = "".join(p.read_text() for p in (tmp_path / "wl").iterdir())
+    assert "secret" not in saved and "example-me" not in saved
+    assert [p["name"] for p in Contacts.load(out).at("Initech")] == ["Bo Chen", "Ana Li"]
+
+
+def test_archive_problems_are_explained(tmp_path):
+    from jobwatch.contacts import read_archive
+
+    with pytest.raises(ValueError, match="not a zip"):
+        read_archive(b"hello")
+    with pytest.raises(ValueError, match="no Connections"):
+        read_archive(make_archive(tmp_path, {"Profile.csv": "x"}).read_bytes())
+
+
+def test_find_referral_link():
+    from jobwatch.contacts import linkedin_search
+
+    assert linkedin_search("Epic Games") == ("https://www.linkedin.com/search/results/people/?keywords=Epic%20Games"
+                                             "&network=%5B%22S%22%5D")
+
+
+def test_ui_upload_of_the_archive(tmp_path, watchlist, web):
+    from jobwatch.web import App
+
+    app = App(watchlist)
+    r = app.upload("connections", "export.zip", make_archive(tmp_path).read_bytes())
+    assert r == {"connections": "Connections.csv", "people": 4, "known": 4}
+    app.post_fetch({})
+    top = next(j for j in app.get_digest({})["jobs"] if j["key"] == "ashby:initech:c1")
+    assert top["contacts"][0]["name"] == "Bo Chen" and top["find_referral"].endswith("network=%5B%22S%22%5D")
+    # A plain Connections.csv upload afterwards drops the old archive's counts.
+    app.upload("connections", "Connections.csv", CONNECTIONS.encode())
+    assert not (watchlist.parent / "linkedin-ties.json").exists()

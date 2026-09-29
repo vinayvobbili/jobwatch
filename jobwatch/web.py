@@ -20,14 +20,14 @@ from urllib.parse import parse_qs, urlparse
 
 import yaml
 
-from . import __version__, config, report, sources
+from . import __version__, config, contacts, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable, resume_id, score_jobs
 from .store import STATUSES, Store
 from .watch import build_digest, fetch_all, load_contacts, queue
 
 MAX_UPLOAD = 20 * 1024 * 1024
-UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv",)}
+UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 
 
 class ApiError(Exception):
@@ -65,7 +65,8 @@ class App:
                 "locations": j.locations, "pay": j.pay(), "age_days": j.age_days(), "department": j.department,
                 "status": e.record.get("status"), "note": e.record.get("note"), "closed": e.record.get("closed"),
                 "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
-                "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys}
+                "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
+                "find_referral": contacts.linkedin_search(j.display_company)}
 
     # -- endpoints
 
@@ -136,10 +137,11 @@ class App:
 
         def run(cfg, store):
             job, rec = store.find(key)
-            contacts = load_contacts(cfg)
+            known = load_contacts(cfg)
             return {"key": job.key, "title": job.title, "company": job.display_company, "url": job.url,
                     "pay": job.pay(), "locations": job.locations, "text": job.to_text(),
-                    "contacts": contacts.at(job.display_company, job.company) if contacts else [],
+                    "contacts": known.at(job.display_company, job.company) if known else [],
+                    "find_referral": contacts.linkedin_search(job.display_company),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
         return self._with_store(run)
 
@@ -178,19 +180,31 @@ class App:
             raise ApiError(f"{kind} must be one of: {', '.join(UPLOADS[kind])}")
         if not data:
             raise ApiError("the file is empty")
-        target = self.path.parent / ("resume" + suffix if kind == "resume" else "Connections.csv")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
-        if kind == "connections":
-            from .contacts import Contacts
+        extra = {}
+        if kind == "resume":
+            target = self.path.parent / ("resume" + suffix)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        elif suffix == ".zip":
+            # The full archive: keep only Connections.csv and the tie counts, never the messages.
             try:
-                n = sum(len(v) for v in Contacts.load(target).by_company.values())
+                target, people, known = contacts.import_archive(data, self.path.parent)
             except ValueError as e:
-                target.unlink()
-                raise ApiError(str(e).replace(str(target), filename)) from None
+                raise ApiError(str(e)) from None
+            extra = {"people": people, "known": known}
+        else:
+            try:
+                people = len(contacts.parse_connections(data.decode("utf-8-sig", errors="replace"), filename))
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+            target = self.path.parent / "Connections.csv"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            (self.path.parent / contacts.TIES_FILE).unlink(missing_ok=True)  # stale counts from an older archive
+            extra = {"people": people}
         with self.lock:
             config.save(self.path, {kind: target.name})
-        return {kind: target.name, **({"people": n} if kind == "connections" else {})}
+        return {kind: target.name, **extra}
 
 
 ROUTES = {

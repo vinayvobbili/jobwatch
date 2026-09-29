@@ -169,8 +169,16 @@ function age(days) {
 }
 
 function people(list, most = 3) {
-  const names = list.slice(0, most).map(p => p.position ? `${p.name} (${p.position})` : p.name);
-  return names.join(", ") + (list.length > most ? ` and ${list.length - most} more` : "");
+  const names = list.slice(0, most).map(p => (p.position ? `${p.name} (${p.position})` : p.name) +
+    (p.why ? ` — ${p.why}` : ""));
+  return names.join("; ") + (list.length > most ? ` and ${list.length - most} more` : "");
+}
+
+// Who you know there, strongest ties first, and a way to find an introduction when you know nobody.
+function knowLine(job, most = 3) {
+  return h("div", { class: "know" },
+    job.contacts.length ? "You know: " + people(job.contacts, most) + " · " : "",
+    link(job.find_referral, job.contacts.length ? "more on LinkedIn ↗" : "Find someone who can refer you ↗", "small"));
 }
 
 function fitLine(fit) {
@@ -196,7 +204,7 @@ function jobCard(job, actions) {
       job.same_title ? ` · also posted ${job.same_title} more time${job.same_title > 1 ? "s" : ""}` : ""),
     fitLine(job.fit),
     job.keywords.length ? h("div", {}, job.keywords.map(k => h("span", { class: "chip" }, k))) : null,
-    job.contacts.length ? h("div", { class: "know" }, "You know: " + people(job.contacts)) : null,
+    knowLine(job),
     job.note ? h("div", { class: "note" }, job.note) : null,
     h("div", { class: "row actions" }, actions));
 }
@@ -248,7 +256,7 @@ async function openDetails(key) {
       h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
       h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
         (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
-      j.contacts.length ? h("div", { class: "know" }, "You know: " + people(j.contacts, 10)) : null,
+      knowLine(j, 10),
       h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"),
         h("span", { class: "muted small" }, "· key "), h("code", { class: "small" }, j.key)),
       h("div", { class: "posting" }, j.text));
@@ -393,7 +401,8 @@ function renderSettings() {
       try {
         const r = await api(`/api/upload?kind=${kind}&name=${encodeURIComponent(file.name)}`, undefined, file);
         settings[kind] = r[kind];
-        status.textContent = `Saved as ${r[kind]}` + (r.people !== undefined ? ` (${r.people} people)` : "");
+        status.textContent = `Saved as ${r[kind]}` + (r.people !== undefined ? ` (${r.people} people` +
+          (r.known !== undefined ? `, ${r.known} you've been in touch with` : "") + ")" : "");
       } catch (e) { status.textContent = e.message; status.className = "error small"; }
     };
     return h("div", {}, h("div", { class: "row" }, input, status), h("div", { class: "hint" }, help));
@@ -449,9 +458,11 @@ function renderSettings() {
         "They need the scoring add-on: pip install 'jobwatch[score]'."),
       h("label", {}, "Score with"), backend),
     h("div", { class: "card" }, h("h3", {}, "People you know ", h("span", { class: "hint" }, "optional")),
-      upload("connections", ".csv", s.connections, "On LinkedIn: Settings → Data privacy → Get a copy of your data → " +
-        "Connections. Upload the Connections.csv they email you, and each job shows who you know there. " +
-        "The file stays on this computer.")),
+      upload("connections", ".zip,.csv", s.connections, "On LinkedIn: Settings → Data privacy → Get a copy of your " +
+        "data. Upload the archive (.zip) LinkedIn emails you, and each job shows who you know there, the people you " +
+        "actually talk to first (from how often you've messaged, recommended or endorsed each other). Only those " +
+        "counts are kept, never your messages. Connections.csv on its own works too. Everything stays on this " +
+        "computer.")),
     h("div", { class: "row" }, h("button", { class: "btn primary", onclick: save }, "Save settings"), saveMsg));
 }
 

@@ -14,9 +14,10 @@ def fetch_summary(r: FetchReport) -> str:
 
 
 def people(contacts: list[dict], most: int = 3) -> str:
-    """ "Ana Li (Staff Engineer), Bo Chen and 2 more" """
-    names = [p["name"] + (f" ({p['position']})" if p.get("position") else "") for p in contacts[:most]]
-    return ", ".join(names) + (f" and {len(contacts) - most} more" if len(contacts) > most else "")
+    """ "Ana Li (Staff Engineer) [messaged 3×, last 2025-03-02]; Bo Chen and 2 more" """
+    names = [p["name"] + (f" ({p['position']})" if p.get("position") else "")
+             + (f" [{p['why']}]" if p.get("why") else "") for p in contacts[:most]]
+    return "; ".join(names) + (f" and {len(contacts) - most} more" if len(contacts) > most else "")
 
 
 def _line(e: Entry) -> list[str]:
