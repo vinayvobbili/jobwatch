@@ -80,6 +80,8 @@ def cmd_mark(args, cfg, store):
     store.set_status(keys, args.status, args.note, on=getattr(args, "on", None))
     for k in keys:
         store.track(k, next_step=getattr(args, "next", None), follow_up=getattr(args, "follow_up", None))
+        if getattr(args, "add_note", None):
+            store.add_note(k, args.add_note)
         print(f"{k}: {args.status}")
         _attach(store.package(k), getattr(args, "attach", None) or [])
 
@@ -175,7 +177,8 @@ def cmd_list(args, cfg, store):
 
 
 def _tracking(p: argparse.ArgumentParser):
-    p.add_argument("--note")
+    p.add_argument("--note", help="replaces the note")
+    p.add_argument("--add-note", metavar="TEXT", help="adds a dated line to the note, keeping what's there")
     p.add_argument("--on", metavar="DAY", help="the day you applied, if not today (YYYY-MM-DD)")
     p.add_argument("--next", metavar="STEP", help="what happens next, e.g. 'check in with the recruiter'")
     p.add_argument("--follow-up", metavar="DAY", help="when to act on it: YYYY-MM-DD, tomorrow or +N days")

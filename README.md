@@ -217,6 +217,7 @@ watch (a referral, a recruiter, LinkedIn) go in with `add`, so every application
 jobwatch add "Umbrella" "Principal Engineer" --url https://... --on 2026-09-14 --note "via a recruiter"
 jobwatch mark screening c1 --next "technical round" --follow-up +7   # or a date: 2026-10-05
 jobwatch mark rejected principal-engineer
+jobwatch mark withdrawn c1 --add-note "recruiter says onsite only"   # adds a dated line; --note replaces
 jobwatch applications            # every application, follow-ups due first (alias: apps)
 jobwatch applications --due      # only the ones to act on today
 ```

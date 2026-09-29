@@ -8,7 +8,8 @@ from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
-from . import config, learn, report, sources
+from . import config, contacts, learn, report, sources
+from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue
 
@@ -70,30 +71,44 @@ def digest(score_top: int = 0, include_seen: bool = False, limit: int = 25, mark
 
 @server.tool()
 def job_details(key: str) -> dict:
-    """A job's full posting text and tracking status, by key or posting id."""
+    """Everything about one job, by key or posting id: the full posting text, pay, tracking (status, note, next
+    step, follow-up), its fit score against the resume (score, must-haves met, gaps), people the user knows
+    there plus a LinkedIn search for a referral, skills it asks for that the resume doesn't show, and what was
+    sent with the application."""
     cfg, store = _open()
     try:
         job, rec = store.find(key)
-        contacts = load_contacts(cfg)
-        return {"key": job.key, "text": job.to_text(), **rec,
-                "contacts": contacts.at(job.display_company, job.company) if contacts else []}
+        known = load_contacts(cfg)
+        fit = store.score(job.key, resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else None
+        return {"key": job.key, "company": job.display_company, "title": job.title, "url": job.url,
+                "pay": job.pay(), "locations": job.locations, "text": job.to_text(), **rec, "fit": fit,
+                "contacts": known.at(job.display_company, job.company) if known else [],
+                "find_referral": contacts.linkedin_search(job.display_company),
+                "skill_gaps": learn.job_gaps(cfg, store, job), "package": store.package(job.key).data()}
     finally:
         store.close()
 
 
 @server.tool()
-def mark_job(key: str, status: str, note: str | None = None, next_step: str | None = None,
-             follow_up: str | None = None, applied_on: str | None = None) -> str:
+def mark_job(key: str, status: str | None = None, note: str | None = None, add_note: str | None = None,
+             next_step: str | None = None, follow_up: str | None = None, applied_on: str | None = None) -> str:
     """Record a job's status: new, shown, queued (to apply to next), applied, screening, interviewing, offer,
-    rejected, withdrawn or skipped. Use applied only after the person has submitted the application themselves.
-    next_step says what happens next ("recruiter screen Tuesday"); follow_up is the day to act (YYYY-MM-DD or
-    +N days); applied_on is the day applied, if not today. An empty string clears a field."""
+    rejected, withdrawn or skipped (omit status to keep it and only update the rest). Use applied only after
+    the person has submitted the application themselves. add_note adds a dated line to the note, keeping what's
+    there: prefer it for news ("recruiter replied: onsite only"); note replaces the whole note. next_step says
+    what happens next ("recruiter screen Tuesday"); follow_up is the day to act (YYYY-MM-DD or +N days);
+    applied_on is the day applied, if not today. An empty string clears a field."""
     _, store = _open()
     try:
-        job, _ = store.find(key)
-        store.set_status([job.key], status, note, on=applied_on)
+        job, rec = store.find(key)
+        if status:
+            store.set_status([job.key], status, note, on=applied_on)
+        else:
+            store.track(job.key, note=note, applied=applied_on)
         store.track(job.key, next_step=next_step, follow_up=follow_up)
-        return f"{job.key}: {status}"
+        if add_note:
+            store.add_note(job.key, add_note)
+        return f"{job.key}: {status or rec['status']}"
     finally:
         store.close()
 
