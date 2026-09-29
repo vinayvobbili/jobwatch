@@ -1,4 +1,6 @@
 import json
+import sys
+import types
 
 import pytest
 
@@ -36,7 +38,12 @@ def test_clean_keeps_a_well_formed_conversation():
 def test_backends_say_what_is_missing(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    # Whether or not the SDK is installed here: first as if it were, then as if it weren't.
+    monkeypatch.setitem(sys.modules, "anthropic", types.ModuleType("anthropic"))
     with pytest.raises(chat.ChatUnavailable, match="ANTHROPIC_API_KEY"):
+        chat.check("claude")
+    monkeypatch.setitem(sys.modules, "anthropic", None)
+    with pytest.raises(chat.ChatUnavailable, match=r"jobwatch\[score\]"):
         chat.check("claude")
     with pytest.raises(chat.ChatUnavailable, match="unknown"):
         chat.check("gpt")
