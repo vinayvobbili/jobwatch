@@ -139,6 +139,8 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .chip { display: inline-block; background: var(--chip); color: var(--chip-text); border-radius: 999px;
   padding: 1px 10px; font-size: 12.5px; font-weight: 500; }
 .chip.hit { background: var(--accent-soft); color: var(--accent); }
+.chip.gap { background: transparent; border: 1px dashed var(--muted); color: var(--muted); }
+.chip.gap.must { border-style: solid; border-color: var(--warn); color: var(--warn); }
 .badge { font-size: 11px; font-weight: 800; letter-spacing: .06em; border-radius: 6px; padding: 2px 7px;
   text-transform: uppercase; }
 .badge.new { color: #fff; background: var(--grad);
@@ -751,6 +753,7 @@ async function openDetails(key) {
         h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"),
           h("span", { class: "muted small" }, "· key "), h("code", { class: "small" }, j.key)),
         APPLIED.includes(j.status) || hasPackage(j.package) ? sentSection(j) : null,
+        gapChips(j.skills),
         h("div", { class: "posting" }, j.text)),
       h("div", { class: "job-chat" }, chatBox({
         key: j.key, title: `Ask about ${j.company}`, intro: `Ask anything about ${j.title}: how you fit, what to lead with, how to prepare.`,
@@ -761,6 +764,18 @@ async function openDetails(key) {
             "What are they likely to ask in interviews?", "Draft a short note to a recruiter here"],
       })));
   } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
+}
+// Skills this posting asks for that the resume doesn't show; solid = a must-have a fit score found missing.
+function gapChips(skills) {
+  if (!skills || !skills.length) return null;
+  return h("div", {},
+    h("div", { class: "small muted", style: "margin-top:10px" }, "Asks for, not on your resume",
+      " · ", h("code", { class: "small" }, "jobwatch skills"), " for where to learn them"),
+    h("div", { class: "chips" }, ...skills.map(s => h("span", {
+      class: "chip gap" + (s.must_have ? " must" : ""),
+      title: s.must_have ? "A must-have the fit score found missing" + (s.years ? " (asks for years of it)" : "")
+        : "Mentioned in the posting",
+    }, s.name))));
 }
 let sentChanged = false;  // the Applications cards show counts from the package
 function closeDetails() {

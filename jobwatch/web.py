@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
-from . import __version__, chat, config, contacts, report, sources
+from . import __version__, chat, config, contacts, learn, report, sources
 from .config import ConfigError
 from .package import Package
 from .score import ScoringUnavailable, resume_id, score_jobs
@@ -81,7 +81,7 @@ class App:
         return {"path": str(self.path), "exists": self.path.is_file(), "version": __version__,
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
-                "scoring": raw.get("scoring") or {}}
+                "scoring": raw.get("scoring") or {}, "learning": raw.get("learning") or {}}
 
     def post_settings(self, body) -> dict:
         settings = {k: v for k, v in body.items() if k in config.SETTINGS}
@@ -182,8 +182,15 @@ class App:
                     "contacts": known.at(job.display_company, job.company) if known else [],
                     "find_referral": contacts.linkedin_search(job.display_company),
                     "package": Package(store.packages, job.key).data(),
+                    "skills": learn.job_gaps(cfg, store, job),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
         return self._with_store(run)
+
+    def get_skills(self, q) -> dict:
+        timeline = (q.get("timeline") or [None])[0]
+        if timeline and timeline not in config.TIMELINES:
+            raise ApiError(f"timeline must be one of {', '.join(config.TIMELINES)}")
+        return self._with_store(lambda cfg, store: learn.to_dict(learn.gather(cfg, store, timeline)))
 
     # -- what was sent with an application
 
@@ -304,6 +311,7 @@ ROUTES = {
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/score"): App.post_score,
     ("GET", "/api/chat"): App.get_chat,
+    ("GET", "/api/skills"): App.get_skills,
     ("POST", "/api/package"): App.post_package,
     ("POST", "/api/package/remove"): App.post_package_remove,
 }

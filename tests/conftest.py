@@ -112,8 +112,12 @@ class FakeWeb:
 
 
 @pytest.fixture(autouse=True)
-def no_network(monkeypatch):
-    """A test that reaches the real internet fails, rather than quietly depending on live boards."""
+def no_network(request, monkeypatch):
+    """A test that reaches the real internet fails, rather than quietly depending on live boards.
+    The exception: tests marked `network`, which only run when asked for."""
+    if request.node.get_closest_marker("network"):
+        return
+
     def refuse(*args, **kwargs):
         raise AssertionError("tests must not use the network; use the `web` fixture")
 
