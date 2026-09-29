@@ -269,6 +269,12 @@ jobwatch applications --due      # only the ones to act on today
 The day you applied is kept as an application moves through the stages. `--next ""` or `--follow-up ""`
 clears a field.
 
+Every company on Workday has its own careers site with its own sign-in, so after a few applications it's hard
+to remember where each one lives. For a Workday application, `jobwatch show`, `jobwatch applications` and
+the job's **Details** link that company's candidate page (`.../userHome`), where you sign in to see its
+status. jobwatch keeps only the link, never a login or password: your password manager saves each company's
+login under that company's own address.
+
 ### What you sent
 
 Each application keeps what you submitted, as copies:

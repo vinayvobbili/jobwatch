@@ -74,6 +74,8 @@ def cmd_show(args, cfg, store):
     print(f"{job.to_text()}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{closed}")
     if (contacts := load_contacts(cfg)) and (known := contacts.at(job.display_company, job.company)):
         print(f"You know: {report.people(known, most=10)}")
+    if home := store.candidate_home(job):
+        print(f"Your applications there (sign in): {home}")
 
 
 def cmd_mark(args, cfg, store):
@@ -142,7 +144,7 @@ def cmd_applications(args, cfg, store):
     rows = store.applications()
     if args.due:
         rows = [r for r in rows if report.due(r[1])]
-    _write(report.applications_markdown(rows), args.out)
+    _write(report.applications_markdown(rows, homes={j.key: store.candidate_home(j) for j, _ in rows}), args.out)
 
 
 def cmd_ask(args, cfg, store):

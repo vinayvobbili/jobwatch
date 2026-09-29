@@ -192,6 +192,7 @@ class App:
                     "pay": job.pay(), "locations": job.locations, "text": job.to_text(),
                     "contacts": known.at(job.display_company, job.company) if known else [],
                     "find_referral": contacts.linkedin_search(job.display_company),
+                    "candidate_home": store.candidate_home(job),
                     "package": Package(store.packages, job.key).data(),
                     "skills": learn.job_gaps(cfg, store, job),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}

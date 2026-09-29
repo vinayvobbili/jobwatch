@@ -2,8 +2,9 @@
 
 import pytest
 
-from jobwatch import config, sources, text
+from jobwatch import config, report, sources, text
 from jobwatch.filters import Filters, search_terms, title_ok
+from jobwatch.models import Job
 from jobwatch.store import Store
 from jobwatch.watch import fetch_all
 
@@ -147,6 +148,27 @@ def test_careers_urls():
     assert sources.careers_url("workday", "initech.wd5/External") == "https://initech.wd5.myworkdayjobs.com/External"
     assert sources.careers_url("eightfold", "globex") == "https://globex.eightfold.ai/careers?domain=globex.com"
     assert sources.careers_url("lever", "globex") == "https://jobs.lever.co/globex"
+
+
+@pytest.mark.parametrize("url, expected", [
+    ("https://acme.wd1.myworkdayjobs.com/en-US/Acme_Careers/job/AZ---Phoenix/Staff_R1",
+     "https://acme.wd1.myworkdayjobs.com/Acme_Careers/userHome"),
+    ("https://wd5.myworkdaysite.com/recruiting/acme/Careers/job/x", "https://acme.wd5.myworkdayjobs.com/Careers/userHome"),
+    ("https://job-boards.greenhouse.io/initech/jobs/123", None),
+    ("https://globex.eightfold.ai/careers/job/1", None),
+    ("", None),
+])
+def test_candidate_home(url, expected):
+    assert sources.candidate_home(url) == expected
+
+
+def test_applications_list_links_the_workday_status_page():
+    wd = Job("workday", "acme.wd1/Careers", "R1", "Staff Engineer", "https://acme.wd1.myworkdayjobs.com/Careers/job/x_R1")
+    gh = Job("greenhouse", "initech", "9", "Staff Engineer", "https://job-boards.greenhouse.io/initech/jobs/9")
+    rec = {"status": "applied", "applied_at": "2026-01-05"}
+    out = report.applications_markdown([(wd, rec), (gh, rec)], today="2026-01-06")
+    assert out.count("Status page (sign in): https://acme.wd1.myworkdayjobs.com/Careers/userHome") == 1
+    assert out.count("Status page") == 1
 
 
 def test_probe_finds_the_workday_data_center_and_site():

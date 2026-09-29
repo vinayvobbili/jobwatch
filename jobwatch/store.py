@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .models import Job
 from .package import Package
+from .sources import candidate_home
 from .text import parse_salary
 
 # queued: to apply to next. After applying: applied, then screening, interviewing, offer, or it ends.
@@ -271,6 +272,11 @@ class Store:
                 if same_company and _same_req(req, other.id):
                     found[other.key] = other
         return next(iter(found.values())) if len(found) == 1 else None
+
+    def candidate_home(self, job: Job) -> str | None:
+        """The company's page for checking an application's status (Workday), from the job's link or, for one
+        added by hand without a link, from the posting it's linked to by requisition id."""
+        return candidate_home(job.url) or ((other := self.linked(job)) and candidate_home(other.url)) or None
 
     def score(self, key: str, resume: str) -> dict | None:
         row = self.db.execute("SELECT result FROM scores WHERE key=? AND resume=?", (key, resume)).fetchone()
