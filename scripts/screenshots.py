@@ -129,8 +129,8 @@ def main():
     ap.add_argument("--size", choices=list(SIZES), action="append")
     ap.add_argument("--viewport", action="store_true", help="only the visible part, not the whole page")
     args = ap.parse_args()
-    shoot(args.config, args.out, tuple(args.theme or ("light", "dark")), tuple(args.size or ("wide", "desktop", "phone")),
-          full_page=not args.viewport)
+    sizes = tuple(args.size or ("wide", "desktop", "phone"))  # ultrawide only when asked for
+    shoot(args.config, args.out, tuple(args.theme or ("light", "dark")), sizes, full_page=not args.viewport)
 
 
 if __name__ == "__main__":
