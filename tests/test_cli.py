@@ -80,3 +80,18 @@ def test_mcp_server_imports():
     from jobwatch import mcp_server
 
     assert mcp_server.server
+
+
+def test_add_mark_and_list_applications(watchlist, capsys):
+    c = ("-c", str(watchlist))
+    assert run(capsys, *c, "add", "Umbrella", "Principal Engineer", "--on", "2026-09-01", "--next", "call Ana",
+               "--follow-up", "2000-01-02").out == "manual:umbrella:principal-engineer: applied\n"
+    run(capsys, *c, "add", "Globex", "Staff Engineer", "--url", "https://globex.example/1")
+    run(capsys, *c, "mark", "screening", "staff-engineer", "--note", "recruiter screen done")
+    out = run(capsys, *c, "apps").out
+    assert "2 applied" not in out and "1 applied, 1 screening. **1 to follow up on now.**" in out
+    assert "### Umbrella: Principal Engineer\n**applied** · applied 2026-09-01\n**Due:** call Ana by 2000-01-02" in out
+    assert "### Globex: [Staff Engineer](https://globex.example/1)" in out and "Note: recruiter screen done" in out
+    assert "Globex" not in run(capsys, *c, "applications", "--due").out
+    with pytest.raises(SystemExit, match="isn't a date"):
+        cli.main([*c, "add", "X", "Y", "--follow-up", "someday"])

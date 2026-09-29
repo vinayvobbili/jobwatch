@@ -10,7 +10,7 @@ from pathlib import Path
 from . import __version__, config, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
-from .store import STATUSES, Store
+from .store import STAGES, STATUSES, Store
 from .watch import build_digest, fetch_all, load_contacts, queue
 
 
@@ -75,9 +75,23 @@ def cmd_show(args, cfg, store):
 
 def cmd_mark(args, cfg, store):
     keys = [store.find(k)[0].key for k in args.keys]
-    store.set_status(keys, args.status, args.note)
+    store.set_status(keys, args.status, args.note, on=getattr(args, "on", None))
     for k in keys:
+        store.track(k, next_step=getattr(args, "next", None), follow_up=getattr(args, "follow_up", None))
         print(f"{k}: {args.status}")
+
+
+def cmd_add(args, cfg, store):
+    job = store.add(args.company, args.title, url=args.url or "", status=args.status, applied=args.on,
+                    location=args.location or "", note=args.note, next_step=args.next, follow_up=args.follow_up)
+    print(f"{job.key}: {args.status}")
+
+
+def cmd_applications(args, cfg, store):
+    rows = store.applications()
+    if args.due:
+        rows = [r for r in rows if report.due(r[1])]
+    _write(report.applications_markdown(rows), args.out)
 
 
 def cmd_queue(args, cfg, store):
@@ -108,6 +122,13 @@ def cmd_list(args, cfg, store):
               f"{job.title}{closed}{note}  `{job.key}`")
     if not rows:
         print("no jobs")
+
+
+def _tracking(p: argparse.ArgumentParser):
+    p.add_argument("--note")
+    p.add_argument("--on", metavar="DAY", help="the day you applied, if not today (YYYY-MM-DD)")
+    p.add_argument("--next", metavar="STEP", help="what happens next, e.g. 'check in with the recruiter'")
+    p.add_argument("--follow-up", metavar="DAY", help="when to act on it: YYYY-MM-DD, tomorrow or +N days")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -146,11 +167,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("key", help="job key, or its posting id")
     p.set_defaults(func=cmd_show)
 
-    p = sub.add_parser("mark", help="record that you queued, applied to or skipped jobs")
+    p = sub.add_parser("mark", help="record that you queued, applied to or skipped jobs, or how an application "
+                       "is going (screening, interviewing, offer, rejected, withdrawn)")
     p.add_argument("status", choices=STATUSES)
     p.add_argument("keys", nargs="+")
-    p.add_argument("--note")
+    _tracking(p)
     p.set_defaults(func=cmd_mark)
+
+    p = sub.add_parser("add", help="track an application for a job found elsewhere (a referral, a recruiter...)")
+    p.add_argument("company")
+    p.add_argument("title")
+    p.add_argument("--url", help="link to the posting")
+    p.add_argument("--status", choices=STAGES, default="applied")
+    p.add_argument("--location")
+    _tracking(p)
+    p.set_defaults(func=cmd_add)
+
+    p = sub.add_parser("applications", aliases=["apps"], help="where each application stands, follow-ups first")
+    p.add_argument("--due", action="store_true", help="only applications to follow up on now")
+    p.add_argument("-o", "--out", type=Path)
+    p.set_defaults(func=cmd_applications)
 
     p = sub.add_parser("queue", help="jobs to apply to next: `queue <key>...` adds, `queue` lists")
     p.add_argument("keys", nargs="*")
@@ -180,7 +216,7 @@ def main(argv: list[str] | None = None):
             args.func(args, cfg, store)
         finally:
             store.close()
-    except (ConfigError, ScoringUnavailable, KeyError, sources.SourceError) as e:
+    except (ConfigError, ScoringUnavailable, KeyError, ValueError, sources.SourceError) as e:
         raise SystemExit(f"jobwatch: {e.args[0] if isinstance(e, KeyError) else e}") from None
 
 

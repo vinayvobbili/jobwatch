@@ -56,7 +56,9 @@ their jobs), say what you're looking for, and press **Check for new jobs**. From
 - **Today:** new matching jobs, with pay, how long ago they were posted, keywords, and who you know there.
   **Queue** the ones worth applying to, **Skip** the rest.
 - **Queue:** your short list. Apply on the company's site, then press **I applied**.
-- **Applied:** what you applied to and when.
+- **Applications:** every job you applied to and where it stands (applied, screening, interviewing, offer,
+  rejected, withdrawn), with the next step and a follow-up day. Those due come first. **Add an application**
+  covers jobs you found elsewhere, such as a referral or a recruiter.
 - **Settings:** companies, filters, keywords, your resume (for fit scores) and your LinkedIn connections.
 
 The page only talks to jobwatch on your own machine. Nothing is uploaded anywhere. It's the same watchlist
@@ -151,6 +153,23 @@ jobwatch list --status applied
 
 Queued jobs leave the digest. The queue flags any posting that has since closed.
 
+## Tracking applications
+
+An application moves through stages: `applied`, `screening`, `interviewing`, `offer`, and then `rejected`
+or `withdrawn`. Each can have a next step and a day to follow up. Jobs you found somewhere jobwatch doesn't
+watch (a referral, a recruiter, LinkedIn) go in with `add`, so every application is in one list:
+
+```
+jobwatch add "Umbrella" "Principal Engineer" --url https://... --on 2026-09-14 --note "via a recruiter"
+jobwatch mark screening c1 --next "technical round" --follow-up +7   # or a date: 2026-10-05
+jobwatch mark rejected principal-engineer
+jobwatch applications            # every application, follow-ups due first (alias: apps)
+jobwatch applications --due      # only the ones to act on today
+```
+
+The day you applied is kept as an application moves through the stages. `--next ""` or `--follow-up ""`
+clears a field.
+
 ## Who you know there
 
 A referral gets read before an application does. Download your LinkedIn data (Settings → Data privacy →
@@ -174,9 +193,9 @@ marking them shown. Roles that disappear from a board are marked closed.
 
 ## MCP server
 
-`jobwatch-mcp` offers `find_board`, `fetch_jobs`, `digest`, `job_details`, `mark_job`, `apply_queue` and
-`list_jobs` to
-Claude Code or any MCP client. The watchlist comes from `JOBWATCH_CONFIG`:
+`jobwatch-mcp` offers `find_board`, `fetch_jobs`, `digest`, `job_details`, `mark_job`, `apply_queue`,
+`add_application`, `applications` and `list_jobs` to Claude Code or any MCP client. The watchlist comes
+from `JOBWATCH_CONFIG`:
 
 ```
 claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- jobwatch-mcp

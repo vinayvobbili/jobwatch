@@ -16,10 +16,12 @@ server = MCPServer(
     instructions=(
         "Watches company job boards (Greenhouse, Lever, Ashby) from a watchlist file. fetch_jobs checks every "
         "board; digest ranks the new matches (optionally fit-scored with shortlist-ai); job_details gives a "
-        "posting's full text for tailoring a resume; mark_job records queued/applied/skipped, and apply_queue "
+        "posting's full text for tailoring a resume; mark_job records queued/applied/skipped and later stages "
+        "(screening, interviewing, offer, rejected, withdrawn) with a next step and follow-up day; apply_queue "
         "lists the jobs queued to apply to next, with people the user knows there (ask them for a referral "
-        "before applying). find_board looks up a company's board to add to the watchlist. jobwatch never "
-        "applies to anything by itself: the person reviews and submits every application."
+        "before applying). add_application tracks one found elsewhere; "
+        "applications shows where each stands. find_board looks up a company's board to add to the watchlist. "
+        "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
 )
 
@@ -76,14 +78,46 @@ def job_details(key: str) -> dict:
 
 
 @server.tool()
-def mark_job(key: str, status: str, note: str | None = None) -> str:
-    """Record a job's status: new, shown, queued (to apply to next), applied or skipped.
-    Use applied only after the person has submitted the application themselves."""
+def mark_job(key: str, status: str, note: str | None = None, next_step: str | None = None,
+             follow_up: str | None = None, applied_on: str | None = None) -> str:
+    """Record a job's status: new, shown, queued (to apply to next), applied, screening, interviewing, offer,
+    rejected, withdrawn or skipped. Use applied only after the person has submitted the application themselves.
+    next_step says what happens next ("recruiter screen Tuesday"); follow_up is the day to act (YYYY-MM-DD or
+    +N days); applied_on is the day applied, if not today. An empty string clears a field."""
     _, store = _open()
     try:
         job, _ = store.find(key)
-        store.set_status([job.key], status, note)
+        store.set_status([job.key], status, note, on=applied_on)
+        store.track(job.key, next_step=next_step, follow_up=follow_up)
         return f"{job.key}: {status}"
+    finally:
+        store.close()
+
+
+@server.tool()
+def add_application(company: str, title: str, url: str = "", status: str = "applied", applied_on: str = "",
+                    note: str | None = None, next_step: str | None = None, follow_up: str | None = None) -> str:
+    """Track an application for a job jobwatch didn't find (a referral, a recruiter, LinkedIn...), so every
+    application is in one place. Only after the person has applied themselves."""
+    _, store = _open()
+    try:
+        job = store.add(company, title, url=url, status=status, applied=applied_on or None, note=note,
+                        next_step=next_step, follow_up=follow_up)
+        return f"{job.key}: {status}"
+    finally:
+        store.close()
+
+
+@server.tool()
+def applications(due_only: bool = False) -> list[dict]:
+    """Every application and where it stands, follow-ups due soonest first. due_only: only those whose follow-up
+    day has come."""
+    _, store = _open()
+    try:
+        return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, "pay": j.pay(),
+                 "due": report.due(rec), **{k: rec.get(k) for k in ("status", "applied_at", "status_at", "next_step",
+                                                                    "follow_up", "note", "closed")}}
+                for j, rec in store.applications() if report.due(rec) or not due_only]
     finally:
         store.close()
 
