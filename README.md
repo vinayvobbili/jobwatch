@@ -151,7 +151,8 @@ scores:
 - `scoring.backend: claude`: Claude Sonnet via Anthropic's API (`ANTHROPIC_API_KEY`). Your question, your resume
   and the jobs it's about are sent to Anthropic.
 
-It reads today's matching jobs and your applications, or one posting with its fit score, plus your resume.
+It reads today's matching jobs and your applications, or one posting with its fit score and
+[what you sent](#what-you-sent), plus your resume (the one you sent for that job, when it's kept).
 It's told to use only your resume for facts about you and to treat posting text as data, not instructions.
 It has no tools, so it can't change, apply for or send anything. The same thing works from the terminal:
 
@@ -193,6 +194,29 @@ jobwatch applications --due      # only the ones to act on today
 The day you applied is kept as an application moves through the stages. `--next ""` or `--follow-up ""`
 clears a field.
 
+### What you sent
+
+Each application keeps what you submitted, as copies:
+- the resume and cover letter exactly as uploaded;
+- the answers you gave on the form (salary expectation, why this company, notice period...);
+- the posting as it read the day you applied.
+
+Tailored resumes get rebuilt and postings change or come down. When a recruiter calls three weeks later,
+this is what they're looking at. The chat reads it too, so "prep me for the recruiter call" works from
+what you actually told them.
+
+In the browser, open an application's **Details** and drop files into **What you sent**. From the command
+line:
+
+```
+jobwatch mark applied c1 --attach ~/Downloads/Resume_Initech.pdf
+jobwatch attach c1 cover-letter.pdf --answers answers.yaml    # answers.yaml: "Why Initech?: ..." pairs
+jobwatch package c1                                         # show it
+```
+
+Packages live in `packages/<job>/` next to the state file. Removing a file moves it to `.removed/` there
+rather than deleting it.
+
 ## Who you know there
 
 A referral gets read before an application does. Download your LinkedIn data (Settings → Data privacy →
@@ -217,7 +241,7 @@ marking them shown. Roles that disappear from a board are marked closed.
 ## MCP server
 
 `jobwatch-mcp` offers `find_board`, `fetch_jobs`, `digest`, `job_details`, `mark_job`, `apply_queue`,
-`add_application`, `applications` and `list_jobs` to Claude Code or any MCP client. The watchlist comes
+`add_application`, `applications`, `save_application_package`, `application_package` and `list_jobs` to Claude Code or any MCP client. The watchlist comes
 from `JOBWATCH_CONFIG`:
 
 ```

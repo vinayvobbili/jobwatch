@@ -17,12 +17,13 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
 from . import __version__, chat, config, contacts, report, sources
 from .config import ConfigError
+from .package import Package
 from .score import ScoringUnavailable, resume_id, score_jobs
 from .store import MANUAL, STAGES, STATUSES, Store
 from .watch import build_digest, fetch_all, load_contacts, queue
@@ -138,6 +139,7 @@ class App:
             return {"stages": STAGES, "today": date.today().isoformat(), "applications": [
                 {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
                  "manual": j.source == MANUAL, "due": report.due(rec),
+                 "package": Package(store.packages, j.key).summary(),
                  **{k: rec.get(k) for k in ("status", "status_at", "applied_at", "next_step", "follow_up", "note",
                                             "closed")}}
                 for j, rec in store.applications()]}
@@ -179,8 +181,42 @@ class App:
                     "pay": job.pay(), "locations": job.locations, "text": job.to_text(),
                     "contacts": known.at(job.display_company, job.company) if known else [],
                     "find_referral": contacts.linkedin_search(job.display_company),
+                    "package": Package(store.packages, job.key).data(),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
         return self._with_store(run)
+
+    # -- what was sent with an application
+
+    def post_package(self, body) -> dict:
+        """Save the form answers and/or the note; returns the package."""
+        def run(cfg, store):
+            pkg = store.package(body.get("key") or "")
+            pkg.write(answers=body.get("answers"), note=body.get("note"))
+            return pkg.data()
+        return self._with_store(run)
+
+    def post_package_remove(self, body) -> dict:
+        def run(cfg, store):
+            pkg = store.package(body.get("key") or "")
+            pkg.remove(body.get("name") or "")
+            return pkg.data()
+        return self._with_store(run)
+
+    def attach(self, key: str, name: str, kind: str, data: bytes) -> dict:
+        def run(cfg, store):
+            pkg = store.package(key)
+            pkg.attach(name, data, kind or None)
+            return pkg.data()
+        return self._with_store(run)
+
+    def package_file(self, key: str, name: str) -> tuple[bytes, str, str]:
+        """(bytes, content type, file name). PDFs, images and text open in the browser; anything else downloads,
+        and nothing is ever served as a page that could run in this one's place."""
+        path = self._with_store(lambda cfg, store: store.package(key).path(name))
+        ctype = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                 ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8"}.get(
+            path.suffix.lower(), "application/octet-stream")
+        return path.read_bytes(), ctype, path.name
 
     def post_mark(self, body) -> dict:
         status, keys = body.get("status"), body.get("keys") or []
@@ -268,6 +304,8 @@ ROUTES = {
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/score"): App.post_score,
     ("GET", "/api/chat"): App.get_chat,
+    ("POST", "/api/package"): App.post_package,
+    ("POST", "/api/package/remove"): App.post_package_remove,
 }
 
 
@@ -283,9 +321,14 @@ def make_handler(app: App, token: str, port_ref: list[int]):
         def log_message(self, fmt, *args):  # quiet: the terminal shows only errors
             pass
 
-        def _send(self, status: int, body: bytes, ctype: str):
+        def _send(self, status: int, body: bytes, ctype: str, filename: str | None = None):
             self.send_response(status)
             self.send_header("Content-Type", ctype)
+            if filename:  # a stored file: named for saving, and sandboxed so it can't script this page's origin
+                inline = ctype.startswith(("application/pdf", "image/", "text/plain"))
+                self.send_header("Content-Disposition", f"{'inline' if inline else 'attachment'}; "
+                                 f"filename*=UTF-8''{quote(filename)}")
+                self.send_header("Content-Security-Policy", "sandbox")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
@@ -346,8 +389,14 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     raise ApiError("that file is too large (20 MB at most)", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
                 raw = self.rfile.read(length) if length else b""
                 q = parse_qs(url.query)
+                arg = lambda name: (q.get(name) or [""])[0]  # noqa: E731
                 if method == "POST" and url.path == "/api/upload":
-                    data = app.upload((q.get("kind") or [""])[0], (q.get("name") or [""])[0], raw)
+                    data = app.upload(arg("kind"), arg("name"), raw)
+                elif method == "POST" and url.path == "/api/package/file":
+                    data = app.attach(arg("key"), arg("name"), arg("kind"), raw)
+                elif method == "GET" and url.path == "/api/package/file":
+                    body, ctype, name = app.package_file(arg("key"), arg("name"))
+                    return self._send(HTTPStatus.OK, body, ctype, name)
                 elif method == "POST" and url.path == "/api/chat":
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):

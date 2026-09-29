@@ -7,6 +7,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import yaml
+
 from . import __version__, chat, config, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
@@ -79,6 +81,40 @@ def cmd_mark(args, cfg, store):
     for k in keys:
         store.track(k, next_step=getattr(args, "next", None), follow_up=getattr(args, "follow_up", None))
         print(f"{k}: {args.status}")
+        _attach(store.package(k), getattr(args, "attach", None) or [])
+
+
+def _attach(pkg, files: list[Path], kind: str | None = None):
+    for f in files:
+        name = pkg.attach(f.name, f.expanduser().read_bytes(), kind)
+        print(f"  kept {f.name} as {pkg.dir / name}")
+
+
+def _answers(path: Path) -> list[dict]:
+    """A YAML or JSON file of form answers: {question: answer, ...} or [{question, answer}, ...]."""
+    raw = yaml.safe_load(path.expanduser().read_text(encoding="utf-8"))
+    if isinstance(raw, dict):
+        return [{"question": str(q), "answer": "" if a is None else str(a)} for q, a in raw.items()]
+    if isinstance(raw, list):
+        return raw
+    raise ValueError(f"{path}: expected question: answer pairs, or a list of {{question, answer}}")
+
+
+def cmd_attach(args, cfg, store):
+    pkg = store.package(args.key)
+    _attach(pkg, args.files, args.kind)
+    pkg.write(answers=_answers(args.answers) if args.answers else None,
+              note=args.message.expanduser().read_text(encoding="utf-8") if args.message else None)
+    cmd_package(args, cfg, store)
+
+
+def cmd_package(args, cfg, store):
+    pkg = store.package(args.key)
+    d = pkg.data()
+    print(pkg.context() or "Nothing kept yet. Add what you sent with `jobwatch attach`.")
+    if d["posting_saved"]:
+        print(f"\nPosting as it read on {d['posting_saved']}: {pkg.dir / 'posting.md'}")
+    print(f"Folder: {pkg.dir}")
 
 
 def cmd_add(args, cfg, store):
@@ -182,6 +218,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("status", choices=STATUSES)
     p.add_argument("keys", nargs="+")
     _tracking(p)
+    p.add_argument("--attach", type=Path, action="append", metavar="FILE",
+                   help="keep a copy of what you sent (the resume, a cover letter); repeat for more")
     p.set_defaults(func=cmd_mark)
 
     p = sub.add_parser("add", help="track an application for a job found elsewhere (a referral, a recruiter...)")
@@ -197,6 +235,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--due", action="store_true", help="only applications to follow up on now")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_applications)
+
+    p = sub.add_parser("attach", help="keep what you sent with an application: the resume, a cover letter, the "
+                                      "form's answers (copies, so later edits don't change them)")
+    p.add_argument("key")
+    p.add_argument("files", nargs="*", type=Path)
+    p.add_argument("--kind", choices=["resume", "letter", "other"], help="default: guessed from the file name")
+    p.add_argument("--answers", type=Path, metavar="FILE", help="YAML or JSON: question: answer pairs")
+    p.add_argument("--message", type=Path, metavar="FILE", help="a cover letter or message you pasted in, as text")
+    p.set_defaults(func=cmd_attach)
+
+    p = sub.add_parser("package", help="what you sent with an application")
+    p.add_argument("key")
+    p.set_defaults(func=cmd_package)
 
     p = sub.add_parser("ask", help="ask about today's jobs and your applications, or one job (--job), with the "
                                    "model set in scoring.backend")

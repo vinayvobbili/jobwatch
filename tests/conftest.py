@@ -162,11 +162,13 @@ def server(watchlist, web):
     srv.server_close()
 
 
-def request(port, method, path, body=None, headers=None, host=None):
+def request(port, method, path, body=None, headers=None, host=None, raw=None, with_headers=False):
+    """(status, body), or (status, body, headers). `raw` sends bytes as they are instead of JSON."""
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
     h = {"Host": host or f"127.0.0.1:{port}", **(headers or {})}
-    conn.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+    conn.request(method, path, body=raw if raw is not None else json.dumps(body) if body is not None else None,
+                 headers=h)
     r = conn.getresponse()
     data = r.read()
     conn.close()
-    return r.status, data
+    return (r.status, data, dict(r.getheaders())) if with_headers else (r.status, data)

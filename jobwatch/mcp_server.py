@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
@@ -20,7 +21,9 @@ server = MCPServer(
         "(screening, interviewing, offer, rejected, withdrawn) with a next step and follow-up day; apply_queue "
         "lists the jobs queued to apply to next, with people the user knows there (ask them for a referral "
         "before applying). add_application tracks one found elsewhere; "
-        "applications shows where each stands. find_board looks up a company's board to add to the watchlist. "
+        "applications shows where each stands. After the person submits, save_application_package keeps the "
+        "resume, cover letter and form answers they sent; application_package reads them back before a call or "
+        "interview. find_board looks up a company's board to add to the watchlist. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
 )
@@ -142,6 +145,36 @@ def list_jobs(status: str | None = None) -> list[dict]:
     try:
         return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, **rec}
                 for j, rec in store.jobs((status,) if status else None, include_closed=True)]
+    finally:
+        store.close()
+
+
+@server.tool()
+def save_application_package(key: str, files: list[str] | None = None, answers: list[dict] | None = None,
+                             note: str | None = None) -> dict:
+    """Keep what was sent with an application, as copies: files (local paths to the resume PDF, cover letter...
+    exactly as uploaded), answers (the form's questions and the answers given, [{question, answer}]; replaces
+    any saved before) and note (a cover letter or message pasted into the form). Call it once the person has
+    submitted, with what they actually sent."""
+    _, store = _open()
+    try:
+        pkg = store.package(key)
+        for f in files or []:
+            path = Path(f).expanduser()
+            pkg.attach(path.name, path.read_bytes())
+        pkg.write(answers=answers, note=note)
+        return pkg.data()
+    finally:
+        store.close()
+
+
+@server.tool()
+def application_package(key: str) -> dict:
+    """What was sent with an application: files kept (with their folder), form answers, note, and the day the
+    posting was saved as it read then (posting.md in the folder). Use it to prepare for a call or interview."""
+    _, store = _open()
+    try:
+        return store.package(key).data()
     finally:
         store.close()
 
