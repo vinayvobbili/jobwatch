@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jobwatch"
+version = "0.1.0"
+description = "Watch company job boards (Greenhouse, Lever, Ashby) and get a ranked daily digest of new matches, optionally fit-scored against your resume."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = ["pyyaml>=6"]
+keywords = ["jobs", "job-search", "greenhouse", "lever", "ashby", "mcp", "resume", "llm"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: End Users/Desktop",
+    "Topic :: Office/Business",
+]
+
+[project.urls]
+Homepage = "https://github.com/vinayvobbili/jobwatch"
+Repository = "https://github.com/vinayvobbili/jobwatch"
+Issues = "https://github.com/vinayvobbili/jobwatch/issues"
+
+[project.optional-dependencies]
+score = ["shortlist-ai>=0.1.1"]
+local = ["shortlist-ai[local]>=0.1.1"]
+mcp = ["mcp>=2.2"]
+dev = ["pytest>=8", "ruff>=0.14"]
+
+[project.scripts]
+jobwatch = "jobwatch.cli:main"
+jobwatch-mcp = "jobwatch.mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jobwatch"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "RUF"]
+# Curly quotes and en dashes are deliberate: report typography.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
