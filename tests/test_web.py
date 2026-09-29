@@ -70,6 +70,7 @@ def test_digest_marks_new_jobs_seen_and_queue_flow(app, web):
     app.post_mark({"keys": ["c1"], "status": "applied"})
     assert [j["title"] for j in app.get_jobs({"status": ["applied"]})] == ["Staff AI Engineer"]
     assert app.get_job({"key": ["c1"]})["text"].startswith("# Staff AI Engineer")
+    assert app.get_job({"key": ["c1"]})["candidate_home"] is None  # only Workday has one
     with pytest.raises(ApiError):
         app.post_mark({"keys": ["c1"], "status": "bogus"})
 

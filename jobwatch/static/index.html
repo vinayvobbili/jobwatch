@@ -836,6 +836,8 @@ async function openDetails(key) {
           (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
         knowLine(j, 10),
         h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"),
+          j.candidate_home ? h("span", { title: "This company's own Workday account: sign in to see where your application stands" },
+            link(j.candidate_home, "Your applications there ↗")) : null,
           APPLIED.includes(j.status) ? h("button", { class: "btn", onclick: () => openPrep(j.key),
             title: "Their asks next to your resume, gaps, what you sent, questions to expect" }, "Prep sheet") : null,
           h("span", { class: "muted small" }, "· key "), h("code", { class: "small" }, j.key)),

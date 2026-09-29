@@ -334,6 +334,15 @@ def careers_url(source: str, board: str) -> str:
     return SOURCES[source].careers.format(board=board)
 
 
+def candidate_home(url: str) -> str | None:
+    """Where the applicant signs in to see their applications, for a job on a board that has such a page.
+    Each company's Workday site keeps its own accounts, so this is that company's page. Only Workday for now."""
+    found = detect(url) if url else None
+    if not found or found[0] != "workday":
+        return None
+    return careers_url(*found) + "/userHome"
+
+
 def fetch(source: str, board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
     """The open roles on one company's board. `get` replaces the HTTP call (tests, caching).
 

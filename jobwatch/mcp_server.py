@@ -76,8 +76,9 @@ def digest(score_top: int = 0, include_seen: bool = False, limit: int = 25, mark
 def job_details(key: str) -> dict:
     """Everything about one job, by key or posting id: the full posting text, pay, tracking (status, note, next
     step, follow-up), its fit score against the resume (score, must-haves met, gaps), people the user knows
-    there plus a LinkedIn search for a referral, skills it asks for that the resume doesn't show, and what was
-    sent with the application."""
+    there plus a LinkedIn search for a referral, skills it asks for that the resume doesn't show, what was
+    sent with the application, and candidate_home: the company's page where the person signs in to see the
+    application's status (Workday only; each company has its own account)."""
     cfg, store = _open()
     try:
         job, rec = store.find(key)
@@ -87,6 +88,7 @@ def job_details(key: str) -> dict:
                 "pay": job.pay(), "locations": job.locations, "text": job.to_text(), **rec, "fit": fit,
                 "contacts": known.at(job.display_company, job.company) if known else [],
                 "find_referral": contacts.linkedin_search(job.display_company),
+                "candidate_home": store.candidate_home(job),
                 "skill_gaps": learn.job_gaps(cfg, store, job), "package": store.package(job.key).data()}
     finally:
         store.close()
@@ -137,13 +139,14 @@ def add_application(company: str = "", title: str = "", url: str = "", status: s
 
 @server.tool()
 def applications(due_only: bool = False) -> list[dict]:
-    """Every application and where it stands, follow-ups due soonest first. due_only: only those whose follow-up
-    day has come."""
+    """Every application and where it stands, follow-ups due soonest first; candidate_home is the company's
+    page for checking its status, when it has one (Workday). due_only: only those whose follow-up day has come."""
     _, store = _open()
     try:
+        fields = ("status", "applied_at", "status_at", "next_step", "follow_up", "note", "closed")
         return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, "pay": j.pay(),
-                 "due": report.due(rec), **{k: rec.get(k) for k in ("status", "applied_at", "status_at", "next_step",
-                                                                    "follow_up", "note", "closed")}}
+                 "candidate_home": store.candidate_home(j), "due": report.due(rec),
+                 **{k: rec.get(k) for k in fields}}
                 for j, rec in store.applications() if report.due(rec) or not due_only]
     finally:
         store.close()

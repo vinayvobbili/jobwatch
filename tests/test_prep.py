@@ -87,6 +87,15 @@ def test_a_hand_added_application_finds_its_posting_by_requisition_id(setup, tit
     assert (linked.key if linked else None) == ("workday:initech.wd5/External:R0123456-1" if found else None)
 
 
+def test_a_hand_added_workday_application_links_its_candidate_page(setup):
+    _, store, _ = setup
+    linked = store.add("Initech", "Staff Detection Engineer (R0123456)")  # no link: found by requisition id
+    assert store.candidate_home(linked) == "https://initech.wd5.myworkdayjobs.com/External/userHome"
+    own = store.add("Umbrella", "Staff Engineer", url="https://umbrella.wd3.myworkdayjobs.com/en-US/Jobs/job/x_R9")
+    assert store.candidate_home(own) == "https://umbrella.wd3.myworkdayjobs.com/Jobs/userHome"
+    assert store.candidate_home(store.add("Initech", "Staff Detection Engineer")) is None
+
+
 def test_requisition_formats():
     from jobwatch.store import _same_req
     assert _same_req("REQ-47040", "REQ-47040") and _same_req("JOB 20769", "20769")

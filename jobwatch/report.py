@@ -6,6 +6,7 @@ import json
 from datetime import date
 
 from .models import Job
+from .sources import candidate_home
 from .store import ENDED
 from .watch import Digest, Entry, FetchReport
 
@@ -81,7 +82,8 @@ def due(rec: dict, today: str | None = None) -> bool:
         today or date.today().isoformat())
 
 
-def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None) -> str:
+def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None,
+                          homes: dict[str, str | None] | None = None) -> str:
     if not rows:
         return "No applications yet. Mark a job applied, or add one with `jobwatch add \"Company\" \"Title\"`.\n"
     counts: dict[str, int] = {}
@@ -100,6 +102,8 @@ def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None
             out.append(("**Due:** " if due(rec, today) else "Next: ") + (rec.get("next_step") or "follow up") + when)
         if rec.get("note"):
             out.append(f"Note: {rec['note']}")
+        if home := (homes or {}).get(job.key) or candidate_home(job.url):
+            out.append(f"Status page (sign in): {home}")
         out += [f"`{job.key}`", ""]
     return "\n".join(out).rstrip() + "\n"
 
