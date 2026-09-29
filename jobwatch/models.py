@@ -51,7 +51,8 @@ class Job:
             head.append(f"Location: {'; '.join(self.locations)}")
         if self.pay():
             head.append(f"Pay: {self.pay()}")
-        head.append(f"URL: {self.url}")
+        if self.url:
+            head.append(f"URL: {self.url}")
         return "\n".join(head) + "\n\n" + self.description.strip() + "\n"
 
     def to_dict(self) -> dict:

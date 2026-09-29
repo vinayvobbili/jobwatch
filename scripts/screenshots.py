@@ -36,6 +36,20 @@ def canned_chat():
     chat.reply = reply
 
 
+def fill_package(page):
+    """Open the first application's details, attach a sample resume and save one answer, as a person would."""
+    page.get_by_role("button", name="Details").first.click(timeout=5000)
+    page.locator(".sent input[type=file]").set_input_files(
+        {"name": "Resume_Sample.pdf", "mimeType": "application/pdf", "buffer": b"%PDF-1.4 sample"}, timeout=5000)
+    page.locator(".file").first.wait_for(timeout=5000)
+    page.locator(".sent-head button").click()
+    page.locator(".qa-edit input").first.fill("Salary expectation")
+    page.locator(".qa-edit textarea").first.fill("Open, based on the full package")
+    page.get_by_role("button", name="Save", exact=True).click()
+    page.locator(".qa dt").first.wait_for(timeout=5000)
+    page.wait_for_timeout(400)
+
+
 def ask_first_suggestion(page, open_with: str | None):
     """Open a chat with this button, click its first suggested question and wait for the reply."""
     if open_with:
@@ -77,6 +91,14 @@ def shoot(config: Path, out: Path, themes=("light", "dark"), sizes=tuple(SIZES),
                             continue  # nothing to open, e.g. no jobs today
                         page.wait_for_timeout(600)
                         page.screenshot(path=out / f"{name}-{theme}-{size}.png")
+                    # What you sent, on an application's page: attach a file and save an answer through the page.
+                    page.goto("about:blank")
+                    page.goto(f"{url}#applied")
+                    try:
+                        fill_package(page)
+                        page.screenshot(path=out / f"applied-sent-{theme}-{size}.png")
+                    except PlaywrightTimeout as e:
+                        print(f"{theme}/{size}: skipped applied-sent: {e.message.splitlines()[0]}")
                     # Chat: Today's floating panel, then the column in a job's details, each after one question.
                     for name, button in (("chat-home", "Ask jobwatch"), ("chat-job", "Details")):
                         page.goto("about:blank")  # a fresh page: the same URL again would keep a dialog open

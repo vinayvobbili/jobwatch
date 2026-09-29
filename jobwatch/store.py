@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .models import Job
+from .package import Package
 
 # queued: to apply to next. After applying: applied, then screening, interviewing, offer, or it ends.
 STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdrawn")
@@ -79,6 +80,7 @@ class Store:
     def __init__(self, path: Path | str):
         path = Path(path).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
+        self.packages = path.parent / "packages"  # what was sent with each application (see package.py)
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(_SCHEMA)
@@ -147,7 +149,7 @@ class Store:
 
     def set_status(self, keys: list[str], status: str, note: str | None = None, on: str | None = None):
         """Move jobs to a status. Moving to an application stage records the day applied, once (`on`, default
-        today); moving back before applying clears it."""
+        today), and saves the posting as it reads then; moving back before applying clears the day."""
         if status not in STATUSES:
             raise ValueError(f"status must be one of {', '.join(STATUSES)}")
         applied = day(on) or date.today().isoformat()
@@ -156,6 +158,14 @@ class Store:
                 self.db.execute("UPDATE jobs SET status=?, status_at=?, note=COALESCE(?, note), applied_at="
                                 "CASE WHEN ? THEN COALESCE(applied_at, ?) END WHERE key=?",
                                 (status, _now(), note, status in STAGES, applied, key))
+        if status in STAGES:
+            for key in keys:
+                job, _ = self.find(key)
+                self.package(job.key).keep_posting(job)
+
+    def package(self, key: str) -> Package:
+        """What was sent with the application for this job (key or posting id)."""
+        return Package(self.packages, self.find(key)[0].key)
 
     def track(self, key: str, *, note: str | None = None, next_step: str | None = None,
               follow_up: str | None = None, applied: str | None = None):

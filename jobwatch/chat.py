@@ -164,9 +164,10 @@ def job_context(cfg: Config, store: Store, key: str) -> str:
     fit = store.score(job.key, resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else None
     track = [f"status: {rec['status']}"] + [f"{k.replace('_', ' ')}: {rec[k]}" for k in
                                             ("applied_at", "next_step", "follow_up", "note") if rec.get(k)]
+    sent = store.package(job.key).context()
     return "\n".join(["## The job the user is looking at", "; ".join(track),
                       _fit_line(fit) or "Not scored against the resume yet.",
-                      "<posting>", job.to_text()[:24000], "</posting>"])
+                      "<posting>", job.to_text()[:24000], "</posting>"] + (["", sent] if sent else []))
 
 
 def start(cfg: Config, store: Store, messages: list[dict], key: str | None = None) -> tuple[dict, Iterator[str]]:
@@ -174,9 +175,13 @@ def start(cfg: Config, store: Store, messages: list[dict], key: str | None = Non
     The context is read now, so the store can close while the reply streams."""
     check(cfg.backend)
     context = job_context(cfg, store, key) if key else home_context(cfg, store)
-    resume = resume_text(cfg.resume)
-    context += ("\n\n## The user's resume\n" + (f"<resume>\n{resume}\n</resume>" if resume else
-                "Not added yet (Settings > Resume). Say so if a question needs it."))
+    sent = store.package(key).resume() if key else None
+    if resume := resume_text(sent):  # what the employer actually has
+        context += f"\n\n## The resume the user sent for this job ({sent.name})\n<resume>\n{resume}\n</resume>"
+    else:
+        resume = resume_text(cfg.resume)
+        context += ("\n\n## The user's resume\n" + (f"<resume>\n{resume}\n</resume>" if resume else
+                    "Not added yet (Settings > Resume). Say so if a question needs it."))
     return where(cfg.backend), reply(cfg.backend, system_prompt(context), messages)
 
 
