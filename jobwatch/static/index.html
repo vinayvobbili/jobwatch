@@ -290,7 +290,63 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .settings-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 20px; align-items: start; }
 .settings-grid > .card:first-child { margin-top: 12px; }
 .companies { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+/* chat: a floating panel on Today, a column beside the posting in a job's details */
+.chat { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--panel-solid);
+  border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+.chat-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, rgba(90, 92, 242, .1), rgba(162, 74, 240, .07)); }
+.spark { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #fff;
+  background: var(--grad); box-shadow: 0 6px 16px -6px rgba(90, 92, 242, .7); }
+.chat-head .t { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.chat-head .t b { font-weight: 650; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.where { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; color: var(--muted); }
+.where.private { color: var(--good); }
+.icon-btn { border: 0; background: none; color: var(--muted); border-radius: 9px; padding: 7px; cursor: pointer;
+  display: grid; place-items: center; transition: background .15s, color .15s; }
+.icon-btn:hover { background: var(--chip); color: var(--text); }
+.chat-log { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 10px; }
+.msg { max-width: 88%; padding: 9px 13px; border-radius: 16px; font-size: 14px; line-height: 1.55;
+  overflow-wrap: anywhere; animation: rise .25s both; }
+.msg.user { align-self: flex-end; background: var(--grad); color: #fff; border-bottom-right-radius: 5px; white-space: pre-wrap; }
+.msg.bot { align-self: flex-start; background: var(--chip); border-bottom-left-radius: 5px; }
+.msg.bot p { margin: 0 0 7px; } .msg.bot > :last-child { margin-bottom: 0; }
+.msg.bot ul, .msg.bot ol { margin: 3px 0 7px; padding-left: 20px; } .msg.bot li { margin: 3px 0; }
+.msg.bot code { font-size: 12.5px; background: color-mix(in srgb, var(--text) 8%, transparent); padding: 1px 5px; border-radius: 5px; }
+.msg.bot a { color: var(--accent); }
+.msg.err { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+.msg .stopped { color: var(--muted); font-size: 12.5px; font-style: italic; }
+.dots { display: inline-flex; gap: 4px; padding: 5px 2px; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite both; }
+.dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
+.chat-hello { margin: auto 0; text-align: center; color: var(--muted); padding: 6px 4px; font-size: 14px; }
+.chat-hello .spark { width: 46px; height: 46px; border-radius: 15px; margin: 0 auto 12px; animation: float 3.2s ease-in-out infinite; }
+.suggest { display: flex; flex-direction: column; gap: 7px; margin-top: 16px; }
+.suggest button { text-align: left; font: inherit; font-size: 13.5px; color: var(--text); background: var(--panel-solid);
+  border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; cursor: pointer;
+  transition: border-color .15s, background .15s, transform .15s; }
+.suggest button:hover { border-color: var(--accent); background: var(--accent-soft); transform: translateX(3px); }
+.chat-input { display: flex; gap: 8px; align-items: flex-end; padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+.chat-input textarea { min-height: 42px; max-height: 160px; resize: none; border-radius: 12px; padding: 10px 12px; line-height: 1.4; }
+.send { flex: none; width: 42px; height: 42px; border-radius: 12px; border: 0; background: var(--grad); color: #fff;
+  cursor: pointer; display: grid; place-items: center; transition: transform .15s, opacity .15s; }
+.send:hover { transform: scale(1.06); }
+.send:disabled { opacity: .4; cursor: default; transform: none; }
+.send.stop { background: var(--text); color: var(--bg); }
+.chat-fab { position: fixed; right: 28px; bottom: 28px; z-index: 9; display: inline-flex; gap: 9px; align-items: center;
+  border: 0; border-radius: 999px; padding: 14px 22px 14px 18px; font: inherit; font-weight: 650; color: #fff;
+  background: var(--grad); box-shadow: 0 16px 36px -10px rgba(90, 92, 242, .65); cursor: pointer;
+  animation: rise .4s both; transition: transform .2s; }
+.chat-fab:hover { transform: translateY(-2px) scale(1.03); }
+.chat-fab .ico { animation: twinkle 2.8s ease-in-out infinite; }
+.chat-pop { position: fixed; right: 28px; bottom: 28px; z-index: 9; width: min(440px, calc(100vw - 32px));
+  height: min(700px, calc(100vh - 110px)); border-radius: 18px; box-shadow: 0 30px 80px -24px rgba(0, 0, 0, .5);
+  transform-origin: bottom right; animation: pop .28s cubic-bezier(.2, .8, .2, 1) both; }
+.dialog.with-chat { max-width: 1280px; display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 24px; align-items: start; }
+.dialog.with-chat .posting { max-height: calc(100vh - 330px); }
+.job-chat { position: sticky; top: 0; height: min(760px, calc(100vh - 124px)); }
 @media (max-width: 1100px) {
+  .dialog.with-chat { grid-template-columns: 1fr; }
+  .job-chat { position: static; height: 560px; }
   .layout { grid-template-columns: 1fr; }
   .layout > aside { position: static; max-height: none; overflow: visible; margin: 0; padding: 0; }
   .layout > aside .hero { grid-template-columns: repeat(4, 1fr); }
@@ -304,6 +360,9 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 @keyframes fade { from { opacity: 0; } }
 @keyframes grow { from { transform: scaleX(0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes blink { 0%, 80%, 100% { opacity: .25; transform: none; } 40% { opacity: 1; transform: translateY(-3px); } }
+@keyframes twinkle { 50% { transform: rotate(16deg) scale(1.18); } }
+@keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.95); } }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
   70%, 100% { box-shadow: 0 0 0 8px transparent; } }
 @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
@@ -311,6 +370,7 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
   .bar { flex-wrap: wrap; padding: 10px 16px; } main { padding: 20px 16px 60px; }
   .hero { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: 1fr; }
   .card.job, .card.app { grid-template-columns: 1fr; } .mono { display: none; }
+  .chat-fab { right: 16px; bottom: 16px; } .chat-pop { right: 16px; bottom: 16px; height: calc(100vh - 90px); }
   .fitbox { text-align: left; margin-top: 8px; } .ring { margin: 0; }
 }
 </style>
@@ -381,6 +441,12 @@ const ICONS = {
   check: "M20 6 9 17l-5-5",
   arrow: "M5 12h14M13 5l7 7-7 7",
   inbox: "M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z",
+  sparkle: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15v5M16.5 17.5h5M5 3v4M3 5h4",
+  lock: "M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V7a4 4 0 0 1 8 0v4",
+  cloud: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z",
+  send: "M12 19V5M5 12l7-7 7 7",
+  stop: "M7 7h10v10H7z",
+  x: "M18 6 6 18M6 6l12 12",
 };
 function icon(name, size = 15) {
   const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
@@ -629,25 +695,184 @@ function todayCard(job, canScore, i) {
 
 async function openDetails(key) {
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
+  dialog.classList.remove("with-chat");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   overlay.style.display = "flex";
   try {
     const j = await api("/api/job?key=" + encodeURIComponent(key));
+    dialog.classList.add("with-chat");
     fill(dialog,
-      h("div", { class: "row" }, h("h2", { style: "flex:1" }, j.title),
-        h("button", { class: "btn", onclick: closeDetails }, "Close")),
-      h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
-      h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
-        (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
-      knowLine(j, 10),
-      h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"),
-        h("span", { class: "muted small" }, "· key "), h("code", { class: "small" }, j.key)),
-      h("div", { class: "posting" }, j.text));
-  } catch (e) { showError(dialog, e); }
+      h("div", {},
+        h("div", { class: "row" }, h("h2", { style: "flex:1" }, j.title),
+          h("button", { class: "btn", onclick: closeDetails }, "Close")),
+        h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
+        h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
+          (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
+        knowLine(j, 10),
+        h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"),
+          h("span", { class: "muted small" }, "· key "), h("code", { class: "small" }, j.key)),
+        h("div", { class: "posting" }, j.text)),
+      h("div", { class: "job-chat" }, chatBox({
+        key: j.key, title: `Ask about ${j.company}`, intro: `Ask anything about ${j.title}: how you fit, what to lead with, how to prepare.`,
+        suggestions: ["How well do I fit this role, honestly?", "What should my resume lead with for this one?",
+          "What are they likely to ask in interviews?", "Draft a short note to a recruiter here"],
+      })));
+  } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
 }
 function closeDetails() { document.getElementById("overlay").style.display = "none"; }
 document.getElementById("overlay").addEventListener("click", e => { if (e.target.id === "overlay") closeDetails(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeDetails(); });
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (document.getElementById("overlay").style.display === "flex") closeDetails();
+  else homeChat(false);
+});
+
+// -- chat: ask the model from scoring.backend (Claude, or the one on this computer) about the search or one job
+
+const chats = new Map();  // "home" or a job key -> [{role, content}], kept while the page is open
+let chatInfo = null;
+function getChatInfo() { return chatInfo ??= api("/api/chat").catch(e => ({ error: e.message })); }
+
+// A safe subset of Markdown (paragraphs, lists, headings, bold, code, links), built as DOM nodes.
+function inline(text) {
+  return text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:[^)\s]+\))/).filter(Boolean).map(part => {
+    let m;
+    if (/^\*\*[^*]+\*\*$/.test(part)) return h("strong", {}, part.slice(2, -2));
+    if (/^`[^`]+`$/.test(part)) return h("code", {}, part.slice(1, -1));
+    if ((m = part.match(/^\[([^\]]+)\]\((https?:[^)\s]+)\)$/))) return link(m[2], m[1]);
+    return part;
+  });
+}
+function md(text) {
+  const out = [];
+  let list = null;
+  for (const line of text.split("\n")) {
+    let m;
+    if ((m = line.match(/^\s*([-*•]|\d+[.)])\s+(.*)$/))) {
+      const tag = /\d/.test(m[1]) ? "ol" : "ul";
+      if (!list || list.tagName.toLowerCase() !== tag) out.push(list = h(tag, {}));
+      list.append(h("li", {}, inline(m[2])));
+    } else {
+      list = null;
+      if ((m = line.match(/^#{1,6}\s+(.*)$/))) out.push(h("p", {}, h("strong", {}, inline(m[1]))));
+      else if (line.trim()) out.push(h("p", {}, inline(line)));
+    }
+  }
+  return out;
+}
+
+function chatBox({ key = null, title, intro, suggestions, onclose }) {
+  const id = key || "home";
+  if (!chats.has(id)) chats.set(id, []);
+  const history = chats.get(id);
+  const log = h("div", { class: "chat-log", "aria-live": "polite" });
+  const where = h("span", { class: "where" }, "…");
+  getChatInfo().then(i => {
+    if (i.error) return fill(where, i.error);
+    where.classList.toggle("private", i.local);
+    where.title = i.local ? `${i.model} runs on this computer. Nothing you ask leaves it.`
+      : `Sent to Anthropic's ${i.model}, with your resume and the job data shown here.`;
+    fill(where, icon(i.local ? "lock" : "cloud", 12), i.local ? "Private · runs on this computer" : `${i.label} · cloud`);
+  });
+  const input = h("textarea", { rows: 1, placeholder: "Ask anything…", "aria-label": "Your question" });
+  const send = h("button", { class: "send", type: "submit", title: "Send (Enter)", "aria-label": "Send" }, icon("send", 17));
+  const fresh = h("button", { class: "icon-btn", title: "Start over", "aria-label": "Start over",
+    onclick: () => { if (busy) busy.abort(); history.length = 0; draw(); input.focus(); } }, icon("refresh", 15));
+  let busy = null;  // an AbortController while a reply streams
+
+  const grow = () => { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight + 2, 160) + "px"; };
+  const scroll = () => { log.scrollTop = log.scrollHeight; };
+  const setBusy = on => {
+    fill(send, icon(on ? "stop" : "send", on ? 14 : 17));
+    send.classList.toggle("stop", on);
+    send.title = on ? "Stop" : "Send (Enter)";
+    send.disabled = !on && !input.value.trim();
+    fresh.style.visibility = history.length ? "" : "hidden";
+  };
+  const draw = () => {
+    fill(log, history.length ? history.map(m => h("div", { class: "msg " + (m.role === "user" ? "user" : "bot") },
+      m.role === "user" ? m.content : md(m.content)))
+      : h("div", { class: "chat-hello" }, h("div", { class: "spark" }, icon("sparkle", 24)), h("div", {}, intro),
+        h("div", { class: "suggest" }, suggestions.map(s => h("button", { onclick: () => ask(s) }, s)))));
+    scroll();
+    setBusy(!!busy);
+  };
+
+  async function ask(text) {
+    text = text.trim();
+    if (!text || busy) return;
+    history.push({ role: "user", content: text });
+    input.value = ""; grow();
+    busy = new AbortController();
+    draw();
+    const out = h("div", { class: "msg bot" }, h("span", { class: "dots", "aria-label": "Thinking" }, h("i"), h("i"), h("i")));
+    log.append(out); scroll();
+    let reply = "", failed = null, queued = false;
+    const paint = () => { queued = false; fill(out, md(reply)); scroll(); };
+    try {
+      const r = await fetch("/api/chat", { method: "POST", signal: busy.signal, body: JSON.stringify({ key, messages: history }),
+        headers: { "X-Jobwatch-Token": TOKEN, "Content-Type": "application/json" } });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+      const reader = r.body.getReader(), dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const msg = JSON.parse(buf.slice(0, nl));
+          buf = buf.slice(nl + 1);
+          if (msg.text) { reply += msg.text; if (!queued) { queued = true; requestAnimationFrame(paint); } }
+          if (msg.error) failed = msg.error;
+        }
+      }
+    } catch (e) { failed = e.name === "AbortError" ? "stopped" : e.message; }
+    busy = null;
+    if (reply) {
+      history.push({ role: "assistant", content: reply });
+      paint();
+      if (failed) out.append(h("p", { class: "stopped" }, failed === "stopped" ? "Stopped." : `Cut off: ${failed}`));
+    } else {
+      history.pop();  // nothing came back: give the question back to edit or resend
+      if (failed !== "stopped") { input.value = text; grow(); }
+      draw();
+      if (failed && failed !== "stopped") log.append(h("div", { class: "msg bot err" }, failed));
+      scroll();
+    }
+    setBusy(false);
+  }
+
+  input.oninput = () => { grow(); setBusy(!!busy); };
+  input.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(input.value); } };
+  const form = h("form", { class: "chat-input", onsubmit: e => { e.preventDefault(); busy ? busy.abort() : ask(input.value); } },
+    input, send);
+  const box = h("div", { class: "chat" },
+    h("div", { class: "chat-head" }, h("div", { class: "spark" }, icon("sparkle", 17)),
+      h("div", { class: "t" }, h("b", {}, title), where), fresh,
+      onclose ? h("button", { class: "icon-btn", title: "Close", "aria-label": "Close", onclick: onclose }, icon("x", 16)) : null),
+    log, form);
+  draw();
+  return box;
+}
+
+// Today's floating "Ask" button and the panel it opens.
+const chatFab = h("button", { class: "chat-fab", style: "display:none", onclick: () => homeChat(true) }, icon("sparkle", 18), "Ask jobwatch");
+document.body.append(chatFab);
+let chatPop = null;
+function homeChat(open) {
+  if (!open) { chatPop?.remove(); chatPop = null; chatFab.style.visibility = ""; return; }
+  if (chatPop) return;
+  chatPop = h("div", { class: "chat-pop" }, chatBox({
+    title: "Ask about your search", onclose: () => homeChat(false),
+    intro: "Ask about today's jobs and your applications. I can read your resume, but I can't apply or send anything.",
+    suggestions: ["Which 3 jobs should I apply to first, and why?", "What follow-ups are due this week?",
+      "Which gaps come up most across these jobs?", "Where do my applications stand?"],
+  }));
+  document.body.append(chatPop);
+  chatFab.style.visibility = "hidden";
+  chatPop.querySelector("textarea").focus();
+}
 
 // -- tabs
 
@@ -1105,6 +1330,9 @@ async function render() {
   lastTab = tab;
   for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("on", b.dataset.tab === tab);
   document.getElementById("fetchBtn").style.display = settings.companies.length ? "" : "none";
+  const home = tab === "today" && settings.exists && settings.companies.length > 0;
+  chatFab.style.display = home ? "" : "none";
+  if (!home) homeChat(false);
   try {
     if (tab === "settings") renderSettings();
     else if (!settings.exists || (!settings.companies.length && tab !== "applied")) renderWelcome();

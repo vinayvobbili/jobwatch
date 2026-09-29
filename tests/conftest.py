@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import http.client
+import json
+import threading
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -9,6 +12,7 @@ import pytest
 from jobwatch import sources
 
 NOW = datetime.now(timezone.utc)
+TOKEN = "test-token"
 
 
 def iso(days_ago: int) -> str:
@@ -144,3 +148,25 @@ def watchlist(tmp_path):
         "state: state.db\ncache: cache\n"
     )
     return path
+
+
+@pytest.fixture
+def server(watchlist, web):
+    """`jobwatch ui` on a free port, serving the test watchlist; yields the port."""
+    from jobwatch.web import serve
+
+    srv = serve(watchlist, port=0, open_browser=False, token=TOKEN)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield srv.server_address[1]
+    srv.shutdown()
+    srv.server_close()
+
+
+def request(port, method, path, body=None, headers=None, host=None):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    h = {"Host": host or f"127.0.0.1:{port}", **(headers or {})}
+    conn.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+    r = conn.getresponse()
+    data = r.read()
+    conn.close()
+    return r.status, data

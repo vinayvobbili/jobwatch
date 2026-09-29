@@ -21,7 +21,7 @@ from urllib.parse import parse_qs, urlparse
 
 import yaml
 
-from . import __version__, config, contacts, report, sources
+from . import __version__, chat, config, contacts, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable, resume_id, score_jobs
 from .store import MANUAL, STAGES, STATUSES, Store
@@ -208,6 +208,15 @@ class App:
             return results[job.key]
         return self._with_store(run)
 
+    def get_chat(self, q) -> dict:
+        return chat.where(self._cfg().backend)
+
+    def chat(self, body) -> tuple[dict, object]:
+        """({where replies come from}, the reply in pieces), about one job (`key`) or today's jobs and your
+        applications. Everything that can fail does so here, before the reply starts streaming."""
+        messages = chat.clean(body.get("messages"))
+        return self._with_store(lambda cfg, store: chat.start(cfg, store, messages, body.get("key")))
+
     def upload(self, kind: str, filename: str, data: bytes) -> dict:
         """Save an uploaded resume or LinkedIn export next to the watchlist and point the watchlist at it."""
         suffix = Path(filename).suffix.lower()
@@ -258,6 +267,7 @@ ROUTES = {
     ("POST", "/api/add"): App.post_add,
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/score"): App.post_score,
+    ("GET", "/api/chat"): App.get_chat,
 }
 
 
@@ -282,6 +292,36 @@ def make_handler(app: App, token: str, port_ref: list[int]):
             self.send_header("Referrer-Policy", "no-referrer")
             self.end_headers()
             self.wfile.write(body)
+
+        def _stream(self, info: dict, pieces):
+            """A reply as it's written: one JSON object per line ({"info"}, {"text"}..., then {"done"} or
+            {"error"}), each sent as soon as it's ready. The connection closes at the end."""
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.close_connection = True
+
+            def line(obj):
+                self.wfile.write(json.dumps(obj, ensure_ascii=False).encode() + b"\n")
+                self.wfile.flush()
+            try:
+                line({"info": info})
+                for text in pieces:
+                    line({"text": text})
+                line({"done": True})
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the page stopped the reply or went away
+            except Exception as e:
+                print(f"jobwatch ui: chat: {type(e).__name__}: {e}", file=sys.stderr)
+                try:
+                    line({"error": f"{type(e).__name__}: {e}"})
+                except OSError:
+                    pass
+            finally:
+                if hasattr(pieces, "close"):
+                    pieces.close()  # stops generating and frees the model for the next question
 
         def _json(self, status: int, data):
             self._send(status, json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8")
@@ -308,6 +348,11 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 q = parse_qs(url.query)
                 if method == "POST" and url.path == "/api/upload":
                     data = app.upload((q.get("kind") or [""])[0], (q.get("name") or [""])[0], raw)
+                elif method == "POST" and url.path == "/api/chat":
+                    body = json.loads(raw or b"{}")
+                    if not isinstance(body, dict):
+                        raise ApiError("send a JSON object")
+                    return self._stream(*app.chat(body))
                 elif (route := ROUTES.get((method, url.path))) is None:
                     raise ApiError("not found", HTTPStatus.NOT_FOUND)
                 elif method == "POST":
@@ -322,7 +367,7 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 self._json(e.status, {"error": str(e)})
             except KeyError as e:
                 self._json(HTTPStatus.NOT_FOUND, {"error": e.args[0]})
-            except (ConfigError, ScoringUnavailable, sources.SourceError, ValueError) as e:
+            except (ConfigError, ScoringUnavailable, chat.ChatUnavailable, sources.SourceError, ValueError) as e:
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
             except Exception as e:  # show it in the page rather than hang the request
                 print(f"jobwatch ui: {type(e).__name__}: {e}", file=sys.stderr)
