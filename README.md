@@ -56,6 +56,7 @@ their jobs), say what you're looking for, and press **Check for new jobs**. From
 - **Today:** new matching jobs, with pay, how long ago they were posted, keywords, and who you know there.
   **Queue** the ones worth applying to, **Skip** the rest.
 - **Queue:** your short list. Apply on the company's site, then press **I applied**.
+- Long lists come in pages (12, 24, 48 or 96 at a time, kept per browser).
 - **Applications:** every job you applied to and where it stands (applied, screening, interviewing, offer,
   rejected, withdrawn), with the next step and a follow-up day. Those due come first. Filter by status with
   the chips over the list (or click the pipeline bar), and switch between **Cards** and a sortable **Table**.

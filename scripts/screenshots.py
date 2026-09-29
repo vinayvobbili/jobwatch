@@ -84,6 +84,7 @@ def shoot(config: Path, out: Path, themes=("light", "dark"), sizes=tuple(SIZES),
                     # The dialogs and forms that only open on a click.
                     for tab, button, name in (("applied", "Add an application", "applied-add"),
                                               ("applied", "Table", "applied-table"),
+                                              ("today", "Next →", "today-page2"),
                                               ("today", "Details", "details")):
                         page.goto("about:blank")  # a fresh page each time: the last form or dialog stays open otherwise
                         page.goto(f"{url}#{tab}")
