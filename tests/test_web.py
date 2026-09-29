@@ -1,14 +1,12 @@
-import http.client
 import json
-import threading
 
 import pytest
 import yaml
 
 from jobwatch import config
-from jobwatch.web import ApiError, App, serve
+from jobwatch.web import ApiError, App
 
-TOKEN = "test-token"
+from .conftest import TOKEN, request
 
 
 @pytest.fixture
@@ -84,25 +82,6 @@ def test_uploads(app, watchlist, web):
         app.upload("connections", "c.csv", b"a,b\n")
     with pytest.raises(ApiError):
         app.upload("state", "state.db", b"x")
-
-
-@pytest.fixture
-def server(watchlist, web):
-    srv = serve(watchlist, port=0, open_browser=False, token=TOKEN)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield srv.server_address[1]
-    srv.shutdown()
-    srv.server_close()
-
-
-def request(port, method, path, body=None, headers=None, host=None):
-    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-    h = {"Host": host or f"127.0.0.1:{port}", **(headers or {})}
-    conn.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
-    r = conn.getresponse()
-    data = r.read()
-    conn.close()
-    return r.status, data
 
 
 def test_page_carries_the_token(server):

@@ -16,14 +16,39 @@ from pathlib import Path
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
+from jobwatch import chat
 from jobwatch.web import serve
 
 SIZES = {"wide": (1920, 1080), "desktop": (1280, 900), "phone": (390, 844)}
 TABS = ("today", "queue", "applied", "settings")
 
+# The chat scenes show this canned reply: screenshots never call a model.
+CANNED = ("Three stand out:\n\n1. **The best fit** matches most of your must-haves.\n"
+          "2. **The newest** was posted this week, so apply early.\n3. **The best-paid** lists the highest range.\n\n"
+          "Want me to compare their gaps with your resume?")
+
+
+def canned_chat():
+    def reply(backend, system, messages):
+        for word in CANNED.split(" "):
+            yield word + " "
+    chat.check = lambda backend: None
+    chat.reply = reply
+
+
+def ask_first_suggestion(page, open_with: str | None):
+    """Open a chat with this button, click its first suggested question and wait for the reply."""
+    if open_with:
+        page.get_by_role("button", name=open_with).first.click(timeout=5000)
+    page.locator(".suggest button").first.click(timeout=5000)
+    page.wait_for_function("document.querySelectorAll('.msg.bot').length && !document.querySelector('.send.stop')",
+                           timeout=10000)
+    page.wait_for_timeout(400)
+
 
 def shoot(config: Path, out: Path, themes=("light", "dark"), sizes=tuple(SIZES), full_page: bool = True):
     out.mkdir(parents=True, exist_ok=True)
+    canned_chat()
     server = serve(config, port=0, open_browser=False)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{server.server_address[1]}/"
@@ -51,6 +76,16 @@ def shoot(config: Path, out: Path, themes=("light", "dark"), sizes=tuple(SIZES),
                         except PlaywrightTimeout:
                             continue  # nothing to open, e.g. no jobs today
                         page.wait_for_timeout(600)
+                        page.screenshot(path=out / f"{name}-{theme}-{size}.png")
+                    # Chat: Today's floating panel, then the column in a job's details, each after one question.
+                    for name, button in (("chat-home", "Ask jobwatch"), ("chat-job", "Details")):
+                        page.goto("about:blank")  # a fresh page: the same URL again would keep a dialog open
+                        page.goto(f"{url}#today")
+                        try:
+                            ask_first_suggestion(page, button)
+                        except PlaywrightTimeout as e:
+                            print(f"{theme}/{size}: skipped {name}: {e.message.splitlines()[0]}")
+                            continue
                         page.screenshot(path=out / f"{name}-{theme}-{size}.png")
                     for e in errors:
                         print(f"{theme}/{size}: page error: {e}")

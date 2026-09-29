@@ -7,7 +7,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from . import __version__, config, report, sources
+from . import __version__, chat, config, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
 from .store import STAGES, STATUSES, Store
@@ -92,6 +92,16 @@ def cmd_applications(args, cfg, store):
     if args.due:
         rows = [r for r in rows if report.due(r[1])]
     _write(report.applications_markdown(rows), args.out)
+
+
+def cmd_ask(args, cfg, store):
+    info, pieces = chat.start(cfg, store, chat.clean([{"role": "user", "content": " ".join(args.question)}]),
+                              args.job)
+    print(f"({info['label']}: {info['model']})", file=sys.stderr)
+    for text in pieces:
+        sys.stdout.write(text)
+        sys.stdout.flush()
+    sys.stdout.write("\n")
 
 
 def cmd_queue(args, cfg, store):
@@ -188,6 +198,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_applications)
 
+    p = sub.add_parser("ask", help="ask about today's jobs and your applications, or one job (--job), with the "
+                                   "model set in scoring.backend")
+    p.add_argument("question", nargs="+")
+    p.add_argument("--job", metavar="KEY", help="ask about this job (its key, or the end of it)")
+    p.set_defaults(func=cmd_ask)
+
     p = sub.add_parser("queue", help="jobs to apply to next: `queue <key>...` adds, `queue` lists")
     p.add_argument("keys", nargs="*")
     p.add_argument("--note", help="e.g. 'ask Ana for a referral first'")
@@ -216,7 +232,7 @@ def main(argv: list[str] | None = None):
             args.func(args, cfg, store)
         finally:
             store.close()
-    except (ConfigError, ScoringUnavailable, KeyError, ValueError, sources.SourceError) as e:
+    except (ConfigError, ScoringUnavailable, chat.ChatUnavailable, KeyError, ValueError, sources.SourceError) as e:
         raise SystemExit(f"jobwatch: {e.args[0] if isinstance(e, KeyError) else e}") from None
 
 

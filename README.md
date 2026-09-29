@@ -60,9 +60,12 @@ their jobs), say what you're looking for, and press **Check for new jobs**. From
   rejected, withdrawn), with the next step and a follow-up day. Those due come first. **Add an application**
   covers jobs you found elsewhere, such as a referral or a recruiter.
 - **Settings:** companies, filters, keywords, your resume (for fit scores) and your LinkedIn connections.
+- **Ask jobwatch:** a chat on Today (about all of today's jobs and your applications) and beside each job's
+  details (about that posting). See [Chat](#chat).
 
-The page only talks to jobwatch on your own machine. Nothing is uploaded anywhere. It's the same watchlist
-file and history as the command line, so you can switch between the two.
+The page only talks to jobwatch on your own machine. The one exception is a model you choose: with
+`scoring.backend: claude`, fit scores and chat send the posting and your resume to Anthropic. It's the same
+watchlist file and history as the command line, so you can switch between the two.
 
 ### On the command line
 
@@ -136,6 +139,26 @@ jobs are scored with [shortlist-ai](https://github.com/vinayvobbili/shortlist-ai
 
 Scores are stored per resume file content, so each job is scored once, and again only after you edit your
 resume. The local backend takes minutes per job, so keep `top` small.
+
+## Chat
+
+Ask questions in plain words: "which three should I apply to first?", "what follow-ups are due?", "how well
+do I fit this one, honestly?", "what will they ask in interviews?". The chat uses the model you set for fit
+scores:
+
+- `scoring.backend: local`: the same on-device model as scoring (`pip install 'jobwatch[local]'`). Nothing
+  leaves your computer. The first answer waits for the model to load.
+- `scoring.backend: claude`: Claude Sonnet via Anthropic's API (`ANTHROPIC_API_KEY`). Your question, your resume
+  and the jobs it's about are sent to Anthropic.
+
+It reads today's matching jobs and your applications, or one posting with its fit score, plus your resume.
+It's told to use only your resume for facts about you and to treat posting text as data, not instructions.
+It has no tools, so it can't change, apply for or send anything. The same thing works from the terminal:
+
+```
+jobwatch ask "What follow-ups are due this week?"
+jobwatch ask --job c1 "What should my resume lead with for this one?"
+```
 
 ## The apply queue
 
@@ -226,7 +249,8 @@ python -m venv .venv && .venv/bin/pip install -e '.[dev,mcp]'
 ```
 
 Tests use canned board responses and never touch the network. To see how `jobwatch ui` looks after a change,
-`scripts/screenshots.py` captures every tab in light and dark, at desktop and phone widths (it needs
+`scripts/screenshots.py` captures every tab in light and dark, at wide, desktop and phone widths, plus the
+chat with a canned reply (it needs
 `pip install playwright && python -m playwright install chromium`).
 
 Releases publish to PyPI through Trusted
