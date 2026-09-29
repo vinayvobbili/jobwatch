@@ -37,10 +37,26 @@ def test_exclude_departments():
     (["Austin, TX"], None, False),           # on-site in Austin is not remote
     (["India", "Remote"], None, False),      # a bare "Remote" is remote where the posting's other places are
     (["Austin, TX", "Remote"], None, True),
+    # Remote in one state or city is remote for people there, not anywhere in the US.
+    (["Maryland", "Virginia", "Remote - Washington D.C."], None, False),
+    (["United States", "Remote - California"], None, False),
+    (["Work At Home-Texas", "Work At Home-Florida"], None, False),
+    (["Remote-Minnesota-Minneapolis Metro"], None, False),
+    (["Seattle, SF, NYC, Remote in the US", "US"], None, True),
+    (["San Francisco, New York City, Chicago, US-Remote", "US"], None, True),
+    (["NY, SF, Chicago, Remote", "US"], None, True),
+    (["Remote-Friendly US (Travel Required)"], None, True),
+    (["Remote - United States of America"], None, True),
 ])
 def test_remote_in_us(locations, remote, ok):
     f = Filters(locations=["remote"])
     assert (reject_reason(job(locations=locations, remote=remote), f) is None) is ok
+
+
+def test_remote_in_a_wanted_state():
+    f = Filters(locations=["remote", "North Carolina"])
+    assert reject_reason(job(locations=["Remote - North Carolina"]), f) is None
+    assert reject_reason(job(locations=["Remote - Virginia"]), f) == "location"
 
 
 def test_remote_anywhere():
