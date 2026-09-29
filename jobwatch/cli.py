@@ -87,6 +87,18 @@ def cmd_queue(args, cfg, store):
     _write(report.queue_markdown(queue(cfg, store)), args.out)
 
 
+def cmd_ui(args):
+    from .web import serve
+
+    server = serve(config.locate(args.config), port=args.port, open_browser=not args.no_browser)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
 def cmd_list(args, cfg, store):
     rows = store.jobs(tuple(args.status) if args.status else None, include_closed=True)
     for job, rec in rows:
@@ -145,6 +157,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--note", help="e.g. 'ask Ana for a referral first'")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_queue)
+
+    p = sub.add_parser("ui", help="open jobwatch in your browser (setup, digest, queue, applied)")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    p.set_defaults(func=cmd_ui, needs_config=False)
 
     p = sub.add_parser("list", help="jobs by status, e.g. `jobwatch list --status applied`")
     p.add_argument("--status", choices=STATUSES, action="append")

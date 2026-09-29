@@ -43,6 +43,27 @@ pip install 'jobwatch[mcp]'          # + MCP server for Claude and other assista
 
 ## Quick start
 
+### In your browser
+
+```
+pipx install jobwatch      # or: pip install jobwatch
+jobwatch ui
+```
+
+A page opens on your computer. Add the companies you want to watch (type a name or paste a link to one of
+their jobs), say what you're looking for, and press **Check for new jobs**. From there:
+
+- **Today:** new matching jobs, with pay, how long ago they were posted, keywords, and who you know there.
+  **Queue** the ones worth applying to, **Skip** the rest.
+- **Queue:** your short list. Apply on the company's site, then press **I applied**.
+- **Applied:** what you applied to and when.
+- **Settings:** companies, filters, keywords, your resume (for fit scores) and your LinkedIn connections.
+
+The page only talks to jobwatch on your own machine. Nothing is uploaded anywhere. It's the same watchlist
+file and history as the command line, so you can switch between the two.
+
+### On the command line
+
 ```
 jobwatch init                         # writes an example jobwatch.yaml
 jobwatch find "Anthropic" "Scale AI"  # find each company's board
