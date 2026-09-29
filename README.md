@@ -67,6 +67,18 @@ The page only talks to jobwatch on your own machine. The one exception is a mode
 `scoring.backend: claude`, fit scores and chat send the posting and your resume to Anthropic. It's the same
 watchlist file and history as the command line, so you can switch between the two.
 
+To have the page always there, even after a restart, on a Mac:
+
+```
+jobwatch service install      # starts jobwatch ui when you log in, and again if it stops
+jobwatch service status       # running? where's the log?
+jobwatch service uninstall
+```
+
+A login item doesn't see variables set in your shell profile, so with `scoring.backend: claude` the page's
+chat and scores need `ANTHROPIC_API_KEY` given to launchd (`launchctl setenv ANTHROPIC_API_KEY ...`), or
+run `jobwatch ui` from a terminal instead. The local backend needs nothing.
+
 ### On the command line
 
 ```
