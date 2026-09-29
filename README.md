@@ -57,9 +57,11 @@ their jobs), say what you're looking for, and press **Check for new jobs**. From
   **Queue** the ones worth applying to, **Skip** the rest.
 - **Queue:** your short list. Apply on the company's site, then press **I applied**.
 - **Applications:** every job you applied to and where it stands (applied, screening, interviewing, offer,
-  rejected, withdrawn), with the next step and a follow-up day. Those due come first. **Add an application**
-  covers jobs you found elsewhere, such as a referral or a recruiter.
-- **Settings:** companies, filters, keywords, your resume (for fit scores) and your LinkedIn connections.
+  rejected, withdrawn), with the next step and a follow-up day. Those due come first. Filter by status with
+  the chips over the list (or click the pipeline bar), and switch between **Cards** and a sortable **Table**.
+  **Add an application** covers jobs you found elsewhere, such as a referral or a recruiter.
+- **Settings:** companies, filters, keywords, your resume (for fit scores), your LinkedIn connections, and the
+  page's theme (system, light or dark) and width (standard, wide or full, for a big monitor).
 - **Ask jobwatch:** a chat on Today (about all of today's jobs and your applications) and beside each job's
   details (about that posting). See [Chat](#chat).
 
@@ -125,6 +127,9 @@ connections: ~/Downloads/linkedin.zip     # who you know at each company (see be
 scoring:
   backend: claude                         # or local
   top: 5                                  # score the 5 most relevant new jobs per digest
+display:                                  # the browser page
+  theme: system                           # system, light or dark
+  width: standard                         # standard, wide or full
 ```
 
 Relative paths are resolved from the watchlist's folder. State (which jobs you've seen, applied to or

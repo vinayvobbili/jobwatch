@@ -44,6 +44,20 @@ def test_a_bad_setting_leaves_the_file_alone(app, watchlist):
     assert not list(watchlist.parent.glob("*.new"))
 
 
+def test_display_settings(app, watchlist):
+    cfg = config.load(watchlist)
+    assert (cfg.theme, cfg.width) == ("system", "standard") and app.get_settings({})["display"] == {}
+    app.post_settings({"display": {"theme": "dark", "width": "wide"}})
+    cfg = config.load(watchlist)
+    assert (cfg.theme, cfg.width) == ("dark", "wide")
+    assert app.get_settings({})["display"] == {"theme": "dark", "width": "wide"}
+    assert yaml.safe_load(watchlist.read_text())["filters"]  # the rest of the watchlist is kept
+    for bad, key in (({"theme": "sepia"}, "theme"), ({"width": "huge"}, "width")):
+        with pytest.raises(config.ConfigError, match=rf"display\.{key}"):
+            app.post_settings({"display": bad})
+    assert config.load(watchlist).theme == "dark"
+
+
 def test_digest_marks_new_jobs_seen_and_queue_flow(app, web):
     app.post_fetch({})
     first = app.get_digest({})

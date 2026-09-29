@@ -18,8 +18,8 @@
   --s-rejected: #94a3b8; --s-withdrawn: #a8a29e;
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
+/* dark: set by the Theme setting, or by the computer's when that is System (applyDisplay) */
+:root[data-theme="dark"] {
     --bg: #0a0d16; --glow-1: rgba(99, 102, 241, .2); --glow-2: rgba(192, 80, 240, .1);
     --panel: rgba(21, 25, 38, .86); --panel-solid: #151926; --text: #e9ebf5; --muted: #8f97b2; --line: #252a3b;
     --accent: #8d8fff; --accent-2: #c77dff; --accent-text: #0a0d16; --accent-soft: rgba(141, 143, 255, .14);
@@ -27,7 +27,6 @@
     --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 12px 32px -20px rgba(0, 0, 0, .9);
     --shadow-hover: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 22px 48px -20px rgba(110, 100, 255, .5);
     color-scheme: dark;
-  }
 }
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; color: var(--text);
@@ -61,6 +60,8 @@ nav button.on { color: var(--text); background: var(--panel-solid); box-shadow: 
 .status { color: var(--muted); font-size: 13.5px; }
 
 main { max-width: 1680px; margin: 0 auto; padding: 28px 32px 80px; }
+:root[data-width="wide"] main, :root[data-width="wide"] .bar { max-width: 2400px; }
+:root[data-width="full"] main, :root[data-width="full"] .bar { max-width: none; }
 .pagehead { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
 .pagehead > div:first-child { flex: 1; }
 h1 { font-size: 30px; line-height: 1.15; letter-spacing: -.025em; margin: 0; font-weight: 800; }
@@ -127,7 +128,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .mono { width: 46px; height: 46px; border-radius: 13px; display: grid; place-items: center; font-weight: 800;
   font-size: 16px; letter-spacing: -.02em; background: hsl(var(--h) 80% 93%); color: hsl(var(--h) 60% 36%);
   box-shadow: inset 0 0 0 1px hsl(var(--h) 60% 50% / .12); }
-@media (prefers-color-scheme: dark) { .mono { background: hsl(var(--h) 45% 20%); color: hsl(var(--h) 90% 80%); } }
+:root[data-theme="dark"] .mono { background: hsl(var(--h) 45% 20%); color: hsl(var(--h) 90% 80%); }
 .meta { color: var(--muted); font-size: 13.5px; margin: 3px 0 8px; display: flex; flex-wrap: wrap; gap: 4px 8px;
   align-items: center; }
 .meta b { color: var(--text); font-weight: 600; }
@@ -231,6 +232,49 @@ select.stage option { color: var(--text); background: var(--panel-solid); }
 .next.now .when-chip { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 .next.late .when-chip { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
 .app .full { grid-column: 1 / -1; }
+/* status filter chips, the cards/table switch, and the table */
+.status-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.sf { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--panel-solid);
+  color: var(--text); font: inherit; font-size: 13.5px; font-weight: 550; border-radius: 999px; padding: 5px 12px;
+  cursor: pointer; transition: border-color .15s, background .15s; }
+.sf:hover { border-color: color-mix(in srgb, var(--sc, var(--accent)) 50%, var(--line)); }
+.sf .dot { width: 8px; height: 8px; border-radius: 3px; background: var(--sc); }
+.sf .c { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.sf.on { border-color: var(--sc, var(--accent)); background: color-mix(in srgb, var(--sc, var(--accent)) 13%, var(--panel-solid));
+  color: color-mix(in srgb, var(--sc, var(--accent)) 70%, var(--text)); }
+.sf.on .c { color: inherit; }
+.showing .seg-ctl { width: 170px; flex: none; }
+.pipeline button.seg { border: 0; padding: 0; cursor: pointer; font: inherit; }
+.pipeline button.seg:hover { filter: brightness(1.12); outline: 2px solid color-mix(in srgb, var(--sc) 40%, transparent); outline-offset: 1px; }
+.table-wrap { container-type: inline-size; overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); animation: rise .4s cubic-bezier(.2, .7, .2, 1) both; }
+table.apps { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.apps th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+  font-weight: 700; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap;
+  position: sticky; top: 0; background: var(--panel-solid); }
+table.apps th button.sort { border: 0; background: none; font: inherit; color: inherit; letter-spacing: inherit;
+  text-transform: inherit; cursor: pointer; padding: 0; display: inline-flex; gap: 4px; }
+table.apps th button.sort:hover, table.apps th button.sort.on { color: var(--text); }
+table.apps td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.apps tbody tr:last-child td { border-bottom: 0; }
+table.apps tbody tr { box-shadow: inset 3px 0 0 var(--sc); transition: background .12s; }
+table.apps tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+table.apps tr.ended { opacity: .62; } table.apps tr.ended:hover { opacity: 1; }
+table.apps tr.due td.next-cell .what { color: var(--warn); }
+table.apps .co-cell { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+table.apps .co-cell .mono { width: 30px; height: 30px; border-radius: 9px; font-size: 12px; }
+table.apps .role a { color: var(--text); font-weight: 600; text-decoration: none; }
+table.apps .role a:hover { color: var(--accent); text-decoration: underline; }
+table.apps .role { min-width: 200px; }
+table.apps select.stage { width: auto; min-width: 130px; font-size: 13px; padding: 4px 10px; }
+table.apps .next-cell { min-width: 190px; }
+table.apps .next { font-size: 13.5px; }
+table.apps .nowrap { white-space: nowrap; }
+table.apps .acts .btn { padding: 4px 8px; }
+table.apps .sent-chip { white-space: nowrap; }
+@container (max-width: 1150px) { table.apps .col-sent { display: none; } table.apps .acts .label { display: none; }
+  table.apps .role { min-width: 160px; } table.apps .next-cell { min-width: 160px; } }
+table.apps td.editing { padding: 14px 18px; }
 
 /* overlay, toast, forms */
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text);
@@ -386,7 +430,7 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 @media (max-width: 1100px) {
   .dialog.with-chat { grid-template-columns: 1fr; }
   .job-chat { position: static; height: 560px; }
-  .layout { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
   .layout > aside { position: static; max-height: none; overflow: visible; margin: 0; padding: 0; }
   .layout > aside .hero { grid-template-columns: repeat(4, 1fr); }
   .settings-grid { grid-template-columns: 1fr; }
@@ -445,6 +489,19 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 <script>
 "use strict";
 const TOKEN = "__JOBWATCH_TOKEN__";
+
+// Theme and page width from the watchlist's display settings. The last ones used are kept in this browser too,
+// so the page opens in the right colors before the settings arrive.
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+function applyDisplay(d) {
+  const theme = (d && d.theme) || "system", width = (d && d.width) || "standard";
+  document.documentElement.dataset.theme = theme === "system" ? (darkQuery.matches ? "dark" : "light") : theme;
+  document.documentElement.dataset.width = width;
+  remember("display", JSON.stringify({ theme, width }));
+}
+function lastDisplay() { try { return JSON.parse(remembered("display", "{}")); } catch { return {}; } }
+darkQuery.addEventListener("change", () => applyDisplay((settings && settings.display) || lastDisplay()));
+applyDisplay(lastDisplay());
 const main = document.getElementById("main");
 let tab = "today";
 let settings = null;
@@ -1163,7 +1220,16 @@ function daysAgo(day, today) {
   return n <= 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`;
 }
 
-const appView = { stage: "", q: "" };
+// The status filter ("due" is Follow up now), the search, cards or a table, and the table's sort.
+const appView = { stage: "", q: "", view: remembered("apps.view", "cards"), sort: "next", dir: 1 };
+
+// A per-browser preference; storage can be blocked (private windows), so it's never required.
+function remembered(key, fallback) {
+  try { return localStorage.getItem("jobwatch." + key) || fallback; } catch { return fallback; }
+}
+function remember(key, value) {
+  try { localStorage.setItem("jobwatch." + key, value); } catch { /* not kept: fine */ }
+}
 
 async function renderApplied() {
   const d = await api("/api/applications");
@@ -1175,19 +1241,28 @@ async function renderApplied() {
   const week = all.filter(a => !isEnded(a) && a.follow_up && a.follow_up <= addDays(d.today, 7)).length;
   const dueCount = all.filter(a => a.due).length;
   const addArea = h("div", {}), body = h("div", {}), showing = h("div", { class: "showing" });
+  const filters = h("div", { class: "status-filter", role: "group", "aria-label": "Filter by status" });
   const search = h("input", { type: "search", placeholder: "Search companies, roles, notes" });
   search.value = appView.q;
   search.oninput = () => { appView.q = search.value; draw(); };
+  const pick = s => { appView.stage = appView.stage === s ? "" : s; redraw(); };
   const stages = h("div", {});
   const drawStages = () => fill(stages, d.stages.filter(s => counts[s]).map(s =>
-    h("button", { class: "facet" + (appView.stage === s ? " on" : ""), style: `--sc:var(--s-${s})`,
-      onclick: () => { appView.stage = appView.stage === s ? "" : s; drawStages(); draw(); } },
+    h("button", { class: "facet" + (appView.stage === s ? " on" : ""), style: `--sc:var(--s-${s})`, onclick: () => pick(s) },
       h("span", {}, h("i", { class: "dot" }), STAGE_NAMES[s]), h("span", { class: "c" }, counts[s]))));
-  drawStages();
+  // The same filter as a row of chips over the list: All, Follow up now, then each stage in use.
+  const drawFilters = () => fill(filters,
+    [["", "All", all.length, null], dueCount ? ["due", "Follow up now", dueCount, "var(--warn)"] : null,
+      ...d.stages.filter(s => counts[s]).map(s => [s, STAGE_NAMES[s], counts[s], `var(--s-${s})`])].filter(Boolean)
+      .map(([s, label, n, color]) => h("button", { class: "sf" + (appView.stage === s ? " on" : ""),
+        style: color ? `--sc:${color}` : null, "aria-pressed": appView.stage === s ? "true" : "false",
+        onclick: () => { appView.stage = s; redraw(); } },
+        color ? h("i", { class: "dot" }) : null, label, h("span", { class: "c" }, n))));
+  const redraw = () => { drawStages(); drawFilters(); draw(); };
 
   const draw = () => {
     const q = appView.q.trim().toLowerCase();
-    const apps = all.filter(a => (!appView.stage || a.status === appView.stage) &&
+    const apps = all.filter(a => (!appView.stage || (appView.stage === "due" ? a.due : a.status === appView.stage)) &&
       (!q || `${a.company} ${a.title} ${a.note || ""} ${a.next_step || ""}`.toLowerCase().includes(q)));
     const due = apps.filter(a => a.due), ended = apps.filter(isEnded), open = apps.filter(a => !a.due && !isEnded(a));
     let i = 0;
@@ -1195,10 +1270,13 @@ async function renderApplied() {
       ? [section(title, list.length, cls), h("div", { class: "grid-cards" }, list.map(a => appCard(a, d, i++)))] : null;
     fill(showing, apps.length === all.length ? `${all.length} applications` : `Showing ${apps.length} of ${all.length}`,
       apps.length !== all.length ? h("button", { class: "btn ghost", onclick: () => {
-        appView.stage = ""; appView.q = ""; search.value = ""; drawStages(); draw(); } }, "Clear filters") : null);
+        appView.stage = ""; appView.q = ""; search.value = ""; redraw(); } }, "Clear filters") : null,
+      h("span", { class: "spacer" }),
+      segmented([["cards", "Cards"], ["table", "Table"]], appView.view, v => { appView.view = v; remember("apps.view", v); draw(); }));
     fill(body, all.length ? null : emptyState("No applications yet. Mark a queued job “I applied”, or add one you applied to somewhere else."),
       all.length && !apps.length ? emptyState("No applications match.") : null,
-      group("Follow up now", due, "hot"), group("In progress", open), group("Ended", ended));
+      !apps.length ? null : appView.view === "table" ? appTable(apps, d, draw)
+        : [group("Follow up now", due, "hot"), group("In progress", open), group("Ended", ended)]);
   };
 
   put(
@@ -1209,12 +1287,87 @@ async function renderApplied() {
         [dueCount, "follow-ups due", dueCount ? "warn" : ""], [week, "follow-ups this week"]]),
       all.length ? h("div", { class: "pipeline panel" }, h("h4", {}, "Pipeline"),
         h("div", { class: "bar-track" }, d.stages.filter(s => counts[s]).map((s, n) =>
-          h("span", { class: "seg", style: `flex:${counts[s]};--sc:var(--s-${s});animation-delay:${n * 90}ms`,
-            title: `${STAGE_NAMES[s]}: ${counts[s]}` }))),
+          h("button", { class: "seg", style: `flex:${counts[s]};--sc:var(--s-${s});animation-delay:${n * 90}ms`,
+            title: `${STAGE_NAMES[s]}: ${counts[s]}`, "aria-label": `Show ${STAGE_NAMES[s]} (${counts[s]})`,
+            onclick: () => pick(s) }))),
         h("div", { style: "margin-top:10px" }, stages)) : null,
       panel(null, search),
-    ], [addArea, showing, body]));
+    ], [addArea, all.length ? filters : null, showing, body]));
+  drawFilters();
   draw();
+}
+
+// Every application as one row: sort by a column's header, change a stage in place, open the details.
+const APP_COLUMNS = [
+  ["company", "Company"], ["title", "Role"], ["status", "Stage"], ["applied_at", "Applied"],
+  ["next", "Next step"], [null, "Sent", "col-sent"], [null, ""]];
+
+function appTable(apps, d, redraw) {
+  const isEnded = a => ["rejected", "withdrawn"].includes(a.status);
+  const byNext = a => [a.due ? 0 : isEnded(a) ? 2 : 1, a.follow_up || "9999", a.applied_at ? -Date.parse(a.applied_at) : 0];
+  const key = {
+    company: a => [a.company.toLowerCase()], title: a => [a.title.toLowerCase()],
+    status: a => [d.stages.indexOf(a.status)], applied_at: a => [a.applied_at || ""], next: byNext }[appView.sort];
+  const cmp = (x, y) => { for (let n = 0; n < x.length; n++) if (x[n] !== y[n]) return x[n] < y[n] ? -1 : 1; return 0; };
+  const rows = [...apps].sort((a, b) => cmp(key(a), key(b)) * appView.dir);
+  const head = h("tr", {}, APP_COLUMNS.map(([k, label, cls]) => k
+    ? h("th", { "aria-sort": appView.sort === k ? (appView.dir > 0 ? "ascending" : "descending") : null },
+      h("button", { class: "sort" + (appView.sort === k ? " on" : ""), onclick: () => {
+        appView.dir = appView.sort === k ? -appView.dir : 1; appView.sort = k; redraw(); } },
+        label, h("span", { class: "arrow" }, appView.sort === k ? (appView.dir > 0 ? "↑" : "↓") : "")))
+    : h("th", { class: cls }, label)));
+  return h("div", { class: "table-wrap" }, h("table", { class: "apps" },
+    h("thead", {}, head), h("tbody", {}, rows.map(a => appRow(a, d)))));
+}
+
+function appRow(a, d) {
+  const tr = h("tr", { class: (isEndedStatus(a.status) ? "ended" : "") + (a.due ? " due" : ""), style: `--sc:var(--s-${a.status})` });
+  const stage = stageSelect(a.status, d.stages);
+  stage.className = "stage";
+  stage.onchange = () => changeStage(a, d, stage);
+  const view = () => fill(tr,
+    h("td", { class: "co" }, h("div", { class: "co-cell" }, monogram(a.company), h("b", {}, a.company))),
+    h("td", { class: "role" }, a.url ? link(a.url, a.title) : a.title, a.pay ? h("div", { class: "pay small" }, a.pay) : null),
+    h("td", {}, stage),
+    h("td", { class: "nowrap" }, a.applied_at ? [fmtDay(a.applied_at, d.today), h("div", { class: "muted small" }, relDay(a.applied_at, d.today))] : ""),
+    h("td", { class: "next-cell" }, nextLine(a, d.today) || h("span", { class: "muted" }, "—")),
+    h("td", { class: "col-sent" }, sentChip(a)),
+    h("td", { class: "acts nowrap" },
+      h("button", { class: "btn ghost", onclick: edit, title: "Edit next step, follow-up and notes" }, icon("pencil", 13)),
+      h("button", { class: "btn ghost", onclick: () => openDetails(a.key), title: "Details" },
+        h("span", { class: "label" }, "Details"), icon("arrow", 13))));
+  const edit = () => {
+    const f = trackFields(a);
+    fill(tr, h("td", { colspan: APP_COLUMNS.length, class: "editing" },
+      h("h3", {}, `${a.company}: ${a.title}`), f.el,
+      h("div", { class: "row actions" },
+        h("button", { class: "btn primary", onclick: async () => {
+          try { await api("/api/track", { key: a.key, ...f.values() }); render(); } catch (e) { toast(e.message); }
+        } }, "Save"),
+        h("button", { class: "btn", onclick: view }, "Cancel"))));
+  };
+  view();
+  return tr;
+}
+
+function isEndedStatus(s) { return s === "rejected" || s === "withdrawn"; }
+
+// A stage picked on a card or a table row: save it, cheer the good news, offer an undo.
+async function changeStage(a, d, stage) {
+  const before = a.status;
+  try {
+    const to = stage.value;
+    await api("/api/track", { key: a.key, status: to });
+    const forward = d.stages.indexOf(to) > d.stages.indexOf(before) && !isEndedStatus(to);
+    const words = {
+      screening: `📞 ${a.company} wants to talk. Nice!`, interviewing: `🎯 Interviewing at ${a.company}. You've got this.`,
+      offer: `🥂 An offer from ${a.company}! Congratulations!`, rejected: `${a.company} passed. Their loss. Onward.`,
+      withdrawn: `Withdrawn from ${a.company}. One less thing to track.`, applied: `${a.company}: back to applied.` };
+    toast(words[to], async () => { await api("/api/track", { key: a.key, status: before }); render(); });
+    if (to === "offer") { confetti(null, { count: 220, power: 1.4 }); setTimeout(() => confetti(stage, { count: 80 }), 350); }
+    else if (forward) confetti(stage, { count: 70, power: .8 });
+    render();
+  } catch (e) { toast(e.message); stage.value = before; }
 }
 
 function stageSelect(value, stages) {
@@ -1233,26 +1386,11 @@ function nextLine(a, today) {
 }
 
 function appCard(a, d, i = 0) {
-  const card = h("div", { class: "card app" + (["rejected", "withdrawn"].includes(a.status) ? " ended" : ""),
+  const card = h("div", { class: "card app" + (isEndedStatus(a.status) ? " ended" : ""),
     style: `--sc:var(--s-${a.status});--i:${Math.min(i, 12)}` });
   const stage = stageSelect(a.status, d.stages);
   stage.className = "stage";
-  stage.onchange = async () => {
-    const before = a.status;
-    try {
-      const to = stage.value;
-      await api("/api/track", { key: a.key, status: to });
-      const forward = d.stages.indexOf(to) > d.stages.indexOf(before) && !["rejected", "withdrawn"].includes(to);
-      const words = {
-        screening: `📞 ${a.company} wants to talk. Nice!`, interviewing: `🎯 Interviewing at ${a.company}. You've got this.`,
-        offer: `🥂 An offer from ${a.company}! Congratulations!`, rejected: `${a.company} passed. Their loss. Onward.`,
-        withdrawn: `Withdrawn from ${a.company}. One less thing to track.`, applied: `${a.company}: back to applied.` };
-      toast(words[to], async () => { await api("/api/track", { key: a.key, status: before }); render(); });
-      if (to === "offer") { confetti(null, { count: 220, power: 1.4 }); setTimeout(() => confetti(stage, { count: 80 }), 350); }
-      else if (forward) confetti(stage, { count: 70, power: .8 });
-      render();
-    } catch (e) { toast(e.message); stage.value = before; }
-  };
+  stage.onchange = () => changeStage(a, d, stage);
   const facts = [a.pay ? h("span", { class: "pay" }, a.pay) : null, a.closed ? "posting closed" : null].filter(Boolean);
   const view = () => fill(card,
     monogram(a.company),
@@ -1338,6 +1476,27 @@ function addForm(d) {
 
 function lines(v) { return (v || []).join("\n"); }
 function unlines(v) { return v.split(/[\n,]/).map(s => s.trim()).filter(Boolean); }
+
+// Theme and page width: they change the page at once and are saved right away, apart from "Save settings".
+function displayCard() {
+  const d = { theme: "system", width: "standard", ...(settings.display || {}) };
+  const msg = h("span", { class: "small muted" });
+  const set = async (k, v) => {
+    d[k] = v;
+    applyDisplay(d);
+    try {
+      await api("/api/settings", { display: { ...d } });
+      settings.display = { ...d };
+      msg.textContent = "Saved."; msg.className = "small muted";
+    } catch (e) { msg.textContent = e.message; msg.className = "small error"; }
+  };
+  return h("div", { class: "card" }, h("h3", {}, "Display ", msg),
+    h("div", { class: "grid" },
+      h("div", {}, h("label", {}, "Theme"),
+        segmented([["system", "System"], ["light", "Light"], ["dark", "Dark"]], d.theme, v => set("theme", v))),
+      h("div", {}, h("label", {}, "Page width ", h("span", { class: "hint" }, "wider fits more on a big monitor")),
+        segmented([["standard", "Standard"], ["wide", "Wide"], ["full", "Full"]], d.width, v => set("width", v)))));
+}
 
 function renderSettings() {
   const s = settings, f = s.filters || {};
@@ -1450,9 +1609,9 @@ function renderSettings() {
   put(
     pagehead("Settings", h("span", {}, "Your watchlist, saved to ", h("code", {}, s.path)),
       h("div", { class: "row" }, saveMsg, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings"))),
-    h("div", { class: "settings-grid" }, h("div", { class: "card" }, h("h3", {}, "Companies to watch"),
+    h("div", { class: "settings-grid" }, h("div", {}, h("div", { class: "card" }, h("h3", {}, "Companies to watch"),
       h("div", { class: "row", style: "margin-top:8px" }, h("div", { style: "flex:1" }, findInput), findBtn),
-      findOut, watching, companyList),
+      findOut, watching, companyList), displayCard()),
     h("div", {}, h("div", { class: "card" }, h("h3", {}, "What you're looking for"),
       h("div", { class: "grid" },
         h("div", {}, h("label", {}, "Job titles ", h("span", { class: "hint" }, "one per line; a title must contain one")), titles),
@@ -1536,6 +1695,7 @@ document.getElementById("fetchBtn").onclick = async () => {
 (async () => {
   try { settings = await api("/api/settings"); }
   catch (e) { return showError(main, e); }
+  applyDisplay(settings.display);
   const want = location.hash.slice(1);
   tab = TABS.includes(want) ? want : "today";
   render();

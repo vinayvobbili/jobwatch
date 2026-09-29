@@ -19,7 +19,7 @@ from playwright.sync_api import sync_playwright
 from jobwatch import chat
 from jobwatch.web import serve
 
-SIZES = {"wide": (1920, 1080), "desktop": (1280, 900), "phone": (390, 844)}
+SIZES = {"ultrawide": (2560, 1440), "wide": (1920, 1080), "desktop": (1280, 900), "phone": (390, 844)}
 TABS = ("today", "queue", "applied", "settings")
 
 # The chat scenes show this canned reply: screenshots never call a model.
@@ -83,7 +83,9 @@ def shoot(config: Path, out: Path, themes=("light", "dark"), sizes=tuple(SIZES),
                         page.screenshot(path=out / f"{tab}-{theme}-{size}.png", full_page=full_page)
                     # The dialogs and forms that only open on a click.
                     for tab, button, name in (("applied", "Add an application", "applied-add"),
+                                              ("applied", "Table", "applied-table"),
                                               ("today", "Details", "details")):
+                        page.goto("about:blank")  # a fresh page each time: the last form or dialog stays open otherwise
                         page.goto(f"{url}#{tab}")
                         try:
                             page.get_by_role("button", name=button).first.click(timeout=5000)
@@ -127,7 +129,7 @@ def main():
     ap.add_argument("--size", choices=list(SIZES), action="append")
     ap.add_argument("--viewport", action="store_true", help="only the visible part, not the whole page")
     args = ap.parse_args()
-    shoot(args.config, args.out, tuple(args.theme or ("light", "dark")), tuple(args.size or SIZES),
+    shoot(args.config, args.out, tuple(args.theme or ("light", "dark")), tuple(args.size or ("wide", "desktop", "phone")),
           full_page=not args.viewport)
 
 
