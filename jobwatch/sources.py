@@ -146,6 +146,25 @@ def parse_ashby(data: dict, board: str) -> list[Job]:
     return jobs
 
 
+def parse_workable(data: dict, board: str) -> list[Job]:
+    jobs = []
+    for j in data.get("jobs", []):
+        places = j.get("locations") if isinstance(j.get("locations"), list) else []
+        where = [", ".join(p for p in (loc.get("city"), loc.get("region"), loc.get("country")) if p)
+                 for loc in places if not loc.get("hidden")] or \
+                [", ".join(p for p in (j.get("city"), j.get("state"), j.get("country")) if p)]
+        job = Job(
+            source="workable", company=board, id=j["shortcode"], title=(j.get("title") or "").strip(),
+            url=f"https://apply.workable.com/{board}/j/{j['shortcode']}/", company_name=data.get("name") or "",
+            locations=split_locations(*where), remote=True if str(j.get("telecommuting")).lower() == "true" else None,
+            department=j.get("department") or "", posted=_time(j.get("published_on") or j.get("created_at")),
+            description=html_to_text(j.get("description") or ""),
+        )
+        _salary(job, job.description)
+        jobs.append(job)
+    return jobs
+
+
 # -- Workday: board "tenant.wdN/site", from https://tenant.wdN.myworkdayjobs.com/site
 
 WORKDAY_PAGE = 20          # the most Workday returns at once
@@ -211,16 +230,22 @@ def fetch_workday(board: str, get=None, search=(), wanted=None, known=None, cap=
                 locations=split_locations(p.get("locationsText") or ""), posted=_workday_posted(p.get("postedOn")))
         if wanted and not wanted(j.title):
             return j  # listed, not read: the title filter drops it anyway
-        info = (get(f"{api}{p['externalPath']}") or {}).get("jobPostingInfo") or {}
-        j.locations = split_locations(info.get("location") or "", *(info.get("additionalLocations") or [])) \
-            or j.locations
-        j.remote = True if (info.get("remoteType") or "").lower() == "remote" else None
-        j.posted = _time(info.get("startDate")) or j.posted
-        j.url = info.get("externalUrl") or j.url
-        j.description = html_to_text(info.get("jobDescription") or "")
-        _salary(j, j.description)
-        return j
+        return _workday_read(j, api, p["externalPath"], get)
     return _details(list(postings.items()), job)
+
+
+def _workday_read(j: Job, api: str, path: str, get) -> Job:
+    """Fill a Workday job from its posting (path: /job/<place>/<title>_<id>)."""
+    info = (get(f"{api}{path}") or {}).get("jobPostingInfo") or {}
+    j.title = j.title or (info.get("title") or "").strip()
+    j.locations = split_locations(info.get("location") or "", *(info.get("additionalLocations") or [])) \
+        or j.locations
+    j.remote = True if (info.get("remoteType") or "").lower() == "remote" else None
+    j.posted = _time(info.get("startDate")) or j.posted
+    j.url = info.get("externalUrl") or j.url
+    j.description = html_to_text(info.get("jobDescription") or "")
+    _salary(j, j.description)
+    return j
 
 
 # -- Eightfold: board "tenant" or "tenant/domain", from https://tenant.eightfold.ai/careers?domain=domain
@@ -291,6 +316,8 @@ SOURCES = {
                     "https://jobs.lever.co/{board}"),
     "ashby": Source("ashby", "https://api.ashbyhq.com/posting-api/job-board/{board}?includeCompensation=true",
                     parse_ashby, "https://jobs.ashbyhq.com/{board}"),
+    "workable": Source("workable", "https://apply.workable.com/api/v1/widget/accounts/{board}?details=true",
+                       parse_workable, "https://apply.workable.com/{board}/"),
     "workday": Source("workday", "", None, "https://{tenant}.{pod}.myworkdayjobs.com/{site}", fetch_workday),
     "eightfold": Source("eightfold", "", None, "https://{tenant}.eightfold.ai/careers?domain={domain}",
                         fetch_eightfold),
@@ -343,6 +370,10 @@ def detect(url: str) -> tuple[str, str] | None:
     if m := re.fullmatch(r"([\w-]+)\.eightfold\.ai", host):
         domain = parse_qs(parsed.query).get("domain", [""])[0]
         return "eightfold", m.group(1) + (f"/{domain}" if domain and domain != f"{m.group(1)}.com" else "")
+    if host == "apply.workable.com":
+        return ("workable", parts[0]) if parts and parts[0] not in ("j", "api") else None
+    if (m := re.fullmatch(r"([\w-]+)\.workable\.com", host)) and m.group(1) not in ("apply", "jobs", "www"):
+        return "workable", m.group(1)
     source = _HOSTS.get(host)
     if not source:
         return None
@@ -351,6 +382,51 @@ def detect(url: str) -> tuple[str, str] | None:
         return source, query["for"][0]
     skip = _API_PREFIX.get(host, 0)
     return (source, parts[skip]) if len(parts) > skip and parts[skip] != "embed" else None
+
+
+def _posting_id(source: str, url: str) -> str | None:
+    """The posting's id in a link to one job on a board, or None for a link to the whole board."""
+    parsed = urlparse(url if "//" in url else f"https://{url}")
+    parts = [p for p in parsed.path.split("/") if p]
+    if source == "greenhouse":
+        if jid := parse_qs(parsed.query).get("gh_jid"):
+            return jid[0]
+        return parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else None
+    if source in ("lever", "ashby"):
+        return parts[1] if len(parts) > 1 else None
+    if source == "workable":
+        for marker in ("j", "view"):
+            if marker in parts[:-1]:
+                return parts[parts.index(marker) + 1].removesuffix(".md")
+    return None
+
+
+def posting(url: str, get=None) -> Job | None:
+    """One job, read from its link on a supported board; None when the link isn't to one job on one.
+    Raises SourceError when the board can't be read or no longer lists the job."""
+    found = detect(url)
+    if not found:
+        return None
+    source, board = found
+    get = get or get_json
+    if source == "workday":
+        path = urlparse(url if "//" in url else f"https://{url}").path
+        if "/job/" not in path:
+            return None
+        path = path[path.index("/job/"):]
+        api, public, tenant = _workday_parts(board)
+        j = _workday_read(Job(source="workday", company=board, id=path.rsplit("_", 1)[-1], title="",
+                              url=public + path, company_name=tenant), api, path, get)
+        if not j.description:
+            raise NotFound("that Workday posting isn't open any more")
+        return j
+    pid = _posting_id(source, url)
+    if not pid:
+        return None
+    for j in fetch(source, board, get):
+        if j.id.lower() == pid.lower():
+            return j
+    raise NotFound(f"the {source} board {board!r} doesn't list that job any more")
 
 
 def board_names(company: str) -> list[str]:

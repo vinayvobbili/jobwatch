@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .models import Job
 from .package import Package
+from .text import parse_salary
 
 # queued: to apply to next. After applying: applied, then screening, interviewing, offer, or it ends.
 STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdrawn")
@@ -128,6 +129,19 @@ class Store:
             self.db.executemany("UPDATE jobs SET closed=? WHERE key=? AND closed IS NULL", [(now, k) for k in gone])
         return new
 
+    def keep(self, job: Job) -> bool:
+        """Record one job read from its link, leaving the rest of its board alone (it may not be watched).
+        Returns whether it's new."""
+        now = _now()
+        with self.db:
+            new = self.db.execute("INSERT OR IGNORE INTO jobs (key, source, company, data, first_seen, last_seen) "
+                                  "VALUES (?, ?, ?, ?, ?, ?)", (job.key, job.source, job.company,
+                                                                json.dumps(job.to_dict()), now, now)).rowcount
+            if not new:
+                self.db.execute("UPDATE jobs SET data=?, last_seen=?, closed=NULL WHERE key=?",
+                                (json.dumps(job.to_dict()), now, job.key))
+        return bool(new)
+
     def board_jobs(self, source: str, company: str) -> dict[str, Job]:
         """Every job ever seen on one board, open or closed, by key."""
         rows = self.db.execute("SELECT key, data FROM jobs WHERE source=? AND company=?", (source, company))
@@ -210,8 +224,9 @@ class Store:
 
     def add(self, company: str, title: str, url: str = "", status: str = "applied", applied: str | None = None,
             location: str = "", note: str | None = None, next_step: str | None = None,
-            follow_up: str | None = None) -> Job:
-        """Track an application found somewhere jobwatch doesn't watch (a referral, a recruiter, LinkedIn...)."""
+            follow_up: str | None = None, description: str = "") -> Job:
+        """Track a job found somewhere jobwatch doesn't read (a referral, a recruiter, LinkedIn...): an application,
+        or one to consider (status queued). description: the posting's text, pasted, so it can be scored."""
         company, title, url = company.strip(), title.strip(), url.strip()
         if not company or not title:
             raise ValueError("an application needs a company and a job title")
@@ -228,7 +243,9 @@ class Store:
             n += 1
             id_ = f"{base}-{n}"
         job = Job(source=MANUAL, company=board, id=id_, title=title, url=url, company_name=company,
-                  locations=[location.strip()] if location.strip() else [])
+                  locations=[location.strip()] if location.strip() else [], description=description.strip())
+        if job.description and (pay := parse_salary(job.description)):
+            job.salary_min, job.salary_max, job.currency = *pay, "USD"
         now = _now()
         with self.db:
             self.db.execute("INSERT INTO jobs (key, source, company, data, first_seen, last_seen) VALUES "

@@ -13,7 +13,7 @@ from .contacts import Contacts
 from .filters import reject_reason, relevance, search_terms, title_ok
 from .models import Job
 from .score import resume_id, score_jobs
-from .store import Store
+from .store import STAGES, Store
 
 
 @dataclass
@@ -98,6 +98,40 @@ def queue(cfg: Config, store: Store) -> list[Entry]:
         e.contacts = contacts.at(job.display_company, job.company) if contacts else []
         out.append(e)
     return out
+
+
+def watched_name(cfg: Config, link: str) -> str:
+    """The watchlist's name for the board a link is on, if it's watched: a Workday link names only a tenant."""
+    found = sources.detect(link) if link.strip() else None
+    return next((b.name for b in cfg.boards if found and (b.source, b.board) == found and b.name), "")
+
+
+def save_job(store: Store, link: str = "", company: str = "", title: str = "", text: str = "",
+             status: str = "queued", note: str | None = None, applied: str | None = None, location: str = "",
+             get=None) -> tuple[Job, bool]:
+    """Add a job found somewhere else: (the job, whether its posting was read from the link).
+
+    A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday) is read in full, so the
+    job can be scored and prepped like any other; its board needn't be watched. Anything else (LinkedIn, a
+    company's own site) needs the company, the title and, to be scored, the posting's text pasted. An
+    application already further along keeps its stage."""
+    link = link.strip()
+    job = sources.posting(link, get) if link else None
+    if job is None:
+        if link and not (company.strip() and title.strip()):
+            raise ValueError("jobwatch can't read that link: give the company and the job title too, and paste "
+                             "the posting's text to score it")
+        return store.add(company, title, url=link, status=status, note=note, applied=applied, location=location,
+                         description=text), False
+    if company.strip():
+        job.company_name = company.strip()
+    store.keep(job)
+    _, rec = store.find(job.key)
+    if not (rec["status"] in STAGES and status not in STAGES):
+        store.set_status([job.key], status, note, on=applied)
+    elif note:
+        store.add_note(job.key, note)
+    return job, True
 
 
 def _rank(e: Entry):

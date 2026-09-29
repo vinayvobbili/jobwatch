@@ -129,7 +129,8 @@ def test_track_applications(app, web):
     app.post_mark({"keys": ["c1"], "status": "applied"})
     added = app.post_add({"company": "Umbrella", "title": "Principal Engineer", "applied_at": "2026-09-01",
                           "next_step": "check in with the recruiter", "follow_up": "2000-01-01"})
-    assert added == {"key": "manual:umbrella:principal-engineer"}
+    assert added == {"key": "manual:umbrella:principal-engineer", "company": "Umbrella",
+                     "title": "Principal Engineer", "read": False}
     app.post_track({"key": "c1", "status": "interviewing", "note": "panel next week", "follow_up": ""})
     d = app.get_applications({})
     rows = {a["key"]: a for a in d["applications"]}
@@ -138,6 +139,6 @@ def test_track_applications(app, web):
     assert (rows["ashby:initech:c1"]["status"], rows["ashby:initech:c1"]["note"]) == ("interviewing", "panel next week")
     assert rows["ashby:initech:c1"]["applied_at"] == d["today"]
     with pytest.raises(ApiError, match="status must be"):
-        app.post_add({"company": "X", "title": "Y", "status": "queued"})
+        app.post_add({"company": "X", "title": "Y", "status": "skipped"})
     with pytest.raises(ValueError, match="isn't a date"):
         app.post_track({"key": "c1", "follow_up": "soon"})
