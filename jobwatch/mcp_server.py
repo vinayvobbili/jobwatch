@@ -11,18 +11,19 @@ from mcp.server.mcpserver import MCPServer
 from . import config, contacts, learn, prep, report, sources
 from .score import resume_id
 from .store import Store
-from .watch import build_digest, fetch_all, load_contacts, queue
+from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watched_name
 
 server = MCPServer(
     "jobwatch",
     instructions=(
-        "Watches company job boards (Greenhouse, Lever, Ashby, Workday, Eightfold) from a watchlist file. "
+        "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold) from a watchlist "
+        "file. "
         "fetch_jobs checks every board; digest ranks the new matches (optionally fit-scored with shortlist-ai); "
         "job_details gives a posting's full text for tailoring a resume; mark_job records queued/applied/skipped "
         "and later stages (screening, interviewing, offer, rejected, withdrawn) with a next step and follow-up "
         "day; apply_queue "
         "lists the jobs queued to apply to next, with people the user knows there (ask them for a referral "
-        "before applying). add_application tracks one found elsewhere; "
+        "before applying). add_application adds one found elsewhere (from its link, or pasted text); "
         "applications shows where each stands. After the person submits, save_application_package keeps the "
         "resume, cover letter and form answers they sent; application_package reads them back before a call or "
         "interview, and interview_prep puts the posting, the resume and what was sent on one sheet. skill_gaps "
@@ -116,15 +117,20 @@ def mark_job(key: str, status: str | None = None, note: str | None = None, add_n
 
 
 @server.tool()
-def add_application(company: str, title: str, url: str = "", status: str = "applied", applied_on: str = "",
-                    note: str | None = None, next_step: str | None = None, follow_up: str | None = None) -> str:
-    """Track an application for a job jobwatch didn't find (a referral, a recruiter, LinkedIn...), so every
-    application is in one place. Only after the person has applied themselves."""
-    _, store = _open()
+def add_application(company: str = "", title: str = "", url: str = "", status: str = "applied", applied_on: str = "",
+                    note: str | None = None, next_step: str | None = None, follow_up: str | None = None,
+                    text: str = "") -> str:
+    """Add a job jobwatch didn't find (a referral, a recruiter, LinkedIn...), so everything is in one place: an
+    application (only after the person has applied themselves), or status queued for one they're considering.
+    A url to one job on Greenhouse, Lever, Ashby, Workable or Workday is read in full (company and title may
+    be left out); otherwise give company and title, and text (the posting, pasted) so it can be scored."""
+    cfg, store = _open()
     try:
-        job = store.add(company, title, url=url, status=status, applied=applied_on or None, note=note,
-                        next_step=next_step, follow_up=follow_up)
-        return f"{job.key}: {status}"
+        job, read = save_job(store, url, company or watched_name(cfg, url), title, text, status=status, note=note,
+                             applied=applied_on or None)
+        store.track(job.key, next_step=next_step, follow_up=follow_up)
+        return f"{job.key}: {status} ({job.display_company}, {job.title}; " \
+               f"{'read from the link' if read else 'text given' if text.strip() else 'title only'})"
     finally:
         store.close()
 

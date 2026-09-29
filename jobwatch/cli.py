@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -13,7 +14,7 @@ from . import __version__, chat, config, learn, prep, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
 from .store import STAGES, STATUSES, Store
-from .watch import build_digest, fetch_all, load_contacts, queue
+from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watched_name
 
 
 def _write(text: str, out: Path | None):
@@ -120,9 +121,21 @@ def cmd_package(args, cfg, store):
 
 
 def cmd_add(args, cfg, store):
-    job = store.add(args.company, args.title, url=args.url or "", status=args.status, applied=args.on,
-                    location=args.location or "", note=args.note, next_step=args.next, follow_up=args.follow_up)
-    print(f"{job.key}: {args.status}")
+    link, company, title = args.url or "", "", ""
+    if len(args.job) == 1 and re.match(r"(?:https?://)?[\w-]+(?:\.[\w-]+)+/", args.job[0]):
+        link, company = args.job[0], args.company or watched_name(cfg, args.job[0])
+    elif len(args.job) == 2:
+        company, title = args.job
+    else:
+        raise ValueError("give a link to the posting, or the company and the job title")
+    text = "" if not args.text else sys.stdin.read() if str(args.text) == "-" else args.text.read_text()
+    job, read = save_job(store, link, company, title, text, status=args.status, note=args.note, applied=args.on,
+                         location=args.location or "")
+    store.track(job.key, next_step=args.next, follow_up=args.follow_up)
+    if args.add_note:
+        store.add_note(job.key, args.add_note)
+    how = "read from the link" if read else "with the posting's text" if text.strip() else ""
+    print(f"{job.key}: {args.status}" + (f" ({job.display_company}, {job.title}; {how})" if how else ""))
 
 
 def cmd_applications(args, cfg, store):
@@ -211,7 +224,7 @@ def _tracking(p: argparse.ArgumentParser):
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="jobwatch", description="Watch company job boards (Greenhouse, Lever, "
-                                 "Ashby, Workday, Eightfold) and get a ranked digest of new matches.")
+                                 "Ashby, Workable, Workday, Eightfold) and get a ranked digest of new matches.")
     ap.add_argument("--version", action="version", version=f"jobwatch {__version__}")
     ap.add_argument("-c", "--config", help="watchlist file (default: ./jobwatch.yaml, $JOBWATCH_CONFIG, "
                     "~/.config/jobwatch/config.yaml)")
@@ -254,11 +267,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help="keep a copy of what you sent (the resume, a cover letter); repeat for more")
     p.set_defaults(func=cmd_mark)
 
-    p = sub.add_parser("add", help="track an application for a job found elsewhere (a referral, a recruiter...)")
-    p.add_argument("company")
-    p.add_argument("title")
-    p.add_argument("--url", help="link to the posting")
-    p.add_argument("--status", choices=STAGES, default="applied")
+    p = sub.add_parser("add", help="add a job found elsewhere (LinkedIn, a referral, a recruiter): `add <link>` "
+                       "reads the posting from Greenhouse, Lever, Ashby, Workable or Workday; `add <company> "
+                       "<title>` for anything else. --status queued to consider it, else it's an application")
+    p.add_argument("job", nargs="+", metavar="LINK | COMPANY TITLE")
+    p.add_argument("--url", help="link to the posting, with a company and title")
+    p.add_argument("--company", help="with a link: the company's name, when the board doesn't give it (Workday)")
+    p.add_argument("--text", type=Path, metavar="FILE", help="the posting's text, to score it (- reads stdin)")
+    p.add_argument("--status", choices=("queued", *STAGES), default="applied")
     p.add_argument("--location")
     _tracking(p)
     p.set_defaults(func=cmd_add)

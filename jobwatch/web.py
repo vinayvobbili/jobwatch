@@ -26,7 +26,7 @@ from .config import ConfigError
 from .package import Package
 from .score import ScoringUnavailable, resume_id, score_jobs
 from .store import MANUAL, STAGES, STATUSES, Store
-from .watch import build_digest, fetch_all, load_contacts, queue
+from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watched_name
 
 MAX_UPLOAD = 20 * 1024 * 1024
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
@@ -122,7 +122,12 @@ class App:
         return self._with_store(run)
 
     def get_queue(self, q) -> list[dict]:
-        return self._with_store(lambda cfg, store: [self._entry(e) for e in queue(cfg, store)])
+        def run(cfg, store):
+            resume = bool(cfg.resume and cfg.resume.is_file())
+            # A job added by hand can be scored once it has the posting's text.
+            return [{**self._entry(e), "can_score": resume and bool(e.job.description.strip())}
+                    for e in queue(cfg, store)]
+        return self._with_store(run)
 
     def get_jobs(self, q) -> list[dict]:
         status = (q.get("status") or [None])[0]
@@ -149,12 +154,17 @@ class App:
     def post_add(self, body) -> dict:
         def run(cfg, store):
             status = body.get("status") or "applied"
-            if status not in STAGES:
-                raise ApiError(f"status must be one of {', '.join(STAGES)}")
-            job = store.add(body.get("company") or "", body.get("title") or "", url=body.get("url") or "",
-                            status=status, applied=body.get("applied_at") or None, note=body.get("note"),
-                            next_step=body.get("next_step"), follow_up=body.get("follow_up"))
-            return {"key": job.key}
+            if status not in ("queued", *STAGES):
+                raise ApiError(f"status must be queued or one of {', '.join(STAGES)}")
+            try:
+                link = body.get("url") or ""
+                job, read = save_job(store, link, body.get("company") or watched_name(cfg, link),
+                                     body.get("title") or "", body.get("text") or "", status=status,
+                                     note=body.get("note"), applied=body.get("applied_at") or None)
+            except sources.SourceError as e:
+                raise ApiError(f"couldn't read that posting: {e}") from None
+            store.track(job.key, next_step=body.get("next_step"), follow_up=body.get("follow_up"))
+            return {"key": job.key, "company": job.display_company, "title": job.title, "read": read}
         return self._with_store(run)
 
     def post_track(self, body) -> dict:

@@ -21,14 +21,14 @@ Keywords: Python, RAG, agents
 
 ## Why company boards
 
-Most tech companies post jobs through Greenhouse, Lever or Ashby, and most large employers through Workday
-(some through Eightfold). Each publishes open roles as public JSON so anyone can build a careers page, with
+Most tech companies post jobs through Greenhouse, Lever, Ashby or Workable, and most large employers through
+Workday (some through Eightfold). Each publishes open roles as public JSON so anyone can build a careers page, with
 no API key or scraping. jobwatch reads those feeds for the companies on your watchlist:
 
 - **Complete and fresh:** a role appears as soon as the company posts it, not when an aggregator picks it up.
 - **Pay ranges:** read from the board's structured fields where they exist (Lever, Ashby), otherwise from
   the posting text.
-- **Polite:** one request per company per run on Greenhouse, Lever and Ashby. A Workday or Eightfold board can
+- **Polite:** one request per company per run on Greenhouse, Lever, Ashby and Workable. A Workday or Eightfold board can
   list thousands of roles, most of them nothing like yours, so jobwatch searches it for your
   `filters.titles` words and reads a posting in full only when its title passes your title filters, once:
   after that, a run costs a few searches per company. Titles written as regexes can't be searched for, so
@@ -112,6 +112,7 @@ companies:
   - greenhouse:anthropic
   - lever:spotify
   - {source: ashby, board: openai, name: OpenAI}
+  - workable:acme                                       # apply.workable.com/acme
   - {source: workday, board: nvidia.wd5/NVIDIAExternalCareerSite, name: NVIDIA}  # tenant.wdN/site
   - {source: eightfold, board: acme, name: Acme}      # tenant (or tenant/domain), from a link
 
@@ -233,6 +234,22 @@ jobwatch list --status applied
 
 Queued jobs leave the digest. The queue flags any posting that has since closed.
 
+### Jobs you found somewhere else
+
+A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
+posting on Greenhouse, Lever, Ashby, Workable or Workday, jobwatch reads the posting from there, so it can be
+fit-scored and prepped for like any other, even if you don't watch that company. For anything else (LinkedIn,
+a company's own site), give the company and title and paste the posting's text:
+
+```
+jobwatch add https://apply.workable.com/acme/j/A1B2C3D4E5/ --status queued
+jobwatch add "Umbrella" "Staff Engineer" --url https://www.linkedin.com/jobs/view/... --text posting.txt --status queued
+pbpaste | jobwatch add "Umbrella" "Staff Engineer" --text - --status queued     # the posting from the clipboard
+```
+
+In the browser, press **Add a job** on the Queue page. Many job sites (LinkedIn's "Apply on company
+website", job-alert emails) link through to the company's own board: that link is the one to use.
+
 ## Tracking applications
 
 An application moves through stages: `applied`, `screening`, `interviewing`, `offer`, and then `rejected`
@@ -241,6 +258,7 @@ watch (a referral, a recruiter, LinkedIn) go in with `add`, so every application
 
 ```
 jobwatch add "Umbrella" "Principal Engineer" --url https://... --on 2026-09-14 --note "via a recruiter"
+jobwatch add https://job-boards.greenhouse.io/acme/jobs/101 --on 2026-09-20   # read from the link
 jobwatch mark screening c1 --next "technical round" --follow-up +7   # or a date: 2026-10-05
 jobwatch mark rejected principal-engineer
 jobwatch mark withdrawn c1 --add-note "recruiter says onsite only"   # adds a dated line; --note replaces

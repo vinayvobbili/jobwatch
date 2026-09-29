@@ -798,14 +798,14 @@ function detailsButton(job) {
   return h("button", { class: "btn ghost", onclick: () => openDetails(job.key) }, "Details", icon("arrow", 13));
 }
 
-function scoreButton(job, canScore) {
+function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   if (!canScore || job.fit) return null;
   const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");
   b.onclick = async () => {
     b.disabled = true; b.textContent = "Scoring…";
     try {
       job.fit = await api("/api/score", { key: job.key });
-      document.getElementById("job-" + job.key).replaceWith(todayCard(job, canScore, 0));
+      document.getElementById("job-" + job.key).replaceWith(card(job));
     } catch (e) { b.disabled = false; b.textContent = "Score fit"; toast(e.message); }
   };
   return b;
@@ -1272,8 +1272,12 @@ async function renderQueue() {
     fill(pager, pg.nav);
   };
   const step = (n, title, text) => h("div", { class: "step" }, h("span", { class: "n" }, n), h("div", {}, h("b", {}, title), h("div", {}, text)));
+  const addArea = h("div", {});
   put(
     pagehead("Apply queue", "Jobs you picked to apply to, oldest first."),
+    h("div", { class: "row actions", style: "margin-bottom:12px" },
+      h("button", { class: "btn primary", onclick: () => fill(addArea, addForm(null)) }, icon("plus", 14), "Add a job")),
+    addArea,
     layout([
       hero([[jobs.length, jobs.length === 1 ? "job queued" : "jobs queued", "lead"]]),
       panel("For each job",
@@ -1294,7 +1298,7 @@ function queueCard(job, i) {
       `Marked applied: ${job.title}`, "queued") }, icon("check", 14), "I applied"),
     h("button", { class: "btn", onclick: () => mark(job, "shown", null, `Removed from the queue: ${job.title}`, "queued") },
       "Remove from queue"),
-    detailsButton(job),
+    detailsButton(job), scoreButton(job, job.can_score, j => queueCard(j, 0)),
   ], i);
 }
 
@@ -1582,29 +1586,40 @@ function trackFields(a) {
   };
 }
 
+// A job found somewhere else. A link to one job on a board jobwatch reads fills in the rest; for anything else
+// (LinkedIn, a company's own site) give the company and title, and paste the posting so it can be scored.
+// d: the Applications data (stages, today), or null to add a job to the queue, to consider.
 function addForm(d) {
+  const queued = !d;
+  const url = h("input", { type: "text", placeholder: "https://…" });
   const company = h("input", { type: "text", placeholder: "Company" });
   const title = h("input", { type: "text", placeholder: "Job title" });
-  const url = h("input", { type: "text", placeholder: "https://… (optional)" });
-  const stage = stageSelect("applied", d.stages);
-  const f = trackFields({ applied_at: d.today });
+  const text = h("textarea", { rows: 5, placeholder: "Paste the posting here to score it and prep for it (not needed for a Greenhouse, Lever, Ashby, Workable or Workday link)" });
+  const stage = queued ? null : stageSelect("applied", d.stages);
+  const f = queued ? null : trackFields({ applied_at: d.today });
   const msg = h("span", { class: "small error" });
+  const add = h("button", { class: "btn primary" }, queued ? "Add to the queue" : "Add");
+  add.onclick = async () => {
+    add.disabled = true; msg.textContent = "";
+    try {
+      const r = await api("/api/add", { url: url.value, company: company.value, title: title.value, text: text.value,
+        status: queued ? "queued" : stage.value, ...(f ? f.values() : {}) });
+      confetti(add, { count: 60, power: .8 });
+      toast(`${queued ? "📌 Queued" : "🎉 Added"} ${r.company}: ${r.title}${r.read ? " (read from the link)" : ""}`); render();
+    } catch (e) { msg.textContent = e.message; add.disabled = false; }
+  };
   const card = h("div", { class: "card" },
-    h("h3", {}, "Add an application ", h("span", { class: "hint" }, "for a job you found somewhere else: a referral, a recruiter, LinkedIn")),
+    h("h3", {}, queued ? "Add a job " : "Add an application ", h("span", { class: "hint" },
+      queued ? "you found somewhere else, to look at before applying: LinkedIn, a referral, a recruiter"
+        : "for a job you found somewhere else: a referral, a recruiter, LinkedIn")),
+    h("label", {}, "Link to the posting ", h("span", { class: "hint" }, "on its own is enough for a board jobwatch reads")), url,
     h("div", { class: "grid" },
       h("div", {}, h("label", {}, "Company"), company), h("div", {}, h("label", {}, "Job title"), title),
-      h("div", {}, h("label", {}, "Link to the posting"), url), h("div", {}, h("label", {}, "Stage"), stage)),
-    f.el,
-    h("div", { class: "row actions" },
-      h("button", { class: "btn primary", onclick: async () => {
-        try {
-          await api("/api/add", { company: company.value, title: title.value, url: url.value, status: stage.value, ...f.values() });
-          confetti(document.activeElement, { count: 60, power: .8 });
-          toast(`🎉 Added ${company.value}. ${cheer()}`); render();
-        } catch (e) { msg.textContent = e.message; }
-      } }, "Add"),
-      h("button", { class: "btn", onclick: () => card.remove() }, "Cancel"), msg));
-  setTimeout(() => company.focus(), 0);
+      stage ? h("div", {}, h("label", {}, "Stage"), stage) : null),
+    h("label", {}, "The posting ", h("span", { class: "hint" }, "(optional)")), text,
+    f ? f.el : null,
+    h("div", { class: "row actions" }, add, h("button", { class: "btn", onclick: () => card.remove() }, "Cancel"), msg));
+  setTimeout(() => url.focus(), 0);
   return card;
 }
 
