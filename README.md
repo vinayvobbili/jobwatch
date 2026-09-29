@@ -225,7 +225,11 @@ python -m venv .venv && .venv/bin/pip install -e '.[dev,mcp]'
 .venv/bin/ruff check . && .venv/bin/python -m pytest -q
 ```
 
-Tests use canned board responses and never touch the network. Releases publish to PyPI through Trusted
+Tests use canned board responses and never touch the network. To see how `jobwatch ui` looks after a change,
+`scripts/screenshots.py` captures every tab in light and dark, at desktop and phone widths (it needs
+`pip install playwright && python -m playwright install chromium`).
+
+Releases publish to PyPI through Trusted
 Publishing when a `v*` tag is pushed.
 
 MIT licensed.
