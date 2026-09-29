@@ -81,7 +81,8 @@ class App:
         return {"path": str(self.path), "exists": self.path.is_file(), "version": __version__,
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
-                "scoring": raw.get("scoring") or {}, "learning": raw.get("learning") or {}}
+                "scoring": raw.get("scoring") or {}, "learning": raw.get("learning") or {},
+                "display": raw.get("display") or {}}
 
     def post_settings(self, body) -> dict:
         settings = {k: v for k, v in body.items() if k in config.SETTINGS}

@@ -44,6 +44,8 @@ class Config:
     score_top: int = 0
     timeline: str = "quarter"  # how soon you want to close a skill gap: see TIMELINES
     near: str = ""             # a city, for certificate programs at colleges nearby
+    theme: str = "system"      # the page: see THEMES and WIDTHS
+    width: str = "standard"
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
 
@@ -86,8 +88,10 @@ def locate(explicit: str | Path | None = None) -> Path:
         return DEFAULT_PATHS[1]
 
 
-SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring", "learning")
+SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring", "learning", "display")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
+THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
+WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
 
 
 def _near(learning: dict, filters: Filters) -> str:
@@ -145,6 +149,12 @@ def load(explicit: str | Path | None = None) -> Config:
     timeline = str(learning.get("timeline", "quarter"))
     if timeline not in TIMELINES:
         raise ConfigError(f"{path}: learning.timeline must be one of {', '.join(TIMELINES)}, got {timeline!r}")
+    display = raw.get("display") or {}
+    theme, width = str(display.get("theme", "system")), str(display.get("width", "standard"))
+    if theme not in THEMES:
+        raise ConfigError(f"{path}: display.theme must be one of {', '.join(THEMES)}, got {theme!r}")
+    if width not in WIDTHS:
+        raise ConfigError(f"{path}: display.width must be one of {', '.join(WIDTHS)}, got {width!r}")
     boards = [_board(e, path) for e in raw.get("companies") or []]
     dupes = {b for b in boards if boards.count(b) > 1}
     if dupes:
@@ -155,7 +165,7 @@ def load(explicit: str | Path | None = None) -> Config:
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
         backend=scoring.get("backend", "local"), score_top=int(scoring.get("top", 0)),
-        timeline=timeline, near=_near(learning, filters),
+        timeline=timeline, near=_near(learning, filters), theme=theme, width=width,
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
     )
