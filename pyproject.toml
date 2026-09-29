@@ -5,15 +5,21 @@ build-backend = "hatchling.build"
 [project]
 name = "jobwatch"
 version = "0.1.0"
-description = "Watch company job boards (Greenhouse, Lever, Ashby, Workday, Eightfold) and get a ranked daily digest of new matches, optionally fit-scored against your resume."
+description = "Watch company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold), get a ranked daily digest of new matches (optionally fit-scored against your resume), and track every application. Never auto-applies."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = ["pyyaml>=6"]
-keywords = ["jobs", "job-search", "greenhouse", "lever", "ashby", "workday", "eightfold", "mcp", "resume", "llm"]
+keywords = ["jobs", "job-search", "job-tracker", "greenhouse", "lever", "ashby", "workable", "workday", "eightfold", "mcp", "resume", "llm"]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Environment :: Console",
+    "Environment :: Web Environment",
     "Intended Audience :: End Users/Desktop",
     "Topic :: Office/Business",
 ]
