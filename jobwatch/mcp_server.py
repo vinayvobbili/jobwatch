@@ -96,13 +96,15 @@ def job_details(key: str) -> dict:
 
 @server.tool()
 def mark_job(key: str, status: str | None = None, note: str | None = None, add_note: str | None = None,
-             next_step: str | None = None, follow_up: str | None = None, applied_on: str | None = None) -> str:
+             next_step: str | None = None, follow_up: str | None = None, applied_on: str | None = None,
+             url: str | None = None) -> str:
     """Record a job's status: new, shown, queued (to apply to next), applied, screening, interviewing, offer,
     rejected, withdrawn or skipped (omit status to keep it and only update the rest). Use applied only after
     the person has submitted the application themselves. add_note adds a dated line to the note, keeping what's
     there: prefer it for news ("recruiter replied: onsite only"); note replaces the whole note. next_step says
     what happens next ("recruiter screen Tuesday"); follow_up is the day to act (YYYY-MM-DD or +N days);
-    applied_on is the day applied, if not today. An empty string clears a field."""
+    applied_on is the day applied, if not today. url sets the link of a job added by hand (its posting, or the
+    company's careers site once the posting is gone). An empty string clears a field."""
     _, store = _open()
     try:
         job, rec = store.find(key)
@@ -111,6 +113,8 @@ def mark_job(key: str, status: str | None = None, note: str | None = None, add_n
         else:
             store.track(job.key, note=note, applied=applied_on)
         store.track(job.key, next_step=next_step, follow_up=follow_up)
+        if url is not None:
+            store.set_url(job.key, url)
         if add_note:
             store.add_note(job.key, add_note)
         return f"{job.key}: {status or rec['status']}"

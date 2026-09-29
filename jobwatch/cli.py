@@ -83,6 +83,8 @@ def cmd_mark(args, cfg, store):
     store.set_status(keys, args.status, args.note, on=getattr(args, "on", None))
     for k in keys:
         store.track(k, next_step=getattr(args, "next", None), follow_up=getattr(args, "follow_up", None))
+        if getattr(args, "url", None) is not None:
+            store.set_url(k, args.url)
         if getattr(args, "add_note", None):
             store.add_note(k, args.add_note)
         print(f"{k}: {args.status}")
@@ -265,6 +267,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("status", choices=STATUSES)
     p.add_argument("keys", nargs="+")
     _tracking(p)
+    p.add_argument("--url", metavar="LINK", help="the link for a job you added by hand: its posting, or the "
+                   "company's careers site once the posting is gone")
     p.add_argument("--attach", type=Path, action="append", metavar="FILE",
                    help="keep a copy of what you sent (the resume, a cover letter); repeat for more")
     p.set_defaults(func=cmd_mark)

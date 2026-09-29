@@ -96,6 +96,18 @@ def test_a_hand_added_workday_application_links_its_candidate_page(setup):
     assert store.candidate_home(store.add("Initech", "Staff Detection Engineer")) is None
 
 
+def test_a_hand_added_application_gets_its_link_later(setup):
+    _, store, path = setup
+    gone = store.add("Umbrella", "Staff Engineer (R7)")  # the posting came down after applying
+    cli.main(["--config", str(path), "mark", "interviewing", gone.key, "--url",
+              "https://umbrella.wd3.myworkdayjobs.com/en-US/Jobs"])
+    job, rec = store.find(gone.key)
+    assert rec["status"] == "interviewing" and job.url.endswith("/Jobs")
+    assert store.candidate_home(job) == "https://umbrella.wd3.myworkdayjobs.com/Jobs/userHome"
+    with pytest.raises(ValueError, match="sets its link"):
+        store.set_url("workday:initech.wd5/External:R0123456-1", "https://example.com")
+
+
 def test_requisition_formats():
     from jobwatch.store import _same_req
     assert _same_req("REQ-47040", "REQ-47040") and _same_req("JOB 20769", "20769")
