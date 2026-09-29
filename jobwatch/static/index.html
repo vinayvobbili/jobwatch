@@ -55,6 +55,14 @@ button.btn:disabled { opacity: .55; cursor: default; }
   text-transform: uppercase; }
 .badge.new { background: var(--accent); color: var(--accent-text); }
 .badge.closed { background: var(--bad); color: #fff; }
+.badge.due { background: var(--warn); color: var(--accent-text); }
+.app { display: grid; grid-template-columns: 1fr 150px; gap: 4px 12px; align-items: start; }
+.app .when { color: var(--muted); font-size: 13px; }
+.app.ended { opacity: .7; }
+.next { font-size: 13.5px; }
+.next.late { color: var(--warn); font-weight: 600; }
+.stages { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 2px; }
+@media (max-width: 640px) { .app { grid-template-columns: 1fr; } }
 .fit { font-weight: 700; }
 .fit.hi { color: var(--good); } .fit.mid { color: var(--warn); } .fit.lo { color: var(--bad); }
 .know { color: var(--good); font-size: 13.5px; }
@@ -73,7 +81,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
   var(--line); margin-top: 10px; padding-top: 10px; }
 label { display: block; font-weight: 600; margin: 14px 0 4px; }
 .hint { font-weight: 400; color: var(--muted); font-size: 13px; }
-input[type=text], input[type=number], textarea, select { font: inherit; color: var(--text);
+input[type=text], input[type=number], input[type=date], textarea, select { font: inherit; color: var(--text);
   background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; width: 100%; }
 textarea { min-height: 64px; resize: vertical; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
@@ -96,7 +104,7 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; }
     <nav id="tabs">
       <button data-tab="today">Today</button>
       <button data-tab="queue">Queue<span id="qcount"></span></button>
-      <button data-tab="applied">Applied</button>
+      <button data-tab="applied">Applications<span id="duecount"></span></button>
       <button data-tab="settings">Settings</button>
     </nav>
     <span class="spacer"></span>
@@ -312,17 +320,118 @@ function queueCard(job) {
   ]);
 }
 
+// -- applications: everything applied to, how it's going, and what to do next
+
+const STAGE_NAMES = { applied: "Applied", screening: "Screening", interviewing: "Interviewing", offer: "Offer",
+  rejected: "Rejected", withdrawn: "Withdrawn" };
+
+function daysAgo(day, today) {
+  if (!day) return "";
+  const n = Math.round((Date.parse(today) - Date.parse(day)) / 86400000);
+  return n <= 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`;
+}
+
 async function renderApplied() {
-  const jobs = await api("/api/jobs?status=applied");
-  jobs.sort((a, b) => (b.status_at || "").localeCompare(a.status_at || ""));
-  put(h("h2", {}, `Applied (${jobs.length})`),
-    jobs.length ? h("div", { class: "card" }, h("table", {},
-      h("tr", {}, h("th", {}, "Date"), h("th", {}, "Job"), h("th", {}, "Note")),
-      jobs.map(j => h("tr", {},
-        h("td", {}, (j.status_at || "").slice(0, 10)),
-        h("td", {}, link(j.url, j.title), h("div", { class: "muted small" }, j.company + (j.closed ? " · posting closed" : ""))),
-        h("td", { class: "small" }, j.note || "")))))
-      : h("div", { class: "empty" }, "No applications recorded yet."));
+  const d = await api("/api/applications");
+  const apps = d.applications;
+  const counts = {};
+  for (const a of apps) counts[a.status] = (counts[a.status] || 0) + 1;
+  const due = apps.filter(a => a.due), ended = apps.filter(a => ["rejected", "withdrawn"].includes(a.status));
+  const open = apps.filter(a => !a.due && !ended.includes(a));
+  const addArea = h("div", {});
+  put(
+    h("div", { class: "row" }, h("h2", { style: "flex:1" }, `Applications (${apps.length})`),
+      h("button", { class: "btn primary", onclick: () => fill(addArea, addForm(d)) }, "Add an application")),
+    h("div", { class: "stages" }, d.stages.filter(s => counts[s]).map(s => h("span", { class: "chip" }, `${STAGE_NAMES[s]} ${counts[s]}`))),
+    addArea,
+    apps.length ? null : h("div", { class: "empty" }, "No applications yet. Mark a queued job “I applied”, or add one " +
+      "you applied to somewhere else."),
+    due.length ? [h("h3", { style: "margin-top:14px" }, "Follow up now"), due.map(a => appCard(a, d))] : null,
+    open.length ? [h("h3", { style: "margin-top:14px" }, "In progress"), open.map(a => appCard(a, d))] : null,
+    ended.length ? [h("h3", { style: "margin-top:14px" }, "Ended"), ended.map(a => appCard(a, d))] : null);
+}
+
+function stageSelect(value, stages) {
+  const sel = h("select", {}, stages.map(s => h("option", { value: s }, STAGE_NAMES[s])));
+  sel.value = value;
+  return sel;
+}
+
+function appCard(a, d) {
+  const card = h("div", { class: "card app" + (["rejected", "withdrawn"].includes(a.status) ? " ended" : "") });
+  const stage = stageSelect(a.status, d.stages);
+  stage.onchange = async () => {
+    const before = a.status;
+    try {
+      await api("/api/track", { key: a.key, status: stage.value });
+      toast(`${a.company}: ${STAGE_NAMES[stage.value]}`, async () => { await api("/api/track", { key: a.key, status: before }); render(); });
+      render();
+    } catch (e) { toast(e.message); stage.value = before; }
+  };
+  const next = a.next_step || a.follow_up ? h("div", { class: "next" + (a.due ? " late" : "") },
+    a.due ? h("span", { class: "badge due" }, "due") : null, a.due ? " " : "",
+    "Next: " + (a.next_step || "follow up") + (a.follow_up ? ` · by ${a.follow_up}` : "")) : null;
+  const view = () => fill(card,
+    h("div", {},
+      a.url ? link(a.url, a.title, "title") : h("span", { class: "title", style: "font-weight:600" }, a.title),
+      h("div", { class: "meta" }, [a.company, a.pay, a.closed ? "posting closed" : ""].filter(Boolean).join(" · ")),
+      next, a.note ? h("div", { class: "note" }, a.note) : null),
+    h("div", {}, stage,
+      h("div", { class: "when", style: "margin-top:4px" }, a.applied_at ? `applied ${a.applied_at} (${daysAgo(a.applied_at, d.today)})` : ""),
+      h("button", { class: "btn", style: "margin-top:6px", onclick: edit }, "Edit")));
+  const edit = () => {
+    const f = trackFields(a);
+    fill(card, h("div", { style: "grid-column:1/-1" },
+      h("h3", {}, `${a.company}: ${a.title}`), f.el,
+      h("div", { class: "row actions" },
+        h("button", { class: "btn primary", onclick: async () => {
+          try { await api("/api/track", { key: a.key, ...f.values() }); render(); } catch (e) { toast(e.message); }
+        } }, "Save"),
+        h("button", { class: "btn", onclick: view }, "Cancel"))));
+  };
+  view();
+  return card;
+}
+
+// Next step, follow-up day, day applied and note: shared by the edit and add forms.
+function trackFields(a) {
+  const nextStep = h("input", { type: "text", placeholder: "e.g. check in with the recruiter" }); nextStep.value = a.next_step || "";
+  const followUp = h("input", { type: "date" }); followUp.value = a.follow_up || "";
+  const applied = h("input", { type: "date" }); applied.value = a.applied_at || "";
+  const note = h("textarea", { placeholder: "Recruiter, referral, pay range, what you answered…" }); note.value = a.note || "";
+  return {
+    el: h("div", {}, h("div", { class: "grid" },
+      h("div", {}, h("label", {}, "Next step"), nextStep),
+      h("div", {}, h("label", {}, "Follow up by ", h("span", { class: "hint" }, "shows under Follow up now on that day")), followUp),
+      h("div", {}, h("label", {}, "Applied on"), applied)),
+      h("label", {}, "Notes"), note),
+    values: () => ({ next_step: nextStep.value, follow_up: followUp.value, applied_at: applied.value, note: note.value }),
+  };
+}
+
+function addForm(d) {
+  const company = h("input", { type: "text", placeholder: "Company" });
+  const title = h("input", { type: "text", placeholder: "Job title" });
+  const url = h("input", { type: "text", placeholder: "https://… (optional)" });
+  const stage = stageSelect("applied", d.stages);
+  const f = trackFields({ applied_at: d.today });
+  const msg = h("span", { class: "small error" });
+  const card = h("div", { class: "card" },
+    h("h3", {}, "Add an application ", h("span", { class: "hint" }, "for a job you found somewhere else: a referral, a recruiter, LinkedIn")),
+    h("div", { class: "grid" },
+      h("div", {}, h("label", {}, "Company"), company), h("div", {}, h("label", {}, "Job title"), title),
+      h("div", {}, h("label", {}, "Link to the posting"), url), h("div", {}, h("label", {}, "Stage"), stage)),
+    f.el,
+    h("div", { class: "row actions" },
+      h("button", { class: "btn primary", onclick: async () => {
+        try {
+          await api("/api/add", { company: company.value, title: title.value, url: url.value, status: stage.value, ...f.values() });
+          toast(`Added: ${company.value}, ${title.value}`); render();
+        } catch (e) { msg.textContent = e.message; }
+      } }, "Add"),
+      h("button", { class: "btn", onclick: () => card.remove() }, "Cancel"), msg));
+  setTimeout(() => company.focus(), 0);
+  return card;
 }
 
 // -- settings
@@ -470,9 +579,12 @@ function renderSettings() {
 
 async function refreshQueueCount() {
   try {
-    const n = settings && settings.exists ? (await api("/api/queue")).length : 0;
+    const ready = settings && settings.exists;
+    const n = ready ? (await api("/api/queue")).length : 0;
     document.getElementById("qcount").replaceChildren(n ? h("span", { class: "count" }, n) : "");
-  } catch { /* the page still works without the count */ }
+    const due = ready ? (await api("/api/applications")).applications.filter(a => a.due).length : 0;
+    document.getElementById("duecount").replaceChildren(due ? h("span", { class: "count", title: "follow-ups due" }, due) : "");
+  } catch { /* the page still works without the counts */ }
 }
 
 async function render() {
@@ -480,7 +592,7 @@ async function render() {
   document.getElementById("fetchBtn").style.display = settings.companies.length ? "" : "none";
   try {
     if (tab === "settings") renderSettings();
-    else if (!settings.companies.length) renderWelcome();
+    else if (!settings.exists || (!settings.companies.length && tab !== "applied")) renderWelcome();
     else await { today: renderToday, queue: renderQueue, applied: renderApplied }[tab]();
   } catch (e) { showError(main, e); }
   refreshQueueCount();

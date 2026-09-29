@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 
+from .models import Job
+from .store import ENDED
 from .watch import Digest, Entry, FetchReport
 
 
@@ -69,6 +72,35 @@ def queue_markdown(entries: list[Entry]) -> str:
     out = [f"# Apply queue ({len(entries)})", ""]
     for e in entries:
         out += _line(e)
+    return "\n".join(out).rstrip() + "\n"
+
+
+def due(rec: dict, today: str | None = None) -> bool:
+    """An open application whose follow-up day has come."""
+    return bool(rec.get("follow_up")) and rec["status"] not in ENDED and rec["follow_up"] <= (
+        today or date.today().isoformat())
+
+
+def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None) -> str:
+    if not rows:
+        return "No applications yet. Mark a job applied, or add one with `jobwatch add \"Company\" \"Title\"`.\n"
+    counts: dict[str, int] = {}
+    for _, rec in rows:
+        counts[rec["status"]] = counts.get(rec["status"], 0) + 1
+    late = sum(due(rec, today) for _, rec in rows)
+    out = [f"# Applications ({len(rows)})", "", ", ".join(f"{n} {s}" for s, n in counts.items())
+           + (f". **{late} to follow up on now.**" if late else "."), ""]
+    for job, rec in rows:
+        title = f"[{job.title}]({job.url})" if job.url else job.title
+        facts = [f"**{rec['status']}**", f"applied {rec['applied_at']}" if rec.get("applied_at") else "",
+                 job.pay(), "posting closed" if rec.get("closed") else ""]
+        out += [f"### {job.display_company}: {title}", " · ".join(f for f in facts if f)]
+        if rec.get("next_step") or rec.get("follow_up"):
+            when = f" by {rec['follow_up']}" if rec.get("follow_up") else ""
+            out.append(("**Due:** " if due(rec, today) else "Next: ") + (rec.get("next_step") or "follow up") + when)
+        if rec.get("note"):
+            out.append(f"Note: {rec['note']}")
+        out += [f"`{job.key}`", ""]
     return "\n".join(out).rstrip() + "\n"
 
 

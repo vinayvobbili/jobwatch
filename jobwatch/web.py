@@ -12,6 +12,7 @@ import socketserver
 import sys
 import threading
 import webbrowser
+from datetime import date
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -23,7 +24,7 @@ import yaml
 from . import __version__, config, contacts, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable, resume_id, score_jobs
-from .store import STATUSES, Store
+from .store import MANUAL, STAGES, STATUSES, Store
 from .watch import build_digest, fetch_all, load_contacts, queue
 
 MAX_UPLOAD = 20 * 1024 * 1024
@@ -132,6 +133,42 @@ class App:
                     for j, rec in store.jobs((status,) if status else None, include_closed=True)]
         return self._with_store(run)
 
+    def get_applications(self, q) -> dict:
+        def run(cfg, store):
+            return {"stages": STAGES, "today": date.today().isoformat(), "applications": [
+                {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
+                 "manual": j.source == MANUAL, "due": report.due(rec),
+                 **{k: rec.get(k) for k in ("status", "status_at", "applied_at", "next_step", "follow_up", "note",
+                                            "closed")}}
+                for j, rec in store.applications()]}
+        return self._with_store(run)
+
+    def post_add(self, body) -> dict:
+        def run(cfg, store):
+            status = body.get("status") or "applied"
+            if status not in STAGES:
+                raise ApiError(f"status must be one of {', '.join(STAGES)}")
+            job = store.add(body.get("company") or "", body.get("title") or "", url=body.get("url") or "",
+                            status=status, applied=body.get("applied_at") or None, note=body.get("note"),
+                            next_step=body.get("next_step"), follow_up=body.get("follow_up"))
+            return {"key": job.key}
+        return self._with_store(run)
+
+    def post_track(self, body) -> dict:
+        """One application: a new stage and/or its note, next step, follow-up day and day applied."""
+        status = body.get("status")
+        if status is not None and status not in STATUSES:
+            raise ApiError(f"status must be one of {', '.join(STATUSES)}")
+
+        def run(cfg, store):
+            key = store.find(body.get("key") or "")[0].key
+            if status:
+                store.set_status([key], status)
+            store.track(key, note=body.get("note"), next_step=body.get("next_step"),
+                        follow_up=body.get("follow_up"), applied=body.get("applied_at"))
+            return {"key": key}
+        return self._with_store(run)
+
     def get_job(self, q) -> dict:
         key = (q.get("key") or [""])[0]
 
@@ -217,6 +254,9 @@ ROUTES = {
     ("GET", "/api/jobs"): App.get_jobs,
     ("GET", "/api/job"): App.get_job,
     ("POST", "/api/mark"): App.post_mark,
+    ("GET", "/api/applications"): App.get_applications,
+    ("POST", "/api/add"): App.post_add,
+    ("POST", "/api/track"): App.post_track,
     ("POST", "/api/score"): App.post_score,
 }
 
