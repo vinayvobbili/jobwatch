@@ -161,6 +161,36 @@ jobwatch ask "What follow-ups are due this week?"
 jobwatch ask --job c1 "What should my resume lead with for this one?"
 ```
 
+## Skills to build
+
+Which skills do the jobs you're going after ask for that your resume doesn't show, and where can you learn
+them in the time you have?
+
+```
+jobwatch skills                     # gaps across today's matches and your applications
+jobwatch skills --timeline month    # week, month, quarter (default) or any
+jobwatch skills --all               # also the skills your resume already shows
+```
+
+Skills are ranked by demand: how many of your matching jobs mention one, with a must-have that a fit score
+found missing counting three times. Each comes with:
+- curated courses and certifications from the official pages (AWS, Linux Foundation, DeepLearning.AI,
+  Hugging Face, OWASP...), each with a rough time and marked if it's longer than your timeline;
+- searches on LinkedIn Learning, Coursera, edX and, for AI skills, DeepLearning.AI;
+- with a timeline of a quarter or more, certificate programs at colleges near you.
+
+Fit-score gaps no course closes (a clearance, citizenship, a degree, travel) are listed apart, and so are
+must-haves asking for years of something: a course gives you something concrete to point to, not the years.
+
+```yaml
+learning:
+  timeline: quarter       # week, month, quarter or any
+  near: Denver            # for colleges nearby; default: the first city in filters.locations
+```
+
+The chat knows the top gaps too ("what should I learn this month?"), and a job's details list the skills
+that posting asks for that your resume doesn't show.
+
 ## The apply queue
 
 Pick the roles worth a tailored application from the digest and queue them. Work through the queue when
@@ -241,7 +271,8 @@ marking them shown. Roles that disappear from a board are marked closed.
 ## MCP server
 
 `jobwatch-mcp` offers `find_board`, `fetch_jobs`, `digest`, `job_details`, `mark_job`, `apply_queue`,
-`add_application`, `applications`, `save_application_package`, `application_package` and `list_jobs` to Claude Code or any MCP client. The watchlist comes
+`add_application`, `applications`, `save_application_package`, `application_package`, `skill_gaps` and
+`list_jobs` to Claude Code or any MCP client. The watchlist comes
 from `JOBWATCH_CONFIG`:
 
 ```
@@ -272,7 +303,8 @@ python -m venv .venv && .venv/bin/pip install -e '.[dev,mcp]'
 .venv/bin/ruff check . && .venv/bin/python -m pytest -q
 ```
 
-Tests use canned board responses and never touch the network. To see how `jobwatch ui` looks after a change,
+Tests use canned board responses and never touch the network, except the check that every curated course
+link still resolves: `JOBWATCH_LINK_TESTS=1 pytest tests/test_learn.py`. To see how `jobwatch ui` looks after a change,
 `scripts/screenshots.py` captures every tab in light and dark, at wide, desktop and phone widths, plus the
 chat with a canned reply (it needs
 `pip install playwright && python -m playwright install chromium`).

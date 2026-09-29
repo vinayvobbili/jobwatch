@@ -9,7 +9,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, chat, config, report, sources
+from . import __version__, chat, config, learn, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
 from .store import STAGES, STATUSES, Store
@@ -140,6 +140,10 @@ def cmd_ask(args, cfg, store):
     sys.stdout.write("\n")
 
 
+def cmd_skills(args, cfg, store):
+    _write(learn.markdown(learn.gather(cfg, store, args.timeline), include_covered=args.all), args.out)
+
+
 def cmd_queue(args, cfg, store):
     if args.keys:
         args.status = "queued"
@@ -254,6 +258,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("question", nargs="+")
     p.add_argument("--job", metavar="KEY", help="ask about this job (its key, or the end of it)")
     p.set_defaults(func=cmd_ask)
+
+    p = sub.add_parser("skills", help="skills your matching jobs ask for that your resume doesn't show, and "
+                                      "courses and certifications to learn them")
+    p.add_argument("--timeline", choices=config.TIMELINES,
+                   help="how soon: week, month, quarter (default, or learning.timeline) or any")
+    p.add_argument("--all", action="store_true", help="also skills your resume already shows")
+    p.add_argument("-o", "--out", type=Path)
+    p.set_defaults(func=cmd_skills)
 
     p = sub.add_parser("queue", help="jobs to apply to next: `queue <key>...` adds, `queue` lists")
     p.add_argument("keys", nargs="*")

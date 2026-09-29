@@ -8,7 +8,7 @@ from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
 
-from . import config, report, sources
+from . import config, learn, report, sources
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue
 
@@ -23,7 +23,8 @@ server = MCPServer(
         "before applying). add_application tracks one found elsewhere; "
         "applications shows where each stands. After the person submits, save_application_package keeps the "
         "resume, cover letter and form answers they sent; application_package reads them back before a call or "
-        "interview. find_board looks up a company's board to add to the watchlist. "
+        "interview. skill_gaps lists what the matching jobs ask for that the resume doesn't show, with "
+        "courses and certifications to close each gap. find_board looks up a company's board to add to the watchlist. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
 )
@@ -175,6 +176,22 @@ def application_package(key: str) -> dict:
     _, store = _open()
     try:
         return store.package(key).data()
+    finally:
+        store.close()
+
+
+@server.tool()
+def skill_gaps(timeline: str | None = None) -> dict:
+    """Skills today's matching jobs and the person's applications ask for, most in demand first, each with
+    on_resume, how many jobs mention it, how many scored jobs list it as a missing must-have, and ways to learn
+    it: curated courses and certifications (official pages, each with a rough time and whether it fits the
+    timeline) and searches on Coursera, LinkedIn Learning, edX and nearby colleges. Also fit-score gaps no
+    course closes (clearance, citizenship, degree, travel). timeline: week, month, quarter or any (default: the
+    watchlist's learning.timeline). Recommend only from these links; never suggest claiming a skill the resume
+    doesn't show."""
+    cfg, store = _open()
+    try:
+        return learn.to_dict(learn.gather(cfg, store, timeline))
     finally:
         store.close()
 

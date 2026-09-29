@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -41,6 +42,8 @@ class Config:
     connections: Path | None = None  # LinkedIn Connections.csv, for "you know someone there"
     backend: str = "local"
     score_top: int = 0
+    timeline: str = "quarter"  # how soon you want to close a skill gap: see TIMELINES
+    near: str = ""             # a city, for certificate programs at colleges nearby
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
 
@@ -83,7 +86,16 @@ def locate(explicit: str | Path | None = None) -> Path:
         return DEFAULT_PATHS[1]
 
 
-SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring")
+SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring", "learning")
+TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
+
+
+def _near(learning: dict, filters: Filters) -> str:
+    """The city for nearby programs: as set, else the first place in the location filter that isn't remote."""
+    if "near" in learning:
+        return str(learning["near"] or "").strip()
+    return next((loc.strip() for loc in filters.locations if loc.strip() and "remote" not in loc.lower()
+                 and not re.search(r"[\\^$*+?()[\]{}|]", loc)), "")
 
 
 def save(path: Path, settings: dict) -> Config:
@@ -129,6 +141,10 @@ def load(explicit: str | Path | None = None) -> Config:
     except (TypeError, ValueError) as e:
         raise ConfigError(f"{path}: {e}") from None
     scoring = raw.get("scoring") or {}
+    learning = raw.get("learning") or {}
+    timeline = str(learning.get("timeline", "quarter"))
+    if timeline not in TIMELINES:
+        raise ConfigError(f"{path}: learning.timeline must be one of {', '.join(TIMELINES)}, got {timeline!r}")
     boards = [_board(e, path) for e in raw.get("companies") or []]
     dupes = {b for b in boards if boards.count(b) > 1}
     if dupes:
@@ -139,6 +155,7 @@ def load(explicit: str | Path | None = None) -> Config:
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
         backend=scoring.get("backend", "local"), score_top=int(scoring.get("top", 0)),
+        timeline=timeline, near=_near(learning, filters),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
     )

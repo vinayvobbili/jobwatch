@@ -14,10 +14,10 @@ import threading
 from collections.abc import Iterator
 from datetime import date
 from functools import lru_cache
-from pathlib import Path
 
-from . import report
+from . import learn, report
 from .config import Config
+from .resume import resume_text
 from .score import resume_id
 from .store import Store
 from .watch import build_digest
@@ -27,7 +27,6 @@ LOCAL_MODEL = "mlx-community/Qwen3.5-9B-MLX-4bit"  # shortlist-ai's local model:
 MAX_TOKENS = 1500
 MAX_TURNS = 24
 MAX_MESSAGE = 8000
-MAX_RESUME = 16000
 
 SYSTEM = """You are the assistant inside jobwatch, a job-search tool running on the user's own computer. \
 Help them decide which jobs to pursue, understand a posting, prepare an application or interview, and keep up \
@@ -99,28 +98,6 @@ def clean(messages) -> list[dict]:
     return out
 
 
-@lru_cache(maxsize=4)
-def _resume_text(path: str, mtime: float) -> str:
-    p = Path(path)
-    if p.suffix.lower() in (".txt", ".md"):
-        return p.read_text(encoding="utf-8", errors="replace")
-    try:
-        from shortlist_ai.documents import load_document
-    except ImportError:
-        return ""
-    return load_document(p).text
-
-
-def resume_text(path: Path | None) -> str:
-    """The resume as text (cached until the file changes); empty when there's none or it can't be read."""
-    if not path or not path.is_file():
-        return ""
-    try:
-        return _resume_text(str(path), path.stat().st_mtime)[:MAX_RESUME]
-    except Exception:
-        return ""
-
-
 def system_prompt(context: str, today: date | None = None) -> str:
     return SYSTEM.format(today=(today or date.today()).isoformat(), context=context.strip())
 
@@ -155,6 +132,7 @@ def home_context(cfg: Config, store: Store) -> str:
                 f"follow up {rec['follow_up']}{due}" if rec.get("follow_up") else "",
                 f"note: {rec['note']}" if rec.get("note") else ""]
         out.append("- " + " | ".join(b for b in bits if b))
+    out += ["", learn.summary(learn.gather(cfg, store, entries=d.entries))]
     return "\n".join(out)
 
 

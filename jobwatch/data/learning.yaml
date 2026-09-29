@@ -1,0 +1,212 @@
+# Skills that job postings ask for, how to spot them in text, and where to learn them.
+#
+# search: what to type into a course site's search, when the name alone is ambiguous (default: the name).
+# match: regular expressions, case-insensitive (wrap a part in (?-i:...) to make it case-sensitive).
+# options: official pages only, so a link says what it is.
+#   kind: certification (an exam), course, or guide (free docs or a tutorial). cost: free or paid.
+#   time: roughly how long for someone new to it: hours (a sitting or a weekend), weeks (2-8), months (2+).
+#   Prices and exact hours change, so they're left to the linked page.
+# JOBWATCH_LINK_TESTS=1 pytest tests/test_learn.py checks that every link still resolves.
+
+- id: aws
+  name: AWS
+  match: ['\bAWS\b', 'Amazon Web Services']
+  options:
+    - {name: "AWS Skill Builder", provider: AWS, kind: course, cost: free, time: weeks, url: "https://skillbuilder.aws/"}
+    - {name: "AWS Certified Solutions Architect – Associate", provider: AWS, kind: certification, cost: paid, time: months, url: "https://aws.amazon.com/certification/certified-solutions-architect-associate/"}
+- id: gcp
+  name: Google Cloud
+  match: ['\bGCP\b', 'Google Cloud']
+  options:
+    - {name: "Google Cloud Skills Boost", provider: Google Cloud, kind: course, cost: free, time: weeks, url: "https://www.cloudskillsboost.google/"}
+    - {name: "Professional Cloud Architect", provider: Google Cloud, kind: certification, cost: paid, time: months, url: "https://cloud.google.com/learn/certification/cloud-architect"}
+- id: azure
+  name: Azure
+  match: ['\bAzure\b']
+  options:
+    - {name: "Azure Fundamentals (AZ-900)", provider: Microsoft, kind: certification, cost: paid, time: weeks, url: "https://learn.microsoft.com/en-us/credentials/certifications/azure-fundamentals/"}
+    - {name: "Azure Solutions Architect Expert", provider: Microsoft, kind: certification, cost: paid, time: months, url: "https://learn.microsoft.com/en-us/credentials/certifications/azure-solutions-architect/"}
+- id: kubernetes
+  name: Kubernetes
+  match: ['Kubernetes', '\bK8s\b', '\bEKS\b', '\bGKE\b', '\bAKS\b']
+  options:
+    - {name: "Kubernetes Basics", provider: kubernetes.io, kind: guide, cost: free, time: hours, url: "https://kubernetes.io/docs/tutorials/kubernetes-basics/"}
+    - {name: "Certified Kubernetes Application Developer (CKAD)", provider: Linux Foundation, kind: certification, cost: paid, time: weeks, url: "https://training.linuxfoundation.org/certification/certified-kubernetes-application-developer-ckad/"}
+    - {name: "Certified Kubernetes Administrator (CKA)", provider: Linux Foundation, kind: certification, cost: paid, time: months, url: "https://training.linuxfoundation.org/certification/certified-kubernetes-administrator-cka/"}
+- id: docker
+  name: Docker and containers
+  search: "Docker containers"
+  match: ['\bDocker\b', '\bcontainers?\b', 'containeri[sz]']
+  options:
+    - {name: "Docker: Get started", provider: Docker, kind: guide, cost: free, time: hours, url: "https://docs.docker.com/get-started/"}
+- id: terraform
+  name: Terraform
+  match: ['Terraform', 'infrastructure[- ]as[- ]code', '\bIaC\b']
+  options:
+    - {name: "Terraform tutorials", provider: HashiCorp, kind: guide, cost: free, time: hours, url: "https://developer.hashicorp.com/terraform/tutorials"}
+    - {name: "HashiCorp Certified: Terraform Associate", provider: HashiCorp, kind: certification, cost: paid, time: weeks, url: "https://developer.hashicorp.com/certifications/infrastructure-automation"}
+- id: go
+  name: Go
+  search: "Go programming language"
+  # "Go" is an everyday word, so only in a list of languages or after "in/with/using".
+  match: ['\bGolang\b', '(?-i:[,/(]\s?Go\b)', '(?-i:\bGo\s?[,/)])', '(?-i:\b(?:in|with|using|and|or)\s+Go\b)']
+  options:
+    - {name: "A Tour of Go", provider: go.dev, kind: guide, cost: free, time: hours, url: "https://go.dev/tour/"}
+    - {name: "Go: learn", provider: go.dev, kind: guide, cost: free, time: weeks, url: "https://go.dev/learn/"}
+- id: rust
+  name: Rust
+  search: "Rust programming language"
+  match: ['(?-i:\bRust\b)']
+  options:
+    - {name: "The Rust Programming Language", provider: rust-lang.org, kind: guide, cost: free, time: weeks, url: "https://doc.rust-lang.org/book/"}
+- id: typescript
+  name: TypeScript
+  match: ['TypeScript']
+  options:
+    - {name: "The TypeScript Handbook", provider: typescriptlang.org, kind: guide, cost: free, time: hours, url: "https://www.typescriptlang.org/docs/handbook/intro.html"}
+- id: java
+  name: Java
+  search: "Java programming"
+  match: ['(?-i:\bJava\b)(?!\s*Script)']
+  options:
+    - {name: "Dev.java: Learn Java", provider: Oracle, kind: guide, cost: free, time: weeks, url: "https://dev.java/learn/"}
+- id: react
+  name: React and frontend
+  search: "React"
+  match: ['\bReact\b', '\bNext\.js\b', 'front[- ]?end']
+  options:
+    - {name: "React: Learn", provider: react.dev, kind: guide, cost: free, time: hours, url: "https://react.dev/learn"}
+- id: sql
+  name: SQL
+  match: ['\bSQL\b', 'Postgre(?:SQL|s)']
+  options:
+    - {name: "SQLBolt", provider: SQLBolt, kind: course, cost: free, time: hours, url: "https://sqlbolt.com/"}
+- id: spark
+  name: Apache Spark
+  match: ['\bSpark\b', 'PySpark']
+  options:
+    - {name: "Databricks Certified Associate Developer for Apache Spark", provider: Databricks, kind: certification, cost: paid, time: weeks, url: "https://www.databricks.com/learn/certification/apache-spark-developer-associate"}
+- id: databricks
+  name: Databricks
+  match: ['Databricks']
+  options:
+    - {name: "Databricks training", provider: Databricks, kind: course, cost: free, time: weeks, url: "https://www.databricks.com/learn/training/home"}
+- id: snowflake
+  name: Snowflake
+  match: ['Snowflake']
+  options:
+    - {name: "SnowPro certifications (start with Core)", provider: Snowflake, kind: certification, cost: paid, time: weeks, url: "https://learn.snowflake.com/en/certifications/"}
+- id: kafka
+  name: Kafka and streaming
+  search: "Apache Kafka"
+  match: ['Kafka', 'stream processing', '\bFlink\b']
+  options:
+    - {name: "Confluent Developer courses", provider: Confluent, kind: course, cost: free, time: hours, url: "https://developer.confluent.io/courses/"}
+- id: linux
+  name: Linux administration
+  match: ['\bLinux\b']
+  options:
+    - {name: "Linux Foundation Certified System Administrator (LFCS)", provider: Linux Foundation, kind: certification, cost: paid, time: months, url: "https://training.linuxfoundation.org/certification/linux-foundation-certified-sysadmin-lfcs/"}
+- id: cicd
+  name: CI/CD
+  search: "CI/CD pipelines"
+  match: ['\bCI/CD\b', 'GitHub Actions', 'continuous (?:integration|delivery|deployment)']
+  options:
+    - {name: "GitHub Actions documentation", provider: GitHub, kind: guide, cost: free, time: hours, url: "https://docs.github.com/en/actions"}
+    - {name: "GitHub certifications", provider: GitHub, kind: certification, cost: paid, time: weeks, url: "https://resources.github.com/learn/certifications/"}
+- id: observability
+  name: Observability
+  match: ['observability', 'OpenTelemetry', 'Prometheus', 'Grafana']
+  options:
+    - {name: "OpenTelemetry documentation", provider: opentelemetry.io, kind: guide, cost: free, time: hours, url: "https://opentelemetry.io/docs/"}
+    - {name: "Prometheus Certified Associate (PCA)", provider: Linux Foundation, kind: certification, cost: paid, time: weeks, url: "https://training.linuxfoundation.org/certification/prometheus-certified-associate/"}
+- id: distributed
+  name: Distributed systems
+  match: ['distributed systems']
+  options:
+    - {name: "MIT 6.5840 Distributed Systems", provider: MIT, kind: course, cost: free, time: months, url: "https://pdos.csail.mit.edu/6.824/"}
+- id: ml
+  name: Machine learning
+  match: ['machine learning', '\bML\b']
+  options:
+    - {name: "Practical Deep Learning for Coders", provider: fast.ai, kind: course, cost: free, time: weeks, url: "https://course.fast.ai/"}
+    - {name: "Machine Learning Specialization", provider: DeepLearning.AI and Stanford on Coursera, kind: course, cost: paid, time: months, url: "https://www.coursera.org/specializations/machine-learning-introduction"}
+- id: pytorch
+  name: PyTorch
+  match: ['PyTorch']
+  options:
+    - {name: "PyTorch tutorials", provider: pytorch.org, kind: guide, cost: free, time: hours, url: "https://docs.pytorch.org/tutorials/"}
+- id: llm
+  name: LLMs and generative AI
+  search: "generative AI LLM"
+  match: ['\bLLMs?\b', 'large language models?', 'generative AI', '\bGenAI\b']
+  options:
+    - {name: "DeepLearning.AI short courses", provider: DeepLearning.AI, kind: course, cost: free, time: hours, url: "https://www.deeplearning.ai/short-courses/"}
+    - {name: "Anthropic courses", provider: Anthropic, kind: course, cost: free, time: hours, url: "https://github.com/anthropics/courses"}
+    - {name: "Hugging Face LLM Course", provider: Hugging Face, kind: course, cost: free, time: weeks, url: "https://huggingface.co/learn/llm-course"}
+- id: agents
+  name: AI agents
+  match: ['\bagents?\b', 'agentic', 'LangGraph', 'tool use']
+  options:
+    - {name: "Hugging Face Agents Course", provider: Hugging Face, kind: course, cost: free, time: weeks, url: "https://huggingface.co/learn/agents-course"}
+- id: rag
+  name: RAG and vector search
+  match: ['\bRAG\b', 'retrieval[- ]augmented', 'vector (?:database|search|store)', 'embeddings?']
+  options:
+    - {name: "DeepLearning.AI short courses", provider: DeepLearning.AI, kind: course, cost: free, time: hours, url: "https://www.deeplearning.ai/short-courses/"}
+- id: mcp
+  name: Model Context Protocol
+  match: ['\bMCP\b', 'Model Context Protocol']
+  options:
+    - {name: "Model Context Protocol documentation", provider: modelcontextprotocol.io, kind: guide, cost: free, time: hours, url: "https://modelcontextprotocol.io/"}
+- id: mlops
+  name: MLOps
+  match: ['MLOps', 'LLMOps', 'model (?:deployment|serving)']
+  options:
+    - {name: "Made With ML", provider: Made With ML, kind: course, cost: free, time: weeks, url: "https://madewithml.com/"}
+- id: pentest
+  name: Penetration testing
+  match: ['penetration test', '\bpen ?test', 'red team', 'offensive security']
+  options:
+    - {name: "Web Security Academy", provider: PortSwigger, kind: course, cost: free, time: weeks, url: "https://portswigger.net/web-security"}
+    - {name: "OffSec PEN-200 (OSCP)", provider: OffSec, kind: certification, cost: paid, time: months, url: "https://www.offsec.com/courses/pen-200/"}
+- id: appsec
+  name: Application security
+  match: ['application security', '\bAppSec\b', 'secure code review', '\bOWASP\b']
+  options:
+    - {name: "OWASP Top Ten", provider: OWASP, kind: guide, cost: free, time: hours, url: "https://owasp.org/www-project-top-ten/"}
+    - {name: "Web Security Academy", provider: PortSwigger, kind: course, cost: free, time: weeks, url: "https://portswigger.net/web-security"}
+- id: threat_modeling
+  name: Threat modeling
+  match: ['threat model']
+  options:
+    - {name: "OWASP Threat Modeling", provider: OWASP, kind: guide, cost: free, time: hours, url: "https://owasp.org/www-community/Threat_Modeling"}
+    - {name: "Threat Modeling Manifesto", provider: threatmodelingmanifesto.org, kind: guide, cost: free, time: hours, url: "https://www.threatmodelingmanifesto.org/"}
+- id: incident_response
+  name: Incident response
+  match: ['incident response', '\bDFIR\b', 'digital forensics']
+  options:
+    - {name: "GIAC Certified Incident Handler (GCIH)", provider: GIAC, kind: certification, cost: paid, time: months, url: "https://www.giac.org/certifications/certified-incident-handler-gcih/"}
+- id: splunk
+  name: Splunk
+  match: ['Splunk']
+  options:
+    - {name: "Splunk free training", provider: Splunk, kind: course, cost: free, time: hours, url: "https://www.splunk.com/en_us/training/free-courses/overview.html"}
+    - {name: "Splunk Core Certified Power User", provider: Splunk, kind: certification, cost: paid, time: weeks, url: "https://www.splunk.com/en_us/training/certification-track/splunk-core-certified-power-user.html"}
+- id: cloud_security
+  name: Cloud security
+  match: ['cloud security', '\bCSPM\b', '\bCNAPP\b']
+  options:
+    - {name: "Certificate of Cloud Security Knowledge (CCSK)", provider: Cloud Security Alliance, kind: certification, cost: paid, time: weeks, url: "https://cloudsecurityalliance.org/education/ccsk"}
+- id: security_cert
+  name: Security certifications (CISSP, Security+)
+  search: "CISSP Security+"
+  match: ['\bCISSP\b', 'Security\+', '\bCISM\b']
+  options:
+    - {name: "CompTIA Security+", provider: CompTIA, kind: certification, cost: paid, time: weeks, url: "https://www.comptia.org/certifications/security"}
+    - {name: "CISSP (needs years of work experience to certify)", provider: ISC2, kind: certification, cost: paid, time: months, url: "https://www.isc2.org/certifications/cissp"}
+- id: project_management
+  name: Project management
+  match: ['\bPMP\b', 'project management']
+  options:
+    - {name: "Project Management Professional (PMP)", provider: PMI, kind: certification, cost: paid, time: months, url: "https://www.pmi.org/certifications/project-management-pmp"}
