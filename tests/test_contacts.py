@@ -176,7 +176,7 @@ def test_archive_problems_are_explained(tmp_path):
 def test_find_referral_link():
     from jobwatch.contacts import linkedin_search
 
-    assert linkedin_search("Epic Games") == ("https://www.linkedin.com/search/results/people/?keywords=Epic%20Games"
+    assert linkedin_search("Acme Robotics") == ("https://www.linkedin.com/search/results/people/?keywords=Acme%20Robotics"
                                              "&network=%5B%22S%22%5D")
 
 
