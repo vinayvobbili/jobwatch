@@ -9,15 +9,17 @@ from mcp.server.mcpserver import MCPServer
 
 from . import config, report, sources
 from .store import Store
-from .watch import build_digest, fetch_all
+from .watch import build_digest, fetch_all, load_contacts, queue
 
 server = MCPServer(
     "jobwatch",
     instructions=(
         "Watches company job boards (Greenhouse, Lever, Ashby) from a watchlist file. fetch_jobs checks every "
         "board; digest ranks the new matches (optionally fit-scored with shortlist-ai); job_details gives a "
-        "posting's full text for tailoring a resume; mark_job records applied/skipped. find_board looks up a "
-        "company's board to add to the watchlist. jobwatch never applies to anything by itself."
+        "posting's full text for tailoring a resume; mark_job records queued/applied/skipped, and apply_queue "
+        "lists the jobs queued to apply to next, with people the user knows there (ask them for a referral "
+        "before applying). find_board looks up a company's board to add to the watchlist. jobwatch never "
+        "applies to anything by itself: the person reviews and submits every application."
     ),
 )
 
@@ -63,22 +65,38 @@ def digest(score_top: int = 0, include_seen: bool = False, limit: int = 25, mark
 @server.tool()
 def job_details(key: str) -> dict:
     """A job's full posting text and tracking status, by key or posting id."""
-    _, store = _open()
+    cfg, store = _open()
     try:
         job, rec = store.find(key)
-        return {"key": job.key, "text": job.to_text(), **rec}
+        contacts = load_contacts(cfg)
+        return {"key": job.key, "text": job.to_text(), **rec,
+                "contacts": contacts.at(job.display_company, job.company) if contacts else []}
     finally:
         store.close()
 
 
 @server.tool()
 def mark_job(key: str, status: str, note: str | None = None) -> str:
-    """Record a job's status: new, shown, applied or skipped. Use after the person applies or passes."""
+    """Record a job's status: new, shown, queued (to apply to next), applied or skipped.
+    Use applied only after the person has submitted the application themselves."""
     _, store = _open()
     try:
         job, _ = store.find(key)
         store.set_status([job.key], status, note)
         return f"{job.key}: {status}"
+    finally:
+        store.close()
+
+
+@server.tool()
+def apply_queue() -> list[dict]:
+    """Jobs queued to apply to, oldest first, with fit scores, notes and people the user knows there."""
+    cfg, store = _open()
+    try:
+        return [{"key": e.job.key, "company": e.job.display_company, "title": e.job.title, "url": e.job.url,
+                 "pay": e.job.pay(), "fit": e.fit, "contacts": e.contacts, "note": e.record.get("note"),
+                 "queued_at": e.record.get("status_at"), "closed": e.record.get("closed")}
+                for e in queue(cfg, store)]
     finally:
         store.close()
 

@@ -13,6 +13,12 @@ def fetch_summary(r: FetchReport) -> str:
     return "\n".join(out)
 
 
+def people(contacts: list[dict], most: int = 3) -> str:
+    """ "Ana Li (Staff Engineer), Bo Chen and 2 more" """
+    names = [p["name"] + (f" ({p['position']})" if p.get("position") else "") for p in contacts[:most]]
+    return ", ".join(names) + (f" and {len(contacts) - most} more" if len(contacts) > most else "")
+
+
 def _line(e: Entry) -> list[str]:
     j = e.job
     facts = [j.display_company, "; ".join(j.locations[:3]) + (" …" if len(j.locations) > 3 else "")]
@@ -31,6 +37,12 @@ def _line(e: Entry) -> list[str]:
                    + (f"Gaps: {'; '.join(f['gaps'])}" if f["gaps"] else "No must-have gaps."))
     if e.keywords:
         out.append(f"Keywords: {', '.join(e.keywords)}")
+    if e.contacts:
+        out.append(f"You know: {people(e.contacts)}")
+    if e.record.get("closed"):
+        out.append(f"**Closed** {e.record['closed'][:10]}: the posting is gone from the board.")
+    if e.record.get("note"):
+        out.append(f"Note: {e.record['note']}")
     out.append(f"`{j.key}`")
     return [*out, ""]
 
@@ -50,11 +62,20 @@ def to_markdown(d: Digest, title: str = "jobwatch digest") -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def queue_markdown(entries: list[Entry]) -> str:
+    if not entries:
+        return "The queue is empty. Add jobs with `jobwatch queue <key>`.\n"
+    out = [f"# Apply queue ({len(entries)})", ""]
+    for e in entries:
+        out += _line(e)
+    return "\n".join(out).rstrip() + "\n"
+
+
 def to_json(d: Digest) -> str:
     return json.dumps({
         "jobs": [{**{k: v for k, v in e.job.to_dict().items() if k != "description"},
                   "status": e.record["status"], "first_seen": e.record["first_seen"],
-                  "relevance": e.relevance, "keywords": e.keywords, "fit": e.fit,
+                  "relevance": e.relevance, "keywords": e.keywords, "fit": e.fit, "contacts": e.contacts,
                   "same_title": [{"key": o.key, "url": o.url, "locations": o.locations} for o in e.same_title]}
                  for e in d.entries],
         "rejected": d.rejected, "scored": d.scored, "score_errors": d.score_errors, "note": d.note,

@@ -83,6 +83,7 @@ keywords:                                 # relevance: title hits count double
   "re:agent(s|ic)?": 2                    # "re:" prefix = regex
 
 resume: ~/Documents/resume.pdf            # for fit scores
+connections: ~/Downloads/Connections.csv  # who you know at each company (see below)
 scoring:
   backend: claude                         # or local
   top: 5                                  # score the 5 most relevant new jobs per digest
@@ -113,29 +114,52 @@ jobs are scored with [shortlist-ai](https://github.com/vinayvobbili/shortlist-ai
 Scores are stored per resume file content, so each job is scored once, and again only after you edit your
 resume. The local backend takes minutes per job, so keep `top` small.
 
-## Tracking
+## The apply queue
+
+Pick the roles worth a tailored application from the digest and queue them. Work through the queue when
+you have time:
 
 ```
+jobwatch queue c1 aaaa-1111 --note "ask for a referral first"   # add (the posting id is enough)
+jobwatch queue                             # what to apply to next, oldest first
 jobwatch show aaaa-1111                    # full posting text: for tailoring a resume
-jobwatch mark applied aaaa-1111 --note "referred by a friend"
+jobwatch mark applied aaaa-1111 --note "referred by a friend"   # after you submit
 jobwatch mark skipped greenhouse:acme:102
 jobwatch list --status applied
 ```
+
+Queued jobs leave the digest. The queue flags any posting that has since closed.
+
+## Who you know there
+
+A referral gets read before an application does. Export your LinkedIn connections (Settings → Data
+privacy → Get a copy of your data → Connections) and point `connections:` at the CSV. Each digest and queue
+entry then lists your connections who work there:
+
+```
+You know: Ana Li (Staff Engineer), Bo Chen (Recruiter)
+```
+
+Companies are matched by name, ignoring suffixes like "Inc." and "Corporation". The file is only read
+locally.
 
 A digest lists each job once. Use `digest --all` to include jobs already shown, or `--peek` to look without
 marking them shown. Roles that disappear from a board are marked closed.
 
 ## MCP server
 
-`jobwatch-mcp` offers `find_board`, `fetch_jobs`, `digest`, `job_details`, `mark_job` and `list_jobs` to
+`jobwatch-mcp` offers `find_board`, `fetch_jobs`, `digest`, `job_details`, `mark_job`, `apply_queue` and
+`list_jobs` to
 Claude Code or any MCP client. The watchlist comes from `JOBWATCH_CONFIG`:
 
 ```
 claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- jobwatch-mcp
 ```
 
-With a resume tool alongside it, an assistant can take you from "what's new today?" to a tailored resume
-and a filled-in application for you to review. You still press Submit.
+With a resume tool alongside it (for example [resume-kit](https://github.com/vinayvobbili/resume-kit), whose
+`resume draft` starts a tailored version from a posting), an assistant can work through your queue: read
+the posting, tailor the resume from facts you've confirmed, check for a referral, and fill in the
+application for you to review. You still press Submit.
 
 ## Why it doesn't auto-apply
 

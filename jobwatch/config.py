@@ -38,6 +38,7 @@ class Config:
     filters: Filters = field(default_factory=Filters)
     keywords: dict[str, float] = field(default_factory=dict)
     resume: Path | None = None
+    connections: Path | None = None  # LinkedIn Connections.csv, for "you know someone there"
     backend: str = "local"
     score_top: int = 0
     state: Path = DEFAULT_STATE
@@ -89,6 +90,7 @@ def load(explicit: str | Path | None = None) -> Config:
         path=path, boards=boards, filters=filters,
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
+        connections=_path(raw["connections"], base) if raw.get("connections") else None,
         backend=scoring.get("backend", "local"), score_top=int(scoring.get("top", 0)),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
@@ -125,6 +127,9 @@ keywords:
 scoring:
   backend: claude        # claude (ANTHROPIC_API_KEY) or local (Apple Silicon, pip install 'jobwatch[local]')
   top: 0                 # score this many of the most relevant new jobs per digest
+
+# Optional: LinkedIn's Connections.csv, to show who you know at each company (a referral beats applying cold).
+# connections: ~/Downloads/Connections.csv
 
 # state: ~/.local/share/jobwatch/state.db
 """
