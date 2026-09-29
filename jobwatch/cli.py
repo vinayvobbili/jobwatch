@@ -165,6 +165,27 @@ def cmd_ui(args):
         server.server_close()
 
 
+def cmd_service(args):
+    from . import service
+
+    try:
+        if args.action == "install":
+            url = service.install(config.locate(args.config), args.port)
+            print(f"jobwatch ui now starts when you log in and restarts if it stops: {url}\n"
+                  f"Log: {service.log_path()}. Undo with `jobwatch service uninstall`.")
+        elif args.action == "uninstall":
+            print("Removed: jobwatch ui no longer starts at login." if service.uninstall() else "Not installed.")
+        else:
+            s = service.status()
+            if not s["installed"]:
+                print("Not installed. `jobwatch service install` starts jobwatch ui at login.")
+            else:
+                state = f"running (pid {s['pid']})" if s["running"] else "installed, not running: see the log"
+                print(f"{state}\n{s['url'] or ''}\nLog: {s['log']}")
+    except service.ServiceError as e:
+        raise SystemExit(f"jobwatch: {e}") from None
+
+
 def cmd_list(args, cfg, store):
     rows = store.jobs(tuple(args.status) if args.status else None, include_closed=True)
     for job, rec in rows:
@@ -280,6 +301,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
     p.set_defaults(func=cmd_ui, needs_config=False)
+
+    p = sub.add_parser("service", help="keep `jobwatch ui` running: start it at login, restart it if it stops "
+                                       "(macOS)")
+    p.add_argument("action", choices=["install", "uninstall", "status"])
+    p.add_argument("--port", type=int, default=8765)
+    p.set_defaults(func=cmd_service, needs_config=False)
 
     p = sub.add_parser("list", help="jobs by status, e.g. `jobwatch list --status applied`")
     p.add_argument("--status", choices=STATUSES, action="append")
