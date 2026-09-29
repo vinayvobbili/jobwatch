@@ -244,6 +244,15 @@ select.stage option { color: var(--text); background: var(--panel-solid); }
   color: color-mix(in srgb, var(--sc, var(--accent)) 70%, var(--text)); }
 .sf.on .c { color: inherit; }
 .showing .seg-ctl { width: 170px; flex: none; }
+.pager { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 18px 0 4px; font-size: 13.5px; }
+.pager .pg { min-width: 34px; height: 34px; border: 1px solid transparent; background: none; border-radius: 9px; font: inherit;
+  font-weight: 600; color: var(--muted); cursor: pointer; font-variant-numeric: tabular-nums; }
+.pager .pg:hover { background: var(--chip); color: var(--text); }
+.pager .pg.on { background: var(--accent-soft); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.pager .gap { color: var(--muted); padding: 0 4px; }
+.pager .per { display: flex; align-items: center; gap: 8px; color: var(--muted); margin: 0 0 0 auto; font-weight: 500;
+  font-size: 13.5px; }
+.pager .per select { width: auto; padding: 4px 8px; font-size: 13px; }
 .pipeline button.seg { border: 0; padding: 0; cursor: pointer; font: inherit; }
 .pipeline button.seg:hover { filter: brightness(1.12); outline: 2px solid color-mix(in srgb, var(--sc) 40%, transparent); outline-offset: 1px; }
 .table-wrap { container-type: inline-size; overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -361,6 +370,7 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .chip.toggle { cursor: pointer; border: 0; font: inherit; font-size: 12.5px; font-weight: 500; transition: transform .12s; }
 .chip.toggle:hover { transform: translateY(-1px); }
 .chip.toggle.on { background: var(--grad); color: #fff; }
+.showing:empty { display: none; }
 .showing { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13.5px; margin: 0 0 10px; min-height: 30px; }
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 14px; }
 .grid-cards > .card { margin: 0; }
@@ -751,6 +761,10 @@ async function mark(job, status, note, label, undoStatus) {
     todayJobs = todayJobs.filter(j => j.key !== job.key);
     if (todayJobs.length && !main.querySelector(".card.job")) drawToday();
   }
+  if (tab === "queue") {
+    queueJobs = queueJobs.filter(j => j.key !== job.key);
+    if (queueJobs.length && !main.querySelector(".card.job")) drawQueue();
+  }
   refreshQueueCount();
   toast(label, undoStatus ? async () => {
     await api("/api/mark", { keys: job.keys || [job.key], status: undoStatus });
@@ -1118,7 +1132,7 @@ function facetList(counts, active, onpick, most = 12) {
   return el;
 }
 
-const todayView = { q: "", sort: "fit", company: "", kws: new Set() };
+const todayView = { q: "", sort: "fit", company: "", kws: new Set(), page: 1 };
 let todayJobs = [], drawToday = () => {};
 
 async function renderToday() {
@@ -1134,7 +1148,7 @@ async function renderToday() {
     for (const k of j.keywords) byKw[k] = (byKw[k] || 0) + 1;
   }
   const v = todayView;
-  const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" });
+  const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
   const search = h("input", { type: "search", placeholder: "Search titles and companies" });
   search.value = v.q;
   search.oninput = () => { v.q = search.value; drawToday(); };
@@ -1153,9 +1167,12 @@ async function renderToday() {
     if (v.sort === "new") jobs = [...jobs].sort((a, b) => (a.age_days ?? 1e4) - (b.age_days ?? 1e4));
     if (v.sort === "pay") jobs = [...jobs].sort((a, b) => (b.salary_max ?? -1) - (a.salary_max ?? -1));
     const narrowed = v.q || v.company || v.kws.size;
-    fill(showing, `Showing ${jobs.length} of ${todayJobs.length}`, narrowed ? h("button", { class: "btn ghost", onclick: clear }, "Clear filters") : null);
-    fill(list, jobs.length ? jobs.map((j, i) => todayCard(j, d.can_score, i))
+    const pg = paged(jobs, v, JSON.stringify([v.q, v.company, [...v.kws], v.sort]), drawToday);
+    fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
+      : `Showing ${jobs.length} of ${todayJobs.length}`, narrowed ? h("button", { class: "btn ghost", onclick: clear }, "Clear filters") : null);
+    fill(list, jobs.length ? pg.items.map((j, i) => todayCard(j, d.can_score, i))
       : emptyState(todayJobs.length ? "No jobs match these filters." : "Nothing to review. Press “Check for new jobs”, or widen your filters in Settings."));
+    fill(pager, pg.nav);
   };
 
   put(
@@ -1168,7 +1185,7 @@ async function renderToday() {
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
       filtered ? h("div", { class: "filtered" }, `Filtered out ${filtered}. Change the filters in Settings.`) : null,
-    ], [showing, list]));
+    ], [showing, list, pager]));
   drawToday();
 }
 
@@ -1181,8 +1198,18 @@ function renderWelcome() {
     h("button", { class: "btn primary", onclick: () => go("settings") }, "Set up my watchlist", icon("arrow", 14))));
 }
 
+const queueView = { page: 1 };
+let queueJobs = [], drawQueue = () => {};
+
 async function renderQueue() {
-  const jobs = await api("/api/queue");
+  const jobs = queueJobs = await api("/api/queue");
+  const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
+  drawQueue = () => {
+    const pg = paged(queueJobs, queueView, "", drawQueue);
+    fill(showing, pg.range ? `Showing ${pg.range}` : null);
+    fill(list, pg.items.map(queueCard));
+    fill(pager, pg.nav);
+  };
   const step = (n, title, text) => h("div", { class: "step" }, h("span", { class: "n" }, n), h("div", {}, h("b", {}, title), h("div", {}, text)));
   put(
     pagehead("Apply queue", "Jobs you picked to apply to, oldest first."),
@@ -1193,7 +1220,8 @@ async function renderQueue() {
         step(2, "Tailor your resume", "Match it to the posting, from things you've really done."),
         step(3, "Apply on their site", "Answer honestly and press Submit yourself."),
         step(4, "Press “I applied”", "It moves to Applications, where you track what comes next.")),
-    ], jobs.length ? h("div", { class: "cards grid-cards" }, jobs.map(queueCard)) : emptyState("The queue is empty. Queue jobs from Today.")));
+    ], jobs.length ? [showing, list, pager] : emptyState("The queue is empty. Queue jobs from Today.")));
+  drawQueue();
 }
 
 function queueCard(job, i) {
@@ -1221,7 +1249,7 @@ function daysAgo(day, today) {
 }
 
 // The status filter ("due" is Follow up now), the search, cards or a table, and the table's sort.
-const appView = { stage: "", q: "", view: remembered("apps.view", "cards"), sort: "next", dir: 1 };
+const appView = { stage: "", q: "", view: remembered("apps.view", "cards"), sort: "next", dir: 1, page: 1 };
 
 // A per-browser preference; storage can be blocked (private windows), so it's never required.
 function remembered(key, fallback) {
@@ -1229,6 +1257,39 @@ function remembered(key, fallback) {
 }
 function remember(key, value) {
   try { localStorage.setItem("jobwatch." + key, value); } catch { /* not kept: fine */ }
+}
+
+// One page of a long list, and the controls to move between pages. `state.page` survives redraws; a new
+// `filterKey` (the search, filters and sort in use) starts again at page 1. How many per page is kept per browser.
+const PER_PAGE = [12, 24, 48, 96];
+function paged(items, state, filterKey, redraw) {
+  const per = PER_PAGE.includes(Number(remembered("perPage", ""))) ? Number(remembered("perPage", "")) : PER_PAGE[0];
+  if (state.filterKey !== filterKey) { state.filterKey = filterKey; state.page = 1; }
+  const pages = Math.max(1, Math.ceil(items.length / per));
+  state.page = Math.min(Math.max(1, state.page || 1), pages);
+  const start = (state.page - 1) * per, end = Math.min(start + per, items.length);
+  const go = n => { state.page = n; redraw(); scrollTo({ top: 0, behavior: REDUCED ? "auto" : "smooth" }); };
+  const nums = [];
+  for (let n = 1; n <= pages; n++) {
+    if (n === 1 || n === pages || Math.abs(n - state.page) <= 2) nums.push(n);
+    else if (nums[nums.length - 1] !== "…") nums.push("…");
+  }
+  const perSelect = h("select", { "aria-label": "Per page" }, PER_PAGE.map(n => h("option", { value: n }, n)));
+  perSelect.value = per;
+  perSelect.onchange = () => { remember("perPage", perSelect.value); state.page = Math.floor(start / Number(perSelect.value)) + 1; redraw(); };
+  return {
+    items: items.slice(start, end),
+    range: items.length > per ? `${start + 1}–${end} of ${items.length}` : null,
+    nav: items.length <= PER_PAGE[0] ? null : h("div", { class: "pager", role: "navigation", "aria-label": "Pages" },
+      pages > 1 ? [
+        h("button", { class: "btn ghost", disabled: state.page === 1, onclick: () => go(state.page - 1) }, "← Previous"),
+        nums.map(n => n === "…" ? h("span", { class: "gap" }, "…")
+          : h("button", { class: "pg" + (n === state.page ? " on" : ""), "aria-current": n === state.page ? "page" : null,
+            onclick: () => go(n) }, n)),
+        h("button", { class: "btn ghost", disabled: state.page === pages, onclick: () => go(state.page + 1) }, "Next →"),
+      ] : null,
+      h("label", { class: "per" }, "Per page", perSelect)),
+  };
 }
 
 async function renderApplied() {
@@ -1240,7 +1301,7 @@ async function renderApplied() {
   const talking = all.filter(a => ["screening", "interviewing", "offer"].includes(a.status)).length;
   const week = all.filter(a => !isEnded(a) && a.follow_up && a.follow_up <= addDays(d.today, 7)).length;
   const dueCount = all.filter(a => a.due).length;
-  const addArea = h("div", {}), body = h("div", {}), showing = h("div", { class: "showing" });
+  const addArea = h("div", {}), body = h("div", {}), showing = h("div", { class: "showing" }), pager = h("div", {});
   const filters = h("div", { class: "status-filter", role: "group", "aria-label": "Filter by status" });
   const search = h("input", { type: "search", placeholder: "Search companies, roles, notes" });
   search.value = appView.q;
@@ -1264,19 +1325,30 @@ async function renderApplied() {
     const q = appView.q.trim().toLowerCase();
     const apps = all.filter(a => (!appView.stage || (appView.stage === "due" ? a.due : a.status === appView.stage)) &&
       (!q || `${a.company} ${a.title} ${a.note || ""} ${a.next_step || ""}`.toLowerCase().includes(q)));
-    const due = apps.filter(a => a.due), ended = apps.filter(isEnded), open = apps.filter(a => !a.due && !isEnded(a));
+    const table = appView.view === "table";
+    // Cards come grouped (due, in progress, ended) and the table sorted; a page is a slice of that order.
+    const ordered = table ? sortApps(apps, d) : [...apps.filter(a => a.due), ...apps.filter(a => !a.due && !isEnded(a)),
+      ...apps.filter(isEnded)];
+    const pg = paged(ordered, appView, JSON.stringify([appView.stage, q, appView.view, appView.sort, appView.dir]), draw);
+    const page = pg.items;
+    const due = page.filter(a => a.due), ended = page.filter(isEnded), open = page.filter(a => !a.due && !isEnded(a));
+    const whole = { due: apps.filter(a => a.due).length, open: apps.filter(a => !a.due && !isEnded(a)).length,
+      ended: apps.filter(isEnded).length };
     let i = 0;
-    const group = (title, list, cls) => list.length
-      ? [section(title, list.length, cls), h("div", { class: "grid-cards" }, list.map(a => appCard(a, d, i++)))] : null;
-    fill(showing, apps.length === all.length ? `${all.length} applications` : `Showing ${apps.length} of ${all.length}`,
+    const group = (title, list, cls, n) => list.length
+      ? [section(title, n, cls), h("div", { class: "grid-cards" }, list.map(a => appCard(a, d, i++)))] : null;
+    fill(showing, (apps.length === all.length ? `${all.length} applications` : `Showing ${apps.length} of ${all.length}`) +
+      (pg.range ? ` · ${pg.range}` : ""),
       apps.length !== all.length ? h("button", { class: "btn ghost", onclick: () => {
         appView.stage = ""; appView.q = ""; search.value = ""; redraw(); } }, "Clear filters") : null,
       h("span", { class: "spacer" }),
       segmented([["cards", "Cards"], ["table", "Table"]], appView.view, v => { appView.view = v; remember("apps.view", v); draw(); }));
     fill(body, all.length ? null : emptyState("No applications yet. Mark a queued job “I applied”, or add one you applied to somewhere else."),
       all.length && !apps.length ? emptyState("No applications match.") : null,
-      !apps.length ? null : appView.view === "table" ? appTable(apps, d, draw)
-        : [group("Follow up now", due, "hot"), group("In progress", open), group("Ended", ended)]);
+      !apps.length ? null : table ? appTable(page, d, draw)
+        : [group("Follow up now", due, "hot", whole.due), group("In progress", open, null, whole.open),
+          group("Ended", ended, null, whole.ended)]);
+    fill(pager, pg.nav);
   };
 
   put(
@@ -1292,7 +1364,7 @@ async function renderApplied() {
             onclick: () => pick(s) }))),
         h("div", { style: "margin-top:10px" }, stages)) : null,
       panel(null, search),
-    ], [addArea, all.length ? filters : null, showing, body]));
+    ], [addArea, all.length ? filters : null, showing, body, pager]));
   drawFilters();
   draw();
 }
@@ -1302,14 +1374,17 @@ const APP_COLUMNS = [
   ["company", "Company"], ["title", "Role"], ["status", "Stage"], ["applied_at", "Applied"],
   ["next", "Next step"], [null, "Sent", "col-sent"], [null, ""]];
 
-function appTable(apps, d, redraw) {
-  const isEnded = a => ["rejected", "withdrawn"].includes(a.status);
-  const byNext = a => [a.due ? 0 : isEnded(a) ? 2 : 1, a.follow_up || "9999", a.applied_at ? -Date.parse(a.applied_at) : 0];
+// The table's order: the column picked (appView.sort), either way (appView.dir).
+function sortApps(apps, d) {
+  const byNext = a => [a.due ? 0 : isEndedStatus(a.status) ? 2 : 1, a.follow_up || "9999", a.applied_at ? -Date.parse(a.applied_at) : 0];
   const key = {
     company: a => [a.company.toLowerCase()], title: a => [a.title.toLowerCase()],
     status: a => [d.stages.indexOf(a.status)], applied_at: a => [a.applied_at || ""], next: byNext }[appView.sort];
   const cmp = (x, y) => { for (let n = 0; n < x.length; n++) if (x[n] !== y[n]) return x[n] < y[n] ? -1 : 1; return 0; };
-  const rows = [...apps].sort((a, b) => cmp(key(a), key(b)) * appView.dir);
+  return [...apps].sort((a, b) => cmp(key(a), key(b)) * appView.dir);
+}
+
+function appTable(rows, d, redraw) {
   const head = h("tr", {}, APP_COLUMNS.map(([k, label, cls]) => k
     ? h("th", { "aria-sort": appView.sort === k ? (appView.dir > 0 ? "ascending" : "descending") : null },
       h("button", { class: "sort" + (appView.sort === k ? " on" : ""), onclick: () => {
