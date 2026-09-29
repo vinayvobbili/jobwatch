@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 
 from .models import Job
-from .text import in_us, is_remote, names_no_place
+from .text import bare_remote, in_us, is_remote, remote_us_wide
 
 
 @dataclass
@@ -39,7 +39,8 @@ def _remote_ok(job: Job, country: str) -> bool:
     # A bare "Remote" takes its country from the posting's other places: "India; Remote" is remote in India.
     bare_ok = not others or any(in_us(loc) for loc in others)
     remote_places = [loc for loc in job.locations if is_remote(loc)]
-    if any(anywhere or in_us(loc) or (names_no_place(loc) and bare_ok) for loc in remote_places):
+    # "Remote - Washington D.C." is remote for people there: it counts only as a place (a wanted one or not).
+    if any(anywhere or remote_us_wide(loc) or (bare_remote(loc) and bare_ok) for loc in remote_places):
         return True
     # The posting's own remote flag, with the location saying where.
     return bool(job.remote) and (anywhere or not job.locations or any(in_us(loc) for loc in job.locations))

@@ -92,6 +92,30 @@ def in_us(location: str) -> bool:
     return bool(_US_NAMES.search(location) or _US_CODES.search(location))
 
 
+# The whole country, as opposed to a state or city in it.
+_US_WIDE = re.compile(r"\bunited states(?: of america)?\b|\bnorth america\b|\bamericas\b|\bnationwide\b", re.I)
+_US_WIDE_CODES = re.compile(r"\bU\.S\.(?:A\.)?|\bUSA?\b")
+_FILLER = re.compile(r"\b(?:in|within|the|based|travel|required|occasional)\b", re.I)
+
+
+def names_a_region(location: str) -> bool:
+    """True for a remote place that names somewhere inside a country: "Remote - Washington D.C.", "Remote, CA"
+    (remote only for people who live there), not "Remote - US" or "Remote in the US (Travel Required)"."""
+    rest = _FILLER.sub("", _US_WIDE_CODES.sub("", _US_WIDE.sub("", location)))
+    return bool(_REMOTE_WORDS.sub("", rest).strip())
+
+
+def remote_us_wide(location: str) -> bool:
+    """Remote anywhere in the US: "Remote - US", or one choice in a list ("Seattle, Chicago, US-Remote")."""
+    return any(is_remote(p) and in_us(p) and not names_a_region(p) for p in [location, *location.split(",")])
+
+
+def bare_remote(location: str) -> bool:
+    """A "Remote" that names no place, alone or as one choice in a list of cities ("SF, NY, Remote")."""
+    pieces = location.split(",")
+    return names_no_place(location) or (len(pieces) >= 3 and any(names_no_place(p) for p in pieces))
+
+
 def is_remote(location: str) -> bool:
     return bool(_REMOTE.search(location))
 
