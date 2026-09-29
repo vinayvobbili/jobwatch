@@ -214,6 +214,16 @@ class Store:
                 self.db.execute(f"UPDATE jobs SET {', '.join(f'{k}=?' for k in fields)} WHERE key=?",
                                 (*fields.values(), key))
 
+    def set_url(self, key: str, url: str):
+        """Give an application added by hand its link: the posting, or the company's careers site once the posting
+        is gone (a Workday site's link is enough for its sign-in page). A fetched posting keeps the board's link."""
+        job, _ = self.find(key)
+        if job.source != MANUAL:
+            raise ValueError(f"{job.key} comes from its board, which sets its link")
+        job.url = url.strip()
+        with self.db:
+            self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
+
     def add_note(self, key: str, text: str):
         """Add a dated line to the note, keeping what's there (the recruiter's name, what was said before)."""
         text = text.strip()

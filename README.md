@@ -273,7 +273,9 @@ Every company on Workday has its own careers site with its own sign-in, so after
 to remember where each one lives. For a Workday application, `jobwatch show`, `jobwatch applications` and
 the job's **Details** link that company's candidate page (`.../userHome`), where you sign in to see its
 status. jobwatch keeps only the link, never a login or password: your password manager saves each company's
-login under that company's own address.
+login under that company's own address. For one you added by hand whose posting has since come down, give
+it the company's careers site (`jobwatch mark <stage> <key> --url https://acme.wd1.myworkdayjobs.com/Careers`)
+and the page link follows.
 
 ### What you sent
 
