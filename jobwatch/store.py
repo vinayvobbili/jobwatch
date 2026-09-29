@@ -182,6 +182,15 @@ class Store:
                 self.db.execute(f"UPDATE jobs SET {', '.join(f'{k}=?' for k in fields)} WHERE key=?",
                                 (*fields.values(), key))
 
+    def add_note(self, key: str, text: str):
+        """Add a dated line to the note, keeping what's there (the recruiter's name, what was said before)."""
+        text = text.strip()
+        if not text:
+            return
+        _, rec = self.find(key)
+        line = f"{date.today().isoformat()}: {text}"
+        self.track(key, note=f"{rec['note']} {line}" if rec.get("note") else line)
+
     def add(self, company: str, title: str, url: str = "", status: str = "applied", applied: str | None = None,
             location: str = "", note: str | None = None, next_step: str | None = None,
             follow_up: str | None = None) -> Job:
