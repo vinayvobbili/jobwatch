@@ -46,7 +46,9 @@ def _name_key(first: str, last: str = "") -> str:
 def _rows(text: str, first_column: str) -> list[dict]:
     """CSV rows, skipping the notes LinkedIn puts above some headers."""
     lines = text.lstrip("﻿").splitlines()
-    start = next((i for i, line in enumerate(lines) if line.lower().startswith(first_column.lower())), None)
+    # The full archive quotes some headers ("CONVERSATION ID",...); Connections.csv doesn't.
+    start = next((i for i, line in enumerate(lines) if line.lstrip('"').lower().startswith(first_column.lower())),
+                 None)
     if start is None:
         return []
     return list(csv.DictReader(io.StringIO("\n".join(lines[start:]))))
