@@ -95,3 +95,14 @@ def test_add_mark_and_list_applications(watchlist, capsys):
     assert "Globex" not in run(capsys, *c, "applications", "--due").out
     with pytest.raises(SystemExit, match="isn't a date"):
         cli.main([*c, "add", "X", "Y", "--follow-up", "someday"])
+
+
+def test_mark_on_corrects_the_day_applied(watchlist, capsys):
+    """A referral recorded late: `mark applied --on` fixes the day; marking again without it keeps that day."""
+    c = ("-c", str(watchlist))
+    run(capsys, *c, "add", "Umbrella", "Principal Engineer", "--status", "queued")
+    run(capsys, *c, "mark", "applied", "principal-engineer")
+    run(capsys, *c, "mark", "applied", "principal-engineer", "--on", "2026-09-01")
+    assert "applied 2026-09-01" in run(capsys, *c, "apps").out
+    run(capsys, *c, "mark", "screening", "principal-engineer")
+    assert "applied 2026-09-01" in run(capsys, *c, "apps").out
