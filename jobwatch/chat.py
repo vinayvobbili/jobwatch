@@ -10,7 +10,6 @@ it can't change anything, apply, or send anything.
 from __future__ import annotations
 
 import os
-import threading
 from collections.abc import Iterator
 from datetime import date
 from functools import lru_cache
@@ -18,7 +17,7 @@ from functools import lru_cache
 from . import learn, report
 from .config import Config
 from .resume import resume_text
-from .score import resume_id
+from .score import LOCAL, resume_id
 from .store import Store
 from .watch import build_digest
 
@@ -178,9 +177,6 @@ def _claude(system: str, messages: list[dict]) -> Iterator[str]:
         yield from stream.text_stream
 
 
-_local_lock = threading.Lock()  # one generation at a time: the model is shared and MLX isn't thread-safe
-
-
 @lru_cache(maxsize=1)
 def _local_model(name: str):
     import mlx_lm
@@ -191,7 +187,7 @@ def _local_model(name: str):
 def _local(system: str, messages: list[dict]) -> Iterator[str]:
     import mlx_lm
 
-    with _local_lock:
+    with LOCAL.foreground():  # background fit scoring gives way
         model, tokenizer = _local_model(LOCAL_MODEL)
         prompt = tokenizer.apply_chat_template([{"role": "system", "content": system}, *messages],
                                                add_generation_prompt=True, tokenize=False, enable_thinking=False)

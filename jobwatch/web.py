@@ -24,9 +24,9 @@ import yaml
 from . import __version__, chat, config, contacts, learn, prep, report, sources
 from .config import ConfigError
 from .package import Package
-from .score import ScoringUnavailable, resume_id, score_jobs
+from .score import ScoringUnavailable, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, STATUSES, Store
-from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watched_name
+from .watch import build_digest, fetch_all, load_contacts, queue, save_job, score_entries, unscored, watched_name
 
 MAX_UPLOAD = 20 * 1024 * 1024
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
@@ -38,12 +38,90 @@ class ApiError(Exception):
         self.status = status
 
 
-class App:
-    """The API behind the page. Each method takes the request's query or JSON body and returns JSON data."""
+class Scorer:
+    """Scores Today's jobs in the background, most relevant first and one at a time, so fit scores are there
+    when you look. It runs when the page starts, after each check for new jobs and after a new resume, and
+    saves each score as it lands. A chat reply or a Score fit click goes first (see score.ModelGate)."""
 
-    def __init__(self, config_path: Path):
+    def __init__(self, app: App):
+        self.app = app
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._again = False  # asked to run again while running: new jobs may have come in
+        self._failed: set[str] = set()  # jobs that failed to score; not retried until the page restarts
+        self.done = 0
+        self.left = 0
+        self.current = ""
+        self.error = ""
+
+    def status(self) -> dict:
+        return {"running": self._thread is not None, "done": self.done, "left": self.left,
+                "current": self.current, "error": self.error}
+
+    def kick(self):
+        with self._lock:
+            if self._thread:
+                self._again = True
+                return
+            self._thread = threading.Thread(target=self._run, name="jobwatch-scorer", daemon=True)
+            self._thread.start()
+
+    def wait(self, timeout: float | None = None):
+        if t := self._thread:
+            t.join(timeout)
+
+    def _run(self):
+        while True:
+            try:
+                while self._step():
+                    pass
+            except Exception as e:  # never take the page down: say why scoring stopped
+                self.error = f"{type(e).__name__}: {e}" if not isinstance(e, ScoringUnavailable) else str(e)
+                print(f"jobwatch: background scoring stopped: {self.error}", file=sys.stderr)
+            with self._lock:
+                if not self._again:
+                    self._thread, self.current, self.left = None, "", 0
+                    return
+                self._again = False
+
+    def _step(self) -> bool:
+        """Score the most relevant unscored job. False when there's nothing to do."""
+        cfg = self.app._cfg()
+        if not cfg.auto_score:
+            return False
+        store = Store(cfg.state)
+        try:
+            todo = unscored(cfg, store, self._failed)
+            self.left = len(todo)
+            if not todo:
+                return False
+            e = todo[0]
+            self.current = f"{e.job.display_company}: {e.job.title}"
+            with turn(cfg.backend, background=True):
+                scored, errors = score_entries(cfg, store, [e], progress=lambda m: None)
+        finally:
+            store.close()
+        self.done += scored
+        self.left -= 1
+        if errors:
+            self._failed.add(e.job.key)
+            self.error = f"{self.current}: {next(iter(errors.values()))}"
+        return True
+
+
+class App:
+    """The API behind the page. Each method takes the request's query or JSON body and returns JSON data.
+    With `background`, fit scores are worked out behind the scenes (see Scorer)."""
+
+    def __init__(self, config_path: Path, background: bool = False):
         self.path = config_path
         self.lock = threading.Lock()  # one fetch or save at a time
+        self.scorer = Scorer(self)
+        self.background = background
+
+    def score_in_background(self):
+        if self.background:
+            self.scorer.kick()
 
     # -- helpers
 
@@ -92,6 +170,7 @@ class App:
                 for c in settings["companies"]]
         with self.lock:
             cfg = config.save(self.path, settings)
+        self.score_in_background()  # new filters, resume or scoring setting: maybe more to score
         return {"saved": str(cfg.path), "companies": len(cfg.boards)}
 
     def post_find(self, body) -> list[dict]:
@@ -109,13 +188,15 @@ class App:
             return {"boards": r.boards, "jobs": r.jobs, "new": len(r.new), "errors": r.errors,
                     "summary": report.fetch_summary(r)}
         with self.lock:
-            return self._with_store(run)
+            out = self._with_store(run)
+        self.score_in_background()
+        return out
 
     def get_digest(self, q) -> dict:
         def run(cfg, store):
             d = build_digest(cfg, store, include_seen=True, score_top=0)
             out = {"jobs": [self._entry(e) for e in d.entries], "rejected": d.rejected,
-                   "can_score": bool(cfg.resume and cfg.resume.is_file())}
+                   "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({})}
             # "New" shows once: the next visit lists these as seen.
             store.set_status([k for e in d.entries if e.record.get("status") == "new" for k in e.keys], "shown")
             return out
@@ -264,12 +345,17 @@ class App:
             rid = resume_id(cfg.resume)
             if cached := store.score(job.key, rid):
                 return cached
-            results, errors = score_jobs([job], cfg.resume, cfg.backend, cfg.cache)
+            with turn(cfg.backend):  # ahead of background scoring
+                results, errors = score_jobs([job], cfg.resume, cfg.backend, cfg.cache)
             if job.key not in results:
                 raise ApiError(errors.get(job.key, "scoring failed"), HTTPStatus.BAD_GATEWAY)
             store.save_score(job.key, rid, results[job.key])
             return results[job.key]
         return self._with_store(run)
+
+    def get_scoring(self, q) -> dict:
+        """Background fit scoring: running, how many done and left, the job being scored, the last error."""
+        return {**self.scorer.status(), "enabled": self.background}
 
     def get_chat(self, q) -> dict:
         return chat.where(self._cfg().backend)
@@ -313,6 +399,8 @@ class App:
             extra = {"people": people}
         with self.lock:
             config.save(self.path, {kind: target.name})
+        if kind == "resume":
+            self.score_in_background()  # scores belong to a resume: a new one is scored afresh
         return {kind: target.name, **extra}
 
 
@@ -330,6 +418,7 @@ ROUTES = {
     ("POST", "/api/add"): App.post_add,
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/score"): App.post_score,
+    ("GET", "/api/scoring"): App.get_scoring,
     ("GET", "/api/chat"): App.get_chat,
     ("GET", "/api/skills"): App.get_skills,
     ("GET", "/api/prep"): App.get_prep,
@@ -474,10 +563,13 @@ def serve(config_path: Path, port: int = 8765, open_browser: bool = True, token:
     """Start the server (port 0 picks a free one). Call serve_forever() on the result."""
     token = token or secrets.token_urlsafe(24)
     port_ref = [port]
-    server = _Server(("127.0.0.1", port), make_handler(App(config_path), token, port_ref))
+    app = App(config_path, background=True)
+    server = _Server(("127.0.0.1", port), make_handler(app, token, port_ref))
     port_ref[0] = server.server_address[1]
     url = f"http://127.0.0.1:{port_ref[0]}/"
     print(f"jobwatch is running at {url}  (watchlist: {config_path}). Press Ctrl+C to stop.", file=sys.stderr)
     if open_browser:
         threading.Timer(0.3, webbrowser.open, (url,)).start()
+    if config_path.is_file():
+        app.score_in_background()  # catch up on jobs fetched while the page was down
     return server

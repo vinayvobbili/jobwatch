@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
 from .models import Job
@@ -20,6 +22,56 @@ INSTALL_HINT = "pip install 'jobwatch[score]' (or 'jobwatch[local]' for the on-d
 
 class ScoringUnavailable(RuntimeError):
     pass
+
+
+class ModelGate:
+    """Turns on the on-device model: one generation at a time (MLX isn't thread-safe), and the person first.
+    A chat reply or a Score fit click waits at most for the job being scored; background scoring waits while
+    either is waiting or running."""
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._busy = False
+        self._waiting = 0  # foreground turns waiting
+
+    def _release(self):
+        with self._cond:
+            self._busy = False
+            self._cond.notify_all()
+
+    @contextmanager
+    def foreground(self) -> Iterator[None]:
+        with self._cond:
+            self._waiting += 1
+            try:
+                self._cond.wait_for(lambda: not self._busy)
+            finally:
+                self._waiting -= 1
+            self._busy = True
+        try:
+            yield
+        finally:
+            self._release()
+
+    @contextmanager
+    def background(self) -> Iterator[None]:
+        with self._cond:
+            self._cond.wait_for(lambda: not self._busy and not self._waiting)
+            self._busy = True
+        try:
+            yield
+        finally:
+            self._release()
+
+
+LOCAL = ModelGate()
+
+
+def turn(backend: str, background: bool = False):
+    """A turn on the model, when it's the shared local one; Claude takes calls side by side."""
+    if backend != "local":
+        return nullcontext()
+    return LOCAL.background() if background else LOCAL.foreground()
 
 
 def resume_id(resume: Path) -> str:

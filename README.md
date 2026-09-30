@@ -137,6 +137,7 @@ connections: ~/Downloads/linkedin.zip     # who you know at each company (see be
 scoring:
   backend: claude                         # or local
   top: 5                                  # score the 5 most relevant new jobs per digest
+  auto: true                              # the page scores every new match in the background
 display:                                  # the browser page
   theme: system                           # system, light or dark
   width: standard                         # standard, wide or full
@@ -165,7 +166,14 @@ jobs are scored with [shortlist-ai](https://github.com/vinayvobbili/shortlist-ai
 3. It lists the must-haves the resume doesn't show.
 
 Scores are stored per resume file content, so each job is scored once, and again only after you edit your
-resume. The local backend takes minutes per job, so keep `top` small.
+resume. The local backend takes a minute or two per job, so keep `top` small.
+
+While `jobwatch ui` runs, it scores every matching job in the background, most relevant first and one at a
+time: when the page starts, after each "Check for new jobs", and after you add a new resume. Today shows
+how many are left, and a button brings in the new scores when you're ready (the cards don't move on their
+own). A chat reply or a "Score fit" click goes first; background scoring waits for it. It's on by default
+with `scoring.backend: local`. With `claude` every score is a paid API call, so turn it on with
+`scoring.auto: true`. `jobwatch score [--limit N]` does the same in the terminal.
 
 ## Chat
 

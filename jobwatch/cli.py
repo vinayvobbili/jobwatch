@@ -14,7 +14,7 @@ from . import __version__, chat, config, learn, prep, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
 from .store import STAGES, STATUSES, Store
-from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watched_name
+from .watch import build_digest, fetch_all, load_contacts, queue, save_job, score_entries, unscored, watched_name
 
 
 def _write(text: str, out: Path | None):
@@ -65,6 +65,31 @@ def cmd_digest(args, cfg, store):
 def cmd_run(args, cfg, store):
     print(report.fetch_summary(fetch_all(cfg, store)), file=sys.stderr)
     _write(_digest(args, cfg, store), args.out)
+
+
+def cmd_score(args, cfg, store):
+    """Score Today's unscored jobs now, most relevant first and one at a time, so stopping keeps what's done.
+    `jobwatch ui` does the same in the background."""
+    if not (cfg.resume and cfg.resume.is_file()):
+        raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
+    todo = unscored(cfg, store)
+    todo = todo[:args.limit] if args.limit else todo
+    if not todo:
+        print("Every job on Today has a fit score.")
+        return
+    scored, failed = 0, {}
+    for i, e in enumerate(todo, 1):
+        print(f"[{i}/{len(todo)}] {e.job.display_company}: {e.job.title}", file=sys.stderr)
+        n, errors = score_entries(cfg, store, [e], progress=lambda m: None)
+        scored += n
+        failed.update(errors)
+        if n:
+            fit = e.fit
+            print(f"  {fit['score']:.0f}/100, must-haves {fit['must_haves_met']}/{fit['must_haves_total']}",
+                  file=sys.stderr)
+    print(f"Scored {scored} of {len(todo)} jobs." + (f" {len(failed)} failed:" if failed else ""))
+    for key, err in failed.items():
+        print(f"  {key}: {err}")
 
 
 def cmd_show(args, cfg, store):
@@ -257,6 +282,10 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--format", choices=["md", "json"], default="md")
         p.add_argument("-o", "--out", type=Path)
         p.set_defaults(func=func)
+
+    p = sub.add_parser("score", help="score Today's unscored jobs against your resume, most relevant first")
+    p.add_argument("--limit", type=int, default=None, metavar="N", help="stop after N jobs")
+    p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("show", help="a job's full posting text")
     p.add_argument("key", help="job key, or its posting id")
