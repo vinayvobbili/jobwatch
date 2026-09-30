@@ -72,7 +72,8 @@ def _time(value) -> datetime | None:
     if isinstance(value, (int, float)):  # Lever: milliseconds since the epoch
         return datetime.fromtimestamp(value / 1000, timezone.utc)
     try:
-        t = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        # Python 3.10 reads only "+00:00": Jibe writes "+0000"
+        t = datetime.fromisoformat(re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", str(value).replace("Z", "+00:00")))
     except ValueError:
         return None
     return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
