@@ -164,6 +164,14 @@ def test_import_keeps_counts_but_never_messages(tmp_path):
     assert [p["name"] for p in Contacts.load(out).at("Initech")] == ["Bo Chen", "Ana Li"]
 
 
+def test_quoted_archive_headers_are_read(tmp_path):
+    """The real export quotes messages.csv's header ("CONVERSATION ID",...), which once dropped every message."""
+    quoted = ",".join(f'"{c}"' for c in MESSAGE_COLUMNS.split(","))
+    messages = ARCHIVE_MESSAGES.replace(MESSAGE_COLUMNS, quoted, 1)
+    contacts = Contacts.load(make_archive(tmp_path, {"Connections.csv": CONNECTIONS, "messages.csv": messages}))
+    assert contacts.at("Initech")[0]["why"] == "messaged 2×, last 2025-03-02"
+
+
 def test_archive_problems_are_explained(tmp_path):
     from jobwatch.contacts import read_archive
 
