@@ -74,3 +74,43 @@ def test_probe_tries_every_source_and_reports_open_roles():
 def test_probe_ignores_empty_boards():
     web = FakeWeb({"https://api.lever.co/v0/postings/ghost?mode=json": []})
     assert sources.probe("ghost", web) == []
+
+
+def _http_error(code, retry_after=None):
+    import email.message
+    import urllib.error
+
+    headers = email.message.Message()
+    if retry_after is not None:
+        headers["Retry-After"] = retry_after
+    return urllib.error.HTTPError("https://x.test/api", code, "slow down", headers, None)
+
+
+def test_a_rate_limited_board_is_asked_again(monkeypatch):
+    import io
+
+    replies = [_http_error(429, "5"), _http_error(503), io.BytesIO(b'{"ok": true}')]
+
+    def urlopen(req, timeout):
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    waits = []
+    monkeypatch.setattr(sources.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(sources.time, "sleep", waits.append)
+    assert sources.get_json("https://x.test/api") == {"ok": True}
+    assert waits == [5.0, 4]  # the server's Retry-After, then backing off
+
+
+def test_a_board_that_stays_rate_limited_fails(monkeypatch):
+    def urlopen(req, timeout):
+        raise _http_error(429, "999")
+
+    waits = []
+    monkeypatch.setattr(sources.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(sources.time, "sleep", waits.append)
+    with pytest.raises(sources.SourceError, match="HTTP 429"):
+        sources.get_json("https://x.test/api")
+    assert waits == [sources.MAX_WAIT] * sources.RETRIES

@@ -43,8 +43,10 @@ def html_to_text(markup: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-_AMOUNT = r"\$\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([kK])?"
-_RANGE = re.compile(_AMOUNT + r"\s*(?:USD)?\s*(?:-|–|—|to)\s*\$?\s?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*([kK])?")
+_NUMBER = r"(\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d+(?:\.\d+)?)"  # 180,000 or 180,000.00 or 180 (with K)
+_AMOUNT = r"\$\s?" + _NUMBER + r"\s*([kK])?"
+# "USD $140,400.00 - USD $372,300.00" (GitHub) as well as "$180K - $220K"
+_RANGE = re.compile(_AMOUNT + r"\s*(?:USD)?\s*(?:-|–|—|to)\s*(?:USD\s*)?\$?\s?" + _NUMBER + r"\s*([kK])?")
 _NOT_ANNUAL = re.compile(r"\s*(?:USD\s*)?(?:/|per\s+|an?\s+)(?:hour|hr|month|mo|week|day)\b", re.I)
 
 

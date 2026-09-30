@@ -22,17 +22,20 @@ Keywords: Python, RAG, agents
 ## Why company boards
 
 Most tech companies post jobs through Greenhouse, Lever, Ashby or Workable, and most large employers through
-Workday (some through Eightfold). Each publishes open roles as public JSON so anyone can build a careers page, with
+Workday (some through Eightfold or a Jibe careers site). Each publishes open roles as public JSON so anyone can build a careers page, with
 no API key or scraping. jobwatch reads those feeds for the companies on your watchlist:
 
 - **Complete and fresh:** a role appears as soon as the company posts it, not when an aggregator picks it up.
 - **Pay ranges:** read from the board's structured fields where they exist (Lever, Ashby), otherwise from
   the posting text.
-- **Polite:** one request per company per run on Greenhouse, Lever, Ashby and Workable. A Workday or Eightfold board can
+- **Polite:** one request per company per run on Greenhouse, Lever, Ashby and Workable (a Jibe site: one per 100
+  roles). A Workday or Eightfold board can
   list thousands of roles, most of them nothing like yours, so jobwatch searches it for your
   `filters.titles` words and reads a posting in full only when its title passes your title filters, once:
   after that, a run costs a few searches per company. Titles written as regexes can't be searched for, so
-  keep a plain word or two ("engineer", "forward deployed") among them.
+  keep a plain word or two ("engineer", "forward deployed") among them. A board that answers "too many
+  requests" (HTTP 429) is asked again after a pause; a posting it still won't serve is kept without its text
+  and read on the next run. Eightfold boards are read one request at a time.
 - **Within the rules:** it reads public APIs meant for this. It doesn't scrape LinkedIn or Indeed, which
   forbid it.
 
@@ -115,6 +118,7 @@ companies:
   - workable:acme                                       # apply.workable.com/acme
   - {source: workday, board: nvidia.wd5/NVIDIAExternalCareerSite, name: NVIDIA}  # tenant.wdN/site
   - {source: eightfold, board: acme, name: Acme}      # tenant (or tenant/domain), from a link
+  - {source: jibe, board: careers.acme.com, name: Acme}  # a Jibe site's host (job links: /careers-home/jobs/...)
 
 filters:
   titles: ["engineer", "architect"]       # regexes; the title must match one

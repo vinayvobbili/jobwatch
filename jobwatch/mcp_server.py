@@ -16,7 +16,7 @@ from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watc
 server = MCPServer(
     "jobwatch",
     instructions=(
-        "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold) from a watchlist "
+        "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe) from a watchlist "
         "file. "
         "fetch_jobs checks every board; digest ranks the new matches (optionally fit-scored with shortlist-ai); "
         "job_details gives a posting's full text for tailoring a resume; mark_job records queued/applied/skipped "

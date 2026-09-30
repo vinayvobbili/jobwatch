@@ -216,3 +216,64 @@ def test_fetch_all_reads_a_posting_once(tmp_path):
     assert web.calls == [f"{WD}/jobs"]  # the search only: the posting is in the store
     [(job, _)] = store.jobs()
     assert job.display_company == "Initech" and job.remote is True
+
+
+def test_a_posting_the_board_refuses_is_read_on_the_next_fetch(tmp_path):
+    path = tmp_path / "jobwatch.yaml"
+    path.write_text("companies:\n  - {source: workday, board: initech.wd5/External, name: Initech}\n"
+                    "filters:\n  titles: [architect]\nstate: state.db\n")
+    cfg, web = config.load(path), workday_web()
+    detail = WD + ARCHITECTS[0]["externalPath"]
+    web.responses[detail] = sources.SourceError(f"{detail}: HTTP 429")
+    store = Store(cfg.state)
+    report = fetch_all(cfg, store, get=web)
+    assert not report.errors and len(report.new) == 1  # the board still counts; the job is listed, unread
+    [(job, _)] = store.jobs()
+    assert job.title == "Principal Architect" and job.description == ""
+    web.responses[detail] = wd_detail(ARCHITECTS[0])
+    assert fetch_all(cfg, store, get=web).new == []
+    [(job, _)] = store.jobs()
+    assert "Detection engineering" in job.description
+
+
+# -- Jibe: a careers site on the company's own domain, listing every role 100 a page
+
+def jibe_job(n, title, where="US Remote", tags=("Remote",)):
+    return {"data": {"slug": str(n), "req_id": str(n), "title": title, "location_name": where,
+                     "full_location": "United States" if "US" in where else where, "tags6": list(tags),
+                     "hiring_organization": "Hooli, Inc.", "categories": [{"name": "Engineering"}],
+                     "posted_date": "2026-09-29T21:03:00+0000",
+                     "description": "<p>Build agents.</p><p>USD $140,400.00 - USD $372,300.00 /Yr.</p>",
+                     "responsibilities": "<ul><li>Ship evals</li></ul>", "qualifications": "<p>Python</p>"}}
+
+
+JIBE_JOBS = [jibe_job(1, "Staff Software Engineer, Copilot"), jibe_job(2, "Principal Engineer"),
+             jibe_job(3, "Staff Engineer", "London, England, United Kingdom", ())]
+
+
+def jibe_web():
+    def page(n):
+        return {"totalCount": len(JIBE_JOBS), "jobs": JIBE_JOBS[(n - 1) * 2:n * 2]}
+    return FakeWeb({f"https://careers.hooli.test/api/jobs?page={n}&limit=2": page(n) for n in (1, 2)})
+
+
+def test_jibe_reads_every_page(monkeypatch):
+    monkeypatch.setattr(sources, "JIBE_PAGE", 2)
+    web = jibe_web()
+    jobs = sources.fetch("jibe", "careers.hooli.test", web)
+    assert [j.id for j in jobs] == ["1", "2", "3"] and len(web.calls) == 2
+    j = jobs[0]
+    assert (j.key, j.url) == ("jibe:careers.hooli.test:1", "https://careers.hooli.test/careers-home/jobs/1")
+    assert j.remote is True and j.locations == ["United States"] and j.department == "Engineering"
+    assert (j.salary_min, j.salary_max) == (140_400, 372_300)
+    assert "Build agents." in j.description and "- Ship evals" in j.description and "Python" in j.description
+    assert jobs[2].remote is None and j.posted.year == 2026
+
+
+def test_a_jibe_link_is_detected_and_read(monkeypatch):
+    monkeypatch.setattr(sources, "JIBE_PAGE", 2)
+    assert sources.detect("https://careers.acme.com/careers-home/jobs/5710?lang=en-us") == \
+        ("jibe", "careers.acme.com")
+    assert sources.careers_url("jibe", "careers.acme.com") == "https://careers.acme.com/careers-home/jobs"
+    job = sources.posting("https://careers.hooli.test/careers-home/jobs/2?lang=en-us", jibe_web())
+    assert job.title == "Principal Engineer"

@@ -1,4 +1,4 @@
-"""Public job-board APIs: Greenhouse, Lever, Ashby, Workday and Eightfold.
+"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold and Jibe.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Greenhouse, Lever and Ashby return a whole board in one response, and a parser turns it into Jobs.
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -33,6 +34,16 @@ class NotFound(SourceError):
     pass
 
 
+RETRIES = 3  # a board that says "slow down" (429) or "busy" (503) is asked again, waiting longer each time
+MAX_WAIT = 30
+
+
+def _wait(e: urllib.error.HTTPError, attempt: int) -> float:
+    """Seconds to wait before asking again: the server's Retry-After if it gives one, else 2, 4, 8..."""
+    after = (e.headers or {}).get("Retry-After", "")
+    return min(float(after) if after.strip().isdigit() else 2 ** (attempt + 1), MAX_WAIT)
+
+
 def get_json(url: str, timeout: float = 30, body: dict | None = None):
     """GET a JSON document, or POST `body` as JSON and read the reply."""
     headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
@@ -40,15 +51,19 @@ def get_json(url: str, timeout: float = 30, body: dict | None = None):
     if body is not None:
         data, headers["Content-Type"] = json.dumps(body).encode(), "application/json"
     req = urllib.request.Request(url, data=data, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.load(resp)
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            raise NotFound(url) from None
-        raise SourceError(f"{url}: HTTP {e.code}") from None
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-        raise SourceError(f"{url}: {e}") from None
+    for attempt in range(RETRIES + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.load(resp)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise NotFound(url) from None
+            if e.code in (429, 503) and attempt < RETRIES:
+                time.sleep(_wait(e, attempt))
+                continue
+            raise SourceError(f"{url}: HTTP {e.code}") from None
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+            raise SourceError(f"{url}: {e}") from None
 
 
 def _time(value) -> datetime | None:
@@ -190,16 +205,25 @@ def _workday_posted(text: str) -> datetime | None:
     return None if days is None else datetime.now(timezone.utc) - timedelta(days=days)
 
 
-def _search_all(page: Callable[[int], tuple[list, int]], size: int, cap: int = SEARCH_CAP) -> list:
+def _search_all(page: Callable[[int], tuple[list, int]], size: int, cap: int = SEARCH_CAP, workers: int = 4) -> list:
     """Every result of a paged search, up to `cap`: page(offset) -> (results, total).
 
     The first page says how many there are; the rest are asked for at once."""
     found, total = page(0)
     offsets = range(size, min(total, cap), size) if found else ()
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         for results, _ in pool.map(page, offsets):
             found += results
     return found[:cap]
+
+
+def _unread_if_refused(read: Callable[[], Job], listed: Job) -> Job:
+    """One posting that can't be read right now (the board rate-limits a first big fetch) doesn't fail its whole
+    board: the job is kept as listed, without its text, and the next fetch reads it (see `known`)."""
+    try:
+        return read()
+    except SourceError:
+        return listed
 
 
 def _details(items: list, read: Callable, workers: int = 4) -> list:
@@ -230,7 +254,7 @@ def fetch_workday(board: str, get=None, search=(), wanted=None, known=None, cap=
                 locations=split_locations(p.get("locationsText") or ""), posted=_workday_posted(p.get("postedOn")))
         if wanted and not wanted(j.title):
             return j  # listed, not read: the title filter drops it anyway
-        return _workday_read(j, api, p["externalPath"], get)
+        return _unread_if_refused(lambda: _workday_read(j, api, p["externalPath"], get), j)
     return _details(list(postings.items()), job)
 
 
@@ -251,6 +275,7 @@ def _workday_read(j: Job, api: str, path: str, get) -> Job:
 # -- Eightfold: board "tenant" or "tenant/domain", from https://tenant.eightfold.ai/careers?domain=domain
 
 EIGHTFOLD_PAGE = 10
+EIGHTFOLD_WORKERS = 1  # pages are 10 roles, so a big board is hundreds of requests: parallel ones get HTTP 429
 
 
 def _eightfold_parts(board: str) -> tuple[str, str]:
@@ -274,7 +299,7 @@ def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, ca
         def page(offset, term=term):
             d = (get(f"{api}/search?domain={quote(domain)}&query={quote(term)}&start={offset}") or {}).get("data") or {}
             return d.get("positions") or [], d.get("count") or 0
-        for p in _search_all(page, EIGHTFOLD_PAGE, cap):
+        for p in _search_all(page, EIGHTFOLD_PAGE, cap, EIGHTFOLD_WORKERS):
             positions.setdefault(str(p["id"]), p)
 
     def job(item) -> Job:
@@ -292,12 +317,46 @@ def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, ca
                 posted=datetime.fromtimestamp(int(posted), timezone.utc) if str(posted or "").isdigit() else None)
         if wanted and not wanted(j.title):
             return j
-        info = (get(f"{api}/position_details?position_id={pid}&domain={quote(domain)}") or {}).get("data") or {}
-        j.url = info.get("publicUrl") or j.url
-        j.description = html_to_text(info.get("jobDescription") or "")
+        def read() -> Job:
+            info = (get(f"{api}/position_details?position_id={pid}&domain={quote(domain)}") or {}).get("data") or {}
+            j.url = info.get("publicUrl") or j.url
+            j.description = html_to_text(info.get("jobDescription") or "")
+            _salary(j, j.description)
+            return j
+        return _unread_if_refused(read, j)
+    return _details(list(positions.items()), job, EIGHTFOLD_WORKERS)
+
+
+# -- Jibe (Google's careers-site product, over iCIMS and others): board is the site's host, e.g.
+# careers.acme.com. The site's own /api/jobs lists every role with its full text, 100 a page.
+
+JIBE_PAGE = 100
+
+
+def fetch_jibe(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """Every role on a Jibe careers site. Small enough to read whole, so `search` and `wanted` aren't needed."""
+    get = get or get_json
+
+    def page(offset):
+        d = get(f"https://{board}/api/jobs?page={offset // JIBE_PAGE + 1}&limit={JIBE_PAGE}") or {}
+        return [j.get("data") or {} for j in d.get("jobs") or []], d.get("totalCount") or 0
+    jobs = []
+    for d in _search_all(page, JIBE_PAGE, cap):
+        rid = str(d.get("req_id") or d.get("slug") or "")
+        if not rid:
+            continue
+        text = "\n\n".join(html_to_text(d.get(k) or "") for k in ("description", "responsibilities", "qualifications"))
+        where = d.get("location_name") or ""
+        j = Job(source="jibe", company=board, id=rid, title=(d.get("title") or "").strip(),
+                url=f"https://{board}/careers-home/jobs/{d.get('slug') or rid}",
+                company_name=d.get("hiring_organization") or "",
+                locations=split_locations(d.get("full_location") or where),
+                remote=True if "remote" in (where + " " + " ".join(d.get("tags6") or [])).lower() else None,
+                department=", ".join(c.get("name", "") for c in d.get("categories") or [] if c.get("name")),
+                posted=_time(d.get("posted_date")), description=text.strip())
         _salary(j, j.description)
-        return j
-    return _details(list(positions.items()), job)
+        jobs.append(j)
+    return jobs
 
 
 @dataclass(frozen=True)
@@ -321,6 +380,7 @@ SOURCES = {
     "workday": Source("workday", "", None, "https://{tenant}.{pod}.myworkdayjobs.com/{site}", fetch_workday),
     "eightfold": Source("eightfold", "", None, "https://{tenant}.eightfold.ai/careers?domain={domain}",
                         fetch_eightfold),
+    "jibe": Source("jibe", "", None, "https://{board}/careers-home/jobs", fetch_jibe),
 }
 
 
@@ -346,9 +406,9 @@ def candidate_home(url: str) -> str | None:
 def fetch(source: str, board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
     """The open roles on one company's board. `get` replaces the HTTP call (tests, caching).
 
-    Greenhouse, Lever and Ashby return every role. Workday and Eightfold are searched for each of `search`
-    (plain title words; nothing searches for everything), reading in full only the postings whose title
-    passes `wanted` and that aren't in `known` (key -> Job, read before) already."""
+    Greenhouse, Lever, Ashby, Workable and Jibe return every role. Workday and Eightfold are searched for each
+    of `search` (plain title words; nothing searches for everything), reading in full only the postings whose
+    title passes `wanted` and that aren't in `known` (key -> Job, read before) already."""
     src = SOURCES[source]
     if src.search:
         return src.search(board, get, search=search, wanted=wanted, known=known, cap=cap)
@@ -383,6 +443,8 @@ def detect(url: str) -> tuple[str, str] | None:
         return ("workable", parts[0]) if parts and parts[0] not in ("j", "api") else None
     if (m := re.fullmatch(r"([\w-]+)\.workable\.com", host)) and m.group(1) not in ("apply", "jobs", "www"):
         return "workable", m.group(1)
+    if parts[:1] == ["careers-home"]:  # a Jibe site, on the company's own domain
+        return "jibe", parsed.netloc.lower()
     source = _HOSTS.get(host)
     if not source:
         return None
@@ -403,6 +465,8 @@ def _posting_id(source: str, url: str) -> str | None:
         return parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else None
     if source in ("lever", "ashby"):
         return parts[1] if len(parts) > 1 else None
+    if source == "jibe":
+        return parts[2] if len(parts) > 2 and parts[1] == "jobs" else None
     if source == "workable":
         for marker in ("j", "view"):
             if marker in parts[:-1]:
@@ -510,7 +574,7 @@ def probe(company: str, get=None) -> list[tuple[str, str, list[Job]]]:
         source, board = found
         return [(source, board, _peek(source, board, get))]
     names = board_names(company)
-    tries = [(s, n) for n in names for s in SOURCES if s != "workday"]
+    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe")]  # jibe: own domains
 
     def one(t):
         try:
