@@ -11,6 +11,7 @@ import secrets
 import socketserver
 import sys
 import threading
+import time
 import webbrowser
 from datetime import date
 from http import HTTPStatus
@@ -269,13 +270,16 @@ class App:
         def run(cfg, store):
             job, rec = store.find(key)
             known = load_contacts(cfg)
+            resume = bool(cfg.resume and cfg.resume.is_file())
+            fit = store.score(job.key, resume_id(cfg.resume)) if resume else None
             return {"key": job.key, "title": job.title, "company": job.display_company, "url": job.url,
                     "pay": job.pay(), "locations": job.locations, "text": job.to_text(),
                     "contacts": known.at(job.display_company, job.company) if known else [],
                     "find_referral": contacts.linkedin_search(job.display_company),
                     "candidate_home": store.candidate_home(job),
                     "package": Package(store.packages, job.key).data(),
-                    "skills": learn.job_gaps(cfg, store, job),
+                    "skills": learn.job_gaps(cfg, store, job), "fit": fit,
+                    "can_score": resume and bool(job.description.strip()),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
         return self._with_store(run)
 
@@ -455,8 +459,9 @@ def make_handler(app: App, token: str, port_ref: list[int]):
             self.wfile.write(body)
 
         def _stream(self, info: dict, pieces):
-            """A reply as it's written: one JSON object per line ({"info"}, {"text"}..., then {"done"} or
-            {"error"}), each sent as soon as it's ready. The connection closes at the end."""
+            """A reply as it's written: one JSON object per line ({"info"}, {"text"}..., then {"done", "stats"}
+            or {"error"}), each sent as soon as it's ready. The connection closes at the end. stats: the model,
+            seconds taken, seconds to the first words, and what the model reports (tokens, speed)."""
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
@@ -467,11 +472,23 @@ def make_handler(app: App, token: str, port_ref: list[int]):
             def line(obj):
                 self.wfile.write(json.dumps(obj, ensure_ascii=False).encode() + b"\n")
                 self.wfile.flush()
+            start, first, stats = time.monotonic(), None, {"model": info.get("model")}
             try:
                 line({"info": info})
-                for text in pieces:
-                    line({"text": text})
-                line({"done": True})
+                for piece in pieces:
+                    if isinstance(piece, dict):  # what it's waiting for, or what the model reports at the end
+                        if "status" in piece:
+                            line({"status": piece["status"]})
+                        else:
+                            stats.update(piece)
+                        continue
+                    first = first if first is not None else time.monotonic() - start
+                    line({"text": piece})
+                took = time.monotonic() - start
+                stats.update(seconds=round(took, 1), first_seconds=round(first or 0, 1))
+                if stats.get("output_tokens") and "tokens_per_sec" not in stats and took > (first or 0):
+                    stats["tokens_per_sec"] = round(stats["output_tokens"] / (took - (first or 0)), 1)
+                line({"done": True, "stats": stats})
             except (BrokenPipeError, ConnectionResetError):
                 pass  # the page stopped the reply or went away
             except Exception as e:

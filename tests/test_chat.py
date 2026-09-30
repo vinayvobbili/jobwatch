@@ -17,8 +17,10 @@ def fake_model(monkeypatch):
 
     def reply(backend, system, messages):
         seen.update(backend=backend, system=system, messages=messages)
+        yield {"status": "Waiting for a fit score to finish"}
         yield "Hello"
         yield ", there."
+        yield {"input_tokens": 900, "output_tokens": 4}
     monkeypatch.setattr(chat, "check", lambda backend: None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
@@ -55,7 +57,8 @@ def test_home_chat_sees_todays_jobs_and_applications(watchlist, web, fake_model)
     app.post_fetch({})
     app.post_track({"key": "c1", "status": "applied", "follow_up": "2000-01-01", "next_step": "ping the recruiter"})
     info, pieces = app.chat({"messages": [{"role": "user", "content": "What should I do first?"}]})
-    assert "".join(pieces) == "Hello, there." and info["backend"] == fake_model["backend"]
+    assert "".join(p for p in pieces if isinstance(p, str)) == "Hello, there."
+    assert info["backend"] == fake_model["backend"]
     system = fake_model["system"]
     assert "Today's matching jobs" in system and "Staff AI Engineer: applied" in system
     assert "follow up 2000-01-01 (due)" in system and "ping the recruiter" in system
@@ -86,8 +89,12 @@ def test_chat_streams_lines(server, fake_model):
     request(server, "POST", "/api/fetch", {}, headers=ok)
     status, data = request(server, "POST", "/api/chat", {"messages": [{"role": "user", "content": "hi"}]}, headers=ok)
     out = lines(data)
-    assert status == 200 and "info" in out[0] and [o["text"] for o in out[1:3]] == ["Hello", ", there."]
-    assert out[-1] == {"done": True}
+    assert status == 200 and "info" in out[0] and out[2]["text"] == "Hello"
+    assert [o for o in out if "text" in o] == [{"text": "Hello"}, {"text": ", there."}]
+    assert out[1] == {"status": "Waiting for a fit score to finish"}
+    stats = out[-1]["stats"]
+    assert out[-1]["done"] and (stats["input_tokens"], stats["output_tokens"]) == (900, 4)
+    assert stats["model"] and stats["seconds"] >= stats["first_seconds"] >= 0 and "tokens_per_sec" in stats
     assert request(server, "POST", "/api/chat", {"messages": []}, headers=ok)[0] == 400
     assert request(server, "POST", "/api/chat", {"messages": [{"role": "user", "content": "hi"}]})[0] == 403
     status, data = request(server, "GET", "/api/chat", headers=ok)
@@ -112,6 +119,7 @@ def test_ask_from_the_command_line(watchlist, web, fake_model, capsys, monkeypat
     cli.main(["-c", str(watchlist), "ask", "Do", "I", "fit?", "--job", "c1"])
     out = capsys.readouterr()
     assert out.out.endswith("Hello, there.\n") and "<posting>" in fake_model["system"]
+    assert "(Waiting for a fit score to finish…)" in out.err and "4 tokens out · 900 in" in out.err
     assert fake_model["messages"] == [{"role": "user", "content": "Do I fit?"}]
     monkeypatch.setattr(chat, "check", lambda backend: (_ for _ in ()).throw(chat.ChatUnavailable("no model")))
     with pytest.raises(SystemExit, match="no model"):

@@ -189,7 +189,12 @@ scores:
 It reads today's matching jobs and your applications, or one posting with its fit score and
 [what you sent](#what-you-sent), plus your resume (the one you sent for that job, when it's kept).
 It's told to use only your resume for facts about you and to treat posting text as data, not instructions.
-It has no tools, so it can't change, apply for or send anything. The same thing works from the terminal:
+It has no tools, so it can't change, apply for or send anything.
+
+Under each reply are a copy button and what it took: seconds (and any wait for a background fit score to
+finish), tokens in and out, and on this computer tokens per second and peak memory. While a reply is on its
+way, a timer shows how long it's been against how long recent replies took. The download button in the chat's
+header saves the conversation as Markdown. The same thing works from the terminal:
 
 ```
 jobwatch ask "What follow-ups are due this week?"

@@ -409,6 +409,14 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .msg.bot ul, .msg.bot ol { margin: 3px 0 7px; padding-left: 20px; } .msg.bot li { margin: 3px 0; }
 .msg.bot code { font-size: 12.5px; background: color-mix(in srgb, var(--text) 8%, transparent); padding: 1px 5px; border-radius: 5px; }
 .msg.bot a { color: var(--accent); }
+.turn { align-self: flex-start; max-width: 88%; display: flex; flex-direction: column; gap: 4px; animation: rise .25s both; }
+.turn .msg { max-width: 100%; animation: none; }
+.msg-meta { display: flex; align-items: center; gap: 4px; padding-left: 4px; font-size: 11.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+.msg-meta .icon-btn { padding: 4px; }
+.msg-meta .copied { color: var(--good); }
+.caret { display: inline-block; margin-left: 2px; animation: caret 1s steps(2, start) infinite; }
+.thinking { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .msg.err { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
 .msg .stopped { color: var(--muted); font-size: 12.5px; font-style: italic; }
 .dots { display: inline-flex; gap: 4px; padding: 5px 2px; }
@@ -453,7 +461,7 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 }
 .dialog.with-chat { max-width: 1280px; display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 24px; align-items: start; }
 .dialog.with-chat .posting { max-height: calc(100vh - 330px); }
-.job-chat { position: sticky; top: 0; height: min(760px, calc(100vh - 124px)); }
+.job-chat { position: sticky; top: 0; height: calc(100vh - 124px); }
 @media (max-width: 1100px) {
   .dialog.with-chat { grid-template-columns: 1fr; }
   .job-chat { position: static; height: 560px; }
@@ -471,6 +479,7 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 @keyframes grow { from { transform: scaleX(0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { 0%, 80%, 100% { opacity: .25; transform: none; } 40% { opacity: 1; transform: translateY(-3px); } }
+@keyframes caret { to { visibility: hidden; } }
 @keyframes twinkle { 50% { transform: rotate(16deg) scale(1.18); } }
 @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.95); } }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
@@ -572,6 +581,8 @@ const ICONS = {
   x: "M18 6 6 18M6 6l12 12",
   clip: "M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48",
   file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
+  copy: "M9 9h11v11H9zM5 15H4V4h11v1",
+  download: "M12 3v12M7 10l5 5 5-5M5 21h14",
 };
 function icon(name, size = 15) {
   const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
@@ -832,13 +843,14 @@ async function openDetails(key) {
     dialog.classList.add("with-chat");
     fill(dialog,
       h("div", {},
-        h("div", { class: "row" }, h("h2", { style: "flex:1" }, j.title),
+        h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, j.title), fitBox(j.fit),
           h("button", { class: "btn", onclick: closeDetails }, "Close")),
         h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
         h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
           (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
+        gapsLine(j.fit),
         knowLine(j, 10),
-        h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"),
+        h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"), detailsScore(j),
           j.candidate_home ? h("span", { title: "This company's own Workday account: sign in to see where your application stands" },
             link(j.candidate_home, "Your applications there ↗")) : null,
           APPLIED.includes(j.status) ? h("button", { class: "btn", onclick: () => openPrep(j.key),
@@ -856,6 +868,16 @@ async function openDetails(key) {
             "What are they likely to ask in interviews?", "Draft a short note to a recruiter here"],
       })));
   } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
+}
+function detailsScore(j) {
+  if (j.fit || !j.can_score) return null;
+  const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");
+  b.onclick = async () => {
+    b.disabled = true; b.textContent = "Scoring…";
+    try { await api("/api/score", { key: j.key }); openDetails(j.key); }
+    catch (e) { b.disabled = false; b.textContent = "Score fit"; toast(e.message); }
+  };
+  return b;
 }
 // A prep sheet for a call: the posting's asks next to the closest resume line, gaps, what was sent, questions.
 async function openPrep(key) {
@@ -1055,6 +1077,43 @@ function md(text) {
   return out;
 }
 
+// "⚡ 14.2s (1.9s to first word) | 3,210→412 tokens | 28 tokens/s", from the reply's stats.
+function statsText(s) {
+  if (!s) return "";
+  const paren = parts => parts.some(Boolean) ? ` (${parts.filter(Boolean).join(", ")})` : "";
+  const n = x => Number(x).toLocaleString();
+  return "⚡ " + [
+    s.seconds != null ? `${s.seconds}s` + paren([s.waited_seconds ? `${s.waited_seconds}s waiting for a fit score` : "",
+      s.first_seconds ? `${Math.max(0, s.first_seconds - (s.waited_seconds || 0)).toFixed(1)}s to first word` : ""]) : "",
+    s.output_tokens ? (s.input_tokens ? `${n(s.input_tokens)}→` : "") + `${n(s.output_tokens)} tokens` : "",
+    s.tokens_per_sec ? `${s.tokens_per_sec} tokens/s` : "",
+    s.peak_memory_gb ? `${s.peak_memory_gb} GB peak` : "",
+  ].filter(Boolean).join(" | ");
+}
+function copyButton(text) {
+  const b = h("button", { class: "icon-btn", title: "Copy", "aria-label": "Copy the reply" }, icon("copy", 13));
+  b.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(text());
+      fill(b, icon("check", 13)); b.classList.add("copied");
+      setTimeout(() => { fill(b, icon("copy", 13)); b.classList.remove("copied"); }, 1500);
+    } catch { toast("Couldn't copy: your browser blocked it"); }
+  };
+  return b;
+}
+function replyMeta(m) {
+  return h("div", { class: "msg-meta" }, copyButton(() => m.content),
+    m.stats ? h("span", { title: m.stats.model || "" }, statsText(m.stats)) : null);
+}
+// How long replies took lately (kept in this browser), for "~20s expected" while the next one is written.
+function expectedSeconds() {
+  try { const t = JSON.parse(remembered("chat-seconds", "[]")); return t.length ? Math.round(t.reduce((a, b) => a + b) / t.length) : null; }
+  catch { return null; }
+}
+function rememberSeconds(s) {
+  try { remember("chat-seconds", JSON.stringify([...JSON.parse(remembered("chat-seconds", "[]")), s].slice(-5))); } catch { /* fine */ }
+}
+
 function chatBox({ key = null, title, intro, suggestions, onclose }) {
   const id = key || "home";
   if (!chats.has(id)) chats.set(id, []);
@@ -1070,6 +1129,14 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
   });
   const input = h("textarea", { rows: 1, placeholder: "Ask anything…", "aria-label": "Your question" });
   const send = h("button", { class: "send", type: "submit", title: "Send (Enter)", "aria-label": "Send" }, icon("send", 17));
+  const save = h("button", { class: "icon-btn", title: "Download the conversation", "aria-label": "Download the conversation",
+    onclick: () => {
+      const text = `# ${title}\n\n` + history.map(m => (m.role === "user" ? "**You:** " : "**jobwatch:** ") + m.content +
+        (m.stats ? `\n\n_${statsText(m.stats)}_` : "")).join("\n\n---\n\n") + "\n";
+      const a = h("a", { href: URL.createObjectURL(new Blob([text], { type: "text/markdown" })),
+        download: title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".md" });
+      a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } }, icon("download", 15));
   const fresh = h("button", { class: "icon-btn", title: "Start over", "aria-label": "Start over",
     onclick: () => { if (busy) busy.abort(); history.length = 0; draw(); input.focus(); } }, icon("refresh", 15));
   let busy = null;  // an AbortController while a reply streams
@@ -1081,11 +1148,11 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
     send.classList.toggle("stop", on);
     send.title = on ? "Stop" : "Send (Enter)";
     send.disabled = !on && !input.value.trim();
-    fresh.style.visibility = history.length ? "" : "hidden";
+    fresh.style.visibility = save.style.visibility = history.length ? "" : "hidden";
   };
   const draw = () => {
-    fill(log, history.length ? history.map(m => h("div", { class: "msg " + (m.role === "user" ? "user" : "bot") },
-      m.role === "user" ? m.content : md(m.content)))
+    fill(log, history.length ? history.map(m => m.role === "user" ? h("div", { class: "msg user" }, m.content)
+      : h("div", { class: "turn" }, h("div", { class: "msg bot" }, md(m.content)), replyMeta(m)))
       : h("div", { class: "chat-hello" }, h("div", { class: "spark" }, icon("sparkle", 24)), h("div", {}, intro),
         h("div", { class: "suggest" }, suggestions.map(s => h("button", { onclick: () => ask(s) }, s)))));
     scroll();
@@ -1099,12 +1166,25 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
     input.value = ""; grow();
     busy = new AbortController();
     draw();
-    const out = h("div", { class: "msg bot" }, h("span", { class: "dots", "aria-label": "Thinking" }, h("i"), h("i"), h("i")));
-    log.append(out); scroll();
-    let reply = "", failed = null, queued = false;
-    const paint = () => { queued = false; fill(out, md(reply)); scroll(); };
+    const expect = expectedSeconds(), started = Date.now(), clock = h("span", {}, "0s");
+    const status = h("span", {}, expect ? `~${expect}s expected` : "");
+    const out = h("div", { class: "msg bot" }, h("div", { class: "thinking" },
+      h("span", { class: "dots", "aria-label": "Thinking" }, h("i"), h("i"), h("i")), clock, status));
+    const turn = h("div", { class: "turn" }, out);
+    const tick = setInterval(() => { clock.textContent = Math.round((Date.now() - started) / 1000) + "s"; }, 1000);
+    log.append(turn); scroll();
+    let reply = "", failed = null, queued = false, stats = null, finished = false;
+    const paint = () => {  // the reply so far, with a caret while it's still being written
+      queued = false;
+      fill(out, md(reply));
+      let last = out.lastElementChild;
+      if (last && /^(UL|OL)$/.test(last.tagName)) last = last.lastElementChild;
+      if (!finished) (last || out).append(h("span", { class: "caret" }, "▋"));
+      scroll();
+    };
     try {
-      const r = await fetch("/api/chat", { method: "POST", signal: busy.signal, body: JSON.stringify({ key, messages: history }),
+      const r = await fetch("/api/chat", { method: "POST", signal: busy.signal,
+        body: JSON.stringify({ key, messages: history.map(({ role, content }) => ({ role, content })) }),
         headers: { "X-Jobwatch-Token": TOKEN, "Content-Type": "application/json" } });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
       const reader = r.body.getReader(), dec = new TextDecoder();
@@ -1117,16 +1197,23 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
         while ((nl = buf.indexOf("\n")) >= 0) {
           const msg = JSON.parse(buf.slice(0, nl));
           buf = buf.slice(nl + 1);
-          if (msg.text) { reply += msg.text; if (!queued) { queued = true; requestAnimationFrame(paint); } }
+          if (msg.text) { clearInterval(tick); reply += msg.text; if (!queued) { queued = true; requestAnimationFrame(paint); } }
+          if (msg.stats) stats = msg.stats;
+          if (msg.status) status.textContent = msg.status + "…";
           if (msg.error) failed = msg.error;
         }
       }
     } catch (e) { failed = e.name === "AbortError" ? "stopped" : e.message; }
     busy = null;
+    clearInterval(tick);
     if (reply) {
-      history.push({ role: "assistant", content: reply });
+      const entry = { role: "assistant", content: reply, stats };
+      history.push(entry);
+      finished = true;
       paint();
       if (failed) out.append(h("p", { class: "stopped" }, failed === "stopped" ? "Stopped." : `Cut off: ${failed}`));
+      turn.append(replyMeta(entry));
+      if (stats?.seconds && !failed) rememberSeconds(Math.round(stats.seconds - (stats.waited_seconds || 0)));  // the reply alone
     } else {
       history.pop();  // nothing came back: give the question back to edit or resend
       if (failed !== "stopped") { input.value = text; grow(); }
@@ -1143,7 +1230,7 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
     input, send);
   const box = h("div", { class: "chat" },
     h("div", { class: "chat-head" }, h("div", { class: "spark" }, icon("sparkle", 17)),
-      h("div", { class: "t" }, h("b", {}, title), where), fresh,
+      h("div", { class: "t" }, h("b", {}, title), where), save, fresh,
       onclose ? h("button", { class: "icon-btn", title: "Close", "aria-label": "Close", onclick: onclose }, icon("x", 16)) : null),
     log, form);
   draw();
