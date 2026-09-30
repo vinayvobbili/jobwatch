@@ -34,6 +34,11 @@ class ModelGate:
         self._busy = False
         self._waiting = 0  # foreground turns waiting
 
+    @property
+    def busy(self) -> bool:
+        """Something is using the model now: a turn would have to wait."""
+        return self._busy
+
     def _release(self):
         with self._cond:
             self._busy = False

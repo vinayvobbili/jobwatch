@@ -4,6 +4,8 @@ import pytest
 import yaml
 
 from jobwatch import config
+from jobwatch.score import resume_id
+from jobwatch.store import Store
 from jobwatch.web import ApiError, App
 
 from .conftest import TOKEN, request
@@ -79,6 +81,19 @@ def test_score_needs_a_resume(app, web):
     app.post_fetch({})
     with pytest.raises(ApiError, match="Add your resume"):
         app.post_score({"key": "c1"})
+
+
+def test_details_show_the_fit_score(app, watchlist, web):
+    app.post_fetch({})
+    got = app.get_job({"key": ["c1"]})
+    assert got["fit"] is None and not got["can_score"]  # no resume yet
+    app.upload("resume", "cv.md", b"# Jane Doe")
+    assert app.get_job({"key": ["c1"]})["can_score"]
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    store.save_score("ashby:initech:c1", resume_id(cfg.resume), {"score": 81, "must_haves_met": 4})
+    store.close()
+    assert app.get_job({"key": ["c1"]})["fit"]["score"] == 81
 
 
 def test_uploads(app, watchlist, web):

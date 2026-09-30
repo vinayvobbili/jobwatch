@@ -178,8 +178,12 @@ def cmd_ask(args, cfg, store):
     info, pieces = chat.start(cfg, store, chat.clean([{"role": "user", "content": " ".join(args.question)}]),
                               args.job)
     print(f"({info['label']}: {info['model']})", file=sys.stderr)
-    for text in pieces:
-        sys.stdout.write(text)
+    for piece in pieces:
+        if isinstance(piece, dict):  # what it's waiting for, or what the model reports at the end
+            print(f"({piece['status']}…)" if "status" in piece else "\n(" + chat.stats_line(piece) + ")",
+                  file=sys.stderr)
+            continue
+        sys.stdout.write(piece)
         sys.stdout.flush()
     sys.stdout.write("\n")
 

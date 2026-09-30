@@ -10,6 +10,7 @@ it can't change anything, apply, or send anything.
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Iterator
 from datetime import date
 from functools import lru_cache
@@ -162,19 +163,33 @@ def start(cfg: Config, store: Store, messages: list[dict], key: str | None = Non
     return where(cfg.backend), reply(cfg.backend, system_prompt(context), messages)
 
 
-def reply(backend: str, system: str, messages: list[dict]) -> Iterator[str]:
-    """The answer, in pieces as the model writes them."""
+def reply(backend: str, system: str, messages: list[dict]) -> Iterator[str | dict]:
+    """The answer, in pieces as the model writes them, then a dict of what the model reports about the reply
+    (input_tokens, output_tokens and, on this computer, tokens_per_sec, peak_memory_gb and waited_seconds).
+    A {"status"} dict before the text says what the reply is waiting for."""
     if backend == "claude":
         return _claude(system, messages)
     return _local(system, messages)
 
 
-def _claude(system: str, messages: list[dict]) -> Iterator[str]:
+def stats_line(stats: dict) -> str:
+    """ "412 tokens out · 28 tokens/s · 3,210 in", from what the model reports (see reply)."""
+    parts = [f"{stats['output_tokens']:,} tokens out" if stats.get("output_tokens") else "",
+             f"{stats['tokens_per_sec']:g} tokens/s" if stats.get("tokens_per_sec") else "",
+             f"{stats['input_tokens']:,} in" if stats.get("input_tokens") else "",
+             f"{stats['peak_memory_gb']:g} GB peak" if stats.get("peak_memory_gb") else "",
+             f"waited {stats['waited_seconds']:g}s for a fit score" if stats.get("waited_seconds") else ""]
+    return " · ".join(p for p in parts if p)
+
+
+def _claude(system: str, messages: list[dict]) -> Iterator[str | dict]:
     import anthropic
 
     with anthropic.Anthropic().messages.stream(model=CLAUDE_MODEL, max_tokens=MAX_TOKENS, system=system,
                                                messages=messages) as stream:
         yield from stream.text_stream
+        usage = stream.get_final_message().usage
+        yield {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens}
 
 
 @lru_cache(maxsize=1)
@@ -184,13 +199,22 @@ def _local_model(name: str):
     return mlx_lm.load(name)
 
 
-def _local(system: str, messages: list[dict]) -> Iterator[str]:
+def _local(system: str, messages: list[dict]) -> Iterator[str | dict]:
     import mlx_lm
 
-    with LOCAL.foreground():  # background fit scoring gives way
+    if LOCAL.busy:
+        yield {"status": "Waiting for a fit score to finish"}
+    asked = time.monotonic()
+    with LOCAL.foreground():  # background fit scoring gives way after the job it's on
+        waited = time.monotonic() - asked
         model, tokenizer = _local_model(LOCAL_MODEL)
         prompt = tokenizer.apply_chat_template([{"role": "system", "content": system}, *messages],
                                                add_generation_prompt=True, tokenize=False, enable_thinking=False)
-        for piece in mlx_lm.stream_generate(model, tokenizer, prompt, max_tokens=MAX_TOKENS):
-            if piece.text:
-                yield piece.text
+        last = None
+        for last in mlx_lm.stream_generate(model, tokenizer, prompt, max_tokens=MAX_TOKENS):
+            if last.text:
+                yield last.text
+        if last:
+            yield {"input_tokens": last.prompt_tokens, "output_tokens": last.generation_tokens,
+                   "tokens_per_sec": round(last.generation_tps, 1), "peak_memory_gb": round(last.peak_memory, 1),
+                   **({"waited_seconds": round(waited, 1)} if waited >= 1 else {})}
