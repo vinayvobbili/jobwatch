@@ -180,16 +180,16 @@ class Store:
         return Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}
 
     def set_status(self, keys: list[str], status: str, note: str | None = None, on: str | None = None):
-        """Move jobs to a status. Moving to an application stage records the day applied, once (`on`, default
-        today), and saves the posting as it reads then; moving back before applying clears the day."""
+        """Move jobs to a status. Moving to an application stage records the day applied: `on` when given (it
+        corrects an earlier day), else today unless a day is already recorded. It also saves the posting as it
+        reads then; moving back before applying clears the day."""
         if status not in STATUSES:
             raise ValueError(f"status must be one of {', '.join(STATUSES)}")
-        applied = day(on) or date.today().isoformat()
         with self.db:
             for key in keys:
                 self.db.execute("UPDATE jobs SET status=?, status_at=?, note=COALESCE(?, note), applied_at="
-                                "CASE WHEN ? THEN COALESCE(applied_at, ?) END WHERE key=?",
-                                (status, _now(), note, status in STAGES, applied, key))
+                                "CASE WHEN ? THEN COALESCE(?, applied_at, ?) END WHERE key=?",
+                                (status, _now(), note, status in STAGES, day(on), date.today().isoformat(), key))
         if status in STAGES:
             for key in keys:
                 job, _ = self.find(key)
