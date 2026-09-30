@@ -114,3 +114,9 @@ def test_a_board_that_stays_rate_limited_fails(monkeypatch):
     with pytest.raises(sources.SourceError, match="HTTP 429"):
         sources.get_json("https://x.test/api")
     assert waits == [sources.MAX_WAIT] * sources.RETRIES
+
+
+def test_times_with_a_colonless_offset():
+    t = sources._time("2026-09-29T21:03:00+0000")  # Jibe; Python 3.10's fromisoformat needs "+00:00"
+    assert (t.year, t.hour, t.utcoffset().total_seconds()) == (2026, 21, 0)
+    assert sources._time("2026-09-29T21:03:00-0500").utcoffset().total_seconds() == -5 * 3600
