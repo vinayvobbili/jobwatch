@@ -334,6 +334,10 @@ def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, ca
 JIBE_PAGE = 100
 
 
+def _squash(text: str) -> str:
+    return " ".join(text.split()).lower()
+
+
 def fetch_jibe(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
     """Every role on a Jibe careers site. Small enough to read whole, so `search` and `wanted` aren't needed."""
     get = get or get_json
@@ -346,7 +350,11 @@ def fetch_jibe(board: str, get=None, search=(), wanted=None, known=None, cap=SEA
         rid = str(d.get("req_id") or d.get("slug") or "")
         if not rid:
             continue
-        text = "\n\n".join(html_to_text(d.get(k) or "") for k in ("description", "responsibilities", "qualifications"))
+        text = html_to_text(d.get("description") or "")
+        for k in ("responsibilities", "qualifications"):  # separate fields, or already in the description
+            part = html_to_text(d.get(k) or "")
+            if part and _squash(part.splitlines()[0]) not in _squash(text):
+                text += "\n\n" + part
         where = d.get("location_name") or ""
         j = Job(source="jibe", company=board, id=rid, title=(d.get("title") or "").strip(),
                 url=f"https://{board}/careers-home/jobs/{d.get('slug') or rid}",

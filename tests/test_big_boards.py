@@ -270,6 +270,15 @@ def test_jibe_reads_every_page(monkeypatch):
     assert jobs[2].remote is None and j.posted.year == 2026
 
 
+def test_jibe_sections_already_in_the_description_are_not_repeated():
+    job = jibe_job(4, "Staff Engineer")
+    job["data"]["description"] = "<p>Build agents.</p><p>Responsibilities</p><ul><li>Ship evals</li></ul>"
+    job["data"]["responsibilities"] = "<ul><li>Ship evals</li></ul>"
+    web = FakeWeb({"https://careers.hooli.test/api/jobs?page=1&limit=100": {"totalCount": 1, "jobs": [job]}})
+    [j] = sources.fetch("jibe", "careers.hooli.test", web)
+    assert j.description.count("Ship evals") == 1 and j.description.endswith("Python")
+
+
 def test_a_jibe_link_is_detected_and_read(monkeypatch):
     monkeypatch.setattr(sources, "JIBE_PAGE", 2)
     assert sources.detect("https://careers.acme.com/careers-home/jobs/5710?lang=en-us") == \
