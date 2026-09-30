@@ -42,6 +42,7 @@ class Config:
     connections: Path | None = None  # LinkedIn Connections.csv, for "you know someone there"
     backend: str = "local"
     score_top: int = 0
+    auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
     timeline: str = "quarter"  # how soon you want to close a skill gap: see TIMELINES
     near: str = ""             # a city, for certificate programs at colleges nearby
     theme: str = "system"      # the page: see THEMES and WIDTHS
@@ -145,6 +146,11 @@ def load(explicit: str | Path | None = None) -> Config:
     except (TypeError, ValueError) as e:
         raise ConfigError(f"{path}: {e}") from None
     scoring = raw.get("scoring") or {}
+    backend = scoring.get("backend", "local")
+    # On by default only for the on-device model: with Claude every score is a paid API call.
+    auto_score = scoring.get("auto", backend == "local")
+    if not isinstance(auto_score, bool):
+        raise ConfigError(f"{path}: scoring.auto must be true or false, got {auto_score!r}")
     learning = raw.get("learning") or {}
     timeline = str(learning.get("timeline", "quarter"))
     if timeline not in TIMELINES:
@@ -164,7 +170,7 @@ def load(explicit: str | Path | None = None) -> Config:
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
-        backend=scoring.get("backend", "local"), score_top=int(scoring.get("top", 0)),
+        backend=backend, score_top=int(scoring.get("top", 0)), auto_score=auto_score,
         timeline=timeline, near=_near(learning, filters), theme=theme, width=width,
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
@@ -201,6 +207,7 @@ keywords:
 scoring:
   backend: claude        # claude (ANTHROPIC_API_KEY) or local (Apple Silicon, pip install 'jobwatch[local]')
   top: 0                 # score this many of the most relevant new jobs per digest
+  # auto: true           # `jobwatch ui` scores every new match in the background (default: on for local)
 
 # Optional: LinkedIn's Connections.csv, to show who you know at each company (a referral beats applying cold).
 # connections: ~/Downloads/Connections.csv

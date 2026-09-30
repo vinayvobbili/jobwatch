@@ -371,6 +371,9 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .chip.toggle:hover { transform: translateY(-1px); }
 .chip.toggle.on { background: var(--grad); color: #fff; }
 .showing:empty { display: none; }
+.scoring:empty { display: none; }
+.scoring { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13.5px; margin: 0 0 10px; min-height: 30px; }
+.scoring.spin .ico { animation: spin 2.4s linear infinite; }
 .showing { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13.5px; margin: 0 0 10px; min-height: 30px; }
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 14px; }
 .grid-cards > .card { margin: 0; }
@@ -1195,6 +1198,31 @@ function facetList(counts, active, onpick, most = 12) {
   return el;
 }
 
+// Fit scores are worked out in the background after each check for new jobs: say how far along, and offer to
+// show the new ones (redrawing on its own would move cards while you read).
+let scoringTimer = null;
+function watchScoring(first, el) {
+  clearTimeout(scoringTimer);
+  const seen = first.done;
+  const draw = s => {
+    const fresh = s.done - seen;
+    const show = fresh > 0 ? h("button", { class: "btn ghost", onclick: () => renderToday() },
+      `Show ${fresh} new score${fresh === 1 ? "" : "s"}`) : null;
+    el.classList.toggle("spin", s.running);
+    if (s.running) fill(el, icon("refresh", 14), `Scoring fit in the background: ${s.left} to go`,
+      s.current ? h("span", { class: "hint", title: s.current }, ` · now ${s.current}`) : null, show);
+    else if (s.error) fill(el, h("span", { title: s.error }, "Background scoring stopped: " + s.error), show);
+    else fill(el, show);
+  };
+  const poll = async () => {
+    if (!el.isConnected) return;
+    try { const s = await api("/api/scoring"); draw(s); if (s.running) scoringTimer = setTimeout(poll, 15000); }
+    catch { /* the page may be restarting: the next render tries again */ }
+  };
+  draw(first);
+  if (first.running) scoringTimer = setTimeout(poll, 15000);
+}
+
 const todayView = { q: "", sort: "fit", company: "", kws: new Set(), page: 1 };
 let todayJobs = [], drawToday = () => {};
 
@@ -1212,6 +1240,7 @@ async function renderToday() {
   }
   const v = todayView;
   const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
+  const scoring = h("div", { class: "scoring" });
   const search = h("input", { type: "search", placeholder: "Search titles and companies" });
   search.value = v.q;
   search.oninput = () => { v.q = search.value; drawToday(); };
@@ -1248,8 +1277,9 @@ async function renderToday() {
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
       filtered ? h("div", { class: "filtered" }, `Filtered out ${filtered}. Change the filters in Settings.`) : null,
-    ], [showing, list, pager]));
+    ], [scoring, showing, list, pager]));
   drawToday();
+  if (d.scoring) watchScoring(d.scoring, scoring);
 }
 
 function renderWelcome() {

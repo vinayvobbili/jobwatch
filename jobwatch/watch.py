@@ -139,13 +139,9 @@ def _rank(e: Entry):
     return (-fit, -e.relevance, e.job.age_days() if e.job.age_days() is not None else 10_000)
 
 
-def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,
-                 limit: int | None = None, progress: Callable[[str], None] | None = None) -> Digest:
-    """Open jobs that pass the filters, ranked by fit score (when scored), then keyword relevance.
-
-    Only jobs not yet shown are included unless include_seen. The `score_top` most relevant unscored
-    jobs are scored with shortlist-ai first, when a resume is configured."""
-    statuses = ("new", "shown") if include_seen else ("new",)
+def _matching(cfg: Config, store: Store, statuses: tuple[str, ...]) -> tuple[list[Entry], dict[str, int]]:
+    """Jobs with these statuses that pass the filters, with stored fit scores for the current resume, and
+    how many were filtered out (reason -> count)."""
     rejected: dict[str, int] = {}
     entries = []
     for job, record in store.jobs(statuses):
@@ -155,31 +151,57 @@ def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_to
             continue
         rel, hits = relevance(job, cfg.keywords)
         entries.append(Entry(job, record, rel, hits))
+    rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
+    if rid:
+        for e in entries:
+            e.fit = store.score(e.job.key, rid)
+    return entries, rejected
 
+
+def unscored(cfg: Config, store: Store, skip: set[str] = frozenset()) -> list[Entry]:
+    """Today's jobs with no fit score for the current resume, most relevant first, one per company and title
+    (the same role posted per region scores the same). Keys in `skip` are left out."""
+    if not (cfg.resume and cfg.resume.is_file()):
+        return []
+    entries, _ = _matching(cfg, store, ("new", "shown"))
+    return [e for e in _group(sorted(entries, key=_rank)) if e.fit is None and e.job.key not in skip]
+
+
+def score_entries(cfg: Config, store: Store, entries: list[Entry],
+                  progress: Callable[[str], None] | None = None) -> tuple[int, dict[str, str]]:
+    """Score these jobs against the resume and store each result, for the job and its same-title postings.
+    (how many were scored, {job key: error})."""
+    rid = resume_id(cfg.resume)
+    results, errors = score_jobs([e.job for e in entries], cfg.resume, cfg.backend, cfg.cache,
+                                 progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)))
+    for e in entries:
+        if e.job.key in results:
+            e.fit = results[e.job.key]
+            for key in e.keys:
+                store.save_score(key, rid, e.fit)
+    return len(results), errors
+
+
+def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,
+                 limit: int | None = None, progress: Callable[[str], None] | None = None) -> Digest:
+    """Open jobs that pass the filters, ranked by fit score (when scored), then keyword relevance.
+
+    Only jobs not yet shown are included unless include_seen. The `score_top` most relevant unscored
+    jobs are scored with shortlist-ai first, when a resume is configured."""
+    entries, rejected = _matching(cfg, store, ("new", "shown") if include_seen else ("new",))
     digest = Digest(entries, rejected)
     contacts = load_contacts(cfg)
     if contacts:
         for e in entries:
             e.contacts = contacts.at(e.job.display_company, e.job.company)
-    rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
-    if rid:
-        for e in entries:
-            e.fit = store.score(e.job.key, rid)
     top = cfg.score_top if score_top is None else score_top
     if top:
-        if not rid:
+        if not (cfg.resume and cfg.resume.is_file()):
             digest.note = "scoring skipped: set `resume:` in the config to a resume file"
         else:
-            # One score per company and title: the same role posted per region scores the same.
             todo = [e for e in _group(sorted(entries, key=_rank)) if e.fit is None][:top]
             if todo:
-                results, errors = score_jobs([e.job for e in todo], cfg.resume, cfg.backend, cfg.cache,
-                                             progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)))
-                for e in todo:
-                    if e.job.key in results:
-                        e.fit = results[e.job.key]
-                        store.save_score(e.job.key, rid, e.fit)
-                digest.scored, digest.score_errors = len(results), errors
+                digest.scored, digest.score_errors = score_entries(cfg, store, todo, progress)
     entries.sort(key=_rank)
     digest.entries = _group(entries)[:limit] if limit else _group(entries)
     return digest
