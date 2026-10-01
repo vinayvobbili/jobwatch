@@ -388,6 +388,10 @@ python -m venv .venv && .venv/bin/pip install -e '.[dev,mcp]'
 .venv/bin/ruff check . && .venv/bin/python -m pytest -q
 ```
 
+CI tests on Python 3.10 and 3.13. `scripts/check` runs the same checks on both locally (it needs
+[uv](https://docs.astral.sh/uv/), which fetches each Python). `git config core.hooksPath .githooks` runs it before
+every push.
+
 Tests use canned board responses and never touch the network, except the check that every curated course
 link still resolves: `JOBWATCH_LINK_TESTS=1 pytest tests/test_learn.py`. To see how `jobwatch ui` looks after a change,
 `scripts/screenshots.py` captures every tab in light and dark, at wide, desktop and phone widths, plus the

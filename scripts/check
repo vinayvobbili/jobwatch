@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Run what CI runs (ruff, then pytest on the oldest and newest supported Python) before a push.
+# Needs uv (https://docs.astral.sh/uv/), which downloads each Python on first use.
+# Each version gets its own environment (.venv-py3.10, ...), so the .venv you work in is left alone.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# Keep these in step with the matrix in .github/workflows/ci.yml.
+VERSIONS=(3.10 3.13)
+
+# Tests make their own watchlist and state; never let them find a real one.
+unset JOBWATCH_CONFIG
+
+for v in "${VERSIONS[@]}"; do
+  echo "== Python $v"
+  env=".venv-py$v"
+  uv venv --quiet --allow-existing --python "$v" "$env"
+  VIRTUAL_ENV="$env" uv pip install --quiet -e ".[dev,mcp]"
+  "$env/bin/ruff" check .
+  "$env/bin/python" -m pytest -q
+done
