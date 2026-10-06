@@ -70,10 +70,50 @@ def test_dry_run_changes_nothing_and_older_versions_are_refused(release, tmp_pat
 def test_published_checks_pypi_and_the_registry(release, monkeypatch):
     answers = {
         release.PYPI.format(name="acme-tool"): {"releases": {"1.2.3": [], "1.3.0": []}},
-        release.REGISTRY.format(name="io.github.acme/acme-tool"): {"servers": [
-            {"server": {"name": "io.github.acme/acme-tool", "version": "1.2.3"}}]},
+        release.REGISTRY.format(name="acme-tool"): {"servers": [
+            {"server": {"name": "io.github.acme/acme-tool", "version": "1.2.3"}},
+            {"server": {"name": "io.github.other/acme-tool", "version": "1.3.0"}}]},
     }
     monkeypatch.setattr(release, "fetch_json", lambda url: answers[url])
     assert release.published("acme-tool", "1.3.0", "io.github.acme/acme-tool") == \
         {"PyPI": True, "MCP Registry": False}
     assert release.published("acme-tool", "1.3.0", None) == {"PyPI": True}
+
+
+def test_a_check_that_fails_says_why_instead_of_not_yet(release, monkeypatch, capsys):
+    def fail(url):
+        raise OSError("certificate verify failed")
+
+    monkeypatch.setattr(release, "fetch_json", fail)
+    seen = release.published("acme-tool", "1.3.0", "io.github.acme/acme-tool")
+    assert seen == {"PyPI": "can't check: certificate verify failed",
+                    "MCP Registry": "can't check: certificate verify failed"}
+    assert release.wait_for("acme-tool", "1.3.0", "io.github.acme/acme-tool", timeout=0) is False
+    assert "PyPI: can't check: certificate verify failed" in capsys.readouterr().out
+
+
+def test_without_root_certificates_it_fetches_with_curl(release, monkeypatch):
+    def no_certs(url, timeout):
+        raise release.urllib.error.URLError(release.ssl.SSLCertVerificationError("unable to get local issuer"))
+
+    calls = []
+
+    def curl(cmd, **kw):
+        calls.append(cmd)
+        return release.subprocess.CompletedProcess(cmd, 0, stdout='{"releases": {"1.3.0": []}}', stderr="")
+
+    monkeypatch.setattr(release.urllib.request, "urlopen", no_certs)
+    monkeypatch.setattr(release.shutil, "which", lambda name: "/usr/bin/curl")
+    monkeypatch.setattr(release.subprocess, "run", curl)
+    assert release.fetch_json("https://pypi.org/pypi/acme-tool/json") == {"releases": {"1.3.0": []}}
+    assert calls[0][0] == "curl" and calls[0][-1] == "https://pypi.org/pypi/acme-tool/json"
+
+
+def test_other_network_errors_are_not_retried_with_curl(release, monkeypatch):
+    def offline(url, timeout):
+        raise release.urllib.error.URLError("nodename nor servname provided")
+
+    monkeypatch.setattr(release.urllib.request, "urlopen", offline)
+    monkeypatch.setattr(release.subprocess, "run", lambda *a, **k: pytest.fail("curl should not run"))
+    with pytest.raises(release.urllib.error.URLError):
+        release.fetch_json("https://pypi.org/pypi/acme-tool/json")
