@@ -85,10 +85,11 @@ class Package:
         tmp.write_text(json.dumps(m, indent=1, ensure_ascii=False), encoding="utf-8")
         tmp.replace(self.dir / MANIFEST)
 
-    def keep_posting(self, job: Job):
-        """Save the posting as it reads now, once: the first time is the one that matters."""
+    def keep_posting(self, job: Job, again: bool = False):
+        """Save the posting as it reads now, once: the first time is the one that matters (again: replace it, for
+        a posting whose text was given later)."""
         path = self.dir / POSTING
-        if not path.is_file():
+        if again or not path.is_file():
             self.dir.mkdir(parents=True, exist_ok=True)
             path.write_text(f"<!-- saved {date.today().isoformat()} -->\n{job.to_text()}", encoding="utf-8")
 

@@ -115,15 +115,28 @@ def cmd_show(args, cfg, store):
 
 
 def cmd_mark(args, cfg, store):
+    if not hasattr(args, "keys"):  # `mark [STATUS] KEY...`: without a status, each keeps its own
+        status, *keys = args.what if args.what[0] in STATUSES else (None, *args.what)
+        if not keys:
+            raise ValueError("which job? give its key or posting id")
+        args.status, args.keys = status, keys
     keys = [store.find(k)[0].key for k in args.keys]
-    store.set_status(keys, args.status, args.note, on=getattr(args, "on", None))
+    if args.status:
+        store.set_status(keys, args.status, args.note, on=getattr(args, "on", None))
+    else:
+        for k in keys:
+            store.track(k, note=args.note, applied=getattr(args, "on", None))
+    if text := getattr(args, "text", None):
+        text = sys.stdin.read() if str(text) == "-" else text.read_text()
+        for k in keys:
+            store.set_description(k, text)
     for k in keys:
         store.track(k, next_step=getattr(args, "next", None), follow_up=getattr(args, "follow_up", None))
         if getattr(args, "url", None) is not None:
             store.set_url(k, args.url)
         if getattr(args, "add_note", None):
             store.add_note(k, args.add_note)
-        print(f"{k}: {args.status}")
+        print(f"{k}: {args.status or store.find(k)[1]['status']}")
         _attach(store.package(k), getattr(args, "attach", None) or [])
 
 
@@ -330,12 +343,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_show)
 
     p = sub.add_parser("mark", help="record that you queued, applied to or skipped jobs, or how an application "
-                       "is going (screening, interviewing, offer, rejected, withdrawn)")
-    p.add_argument("status", choices=STATUSES)
-    p.add_argument("keys", nargs="+")
+                       "is going (screening, interviewing, offer, rejected, withdrawn); without a status, each job "
+                       "keeps its own and only the rest changes")
+    p.add_argument("what", nargs="+", metavar="[STATUS] KEY", help=f"status: {', '.join(STATUSES)}")
     _tracking(p)
     p.add_argument("--url", metavar="LINK", help="the link for a job you added by hand: its posting, or the "
                    "company's careers site once the posting is gone")
+    p.add_argument("--text", type=Path, metavar="FILE", help="the posting's text for a job you added by hand (found "
+                   "later, or from a copy once the posting is gone), to score and prep it (- reads stdin)")
     p.add_argument("--attach", type=Path, action="append", metavar="FILE",
                    help="keep a copy of what you sent (the resume, a cover letter); repeat for more")
     p.set_defaults(func=cmd_mark)
