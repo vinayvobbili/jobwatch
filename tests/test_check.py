@@ -90,20 +90,25 @@ def test_every_mcp_tool(watchlist, web, tmp_path, monkeypatch):
     monkeypatch.setenv("JOBWATCH_CONFIG", str(watchlist))
     assert mcp.find_board("https://jobs.lever.co/globex")[0]["entry"] == "lever:globex"
     assert "new" in mcp.fetch_jobs().lower()
-    assert "Staff AI Engineer" in [j["title"] for j in mcp.digest(mark_shown=False)["jobs"]]
+    assert "Staff AI Engineer" in [j["title"] for j in mcp.get_digest(mark_shown=False)["jobs"]]
     assert mcp.mark_job("c1", "queued").endswith(": queued")
-    assert [q["key"] for q in mcp.apply_queue()] == ["ashby:initech:c1"] and mcp.apply_queue()[0]["warnings"] == []
+    queued = mcp.list_queued_jobs()
+    assert [q["key"] for q in queued] == ["ashby:initech:c1"] and queued[0]["warnings"] == []
     assert mcp.add_application("Umbrella", "Field Engineer", applied_on="2026-01-02").startswith(
         "manual:umbrella:field-engineer: applied")
-    assert [a["key"] for a in mcp.applications()] == ["manual:umbrella:field-engineer"]
+    assert [a["key"] for a in mcp.list_applications()] == ["manual:umbrella:field-engineer"]
     assert {j["key"] for j in mcp.list_jobs("queued")} == {"ashby:initech:c1"}
     assert {c["key"]: c["result"] for c in mcp.check_postings()} == {
         "ashby:initech:c1": "open", "manual:umbrella:field-engineer": "unknown"}
-    assert mcp.interview_prep("c1")["title"] == "Staff AI Engineer"
-    assert "skills" in json.dumps(mcp.skill_gaps()).lower()
+    assert mcp.get_interview_prep("c1")["title"] == "Staff AI Engineer"
+    assert "skills" in json.dumps(mcp.list_skill_gaps()).lower()
+    assert [b["entry"] for b in mcp.list_boards()["boards"]] == ["greenhouse:acme", "lever:globex", "ashby:initech"]
+    assert "workable:hooli" in [b["entry"] for b in mcp.add_board("workable:hooli", "Hooli")["boards"]]
+    assert "workable:hooli" not in [b["entry"] for b in mcp.remove_board("workable:hooli")["boards"]]
     names = {t.name: t.annotations for t in __import__("asyncio").run(mcp.server.list_tools())}
     assert all(a is not None for a in names.values()) and names["list_jobs"].read_only_hint
     assert names["mark_job"].destructive_hint and not names["fetch_jobs"].read_only_hint
+    assert names["remove_board"].destructive_hint and not names["add_board"].destructive_hint
 
 
 def test_responses_are_left_alone():

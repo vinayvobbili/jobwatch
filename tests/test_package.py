@@ -157,22 +157,23 @@ def test_mcp_tools(watchlist, web, tmp_path, monkeypatch):
     cv = tmp_path / "Resume.pdf"
     cv.write_bytes(b"%PDF")
     saved = mcp.save_application_package("c1", files=[str(cv)], answers=[{"question": "Q", "answer": "A"}])
-    assert saved["files"][0]["name"] == "Resume.pdf" and mcp.application_package("c1")["answers"] == saved["answers"]
+    assert saved["files"][0]["name"] == "Resume.pdf"
+    assert mcp.get_application_package("c1")["answers"] == saved["answers"]
 
 
-def test_mcp_job_details_and_notes(watchlist, web, monkeypatch, capsys):
+def test_mcp_get_job_and_notes(watchlist, web, monkeypatch, capsys):
     mcp = pytest.importorskip("jobwatch.mcp_server")
     monkeypatch.setenv("JOBWATCH_CONFIG", str(watchlist))
     cli.main(["-c", str(watchlist), "fetch"])
-    d = mcp.job_details("aaaa-1111")
+    d = mcp.get_job("aaaa-1111")
     assert d["company"] == "globex" and d["fit"] is None and "linkedin.com" in d["find_referral"]
     assert any(g["id"] == "ml" for g in d["skill_gaps"]) and d["package"]["files"] == []
     assert mcp.mark_job("aaaa-1111", "applied", note="Recruiter Ana.").endswith(": applied")
     assert mcp.mark_job("aaaa-1111", add_note="she replied: onsite only", follow_up="").endswith(": applied")
     mcp.add_application("Umbrella", "Field Engineer")
     mcp.mark_job("field-engineer", text="Field work with Python and LLM agents.")
-    assert "Field work with Python" in mcp.job_details("field-engineer")["text"]
-    note = mcp.job_details("aaaa-1111")["note"]
+    assert "Field work with Python" in mcp.get_job("field-engineer")["text"]
+    note = mcp.get_job("aaaa-1111")["note"]
     assert note.startswith("Recruiter Ana. 20") and note.endswith(": she replied: onsite only")
     cli.main(["-c", str(watchlist), "mark", "withdrawn", "aaaa-1111", "--add-note", "dropped"])
-    assert mcp.job_details("aaaa-1111")["note"].startswith("Recruiter Ana.")
+    assert mcp.get_job("aaaa-1111")["note"].startswith("Recruiter Ana.")

@@ -29,10 +29,19 @@ def test_status_lists_its_values():
 
 
 @pytest.mark.parametrize("tool, sibling", [
-    ("list_jobs", "apply_queue"), ("list_jobs", "applications"), ("applications", "apply_queue"),
-    ("apply_queue", "applications"), ("digest", "apply_queue"), ("job_details", "application_package"),
-    ("application_package", "interview_prep"), ("mark_job", "add_application"), ("add_application", "mark_job"),
-    ("find_board", "add_application"), ("fetch_jobs", "digest"),
+    ("list_jobs", "list_queued_jobs"), ("list_jobs", "list_applications"), ("list_applications", "list_queued_jobs"),
+    ("list_queued_jobs", "list_applications"), ("get_digest", "list_queued_jobs"),
+    ("get_job", "get_application_package"), ("get_application_package", "get_interview_prep"),
+    ("mark_job", "add_application"), ("add_application", "mark_job"), ("find_board", "add_application"),
+    ("find_board", "add_board"), ("add_board", "find_board"), ("list_boards", "add_board"),
+    ("fetch_jobs", "get_digest"),
 ])
 def test_overlapping_tools_point_to_each_other(tool, sibling):
     assert sibling in TOOLS[tool].description
+
+
+VERBS = {"add", "check", "fetch", "find", "get", "list", "mark", "remove", "save"}
+
+
+def test_tool_names_start_with_a_verb():
+    assert {name for name in TOOLS if name.split("_")[0] not in VERBS} == set()

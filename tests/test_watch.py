@@ -20,6 +20,33 @@ def test_config_paths_are_relative_to_the_file(watchlist, setup):
     assert [b.label for b in cfg.boards] == ["acme", "globex", "Initech"]
 
 
+def test_add_and_remove_boards(watchlist):
+    def labels(cfg):
+        return [b.label for b in cfg.boards]
+
+    assert labels(config.add_board(watchlist, "workable:hooli")) == ["acme", "globex", "Initech", "hooli"]
+    assert labels(config.add_board(watchlist, "workable:hooli", "Hooli")) == ["acme", "globex", "Initech", "Hooli"]
+    assert labels(config.add_board(watchlist, "ashby:initech")) == ["acme", "globex", "Initech", "Hooli"]
+    assert labels(config.remove_board(watchlist, "lever:globex")) == ["acme", "Initech", "Hooli"]
+    assert config.load(watchlist).state == watchlist.parent / "state.db"  # other settings are kept
+    with pytest.raises(config.ConfigError, match="isn't on the watchlist"):
+        config.remove_board(watchlist, "lever:globex")
+    with pytest.raises(config.ConfigError, match="unknown source"):
+        config.add_board(watchlist, "monster:acme")
+
+
+def test_add_board_starts_a_watchlist(tmp_path):
+    path = tmp_path / "new" / "jobwatch.yaml"
+    assert [b.label for b in config.add_board(path, "greenhouse:acme").boards] == ["acme"]
+    assert path.read_text().startswith("# jobwatch watchlist")
+
+
+def test_removing_the_last_board_leaves_an_empty_watchlist(watchlist):
+    for entry in ("greenhouse:acme", "lever:globex", "ashby:initech"):
+        cfg = config.remove_board(watchlist, entry)
+    assert cfg.boards == [] and cfg.keywords["Python"] == 2
+
+
 def test_fetch_all_records_new_roles_once(setup):
     cfg, store = setup
     r = watch.fetch_all(cfg, store)

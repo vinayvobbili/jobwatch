@@ -142,10 +142,10 @@ MCP = """<span class="p">$</span> claude mcp add jobwatch -e JOBWATCH_CONFIG=~/j
 
 <span class="h">&gt; What's new today? Queue the best fit, and prep me for Thursday's panel.</span>
 
-<span class="k">●</span> jobwatch · <span class="f">digest</span>
+<span class="k">●</span> jobwatch · <span class="f">get_digest</span>
   <span class="c">6 matching jobs. Best fit: Staff AI Engineer at Acme, 86/100, must-haves 6/7</span>
 <span class="k">●</span> jobwatch · <span class="f">mark_job</span>  greenhouse:acme:4101 → queued
-<span class="k">●</span> jobwatch · <span class="f">interview_prep</span>  ashby:initech:c0
+<span class="k">●</span> jobwatch · <span class="f">get_interview_prep</span>  ashby:initech:c0
   <span class="c">AI Engineer, LLM Apps at Initech · interviewing · next: panel interview</span>
 
 Queued Acme's Staff AI Engineer: it's your best fit today. For Initech's panel,
@@ -209,7 +209,7 @@ def slides(shots: Path, digest: str) -> list[tuple[str, str, str]]:
          "certifications to close each gap."),
         ("08-mcp",
          term_slide(8, "MCP server", "Use it from Claude",
-                    "digest, apply_queue, mark_job, applications, interview_prep and more, as MCP tools.", MCP,
+                    "get_digest, mark_job, list_applications, get_interview_prep and more, as MCP tools.", MCP,
                     note="Illustration with the demo data", size=18),
          "It's also an MCP server, so Claude can read your digest, queue jobs, and prep with you."),
         ("09-never",
