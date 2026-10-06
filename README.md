@@ -445,5 +445,8 @@ chat with a canned reply (it needs
 
 Releases publish to PyPI through Trusted Publishing when a `v*` tag is pushed, and then to the MCP Registry
 from `server.json` (keep its two versions in step with the package; a test checks).
+`scripts/release.py 0.2.3 -m "what's in it"` does the whole release: it bumps all three versions, runs
+`scripts/check`, commits, tags, pushes, and waits until PyPI and the registry show the new version
+(`--dry-run` shows the bump first).
 
 MIT licensed.
