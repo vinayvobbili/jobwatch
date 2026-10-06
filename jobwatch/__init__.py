@@ -1,3 +1,3 @@
-"""jobwatch: watch company job boards (Greenhouse, Lever, Ashby) and get a ranked digest of new matches."""
+"""jobwatch: watch company job boards and get a ranked digest of new matches."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
