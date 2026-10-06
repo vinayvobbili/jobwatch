@@ -115,7 +115,9 @@ def mark_job(key: str, status: str | None = None, note: str | None = None, add_n
              next_step: str | None = None, follow_up: str | None = None, applied_on: str | None = None,
              url: str | None = None, text: str | None = None) -> str:
     """Record a job's status: new, shown, queued (to apply to next), applied, screening, interviewing, offer,
-    rejected, withdrawn or skipped (omit status to keep it and only update the rest). Use applied only after
+    rejected, withdrawn or skipped (omit status to keep it and only update the rest). key is the job's key, its
+    posting id, or its company's name when that names one job (the one queued or applied to there); when it
+    names several, nothing changes and the error lists them. Use applied only after
     the person has submitted the application themselves. add_note adds a dated line to the note, keeping what's
     there: prefer it for news ("recruiter replied: onsite only"); note replaces the whole note. next_step says
     what happens next ("recruiter screen Tuesday"); follow_up is the day to act (YYYY-MM-DD or +N days);

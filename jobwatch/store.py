@@ -179,15 +179,36 @@ class Store:
         return rows
 
     def find(self, key: str) -> tuple[Job, dict]:
-        """A job by its full key, or by a unique ending of it (the posting id is enough)."""
+        """A job by its full key, by a unique ending of it (the posting id is enough), or else by its company's
+        name or part of it, in any case, when that names one job: the one queued or applied to there, or the only
+        one there at all."""
         rows = self.db.execute("SELECT * FROM jobs WHERE key=? OR key LIKE ?", (key, f"%{key}")).fetchall()
         exact = [r for r in rows if r["key"] == key]
         rows = exact or rows
+        if not rows and len(rows := self._at_company(key)) > 1:
+            listed = "\n".join(f"  {r['key']}  {self._label(r)}" for r in rows[:10])
+            more = f"\n  and {len(rows) - 10} more" if len(rows) > 10 else ""
+            raise KeyError(f"{key!r} matches {len(rows)} jobs; give the key of one:\n{listed}{more}")
         if len(rows) != 1:
             raise KeyError(f"no job matches {key!r}" if not rows else
                            f"{key!r} matches {len(rows)} jobs: {', '.join(r['key'] for r in rows[:5])}")
         r = rows[0]
         return Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}
+
+    def _at_company(self, name: str) -> list[sqlite3.Row]:
+        """Jobs whose company name or board contains `name` (any case): the ones queued or applied to, if any."""
+        name = name.strip().lower()
+        if not name:
+            return []
+        rows = self.db.execute("SELECT * FROM jobs WHERE instr(lower(company), ?) "
+                               "OR instr(lower(json_extract(data, '$.company_name')), ?) ORDER BY key",
+                               (name, name)).fetchall()
+        return [r for r in rows if r["status"] in ("queued", *STAGES)] or rows
+
+    @staticmethod
+    def _label(row: sqlite3.Row) -> str:
+        job = Job.from_dict(json.loads(row["data"]))
+        return f"{job.display_company}: {job.title} ({row['status']})"
 
     def set_status(self, keys: list[str], status: str, note: str | None = None, on: str | None = None):
         """Move jobs to a status. Moving to an application stage records the day applied: `on` when given (it

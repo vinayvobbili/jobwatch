@@ -116,10 +116,12 @@ def cmd_show(args, cfg, store):
 
 
 def cmd_mark(args, cfg, store):
-    if not hasattr(args, "keys"):  # `mark [STATUS] KEY...`: without a status, each keeps its own
-        status, *keys = args.what if args.what[0] in STATUSES else (None, *args.what)
+    if not hasattr(args, "keys"):  # `mark [STATUS] KEY...` or `mark KEY... STATUS`; without one, each keeps its own
+        what = args.what
+        status, *keys = (what if what[0] in STATUSES else (what[-1], *what[:-1]) if what[-1] in STATUSES
+                         else (None, *what))
         if not keys:
-            raise ValueError("which job? give its key or posting id")
+            raise ValueError("which job? give its key, posting id or company")
         args.status, args.keys = status, keys
     keys = [store.find(k)[0].key for k in args.keys]
     if args.status:
@@ -353,13 +355,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("show", help="a job's full posting text")
-    p.add_argument("key", help="job key, or its posting id")
+    p.add_argument("key", help="job key, its posting id, or its company")
     p.set_defaults(func=cmd_show)
 
     p = sub.add_parser("mark", help="record that you queued, applied to or skipped jobs, or how an application "
                        "is going (screening, interviewing, offer, rejected, withdrawn); without a status, each job "
                        "keeps its own and only the rest changes")
-    p.add_argument("what", nargs="+", metavar="[STATUS] KEY", help=f"status: {', '.join(STATUSES)}")
+    p.add_argument("what", nargs="+", metavar="[STATUS] KEY", help="the job: its key, its posting id, or its "
+                   "company when that names one job (the one you queued or applied to there); and the status, "
+                   f"before or after it: {', '.join(STATUSES)}")
     _tracking(p)
     p.add_argument("--url", metavar="LINK", help="the link for a job you added by hand: its posting, or the "
                    "company's careers site once the posting is gone")

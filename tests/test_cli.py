@@ -118,6 +118,25 @@ def test_mark_without_a_status_keeps_it(watchlist, capsys):
         cli.main([*c, "mark", "nothing-like-this", "--add-note", "x"])
 
 
+
+def test_mark_by_company_name_with_the_status_after(watchlist, capsys):
+    """The company is enough when you've applied there once; when it names more, nothing changes."""
+    c = ("-c", str(watchlist))
+    run(capsys, *c, "add", "Umbrella", "Principal Engineer")
+    run(capsys, *c, "add", "Hooli", "Staff Engineer")
+    run(capsys, *c, "add", "Hooli", "Platform Engineer")
+    assert run(capsys, *c, "mark", "umbrella", "interviewing", "--next", "panel Thursday").out == \
+        "manual:umbrella:principal-engineer: interviewing\n"
+    assert "**interviewing**" in run(capsys, *c, "apps").out and "panel Thursday" in run(capsys, *c, "apps").out
+    assert run(capsys, *c, "show", "UMBRELLA").out.startswith("# Principal Engineer")
+    with pytest.raises(SystemExit) as e:
+        cli.main([*c, "mark", "hooli", "screening"])
+    assert str(e.value).startswith("jobwatch: 'hooli' matches 2 jobs; give the key of one:")
+    assert "  manual:hooli:platform-engineer  Hooli: Platform Engineer (applied)" in str(e.value)
+    assert "screening" not in run(capsys, *c, "list").out  # neither changed
+    assert run(capsys, *c, "mark", "screening", "manual:hooli:staff-engineer").out == \
+        "manual:hooli:staff-engineer: screening\n"
+
 def test_mark_text_gives_a_hand_added_job_its_posting(watchlist, web, tmp_path, capsys):
     """The posting found later (or a copy, once it's gone): scored, prepped and kept with the application."""
     c = ("-c", str(watchlist))
