@@ -1,0 +1,45 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.vinayvobbili/jobwatch",
+  "title": "jobwatch",
+  "description": "Watch company job boards, rank new matches and track every application. Never auto-applies.",
+  "repository": {
+    "url": "https://github.com/vinayvobbili/jobwatch",
+    "source": "github"
+  },
+  "version": "0.2.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "jobwatch",
+      "version": "0.2.1",
+      "runtimeHint": "uvx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--with",
+          "value": "mcp>=2.2",
+          "description": "The MCP server's dependency (the jobwatch[mcp] extra)"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp",
+          "description": "Run the MCP server"
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "JOBWATCH_CONFIG",
+          "description": "Path to your watchlist (jobwatch.yaml; `jobwatch init` writes an example). Defaults to ./jobwatch.yaml or ~/.config/jobwatch/config.yaml",
+          "format": "filepath"
+        }
+      ]
+    }
+  ]
+}

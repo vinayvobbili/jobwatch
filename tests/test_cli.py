@@ -1,3 +1,5 @@
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -142,3 +144,37 @@ def test_mark_on_corrects_the_day_applied(watchlist, capsys):
     assert "applied 2026-09-01" in run(capsys, *c, "apps").out
     run(capsys, *c, "mark", "screening", "principal-engineer")
     assert "applied 2026-09-01" in run(capsys, *c, "apps").out
+
+
+def test_mcp_runs_the_server_with_the_watchlist_given(watchlist, monkeypatch):
+    pytest.importorskip("mcp")
+    from jobwatch import mcp_server
+
+    seen = []
+    monkeypatch.delenv("JOBWATCH_CONFIG", raising=False)
+    monkeypatch.setattr(mcp_server, "main", lambda: seen.append(os.environ["JOBWATCH_CONFIG"]))
+    cli.main(["-c", str(watchlist), "mcp"])
+    assert seen == [str(watchlist)]
+
+
+def test_mcp_without_the_extra_says_how_to_get_it(monkeypatch):
+    import jobwatch
+
+    monkeypatch.delitem(sys.modules, "jobwatch.mcp_server", raising=False)
+    monkeypatch.delattr(jobwatch, "mcp_server", raising=False)
+    for name in [m for m in sys.modules if m == "mcp" or m.startswith("mcp.")] or ["mcp"]:
+        monkeypatch.setitem(sys.modules, name, None)
+    with pytest.raises(SystemExit, match=r"pip install 'jobwatch\[mcp\]'"):
+        cli.main(["mcp"])
+
+
+def test_registry_entry_matches_the_release():
+    """The MCP Registry lists the version in server.json and checks the README on PyPI names the server."""
+    import json
+
+    from jobwatch import __version__
+
+    root = Path(__file__).parent.parent
+    entry = json.loads((root / "server.json").read_text())
+    assert entry["version"] == entry["packages"][0]["version"] == __version__
+    assert f"mcp-name: {entry['name']}" in (root / "README.md").read_text()
