@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cut a release: bump the version everywhere, run the checks, commit, tag, push, and wait for it to land.
 
-    scripts/release.py 0.2.3 -m "a Skills tab"      # commits "<name> 0.2.3 — a Skills tab", tags v0.2.3
+    scripts/release.py 0.2.3 -m "what's in it"      # commits "<name> 0.2.3 — what's in it", tags v0.2.3
     scripts/release.py 0.2.3 --dry-run              # shows the bump and stops
 
 The tag triggers the Release workflow (PyPI). The version is bumped in pyproject.toml, the package's
