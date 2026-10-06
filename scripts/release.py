@@ -17,9 +17,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import ssl
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -94,33 +97,52 @@ def run_checks(root: Path) -> None:
 
 
 def fetch_json(url: str):
-    with urllib.request.urlopen(url, timeout=20) as r:
-        return json.load(r)
+    """GET a JSON document. A Python without root certificates (python.org's macOS build until its "Install
+    Certificates" step is run) can't verify any HTTPS site, so then it's fetched with curl, which uses the
+    system's certificates."""
+    try:
+        with urllib.request.urlopen(url, timeout=20) as r:
+            return json.load(r)
+    except urllib.error.URLError as e:
+        if not isinstance(e.reason, ssl.SSLCertVerificationError) or not shutil.which("curl"):
+            raise
+    out = subprocess.run(["curl", "-fsSL", "--max-time", "20", url], capture_output=True, text=True)
+    if out.returncode:
+        raise OSError(f"curl {url}: {out.stderr.strip() or f'exit {out.returncode}'}")
+    return json.loads(out.stdout)
 
 
-def published(name: str, version: str, registry_name: str | None) -> dict[str, bool]:
-    """Which of PyPI (and the MCP Registry) already show ``version``."""
-    seen = {}
+def published(name: str, version: str, registry_name: str | None) -> dict[str, bool | str]:
+    """Which of PyPI (and the MCP Registry) already show ``version``: True, False, or why it couldn't be
+    checked. A network error isn't "not yet": saying so keeps a broken check from looking like a slow release."""
+    seen: dict[str, bool | str] = {}
     try:
         seen["PyPI"] = version in fetch_json(PYPI.format(name=name))["releases"]
-    except OSError:
-        seen["PyPI"] = False
+    except urllib.error.HTTPError as e:
+        seen["PyPI"] = False if e.code == 404 else f"can't check: HTTP {e.code}"  # 404: the first release
+    except OSError as e:
+        seen["PyPI"] = f"can't check: {e}"
     if registry_name:
         try:
-            servers = fetch_json(REGISTRY.format(name=registry_name))["servers"]
+            # Search by the part after the slash: a search with the full name (io.github.x/y) hangs.
+            servers = fetch_json(REGISTRY.format(name=registry_name.rsplit("/", 1)[-1]))["servers"]
             seen["MCP Registry"] = any(s["server"]["name"] == registry_name and s["server"]["version"] == version
                                        for s in servers)
-        except OSError:
-            seen["MCP Registry"] = False
+        except OSError as e:
+            seen["MCP Registry"] = f"can't check: {e}"
     return seen
+
+
+def _shown(v: bool | str) -> str:
+    return "yes" if v is True else "not yet" if v is False else v
 
 
 def wait_for(name: str, version: str, registry_name: str | None, timeout: float = 900, every: float = 20) -> bool:
     deadline = time.monotonic() + timeout
     while True:
         seen = published(name, version, registry_name)
-        print("   " + ", ".join(f"{k}: {'yes' if v else 'not yet'}" for k, v in seen.items()))
-        if all(seen.values()):
+        print("   " + ", ".join(f"{k}: {_shown(v)}" for k, v in seen.items()))
+        if all(v is True for v in seen.values()):
             return True
         if time.monotonic() > deadline:
             return False
