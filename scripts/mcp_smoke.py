@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check that the MCP server starts and lists its tools, the way a directory's build check does.
 
-    scripts/mcp_smoke.py                    # runs the server from this checkout (uv run --extra mcp)
+    scripts/mcp_smoke.py                    # runs the server from this checkout, with the mcp extra
     scripts/mcp_smoke.py --docker           # builds the committed HEAD in a Glama-like image and runs it there
     scripts/mcp_smoke.py --docker --build-step "uv sync"   # try a different build step
     scripts/mcp_smoke.py -- python -m x     # any command that speaks MCP over stdio
@@ -123,7 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     elif args.docker:
         cmd = docker_command(ROOT, script, f"{script}-smoke", args.build_step)
     else:
-        cmd = ["uv", "run", "--project", str(ROOT), "--extra", "mcp", script]
+        # --no-project: a throwaway environment from this checkout, without writing a uv.lock into it
+        cmd = ["uv", "run", "--no-project", "--isolated", "--with-editable", f"{ROOT}[mcp]", script]
     info, tools = handshake(cmd)
     if not tools:
         raise SystemExit(f"mcp_smoke: {info.get('name', 'server')} started but lists no tools")
