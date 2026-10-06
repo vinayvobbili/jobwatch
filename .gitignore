@@ -9,3 +9,5 @@ build/
 # Your own watchlist and state stay out of the repo.
 jobwatch.yaml
 *.db
+# The demo video's seeded data, screenshots, slides and renders (scripts/demo/make-video).
+scripts/demo/out/
