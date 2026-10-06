@@ -25,3 +25,8 @@ slidecast="${SLIDECAST:-slidecast}"
   --reply scripts/demo/chat-reply.md
 "$python" scripts/demo/build.py "$out" ${music[@]+"${music[@]}"}
 "$slidecast" render "$out/reel.yaml" -o "$out/jobwatch-demo.mp4" --poster
+# The README's silent preview: 5 fps is plenty for slides, and keeps it under 2 MB.
+ffmpeg -v error -y -i "$out/jobwatch-demo.mp4" -vf "fps=5,scale=960:-1:flags=lanczos,split[a][b];\
+[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
+  "$out/demo.gif"
+echo "Wrote $out/jobwatch-demo.mp4 and $out/demo.gif (copy both to docs/ to update the README)"
