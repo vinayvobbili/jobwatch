@@ -76,6 +76,18 @@ def test_pairs_each_ask_with_the_closest_line_or_none():
     assert by_ask["Deep Kubernetes operations experience"].resume == ""  # nothing close: say so, don't invent
 
 
+def test_a_degree_ask_gets_the_degrees_and_one_line_doesnt_answer_everything():
+    resume = RESUME + "Acme Institute of Technology — Master of Science in Data Science, 2020\n" \
+        "SKILLS\nPython, Go, SQL, Kubernetes operations, design reviews, mentoring, production services, CI/CD\n"
+    asks = [("BS or MS degree in Computer Science or a related STEM field", "need"),
+            ("Python services in production", "need"), ("Python, SQL and production services", "need")]
+    degree, first, second = prep.pair(asks, resume)
+    assert degree.resume == "State University — BS in Computer Science, 2010; Acme Institute of Technology — " \
+        "Master of Science in Data Science, 2020"
+    assert first.resume != second.resume  # the second ask gets the next closest line, not the same one again
+    assert prep.pair(asks[:1], "Built Python services in production for ten years")[0].resume == ""
+
+
 @pytest.mark.parametrize("title, found", [
     ("Staff Detection Engineer (R0123456)", True), ("Staff Detection Engineer R0123456", True),
     ("Staff Detection Engineer", False), ("Staff Detection Engineer (R0123457)", False),

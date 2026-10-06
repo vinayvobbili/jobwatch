@@ -27,6 +27,8 @@ _SKIP = re.compile(r"benefit|perks|pay|salary|compensation|equal opportunity|abo
                    r"privacy|location|why join|our values", re.I)
 _SCHOOL = re.compile(r"\b(?:university|institute|college|bachelor|master|GPA)\b", re.I)
 _BULLET = re.compile(r"^\s*(?:[-*•·▪◦‣–]|\d+[.)])\s*")
+_DEGREE_ASK = re.compile(r"\b(?:degree|bachelor|master|ph\.?d|doctorate)", re.I)
+_DEGREE = re.compile(r"\b(?:bachelor|master|doctor|ph\.?d|b\.?tech|m\.?tech|b\.?sc?|m\.?sc?|b\.?e|mba)\b", re.I)
 
 _STOP = set("""a an and are as at be been by can do for from has have in into is it its of on or our that the their
 them they this to we what when where which who will with you your yours able across all also any both each more most
@@ -152,21 +154,37 @@ def _resume_lines(resume: str) -> list[str]:
             if len(x.split()) >= 5 and not _SCHOOL.search(x)]
 
 
+def _degrees(resume: str) -> str:
+    """The resume's degree lines, for a posting that asks for a degree."""
+    return "; ".join(dict.fromkeys(_BULLET.sub("", ln).strip() for ln in resume.splitlines()
+                                   if _DEGREE.search(ln) and len(ln.split()) <= 25))
+
+
 def pair(ask_lines: list[tuple[str, str]], resume: str) -> list[Match]:
     """Each ask with the resume line sharing the most words with it (at least two), and those words. Words the
-    resume uses everywhere count for less, and so do long lines."""
+    resume uses everywhere count for less, and so do long lines and lines already given for another ask, so one
+    skills list doesn't answer everything. An ask for a degree gets the resume's degrees."""
     lines = [(ln, set(_stems(ln))) for ln in _resume_lines(resume)]
     seen = Counter(st for _, sts in lines for st in sts)
     weight = {st: math.log((len(lines) + 1) / n) for st, n in seen.items()}
+    used: Counter = Counter()
+    degrees = _degrees(resume)
 
-    def score(want: dict, sts: set) -> float:
-        return sum(weight[st] for st in want.keys() & sts) / math.sqrt(len(sts) or 1)
+    def score(want: dict, ln: str, sts: set) -> float:
+        return sum(weight[st] for st in want.keys() & sts) / math.sqrt(len(sts) or 1) / (1 + used[ln])
     out = []
     for ask, kind in ask_lines:
+        if degrees and _DEGREE_ASK.search(ask):
+            out.append(Match(ask, kind, degrees, ["degree"]))
+            continue
         want = _stems(ask)
-        best = max(lines, key=lambda lw: score(want, lw[1]), default=("", set()))
+        best = max(lines, key=lambda lw: score(want, *lw), default=("", set()))
         shared = sorted(want[st] for st in want.keys() & best[1])
-        out.append(Match(ask, kind, best[0], shared) if len(shared) >= 2 else Match(ask, kind))
+        if len(shared) >= 2:
+            used[best[0]] += 1
+            out.append(Match(ask, kind, best[0], shared))
+        else:
+            out.append(Match(ask, kind))
     return out
 
 
