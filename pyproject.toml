@@ -42,6 +42,9 @@ jobwatch-mcp = "jobwatch.mcp_server:main"
 [tool.hatch.build.targets.wheel]
 packages = ["jobwatch"]
 
+[tool.hatch.build.targets.sdist]
+exclude = ["docs/*.gif", "docs/*.mp4"]  # the README demo; GitHub serves it
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"

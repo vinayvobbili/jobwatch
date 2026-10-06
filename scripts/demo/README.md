@@ -20,7 +20,12 @@ scripts/demo/make-video                          # writes scripts/demo/out/jobwa
 | Slides and narration | `python scripts/demo/build.py OUT [--music DIR]` | `slides/*.html`, `reel.yaml` |
 | Render | `slidecast render OUT/reel.yaml -o OUT/jobwatch-demo.mp4 --poster` | the video and its poster |
 
-Everything lands in OUT, which git ignores: commit no screenshots, renders or demo state.
+`make-video` also writes `demo.gif`, the README's silent preview. Everything lands in OUT, which git ignores:
+commit no screenshots or demo state. To update the README, copy `jobwatch-demo.mp4` and `demo.gif` to `docs/`.
+
+The seed and screenshot steps run in jobwatch's own environment; the render runs in slidecast's. When they're
+different installs, point at each: `PYTHON=.venv/bin/python SLIDECAST=/path/to/venv/bin/slidecast
+scripts/demo/make-video`, with slidecast's environment activated for the voice (below).
 
 - **The story** (slide order, titles, narration) lives in `slides()` in `build.py`; the chat's answer is
   `chat-reply.md`; the jobs, fit scores and applications are in `seed.py`. Change those, then run
