@@ -302,6 +302,7 @@ jobwatch add "Umbrella" "Principal Engineer" --url https://... --on 2026-09-14 -
 jobwatch add https://job-boards.greenhouse.io/acme/jobs/101 --on 2026-09-20   # read from the link
 jobwatch mark screening c1 --next "technical round" --follow-up +7   # or a date: 2026-10-05
 jobwatch mark rejected principal-engineer
+jobwatch mark umbrella interviewing   # the company is enough when you applied there once
 jobwatch mark withdrawn c1 --add-note "recruiter says onsite only"   # adds a dated line; --note replaces
 jobwatch mark c1 --add-note "interview Friday 10:30" --follow-up 2026-10-08   # no stage: it stays as it is
 jobwatch mark principal-engineer --text posting.txt   # its posting, found later, for scoring and prep

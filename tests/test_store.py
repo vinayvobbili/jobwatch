@@ -55,6 +55,31 @@ def test_find_reports_ambiguity(store):
         store.find("x-1")
 
 
+
+def test_find_by_company_name(store):
+    """`mark umbrella interviewing`: the company's name, or part of it in any case, when that names one job."""
+    def umbrella(id_, title):
+        return Job(source="greenhouse", company="umbrella-corp", id=id_, title=title, url="u",
+                   company_name="Umbrella Corporation")
+
+    store.sync("lever", "globex", [job("a", "Staff Engineer")])
+    store.sync("greenhouse", "umbrella-corp", [umbrella("7", "Principal Engineer"), umbrella("8", "Data Engineer")])
+    assert store.find("GLOBEX")[0].id == "a"  # the only job there
+    with pytest.raises(KeyError) as e:
+        store.find("umbrella")
+    assert e.value.args[0] == ("'umbrella' matches 2 jobs; give the key of one:\n"
+                               "  greenhouse:umbrella-corp:7  Umbrella Corporation: Principal Engineer (new)\n"
+                               "  greenhouse:umbrella-corp:8  Umbrella Corporation: Data Engineer (new)")
+    store.set_status(["greenhouse:umbrella-corp:7"], "applied")
+    assert store.find("umbrella")[0].id == "7"  # the one applied to
+    assert store.find("Umbrella Corp")[0].id == "7" and store.find("umbrella-c")[0].id == "7"  # name or board
+    store.set_status(["greenhouse:umbrella-corp:8"], "queued")
+    with pytest.raises(KeyError, match="matches 2 jobs"):
+        store.find("umbrella")
+    with pytest.raises(KeyError, match="no job matches 'hooli'"):
+        store.find("hooli")
+    assert store.find("a")[0].company == "globex"  # a posting id still comes first
+
 def test_status_and_note(store):
     store.sync("lever", "globex", [job("a"), job("b")])
     store.set_status(["lever:globex:a"], "applied", "referred by a friend")
