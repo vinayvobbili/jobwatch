@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Annotated, Literal
 
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from . import __version__, config, contacts, learn, prep, report, sources, watch
 from .score import resume_id
@@ -49,6 +51,17 @@ def _hints(read_only: bool = False, destructive: bool = False, idempotent: bool 
 
 READ = _hints(read_only=True)
 
+# Kept in step with store.STATUSES and config.TIMELINES (tests check), so clients see the allowed values.
+Status = Literal["new", "shown", "queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn",
+                 "skipped"]
+Timeline = Literal["week", "month", "quarter", "any"]
+
+Key = Annotated[str, Field(description=(
+    "The job: its key as other tools return it (source:board:posting id, e.g. greenhouse:acme:4012345), just "
+    "the posting id, or the company's name when that names one job (the one queued or applied to there). "
+    "When it matches several, the error lists their keys."))]
+Day = Field(description="A day: YYYY-MM-DD, or +N for N days from today. An empty string clears it.")
+
 
 def _open():
     cfg = config.load(os.environ.get("JOBWATCH_CONFIG"))
@@ -56,9 +69,13 @@ def _open():
 
 
 @server.tool(annotations=_hints(read_only=True, web=True))
-def find_board(company: str) -> list[dict]:
+def find_board(
+    company: Annotated[str, Field(description=(
+        "A company name (\"Stripe\"), or a link to one of its job postings or its careers page."))],
+) -> list[dict]:
     """Find a company's job board by name or by a job/careers link. Returns entries for the watchlist.
-    A guessed board name can belong to another company: check the sample titles before adding one."""
+    A guessed board name can belong to another company: check the sample titles before adding one.
+    Use it to start watching a company; to track one job from its link, use add_application instead."""
     return [{"entry": f"{s}:{b}", "open_roles": sources.open_roles(jobs), "careers": sources.careers_url(s, b),
              "sample_titles": [j.title for j in jobs[:5]]}
             for s, b, jobs in sources.probe(company)]
@@ -66,7 +83,8 @@ def find_board(company: str) -> list[dict]:
 
 @server.tool(annotations=_hints(idempotent=True, web=True))
 def fetch_jobs() -> str:
-    """Check every board in the watchlist and record new roles."""
+    """Check every board in the watchlist and record new roles. Returns counts, and each board that failed to
+    load (skipped; the rest are still recorded). Run it before digest, which lists the new roles themselves."""
     cfg, store = _open()
     try:
         return report.fetch_summary(fetch_all(cfg, store))
@@ -75,9 +93,20 @@ def fetch_jobs() -> str:
 
 
 @server.tool(annotations=_hints(web=True))
-def digest(score_top: int = 0, include_seen: bool = False, limit: int = 25, mark_shown: bool = True) -> dict:
-    """New jobs that pass the filters, best first. score_top > 0 fit-scores that many of the most relevant
-    unscored jobs with shortlist-ai (slow: minutes per job on the local backend)."""
+def digest(
+    score_top: Annotated[int, Field(ge=0, description=(
+        "How many of the most relevant unscored jobs to fit-score against the resume with shortlist-ai first. "
+        "0 (the default) skips scoring; each job takes minutes on the local backend, so keep it small."))] = 0,
+    include_seen: Annotated[bool, Field(description=(
+        "Also include jobs already shown in an earlier digest, not just new ones."))] = False,
+    limit: Annotated[int, Field(ge=1, description="The most jobs to return, best first.")] = 25,
+    mark_shown: Annotated[bool, Field(description=(
+        "Mark the returned jobs as shown, so the next digest leaves them out. False to peek without "
+        "changing anything."))] = True,
+) -> dict:
+    """New jobs that pass the watchlist's filters, best first (fit score when scored, then keyword relevance),
+    with people the user knows at each company. Call fetch_jobs first to pick up today's postings. This is for
+    finding jobs to consider; for jobs already queued use apply_queue, and for applications use applications."""
     cfg, store = _open()
     try:
         d = build_digest(cfg, store, include_seen=include_seen, score_top=score_top, limit=limit)
@@ -89,12 +118,14 @@ def digest(score_top: int = 0, include_seen: bool = False, limit: int = 25, mark
 
 
 @server.tool(annotations=READ)
-def job_details(key: str) -> dict:
+def job_details(key: Key) -> dict:
     """Everything about one job, by key or posting id: the full posting text, pay, tracking (status, note, next
     step, follow-up), its fit score against the resume (score, must-haves met, gaps), people the user knows
     there plus a LinkedIn search for a referral, skills it asks for that the resume doesn't show, what was
     sent with the application, and candidate_home: the company's page where the person signs in to see the
-    application's status (Workday only; each company has its own account)."""
+    application's status (Workday only; each company has its own account). Use it to tailor a resume or decide
+    whether to apply; for only what was sent use application_package, and for a call or interview use
+    interview_prep."""
     cfg, store = _open()
     try:
         job, rec = store.find(key)
@@ -111,9 +142,26 @@ def job_details(key: str) -> dict:
 
 
 @server.tool(annotations=_hints(destructive=True, idempotent=True))
-def mark_job(key: str, status: str | None = None, note: str | None = None, add_note: str | None = None,
-             next_step: str | None = None, follow_up: str | None = None, applied_on: str | None = None,
-             url: str | None = None, text: str | None = None) -> str:
+def mark_job(
+    key: Key,
+    status: Annotated[Status | None, Field(description=(
+        "The new status; omit to keep it and only update the rest. applied only after the person has submitted "
+        "the application themselves."))] = None,
+    note: Annotated[str | None, Field(description="Replaces the whole note. Prefer add_note for news.")] = None,
+    add_note: Annotated[str | None, Field(description=(
+        "A line to add to the note, dated today, keeping what's there (\"recruiter replied: onsite only\")."))]
+    = None,
+    next_step: Annotated[str | None, Field(description=(
+        "What happens next (\"recruiter screen Tuesday\"). An empty string clears it."))] = None,
+    follow_up: Annotated[str | None, Day] = None,
+    applied_on: Annotated[str | None, Field(description="The day applied (YYYY-MM-DD), if not today.")] = None,
+    url: Annotated[str | None, Field(description=(
+        "The link of a job added by hand: its posting, or the company's careers site once the posting is "
+        "gone."))] = None,
+    text: Annotated[str | None, Field(description=(
+        "The posting's text, pasted (found later, or a copy once the posting is gone), so it can be scored and "
+        "prepped."))] = None,
+) -> str:
     """Record a job's status: new, shown, queued (to apply to next), applied, screening, interviewing, offer,
     rejected, withdrawn or skipped (omit status to keep it and only update the rest). key is the job's key, its
     posting id, or its company's name when that names one job (the one queued or applied to there); when it
@@ -123,7 +171,8 @@ def mark_job(key: str, status: str | None = None, note: str | None = None, add_n
     what happens next ("recruiter screen Tuesday"); follow_up is the day to act (YYYY-MM-DD or +N days);
     applied_on is the day applied, if not today. url sets the link of a job added by hand (its posting, or the
     company's careers site once the posting is gone), and text its posting's text, pasted (found later, or from
-    a copy once the posting is gone), so it can be scored and prepped. An empty string clears a field."""
+    a copy once the posting is gone), so it can be scored and prepped. An empty string clears a field.
+    For a job jobwatch doesn't track yet, use add_application."""
     _, store = _open()
     try:
         job, rec = store.find(key)
@@ -144,14 +193,31 @@ def mark_job(key: str, status: str | None = None, note: str | None = None, add_n
 
 
 @server.tool(annotations=_hints(web=True))
-def add_application(company: str = "", title: str = "", url: str = "", status: str = "applied", applied_on: str = "",
-                    note: str | None = None, next_step: str | None = None, follow_up: str | None = None,
-                    text: str = "") -> str:
+def add_application(
+    company: Annotated[str, Field(description="The company; may be left out when url is a job link it can read.")]
+    = "",
+    title: Annotated[str, Field(description="The job title; may be left out when url is a job link it can read.")]
+    = "",
+    url: Annotated[str, Field(description=(
+        "A link to the job: Greenhouse, Lever, Ashby, Workable, Workday, Rippling or LinkedIn are read in full; "
+        "any other link is just kept."))] = "",
+    status: Annotated[str, Field(description=(
+        "applied (the default; only once the person has applied themselves), queued for one they're "
+        "considering, or a later stage such as interviewing."))] = "applied",
+    applied_on: Annotated[str, Field(description="The day applied (YYYY-MM-DD), if not today.")] = "",
+    note: Annotated[str | None, Field(description="A note: who referred them, how they found it...")] = None,
+    next_step: Annotated[str | None, Field(description="What happens next (\"hiring manager call Friday\").")]
+    = None,
+    follow_up: Annotated[str | None, Day] = None,
+    text: Annotated[str, Field(description=(
+        "The posting's text, pasted, when the link can't be read, so it can be scored and prepped."))] = "",
+) -> str:
     """Add a job jobwatch didn't find (a referral, a recruiter, LinkedIn...), so everything is in one place: an
     application (only after the person has applied themselves), or status queued for one they're considering.
     A url to one job on Greenhouse, Lever, Ashby, Workable, Workday or Rippling is read in full (company and
     title may be left out); so is a LinkedIn job link, which is tracked on the company's own board when the same
-    job is found there. Otherwise give company and title, and text (the posting, pasted) so it can be scored."""
+    job is found there. Otherwise give company and title, and text (the posting, pasted) so it can be scored.
+    For a job jobwatch already tracks (it came from digest or job_details), use mark_job instead."""
     cfg, store = _open()
     try:
         job, read = save_job(store, url, company or watched_name(cfg, url), title, text, status=status, note=note,
@@ -164,9 +230,12 @@ def add_application(company: str = "", title: str = "", url: str = "", status: s
 
 
 @server.tool(annotations=READ)
-def applications(due_only: bool = False) -> list[dict]:
-    """Every application and where it stands, follow-ups due soonest first; candidate_home is the company's
-    page for checking its status, when it has one (Workday). due_only: only those whose follow-up day has come."""
+def applications(
+    due_only: Annotated[bool, Field(description="Only those whose follow-up day has come.")] = False,
+) -> list[dict]:
+    """Every application (applied or a later stage) and where it stands, follow-ups due soonest first;
+    candidate_home is the company's page for checking its status, when it has one (Workday). Use it to see what
+    needs a follow-up; for jobs not applied to yet use apply_queue, and for any status use list_jobs."""
     _, store = _open()
     try:
         fields = ("status", "applied_at", "status_at", "next_step", "follow_up", "note", "closed")
@@ -180,7 +249,10 @@ def applications(due_only: bool = False) -> list[dict]:
 
 @server.tool(annotations=READ)
 def apply_queue() -> list[dict]:
-    """Jobs queued to apply to, oldest first, with fit scores, notes and people the user knows there."""
+    """Jobs queued to apply to, oldest first, with fit scores, notes, people the user knows there (ask them for
+    a referral before applying) and warnings to check first (pay, place, flagged text). Use it to pick the next
+    application; jobs get here through mark_job with status queued. For applications already sent use
+    applications."""
     cfg, store = _open()
     try:
         return [{"key": e.job.key, "company": e.job.display_company, "title": e.job.title, "url": e.job.url,
@@ -194,7 +266,8 @@ def apply_queue() -> list[dict]:
 @server.tool(annotations=_hints(idempotent=True, web=True))
 def check_postings() -> list[dict]:
     """Check that the postings of queued jobs and open applications still take applications, and record the
-    ones that closed or came back. result is open, closed, reopened, or unknown (check it yourself)."""
+    ones that closed or came back. result is open, closed, reopened, or unknown (check it yourself). Run it
+    before working through apply_queue, so time isn't spent on closed postings."""
     _, store = _open()
     try:
         return [{"key": c.job.key, "company": c.job.display_company, "title": c.job.title, "url": c.job.url,
@@ -204,8 +277,12 @@ def check_postings() -> list[dict]:
 
 
 @server.tool(annotations=READ)
-def list_jobs(status: str | None = None) -> list[dict]:
-    """Tracked jobs, optionally only one status (e.g. applied), newest first."""
+def list_jobs(
+    status: Annotated[Status | None, Field(description="Only jobs with this status; omit for all.")] = None,
+) -> list[dict]:
+    """Tracked jobs with their tracking fields, newest first, including closed postings. A plain list by status
+    (e.g. every skipped job); for ranked new jobs use digest, for the next to apply to apply_queue, and for
+    follow-ups applications."""
     _, store = _open()
     try:
         return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, **rec}
@@ -215,12 +292,19 @@ def list_jobs(status: str | None = None) -> list[dict]:
 
 
 @server.tool(annotations=_hints(destructive=True))
-def save_application_package(key: str, files: list[str] | None = None, answers: list[dict] | None = None,
-                             note: str | None = None) -> dict:
+def save_application_package(
+    key: Key,
+    files: Annotated[list[str] | None, Field(description=(
+        "Local paths to the files exactly as uploaded (resume PDF, cover letter...). Copies are kept."))] = None,
+    answers: Annotated[list[dict] | None, Field(description=(
+        "The form's questions and the answers given, as [{\"question\": ..., \"answer\": ...}]. Replaces any "
+        "saved before."))] = None,
+    note: Annotated[str | None, Field(description="A cover letter or message pasted into the form.")] = None,
+) -> dict:
     """Keep what was sent with an application, as copies: files (local paths to the resume PDF, cover letter...
     exactly as uploaded), answers (the form's questions and the answers given, [{question, answer}]; replaces
     any saved before) and note (a cover letter or message pasted into the form). Call it once the person has
-    submitted, with what they actually sent."""
+    submitted, with what they actually sent; application_package reads it back."""
     _, store = _open()
     try:
         pkg = store.package(key)
@@ -234,9 +318,10 @@ def save_application_package(key: str, files: list[str] | None = None, answers: 
 
 
 @server.tool(annotations=READ)
-def application_package(key: str) -> dict:
+def application_package(key: Key) -> dict:
     """What was sent with an application: files kept (with their folder), form answers, note, and the day the
-    posting was saved as it read then (posting.md in the folder). Use it to prepare for a call or interview."""
+    posting was saved as it read then (posting.md in the folder). Use it to check exactly what was sent; for a
+    full prep sheet use interview_prep, and for the posting and fit use job_details."""
     _, store = _open()
     try:
         return store.package(key).data()
@@ -245,11 +330,12 @@ def application_package(key: str) -> dict:
 
 
 @server.tool(annotations=READ)
-def interview_prep(key: str) -> dict:
+def interview_prep(key: Key) -> dict:
     """A prep sheet for a recruiter call or interview: stage and next step, each requirement and responsibility
     in the posting next to the closest resume line (quoted, never written), gaps to be honest about, what was
     sent, questions to expect and to ask, and the posting. For an application added by hand, the posting is found
-    on a watched board by its requisition id. markdown is the sheet ready to read."""
+    on a watched board by its requisition id. markdown is the sheet ready to read. Use it before a call;
+    job_details and application_package give the raw pieces."""
     cfg, store = _open()
     try:
         sheet = prep.build(cfg, store, key)
@@ -259,14 +345,18 @@ def interview_prep(key: str) -> dict:
 
 
 @server.tool(annotations=READ)
-def skill_gaps(timeline: str | None = None) -> dict:
+def skill_gaps(
+    timeline: Annotated[Timeline | None, Field(description=(
+        "How soon the person wants to close a gap: week, month, quarter or any. Omit for the watchlist's "
+        "learning.timeline."))] = None,
+) -> dict:
     """Skills today's matching jobs and the person's applications ask for, most in demand first, each with
     on_resume, how many jobs mention it, how many scored jobs list it as a missing must-have, and ways to learn
     it: curated courses and certifications (official pages, each with a rough time and whether it fits the
     timeline) and searches on Coursera, LinkedIn Learning, edX and nearby colleges. Also fit-score gaps no
-    course closes (clearance, citizenship, degree, travel). timeline: week, month, quarter or any (default: the
-    watchlist's learning.timeline). Recommend only from these links; never suggest claiming a skill the resume
-    doesn't show."""
+    course closes (clearance, citizenship, degree, travel). Recommend only from these links; never suggest
+    claiming a skill the resume doesn't show. For one job's gaps use job_details; to prepare for a call use
+    interview_prep."""
     cfg, store = _open()
     try:
         return learn.to_dict(learn.gather(cfg, store, timeline))
