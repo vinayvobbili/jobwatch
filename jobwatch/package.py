@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 import shutil
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 
 from .models import Job
@@ -54,7 +54,7 @@ class Package:
         m = self._manifest()
         files = [{"name": n, **f, "size": (self.dir / n).stat().st_size}
                  for n, f in m["files"].items() if (self.dir / n).is_file()]
-        files.sort(key=lambda f: f["added"], reverse=True)
+        files.sort(key=lambda f: datetime.fromisoformat(f["added"]), reverse=True)
         posting = self.dir / POSTING
         saved = posting.read_text(encoding="utf-8").split("\n", 1)[0] if posting.is_file() else ""
         return {"files": files, "answers": m["answers"], "note": m["note"], "folder": str(self.dir),
@@ -113,7 +113,8 @@ class Package:
         self.dir.mkdir(parents=True, exist_ok=True)
         (self.dir / final).write_bytes(data)
         m["files"][final] = {"kind": kind or kind_of(name), "sha256": digest,
-                             "added": datetime.now(timezone.utc).isoformat(timespec="microseconds")}
+                             # local time: "added 2025-03-02" is the day it was for the person
+                             "added": datetime.now().astimezone().isoformat(timespec="microseconds")}
         self._save(m)
         return final
 

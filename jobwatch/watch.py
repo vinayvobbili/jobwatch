@@ -7,13 +7,13 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from . import sources
+from . import linkedin, sources
 from .config import Board, Config
 from .contacts import Contacts
-from .filters import reject_reason, relevance, search_terms, title_ok
+from .filters import Filters, red_flags, reject_reason, relevance, search_terms, title_ok
 from .models import Job
 from .score import resume_id, score_jobs
-from .store import STAGES, Store
+from .store import MANUAL, STAGES, Store
 
 
 @dataclass
@@ -61,6 +61,7 @@ class Entry:
     fit: dict | None = None
     same_title: list[Job] = field(default_factory=list)  # the company's other postings with this title
     contacts: list[dict] = field(default_factory=list)  # people you know there
+    warnings: list[str] = field(default_factory=list)  # reasons to look twice before applying (queue)
 
     @property
     def keys(self) -> list[str]:
@@ -88,7 +89,8 @@ def load_contacts(cfg: Config) -> Contacts | None:
 
 
 def queue(cfg: Config, store: Store) -> list[Entry]:
-    """Jobs queued to apply to, in the order they were queued, with fit scores and contacts where known."""
+    """Jobs queued to apply to, in the order they were queued, with fit scores, contacts where known, and
+    warnings: a job queued by hand never passed the filters, and a posting can close while it waits."""
     rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
     contacts = load_contacts(cfg)
     out = []
@@ -96,7 +98,88 @@ def queue(cfg: Config, store: Store) -> list[Entry]:
         rel, hits = relevance(job, cfg.keywords)
         e = Entry(job, rec, rel, hits, fit=store.score(job.key, rid) if rid else None)
         e.contacts = contacts.at(job.display_company, job.company) if contacts else []
+        e.warnings = warnings(job, cfg.filters)
         out.append(e)
+    return out
+
+
+def warnings(job: Job, f: Filters) -> list[str]:
+    """What a person should know before applying: pay below the watchlist's minimum, a location it doesn't
+    want, and the posting text's red flags (filters.flags: clearance, on-site...). Not filters: the person
+    queued it anyway, maybe for a reason."""
+    out = []
+    if f.min_salary and job.salary_min is not None and (job.salary_max or job.salary_min) < f.min_salary:
+        out.append(f"pay {job.pay()} is below ${f.min_salary / 1000:.0f}K")
+    # A job added by hand has its place as typed ("Remote (NC)"), which the location rules can't judge.
+    if job.source != MANUAL and job.locations and \
+            reject_reason(job, Filters(locations=f.locations, remote_country=f.remote_country)):
+        out.append(f"location: {'; '.join(job.locations[:3])}")
+    out += red_flags(job, f)
+    return out
+
+
+@dataclass
+class Check:
+    job: Job
+    result: str        # open, closed, reopened, or unknown
+    detail: str = ""
+
+
+def _never(title: str) -> bool:
+    return False
+
+
+def _open_ids(job: Job, get, boards: dict) -> set[str]:
+    """The ids open on a job's board now: a whole board is listed once per check, a searched one is searched for
+    the job's title (nothing is read in full)."""
+    searched = bool(sources.SOURCES[job.source].search)
+    k = (job.source, job.company, job.title if searched else "")
+    if k not in boards:
+        boards[k] = {j.id for j in sources.fetch(job.source, job.company, get, search=[job.title], wanted=_never)}
+    return boards[k]
+
+
+def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> bool | None:
+    """Whether a job's posting still takes applications: on its board, at its link (a supported board or a
+    LinkedIn job), or None when jobwatch can't tell. Raises SourceError when the board can't be read now."""
+    boards = {} if boards is None else boards
+    if job.source in ("workday", "rippling"):  # one posting can be read by its link: surer than a title search
+        try:
+            return sources.posting(job.url, get) is not None
+        except sources.NotFound:
+            return False
+    if job.source in sources.SOURCES:
+        return job.id in _open_ids(job, get, boards)
+    if not job.url:
+        return None
+    if p := linkedin.read(job.url, page):
+        return not p.closed
+    try:
+        return sources.posting(job.url, get) is not None or None
+    except sources.NotFound:
+        return False
+
+
+def check_postings(store: Store, statuses: tuple[str, ...] = ("queued", "applied", "screening", "interviewing"),
+                   get=None, page=None) -> list[Check]:
+    """Check that the postings of queued jobs and open applications are still up, and record the ones that
+    closed (or came back). Jobs from watched boards are checked by every fetch too; this also covers jobs added
+    by hand from a link, and boards that aren't watched."""
+    boards: dict = {}
+    out = []
+    for job, rec in store.jobs(statuses, include_closed=True):
+        try:
+            up = still_open(job, get, page, boards)
+        except sources.SourceError as e:
+            out.append(Check(job, "unknown", str(e)))
+            continue
+        if up is None:
+            out.append(Check(job, "unknown", "no link jobwatch can read" if not job.url else "jobwatch can't read "
+                             "that site: check it yourself"))
+        elif store.set_closed(job.key, not up):
+            out.append(Check(job, "reopened" if up else "closed"))
+        else:
+            out.append(Check(job, "open" if up else "closed", "" if up else f"since {(rec['closed'] or '')[:10]}"))
     return out
 
 
@@ -108,15 +191,38 @@ def watched_name(cfg: Config, link: str) -> str:
 
 def save_job(store: Store, link: str = "", company: str = "", title: str = "", text: str = "",
              status: str = "queued", note: str | None = None, applied: str | None = None, location: str = "",
-             get=None) -> tuple[Job, bool]:
+             get=None, page=None, boards: list[Board] = ()) -> tuple[Job, bool]:
     """Add a job found somewhere else: (the job, whether its posting was read from the link).
 
-    A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday) is read in full, so the
-    job can be scored and prepped like any other; its board needn't be watched. Anything else (LinkedIn, a
-    company's own site) needs the company, the title and, to be scored, the posting's text pasted. An
-    application already further along keeps its stage."""
-    link = link.strip()
-    job = sources.posting(link, get) if link else None
+    A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday, Rippling) is read in
+    full, so the job can be scored and prepped like any other; its board needn't be watched. A LinkedIn job link
+    is read from LinkedIn's public posting page, and the same job is looked for on the company's own board
+    (a watched one in `boards` under the company's name first): found, that posting is tracked, since it's
+    where the application goes; not found, the LinkedIn posting is. Anything else (a company's own site) needs
+    the company, the title and, to be scored, the posting's text pasted. An application already further along
+    keeps its stage."""
+    link, job, p = link.strip(), None, None
+    try:
+        p = linkedin.read(link, page) if link else None
+    except sources.SourceError:  # LinkedIn wants a sign-in now: what the person gave is enough, if they gave it
+        if not (company.strip() and title.strip()):
+            raise
+    if p:
+        job = linkedin.on_board(p, [(b.source, b.board, b.name) for b in boards], get, page)
+        why = f"Found on LinkedIn: {p.url}" + (" (no longer accepting applications there)" if p.closed else "")
+        if job is None:
+            job = store.add(company.strip() or p.company, title.strip() or p.title, url=p.url, status=status,
+                            note=note, applied=applied, location=location or p.location,
+                            description=text.strip() or p.description)
+            store.add_note(job.key, why)
+            if p.closed:
+                store.set_closed(job.key, True)
+            return job, True
+        if sources.SOURCES[job.source].search:  # a searched board names only its tenant ("acme")
+            job.company_name = p.company
+        note = f"{note} {why}" if note else why
+    elif link:
+        job = sources.posting(link, get)
     if job is None:
         if link and not (company.strip() and title.strip()):
             raise ValueError("jobwatch can't read that link: give the company and the job title too, and paste "

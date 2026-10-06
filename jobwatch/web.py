@@ -147,7 +147,8 @@ class App:
                 "status": e.record.get("status"), "note": e.record.get("note"), "closed": e.record.get("closed"),
                 "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
                 "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
-                "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max}
+                "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max,
+                "warnings": e.warnings}
 
     # -- endpoints
 
@@ -242,7 +243,8 @@ class App:
                 link = body.get("url") or ""
                 job, read = save_job(store, link, body.get("company") or watched_name(cfg, link),
                                      body.get("title") or "", body.get("text") or "", status=status,
-                                     note=body.get("note"), applied=body.get("applied_at") or None)
+                                     note=body.get("note"), applied=body.get("applied_at") or None,
+                                     boards=cfg.boards)
             except sources.SourceError as e:
                 raise ApiError(f"couldn't read that posting: {e}") from None
             store.track(job.key, next_step=body.get("next_step"), follow_up=body.get("follow_up"))

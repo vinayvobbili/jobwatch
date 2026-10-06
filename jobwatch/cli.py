@@ -14,7 +14,17 @@ from . import __version__, chat, config, learn, prep, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
 from .store import STAGES, STATUSES, Store
-from .watch import build_digest, fetch_all, load_contacts, queue, save_job, score_entries, unscored, watched_name
+from .watch import (
+    build_digest,
+    check_postings,
+    fetch_all,
+    load_contacts,
+    queue,
+    save_job,
+    score_entries,
+    unscored,
+    watched_name,
+)
 
 
 def _write(text: str, out: Path | None):
@@ -38,8 +48,9 @@ def cmd_find(args):
         results = list(pool.map(sources.probe, args.company))
     for query, hits in zip(args.company, results, strict=True):
         if not hits:
-            print(f"{query}: no Greenhouse, Lever, Ashby, Workday or Eightfold board found. Paste a job link "
-                  "from their careers page to check, or the company may use another system.")
+            print(f"{query}: no Greenhouse, Lever, Ashby, Workday, Eightfold or Rippling board found. Give the "
+                  "link to their careers page or a job on it, to look for a board linked there; or the company "
+                  "may use another system.")
         for source, board, jobs in hits:
             name = next((j.company_name for j in jobs if j.company_name), "")
             print(f"{query}: {source}:{board}  ({sources.open_roles(jobs)} open roles{', ' + name if name else ''})  "
@@ -122,11 +133,23 @@ def _attach(pkg, files: list[Path], kind: str | None = None):
         print(f"  kept {f.name} as {pkg.dir / name}")
 
 
+def _pairs(d: dict, prefix: str = "") -> list[dict]:
+    out = []
+    for q, a in d.items():
+        if isinstance(a, dict):  # a form's sections: {"Links": {"LinkedIn": ...}} -> "Links / LinkedIn"
+            out += _pairs(a, f"{prefix}{q} / ")
+        else:
+            text = "" if a is None else ("Yes" if a else "No") if isinstance(a, bool) else str(a)  # YAML: no -> False
+            out.append({"question": f"{prefix}{q}", "answer": text})
+    return out
+
+
 def _answers(path: Path) -> list[dict]:
-    """A YAML or JSON file of form answers: {question: answer, ...} or [{question, answer}, ...]."""
+    """A YAML or JSON file of form answers: {question: answer, ...} (sections nested or not) or
+    [{question, answer}, ...]."""
     raw = yaml.safe_load(path.expanduser().read_text(encoding="utf-8"))
     if isinstance(raw, dict):
-        return [{"question": str(q), "answer": "" if a is None else str(a)} for q, a in raw.items()]
+        return _pairs(raw)
     if isinstance(raw, list):
         return raw
     raise ValueError(f"{path}: expected question: answer pairs, or a list of {{question, answer}}")
@@ -159,7 +182,7 @@ def cmd_add(args, cfg, store):
         raise ValueError("give a link to the posting, or the company and the job title")
     text = "" if not args.text else sys.stdin.read() if str(args.text) == "-" else args.text.read_text()
     job, read = save_job(store, link, company, title, text, status=args.status, note=args.note, applied=args.on,
-                         location=args.location or "")
+                         location=args.location or "", boards=cfg.boards)
     store.track(job.key, next_step=args.next, follow_up=args.follow_up)
     if args.add_note:
         store.add_note(job.key, args.add_note)
@@ -201,6 +224,17 @@ def cmd_queue(args, cfg, store):
         args.status = "queued"
         return cmd_mark(args, cfg, store)
     _write(report.queue_markdown(queue(cfg, store)), args.out)
+
+
+def cmd_check(args, cfg, store):
+    checks = check_postings(store, tuple(args.status or ("queued", "applied", "screening", "interviewing")))
+    order = {"closed": 0, "reopened": 1, "unknown": 2, "open": 3}
+    for c in sorted(checks, key=lambda c: order[c.result]):
+        if c.result != "open" or args.all:
+            print(f"{c.result:8}  {c.job.key}  {c.job.display_company}: {c.job.title}"
+                  + (f"  ({c.detail})" if c.detail else ""))
+    counts = {r: sum(c.result == r for c in checks) for r in order}
+    print(", ".join(f"{n} {r}" for r, n in counts.items() if n) or "nothing to check", file=sys.stderr)
 
 
 def cmd_ui(args):
@@ -307,8 +341,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_mark)
 
     p = sub.add_parser("add", help="add a job found elsewhere (LinkedIn, a referral, a recruiter): `add <link>` "
-                       "reads the posting from Greenhouse, Lever, Ashby, Workable or Workday; `add <company> "
-                       "<title>` for anything else. --status queued to consider it, else it's an application")
+                       "reads the posting from Greenhouse, Lever, Ashby, Workable, Workday or Rippling (a LinkedIn "
+                       "link is matched to the company's own board); `add <company> <title>` "
+                       "for anything else. --status queued to consider it, else it's an application")
     p.add_argument("job", nargs="+", metavar="LINK | COMPANY TITLE")
     p.add_argument("--url", help="link to the posting, with a company and title")
     p.add_argument("--company", help="with a link: the company's name, when the board doesn't give it (Workday)")
@@ -361,6 +396,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--note", help="e.g. 'ask Ana for a referral first'")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_queue)
+
+    p = sub.add_parser("check", help="check that queued jobs and open applications are still posted, and record "
+                       "the ones that closed (or came back)")
+    p.add_argument("--status", choices=STATUSES, action="append", help="only jobs with this status (repeatable)")
+    p.add_argument("--all", action="store_true", help="also list the ones still open")
+    p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("ui", help="open jobwatch in your browser (setup, digest, queue, applied)")
     p.add_argument("--port", type=int, default=8765)

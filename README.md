@@ -22,7 +22,7 @@ Keywords: Python, RAG, agents
 ## Why company boards
 
 Most tech companies post jobs through Greenhouse, Lever, Ashby or Workable, and most large employers through
-Workday (some through Eightfold or a Jibe careers site). Each publishes open roles as public JSON so anyone can build a careers page, with
+Workday (some through Eightfold or a Jibe careers site), and many small companies through Rippling. Each publishes open roles as public JSON so anyone can build a careers page, with
 no API key or scraping. jobwatch reads those feeds for the companies on your watchlist:
 
 - **Complete and fresh:** a role appears as soon as the company posts it, not when an aggregator picks it up.
@@ -99,7 +99,9 @@ jobwatch find https://jobs.lever.co/spotify/4f1c2a9e-...   # or paste any job li
 
 `find` prints a line like `Anthropic: greenhouse:anthropic (627 open roles)`. For a Workday company it tries
 the usual site names; if that finds nothing, paste a job link from their careers site (it has
-`myworkdayjobs.com` in it) and `find` reads the board from it: `workday:nvidia.wd5/NVIDIAExternalCareerSite`. Add those
+`myworkdayjobs.com` in it) and `find` reads the board from it: `workday:nvidia.wd5/NVIDIAExternalCareerSite`.
+A company's own careers page works too (`jobwatch find https://careers.acme.com/jobs`): `find` reads it for
+links to a board, which is how a board under a name nobody would guess turns up. Add those
 entries under `companies:`, adjust the filters, then:
 
 ```
@@ -119,6 +121,7 @@ companies:
   - {source: workday, board: nvidia.wd5/NVIDIAExternalCareerSite, name: NVIDIA}  # tenant.wdN/site
   - {source: eightfold, board: acme, name: Acme}      # tenant (or tenant/domain), from a link
   - {source: jibe, board: careers.acme.com, name: Acme}  # a Jibe site's host (job links: /careers-home/jobs/...)
+  - rippling:acme                                       # ats.rippling.com/acme/jobs
 
 filters:
   titles: ["engineer", "architect"]       # regexes; the title must match one
@@ -129,6 +132,9 @@ filters:
   min_salary: 200000                      # the top of a listed range must reach this
   require_salary: false                   # true: drop postings without pay
   max_age_days: 30
+  flags:                                  # not filters: a warning on queued jobs whose posting says this
+    "active (TS|top secret)": clearance
+    "on-?site 5 days": on-site
 
 keywords:                                 # relevance: title hits count double
   LLM: 3
@@ -249,14 +255,25 @@ jobwatch mark skipped greenhouse:acme:102
 jobwatch list --status applied
 ```
 
-Queued jobs leave the digest. The queue flags any posting that has since closed.
+Queued jobs leave the digest. The queue flags any posting that has since closed, and what to check before
+applying: pay below `min_salary`, a place your filters don't want (a job queued by hand never passed them),
+and anything your `filters.flags` patterns find in the posting. Every fetch notices a watched board's
+postings closing; `jobwatch check` also checks queued jobs and open applications from boards you don't
+watch, and from LinkedIn links:
+
+```
+jobwatch check                             # closed (or back) since the last check; --all lists the open ones too
+```
 
 ### Jobs you found somewhere else
 
 A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
-posting on Greenhouse, Lever, Ashby, Workable or Workday, jobwatch reads the posting from there, so it can be
-fit-scored and prepped for like any other, even if you don't watch that company. For anything else (LinkedIn,
-a company's own site), give the company and title and paste the posting's text:
+posting on Greenhouse, Lever, Ashby, Workable, Workday or Rippling, jobwatch reads the posting from there, so it
+can be fit-scored and prepped for like any other, even if you don't watch that company. A LinkedIn job link is
+read from LinkedIn's public posting page (one page, the one you gave; jobwatch doesn't search LinkedIn), then
+the same job is looked for on the company's own board: found, that's what is tracked, since it's where the
+application goes; not found, the LinkedIn posting is. For anything else (a company's own site), give the
+company and title and paste the posting's text:
 
 ```
 jobwatch add https://apply.workable.com/acme/j/A1B2C3D4E5/ --status queued
