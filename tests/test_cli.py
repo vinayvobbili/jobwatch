@@ -108,6 +108,8 @@ def test_mark_without_a_status_keeps_it(watchlist, capsys):
                "screen Friday").out == "manual:umbrella:principal-engineer: screening\n"
     out = run(capsys, *c, "apps").out
     assert "**screening** · applied 2026-09-01" in out and ": screen moved to Friday" in out
+    run(capsys, *c, "mark", "principal-engineer", "--add-note", "2026-09-30: recruiter called")  # recorded late
+    assert "screen moved to Friday 2026-09-30: recruiter called" in run(capsys, *c, "apps").out
     with pytest.raises(SystemExit, match="which job"):
         cli.main([*c, "mark", "applied"])
     with pytest.raises(SystemExit, match="no job"):
