@@ -1,5 +1,7 @@
 # jobwatch
 
+<!-- mcp-name: io.github.vinayvobbili/jobwatch -->
+
 [![M8ven Score](https://m8ven.ai/badge/mcp/vinayvobbili-jobwatch-1cvk7w)](https://m8ven.ai/mcp/vinayvobbili/jobwatch?s=readme)
 
 Watch the job boards of the companies you care about and get a short, ranked digest of **new** roles that
@@ -379,13 +381,22 @@ marking them shown. Roles that disappear from a board are marked closed.
 ## MCP server
 
 `jobwatch-mcp` offers `find_board`, `fetch_jobs`, `digest`, `job_details`, `mark_job`, `apply_queue`,
-`add_application`, `applications`, `save_application_package`, `application_package`, `interview_prep`,
-`skill_gaps` and `list_jobs` to Claude Code or any MCP client. The watchlist comes
+`add_application`, `applications`, `check_postings`, `save_application_package`, `application_package`,
+`interview_prep`, `skill_gaps` and `list_jobs` to Claude Code or any MCP client. The watchlist comes
 from `JOBWATCH_CONFIG`:
 
 ```
 claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- jobwatch-mcp
 ```
+
+`jobwatch mcp` runs the same server. Without installing anything first,
+[uv](https://docs.astral.sh/uv/) can fetch and run it:
+
+```
+claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- uvx --with 'mcp>=2.2' jobwatch mcp
+```
+
+It's listed in the [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.vinayvobbili/jobwatch`.
 
 With a resume tool alongside it (for example [resume-kit](https://github.com/vinayvobbili/resume-kit), whose
 `resume draft` starts a tailored version from a posting), an assistant can work through your queue: read

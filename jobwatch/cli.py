@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -262,6 +263,18 @@ def cmd_ui(args):
         server.server_close()
 
 
+def cmd_mcp(args):
+    try:
+        from . import mcp_server
+    except ImportError as e:
+        if e.name != "mcp" and not str(e.name).startswith("mcp."):
+            raise
+        raise SystemExit("jobwatch: the MCP server needs the mcp package: pip install 'jobwatch[mcp]'") from None
+    if args.config:
+        os.environ["JOBWATCH_CONFIG"] = str(args.config)
+    mcp_server.main()
+
+
 def cmd_service(args):
     from . import service
 
@@ -423,6 +436,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
     p.set_defaults(func=cmd_ui, needs_config=False)
+
+    p = sub.add_parser("mcp", help="run the MCP server (the same as `jobwatch-mcp`) for Claude or another assistant")
+    p.set_defaults(func=cmd_mcp, needs_config=False)
 
     p = sub.add_parser("service", help="keep `jobwatch ui` running: start it at login, restart it if it stops "
                                        "(macOS)")

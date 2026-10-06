@@ -9,7 +9,7 @@ from pathlib import Path
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from . import config, contacts, learn, prep, report, sources, watch
+from . import __version__, config, contacts, learn, prep, report, sources, watch
 from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watched_name
@@ -34,6 +34,8 @@ server = MCPServer(
         "looks up a company's board (by name, or a job or careers page link) to add to the watchlist. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
+    version=__version__,
+    website_url="https://github.com/vinayvobbili/jobwatch",
 )
 
 
