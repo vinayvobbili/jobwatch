@@ -7,13 +7,13 @@
     "url": "https://github.com/vinayvobbili/jobwatch",
     "source": "github"
   },
-  "version": "0.2.3",
+  "version": "0.3.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "jobwatch",
-      "version": "0.2.3",
+      "version": "0.3.0",
       "runtimeHint": "uvx",
       "runtimeArguments": [
         {
