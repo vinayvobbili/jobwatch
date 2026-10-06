@@ -68,4 +68,4 @@ def test_handshake_with_the_real_server(smoke, monkeypatch):
     monkeypatch.delenv("JOBWATCH_CONFIG", raising=False)  # the server reads the watchlist only when a tool runs
     info, tools = smoke.handshake([sys.executable, "-m", "jobwatch.mcp_server"], timeout=60)
     assert info["name"] == "jobwatch"
-    assert {"fetch_jobs", "digest", "mark_job", "applications"} <= set(tools)
+    assert {"fetch_jobs", "get_digest", "mark_job", "list_applications", "add_board"} <= set(tools)

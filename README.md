@@ -390,10 +390,17 @@ marking them shown. Roles that disappear from a board are marked closed.
 
 ## MCP server
 
-`jobwatch-mcp` offers `find_board`, `fetch_jobs`, `digest`, `job_details`, `mark_job`, `apply_queue`,
-`add_application`, `applications`, `check_postings`, `save_application_package`, `application_package`,
-`interview_prep`, `skill_gaps` and `list_jobs` to Claude Code or any MCP client. The watchlist comes
-from `JOBWATCH_CONFIG`:
+`jobwatch-mcp` offers these tools to Claude Code or any MCP client:
+
+- **Watchlist:** `find_board`, `list_boards`, `add_board`, `remove_board`
+- **New jobs:** `fetch_jobs`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
+- **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`
+- **What was sent:** `save_application_package`, `get_application_package`, `get_interview_prep`
+
+(0.3.0 renamed them to verb_noun: `digest` is now `get_digest`, `job_details` is `get_job`, `apply_queue` is
+`list_queued_jobs`, `applications` is `list_applications`, `application_package` is `get_application_package`,
+`interview_prep` is `get_interview_prep` and `skill_gaps` is `list_skill_gaps`.) The watchlist comes from
+`JOBWATCH_CONFIG`:
 
 ```
 claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- jobwatch-mcp

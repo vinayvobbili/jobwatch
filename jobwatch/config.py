@@ -118,7 +118,7 @@ def save(path: Path, settings: dict) -> Config:
         else:
             raw[key] = value
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = "# jobwatch watchlist, saved by `jobwatch ui`. Docs: https://github.com/vinayvobbili/jobwatch\n" + \
+    text = "# jobwatch watchlist, saved by jobwatch. Docs: https://github.com/vinayvobbili/jobwatch\n" + \
         yaml.safe_dump(raw, sort_keys=False, allow_unicode=True)
     tmp = path.with_name(path.name + ".new")
     tmp.write_text(text, encoding="utf-8")
@@ -135,6 +135,39 @@ def save(path: Path, settings: dict) -> Config:
     tmp.replace(path)
     cfg.path = path
     return cfg
+
+
+def _companies(path: Path) -> list:
+    return list(((yaml.safe_load(path.read_text()) or {}) if path.is_file() else {}).get("companies") or [])
+
+
+def _same(entry, board: Board, path: Path) -> bool:
+    b = _board(entry, path)
+    return (b.source, b.board) == (board.source, board.board)
+
+
+def add_board(path: Path, entry: str, name: str = "") -> Config:
+    """Add a board ("greenhouse:stripe", as find_board gives it) to the watchlist, creating the file if needed.
+    Adding one that's already there only updates its name, when one is given."""
+    new = _board(entry, path)
+    item = {"source": new.source, "board": new.board, "name": name} if name else f"{new.source}:{new.board}"
+    companies = _companies(path)
+    at = next((i for i, e in enumerate(companies) if _same(e, new, path)), None)
+    if at is None:
+        companies.append(item)
+    elif name:
+        companies[at] = item
+    return save(path, {"companies": companies})
+
+
+def remove_board(path: Path, entry: str) -> Config:
+    """Take a board ("greenhouse:stripe") off the watchlist. Jobs already recorded from it are kept."""
+    gone = _board(entry, path)
+    companies = _companies(path)
+    kept = [e for e in companies if not _same(e, gone, path)]
+    if len(kept) == len(companies):
+        raise ConfigError(f"{entry!r} isn't on the watchlist")
+    return save(path, {"companies": kept})
 
 
 def load(explicit: str | Path | None = None) -> Config:
