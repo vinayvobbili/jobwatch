@@ -41,6 +41,29 @@ def test_parse_reports_missing_and_error_replies(smoke):
         smoke.parse(init + "\n" + json.dumps({"jsonrpc": "2.0", "id": 2, "error": {"message": "boom"}}))
 
 
+# Replies to tools/list only after a pause, and exits at end of input without answering what's still pending.
+SLOW_SERVER = """
+import json, sys, threading, time
+def answer(msg):
+    time.sleep(0.3)
+    result = {"tools": [{"name": "a"}]} if msg["id"] == 2 else {"serverInfo": {"name": "slow"}}
+    print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": result}), flush=True)
+for line in sys.stdin:
+    msg = json.loads(line)
+    if "id" in msg:
+        threading.Thread(target=answer, args=(msg,), daemon=True).start()
+"""
+
+
+def test_handshake_waits_for_the_reply_before_closing_input(smoke):
+    assert smoke.handshake([sys.executable, "-c", SLOW_SERVER], timeout=10) == ({"name": "slow"}, ["a"])
+
+
+def test_handshake_reports_a_server_that_exits(smoke):
+    with pytest.raises(SystemExit, match=r"no reply to initialize(.|\n)*broken"):
+        smoke.handshake([sys.executable, "-c", "import sys; sys.exit('broken')"], timeout=10)
+
+
 def test_handshake_with_the_real_server(smoke, monkeypatch):
     monkeypatch.delenv("JOBWATCH_CONFIG", raising=False)  # the server reads the watchlist only when a tool runs
     info, tools = smoke.handshake([sys.executable, "-m", "jobwatch.mcp_server"], timeout=60)

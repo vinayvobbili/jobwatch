@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,13 +86,57 @@ def parse(stdout: str) -> tuple[dict, list[str]]:
     return replies[1]["result"].get("serverInfo", {}), [t["name"] for t in replies[2]["result"].get("tools", [])]
 
 
-def handshake(cmd: list[str], timeout: float = 120) -> tuple[dict, list[str]]:
-    # stdin closes after tools/list, which ends a stdio server once it has answered.
-    run = subprocess.run(cmd, input=requests(), capture_output=True, text=True, timeout=timeout, check=False)
+def _reply_id(line: str) -> int | None:
+    """The request a line of the server's output answers, if it is a reply."""
     try:
-        return parse(run.stdout)
+        msg = json.loads(line)
+    except ValueError:
+        return None
+    return msg.get("id") if isinstance(msg, dict) else None
+
+
+def handshake(cmd: list[str], timeout: float = 120) -> tuple[dict, list[str]]:
+    # stdin stays open until both requests are answered (in any order): a server that sees end of input with a
+    # request still in flight may exit without replying. Closing it then ends a stdio server.
+    err = tempfile.TemporaryFile(mode="w+")  # a file, not a pipe: a chatty server can't fill it and stall
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=err, text=True)
+    out: list[str] = []
+    waiting = {1, 2}
+    done = threading.Event()
+
+    def read():
+        for line in proc.stdout:
+            out.append(line)
+            waiting.discard(_reply_id(line))
+            if not waiting:
+                done.set()
+        done.set()  # the server exited
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    try:
+        proc.stdin.write(requests())
+        proc.stdin.flush()
+    except BrokenPipeError:
+        pass  # it exited already; parse() says what's missing
+    done.wait(timeout)
+    try:
+        proc.stdin.close()
+    except BrokenPipeError:
+        pass
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+    reader.join(timeout=5)
+    err.seek(0)
+    stderr = err.read()
+    err.close()
+    try:
+        return parse("".join(out))
     except RuntimeError as e:
-        tail = "\n".join(run.stderr.splitlines()[-15:])
+        tail = "\n".join(stderr.splitlines()[-15:])
         raise SystemExit(f"mcp_smoke: {e}\n--- stderr (last lines)\n{tail}") from None
 
 
