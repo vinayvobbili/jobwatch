@@ -250,12 +250,13 @@ class Store:
             self.package(job.key).keep_posting(job, again=True)
 
     def add_note(self, key: str, text: str):
-        """Add a dated line to the note, keeping what's there (the recruiter's name, what was said before)."""
+        """Add a dated line to the note, keeping what's there (the recruiter's name, what was said before). A line
+        that starts with its own date keeps that one: news recorded a few days late."""
         text = text.strip()
         if not text:
             return
         _, rec = self.find(key)
-        line = f"{date.today().isoformat()}: {text}"
+        line = text if re.match(r"\d{4}-\d{2}-\d{2}\b", text) else f"{date.today().isoformat()}: {text}"
         self.track(key, note=f"{rec['note']} {line}" if rec.get("note") else line)
 
     def add(self, company: str, title: str, url: str = "", status: str = "applied", applied: str | None = None,
