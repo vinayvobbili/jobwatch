@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.vinayvobbili/jobwatch -->
 
-[![M8ven Score](https://m8ven.ai/badge/mcp/vinayvobbili-jobwatch-1cvk7w)](https://m8ven.ai/mcp/vinayvobbili/jobwatch?s=readme)
+[![M8ven Score](https://m8ven.ai/badge/mcp/vinayvobbili-jobwatch-1cvk7w?v=b3794e69984556a0e35f219ef71c5bca)](https://m8ven.ai/mcp/vinayvobbili-jobwatch-1cvk7w?s=readme)
 [![vinayvobbili/jobwatch MCP server](https://glama.ai/mcp/servers/vinayvobbili/jobwatch/badges/score.svg)](https://glama.ai/mcp/servers/vinayvobbili/jobwatch)
 
 Watch the job boards of the companies you care about and get a short, ranked digest of **new** roles that
