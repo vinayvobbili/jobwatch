@@ -20,7 +20,7 @@ from jobwatch import chat
 from jobwatch.web import serve
 
 SIZES = {"ultrawide": (2560, 1440), "wide": (1920, 1080), "desktop": (1280, 900), "phone": (390, 844)}
-TABS = ("today", "queue", "applied", "settings")
+TABS = ("today", "queue", "applied", "skills", "settings")
 
 # The chat scenes show this canned reply: screenshots never call a model.
 CANNED = ("Three stand out:\n\n1. **The best fit** matches most of your must-haves.\n"

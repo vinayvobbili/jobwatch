@@ -119,6 +119,14 @@ def test_page_carries_the_token(server):
     assert status == 200 and f'const TOKEN = "{TOKEN}"' in html.decode()
 
 
+def test_page_has_a_skills_tab(server):
+    """Skills to build, with where to learn them, is a tab of its own, and a job's gap chips link to it."""
+    page = request(server, "GET", "/")[1].decode()
+    assert '<button data-tab="skills">Skills</button>' in page
+    assert '"skills", "settings"]' in page and "skills: renderSkills" in page
+    assert 'api("/api/skills"' in page and 'go("skills")' in page
+
+
 def test_api_requires_the_token_and_a_local_host(server):
     ok = {"X-Jobwatch-Token": TOKEN}
     assert request(server, "GET", "/api/settings")[0] == 403
