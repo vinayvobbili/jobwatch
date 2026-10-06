@@ -7,8 +7,9 @@ import os
 from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
 
-from . import config, contacts, learn, prep, report, sources
+from . import config, contacts, learn, prep, report, sources, watch
 from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watched_name
@@ -16,22 +17,35 @@ from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watc
 server = MCPServer(
     "jobwatch",
     instructions=(
-        "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe) from a watchlist "
-        "file. "
+        "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling) from a "
+        "watchlist file. "
         "fetch_jobs checks every board; digest ranks the new matches (optionally fit-scored with shortlist-ai); "
         "job_details gives a posting's full text for tailoring a resume; mark_job records queued/applied/skipped "
         "and later stages (screening, interviewing, offer, rejected, withdrawn) with a next step and follow-up "
         "day; apply_queue "
         "lists the jobs queued to apply to next, with people the user knows there (ask them for a referral "
-        "before applying). add_application adds one found elsewhere (from its link, or pasted text); "
+        "before applying), with warnings to check first (pay, place, flagged text). add_application adds one found "
+        "elsewhere (from its link, a LinkedIn link it matches to the company's own board, or pasted text); "
         "applications shows where each stands. After the person submits, save_application_package keeps the "
         "resume, cover letter and form answers they sent; application_package reads them back before a call or "
         "interview, and interview_prep puts the posting, the resume and what was sent on one sheet. skill_gaps "
         "lists what the matching jobs ask for that the resume doesn't show, with courses and certifications to "
-        "close each gap. find_board looks up a company's board to add to the watchlist. "
+        "close each gap. check_postings checks that queued jobs and open applications are still posted. find_board "
+        "looks up a company's board (by name, or a job or careers page link) to add to the watchlist. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
 )
+
+
+def _hints(read_only: bool = False, destructive: bool = False, idempotent: bool = False,
+           web: bool = False) -> ToolAnnotations:
+    """What a tool does, for clients that ask before running one: whether it changes the person's records,
+    can overwrite something in them, is safe to repeat, and reads job boards on the internet."""
+    return ToolAnnotations(read_only_hint=read_only, destructive_hint=destructive,
+                           idempotent_hint=read_only or idempotent, open_world_hint=web)
+
+
+READ = _hints(read_only=True)
 
 
 def _open():
@@ -39,7 +53,7 @@ def _open():
     return cfg, Store(cfg.state)
 
 
-@server.tool()
+@server.tool(annotations=_hints(read_only=True, web=True))
 def find_board(company: str) -> list[dict]:
     """Find a company's job board by name or by a job/careers link. Returns entries for the watchlist.
     A guessed board name can belong to another company: check the sample titles before adding one."""
@@ -48,7 +62,7 @@ def find_board(company: str) -> list[dict]:
             for s, b, jobs in sources.probe(company)]
 
 
-@server.tool()
+@server.tool(annotations=_hints(idempotent=True, web=True))
 def fetch_jobs() -> str:
     """Check every board in the watchlist and record new roles."""
     cfg, store = _open()
@@ -58,7 +72,7 @@ def fetch_jobs() -> str:
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=_hints(web=True))
 def digest(score_top: int = 0, include_seen: bool = False, limit: int = 25, mark_shown: bool = True) -> dict:
     """New jobs that pass the filters, best first. score_top > 0 fit-scores that many of the most relevant
     unscored jobs with shortlist-ai (slow: minutes per job on the local backend)."""
@@ -72,7 +86,7 @@ def digest(score_top: int = 0, include_seen: bool = False, limit: int = 25, mark
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=READ)
 def job_details(key: str) -> dict:
     """Everything about one job, by key or posting id: the full posting text, pay, tracking (status, note, next
     step, follow-up), its fit score against the resume (score, must-haves met, gaps), people the user knows
@@ -94,7 +108,7 @@ def job_details(key: str) -> dict:
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=_hints(destructive=True, idempotent=True))
 def mark_job(key: str, status: str | None = None, note: str | None = None, add_note: str | None = None,
              next_step: str | None = None, follow_up: str | None = None, applied_on: str | None = None,
              url: str | None = None) -> str:
@@ -122,18 +136,19 @@ def mark_job(key: str, status: str | None = None, note: str | None = None, add_n
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=_hints(web=True))
 def add_application(company: str = "", title: str = "", url: str = "", status: str = "applied", applied_on: str = "",
                     note: str | None = None, next_step: str | None = None, follow_up: str | None = None,
                     text: str = "") -> str:
     """Add a job jobwatch didn't find (a referral, a recruiter, LinkedIn...), so everything is in one place: an
     application (only after the person has applied themselves), or status queued for one they're considering.
-    A url to one job on Greenhouse, Lever, Ashby, Workable or Workday is read in full (company and title may
-    be left out); otherwise give company and title, and text (the posting, pasted) so it can be scored."""
+    A url to one job on Greenhouse, Lever, Ashby, Workable, Workday or Rippling is read in full (company and
+    title may be left out); so is a LinkedIn job link, which is tracked on the company's own board when the same
+    job is found there. Otherwise give company and title, and text (the posting, pasted) so it can be scored."""
     cfg, store = _open()
     try:
         job, read = save_job(store, url, company or watched_name(cfg, url), title, text, status=status, note=note,
-                             applied=applied_on or None)
+                             applied=applied_on or None, boards=cfg.boards)
         store.track(job.key, next_step=next_step, follow_up=follow_up)
         return f"{job.key}: {status} ({job.display_company}, {job.title}; " \
                f"{'read from the link' if read else 'text given' if text.strip() else 'title only'})"
@@ -141,7 +156,7 @@ def add_application(company: str = "", title: str = "", url: str = "", status: s
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=READ)
 def applications(due_only: bool = False) -> list[dict]:
     """Every application and where it stands, follow-ups due soonest first; candidate_home is the company's
     page for checking its status, when it has one (Workday). due_only: only those whose follow-up day has come."""
@@ -156,20 +171,32 @@ def applications(due_only: bool = False) -> list[dict]:
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=READ)
 def apply_queue() -> list[dict]:
     """Jobs queued to apply to, oldest first, with fit scores, notes and people the user knows there."""
     cfg, store = _open()
     try:
         return [{"key": e.job.key, "company": e.job.display_company, "title": e.job.title, "url": e.job.url,
                  "pay": e.job.pay(), "fit": e.fit, "contacts": e.contacts, "note": e.record.get("note"),
-                 "queued_at": e.record.get("status_at"), "closed": e.record.get("closed")}
+                 "queued_at": e.record.get("status_at"), "closed": e.record.get("closed"), "warnings": e.warnings}
                 for e in queue(cfg, store)]
     finally:
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=_hints(idempotent=True, web=True))
+def check_postings() -> list[dict]:
+    """Check that the postings of queued jobs and open applications still take applications, and record the
+    ones that closed or came back. result is open, closed, reopened, or unknown (check it yourself)."""
+    _, store = _open()
+    try:
+        return [{"key": c.job.key, "company": c.job.display_company, "title": c.job.title, "url": c.job.url,
+                 "result": c.result, "detail": c.detail} for c in watch.check_postings(store)]
+    finally:
+        store.close()
+
+
+@server.tool(annotations=READ)
 def list_jobs(status: str | None = None) -> list[dict]:
     """Tracked jobs, optionally only one status (e.g. applied), newest first."""
     _, store = _open()
@@ -180,7 +207,7 @@ def list_jobs(status: str | None = None) -> list[dict]:
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=_hints(destructive=True))
 def save_application_package(key: str, files: list[str] | None = None, answers: list[dict] | None = None,
                              note: str | None = None) -> dict:
     """Keep what was sent with an application, as copies: files (local paths to the resume PDF, cover letter...
@@ -199,7 +226,7 @@ def save_application_package(key: str, files: list[str] | None = None, answers: 
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=READ)
 def application_package(key: str) -> dict:
     """What was sent with an application: files kept (with their folder), form answers, note, and the day the
     posting was saved as it read then (posting.md in the folder). Use it to prepare for a call or interview."""
@@ -210,7 +237,7 @@ def application_package(key: str) -> dict:
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=READ)
 def interview_prep(key: str) -> dict:
     """A prep sheet for a recruiter call or interview: stage and next step, each requirement and responsibility
     in the posting next to the closest resume line (quoted, never written), gaps to be honest about, what was
@@ -224,7 +251,7 @@ def interview_prep(key: str) -> dict:
         store.close()
 
 
-@server.tool()
+@server.tool(annotations=READ)
 def skill_gaps(timeline: str | None = None) -> dict:
     """Skills today's matching jobs and the person's applications ask for, most in demand first, each with
     on_resume, how many jobs mention it, how many scored jobs list it as a missing must-have, and ways to learn

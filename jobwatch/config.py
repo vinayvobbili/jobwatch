@@ -195,6 +195,8 @@ filters:
   remote_country: US                           # or "any"
   min_salary: 150000                           # listed pay must reach this; jobs without pay still pass
   max_age_days: 30
+  # flags:                                     # not filters: warnings on queued jobs whose posting says this
+  #   "active (TS|top secret)": clearance
 
 # Relevance: keyword -> weight. Title hits count double. Prefix "re:" for a regex.
 keywords:

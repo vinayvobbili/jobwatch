@@ -148,6 +148,16 @@ class Store:
         rows = self.db.execute("SELECT key, data FROM jobs WHERE source=? AND company=?", (source, company))
         return {r["key"]: Job.from_dict(json.loads(r["data"])) for r in rows}
 
+    def set_closed(self, key: str, closed: bool) -> bool:
+        """Record whether a job's posting is gone, as found by checking it (`jobwatch check`); a watched board's
+        jobs are also kept up to date by every fetch. Returns whether that changed anything."""
+        with self.db:
+            if closed:
+                cur = self.db.execute("UPDATE jobs SET closed=? WHERE key=? AND closed IS NULL", (_now(), key))
+            else:
+                cur = self.db.execute("UPDATE jobs SET closed=NULL WHERE key=? AND closed IS NOT NULL", (key,))
+            return bool(cur.rowcount)
+
     def jobs(self, statuses: tuple[str, ...] | None = None, include_closed: bool = False) -> list[tuple[Job, dict]]:
         """(job, record) pairs; the record has status, first_seen, closed, note, and for applications applied_at,
         next_step and follow_up."""

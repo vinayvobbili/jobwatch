@@ -159,6 +159,8 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .know a:hover { color: var(--accent); text-decoration: underline; }
 .note { font-size: 13.5px; color: var(--muted); margin-top: 6px; padding-left: 10px;
   border-left: 2px solid var(--line); }
+.warns { font-size: 13.5px; color: var(--warn); margin: 2px 0 4px; }
+.warns b { font-weight: 600; }
 .gaps { font-size: 13.5px; color: var(--muted); margin: 2px 0 4px; display: -webkit-box; -webkit-line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .gaps.open { -webkit-line-clamp: unset; }
@@ -771,6 +773,8 @@ function jobCard(job, actions, i = 0) {
         job.closed ? h("span", { class: "badge closed" }, "closed") : null,
         link(job.url, job.title, "title")),
       h("div", { class: "meta" }, h("b", {}, job.company), facts.map(f => [h("span", { class: "sep" }, "·"), f])),
+      job.warnings && job.warnings.length
+        ? h("div", { class: "warns" }, h("b", {}, "Check: "), job.warnings.join(" · ")) : null,
       gapsLine(job.fit),
       job.keywords.length ? h("div", { class: "chips" }, job.keywords.map(k => h("span", { class: "chip hit" }, k))) : null,
       knowLine(job),
@@ -1713,7 +1717,7 @@ function addForm(d) {
   const url = h("input", { type: "text", placeholder: "https://…" });
   const company = h("input", { type: "text", placeholder: "Company" });
   const title = h("input", { type: "text", placeholder: "Job title" });
-  const text = h("textarea", { rows: 5, placeholder: "Paste the posting here to score it and prep for it (not needed for a Greenhouse, Lever, Ashby, Workable or Workday link)" });
+  const text = h("textarea", { rows: 5, placeholder: "Paste the posting here to score it and prep for it (not needed for a Greenhouse, Lever, Ashby, Workable, Workday, Rippling or LinkedIn job link)" });
   const stage = queued ? null : stageSelect("applied", d.stages);
   const f = queued ? null : trackFields({ applied_at: d.today });
   const msg = h("span", { class: "small error" });
@@ -1798,8 +1802,8 @@ function renderSettings() {
               companies.push({ source: hit.source, board: hit.board, name: hit.name || findInput.value.trim() });
               drawCompanies(); e.target.replaceWith(h("span", { class: "muted small" }, "added"));
             } }, "Add")))
-        : [h("div", { class: "muted small" }, "No Greenhouse, Lever, Ashby, Workday or Eightfold board found. Try pasting a link to one " +
-            "of their job postings. Some companies use other systems that jobwatch can't read yet.")]));
+        : [h("div", { class: "muted small" }, "No Greenhouse, Lever, Ashby, Workday, Eightfold or Rippling board found. Try a link to their " +
+            "careers page or one of their job postings. Some companies use other systems that jobwatch can't read yet.")]));
     } catch (e) { findOut.replaceChildren(h("div", { class: "error small" }, e.message)); }
     findBtn.disabled = false;
   };
@@ -1866,7 +1870,7 @@ function renderSettings() {
       if (v === null || (Array.isArray(v) && !v.length)) delete filters[k];
     }
     if (filters.remote_country === "US") delete filters.remote_country;
-    for (const k of ["exclude_departments"]) if (f[k]) filters[k] = f[k];  // kept, not edited here
+    for (const k of ["exclude_departments", "flags"]) if (f[k]) filters[k] = f[k];  // kept, not edited here
     saveMsg.textContent = "Saving…"; saveMsg.className = "small muted";
     try {
       await api("/api/settings", { companies, filters, keywords, scoring: { ...scoring, backend: backend.value } });

@@ -19,6 +19,9 @@ class Filters:
     require_salary: bool = False                             # reject jobs that don't list pay
     max_age_days: int | None = None
     exclude_departments: list[str] = field(default_factory=list)  # regexes
+    # regex -> why it matters, found in a posting's text: a warning on queued jobs, not a filter (boilerplate
+    # can say "clearance" too). e.g. {"active (?:TS|top secret)": "clearance", "on-?site 5 days": "on-site"}
+    flags: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> Filters:
@@ -26,6 +29,13 @@ class Filters:
         unknown = set(d) - set(cls.__dataclass_fields__)
         if unknown:
             raise ValueError(f"unknown filter setting(s): {', '.join(sorted(unknown))}")
+        if not isinstance(d.get("flags") or {}, dict):
+            raise ValueError("filters.flags maps a pattern to why it matters, e.g. {'TS/SCI': clearance}")
+        for p in (d.get("flags") or {}):
+            try:
+                re.compile(p)
+            except re.error as e:
+                raise ValueError(f"filters.flags: {p!r} isn't a valid pattern: {e}") from None
         return cls(**d)
 
 
@@ -80,6 +90,15 @@ def reject_reason(job: Job, f: Filters) -> str | None:
     if f.max_age_days is not None and (age := job.age_days()) is not None and age > f.max_age_days:
         return f"posted {age} days ago"
     return None
+
+
+def red_flags(job: Job, f: Filters) -> list[str]:
+    """The filters.flags a posting's text matches: "clearance: “active TS/SCI clearance required”"."""
+    out = []
+    for pattern, why in f.flags.items():
+        if m := re.search(pattern, f"{job.title}\n{job.description}", re.I):
+            out.append(f"{why}: “{' '.join(m.group(0).split())}”")
+    return out
 
 
 def relevance(job: Job, keywords: dict[str, float]) -> tuple[float, list[str]]:

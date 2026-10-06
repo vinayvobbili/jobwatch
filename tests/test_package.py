@@ -29,6 +29,18 @@ def test_files_are_copies_kept_once_under_safe_names(pkg):
         pkg.attach("a.pdf", b"x", kind="photo")
 
 
+def test_files_are_dated_in_local_time_and_listed_newest_first(pkg, monkeypatch):
+    pkg.attach("old.pdf", b"1")
+    m = json.loads((pkg.dir / MANIFEST).read_text())
+    m["files"]["old.pdf"]["added"] = "2020-01-01T23:30:00+00:00"  # written in UTC by an older version
+    (pkg.dir / MANIFEST).write_text(json.dumps(m))
+    pkg.attach("new.pdf", b"2")
+    added = pkg.data()["files"][0]["added"]
+    assert pkg.data()["files"][0]["name"] == "new.pdf" and added[-6] in "+-"
+    from datetime import datetime
+    assert datetime.fromisoformat(added).utcoffset() == datetime.now().astimezone().utcoffset()
+
+
 def test_kind_from_the_name():
     assert [kind_of(n) for n in ("Resume_Acme.pdf", "my-cv.docx", "Cover Letter.pdf", "portfolio.pdf")] == \
         ["resume", "resume", "letter", "other"]
@@ -125,13 +137,14 @@ def test_chat_about_a_job_reads_what_was_sent(watchlist, web, monkeypatch):
 def test_command_line(watchlist, web, tmp_path, capsys):
     cv, answers, letter = tmp_path / "cv.pdf", tmp_path / "answers.yaml", tmp_path / "letter.txt"
     cv.write_bytes(b"%PDF")
-    answers.write_text("Why us?: Your agents platform\nSalary expectation: 200000\n")
+    answers.write_text("Why us?: Your agents platform\nSalary expectation: 200000\nLinks:\n  LinkedIn: no\n")
     letter.write_text("Dear team,")
     cli.main(["-c", str(watchlist), "fetch"])
     cli.main(["-c", str(watchlist), "mark", "applied", "c1", "--attach", str(cv)])
     cli.main(["-c", str(watchlist), "attach", "c1", "--answers", str(answers), "--message", str(letter)])
     out = capsys.readouterr().out
     assert "kept cv.pdf" in out and "Q: Salary expectation\nA: 200000" in out and "Dear team," in out
+    assert "Q: Links / LinkedIn\nA: No" in out  # a form's sections, flattened; YAML's no
     assert "Files: cv.pdf (resume" in out and "Posting as it read on" in out
     cli.main(["-c", str(watchlist), "package", "aaaa-1111"])
     assert "Nothing kept yet" in capsys.readouterr().out

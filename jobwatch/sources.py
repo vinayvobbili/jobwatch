@@ -1,13 +1,15 @@
-"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold and Jibe.
+"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe and Rippling.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Greenhouse, Lever and Ashby return a whole board in one response, and a parser turns it into Jobs.
+Rippling lists a board in one response too, but its postings' text is read one at a time.
 Workday and Eightfold boards at large companies list thousands of roles, so those are searched for the
 watchlist's job titles, and only the new postings whose titles match are read in full (see fetch).
 """
 
 from __future__ import annotations
 
+import html
 import json
 import re
 import time
@@ -21,7 +23,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import __version__
 from .models import Job
-from .text import html_to_text, parse_salary, split_locations
+from .text import html_to_text, is_remote, parse_salary, split_locations
 
 USER_AGENT = f"jobwatch/{__version__} (+https://github.com/vinayvobbili/jobwatch)"
 
@@ -44,9 +46,8 @@ def _wait(e: urllib.error.HTTPError, attempt: int) -> float:
     return min(float(after) if after.strip().isdigit() else 2 ** (attempt + 1), MAX_WAIT)
 
 
-def get_json(url: str, timeout: float = 30, body: dict | None = None):
-    """GET a JSON document, or POST `body` as JSON and read the reply."""
-    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+def _read(url: str, timeout: float, body: dict | None, accept: str) -> bytes:
+    headers = {"User-Agent": USER_AGENT, "Accept": accept}
     data = None
     if body is not None:
         data, headers["Content-Type"] = json.dumps(body).encode(), "application/json"
@@ -54,7 +55,7 @@ def get_json(url: str, timeout: float = 30, body: dict | None = None):
     for attempt in range(RETRIES + 1):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return json.load(resp)
+                return resp.read()
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 raise NotFound(url) from None
@@ -62,8 +63,23 @@ def get_json(url: str, timeout: float = 30, body: dict | None = None):
                 time.sleep(_wait(e, attempt))
                 continue
             raise SourceError(f"{url}: HTTP {e.code}") from None
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+        except (urllib.error.URLError, TimeoutError) as e:
             raise SourceError(f"{url}: {e}") from None
+    raise SourceError(f"{url}: no answer")  # not reached: the last attempt returns or raises
+
+
+def get_json(url: str, timeout: float = 30, body: dict | None = None):
+    """GET a JSON document, or POST `body` as JSON and read the reply."""
+    raw = _read(url, timeout, body, "application/json")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise SourceError(f"{url}: {e}") from None
+
+
+def get_text(url: str, timeout: float = 30) -> str:
+    """A web page, as text (a careers page to look for job-board links in, a LinkedIn posting)."""
+    return _read(url, timeout, None, "text/html,application/xhtml+xml,*/*").decode("utf-8", "replace")
 
 
 def _time(value) -> datetime | None:
@@ -368,6 +384,51 @@ def fetch_jibe(board: str, get=None, search=(), wanted=None, known=None, cap=SEA
     return jobs
 
 
+# -- Rippling: board is the slug in https://ats.rippling.com/<board>/jobs. The list names each role (once per
+# place it's open in); the text is per posting, so only new postings whose titles match are read in full.
+
+RIPPLING_API = "https://api.rippling.com/platform/api/ats/v1/board/{board}/jobs"
+
+
+def fetch_rippling(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """Every role on a Rippling board. Small boards: `search` isn't needed, `wanted` and `known` save reads."""
+    get = get or get_json
+    api = RIPPLING_API.format(board=board)
+    listed: dict[str, list[dict]] = {}
+    for p in (get(api) or [])[:cap]:
+        if p.get("uuid"):
+            listed.setdefault(p["uuid"], []).append(p)
+
+    def job(item) -> Job:
+        pid, ps = item
+        key = f"rippling:{board}:{pid}"
+        if known and key in known and known[key].description:
+            return known[key]
+        p = ps[0]
+        places = [(x.get("workLocation") or {}).get("label") or "" for x in ps]
+        j = Job(source="rippling", company=board, id=pid, title=(p.get("name") or "").strip(),
+                url=p.get("url") or f"https://ats.rippling.com/{board}/jobs/{pid}",
+                locations=split_locations(*places), department=(p.get("department") or {}).get("label") or "")
+        if wanted and not wanted(j.title):
+            return j
+        return _unread_if_refused(lambda: _rippling_read(j, f"{api}/{pid}", get), j)
+    return _details(list(listed.items()), job)
+
+
+def _rippling_read(j: Job, url: str, get) -> Job:
+    info = get(url) or {}
+    parts = info.get("description") or {}
+    j.title = (info.get("name") or j.title).strip()
+    j.company_name = (info.get("companyName") or "").strip()
+    j.locations = split_locations(*(info.get("workLocations") or [])) or j.locations
+    j.remote = True if any(is_remote(loc) for loc in j.locations) else None
+    j.department = (info.get("department") or {}).get("name") or j.department
+    j.posted = _time(info.get("createdOn"))
+    j.description = "\n\n".join(t for t in (html_to_text(v) for v in parts.values() if isinstance(v, str)) if t)
+    _salary(j, j.description)
+    return j
+
+
 @dataclass(frozen=True)
 class Source:
     name: str
@@ -390,6 +451,7 @@ SOURCES = {
     "eightfold": Source("eightfold", "", None, "https://{tenant}.eightfold.ai/careers?domain={domain}",
                         fetch_eightfold),
     "jibe": Source("jibe", "", None, "https://{board}/careers-home/jobs", fetch_jibe),
+    "rippling": Source("rippling", "", None, "https://ats.rippling.com/{board}/jobs", fetch_rippling),
 }
 
 
@@ -454,6 +516,11 @@ def detect(url: str) -> tuple[str, str] | None:
         return "workable", m.group(1)
     if parts[:1] == ["careers-home"]:  # a Jibe site, on the company's own domain
         return "jibe", parsed.netloc.lower()
+    if host == "ats.rippling.com":
+        parts = [p for p in parts if not _LOCALE.match(p)]
+        return ("rippling", parts[0]) if parts and parts[0] != "api" else None
+    if host == "api.rippling.com" and "board" in parts[:-1]:
+        return "rippling", parts[parts.index("board") + 1]
     source = _HOSTS.get(host)
     if not source:
         return None
@@ -476,6 +543,8 @@ def _posting_id(source: str, url: str) -> str | None:
         return parts[1] if len(parts) > 1 else None
     if source == "jibe":
         return parts[2] if len(parts) > 2 and parts[1] == "jobs" else None
+    if source == "rippling":
+        return parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else None
     if source == "workable":
         for marker in ("j", "view"):
             if marker in parts[:-1]:
@@ -505,6 +574,13 @@ def posting(url: str, get=None) -> Job | None:
     pid = _posting_id(source, url)
     if not pid:
         return None
+    if source == "rippling":  # one posting is read on its own; the board's list doesn't have the text
+        j = _rippling_read(Job(source="rippling", company=board, id=pid, title="",
+                               url=f"https://ats.rippling.com/{board}/jobs/{pid}"),
+                           f"{RIPPLING_API.format(board=board)}/{pid}", get)
+        if not j.title:
+            raise NotFound("that Rippling posting isn't open any more")
+        return j
     for j in fetch(source, board, get):
         if j.id.lower() == pid.lower():
             return j
@@ -574,14 +650,38 @@ def probe_workday(tenant: str, get=None) -> list[tuple[str, list[Job]]]:
     return hits
 
 
-def probe(company: str, get=None) -> list[tuple[str, str, list[Job]]]:
+_LINK = re.compile(r"(?:https?://)?[\w-]+(?:\.[\w-]+)+/")
+_HREF = re.compile(r"https?://[\w.-]+\.[a-z]{2,}(?:/[^\s\"'<>\\]*)?", re.I)
+
+
+def boards_on_page(url: str, page=None) -> list[tuple[str, str]]:
+    """The supported boards a web page links to: a company's careers page often hands off to its ATS
+    ("Open roles" → ats.rippling.com/acme/jobs, or a Greenhouse embed), under a board name nobody would guess."""
+    text = html.unescape((page or get_text)(url if "//" in url else f"https://{url}")).replace("\\/", "/")  # JSON
+    found: list[tuple[str, str]] = []
+    for link in _HREF.findall(text):
+        if (board := detect(link)) and board not in found:
+            found.append(board)
+    return found
+
+
+def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]:
     """Find a company's boards by trying likely board names on every source: (source, board, open roles).
+    A link to the company's own careers page is read for links to a board instead (`page` fetches it).
 
     A guessed name can belong to a different company, so check a role or two before adding a board. Roles on
     a searched board (Workday, Eightfold) are listed, not read in full: a sample of up to PROBE_CAP."""
     if found := detect(company):
         source, board = found
         return [(source, board, _peek(source, board, get))]
+    if _LINK.match(company):  # the company's own careers page: look for links to a board on it
+        hits = []
+        for source, board in boards_on_page(company, page):
+            try:
+                hits.append((source, board, _peek(source, board, get)))
+            except SourceError:
+                continue
+        return hits
     names = board_names(company)
     tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe")]  # jibe: own domains
 

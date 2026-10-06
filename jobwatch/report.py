@@ -40,6 +40,8 @@ def _line(e: Entry) -> list[str]:
         f = e.fit
         out.append(f"**Fit {f['score']:.0f}/100**, must-haves {f['must_haves_met']}/{f['must_haves_total']}. "
                    + (f"Gaps: {'; '.join(f['gaps'])}" if f["gaps"] else "No must-have gaps."))
+    if e.warnings:
+        out.append(f"**Check:** {'; '.join(e.warnings)}")
     if e.keywords:
         out.append(f"Keywords: {', '.join(e.keywords)}")
     if e.contacts:
