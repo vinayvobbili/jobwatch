@@ -226,6 +226,9 @@ jobwatch skills --timeline month    # week, month, quarter (default) or any
 jobwatch skills --all               # also the skills your resume already shows
 ```
 
+The Skills tab in `jobwatch ui` shows the same, with a timeline switch, and each job's details link to it
+from the gaps it lists.
+
 Skills are ranked by demand: how many of your matching jobs mention one, with a must-have that a fit score
 found missing counting three times. Each comes with:
 - curated courses and certifications from the official pages (AWS, Linux Foundation, DeepLearning.AI,

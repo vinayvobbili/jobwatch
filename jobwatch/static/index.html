@@ -380,6 +380,14 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 14px; }
 .grid-cards > .card { margin: 0; }
 .grid-cards > .empty { grid-column: 1 / -1; }
+.card.skill { --stripe: color-mix(in srgb, var(--accent) 35%, transparent); }
+.card.skill.must { --stripe: var(--warn); }
+.card.skill h2 { font-size: 18px; letter-spacing: -.01em; margin: 0 0 2px; }
+.opts { list-style: none; margin: 10px 0 4px; padding: 0; display: grid; gap: 6px; }
+.opts li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.opts li.later { opacity: .55; }
+.opts a { font-weight: 600; }
+.skill .more a { margin-right: 10px; }
 .content > .section:first-child, .content .section:first-of-type { margin-top: 4px; }
 .step { display: flex; gap: 10px; padding: 8px 0; font-size: 13.5px; color: var(--muted); }
 .step b { color: var(--text); display: block; }
@@ -513,6 +521,7 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
       <button data-tab="today">Today</button>
       <button data-tab="queue">Queue<span id="qcount"></span></button>
       <button data-tab="applied">Applications<span id="duecount"></span></button>
+      <button data-tab="skills">Skills</button>
       <button data-tab="settings">Settings</button>
     </nav>
     <span class="spacer"></span>
@@ -933,7 +942,8 @@ function gapChips(skills) {
   if (!skills || !skills.length) return null;
   return h("div", {},
     h("div", { class: "small muted", style: "margin-top:10px" }, "Asks for, not on your resume",
-      " · ", h("code", { class: "small" }, "jobwatch skills"), " for where to learn them"),
+      " · ", h("a", { href: "#skills", onclick: e => { e.preventDefault(); closeDetails(); go("skills"); } },
+        "where to learn them")),
     h("div", { class: "chips" }, ...skills.map(s => h("span", {
       class: "chip gap" + (s.must_have ? " must" : ""),
       title: s.must_have ? "A must-have the fit score found missing" + (s.years ? " (asks for years of it)" : "")
@@ -1772,6 +1782,56 @@ function displayCard() {
         segmented([["standard", "Standard"], ["wide", "Wide"], ["full", "Full"]], d.width, v => set("width", v)))));
 }
 
+// -- skills: what the matching jobs ask for that the resume doesn't show, and where to learn it
+const skillsView = { timeline: null, covered: false };
+const TIMELINES = [["week", "Week"], ["month", "Month"], ["quarter", "Quarter"], ["any", "Any"]];
+
+async function renderSkills() {
+  const q = skillsView.timeline ? "?timeline=" + skillsView.timeline : "";
+  const d = await api("/api/skills" + q);
+  skillsView.timeline = d.timeline;
+  const gaps = d.skills.filter(s => !s.on_resume), shown = skillsView.covered ? d.skills : gaps;
+  const jobChip = j => h("button", { class: "chip", style: "border:0;cursor:pointer", title: "Open this job",
+    onclick: () => openDetails(j.key) }, `${j.company}: ${j.title}`);
+  const card = sk => h("div", { class: "card skill" + (sk.gap_count ? " must" : "") },
+    h("h2", {}, sk.name, sk.on_resume ? h("span", { class: "chip hit", style: "margin-left:8px" }, "on your resume") : null),
+    h("div", { class: "small muted" }, `Asked for in ${sk.count} of ${sk.of} jobs`,
+      sk.gap_count ? h("b", { style: "color:var(--warn)" }, ` · a missing must-have in ${sk.gap_count} scored job${sk.gap_count === 1 ? "" : "s"}`) : null),
+    sk.years ? h("div", { class: "small muted", style: "margin-top:4px" },
+      "Some ask for years of it: a course gives you something concrete to point to, not the years.") : null,
+    sk.options.length ? h("ul", { class: "opts" }, sk.options.map(o =>
+      h("li", { class: o.fits ? null : "later", title: o.fits ? null : "Takes longer than your timeline" },
+        link(o.url, o.name), h("span", { class: "small muted" }, o.provider),
+        h("span", { class: "chip" }, o.kind), h("span", { class: "chip" + (o.cost === "free" ? " hit" : "") }, o.cost),
+        h("span", { class: "chip" }, o.time_label)))) : null,
+    sk.more.length ? h("div", { class: "small more" }, h("span", { class: "muted" }, "More: "), sk.more.map(m => link(m.url, m.provider))) : null,
+    sk.jobs.length ? h("div", { class: "chips", style: "margin-top:10px" }, sk.jobs.map(jobChip)) : null);
+  const side = h("div", {},
+    hero([[d.jobs, "matching jobs"], [gaps.length, "skills to build", "lead"]]),
+    panel("How soon", segmented(TIMELINES, d.timeline, t => { skillsView.timeline = t; render(); })),
+    panel(null, h("label", { class: "small" }, (() => {
+      const c = h("input", { type: "checkbox" });
+      c.checked = skillsView.covered;
+      c.onchange = () => { skillsView.covered = c.checked; render(); };
+      return c;
+    })(), " Include skills you already have")),
+    d.has_resume ? null : panel(null, h("p", { class: "small muted" }, "Add your resume in ",
+      h("a", { href: "#settings", onclick: e => { e.preventDefault(); go("settings"); } }, "Settings"),
+      " to see which of these you already have.")));
+  const other = d.other_gaps.length ? h("div", {}, section("Other gaps from fit scores", d.other_gaps.length),
+    h("div", { class: "card" }, h("ul", { class: "opts" }, d.other_gaps.map(g =>
+      h("li", {}, link(g.search, g.gap), h("span", { class: "small muted" }, `${g.company}: ${g.title}`)))))) : null;
+  const blockers = d.blockers.length ? h("div", {}, section("Gaps no course closes", d.blockers.length),
+    h("div", { class: "card" }, h("ul", { class: "opts" }, d.blockers.map(b =>
+      h("li", {}, h("b", {}, b.label), h("span", { class: "small muted" },
+        b.gaps.map(g => `${g.company}: ${g.gap}`).join(" · "))))))) : null;
+  put(pagehead("Skills to build", `What your matching jobs ask for that your resume doesn't show, and where to learn it. From ${d.jobs} jobs${d.scored ? `, ${d.scored} with fit scores` : ""}.`),
+    layout(side, h("div", {},
+      h("div", { class: "cards grid-cards" }, shown.length ? shown.map(card)
+        : emptyState(d.jobs ? "Your resume covers what your matching jobs ask for." : "No matching jobs yet: check for new jobs first.")),
+      other, blockers)));
+}
+
 function renderSettings() {
   const s = settings, f = s.filters || {};
   const companies = [...s.companies];
@@ -1938,14 +1998,14 @@ async function render() {
   try {
     if (tab === "settings") renderSettings();
     else if (!settings.exists || (!settings.companies.length && tab !== "applied")) renderWelcome();
-    else await { today: renderToday, queue: renderQueue, applied: renderApplied }[tab]();
+    else await { today: renderToday, queue: renderQueue, applied: renderApplied, skills: renderSkills }[tab]();
   } catch (e) { showError(main, e); }
   refreshQueueCount();
 }
 
 function go(name) { tab = name; history.replaceState(null, "", "#" + name); render(); }
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => go(b.dataset.tab);
-const TABS = ["today", "queue", "applied", "settings"];
+const TABS = ["today", "queue", "applied", "skills", "settings"];
 window.addEventListener("hashchange", () => {
   const want = location.hash.slice(1);
   if (TABS.includes(want) && want !== tab && settings) { tab = want; render(); }
