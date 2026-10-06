@@ -234,6 +234,21 @@ class Store:
         with self.db:
             self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
 
+    def set_description(self, key: str, text: str):
+        """Give an application added by hand the posting's text, pasted (found later, or from a copy once the
+        posting is gone), so it can be scored and prepped. The pay is read from it if none is set, and the
+        posting kept with the application is replaced: what was kept had no text to keep."""
+        job, rec = self.find(key)
+        if job.source != MANUAL:
+            raise ValueError(f"{job.key} comes from its board, which sets its text")
+        job.description = text.strip()
+        if job.salary_min is None and (pay := parse_salary(job.description)):
+            job.salary_min, job.salary_max, job.currency = *pay, "USD"
+        with self.db:
+            self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
+        if rec["status"] in STAGES:
+            self.package(job.key).keep_posting(job, again=True)
+
     def add_note(self, key: str, text: str):
         """Add a dated line to the note, keeping what's there (the recruiter's name, what was said before)."""
         text = text.strip()

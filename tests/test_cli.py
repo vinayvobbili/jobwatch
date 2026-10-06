@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -95,6 +97,38 @@ def test_add_mark_and_list_applications(watchlist, capsys):
     assert "Globex" not in run(capsys, *c, "applications", "--due").out
     with pytest.raises(SystemExit, match="isn't a date"):
         cli.main([*c, "add", "X", "Y", "--follow-up", "someday"])
+
+
+def test_mark_without_a_status_keeps_it(watchlist, capsys):
+    """News on an application (the recruiter replied) shouldn't need its stage looked up and said again."""
+    c = ("-c", str(watchlist))
+    run(capsys, *c, "add", "Umbrella", "Principal Engineer", "--on", "2026-09-01")
+    run(capsys, *c, "mark", "screening", "principal-engineer")
+    assert run(capsys, *c, "mark", "principal-engineer", "--add-note", "screen moved to Friday", "--next",
+               "screen Friday").out == "manual:umbrella:principal-engineer: screening\n"
+    out = run(capsys, *c, "apps").out
+    assert "**screening** · applied 2026-09-01" in out and ": screen moved to Friday" in out
+    with pytest.raises(SystemExit, match="which job"):
+        cli.main([*c, "mark", "applied"])
+    with pytest.raises(SystemExit, match="no job"):
+        cli.main([*c, "mark", "nothing-like-this", "--add-note", "x"])
+
+
+def test_mark_text_gives_a_hand_added_job_its_posting(watchlist, web, tmp_path, capsys):
+    """The posting found later (or a copy, once it's gone): scored, prepped and kept with the application."""
+    c = ("-c", str(watchlist))
+    run(capsys, *c, "add", "Umbrella", "Principal Engineer")
+    posting = tmp_path / "posting.txt"
+    posting.write_text("Build LLM agents and RAG in Python. The base pay range is 180,000 - 220,000 USD.")
+    run(capsys, *c, "mark", "principal-engineer", "--text", str(posting))
+    shown = run(capsys, *c, "show", "principal-engineer").out
+    assert "Build LLM agents and RAG in Python." in shown and "applied" in shown
+    assert "· $180K–$220K" in run(capsys, *c, "apps").out
+    kept = run(capsys, *c, "package", "principal-engineer").out.split("Posting as it read on ")[1].split(": ", 1)[1]
+    assert "Build LLM agents" in Path(kept.splitlines()[0]).read_text()
+    run(capsys, *c, "fetch")
+    with pytest.raises(SystemExit, match="comes from its board"):
+        cli.main([*c, "mark", "aaaa-1111", "--text", str(posting)])
 
 
 def test_mark_on_corrects_the_day_applied(watchlist, capsys):

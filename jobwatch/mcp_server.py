@@ -111,17 +111,20 @@ def job_details(key: str) -> dict:
 @server.tool(annotations=_hints(destructive=True, idempotent=True))
 def mark_job(key: str, status: str | None = None, note: str | None = None, add_note: str | None = None,
              next_step: str | None = None, follow_up: str | None = None, applied_on: str | None = None,
-             url: str | None = None) -> str:
+             url: str | None = None, text: str | None = None) -> str:
     """Record a job's status: new, shown, queued (to apply to next), applied, screening, interviewing, offer,
     rejected, withdrawn or skipped (omit status to keep it and only update the rest). Use applied only after
     the person has submitted the application themselves. add_note adds a dated line to the note, keeping what's
     there: prefer it for news ("recruiter replied: onsite only"); note replaces the whole note. next_step says
     what happens next ("recruiter screen Tuesday"); follow_up is the day to act (YYYY-MM-DD or +N days);
     applied_on is the day applied, if not today. url sets the link of a job added by hand (its posting, or the
-    company's careers site once the posting is gone). An empty string clears a field."""
+    company's careers site once the posting is gone), and text its posting's text, pasted (found later, or from
+    a copy once the posting is gone), so it can be scored and prepped. An empty string clears a field."""
     _, store = _open()
     try:
         job, rec = store.find(key)
+        if text is not None:
+            store.set_description(job.key, text)
         if status:
             store.set_status([job.key], status, note, on=applied_on)
         else:

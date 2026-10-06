@@ -298,19 +298,23 @@ jobwatch add https://job-boards.greenhouse.io/acme/jobs/101 --on 2026-09-20   # 
 jobwatch mark screening c1 --next "technical round" --follow-up +7   # or a date: 2026-10-05
 jobwatch mark rejected principal-engineer
 jobwatch mark withdrawn c1 --add-note "recruiter says onsite only"   # adds a dated line; --note replaces
+jobwatch mark c1 --add-note "interview Friday 10:30" --follow-up 2026-10-08   # no stage: it stays as it is
+jobwatch mark principal-engineer --text posting.txt   # its posting, found later, for scoring and prep
 jobwatch applications            # every application, follow-ups due first (alias: apps)
 jobwatch applications --due      # only the ones to act on today
 ```
 
 The day you applied is kept as an application moves through the stages. `--next ""` or `--follow-up ""`
-clears a field.
+clears a field. An application added by hand with only a company and a title can get its posting's text
+later with `--text` (a copy from a job board, or `-` to paste it), so it can be scored and `jobwatch prep`
+has something to work from; the posting kept with the application is replaced with it.
 
 Every company on Workday has its own careers site with its own sign-in, so after a few applications it's hard
 to remember where each one lives. For a Workday application, `jobwatch show`, `jobwatch applications` and
 the job's **Details** link that company's candidate page (`.../userHome`), where you sign in to see its
 status. jobwatch keeps only the link, never a login or password: your password manager saves each company's
 login under that company's own address. For one you added by hand whose posting has since come down, give
-it the company's careers site (`jobwatch mark <stage> <key> --url https://acme.wd1.myworkdayjobs.com/Careers`)
+it the company's careers site (`jobwatch mark <key> --url https://acme.wd1.myworkdayjobs.com/Careers`)
 and the page link follows.
 
 ### What you sent
