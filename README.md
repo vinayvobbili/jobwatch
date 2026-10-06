@@ -432,7 +432,7 @@ link still resolves: `JOBWATCH_LINK_TESTS=1 pytest tests/test_learn.py`. To see 
 chat with a canned reply (it needs
 `pip install playwright && python -m playwright install chromium`).
 
-Releases publish to PyPI through Trusted
-Publishing when a `v*` tag is pushed.
+Releases publish to PyPI through Trusted Publishing when a `v*` tag is pushed, and then to the MCP Registry
+from `server.json` (keep its two versions in step with the package; a test checks).
 
 MIT licensed.
