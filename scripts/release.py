@@ -106,7 +106,7 @@ def fetch_json(url: str):
     except urllib.error.URLError as e:
         if not isinstance(e.reason, ssl.SSLCertVerificationError) or not shutil.which("curl"):
             raise
-    out = subprocess.run(["curl", "-fsSL", "--max-time", "20", url], capture_output=True, text=True)
+    out = subprocess.run(["curl", "-fsSL", "--max-time", "20", url], capture_output=True, text=True, check=False)
     if out.returncode:
         raise OSError(f"curl {url}: {out.stderr.strip() or f'exit {out.returncode}'}")
     return json.loads(out.stdout)
