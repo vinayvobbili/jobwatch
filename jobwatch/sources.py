@@ -1,9 +1,11 @@
-"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling and Google.
+"""Public job boards: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, SmartRecruiters
+and Google.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
 Google return a whole board in one response, and a parser turns it into Jobs. Rippling lists a board in one
-response too, but its postings' text is read one at a time.
+response too, but its postings' text is read one at a time. SmartRecruiters is read from its careers site's
+pages (its API is closed to crawlers by robots.txt): a list of titles a page at a time, then each posting's page.
 Workday and Eightfold boards at large companies list thousands of roles, so those are searched for the
 watchlist's job titles, and only the new postings whose titles match are read in full (see fetch).
 """
@@ -432,6 +434,86 @@ def _rippling_read(j: Job, url: str, get) -> Job:
     return j
 
 
+# -- SmartRecruiters: board is the company id in https://careers.smartrecruiters.com/<board> (any case). Its
+# Posting API (api.smartrecruiters.com) is closed to crawlers by that host's robots.txt, so this reads what the
+# careers site itself shows, where robots.txt allows it: the site's list of roles (an HTML fragment, a page at a
+# time: each names a role's title and link) and each role's own page on jobs.smartrecruiters.com, which carries
+# its details as schema.org JobPosting markup. Only new postings whose titles match are read in full.
+
+SMARTRECRUITERS_LIST = "https://careers.smartrecruiters.com/{board}/api/more"
+SMARTRECRUITERS_JOB = "https://jobs.smartrecruiters.com/{board}/{id}"
+_SR_LINK = re.compile(r'<a\s[^>]*href="(https://jobs\.smartrecruiters\.com/[^/"]+/(\d+)[^"]*)"[^>]*>.*?'
+                      r'<h4[^>]*>(.*?)</h4>', re.S)
+
+
+def _sr_listed(board: str, term: str, get, cap: int) -> list[tuple[str, str, str]]:
+    """(id, title, link) of every role the careers site lists for a search term (all of them for ""), up to cap.
+    Pages are asked for one at a time until one adds nothing new: the site doesn't say how many there are."""
+    found: dict[str, tuple[str, str, str]] = {}
+    page = 0
+    while len(found) < cap:
+        query = f"search={quote(term)}&page={page}" if term else f"page={page}"
+        before = len(found)
+        for link, pid, title in _SR_LINK.findall(get(f"{SMARTRECRUITERS_LIST.format(board=board)}?{query}") or ""):
+            found.setdefault(pid, (pid, html.unescape(re.sub(r"<[^>]+>", "", title)).strip(), link))
+        if len(found) == before:
+            break
+        page += 1
+    return list(found.values())[:cap]
+
+
+def fetch_smartrecruiters(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """The roles on a SmartRecruiters careers site that the site's own search finds for each of `search` (every
+    role, up to `cap`, with no terms), reading in full the ones whose titles pass `wanted` and aren't `known`."""
+    get = get or get_text
+    listed: dict[str, tuple[str, str, str]] = {}
+    for term in search or [""]:
+        for item in _sr_listed(board, term, get, cap):
+            listed.setdefault(item[0], item)
+
+    def job(item) -> Job:
+        pid, title, link = item
+        key = f"smartrecruiters:{board}:{pid}"
+        if known and key in known and known[key].description:
+            return known[key]
+        j = Job(source="smartrecruiters", company=board, id=pid, title=title, url=link)
+        if wanted and not wanted(j.title):
+            return j
+        return _unread_if_refused(lambda: _sr_read(j, get), j)
+    return _details(list(listed.values()), job)
+
+
+def _sr_meta(page: str, prop: str) -> str:
+    m = re.search(rf'<meta\s+itemprop="{prop}"\s+content="([^"]*)"', page)
+    return html.unescape(m.group(1)).strip() if m else ""
+
+
+def _sr_read(j: Job, get) -> Job:
+    """Fill a SmartRecruiters job from its page's JobPosting markup. Raises NotFound when the job has expired
+    (the page stays up, saying so)."""
+    page = get(SMARTRECRUITERS_JOB.format(board=j.company, id=j.id)) or ""
+    title = re.search(r'itemprop="title"[^>]*>(.*?)</h1>', page, re.S)
+    if not title or "jobad--empty-state" in page:
+        raise NotFound(f"that SmartRecruiters posting ({j.id}) has expired")
+    j.title = html.unescape(re.sub(r"<[^>]+>", "", title.group(1))).strip() or j.title
+    j.company_name = _sr_meta(page, "name")
+    if url := re.search(r'<meta\s+property="og:url"\s+content="(https://jobs\.smartrecruiters\.com/[^"]+)"', page):
+        j.url = html.unescape(url.group(1))
+    where = ", ".join(p for p in (_sr_meta(page, k) for k in ("addressLocality", "addressRegion", "addressCountry"))
+                      if p)
+    j.locations = split_locations(where)
+    j.remote = True if re.search(r'workplaceType="remote"', page, re.I) else None
+    j.posted = _time(_sr_meta(page, "datePosted"))
+    start = page.find('itemprop="description"')
+    if start >= 0:
+        start = page.find(">", start) + 1
+        ends = [i for i in (page.find(m, start) for m in ('class="video-disclaimer"', 'class="job-apply',
+                                                            "</main>")) if i >= 0]
+        j.description = html_to_text(page[start:min(ends) if ends else len(page)])
+    _salary(j, j.description)
+    return j
+
+
 # -- Google (with YouTube and DeepMind): board "google" for its roles in the US, "google/any" for all of them.
 # Google Careers publishes every open role, worldwide and with its full text, as one XML feed for job sites
 # (~20 MB): one request a run, kept for a few minutes so a run's other reads of it don't fetch it again.
@@ -548,6 +630,8 @@ SOURCES = {
                         fetch_eightfold),
     "jibe": Source("jibe", "", None, "https://{board}/careers-home/jobs", fetch_jibe),
     "rippling": Source("rippling", "", None, "https://ats.rippling.com/{board}/jobs", fetch_rippling),
+    "smartrecruiters": Source("smartrecruiters", "", None, "https://careers.smartrecruiters.com/{board}",
+                              fetch_smartrecruiters),
     "google": Source("google", "", None, GOOGLE_JOBS, fetch_google),
 }
 
@@ -575,7 +659,7 @@ def fetch(source: str, board: str, get=None, search=(), wanted=None, known=None,
     """The open roles on one company's board. `get` replaces the HTTP call (tests, caching).
 
     Greenhouse, Lever, Ashby, Workable and Jibe return every role; Google every role whose title has a `search`
-    term's words, from its whole feed. Workday and Eightfold are searched for each
+    term's words, from its whole feed. Workday, Eightfold and SmartRecruiters are searched for each
     of `search` (plain title words; nothing searches for everything), reading in full only the postings whose
     title passes `wanted` and that aren't in `known` (key -> Job, read before) already."""
     src = SOURCES[source]
@@ -590,6 +674,8 @@ _HOSTS = {
     "api.lever.co": "lever", "jobs.ashbyhq.com": "ashby", "api.ashbyhq.com": "ashby",
 }
 _API_PREFIX = {"boards-api.greenhouse.io": 2, "api.lever.co": 2, "api.ashbyhq.com": 2}
+_SR_HOSTS = {"jobs.smartrecruiters.com", "careers.smartrecruiters.com", "api.smartrecruiters.com"}
+_SR_NOT_BOARDS = {"api", "sr-jobs", "cdn-cgi", "static"}
 
 
 _LOCALE = re.compile(r"^[a-z]{2}-[A-Z]{2}$")  # Workday links often start /en-US/
@@ -619,6 +705,12 @@ def detect(url: str) -> tuple[str, str] | None:
         return ("rippling", parts[0]) if parts and parts[0] != "api" else None
     if host == "api.rippling.com" and "board" in parts[:-1]:
         return "rippling", parts[parts.index("board") + 1]
+    if host in _SR_HOSTS:
+        if parts[:1] == ["oneclick-ui"]:  # the apply form: .../oneclick-ui/company/<board>/publication/<uuid>
+            return ("smartrecruiters", parts[2]) if len(parts) > 2 and parts[1] == "company" else None
+        if host == "api.smartrecruiters.com":  # .../v1/companies/<board>/postings: a link, not read from there
+            return ("smartrecruiters", parts[2]) if len(parts) > 2 and parts[1] == "companies" else None
+        return ("smartrecruiters", parts[0]) if parts and parts[0] not in _SR_NOT_BOARDS else None
     if host == "careers.google.com" or (host == "google.com" and parts[:2] == ["about", "careers"]):
         return "google", "google"
     source = _HOSTS.get(host)
@@ -645,6 +737,11 @@ def _posting_id(source: str, url: str) -> str | None:
         return parts[2] if len(parts) > 2 and parts[1] == "jobs" else None
     if source == "rippling":
         return parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else None
+    if source == "smartrecruiters":  # .../<board>/<id>-<slug>, or the API's .../postings/<id>
+        after = parts[parts.index("postings") + 1] if "postings" in parts[:-1] else parts[1] if len(parts) > 1 \
+            and parts[0] != "oneclick-ui" else ""
+        m = re.match(r"\d+(?=-|$)", after)
+        return m.group(0) if m else None
     if source == "google":  # .../jobs/results/<id>-<slug>; an .../apply/<uuid> link doesn't name the posting
         m = re.match(r"\d+(?=-|$)", parts[parts.index("results") + 1]) if "results" in parts[:-1] else None
         return m.group(0) if m else None
@@ -665,6 +762,10 @@ def posting(url: str, get=None) -> Job | None:
     if source == "google":  # looked up in the whole feed (an XML one): a link can be to a role outside the US
         pid = _posting_id(source, url)
         return _google_posting(pid, board, get) if pid else None
+    if source == "smartrecruiters":  # read from its own page (a web page): the board's list names only the title
+        pid = _posting_id(source, url)
+        return _sr_read(Job(source="smartrecruiters", company=board, id=pid, title="",
+                            url=SMARTRECRUITERS_JOB.format(board=board, id=pid)), get or get_text) if pid else None
     get = get or get_json
     if source == "workday":
         path = urlparse(url if "//" in url else f"https://{url}").path

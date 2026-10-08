@@ -34,7 +34,8 @@ Keywords: Python, RAG, agents
 ## Why company boards
 
 Most tech companies post jobs through Greenhouse, Lever, Ashby or Workable, and most large employers through
-Workday (some through Eightfold or a Jibe careers site), and many small companies through Rippling. Each publishes open roles as public JSON so anyone can build a careers page, with
+Workday (some through Eightfold, SmartRecruiters or a Jibe careers site), and many small companies through
+Rippling. Each publishes open roles as public JSON so anyone can build a careers page, with
 no API key or scraping; Google publishes its own (with YouTube's and DeepMind's) as an XML feed for job sites.
 jobwatch reads those feeds for the companies on your watchlist:
 
@@ -50,9 +51,12 @@ jobwatch reads those feeds for the companies on your watchlist:
   requests" (HTTP 429) is asked again after a pause; a posting it still won't serve is kept without its text
   and read on the next run. Eightfold boards are read one request at a time. Google's feed is every role it
   has, one request (about 20 MB) a run; jobwatch keeps the ones whose titles have your `filters.titles` words,
-  in the US unless the board is `google/any`.
-- **Within the rules:** it reads public APIs meant for this. It doesn't scrape LinkedIn or Indeed, which
-  forbid it.
+  in the US unless the board is `google/any`. A SmartRecruiters board is searched the same way, 24 titles a
+  page, and each posting it reads is one page.
+- **Within the rules:** it reads public APIs meant for this, and follows robots.txt. SmartRecruiters' own API
+  host asks crawlers to stay away, so jobwatch doesn't use it: it reads the company's public careers site
+  (careers.smartrecruiters.com, and each posting's page on jobs.smartrecruiters.com), which robots.txt leaves
+  open. It doesn't scrape LinkedIn or Indeed, which forbid it.
 
 ## Install
 
@@ -137,6 +141,7 @@ companies:
   - {source: eightfold, board: acme, name: Acme}      # tenant (or tenant/domain), from a link
   - {source: jibe, board: careers.acme.com, name: Acme}  # a Jibe site's host (job links: /careers-home/jobs/...)
   - rippling:acme                                       # ats.rippling.com/acme/jobs
+  - smartrecruiters:ServiceNow                          # careers.smartrecruiters.com/ServiceNow
   - google:google                                       # Google, YouTube, DeepMind in the US (google/any: all)
 
 filters:
@@ -287,7 +292,7 @@ jobwatch check                             # closed (or back) since the last che
 ### Jobs you found somewhere else
 
 A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
-posting on Greenhouse, Lever, Ashby, Workable, Workday, Rippling or Google Careers, jobwatch reads the posting from there, so it
+posting on Greenhouse, Lever, Ashby, Workable, Workday, Rippling, SmartRecruiters or Google Careers, jobwatch reads the posting from there, so it
 can be fit-scored and prepped for like any other, even if you don't watch that company. A LinkedIn job link is
 read from LinkedIn's public posting page (one page, the one you gave; jobwatch doesn't search LinkedIn), then
 the same job is looked for on the company's own board: found, that's what is tracked, since it's where the
