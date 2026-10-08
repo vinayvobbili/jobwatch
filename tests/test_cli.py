@@ -31,7 +31,8 @@ def test_find(web, capsys):
     assert ("Globex: lever:globex  (2 open roles)  https://jobs.lever.co/globex\n"
             "    e.g. Machine Learning Engineer") in out
     assert "Acme: greenhouse:acme  (2 open roles, Acme)" in run(capsys, "find", "Acme").out
-    assert "Nobody: no Greenhouse, Lever, Ashby, Workday, Eightfold or Rippling board found" in out
+    assert "Nobody: no Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters or Avature board " \
+        "found" in out
 
 
 def test_run_then_digest_shows_only_new_jobs(web, watchlist, capsys):

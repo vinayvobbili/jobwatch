@@ -1,12 +1,15 @@
-"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google and
-Avature.
+"""Public job boards: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google, Amazon,
+Oracle Recruiting Cloud, SmartRecruiters and Avature.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
 Google return a whole board in one response, and a parser turns it into Jobs. Rippling lists a board in one
 response too, but its postings' text is read one at a time.
-Workday and Eightfold boards at large companies list thousands of roles, so those are searched for the
-watchlist's job titles, and only the new postings whose titles match are read in full (see fetch).
+Workday, Eightfold and Oracle boards at large companies list thousands of roles, so those are searched for the
+watchlist's job titles, and only the new postings whose titles match are read in full (see fetch). Amazon's
+own search (amazon.jobs) is searched the same way, and answers with each role's full text. SmartRecruiters is
+searched too, from its careers site's pages (its API is closed to crawlers by robots.txt): a list of titles a
+page at a time, then each posting's page.
 Avature careers portals list every posting in the sitemap their robots.txt names; the ones whose titles match
 are read from their public pages, as robots.txt allows.
 """
@@ -436,6 +439,170 @@ def _rippling_read(j: Job, url: str, get) -> Job:
     return j
 
 
+# -- SmartRecruiters: board is the company id in https://careers.smartrecruiters.com/<board> (any case). Its
+# Posting API (api.smartrecruiters.com) is closed to crawlers by that host's robots.txt, so this reads what the
+# careers site itself shows, where robots.txt allows it: the site's list of roles (an HTML fragment, a page at a
+# time: each names a role's title and link) and each role's own page on jobs.smartrecruiters.com, which carries
+# its details as schema.org JobPosting markup. Only new postings whose titles match are read in full.
+
+SMARTRECRUITERS_LIST = "https://careers.smartrecruiters.com/{board}/api/more"
+SMARTRECRUITERS_JOB = "https://jobs.smartrecruiters.com/{board}/{id}"
+_SR_LINK = re.compile(r'<a\s[^>]*href="(https://jobs\.smartrecruiters\.com/[^/"]+/(\d+)[^"]*)"[^>]*>.*?'
+                      r'<h4[^>]*>(.*?)</h4>', re.S)
+
+
+def _sr_listed(board: str, term: str, get, cap: int) -> list[tuple[str, str, str]]:
+    """(id, title, link) of every role the careers site lists for a search term (all of them for ""), up to cap.
+    Pages are asked for one at a time until one adds nothing new: the site doesn't say how many there are."""
+    found: dict[str, tuple[str, str, str]] = {}
+    page = 0
+    while len(found) < cap:
+        query = f"search={quote(term)}&page={page}" if term else f"page={page}"
+        before = len(found)
+        for link, pid, title in _SR_LINK.findall(get(f"{SMARTRECRUITERS_LIST.format(board=board)}?{query}") or ""):
+            found.setdefault(pid, (pid, html.unescape(re.sub(r"<[^>]+>", "", title)).strip(), link))
+        if len(found) == before:
+            break
+        page += 1
+    return list(found.values())[:cap]
+
+
+def fetch_smartrecruiters(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """The roles on a SmartRecruiters careers site that the site's own search finds for each of `search` (every
+    role, up to `cap`, with no terms), reading in full the ones whose titles pass `wanted` and aren't `known`."""
+    get = get or get_text
+    listed: dict[str, tuple[str, str, str]] = {}
+    for term in search or [""]:
+        for item in _sr_listed(board, term, get, cap):
+            listed.setdefault(item[0], item)
+
+    def job(item) -> Job:
+        pid, title, link = item
+        key = f"smartrecruiters:{board}:{pid}"
+        if known and key in known and known[key].description:
+            return known[key]
+        j = Job(source="smartrecruiters", company=board, id=pid, title=title, url=link)
+        if wanted and not wanted(j.title):
+            return j
+        return _unread_if_refused(lambda: _sr_read(j, get), j)
+    return _details(list(listed.values()), job)
+
+
+def _sr_meta(page: str, prop: str) -> str:
+    m = re.search(rf'<meta\s+itemprop="{prop}"\s+content="([^"]*)"', page)
+    return html.unescape(m.group(1)).strip() if m else ""
+
+
+def _sr_read(j: Job, get) -> Job:
+    """Fill a SmartRecruiters job from its page's JobPosting markup. Raises NotFound when the job has expired
+    (the page stays up, saying so)."""
+    page = get(SMARTRECRUITERS_JOB.format(board=j.company, id=j.id)) or ""
+    title = re.search(r'itemprop="title"[^>]*>(.*?)</h1>', page, re.S)
+    if not title or "jobad--empty-state" in page:
+        raise NotFound(f"that SmartRecruiters posting ({j.id}) has expired")
+    j.title = html.unescape(re.sub(r"<[^>]+>", "", title.group(1))).strip() or j.title
+    j.company_name = _sr_meta(page, "name")
+    if url := re.search(r'<meta\s+property="og:url"\s+content="(https://jobs\.smartrecruiters\.com/[^"]+)"', page):
+        j.url = html.unescape(url.group(1))
+    where = ", ".join(p for p in (_sr_meta(page, k) for k in ("addressLocality", "addressRegion", "addressCountry"))
+                      if p)
+    j.locations = split_locations(where)
+    j.remote = True if re.search(r'workplaceType="remote"', page, re.I) else None
+    j.posted = _time(_sr_meta(page, "datePosted"))
+    start = page.find('itemprop="description"')
+    if start >= 0:
+        start = page.find(">", start) + 1
+        ends = [i for i in (page.find(m, start) for m in ('class="video-disclaimer"', 'class="job-apply',
+                                                            "</main>")) if i >= 0]
+        j.description = html_to_text(page[start:min(ends) if ends else len(page)])
+    _salary(j, j.description)
+    return j
+
+
+# -- Oracle Recruiting Cloud (Oracle Fusion HCM's careers sites): board "<pod>.fa.<region>/<site>", from
+# https://<pod>.fa.<region>.oraclecloud.com/hcmUI/CandidateExperience/en/sites/<site>. The site is built on a
+# public REST API: searched like Workday, a page of requisitions at a time, and a new posting whose title matches
+# is read in full from its own record.
+
+ORACLE_PAGE = 100     # requisitions a search asks for at once (the careers site itself asks for 25)
+ORACLE_WORKERS = 2
+_ORACLE_HOST = re.compile(r"([\w-]+\.fa(?:\.[\w-]+)?)\.oraclecloud\.com")
+
+
+def _oracle_parts(board: str) -> tuple[str, str, str]:
+    """(API base, site, pod) for a board like "eeho.fa.us2/CX_45001"."""
+    pod, _, site = board.partition("/")
+    if not (re.fullmatch(r"[\w-]+\.fa(?:\.[\w-]+)?", pod) and re.fullmatch(r"[\w-]+", site)):
+        raise SourceError(f"an Oracle board looks like pod.fa.region/SiteNumber, got {board!r}")
+    return f"https://{pod}.oraclecloud.com/hcmRestApi/resources/latest", site, pod
+
+
+def _oracle_url(board: str, pid: str) -> str:
+    return f"{careers_url('oracle', board)}/job/{pid}"
+
+
+def _oracle_places(r: dict) -> list[str]:
+    return split_locations(r.get("PrimaryLocation") or "", *(s.get("Name") or "" for s in r.get("secondaryLocations")
+                                                             or []))
+
+
+def _oracle_remote(r: dict, places: list[str]) -> bool | None:
+    return True if r.get("WorkplaceTypeCode") == "ORA_REMOTE" or any(is_remote(p) for p in places) else None
+
+
+def fetch_oracle(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    get = get or get_json
+    api, site, pod = _oracle_parts(board)
+    reqs = {}
+    for term in search or [""]:
+        # the finder's own separators (, ;) and quotes can't be in a keyword
+        keyword = quote(" ".join(re.sub(r'[",;]', " ", term).split()), safe="")
+        def page(offset, keyword=keyword):
+            d = ((get(f"{api}/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList.secondaryLocations"
+                      f"&finder=findReqs;siteNumber={site},limit={ORACLE_PAGE},offset={offset}"
+                      + (f",keyword={keyword}" if keyword else "")) or {}).get("items") or [{}])[0]
+            return d.get("requisitionList") or [], d.get("TotalJobsCount") or 0
+        for r in _search_all(page, ORACLE_PAGE, cap, ORACLE_WORKERS):
+            if r.get("Id"):
+                reqs.setdefault(str(r["Id"]), r)
+
+    def job(item) -> Job:
+        pid, r = item
+        key = f"oracle:{board}:{pid}"
+        if known and key in known and known[key].description:
+            return known[key]
+        places = _oracle_places(r)
+        j = Job(source="oracle", company=board, id=pid, title=(r.get("Title") or "").strip(),
+                url=_oracle_url(board, pid), company_name=pod.partition(".")[0], locations=places,
+                remote=_oracle_remote(r, places), posted=_time(r.get("PostedDate")))
+        if wanted and not wanted(j.title):
+            return j
+        return _unread_if_refused(lambda: _oracle_read(j, api, site, get), j)
+    return _details(list(reqs.items()), job, ORACLE_WORKERS)
+
+
+def _oracle_read(j: Job, api: str, site: str, get) -> Job:
+    """Fill an Oracle job from its requisition's record."""
+    d = (get(f"{api}/recruitingCEJobRequisitionDetails?expand=secondaryLocations,requisitionFlexFields"
+             f"&onlyData=true&finder=ById;Id=%22{quote(j.id, safe='')}%22,siteNumber={site}") or {}).get("items") or []
+    if not d:
+        raise NotFound("that Oracle posting isn't open any more")
+    info = d[0]
+    j.title = (info.get("Title") or j.title).strip()
+    j.locations = _oracle_places(info) or j.locations
+    j.remote = _oracle_remote(info, j.locations)
+    j.department = info.get("Category") or info.get("JobFunction") or j.department
+    j.posted = _time(info.get("ExternalPostedStartDate")) or j.posted
+    # the company's own fields: "Base Pay/Salary: New York,NY $137,750.00-$185,000.00", "Years: 3 to 5+ years"
+    fields = "\n".join(f"{f['Prompt'].strip()}: {html_to_text(str(f['Value']))}"
+                       for f in info.get("requisitionFlexFields") or [] if f.get("Prompt") and f.get("Value"))
+    j.description = "\n\n".join(t for t in (*(html_to_text(info.get(k) or "") for k in (
+        "ExternalDescriptionStr", "ExternalResponsibilitiesStr", "ExternalQualificationsStr",
+        "OrganizationDescriptionStr")), fields) if t)
+    _salary(j, j.description)
+    return j
+
+
 # -- Google (with YouTube and DeepMind): board "google" for its roles in the US, "google/any" for all of them.
 # Google Careers publishes every open role, worldwide and with its full text, as one XML feed for job sites
 # (~20 MB): one request a run, kept for a few minutes so a run's other reads of it don't fetch it again.
@@ -730,6 +897,105 @@ def _avature_read(j: Job, get) -> Job:
     return j
 
 
+# -- Amazon (with AWS and its subsidiaries): board "amazon" for its roles in the US, "amazon/any" for all of them.
+# amazon.jobs answers its own search in JSON, each role with its full text, 100 a page; its robots.txt closes
+# only /internal pages. It lists tens of thousands of roles, so like a Workday board it's searched for the
+# watchlist's title words, newest first.
+
+AMAZON_JOBS = "https://www.amazon.jobs"
+AMAZON_SEARCH = AMAZON_JOBS + "/en/search.json"
+AMAZON_PAGE = 100
+AMAZON_WORKERS = 1  # one page at a time: a search term is at most SEARCH_CAP / AMAZON_PAGE requests
+# Pay is a line per place: "USA, CA, Mountain View - 193,300.00 - 261,500.00 USD annually"
+_AMAZON_PAY = re.compile(r"(\d[\d,]*(?:\.\d+)?) - (\d[\d,]*(?:\.\d+)?) USD annually")
+
+
+def _amazon_anywhere(board: str) -> bool:
+    if board not in ("amazon", "amazon/any"):
+        raise SourceError(f"the Amazon board is amazon (its US roles) or amazon/any, got {board!r}")
+    return board == "amazon/any"
+
+
+def _amazon_url(term: str, offset: int, anywhere: bool, size: int = AMAZON_PAGE) -> str:
+    country = "" if anywhere else "&normalized_country_code%5B%5D=USA"
+    return f"{AMAZON_SEARCH}?base_query={quote(term)}&offset={offset}&result_limit={size}&sort=recent{country}"
+
+
+def _amazon_places(p: dict) -> tuple[list[str], bool | None]:
+    """(places, remote): each place as "Boston, Massachusetts, USA", a virtual one as "Remote - Texas, USA"
+    (remote for people there); remote is True for a role that's virtual anywhere in its country."""
+    places, remote = [], None
+    for raw in p.get("locations") or []:
+        try:
+            loc = json.loads(raw) if isinstance(raw, str) else raw
+        except json.JSONDecodeError:
+            continue
+        where = loc.get("normalizedLocation") or loc.get("location") or ""
+        if loc.get("type") == "VIRTUAL":
+            where = f"Remote - {where}"
+            remote = True if not loc.get("region") else remote
+        places.append(where)
+    return split_locations(*places) or split_locations(p.get("normalized_location") or p.get("location") or ""), \
+        remote
+
+
+def _amazon_posted(text: str) -> datetime | None:
+    """ "August 27, 2026" (or "October  8, 2026")."""
+    try:
+        return datetime.strptime(" ".join((text or "").split()), "%B %d, %Y").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _amazon_job(p: dict, board: str, read: bool = True) -> Job:
+    """A Job from one search result; `read` False keeps it without its text, like a searched board's unread one."""
+    pid = str(p.get("id_icims") or "")
+    places, remote = _amazon_places(p)
+    j = Job(source="amazon", company=board, id=pid, title=(p.get("title") or "").strip(),
+            url=AMAZON_JOBS + (p.get("job_path") or f"/en/jobs/{pid}"), company_name="Amazon", locations=places,
+            remote=remote, department=p.get("job_category") or "", posted=_amazon_posted(p.get("posted_date")))
+    if read:
+        parts = [html_to_text(p.get("description") or "")]
+        for heading, key in (("Basic qualifications", "basic_qualifications"),
+                             ("Preferred qualifications", "preferred_qualifications")):
+            if text := html_to_text(p.get(key) or ""):
+                parts.append(f"{heading}\n{text}")
+        j.description = "\n\n".join(t for t in parts if t)
+        pay = [(float(low.replace(",", "")), float(high.replace(",", "")))
+               for low, high in _AMAZON_PAY.findall(j.description)]
+        # the lowest-paid place's floor to the highest-paid one's top
+        _salary(j, f"${min(low for low, _ in pay):,.0f} - ${max(high for _, high in pay):,.0f}" if pay
+                else j.description)
+    return j
+
+
+def fetch_amazon(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """Amazon's roles (its US ones, for board "amazon") that amazon.jobs finds for each of `search`, newest
+    first and up to `cap` a term; its newest with no terms. A result has the role's full text, so nothing more
+    is read and `known` isn't needed; a role whose title fails `wanted` is kept without its text."""
+    get = get or get_json
+    anywhere, found = _amazon_anywhere(board), {}
+    for term in search or [""]:
+        def page(offset, term=term):
+            d = get(_amazon_url(term, offset, anywhere)) or {}
+            if d.get("error"):
+                raise SourceError(f"amazon.jobs: {d['error']}")
+            return d.get("jobs") or [], d.get("hits") or 0
+        for p in _search_all(page, AMAZON_PAGE, cap, AMAZON_WORKERS):
+            if p.get("id_icims"):
+                found.setdefault(str(p["id_icims"]), p)
+    return [_amazon_job(p, board, read=not (wanted and not wanted((p.get("title") or "").strip())))
+            for p in found.values()]
+
+
+def _amazon_posting(pid: str, board: str, get) -> Job:
+    """One role, found by searching amazon.jobs for its id (worldwide: a link can be to a role outside the US)."""
+    for p in (get(_amazon_url(pid, 0, True, size=10)) or {}).get("jobs") or []:
+        if str(p.get("id_icims")) == pid:
+            return _amazon_job(p, board)
+    raise NotFound("amazon.jobs doesn't list that job any more")
+
+
 @dataclass(frozen=True)
 class Source:
     name: str
@@ -754,6 +1020,11 @@ SOURCES = {
     "jibe": Source("jibe", "", None, "https://{board}/careers-home/jobs", fetch_jibe),
     "rippling": Source("rippling", "", None, "https://ats.rippling.com/{board}/jobs", fetch_rippling),
     "google": Source("google", "", None, GOOGLE_JOBS, fetch_google),
+    "amazon": Source("amazon", "", None, AMAZON_JOBS + "/en/search", fetch_amazon),
+    "oracle": Source("oracle", "", None, "https://{pod}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/{site}",
+                     fetch_oracle),
+    "smartrecruiters": Source("smartrecruiters", "", None, "https://careers.smartrecruiters.com/{board}",
+                              fetch_smartrecruiters),
     "avature": Source("avature", "", None, "https://{board}/SearchJobs", fetch_avature),
 }
 
@@ -765,6 +1036,9 @@ def careers_url(source: str, board: str) -> str:
         return SOURCES[source].careers.format(tenant=tenant, pod=pod, site=site)
     if source == "eightfold":
         return SOURCES[source].careers.format(tenant=board.partition("/")[0], domain=_eightfold_parts(board)[1])
+    if source == "oracle":
+        pod, _, site = board.partition("/")
+        return SOURCES[source].careers.format(pod=pod, site=site)
     return SOURCES[source].careers.format(board=board)
 
 
@@ -781,9 +1055,9 @@ def fetch(source: str, board: str, get=None, search=(), wanted=None, known=None,
     """The open roles on one company's board. `get` replaces the HTTP call (tests, caching).
 
     Greenhouse, Lever, Ashby, Workable and Jibe return every role; Google every role whose title has a `search`
-    term's words, from its whole feed, and Avature the same from a portal's sitemap. Workday and Eightfold are
-    searched for each
-    of `search` (plain title words; nothing searches for everything), reading in full only the postings whose
+    term's words, from its whole feed, and Avature the same from a portal's sitemap. Workday, Eightfold, Amazon,
+    Oracle and SmartRecruiters are searched for each of `search` (plain title words; nothing searches for
+    everything), reading in full only the postings whose
     title passes `wanted` and that aren't in `known` (key -> Job, read before) already."""
     src = SOURCES[source]
     if src.search:
@@ -797,6 +1071,8 @@ _HOSTS = {
     "api.lever.co": "lever", "jobs.ashbyhq.com": "ashby", "api.ashbyhq.com": "ashby",
 }
 _API_PREFIX = {"boards-api.greenhouse.io": 2, "api.lever.co": 2, "api.ashbyhq.com": 2}
+_SR_HOSTS = {"jobs.smartrecruiters.com", "careers.smartrecruiters.com", "api.smartrecruiters.com"}
+_SR_NOT_BOARDS = {"api", "sr-jobs", "cdn-cgi", "static"}
 
 
 _LOCALE = re.compile(r"^[a-z]{2}-[A-Z]{2}$")  # Workday links often start /en-US/
@@ -826,8 +1102,18 @@ def detect(url: str) -> tuple[str, str] | None:
         return ("rippling", parts[0]) if parts and parts[0] != "api" else None
     if host == "api.rippling.com" and "board" in parts[:-1]:
         return "rippling", parts[parts.index("board") + 1]
+    if host in _SR_HOSTS:
+        if parts[:1] == ["oneclick-ui"]:  # the apply form: .../oneclick-ui/company/<board>/publication/<uuid>
+            return ("smartrecruiters", parts[2]) if len(parts) > 2 and parts[1] == "company" else None
+        if host == "api.smartrecruiters.com":  # .../v1/companies/<board>/postings: a link, not read from there
+            return ("smartrecruiters", parts[2]) if len(parts) > 2 and parts[1] == "companies" else None
+        return ("smartrecruiters", parts[0]) if parts and parts[0] not in _SR_NOT_BOARDS else None
     if host == "careers.google.com" or (host == "google.com" and parts[:2] == ["about", "careers"]):
         return "google", "google"
+    if host in ("amazon.jobs", "account.amazon.jobs"):  # account.: the sign-in side, never read; its links name the job
+        return "amazon", "amazon"
+    if m := _ORACLE_HOST.fullmatch(host):  # .../hcmUI/CandidateExperience/<lang>/sites/<site>/job/<id>
+        return ("oracle", f"{m.group(1)}/{parts[parts.index('sites') + 1]}") if "sites" in parts[:-1] else None
     # Avature: acme.avature.net/<portal>, or a portal on the company's own domain, known by its page names
     portal = [p for p in parts if not _AVATURE_LOCALE.match(p)]
     if (host.endswith(".avature.net") and portal) or (portal[1:2] and portal[1] in ("JobDetail", "SearchJobs")):
@@ -856,9 +1142,20 @@ def _posting_id(source: str, url: str) -> str | None:
         return parts[2] if len(parts) > 2 and parts[1] == "jobs" else None
     if source == "rippling":
         return parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else None
+    if source == "smartrecruiters":  # .../<board>/<id>-<slug>, or the API's .../postings/<id>
+        after = parts[parts.index("postings") + 1] if "postings" in parts[:-1] else parts[1] if len(parts) > 1 \
+            and parts[0] != "oneclick-ui" else ""
+        m = re.match(r"\d+(?=-|$)", after)
+        return m.group(0) if m else None
     if source == "google":  # .../jobs/results/<id>-<slug>; an .../apply/<uuid> link doesn't name the posting
         m = re.match(r"\d+(?=-|$)", parts[parts.index("results") + 1]) if "results" in parts[:-1] else None
         return m.group(0) if m else None
+    if source == "amazon":  # /en/jobs/<id>/<slug>, or account.amazon.jobs/jobs/<id>/apply
+        pid = parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else ""
+        return pid if pid.isdigit() else None
+    if source == "oracle":  # .../sites/<site>/job/<id>, or .../sites/<site>/requisitions/preview/<id>
+        after = next((parts[i + 1] for i in range(len(parts) - 1) if parts[i] in ("job", "preview")), "")
+        return after if after.isdigit() else None
     if source == "avature":
         return _avature_id(url if "//" in url else f"https://{url}")
     if source == "workable":
@@ -889,7 +1186,14 @@ def posting(url: str, get=None) -> Job | None:
         if not j.description:
             raise NotFound("that Avature posting isn't open any more")
         return j
+    if source == "smartrecruiters":  # read from its own page (a web page): the board's list names only the title
+        pid = _posting_id(source, url)
+        return _sr_read(Job(source="smartrecruiters", company=board, id=pid, title="",
+                            url=SMARTRECRUITERS_JOB.format(board=board, id=pid)), get or get_text) if pid else None
     get = get or get_json
+    if source == "amazon":
+        pid = _posting_id(source, url)
+        return _amazon_posting(pid, board, get) if pid else None
     if source == "workday":
         path = urlparse(url if "//" in url else f"https://{url}").path
         if "/job/" not in path:
@@ -911,6 +1215,10 @@ def posting(url: str, get=None) -> Job | None:
         if not j.title:
             raise NotFound("that Rippling posting isn't open any more")
         return j
+    if source == "oracle":  # one requisition is read on its own, by its id
+        api, site, pod = _oracle_parts(board)
+        return _oracle_read(Job(source="oracle", company=board, id=pid, title="", url=_oracle_url(board, pid),
+                                company_name=pod.partition(".")[0]), api, site, get)
     for j in fetch(source, board, get):
         if j.id.lower() == pid.lower():
             return j
@@ -1027,9 +1335,13 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
                 continue
         return hits
     names = board_names(company)
-    # jibe: sites on their own domains; google: Google's own board ("Google DeepMind" finds it too)
-    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe", "google", "avature")]
+    # jibe: sites on their own domains; google, amazon: the company's own board ("Google DeepMind", "AWS" find them);
+    # oracle: a site's host is a pod code ("eeho.fa.us2") nobody can guess from the name, so it's found from a link;
+    # avature: tried as name.avature.net/careers below
+    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature")
+    tries = [(s, n) for n in names for s in SOURCES if s not in skip]
     tries += [("google", "google")] if "google" in names else []
+    tries += [("amazon", "amazon")] if {"amazon", "aws"} & set(names) else []
 
     def one(t):
         try:

@@ -141,7 +141,9 @@ def no_real_state(tmp_path, monkeypatch):
 def web(monkeypatch):
     fake = FakeWeb()
     monkeypatch.setattr(sources, "get_json", fake)
-    monkeypatch.setattr(sources, "get_text", fake)  # boards read as pages or XML (Avature)
+    # Boards read as web pages or XML (SmartRecruiters, Avature) aren't in RESPONSES: looking for a board finds
+    # none there.
+    monkeypatch.setattr(sources, "get_text", FakeWeb({}))
     return fake
 
 

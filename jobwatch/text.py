@@ -48,8 +48,9 @@ _AMOUNT = r"\$\s?" + _NUMBER + r"\s*([kK])?"
 # "USD $140,400.00 - USD $372,300.00" as well as "$180K - $220K"
 _RANGE = re.compile(_AMOUNT + r"\s*(?:USD)?\s*(?:-|–|—|to)\s*(?:USD\s*)?\$?\s?" + _NUMBER + r"\s*([kK])?")
 _NOT_ANNUAL = re.compile(r"\s*(?:USD\s*)?(?:/|per\s+|an?\s+)(?:hour|hr|month|mo|week|day)\b", re.I)
-# "167,000 - 230,000 USD per year": no dollar sign, the currency after (a CAD range next to it is skipped)
-_USD_AFTER = re.compile(r"(?<![\d,.$])(\d{2,3},\d{3})\s*(?:-|–|—|to)\s*(\d{2,3},\d{3})\s*USD\b")
+# "167,000 - 230,000 USD per year" or "88,000 to 136,900.00 USD": no dollar sign, the currency after (a CAD
+# range next to it is skipped)
+_USD_AFTER = re.compile(r"(?<![\d,.$])(\d{2,3},\d{3})(?:\.\d{2})?\s*(?:-|–|—|to)\s*(\d{2,3},\d{3})(?:\.\d{2})?\s*USD\b")
 
 
 def _dollars(number: str, k: str | None) -> int:

@@ -143,7 +143,8 @@ def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> boo
     """Whether a job's posting still takes applications: on its board, at its link (a supported board or a
     LinkedIn job), or None when jobwatch can't tell. Raises SourceError when the board can't be read now."""
     boards = {} if boards is None else boards
-    if job.source in ("workday", "rippling", "avature"):  # one posting can be read by its link: surer than a search
+    # one posting can be read by its link: surer than a title search
+    if job.source in ("workday", "rippling", "amazon", "oracle", "smartrecruiters", "avature"):
         try:
             return sources.posting(job.url, get) is not None
         except sources.NotFound:
@@ -194,13 +195,14 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
              get=None, page=None, boards: list[Board] = ()) -> tuple[Job, bool]:
     """Add a job found somewhere else: (the job, whether its posting was read from the link).
 
-    A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google, Avature) is
-    read in full, so the job can be scored and prepped like any other; its board needn't be watched. A LinkedIn job link
-    is read from LinkedIn's public posting page, and the same job is looked for on the company's own board
-    (a watched one in `boards` under the company's name first): found, that posting is tracked, since it's
-    where the application goes; not found, the LinkedIn posting is. Anything else (a company's own site) needs
-    the company, the title and, to be scored, the posting's text pasted. An application already further along
-    keeps its stage."""
+    A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google,
+    Amazon, Oracle, SmartRecruiters, Avature) is read in full, so the job can be scored and prepped like any
+    other; its board needn't be watched.
+    A LinkedIn job link is read from LinkedIn's public posting page, and the same job is looked for on the
+    company's own board (a watched one in `boards` under the company's name first): found, that posting is
+    tracked, since it's where the application goes; not found, the LinkedIn posting is. Anything else (a
+    company's own site) needs the company, the title and, to be scored, the posting's text pasted. An
+    application already further along keeps its stage."""
     link, job, p = link.strip(), None, None
     try:
         p = linkedin.read(link, page) if link else None
