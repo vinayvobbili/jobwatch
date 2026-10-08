@@ -1,0 +1,84 @@
+[
+  {
+    "id": "7f19474d-55f3-44d7-921e-53f834156a7b",
+    "id_icims": "10517491",
+    "title": "Sr Forward Deployed Engineer, AWS Forward Deployed Engineering",
+    "company_name": "Amazon Web Services, Inc. - A97",
+    "business_category": "aws",
+    "job_category": "Software Development",
+    "country_code": "USA",
+    "location": "US, CA, Mountain View",
+    "normalized_location": "Mountain View, California, USA",
+    "locations": [
+      "{\"normalizedStateName\":\"Washington\",\"normalizedCountryCode\":\"USA\",\"city\":\"Seattle\",\"type\":\"ONSITE\",\"normalizedCountryName\":\"United States\",\"normalizedLocation\":\"Seattle, Washington, USA\",\"location\":\"US, WA, Seattle\",\"region\":\"WA\"}",
+      "{\"normalizedStateName\":\"New York\",\"normalizedCountryCode\":\"USA\",\"city\":\"New York\",\"type\":\"ONSITE\",\"normalizedCountryName\":\"United States\",\"normalizedLocation\":\"New York, New York, USA\",\"location\":\"US, NY, New York\",\"region\":\"NY\"}",
+      "{\"normalizedStateName\":\"California\",\"normalizedCountryCode\":\"USA\",\"city\":\"Mountain View\",\"type\":\"ONSITE\",\"normalizedCountryName\":\"United States\",\"normalizedLocation\":\"Mountain View, California, USA\",\"location\":\"US, CA, Mountain View\",\"region\":\"CA\"}"
+    ],
+    "posted_date": "August 27, 2026",
+    "job_path": "/en/jobs/10517491/sr-forward-deployed-engineer-aws-forward-deployed-engineering",
+    "url_next_step": "https://account.amazon.jobs/jobs/10517491/apply",
+    "description": "A Forward Deployed Engineer (FDE) embeds directly inside a strategic enterprise customer to design, build, deploy, and run AI-powered production systems alongside the customer's engineering team.<br/><br/>Mentorship and Career Growth<br/>We’re continuously raising our performance bar as we strive to become Earth’s Best Employer.<br/><br/>10047",
+    "basic_qualifications": "- 5+ years of non-internship professional software development experience<br/>- Experience with AI tools: eval frameworks, agent tooling, RAG pipelines, and prompt engineering",
+    "preferred_qualifications": "- Bachelor's degree in computer science or equivalent<br/>- Experience working with AWS Services<br/><br/><p><span class=\"ProseMirror-FontColor\">Amazon also offers comprehensive benefits including health insurance (medical, dental, vision, prescription, Basic Life &amp; AD&amp;D insurance), 401(k) matching, paid time off, and parental leave.</span></p><br/><br/>USA, CA, Mountain View - 193,300.00 - 261,500.00 USD annually<br/>USA, NY, New York - 184,900.00 - 250,200.00 USD annually<br/>USA, WA, Seattle - 168,100.00 - 227,400.00 USD annually"
+  },
+  {
+    "id": "7b1a3187-3937-4d87-ade1-400695d49f0d",
+    "id_icims": "10541168",
+    "title": "Security Engineer, Compliance Penetration Testing",
+    "company_name": "Amazon.com Services LLC",
+    "business_category": "amazon-security",
+    "job_category": "Systems, Quality, & Security Engineering",
+    "country_code": "USA",
+    "location": "US, Virtual",
+    "normalized_location": "USA",
+    "locations": [
+      "{\"normalizedCountryCode\":\"USA\",\"city\":\"Virtual\",\"type\":\"VIRTUAL\",\"normalizedCountryName\":\"United States\",\"normalizedLocation\":\"USA\",\"location\":\"US, Virtual\",\"region\":\"\"}"
+    ],
+    "posted_date": "September 15, 2026",
+    "job_path": "/en/jobs/10541168/security-engineer-compliance-penetration-testing",
+    "url_next_step": "https://account.amazon.jobs/jobs/10541168/apply",
+    "description": "Application deadline: Oct 10, 2026<br/><br/>Amazon Stores Security is hiring a Security Engineer for our Application Security Compliance Penetration Testing (CPT) team.<br/>  <br/>In this role you will attack Amazon's services, applications, and websites to find security issues, and work directly with the owning technology teams to get them resolved.",
+    "basic_qualifications": "- 3+ years of hands-on application penetration testing or offensive security assessments across web applications, APIs, or cloud services (non-internship) experience",
+    "preferred_qualifications": "- Experience with AWS products and services<br/><br/>USA, ,  - 159,300.00 - 202,400.00 USD annually"
+  },
+  {
+    "id": "22c0b22e-2312-41d7-bad3-1caf1814de8e",
+    "id_icims": "10482387",
+    "title": "Security Engineering Manager, Stores AppSec",
+    "company_name": "Amazon.com Services LLC",
+    "business_category": "amazon-security",
+    "job_category": "Systems, Quality, & Security Engineering",
+    "country_code": "USA",
+    "location": "US, TX, Virtual Location - Texas",
+    "normalized_location": "Texas, USA",
+    "locations": [
+      "{\"normalizedStateName\":\"Texas\",\"normalizedCountryCode\":\"USA\",\"city\":\"Virtual Location - Texas\",\"type\":\"VIRTUAL\",\"normalizedCountryName\":\"United States\",\"normalizedLocation\":\"Texas, USA\",\"location\":\"US, TX, Virtual Location - Texas\",\"region\":\"TX\"}"
+    ],
+    "posted_date": "July 23, 2026",
+    "job_path": "/en/jobs/10482387/security-engineering-manager-stores-appsec",
+    "url_next_step": "https://account.amazon.jobs/jobs/10482387/apply",
+    "description": "We are looking for an experienced security leader to join the Application Security team. As a security leader, you will manage a team of security engineers.",
+    "basic_qualifications": "- 5+ years of managing and developing teams experience",
+    "preferred_qualifications": "- Experience managing remote team members<br/><br/>USA, TX, Virtual Location - Texas - 175,100.00 - 236,900.00 USD annually"
+  },
+  {
+    "id": "fdae2db4-3248-4283-9185-5c499c5ce1b1",
+    "id_icims": "10571963",
+    "title": "Software Development Engineer, AWS Forward Deployed Engineering",
+    "company_name": "AWS EMEA SARL (UK Branch)",
+    "business_category": "aws",
+    "job_category": "Software Development",
+    "country_code": "GBR",
+    "location": "GB, London",
+    "normalized_location": "London, England, GBR",
+    "locations": [
+      "{\"normalizedStateName\":\"England\",\"normalizedCountryCode\":\"GBR\",\"city\":\"London\",\"type\":\"ONSITE\",\"normalizedCountryName\":\"United Kingdom\",\"normalizedLocation\":\"London, England, GBR\",\"location\":\"GB, London\",\"region\":\"\"}"
+    ],
+    "posted_date": "October  7, 2026",
+    "job_path": "/en/jobs/10571963/software-development-engineer-aws-forward-deployed-engineering",
+    "url_next_step": "https://account.amazon.jobs/jobs/10571963/apply",
+    "description": "We're looking for a Software Development Engineer (SDE) who wants to build AI-powered production systems inside strategic enterprise customers.<br/><br/>Travel requirement: This role requires 30–50% travel.<br/><br/>10047",
+    "basic_qualifications": "- 3+ years of non-internship professional software development experience",
+    "preferred_qualifications": "- Experience with agentic workflows, RAG pipelines, or foundation model integration"
+  }
+]
