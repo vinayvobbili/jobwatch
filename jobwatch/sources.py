@@ -442,6 +442,11 @@ GOOGLE_KEEP = 600  # seconds a downloaded feed is used again (Google's own cache
 _google_feed_cache: list = []  # [(downloaded at, feed text)]
 _google_lock = threading.Lock()
 _US_PAY = re.compile(r"US: \$[\d,]+ - \$[\d,]+")  # pay is given per country; this is the US line
+# Another country's line: "Canada: $86000 - $88000 (CAD)"
+_OTHER_PAY = re.compile(r"\b[A-Z][\w .]*: \S{0,3}[\d,]+ - \S{0,3}[\d,]+ \([A-Z]{3}\)")
+# Countries the feed sometimes names by a code that is also a US state's ("Alberta, CA")
+_COUNTRY_CODES = {"CA": "Canada", "AU": "Australia", "DE": "Germany", "IN": "India", "ID": "Indonesia",
+                  "IL": "Israel", "AR": "Argentina", "CO": "Colombia"}
 
 
 def _google_feed(get) -> ET.Element:
@@ -466,8 +471,11 @@ def _google_anywhere(board: str) -> bool:
 
 def _google_places(e: ET.Element) -> list[str]:
     """Each <location> as "City, ST, USA": the feed spreads it over city, state and country however it likes."""
-    return split_locations(*(", ".join(p.strip() for p in (loc.findtext(k) or "" for k in ("city", "state", "country"))
-                                       if p.strip()) for loc in e.iter("location")))
+    places = []
+    for loc in e.iter("location"):
+        city, state, country = ((loc.findtext(k) or "").strip() for k in ("city", "state", "country"))
+        places.append(", ".join(p for p in (city, state, _COUNTRY_CODES.get(country, country)) if p))
+    return split_locations(*places)
 
 
 def _google_job(e: ET.Element, board: str, read: bool = True) -> Job:
@@ -482,7 +490,10 @@ def _google_job(e: ET.Element, board: str, read: bool = True) -> Job:
             posted=_time(e.findtext("published")))
     if read:
         j.description = html_to_text(e.findtext("description") or "")
-        _salary(j, us.group(0) if (us := _US_PAY.search(j.description)) else j.description)
+        if us := _US_PAY.search(j.description):
+            _salary(j, us.group(0))
+        elif not _OTHER_PAY.search(j.description):  # pay in another country's currency isn't a US range
+            _salary(j, j.description)
     return j
 
 
