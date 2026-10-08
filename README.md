@@ -34,16 +34,18 @@ Keywords: Python, RAG, agents
 ## Why company boards
 
 Most tech companies post jobs through Greenhouse, Lever, Ashby or Workable, and most large employers through
-Workday (some through Eightfold or a Jibe careers site), and many small companies through Rippling. Each publishes open roles as public JSON so anyone can build a careers page, with
+Workday (some through Eightfold, Oracle Recruiting Cloud, SmartRecruiters or a Jibe careers site), and many
+small companies through Rippling. Each publishes open roles as public JSON so anyone can build a careers page, with
 no API key or scraping; Google publishes its own (with YouTube's and DeepMind's) as an XML feed for job sites,
-and Avature careers portals (Lenovo's, for one) list every posting in a sitemap for search engines.
+Amazon's careers site (amazon.jobs, with AWS) answers its own search in JSON, and Avature careers portals
+(Lenovo's, for one) list every posting in a sitemap for search engines.
 jobwatch reads those feeds for the companies on your watchlist:
 
 - **Complete and fresh:** a role appears as soon as the company posts it, not when an aggregator picks it up.
 - **Pay ranges:** read from the board's structured fields where they exist (Lever, Ashby), otherwise from
   the posting text.
 - **Polite:** one request per company per run on Greenhouse, Lever, Ashby and Workable (a Jibe site: one per 100
-  roles). A Workday or Eightfold board can
+  roles). A Workday, Eightfold or Oracle board can
   list thousands of roles, most of them nothing like yours, so jobwatch searches it for your
   `filters.titles` words and reads a posting in full only when its title passes your title filters, once:
   after that, a run costs a few searches per company. Titles written as regexes can't be searched for, so
@@ -51,12 +53,17 @@ jobwatch reads those feeds for the companies on your watchlist:
   requests" (HTTP 429) is asked again after a pause; a posting it still won't serve is kept without its text
   and read on the next run. Eightfold boards are read one request at a time. Google's feed is every role it
   has, one request (about 20 MB) a run; jobwatch keeps the ones whose titles have your `filters.titles` words,
-  in the US unless the board is `google/any`. An Avature portal's sitemap is one request a run; a posting
+  in the US unless the board is `google/any`. Amazon is searched like a Workday board, newest roles first and
+  100 a request, one request at a time; each result has the role's full text, so nothing more is read. It keeps
+  US roles unless the board is `amazon/any`. A SmartRecruiters board is searched the same way, 24 titles a
+  page, and each posting it reads is one page. An Avature portal's sitemap is one request a run; a posting
   whose title has your `filters.titles` words and passes your title filters is read from its page, once, two at
   a time.
-- **Within the rules:** it reads public APIs meant for this, and on an Avature portal only the public pages
-  its robots.txt lets robots read (never a link with `qtvc=`, never anything behind a sign-in). It doesn't
-  scrape LinkedIn or Indeed, which forbid it.
+- **Within the rules:** it reads public APIs meant for this, and follows robots.txt. SmartRecruiters' own API
+  host asks crawlers to stay away, so jobwatch doesn't use it: it reads the company's public careers site
+  (careers.smartrecruiters.com, and each posting's page on jobs.smartrecruiters.com), which robots.txt leaves
+  open. On an Avature portal it reads only the public pages its robots.txt lets robots read (never a link with
+  `qtvc=`, never anything behind a sign-in). It doesn't scrape LinkedIn or Indeed, which forbid it.
 
 ## Install
 
@@ -119,6 +126,8 @@ jobwatch find https://jobs.lever.co/spotify/4f1c2a9e-...   # or paste any job li
 `find` prints a line like `Anthropic: greenhouse:anthropic (627 open roles)`. For a Workday company it tries
 the usual site names; if that finds nothing, paste a job link from their careers site (it has
 `myworkdayjobs.com` in it) and `find` reads the board from it: `workday:nvidia.wd5/NVIDIAExternalCareerSite`.
+An Oracle Recruiting Cloud site is found the same way, from a job link with `oraclecloud.com/hcmUI/CandidateExperience`
+in it: `oracle:eeho.fa.us2/CX_45001`.
 A company's own careers page works too (`jobwatch find https://careers.acme.com/jobs`): `find` reads it for
 links to a board, which is how a board under a name nobody would guess turns up. Add those
 entries under `companies:`, adjust the filters, then:
@@ -142,6 +151,9 @@ companies:
   - {source: jibe, board: careers.acme.com, name: Acme}  # a Jibe site's host (job links: /careers-home/jobs/...)
   - rippling:acme                                       # ats.rippling.com/acme/jobs
   - google:google                                       # Google, YouTube, DeepMind in the US (google/any: all)
+  - amazon:amazon                                       # Amazon and AWS in the US (amazon/any: all)
+  - {source: oracle, board: eeho.fa.us2/CX_45001, name: Oracle}  # pod.fa.region/site, from a job link
+  - smartrecruiters:ServiceNow                          # careers.smartrecruiters.com/ServiceNow
   - {source: avature, board: jobs.lenovo.com/careers, name: Lenovo}  # an Avature portal: host/portal
 
 filters:
@@ -292,7 +304,8 @@ jobwatch check                             # closed (or back) since the last che
 ### Jobs you found somewhere else
 
 A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
-posting on Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers or an Avature portal, jobwatch reads the posting from there, so it
+posting on Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers, amazon.jobs, Oracle Recruiting
+Cloud, SmartRecruiters or an Avature portal, jobwatch reads the posting from there, so it
 can be fit-scored and prepped for like any other, even if you don't watch that company. A LinkedIn job link is
 read from LinkedIn's public posting page (one page, the one you gave; jobwatch doesn't search LinkedIn), then
 the same job is looked for on the company's own board: found, that's what is tracked, since it's where the

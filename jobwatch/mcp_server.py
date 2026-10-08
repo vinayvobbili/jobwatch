@@ -20,7 +20,7 @@ server = MCPServer(
     "jobwatch",
     instructions=(
         "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, "
-        "Google Careers, Avature) from a watchlist file. "
+        "Google Careers, Amazon, Oracle Recruiting Cloud, SmartRecruiters, Avature) from a watchlist file. "
         "find_board looks up a company's board (by name, or a job or careers page link), add_board puts it on the "
         "watchlist, list_boards and remove_board manage the rest. "
         "fetch_jobs checks every board; get_digest ranks the new matches (optionally fit-scored with shortlist-ai); "
@@ -84,6 +84,8 @@ def find_board(
     """Find a company's job board by name or by a job/careers link. Returns entries for the watchlist.
     A guessed board name can belong to another company: check the sample titles before adding one.
     Google (with YouTube and DeepMind) is one board, google:google (its US roles; google:google/any for all).
+    So is Amazon (with AWS), amazon:amazon (its US roles; amazon:amazon/any for all).
+    A Workday, Oracle Recruiting Cloud or Jibe board that isn't found by name is found from a link to a job on it.
     An Avature careers portal is host/portal (avature:jobs.lenovo.com/careers); a name finds one only at
     name.avature.net/careers, so give a job link from any other.
     Use it before add_board; to track one job from its link, use add_application instead."""
@@ -243,8 +245,8 @@ def add_application(
     title: Annotated[str, Field(description="The job title; may be left out when url is a job link it can read.")]
     = "",
     url: Annotated[str, Field(description=(
-        "A link to the job: Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers, Avature or "
-        "LinkedIn are read in full; "
+        "A link to the job: Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers, amazon.jobs, "
+        "Oracle Recruiting Cloud, SmartRecruiters, Avature or LinkedIn are read in full; "
         "any other link is just kept."))] = "",
     status: Annotated[str, Field(description=(
         "applied (the default; only once the person has applied themselves), queued for one they're "
@@ -260,7 +262,9 @@ def add_application(
     """Add a job jobwatch didn't find (a referral, a recruiter, LinkedIn...), so everything is in one place: an
     application (only after the person has applied themselves), or status queued for one they're considering.
     A url to one job on Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers (a
-    .../jobs/results/<id> link) or an Avature portal (a .../JobDetail/<title>/<id> link) is read in full (company and
+    .../jobs/results/<id> link), amazon.jobs (a .../jobs/<id> link), Oracle Recruiting Cloud (an
+    ...oraclecloud.com/.../sites/<site>/job/<id> link), SmartRecruiters (a jobs.smartrecruiters.com/<company>/<id>
+    link) or an Avature portal (a .../JobDetail/<title>/<id> link) is read in full (company and
     title may be left out); so is a LinkedIn job link, which is tracked on the company's own board when the same
     job is found there. Otherwise give company and title, and text (the posting, pasted) so it can be scored.
     For a job jobwatch already tracks (it came from get_digest or get_job), use mark_job instead."""
