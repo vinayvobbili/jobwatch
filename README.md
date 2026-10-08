@@ -35,7 +35,8 @@ Keywords: Python, RAG, agents
 
 Most tech companies post jobs through Greenhouse, Lever, Ashby or Workable, and most large employers through
 Workday (some through Eightfold or a Jibe careers site), and many small companies through Rippling. Each publishes open roles as public JSON so anyone can build a careers page, with
-no API key or scraping; Google publishes its own (with YouTube's and DeepMind's) as an XML feed for job sites.
+no API key or scraping; Google publishes its own (with YouTube's and DeepMind's) as an XML feed for job sites,
+and Amazon's careers site (amazon.jobs, with AWS) answers its own search in JSON.
 jobwatch reads those feeds for the companies on your watchlist:
 
 - **Complete and fresh:** a role appears as soon as the company posts it, not when an aggregator picks it up.
@@ -50,7 +51,9 @@ jobwatch reads those feeds for the companies on your watchlist:
   requests" (HTTP 429) is asked again after a pause; a posting it still won't serve is kept without its text
   and read on the next run. Eightfold boards are read one request at a time. Google's feed is every role it
   has, one request (about 20 MB) a run; jobwatch keeps the ones whose titles have your `filters.titles` words,
-  in the US unless the board is `google/any`.
+  in the US unless the board is `google/any`. Amazon is searched like a Workday board, newest roles first and
+  100 a request, one request at a time; each result has the role's full text, so nothing more is read. It keeps
+  US roles unless the board is `amazon/any`.
 - **Within the rules:** it reads public APIs meant for this. It doesn't scrape LinkedIn or Indeed, which
   forbid it.
 
@@ -138,6 +141,7 @@ companies:
   - {source: jibe, board: careers.acme.com, name: Acme}  # a Jibe site's host (job links: /careers-home/jobs/...)
   - rippling:acme                                       # ats.rippling.com/acme/jobs
   - google:google                                       # Google, YouTube, DeepMind in the US (google/any: all)
+  - amazon:amazon                                       # Amazon and AWS in the US (amazon/any: all)
 
 filters:
   titles: ["engineer", "architect"]       # regexes; the title must match one
@@ -287,7 +291,7 @@ jobwatch check                             # closed (or back) since the last che
 ### Jobs you found somewhere else
 
 A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
-posting on Greenhouse, Lever, Ashby, Workable, Workday, Rippling or Google Careers, jobwatch reads the posting from there, so it
+posting on Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers or amazon.jobs, jobwatch reads the posting from there, so it
 can be fit-scored and prepped for like any other, even if you don't watch that company. A LinkedIn job link is
 read from LinkedIn's public posting page (one page, the one you gave; jobwatch doesn't search LinkedIn), then
 the same job is looked for on the company's own board: found, that's what is tracked, since it's where the
