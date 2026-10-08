@@ -50,7 +50,7 @@ def _line(e: Entry) -> list[str]:
         out.append(f"**Closed** {e.record['closed'][:10]}: the posting is gone from the board.")
     if e.record.get("note"):
         out.append(f"Note: {e.record['note']}")
-    out.append(f"`{j.key}`")
+    out.append(f"`{j.key}`" + (f" (via {e.record['via']})" if e.record.get("via") else ""))
     return [*out, ""]
 
 
@@ -113,7 +113,7 @@ def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None
 def to_json(d: Digest) -> str:
     return json.dumps({
         "jobs": [{**{k: v for k, v in e.job.to_dict().items() if k != "description"},
-                  "status": e.record["status"], "first_seen": e.record["first_seen"],
+                  "status": e.record["status"], "first_seen": e.record["first_seen"], "via": e.record.get("via"),
                   "relevance": e.relevance, "keywords": e.keywords, "fit": e.fit, "contacts": e.contacts,
                   "same_title": [{"key": o.key, "url": o.url, "locations": o.locations} for o in e.same_title]}
                  for e in d.entries],

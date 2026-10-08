@@ -32,6 +32,49 @@ class Board:
         return self.name or self.board
 
 
+ALERT_SENDERS = ("jobalerts-noreply@linkedin.com", "builtin.com", "jobalert.indeed.com")
+
+
+@dataclass(frozen=True)
+class Imap:
+    """Where `jobwatch alerts --imap` reads job-alert emails (alerts.imap in the watchlist; off unless set).
+    The password is never in the watchlist: it comes from the environment variable named by password_env, or
+    from the macOS keychain item named by keychain (`security find-generic-password -s <keychain> -a <user>`)."""
+    host: str
+    user: str
+    port: int = 993
+    folder: str = "INBOX"
+    password_env: str = ""
+    keychain: str = ""
+    senders: tuple[str, ...] = ALERT_SENDERS  # FROM searches: an address or a domain
+    days: int = 3                             # emails from the last N days
+
+
+def _imap(raw, path: Path) -> Imap | None:
+    if not raw:
+        return None
+    if not isinstance(raw, dict) or not raw.get("host") or not raw.get("user"):
+        raise ConfigError(f"{path}: alerts.imap needs host and user (and password_env or keychain)")
+    if "password" in raw:
+        raise ConfigError(f"{path}: alerts.imap doesn't take a password: put it in an environment variable "
+                          "(password_env) or the macOS keychain (keychain), and remove it from the file")
+    unknown = set(raw) - set(Imap.__dataclass_fields__)
+    if unknown:
+        raise ConfigError(f"{path}: unknown alerts.imap setting(s): {', '.join(sorted(unknown))}")
+    if not (raw.get("password_env") or raw.get("keychain")):
+        raise ConfigError(f"{path}: alerts.imap needs password_env (an environment variable's name) or keychain "
+                          "(a macOS keychain item's name) for the password")
+    senders = raw.get("senders") or ALERT_SENDERS
+    try:
+        return Imap(host=str(raw["host"]), user=str(raw["user"]), port=int(raw.get("port", 993)),
+                    folder=str(raw.get("folder", "INBOX")), password_env=str(raw.get("password_env", "")),
+                    keychain=str(raw.get("keychain", "")),
+                    senders=tuple(str(s) for s in ([senders] if isinstance(senders, str) else senders)),
+                    days=int(raw.get("days", 3)))
+    except (TypeError, ValueError) as e:
+        raise ConfigError(f"{path}: alerts.imap: {e}") from None
+
+
 @dataclass
 class Config:
     path: Path
@@ -49,6 +92,7 @@ class Config:
     width: str = "standard"
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
+    imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
 
 
 def _board(entry, path: Path) -> Board:
@@ -198,6 +242,9 @@ def load(explicit: str | Path | None = None) -> Config:
     dupes = {b for b in boards if boards.count(b) > 1}
     if dupes:
         raise ConfigError(f"{path}: listed twice: {', '.join(f'{b.source}:{b.board}' for b in dupes)}")
+    alerts = raw.get("alerts") or {}
+    if not isinstance(alerts, dict) or set(alerts) - {"imap"}:
+        raise ConfigError(f"{path}: alerts has one setting, imap (see the README's job-alert emails section)")
     return Config(
         path=path, boards=boards, filters=filters,
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
@@ -207,6 +254,7 @@ def load(explicit: str | Path | None = None) -> Config:
         timeline=timeline, near=_near(learning, filters), theme=theme, width=width,
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
+        imap=_imap(alerts.get("imap"), path),
     )
 
 

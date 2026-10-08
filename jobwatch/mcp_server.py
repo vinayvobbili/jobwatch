@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from . import __version__, config, contacts, learn, prep, report, sources, watch
+from . import __version__, alerts, config, contacts, learn, prep, report, sources, watch
 from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watched_name
@@ -30,6 +30,9 @@ server = MCPServer(
         "lists the jobs queued to apply to next, with people the user knows there (ask them for a referral "
         "before applying), with warnings to check first (pay, place, flagged text). add_application adds one found "
         "elsewhere (from its link, a LinkedIn link it matches to the company's own board, or pasted text); "
+        "import_job_alerts takes job-alert emails (LinkedIn, Built In, Indeed and others) that you fetched with a "
+        "mail connector, as raw messages or HTML bodies, and tracks their jobs (matched to the company's own board "
+        "where it can) as new jobs for get_digest; it never needs the person's mail password. "
         "list_applications shows where each stands. After the person submits, save_application_package keeps the "
         "resume, cover letter and form answers they sent; get_application_package reads them back before a call or "
         "interview, and get_interview_prep puts the posting, the resume and what was sent on one sheet. "
@@ -265,7 +268,8 @@ def add_application(
     link) is read in full (company and
     title may be left out); so is a LinkedIn job link, which is tracked on the company's own board when the same
     job is found there. Otherwise give company and title, and text (the posting, pasted) so it can be scored.
-    For a job jobwatch already tracks (it came from get_digest or get_job), use mark_job instead."""
+    For a job jobwatch already tracks (it came from get_digest or get_job), use mark_job instead; for the jobs in
+    job-alert emails, import_job_alerts."""
     cfg, store = _open()
     try:
         job, read = save_job(store, url, company or watched_name(cfg, url), title, text, status=status, note=note,
@@ -273,6 +277,34 @@ def add_application(
         store.track(job.key, next_step=next_step, follow_up=follow_up)
         return f"{job.key}: {status} ({job.display_company}, {job.title}; " \
                f"{'read from the link' if read else 'text given' if text.strip() else 'title only'})"
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(idempotent=True, web=True))
+def import_job_alerts(
+    emails: Annotated[list[str], Field(description=(
+        "The alert emails, one string each: the raw message (RFC822, as a mail connector's raw format gives it; "
+        "best, since it names the sender) or just its HTML or plain-text body."))],
+    follow_links: Annotated[bool, Field(description=(
+        "Look for each job that passes the filters on the company's own board, and read links robots.txt "
+        "allows. False tracks each job as the email has it, with no requests."))] = True,
+    dry_run: Annotated[bool, Field(description="Say what would be tracked, and record nothing.")] = False,
+) -> dict:
+    """Track the jobs in job-alert emails (LinkedIn, Built In, Indeed; other senders with a generic reader).
+    Search the person's mail for them first, e.g. from:jobalerts-noreply@linkedin.com, from:builtin.com,
+    from:jobalert.indeed.com, and pass each message in; jobwatch never needs a mail password. Links lose their
+    tracking parameters. Each job whose title, place and pay pass the watchlist's filters is looked for on the
+    company's own board (a link to a supported board is read from there); job sites' pages are read only when
+    their robots.txt allows (LinkedIn's and Indeed's don't, so the email's details are used). Jobs already tracked
+    are left alone (known); new ones show up in get_digest, with via saying where they came from. Returns
+    counts and each job: key, result (new, known, duplicate), how (board, posting, page or email) and filtered
+    (why the filters leave it out of the digest, or null)."""
+    cfg, store = _open()
+    try:
+        r = alerts.intake(cfg, store, [alerts.message(e) for e in emails if e.strip()], follow=follow_links,
+                          dry_run=dry_run)
+        return alerts.to_dict(r)
     finally:
         store.close()
 

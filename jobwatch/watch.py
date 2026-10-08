@@ -272,7 +272,12 @@ def unscored(cfg: Config, store: Store, skip: set[str] = frozenset()) -> list[En
     if not (cfg.resume and cfg.resume.is_file()):
         return []
     entries, _ = _matching(cfg, store, ("new", "shown"))
-    return [e for e in _group(sorted(entries, key=_rank)) if e.fit is None and e.job.key not in skip]
+    return [e for e in _group(sorted(entries, key=_rank)) if _scorable(e) and e.job.key not in skip]
+
+
+def _scorable(e: Entry) -> bool:
+    """Unscored, and with a posting's text to score (a job from an alert email may have only its title)."""
+    return e.fit is None and bool(e.job.description.strip())
 
 
 def score_entries(cfg: Config, store: Store, entries: list[Entry],
@@ -307,7 +312,7 @@ def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_to
         if not (cfg.resume and cfg.resume.is_file()):
             digest.note = "scoring skipped: set `resume:` in the config to a resume file"
         else:
-            todo = [e for e in _group(sorted(entries, key=_rank)) if e.fit is None][:top]
+            todo = [e for e in _group(sorted(entries, key=_rank)) if _scorable(e)][:top]
             if todo:
                 digest.scored, digest.score_errors = score_entries(cfg, store, todo, progress)
     entries.sort(key=_rank)
