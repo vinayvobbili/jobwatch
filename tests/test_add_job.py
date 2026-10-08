@@ -88,14 +88,13 @@ def test_save_job_from_a_link_leaves_its_board_alone(tmp_path, web):
 
 def test_save_job_with_pasted_text(tmp_path, web):
     store = Store(tmp_path / "state.db")
-    link = "https://www.linkedin.com/jobs/view/4000000001/"
-    signin = lambda url: "<html>Sign in to see this job</html>"  # noqa: E731  LinkedIn, after a few reads
-    with pytest.raises(sources.SourceError, match="sign in"):
-        save_job(store, link, get=web, page=signin)
+    link = "https://careers.initech.example/jobs/42"
+    with pytest.raises(ValueError, match=r"robots\.txt"):  # LinkedIn is never read
+        save_job(store, "https://www.linkedin.com/jobs/view/4000000001/", get=web)
     with pytest.raises(ValueError, match="can't read that link"):
-        save_job(store, "https://careers.initech.example/jobs/42", get=web)
+        save_job(store, link, get=web)
     job, read = save_job(store, link, "Initech", "Staff Engineer", "Build things.\nPay: $200,000 - $240,000",
-                         get=web, page=signin)
+                         get=web)
     assert not read and job.key == "manual:initech:staff-engineer" and job.url == link
     stored, rec = store.find(job.key)
     assert rec["status"] == "queued" and stored.description.startswith("Build things")

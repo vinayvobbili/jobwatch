@@ -395,9 +395,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("add", help="add a job found elsewhere (LinkedIn, a referral, a recruiter): `add <link>` "
                        "reads the posting from Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google "
-                       "Careers, amazon.jobs, Oracle Recruiting Cloud, SmartRecruiters or Avature (a LinkedIn "
-                       "link is matched to the company's own board); `add <company> <title>` "
-                       "for anything else. --status queued to consider it, else it's an application")
+                       "Careers, amazon.jobs, Oracle Recruiting Cloud, SmartRecruiters or Avature; `add <company> "
+                       "<title>` for anything else, a LinkedIn link included (--url; LinkedIn's robots.txt doesn't "
+                       "allow reading it, so jobwatch looks for the job on the company's own board). "
+                       "--status queued to consider it, else it's an application")
     p.add_argument("job", nargs="+", metavar="LINK | COMPANY TITLE")
     p.add_argument("--url", help="link to the posting, with a company and title")
     p.add_argument("--company", help="with a link: the company's name, when the board doesn't give it (Workday)")

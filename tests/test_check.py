@@ -10,7 +10,7 @@ from jobwatch.store import Store
 from jobwatch.watch import check_postings, queue
 
 from .conftest import LEVER, RESPONSES
-from .test_linkedin import page_for
+from .test_linkedin import no_linkedin
 
 LEVER_API = "https://api.lever.co/v0/postings/globex?mode=json"
 
@@ -22,20 +22,21 @@ def test_closed_and_reopened_postings_are_recorded(watchlist, web):
     store.set_status(["lever:globex:aaaa-1111"], "applied")
     store.set_status(["ashby:initech:c1"], "queued")
     store.add("Umbrella", "Field Engineer")                                   # nothing to check it on
-    store.add("Hooli", "Staff Engineer", url="https://www.linkedin.com/jobs/view/4123456789/")
+    store.add("Hooli", "Staff Engineer", url="https://www.linkedin.com/jobs/view/4123456789/")  # never read
     web.responses[LEVER_API] = [LEVER[1]]                                       # aaaa-1111 is gone
-    got = {c.job.key: (c.result, c.detail) for c in check_postings(store, page=lambda url: page_for(closed=True))}
+    page = no_linkedin(lambda url: "")
+    got = {c.job.key: (c.result, c.detail) for c in check_postings(store, page=page)}
     assert got["lever:globex:aaaa-1111"] == ("closed", "")
     assert got["ashby:initech:c1"] == ("open", "")
     assert got["manual:umbrella:field-engineer"] == ("unknown", "no link jobwatch can read")
-    assert got["manual:hooli:staff-engineer"][0] == "closed"
+    assert got["manual:hooli:staff-engineer"] == ("unknown", "jobwatch can't read that site: check it yourself")
     assert store.find("lever:globex:aaaa-1111")[1]["closed"]
-    again = {c.job.key: c for c in check_postings(store, page=lambda url: page_for(closed=True))}
+    again = {c.job.key: c for c in check_postings(store, page=page)}
     assert again["lever:globex:aaaa-1111"].result == "closed" and again["lever:globex:aaaa-1111"].detail.startswith(
         "since 20")
     web.responses[LEVER_API] = LEVER
-    again = {c.job.key: c.result for c in check_postings(store, page=lambda url: page_for())}
-    assert again["lever:globex:aaaa-1111"] == "reopened" and again["manual:hooli:staff-engineer"] == "reopened"
+    again = {c.job.key: c.result for c in check_postings(store, page=page)}
+    assert again["lever:globex:aaaa-1111"] == "reopened" and again["manual:hooli:staff-engineer"] == "unknown"
     assert not store.find("lever:globex:aaaa-1111")[1]["closed"]
     assert not store.set_closed("lever:globex:aaaa-1111", False)  # no change
 
