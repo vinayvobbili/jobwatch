@@ -68,9 +68,10 @@ def test_errors_are_one_line(web, watchlist, tmp_path):
 
 def test_config_validation(tmp_path):
     p = tmp_path / "c.yaml"
-    p.write_text("companies: [monster:acme]\n")
-    with pytest.raises(config.ConfigError, match="unknown source 'monster'"):
-        config.load(p)
+    p.write_text("companies: [monster:acme, lever:a]\n")
+    cfg = config.load(p)  # a source this version doesn't know is set aside, not fatal
+    assert [b.board for b in cfg.boards] == ["a"]
+    assert [(b.source, b.board) for b in cfg.unknown] == [("monster", "acme")]
     p.write_text("companies: [lever:a, lever:a]\n")
     with pytest.raises(config.ConfigError, match="listed twice"):
         config.load(p)
