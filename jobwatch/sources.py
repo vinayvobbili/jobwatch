@@ -1,10 +1,11 @@
-"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling and Google.
+"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google and
+Oracle Recruiting Cloud.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
 Google return a whole board in one response, and a parser turns it into Jobs. Rippling lists a board in one
 response too, but its postings' text is read one at a time.
-Workday and Eightfold boards at large companies list thousands of roles, so those are searched for the
+Workday, Eightfold and Oracle boards at large companies list thousands of roles, so those are searched for the
 watchlist's job titles, and only the new postings whose titles match are read in full (see fetch).
 """
 
@@ -432,6 +433,90 @@ def _rippling_read(j: Job, url: str, get) -> Job:
     return j
 
 
+# -- Oracle Recruiting Cloud (Oracle Fusion HCM's careers sites): board "<pod>.fa.<region>/<site>", from
+# https://<pod>.fa.<region>.oraclecloud.com/hcmUI/CandidateExperience/en/sites/<site>. The site is built on a
+# public REST API: searched like Workday, a page of requisitions at a time, and a new posting whose title matches
+# is read in full from its own record.
+
+ORACLE_PAGE = 100     # requisitions a search asks for at once (the careers site itself asks for 25)
+ORACLE_WORKERS = 2
+_ORACLE_HOST = re.compile(r"([\w-]+\.fa(?:\.[\w-]+)?)\.oraclecloud\.com")
+
+
+def _oracle_parts(board: str) -> tuple[str, str, str]:
+    """(API base, site, pod) for a board like "eeho.fa.us2/CX_45001"."""
+    pod, _, site = board.partition("/")
+    if not (re.fullmatch(r"[\w-]+\.fa(?:\.[\w-]+)?", pod) and re.fullmatch(r"[\w-]+", site)):
+        raise SourceError(f"an Oracle board looks like pod.fa.region/SiteNumber, got {board!r}")
+    return f"https://{pod}.oraclecloud.com/hcmRestApi/resources/latest", site, pod
+
+
+def _oracle_url(board: str, pid: str) -> str:
+    return f"{careers_url('oracle', board)}/job/{pid}"
+
+
+def _oracle_places(r: dict) -> list[str]:
+    return split_locations(r.get("PrimaryLocation") or "", *(s.get("Name") or "" for s in r.get("secondaryLocations")
+                                                             or []))
+
+
+def _oracle_remote(r: dict, places: list[str]) -> bool | None:
+    return True if r.get("WorkplaceTypeCode") == "ORA_REMOTE" or any(is_remote(p) for p in places) else None
+
+
+def fetch_oracle(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    get = get or get_json
+    api, site, pod = _oracle_parts(board)
+    reqs = {}
+    for term in search or [""]:
+        # the finder's own separators (, ;) and quotes can't be in a keyword
+        keyword = quote(" ".join(re.sub(r'[",;]', " ", term).split()), safe="")
+        def page(offset, keyword=keyword):
+            d = ((get(f"{api}/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList.secondaryLocations"
+                      f"&finder=findReqs;siteNumber={site},limit={ORACLE_PAGE},offset={offset}"
+                      + (f",keyword={keyword}" if keyword else "")) or {}).get("items") or [{}])[0]
+            return d.get("requisitionList") or [], d.get("TotalJobsCount") or 0
+        for r in _search_all(page, ORACLE_PAGE, cap, ORACLE_WORKERS):
+            if r.get("Id"):
+                reqs.setdefault(str(r["Id"]), r)
+
+    def job(item) -> Job:
+        pid, r = item
+        key = f"oracle:{board}:{pid}"
+        if known and key in known and known[key].description:
+            return known[key]
+        places = _oracle_places(r)
+        j = Job(source="oracle", company=board, id=pid, title=(r.get("Title") or "").strip(),
+                url=_oracle_url(board, pid), company_name=pod.partition(".")[0], locations=places,
+                remote=_oracle_remote(r, places), posted=_time(r.get("PostedDate")))
+        if wanted and not wanted(j.title):
+            return j
+        return _unread_if_refused(lambda: _oracle_read(j, api, site, get), j)
+    return _details(list(reqs.items()), job, ORACLE_WORKERS)
+
+
+def _oracle_read(j: Job, api: str, site: str, get) -> Job:
+    """Fill an Oracle job from its requisition's record."""
+    d = (get(f"{api}/recruitingCEJobRequisitionDetails?expand=secondaryLocations,requisitionFlexFields"
+             f"&onlyData=true&finder=ById;Id=%22{quote(j.id, safe='')}%22,siteNumber={site}") or {}).get("items") or []
+    if not d:
+        raise NotFound("that Oracle posting isn't open any more")
+    info = d[0]
+    j.title = (info.get("Title") or j.title).strip()
+    j.locations = _oracle_places(info) or j.locations
+    j.remote = _oracle_remote(info, j.locations)
+    j.department = info.get("Category") or info.get("JobFunction") or j.department
+    j.posted = _time(info.get("ExternalPostedStartDate")) or j.posted
+    # the company's own fields: "Base Pay/Salary: New York,NY $137,750.00-$185,000.00", "Years: 3 to 5+ years"
+    fields = "\n".join(f"{f['Prompt'].strip()}: {html_to_text(str(f['Value']))}"
+                       for f in info.get("requisitionFlexFields") or [] if f.get("Prompt") and f.get("Value"))
+    j.description = "\n\n".join(t for t in (*(html_to_text(info.get(k) or "") for k in (
+        "ExternalDescriptionStr", "ExternalResponsibilitiesStr", "ExternalQualificationsStr",
+        "OrganizationDescriptionStr")), fields) if t)
+    _salary(j, j.description)
+    return j
+
+
 # -- Google (with YouTube and DeepMind): board "google" for its roles in the US, "google/any" for all of them.
 # Google Careers publishes every open role, worldwide and with its full text, as one XML feed for job sites
 # (~20 MB): one request a run, kept for a few minutes so a run's other reads of it don't fetch it again.
@@ -549,6 +634,8 @@ SOURCES = {
     "jibe": Source("jibe", "", None, "https://{board}/careers-home/jobs", fetch_jibe),
     "rippling": Source("rippling", "", None, "https://ats.rippling.com/{board}/jobs", fetch_rippling),
     "google": Source("google", "", None, GOOGLE_JOBS, fetch_google),
+    "oracle": Source("oracle", "", None, "https://{pod}.oraclecloud.com/hcmUI/CandidateExperience/en/sites/{site}",
+                     fetch_oracle),
 }
 
 
@@ -559,6 +646,9 @@ def careers_url(source: str, board: str) -> str:
         return SOURCES[source].careers.format(tenant=tenant, pod=pod, site=site)
     if source == "eightfold":
         return SOURCES[source].careers.format(tenant=board.partition("/")[0], domain=_eightfold_parts(board)[1])
+    if source == "oracle":
+        pod, _, site = board.partition("/")
+        return SOURCES[source].careers.format(pod=pod, site=site)
     return SOURCES[source].careers.format(board=board)
 
 
@@ -575,7 +665,7 @@ def fetch(source: str, board: str, get=None, search=(), wanted=None, known=None,
     """The open roles on one company's board. `get` replaces the HTTP call (tests, caching).
 
     Greenhouse, Lever, Ashby, Workable and Jibe return every role; Google every role whose title has a `search`
-    term's words, from its whole feed. Workday and Eightfold are searched for each
+    term's words, from its whole feed. Workday, Eightfold and Oracle are searched for each
     of `search` (plain title words; nothing searches for everything), reading in full only the postings whose
     title passes `wanted` and that aren't in `known` (key -> Job, read before) already."""
     src = SOURCES[source]
@@ -621,6 +711,8 @@ def detect(url: str) -> tuple[str, str] | None:
         return "rippling", parts[parts.index("board") + 1]
     if host == "careers.google.com" or (host == "google.com" and parts[:2] == ["about", "careers"]):
         return "google", "google"
+    if m := _ORACLE_HOST.fullmatch(host):  # .../hcmUI/CandidateExperience/<lang>/sites/<site>/job/<id>
+        return ("oracle", f"{m.group(1)}/{parts[parts.index('sites') + 1]}") if "sites" in parts[:-1] else None
     source = _HOSTS.get(host)
     if not source:
         return None
@@ -648,6 +740,9 @@ def _posting_id(source: str, url: str) -> str | None:
     if source == "google":  # .../jobs/results/<id>-<slug>; an .../apply/<uuid> link doesn't name the posting
         m = re.match(r"\d+(?=-|$)", parts[parts.index("results") + 1]) if "results" in parts[:-1] else None
         return m.group(0) if m else None
+    if source == "oracle":  # .../sites/<site>/job/<id>, or .../sites/<site>/requisitions/preview/<id>
+        after = next((parts[i + 1] for i in range(len(parts) - 1) if parts[i] in ("job", "preview")), "")
+        return after if after.isdigit() else None
     if source == "workable":
         for marker in ("j", "view"):
             if marker in parts[:-1]:
@@ -687,6 +782,10 @@ def posting(url: str, get=None) -> Job | None:
         if not j.title:
             raise NotFound("that Rippling posting isn't open any more")
         return j
+    if source == "oracle":  # one requisition is read on its own, by its id
+        api, site, pod = _oracle_parts(board)
+        return _oracle_read(Job(source="oracle", company=board, id=pid, title="", url=_oracle_url(board, pid),
+                                company_name=pod.partition(".")[0]), api, site, get)
     for j in fetch(source, board, get):
         if j.id.lower() == pid.lower():
             return j
@@ -789,8 +888,9 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
                 continue
         return hits
     names = board_names(company)
-    # jibe: sites on their own domains; google: Google's own board ("Google DeepMind" finds it too)
-    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe", "google")]
+    # jibe: sites on their own domains; google: Google's own board ("Google DeepMind" finds it too); oracle: a
+    # site's host is a pod code ("eeho.fa.us2") nobody can guess from the name, so it's found from a link
+    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe", "google", "oracle")]
     tries += [("google", "google")] if "google" in names else []
 
     def one(t):

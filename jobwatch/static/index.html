@@ -1727,7 +1727,7 @@ function addForm(d) {
   const url = h("input", { type: "text", placeholder: "https://…" });
   const company = h("input", { type: "text", placeholder: "Company" });
   const title = h("input", { type: "text", placeholder: "Job title" });
-  const text = h("textarea", { rows: 5, placeholder: "Paste the posting here to score it and prep for it (not needed for a Greenhouse, Lever, Ashby, Workable, Workday, Rippling or LinkedIn job link)" });
+  const text = h("textarea", { rows: 5, placeholder: "Paste the posting here to score it and prep for it (not needed for a Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Oracle or LinkedIn job link)" });
   const stage = queued ? null : stageSelect("applied", d.stages);
   const f = queued ? null : trackFields({ applied_at: d.today });
   const msg = h("span", { class: "small error" });
