@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "jobwatch"
 version = "0.3.0"
-description = "Watch company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, SmartRecruiters, Google Careers), get a ranked daily digest of new matches (optionally fit-scored against your resume), and track every application. Never auto-applies."
+description = "Watch company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google Careers, Amazon, Oracle Recruiting Cloud, SmartRecruiters), get a ranked daily digest of new matches (optionally fit-scored against your resume), and track every application. Never auto-applies."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

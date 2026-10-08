@@ -319,8 +319,9 @@ def _tracking(p: argparse.ArgumentParser):
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="jobwatch", description="Watch company job boards (Greenhouse, Lever, "
-                                 "Ashby, Workable, Workday, Eightfold, Jibe, Rippling, SmartRecruiters, Google "
-                                 "Careers) and get a ranked digest of new matches.")
+                                 "Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google Careers, Amazon, "
+                                 "Oracle Recruiting Cloud, SmartRecruiters) and get a ranked digest of new "
+                                 "matches.")
     ap.add_argument("--version", action="version", version=f"jobwatch {__version__}")
     ap.add_argument("-c", "--config", help="watchlist file (default: ./jobwatch.yaml, $JOBWATCH_CONFIG, "
                     "~/.config/jobwatch/config.yaml)")
@@ -374,8 +375,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_mark)
 
     p = sub.add_parser("add", help="add a job found elsewhere (LinkedIn, a referral, a recruiter): `add <link>` "
-                       "reads the posting from Greenhouse, Lever, Ashby, Workable, Workday, Rippling, "
-                       "SmartRecruiters or Google Careers (a LinkedIn "
+                       "reads the posting from Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google "
+                       "Careers, amazon.jobs, Oracle Recruiting Cloud or SmartRecruiters (a LinkedIn "
                        "link is matched to the company's own board); `add <company> <title>` "
                        "for anything else. --status queued to consider it, else it's an application")
     p.add_argument("job", nargs="+", metavar="LINK | COMPANY TITLE")
