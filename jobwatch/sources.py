@@ -1,11 +1,13 @@
-"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling and Google.
+"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google and
+Amazon.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
 Google return a whole board in one response, and a parser turns it into Jobs. Rippling lists a board in one
 response too, but its postings' text is read one at a time.
 Workday and Eightfold boards at large companies list thousands of roles, so those are searched for the
-watchlist's job titles, and only the new postings whose titles match are read in full (see fetch).
+watchlist's job titles, and only the new postings whose titles match are read in full (see fetch). Amazon's
+own search (amazon.jobs) is searched the same way, and answers with each role's full text.
 """
 
 from __future__ import annotations
@@ -525,6 +527,105 @@ def _google_posting(pid: str, board: str, get) -> Job:
     raise NotFound("Google Careers doesn't list that job any more")
 
 
+# -- Amazon (with AWS and its subsidiaries): board "amazon" for its roles in the US, "amazon/any" for all of them.
+# amazon.jobs answers its own search in JSON, each role with its full text, 100 a page; its robots.txt closes
+# only /internal pages. It lists tens of thousands of roles, so like a Workday board it's searched for the
+# watchlist's title words, newest first.
+
+AMAZON_JOBS = "https://www.amazon.jobs"
+AMAZON_SEARCH = AMAZON_JOBS + "/en/search.json"
+AMAZON_PAGE = 100
+AMAZON_WORKERS = 1  # one page at a time: a search term is at most SEARCH_CAP / AMAZON_PAGE requests
+# Pay is a line per place: "USA, CA, Mountain View - 193,300.00 - 261,500.00 USD annually"
+_AMAZON_PAY = re.compile(r"(\d[\d,]*(?:\.\d+)?) - (\d[\d,]*(?:\.\d+)?) USD annually")
+
+
+def _amazon_anywhere(board: str) -> bool:
+    if board not in ("amazon", "amazon/any"):
+        raise SourceError(f"the Amazon board is amazon (its US roles) or amazon/any, got {board!r}")
+    return board == "amazon/any"
+
+
+def _amazon_url(term: str, offset: int, anywhere: bool, size: int = AMAZON_PAGE) -> str:
+    country = "" if anywhere else "&normalized_country_code%5B%5D=USA"
+    return f"{AMAZON_SEARCH}?base_query={quote(term)}&offset={offset}&result_limit={size}&sort=recent{country}"
+
+
+def _amazon_places(p: dict) -> tuple[list[str], bool | None]:
+    """(places, remote): each place as "Boston, Massachusetts, USA", a virtual one as "Remote - Texas, USA"
+    (remote for people there); remote is True for a role that's virtual anywhere in its country."""
+    places, remote = [], None
+    for raw in p.get("locations") or []:
+        try:
+            loc = json.loads(raw) if isinstance(raw, str) else raw
+        except json.JSONDecodeError:
+            continue
+        where = loc.get("normalizedLocation") or loc.get("location") or ""
+        if loc.get("type") == "VIRTUAL":
+            where = f"Remote - {where}"
+            remote = True if not loc.get("region") else remote
+        places.append(where)
+    return split_locations(*places) or split_locations(p.get("normalized_location") or p.get("location") or ""), \
+        remote
+
+
+def _amazon_posted(text: str) -> datetime | None:
+    """ "August 27, 2026" (or "October  8, 2026")."""
+    try:
+        return datetime.strptime(" ".join((text or "").split()), "%B %d, %Y").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _amazon_job(p: dict, board: str, read: bool = True) -> Job:
+    """A Job from one search result; `read` False keeps it without its text, like a searched board's unread one."""
+    pid = str(p.get("id_icims") or "")
+    places, remote = _amazon_places(p)
+    j = Job(source="amazon", company=board, id=pid, title=(p.get("title") or "").strip(),
+            url=AMAZON_JOBS + (p.get("job_path") or f"/en/jobs/{pid}"), company_name="Amazon", locations=places,
+            remote=remote, department=p.get("job_category") or "", posted=_amazon_posted(p.get("posted_date")))
+    if read:
+        parts = [html_to_text(p.get("description") or "")]
+        for heading, key in (("Basic qualifications", "basic_qualifications"),
+                             ("Preferred qualifications", "preferred_qualifications")):
+            if text := html_to_text(p.get(key) or ""):
+                parts.append(f"{heading}\n{text}")
+        j.description = "\n\n".join(t for t in parts if t)
+        pay = [(float(low.replace(",", "")), float(high.replace(",", "")))
+               for low, high in _AMAZON_PAY.findall(j.description)]
+        # the lowest-paid place's floor to the highest-paid one's top
+        _salary(j, f"${min(low for low, _ in pay):,.0f} - ${max(high for _, high in pay):,.0f}" if pay
+                else j.description)
+    return j
+
+
+def fetch_amazon(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """Amazon's roles (its US ones, for board "amazon") that amazon.jobs finds for each of `search`, newest
+    first and up to `cap` a term; its newest with no terms. A result has the role's full text, so nothing more
+    is read and `known` isn't needed; a role whose title fails `wanted` is kept without its text."""
+    get = get or get_json
+    anywhere, found = _amazon_anywhere(board), {}
+    for term in search or [""]:
+        def page(offset, term=term):
+            d = get(_amazon_url(term, offset, anywhere)) or {}
+            if d.get("error"):
+                raise SourceError(f"amazon.jobs: {d['error']}")
+            return d.get("jobs") or [], d.get("hits") or 0
+        for p in _search_all(page, AMAZON_PAGE, cap, AMAZON_WORKERS):
+            if p.get("id_icims"):
+                found.setdefault(str(p["id_icims"]), p)
+    return [_amazon_job(p, board, read=not (wanted and not wanted((p.get("title") or "").strip())))
+            for p in found.values()]
+
+
+def _amazon_posting(pid: str, board: str, get) -> Job:
+    """One role, found by searching amazon.jobs for its id (worldwide: a link can be to a role outside the US)."""
+    for p in (get(_amazon_url(pid, 0, True, size=10)) or {}).get("jobs") or []:
+        if str(p.get("id_icims")) == pid:
+            return _amazon_job(p, board)
+    raise NotFound("amazon.jobs doesn't list that job any more")
+
+
 @dataclass(frozen=True)
 class Source:
     name: str
@@ -549,6 +650,7 @@ SOURCES = {
     "jibe": Source("jibe", "", None, "https://{board}/careers-home/jobs", fetch_jibe),
     "rippling": Source("rippling", "", None, "https://ats.rippling.com/{board}/jobs", fetch_rippling),
     "google": Source("google", "", None, GOOGLE_JOBS, fetch_google),
+    "amazon": Source("amazon", "", None, AMAZON_JOBS + "/en/search", fetch_amazon),
 }
 
 
@@ -575,7 +677,7 @@ def fetch(source: str, board: str, get=None, search=(), wanted=None, known=None,
     """The open roles on one company's board. `get` replaces the HTTP call (tests, caching).
 
     Greenhouse, Lever, Ashby, Workable and Jibe return every role; Google every role whose title has a `search`
-    term's words, from its whole feed. Workday and Eightfold are searched for each
+    term's words, from its whole feed. Workday, Eightfold and Amazon are searched for each
     of `search` (plain title words; nothing searches for everything), reading in full only the postings whose
     title passes `wanted` and that aren't in `known` (key -> Job, read before) already."""
     src = SOURCES[source]
@@ -621,6 +723,8 @@ def detect(url: str) -> tuple[str, str] | None:
         return "rippling", parts[parts.index("board") + 1]
     if host == "careers.google.com" or (host == "google.com" and parts[:2] == ["about", "careers"]):
         return "google", "google"
+    if host in ("amazon.jobs", "account.amazon.jobs"):  # account.: the sign-in side, never read; its links name the job
+        return "amazon", "amazon"
     source = _HOSTS.get(host)
     if not source:
         return None
@@ -648,6 +752,9 @@ def _posting_id(source: str, url: str) -> str | None:
     if source == "google":  # .../jobs/results/<id>-<slug>; an .../apply/<uuid> link doesn't name the posting
         m = re.match(r"\d+(?=-|$)", parts[parts.index("results") + 1]) if "results" in parts[:-1] else None
         return m.group(0) if m else None
+    if source == "amazon":  # /en/jobs/<id>/<slug>, or account.amazon.jobs/jobs/<id>/apply
+        pid = parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else ""
+        return pid if pid.isdigit() else None
     if source == "workable":
         for marker in ("j", "view"):
             if marker in parts[:-1]:
@@ -666,6 +773,9 @@ def posting(url: str, get=None) -> Job | None:
         pid = _posting_id(source, url)
         return _google_posting(pid, board, get) if pid else None
     get = get or get_json
+    if source == "amazon":
+        pid = _posting_id(source, url)
+        return _amazon_posting(pid, board, get) if pid else None
     if source == "workday":
         path = urlparse(url if "//" in url else f"https://{url}").path
         if "/job/" not in path:
@@ -789,9 +899,10 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
                 continue
         return hits
     names = board_names(company)
-    # jibe: sites on their own domains; google: Google's own board ("Google DeepMind" finds it too)
-    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe", "google")]
+    # jibe: sites on their own domains; google, amazon: the company's own board ("Google DeepMind", "AWS" find them)
+    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe", "google", "amazon")]
     tries += [("google", "google")] if "google" in names else []
+    tries += [("amazon", "amazon")] if {"amazon", "aws"} & set(names) else []
 
     def one(t):
         try:
