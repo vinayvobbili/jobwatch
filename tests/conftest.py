@@ -141,6 +141,7 @@ def no_real_state(tmp_path, monkeypatch):
 def web(monkeypatch):
     fake = FakeWeb()
     monkeypatch.setattr(sources, "get_json", fake)
+    monkeypatch.setattr(sources, "get_text", fake)  # boards read as pages or XML (Avature)
     return fake
 
 
