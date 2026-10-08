@@ -295,7 +295,7 @@ Queued jobs leave the digest. The queue flags any posting that has since closed,
 applying: pay below `min_salary`, a place your filters don't want (a job queued by hand never passed them),
 and anything your `filters.flags` patterns find in the posting. Every fetch notices a watched board's
 postings closing; `jobwatch check` also checks queued jobs and open applications from boards you don't
-watch, and from LinkedIn links:
+watch (a LinkedIn job can't be checked: LinkedIn's robots.txt doesn't allow reading its postings):
 
 ```
 jobwatch check                             # closed (or back) since the last check; --all lists the open ones too
@@ -306,11 +306,11 @@ jobwatch check                             # closed (or back) since the last che
 A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
 posting on Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers, amazon.jobs, Oracle Recruiting
 Cloud, SmartRecruiters or an Avature portal, jobwatch reads the posting from there, so it
-can be fit-scored and prepped for like any other, even if you don't watch that company. A LinkedIn job link is
-read from LinkedIn's public posting page (one page, the one you gave; jobwatch doesn't search LinkedIn), then
-the same job is looked for on the company's own board: found, that's what is tracked, since it's where the
-application goes; not found, the LinkedIn posting is. For anything else (a company's own site), give the
-company and title and paste the posting's text:
+can be fit-scored and prepped for like any other, even if you don't watch that company. jobwatch never reads
+LinkedIn (its robots.txt disallows every page), so a LinkedIn job link needs the company and title too; the
+same job is looked for on the company's own board: found, that's what is tracked, since it's where the
+application goes; not found, the job is kept with the LinkedIn link and the text you paste. For anything else
+(a company's own site), give the company and title and paste the posting's text:
 
 ```
 jobwatch add https://apply.workable.com/acme/j/A1B2C3D4E5/ --status queued

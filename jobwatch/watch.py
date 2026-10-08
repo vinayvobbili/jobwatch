@@ -142,8 +142,9 @@ def _open_ids(job: Job, get, boards: dict) -> set[str]:
 
 
 def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> bool | None:
-    """Whether a job's posting still takes applications: on its board, at its link (a supported board or a
-    LinkedIn job), or None when jobwatch can't tell. Raises SourceError when the board can't be read now."""
+    """Whether a job's posting still takes applications: on its board, at its link (a supported board), or None
+    when jobwatch can't tell (a LinkedIn job: LinkedIn's robots.txt doesn't allow reading it). Raises SourceError
+    when the board can't be read now."""
     boards = {} if boards is None else boards
     # one posting can be read by its link: surer than a title search
     if job.source in ("workday", "rippling", "amazon", "oracle", "smartrecruiters", "avature"):
@@ -153,10 +154,8 @@ def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> boo
             return False
     if job.source in sources.SOURCES:
         return job.id in _open_ids(job, get, boards)
-    if not job.url:
+    if not job.url or linkedin.job_id(job.url):
         return None
-    if p := linkedin.read(job.url, page):
-        return not p.closed
     try:
         return sources.posting(job.url, get) is not None or None
     except sources.NotFound:
@@ -200,28 +199,26 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
     A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google,
     Amazon, Oracle, SmartRecruiters, Avature) is read in full, so the job can be scored and prepped like any
     other; its board needn't be watched.
-    A LinkedIn job link is read from LinkedIn's public posting page, and the same job is looked for on the
-    company's own board (a watched one in `boards` under the company's name first): found, that posting is
-    tracked, since it's where the application goes; not found, the LinkedIn posting is. Anything else (a
-    company's own site) needs the company, the title and, to be scored, the posting's text pasted. An
-    application already further along keeps its stage."""
-    link, job, p = link.strip(), None, None
-    try:
-        p = linkedin.read(link, page) if link else None
-    except sources.SourceError:  # LinkedIn wants a sign-in now: what the person gave is enough, if they gave it
+    A LinkedIn job link isn't read (LinkedIn's robots.txt disallows its job pages), so it needs the company and
+    the title too; the same job is looked for on the company's own board (a watched one in `boards` under the
+    company's name first): found, that posting is tracked, since it's where the application goes; not found, the
+    job is kept with the LinkedIn link and the pasted text. Anything else (a company's own site) needs the
+    company, the title and, to be scored, the posting's text pasted. An application already further along
+    keeps its stage."""
+    link, job = link.strip(), None
+    if pid := linkedin.job_id(link):
         if not (company.strip() and title.strip()):
-            raise
-    if p:
+            raise ValueError("LinkedIn's robots.txt doesn't allow reading its job postings: give the company and "
+                             "the job title too, and paste the posting's text to score it")
+        p = linkedin.Posting(id=pid, title=title.strip(), company=company.strip(), location=location,
+                             description=text.strip())
         job = linkedin.on_board(p, [(b.source, b.board, b.name) for b in boards], get, page)
-        why = f"Found on LinkedIn: {p.url}" + (" (no longer accepting applications there)" if p.closed else "")
+        why = f"Found on LinkedIn: {p.url}"
         if job is None:
-            job = store.add(company.strip() or p.company, title.strip() or p.title, url=p.url, status=status,
-                            note=note, applied=applied, location=location or p.location,
-                            description=text.strip() or p.description)
+            job = store.add(p.company, p.title, url=p.url, status=status, note=note, applied=applied,
+                            location=location, description=p.description)
             store.add_note(job.key, why)
-            if p.closed:
-                store.set_closed(job.key, True)
-            return job, True
+            return job, False
         if sources.SOURCES[job.source].search:  # a searched board names only its tenant ("acme")
             job.company_name = p.company
         note = f"{note} {why}" if note else why

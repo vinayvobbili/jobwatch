@@ -268,8 +268,9 @@ def add_application(
     .../jobs/results/<id> link), amazon.jobs (a .../jobs/<id> link), Oracle Recruiting Cloud (an
     ...oraclecloud.com/.../sites/<site>/job/<id> link), SmartRecruiters (a jobs.smartrecruiters.com/<company>/<id>
     link) or an Avature portal (a .../JobDetail/<title>/<id> link) is read in full (company and
-    title may be left out); so is a LinkedIn job link, which is tracked on the company's own board when the same
-    job is found there. Otherwise give company and title, and text (the posting, pasted) so it can be scored.
+    title may be left out). A LinkedIn job link is never read (LinkedIn's robots.txt disallows it): give company
+    and title with it (and text to score it), and it's tracked on the company's own board when the same job is
+    found there. Otherwise give company and title, and text (the posting, pasted) so it can be scored.
     For a job jobwatch already tracks (it came from get_digest or get_job), use mark_job instead; for the jobs in
     job-alert emails, import_job_alerts."""
     cfg, store = _open()

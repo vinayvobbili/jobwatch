@@ -9,9 +9,8 @@ Each sender has a parser, with a generic one for the rest. Every job's link is c
 redirect wrappers. Then, for the jobs that pass the watchlist's filters on what the email says:
 
 - a link to one posting on a supported board (Greenhouse, Workday...) is read from there (sources.posting);
-- a LinkedIn link goes through the LinkedIn flow (linkedin.py): the public posting is read only when linkedin.com's
-  robots.txt allows it (today it doesn't), else the email's title, company and place stand in for it, and the same
-  job is looked for on the company's own board;
+- a LinkedIn link is never read (linkedin.com's robots.txt disallows every page): the email's title, company and
+  place stand in for the posting, and the same job is looked for on the company's own board;
 - any other site's page is read only when its robots.txt (the rules for every crawler, `User-agent: *`) allows it,
   for the posting's JobPosting data and a link to the company's board; then the company's board is looked for too.
 
@@ -706,18 +705,9 @@ class _Resolver:
                     return
             except sources.SourceError as e:
                 f.notes.append(f"couldn't read {a.url}: {e}")
-        elif a.site == "linkedin":
-            pid = linkedin.job_id(a.url)
-            if self.robots.allowed(linkedin.GUEST.format(id=pid)):
-                try:
-                    p = linkedin.read(a.url, self.page)
-                    job.description, job.salary_min, job.salary_max = p.description, p.salary_min, p.salary_max
-                    f.how = "page"
-                except sources.SourceError as e:
-                    f.notes.append(f"LinkedIn didn't show the posting: {e}")
-            else:
-                f.notes.append("linkedin.com's robots.txt doesn't allow reading the posting: the email's details "
-                               "are used")
+        elif a.site == "linkedin":  # never read: linkedin.com's robots.txt disallows every page
+            f.notes.append("linkedin.com's robots.txt doesn't allow reading the posting: the email's details "
+                           "are used")
         elif a.url:
             if self.robots.allowed(a.url):
                 self._read_page(f)

@@ -1,23 +1,19 @@
-"""Jobs found on LinkedIn: read a posting from its public page, then look for the same job on the company's own
-board, where the application goes and where jobwatch can keep checking it.
+"""Jobs found on LinkedIn: look for the same job on the company's own board, where the application goes and
+where jobwatch can keep checking it.
 
-LinkedIn serves every public posting at /jobs-guest/jobs/api/jobPosting/<id> without signing in: the title,
-company, place, pay when listed, the text, and whether it still takes applications. It's one page per link the
-person gives, nothing more: jobwatch doesn't search or crawl LinkedIn.
+LinkedIn's robots.txt disallows every page (`Disallow: /` for `User-agent: *`), its job postings included, so
+jobwatch never reads linkedin.com. From a LinkedIn link it takes only the posting's id; the company, the title
+and the text come from the person (or a job-alert email).
 """
 
 from __future__ import annotations
 
-import html
 import re
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlparse
 
 from . import sources
 from .models import Job
-from .text import html_to_text, parse_salary
-
-GUEST = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{id}"
 
 
 def job_id(url: str) -> str | None:
@@ -38,46 +34,10 @@ class Posting:
     company: str
     location: str
     description: str
-    salary_min: int | None = None
-    salary_max: int | None = None
-    closed: bool = False
 
     @property
     def url(self) -> str:
         return f"https://www.linkedin.com/jobs/view/{self.id}/"
-
-
-def _first(pattern: str, page: str) -> str:
-    m = re.search(pattern, page, re.S)
-    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", m.group(1))).split()) if m else ""
-
-
-def parse(page: str, pid: str) -> Posting:
-    """A posting from LinkedIn's public posting page. Raises SourceError when the page isn't one (LinkedIn
-    answers too many requests with a sign-in or challenge page)."""
-    title = _first(r"<h2[^>]*top-card-layout__title[^>]*>(.*?)</h2>", page)
-    if not title:
-        raise sources.SourceError("LinkedIn didn't show that posting (it may be asking to sign in): try again "
-                                  "later, or add it with the company, title and pasted text")
-    body = re.search(r'<div class="show-more-less-html__markup[^"]*"[^>]*>(.*?)</div>\s*(?:<button|</section)',
-                     page, re.S)
-    pay = _first(r'<div class="salary compensation__salary"[^>]*>(.*?)</div>', page).replace("/yr", "")
-    p = Posting(id=pid, title=title, company=_first(r"topcard__org-name-link[^>]*>(.*?)</a>", page),
-                location=_first(r'<span class="topcard__flavor topcard__flavor--bullet"[^>]*>(.*?)</span>', page),
-                description=html_to_text(body.group(1)) if body else "",
-                closed=bool(re.search(r"No longer accepting applications", page, re.I)))
-    if found := parse_salary(pay):
-        p.salary_min, p.salary_max = found
-        p.description += f"\n\nBase pay range (LinkedIn): {pay}"
-    return p
-
-
-def read(url: str, page=None) -> Posting | None:
-    """The posting a LinkedIn job link points to; None when the link isn't to one LinkedIn job."""
-    pid = job_id(url)
-    if not pid:
-        return None
-    return parse((page or sources.get_text)(GUEST.format(id=pid)), pid)
 
 
 _SUFFIX = re.compile(r"\b(inc|incorporated|llc|ltd|limited|corp|corporation|co|plc|gmbh|group|holdings|"
