@@ -24,6 +24,7 @@ import yaml
 
 from . import __version__, chat, config, contacts, learn, prep, report, sources
 from .config import ConfigError
+from .filters import KINDS, rejection
 from .package import Package
 from .score import ScoringUnavailable, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, STATUSES, Store
@@ -156,8 +157,10 @@ class App:
         raw = (yaml.safe_load(self.path.read_text()) or {}) if self.path.is_file() else {}
         companies = []
         for c in raw.get("companies") or []:
-            b = config._board(c, self.path)
-            companies.append({"source": b.source, "board": b.board, "name": b.name})
+            # A source this version doesn't know shows as an error on that board, so it can be removed here.
+            b = config._board(c, self.path, strict=False)
+            companies.append({"source": b.source, "board": b.board, "name": b.name,
+                              **({} if b.source in sources.SOURCES else {"error": config.UNKNOWN_SOURCE})})
         return {"path": str(self.path), "exists": self.path.is_file(), "version": __version__,
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
@@ -202,6 +205,29 @@ class App:
             # "New" shows once: the next visit lists these as seen.
             store.set_status([k for e in d.entries if e.record.get("status") == "new" for k in e.keys], "shown")
             return out
+        return self._with_store(run)
+
+    def get_hidden(self, q) -> dict:
+        """What the filters hide from Today: how many, by which filter (filters.KINDS), and with `kind`, those
+        jobs, newest first (`limit` of them, 100 by default)."""
+        kind = (q.get("kind") or [""])[0]
+        if kind and kind not in KINDS:
+            raise ApiError(f"kind must be one of {', '.join(KINDS)}")
+        limit = int((q.get("limit") or ["100"])[0])
+
+        def run(cfg, store):
+            by: dict[str, int] = {}
+            jobs = []
+            for job, _ in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
+                if r := rejection(job, cfg.filters):
+                    by[r[0]] = by.get(r[0], 0) + 1
+                    if r[0] == kind:
+                        jobs.append({"key": job.key, "title": job.title, "company": job.display_company,
+                                     "url": job.url, "locations": job.locations, "pay": job.pay(),
+                                     "age_days": job.age_days(), "why": r[1]})
+            jobs.sort(key=lambda j: j["age_days"] if j["age_days"] is not None else 10_000)
+            return {"total": sum(by.values()), "by": {k: by[k] for k in KINDS if k in by}, "kind": kind or None,
+                    "jobs": jobs[:limit], "more": max(0, len(jobs) - limit)}
         return self._with_store(run)
 
     def get_queue(self, q) -> list[dict]:
@@ -416,6 +442,7 @@ ROUTES = {
     ("POST", "/api/find"): App.post_find,
     ("POST", "/api/fetch"): App.post_fetch,
     ("GET", "/api/digest"): App.get_digest,
+    ("GET", "/api/hidden"): App.get_hidden,
     ("GET", "/api/queue"): App.get_queue,
     ("GET", "/api/jobs"): App.get_jobs,
     ("GET", "/api/job"): App.get_job,

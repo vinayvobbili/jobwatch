@@ -166,3 +166,65 @@ def test_track_applications(app, web):
         app.post_add({"company": "X", "title": "Y", "status": "skipped"})
     with pytest.raises(ValueError, match="isn't a date"):
         app.post_track({"key": "c1", "follow_up": "soon"})
+
+
+def test_hidden_counts_what_each_filter_hides(app, web):
+    """Today says how many roles the filters hide, by which filter, and lists them on request."""
+    app.post_fetch({})
+    got = app.get_hidden({})
+    assert (got["total"], got["by"], got["jobs"]) == (2, {"excluded": 1, "place": 1}, [])
+    assert got["total"] == sum(app.get_digest({})["rejected"].values())  # the same jobs Today leaves out
+    place = app.get_hidden({"kind": ["place"]})
+    assert [(j["title"], j["company"], j["why"]) for j in place["jobs"]] == [("Account Executive", "Acme", "location")]
+    assert place["more"] == 0 and app.get_hidden({"kind": ["excluded"], "limit": ["0"]})["more"] == 1
+    with pytest.raises(ApiError, match="kind must be one of"):
+        app.get_hidden({"kind": ["salary"]})
+
+
+def test_a_filter_change_shows_at_once(app, watchlist, web):
+    """The filter bar saves through the settings API: the next digest uses the new filters."""
+    app.post_fetch({})
+    before = {j["title"] for j in app.get_digest({})["jobs"]}
+    filters = {**app.get_settings({})["filters"], "min_salary": 250_000}
+    app.post_settings({"filters": filters})
+    after = {j["title"] for j in app.get_digest({})["jobs"]}
+    assert before - after == {"Senior Software Engineer, Platform", "Machine Learning Engineer"}
+    assert app.get_hidden({})["by"] == {"excluded": 1, "place": 1, "pay": 2}
+    assert yaml.safe_load(watchlist.read_text())["filters"]["exclude_titles"] == ["contract"]  # the rest is kept
+
+
+def test_an_unknown_source_breaks_only_its_board(app, watchlist, web):
+    """A board from a source this version doesn't know (a newer jobwatch's) doesn't take every page down:
+    Settings shows it as an error so it can be removed, and checking for jobs skips it."""
+    watchlist.write_text(watchlist.read_text().replace("companies:\n", "companies:\n  - nosuch:acme\n"))
+    s = app.get_settings({})
+    assert s["companies"][0] == {"source": "nosuch", "board": "acme", "name": "", "error": config.UNKNOWN_SOURCE}
+    assert all("error" not in c for c in s["companies"][1:])
+    r = app.post_fetch({})
+    assert r["new"] == 5 and r["errors"] == {"nosuch:acme": config.UNKNOWN_SOURCE}
+    assert len(app.get_digest({})["jobs"]) == 3 and app.get_queue({}) == [] and app.get_hidden({})["total"] == 2
+    app.post_settings({"filters": {"titles": ["engineer"]}})  # saving something else keeps it
+    assert "nosuch:acme" in yaml.safe_load(watchlist.read_text())["companies"]
+    app.post_settings({"companies": [c for c in s["companies"] if "error" not in c]})  # Settings' ✕
+    assert len(app.get_settings({})["companies"]) == 3 and config.load(watchlist).unknown == []
+
+
+def test_an_unknown_source_can_be_removed_by_name(watchlist):
+    watchlist.write_text(watchlist.read_text().replace("companies:\n", "companies:\n  - nosuch:acme\n"))
+    assert [b.board for b in config.load(watchlist).unknown] == ["acme"]
+    assert config.remove_board(watchlist, "nosuch:acme").unknown == []
+    assert len(config.add_board(watchlist, "workable:hooli").boards) == 4
+    with pytest.raises(config.ConfigError, match="unknown source"):
+        config.add_board(watchlist, "nosuch:acme")  # a new board still has to be one jobwatch can read
+
+
+def test_page_has_the_filter_bar(server):
+    """Today shows the filters in force, edits them in place, and says what they hide."""
+    page = request(server, "GET", "/")[1].decode()
+    assert "function filterBar(" in page and "function hiddenLine(" in page
+    assert 'api("/api/hidden' in page and 'api("/api/settings", { filters' in page
+    assert "c.error" in page  # an unknown source shows on its board in Settings
+    ok = {"X-Jobwatch-Token": TOKEN}
+    status, data = request(server, "GET", "/api/hidden?kind=place", headers=ok)
+    assert status == 200 and json.loads(data)["kind"] == "place"
+    assert request(server, "GET", "/api/hidden?kind=bogus", headers=ok)[0] == 400

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from jobwatch.filters import Filters, reject_reason, relevance
+from jobwatch.filters import KINDS, Filters, reject_reason, rejection, relevance
 from jobwatch.models import Job
 
 
@@ -85,9 +85,39 @@ def test_age():
     assert reject_reason(job(), Filters(max_age_days=30)) is None  # unknown date passes
 
 
+def test_rejection_names_the_filter():
+    """Which filter hid a job, for "hidden by your filters": the same checks as reject_reason, in its order."""
+    f = Filters(titles=["engineer"], exclude_titles=["manager"], exclude_departments=["sales"], locations=["remote"],
+                min_salary=200_000, require_salary=True, max_age_days=30)
+    ok = dict(locations=["Remote (United States)"], salary_min=200_000, salary_max=250_000)
+    old = datetime.now(timezone.utc) - timedelta(days=45)
+    cases = [
+        (job(**ok), None),
+        (job(**ok, title="Recruiter"), ("title", "title")),
+        (job(**ok, title="Engineering Manager"), ("excluded", "title matches 'manager'")),
+        (job(**ok, department="Sales"), ("department", "department matches 'sales'")),
+        (job(**{**ok, "locations": ["London, UK"]}), ("place", "location")),
+        (job(**{**ok, "salary_min": None, "salary_max": None}), ("pay", "pay not listed")),
+        (job(**{**ok, "salary_min": 120_000, "salary_max": 160_000}), ("pay", "pay $120K–$160K")),
+        (job(**ok, posted=old), ("age", "posted 45 days ago")),
+        (job(**{**ok, "title": "Recruiter", "locations": ["London, UK"]}), ("title", "title")),  # the first one
+    ]
+    for j, want in cases:
+        assert rejection(j, f) == want
+        assert reject_reason(j, f) == (want[1] if want else None)
+    assert {r[0] for _, r in cases if r} == set(KINDS)
+
+
 def test_unknown_filter_setting_is_an_error():
     with pytest.raises(ValueError, match="min_pay"):
         Filters.from_dict({"min_pay": 1})
+
+
+@pytest.mark.parametrize("key", ["titles", "exclude_titles", "exclude_departments"])
+def test_a_pattern_that_does_not_compile_is_an_error(key):
+    with pytest.raises(ValueError, match=rf"filters\.{key}: '\(staff' isn't a valid pattern"):
+        Filters.from_dict({key: ["engineer", "(staff"]})
+    assert Filters.from_dict({key: [r"\(staff\)", "forward deployed"]})
 
 
 def test_relevance_weights_title_hits_double_and_handles_symbols():

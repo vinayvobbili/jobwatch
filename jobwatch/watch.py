@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import linkedin, sources
-from .config import Board, Config
+from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts
 from .filters import Filters, red_flags, reject_reason, relevance, search_terms, title_ok
 from .models import Job
@@ -27,6 +27,8 @@ class FetchReport:
 def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None) -> FetchReport:
     """Pull every board in the watchlist and record what is new. Boards that fail are reported and skipped."""
     report = FetchReport()
+    for b in cfg.unknown:  # a source this version can't read: say so, and check the rest
+        report.errors[f"{b.source}:{b.board}"] = UNKNOWN_SOURCE
     # Big boards are searched for the watchlist's titles, and a posting is read in full once: the store has it.
     search, wanted = search_terms(cfg.filters), (lambda title: title_ok(title, cfg.filters))
     known = {b: store.board_jobs(b.source, b.board) for b in cfg.boards if sources.SOURCES[b.source].search}
