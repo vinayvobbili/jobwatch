@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, chat, config, learn, prep, report, sources
+from . import __version__, alerts, chat, config, learn, prep, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable
 from .store import STAGES, STATUSES, Store
@@ -108,7 +109,8 @@ def cmd_show(args, cfg, store):
     job, rec = store.find(args.key)
     status = rec["status"] + (f" ({rec['note']})" if rec.get("note") else "")
     closed = f", closed {rec['closed'][:10]}" if rec["closed"] else ""
-    print(f"{job.to_text()}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{closed}")
+    via = f" (via {rec['via']})" if rec.get("via") else ""
+    print(f"{job.to_text()}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{via}{closed}")
     if (contacts := load_contacts(cfg)) and (known := contacts.at(job.display_company, job.company)):
         print(f"You know: {report.people(known, most=10)}")
     if home := store.candidate_home(job):
@@ -204,6 +206,23 @@ def cmd_add(args, cfg, store):
         store.add_note(job.key, args.add_note)
     how = "read from the link" if read else "with the posting's text" if text.strip() else ""
     print(f"{job.key}: {args.status}" + (f" ({job.display_company}, {job.title}; {how})" if how else ""))
+
+
+def cmd_alerts(args, cfg, store):
+    if not (args.emails or args.imap):
+        raise ValueError("give the alert emails: .eml or .mbox files, a folder of them, or - to read stdin; or "
+                         "--imap to read them from the mailbox set in alerts.imap")
+    msgs = alerts.read(args.emails, sys.stdin) if args.emails else []
+    if args.imap:
+        if not cfg.imap:
+            raise ConfigError("--imap reads the mailbox set in alerts.imap in the watchlist, and there's none: "
+                              "see the README's job-alert emails section")
+        msgs += alerts.imap_messages(cfg.imap)
+    r = alerts.intake(cfg, store, msgs, follow=not args.no_follow, dry_run=args.dry_run)
+    if args.format == "json":
+        print(json.dumps(alerts.to_dict(r), indent=2, ensure_ascii=False))
+    else:
+        print(alerts.summary(r, every=args.all))
 
 
 def cmd_applications(args, cfg, store):
@@ -388,7 +407,28 @@ def build_parser() -> argparse.ArgumentParser:
     _tracking(p)
     p.set_defaults(func=cmd_add)
 
-    p = sub.add_parser("applications", aliases=["apps"], help="where each application stands, follow-ups first")
+    p = sub.add_parser("alerts", help="track the jobs in job-alert emails (LinkedIn, Built In, Indeed and others): "
+                       "each is looked for on the company's own board and goes into the digest like any other new "
+                       "job. Pages are read only where robots.txt allows; jobwatch never asks for your mail "
+                       "password", description="Track the jobs in job-alert emails. Give saved emails (.eml), an "
+                       "mbox export, a folder of them, or - to read one email (or an mbox) from stdin. Each job "
+                       "whose title, place and pay pass your filters is looked for on the company's own board "
+                       "(a link to a supported board is read from there); job sites' pages are read only when "
+                       "their robots.txt allows (LinkedIn's and Indeed's don't, so the email's details are used). "
+                       "Jobs already tracked are left alone. --imap reads the last few days' alerts from the "
+                       "mailbox set in alerts.imap (off unless set; the password comes from an environment variable "
+                       "or the macOS keychain, never the watchlist).")
+    p.add_argument("emails", nargs="*", metavar="FILE | FOLDER | -", help=".eml or .mbox files, folders of them, "
+                   "or - for stdin")
+    p.add_argument("--imap", action="store_true", help="also read the last few days' alerts from the mailbox set in "
+                   "alerts.imap (read-only: nothing is marked read, moved or deleted)")
+    p.add_argument("--dry-run", action="store_true", help="show what would be tracked, and record nothing")
+    p.add_argument("--no-follow", action="store_true", help="read no links: track each job as the email has it")
+    p.add_argument("--all", action="store_true", help="list every new job, also the ones your filters leave out")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_alerts)
+
+    p = sub.add_parser("applications", aliases=["apps"],help="where each application stands, follow-ups first")
     p.add_argument("--due", action="store_true", help="only applications to follow up on now")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_applications)
@@ -469,7 +509,8 @@ def main(argv: list[str] | None = None):
             args.func(args, cfg, store)
         finally:
             store.close()
-    except (ConfigError, ScoringUnavailable, chat.ChatUnavailable, KeyError, ValueError, sources.SourceError) as e:
+    except (ConfigError, ScoringUnavailable, chat.ChatUnavailable, KeyError, ValueError, sources.SourceError,
+            alerts.AlertError) as e:
         raise SystemExit(f"jobwatch: {e.args[0] if isinstance(e, KeyError) else e}") from None
 
 

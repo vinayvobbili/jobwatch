@@ -103,7 +103,18 @@ def same_title(a: str, b: str) -> bool:
 
 
 def _bare(name: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", company_names(name)[-1].lower())
+    return re.sub(r"[^a-z0-9]", "", company_names(name)[-1].lower()) if name.strip() else ""
+
+
+def same_company(a: str, b: str) -> bool:
+    """Two names for one company: "Initech, Inc." and "initech" (suffixes, case and punctuation aside)."""
+    return bool(_bare(a)) and _bare(a) == _bare(b)
+
+
+def same_words(a: str, b: str) -> bool:
+    """Exactly the same title, leaving out what's in brackets: stricter than same_title, for telling that a job
+    is one already tracked."""
+    return bool(_words(a)) and _words(a) == _words(b)
 
 
 def on_board(p: Posting, watched: list[tuple[str, str, str]] = (), get=None, page=None) -> Job | None:

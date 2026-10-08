@@ -1,0 +1,18 @@
+From: Job Digest <digest@jobs.example.org>
+To: you@example.com
+Subject: 2 new jobs for you
+Date: Thu, 08 Oct 2026 09:00:00 +0000
+Message-ID: <alert-0004@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<html><body>
+<p>Hi there, here are today's jobs.</p>
+<div><a href="https://www.google.com/url?q=https%3A%2F%2Fjob-boards.greenhouse.io%2Facme%2Fjobs%2F101%3Fgh_src%3DSOURCE-TOKEN%26utm_source%3Ddigest&amp;sa=D">Senior Software Engineer, Platform</a></div>
+<div>Acme &middot; Remote</div>
+<div><a href="https://jobs.example.net/job/12345?utm_source=email&amp;ref=REF-TOKEN&amp;token=TOKEN">View job</a></div>
+<div>Machine Learning Engineer</div>
+<div>Globex | Remote (United States)</div>
+<div>$150,000 - $210,000</div>
+<p><a href="https://jobs.example.org/preferences?token=TOKEN">Change your preferences</a></p>
+</body></html>

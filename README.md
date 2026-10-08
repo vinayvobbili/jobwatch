@@ -316,6 +316,55 @@ pbpaste | jobwatch add "Umbrella" "Staff Engineer" --text - --status queued     
 In the browser, press **Add a job** on the Queue page. Many job sites (LinkedIn's "Apply on company
 website", job-alert emails) link through to the company's own board: that link is the one to use.
 
+### Job-alert emails
+
+The job alerts LinkedIn, Built In, Indeed and other job sites email you can go straight in. Save them from
+your mail app (a `.eml` file each, a folder of them, or an `.mbox` export) and give them to `jobwatch alerts`:
+
+```
+jobwatch alerts ~/Downloads/alerts/ --dry-run      # what's in them, nothing recorded
+jobwatch alerts ~/Downloads/alerts/                # track the new ones
+pbpaste | jobwatch alerts -                        # one message's source, from the clipboard
+```
+
+Each job's title, company, place, pay and link are read from the email, with the tracking taken off the link.
+LinkedIn, Built In and Indeed alerts each have their own reader; any other sender's is read by its job links.
+A job that fails your filters on what the email says is kept as it is, so it's known next time, and nothing
+more is read for it. For the rest, jobwatch looks for the job where the application goes:
+
+- **A link to a company's board** (Greenhouse, Lever, Workday and the rest) is read from there.
+- **A job site's link** is read only if the site's robots.txt allows it. Built In's job pages are allowed, and
+  their full posting is used. LinkedIn's and Indeed's postings aren't (robots.txt disallows them), so they
+  aren't read: the email's details are used.
+- **Then the company's own board** is looked for: one you watch, or one found by name, as `find_board` would.
+  If the same job is posted there, that's what is tracked, with the alert's link kept in its notes.
+
+Jobs already tracked are left as they are: the same link, or the same company and title, from a board you
+watch or an earlier alert. Each new one remembers where it came from (`via linkedin-alert`), passes through
+your filters, and is in the next digest. Sponsored listings in Indeed alerts have no job id and are skipped.
+`--no-follow` reads no links at all; `--all` lists every new job, filtered out or not; `--format json` is for
+scripts. In Claude, `import_job_alerts` takes the messages (their source, or just the HTML) the same way.
+
+jobwatch never asks for your email password. To read alerts straight from your mailbox instead, give it an
+IMAP account in the watchlist, with the password in an environment variable or the macOS keychain. It's off
+unless you set it. The mailbox is opened read-only, and messages are read without being marked read:
+
+```yaml
+alerts:
+  imap:
+    host: imap.gmail.com           # Gmail needs an app password
+    user: you@gmail.com
+    keychain: jobwatch-imap        # security add-generic-password -s jobwatch-imap -a you@gmail.com -w
+    # password_env: JOBWATCH_IMAP_PASSWORD   # or this, instead of keychain
+    # folder: INBOX
+    # days: 3                      # alerts from the last 3 days
+    # senders: [jobalerts-noreply@linkedin.com, builtin.com, jobalert.indeed.com]
+```
+
+```
+jobwatch alerts --imap
+```
+
 ## Tracking applications
 
 An application moves through stages: `applied`, `screening`, `interviewing`, `offer`, and then `rejected`
@@ -412,7 +461,7 @@ marking them shown. Roles that disappear from a board are marked closed.
 `jobwatch-mcp` offers these tools to Claude Code or any MCP client:
 
 - **Watchlist:** `find_board`, `list_boards`, `add_board`, `remove_board`
-- **New jobs:** `fetch_jobs`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
+- **New jobs:** `fetch_jobs`, `import_job_alerts`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
 - **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`
 - **What was sent:** `save_application_package`, `get_application_package`, `get_interview_prep`
 

@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     note TEXT,
     applied_at TEXT,
     next_step TEXT,
-    follow_up TEXT
+    follow_up TEXT,
+    via TEXT
 );
 CREATE INDEX IF NOT EXISTS jobs_board ON jobs (source, company);
 CREATE TABLE IF NOT EXISTS scores (
@@ -49,7 +50,7 @@ CREATE TABLE IF NOT EXISTS scores (
 
 # Columns added after the first release, and how to fill them in an older state file.
 _ADDED = {"applied_at": "UPDATE jobs SET applied_at=substr(status_at, 1, 10) WHERE status='applied'",
-          "next_step": None, "follow_up": None}
+          "next_step": None, "follow_up": None, "via": None}
 
 
 def _now() -> str:
@@ -142,6 +143,16 @@ class Store:
                 self.db.execute("UPDATE jobs SET data=?, last_seen=?, closed=NULL WHERE key=?",
                                 (json.dumps(job.to_dict()), now, job.key))
         return bool(new)
+
+    def has(self, key: str) -> bool:
+        """Whether a job with exactly this key is recorded."""
+        return self.db.execute("SELECT 1 FROM jobs WHERE key=?", (key,)).fetchone() is not None
+
+    def set_via(self, key: str, via: str):
+        """Record where a job was first found when it didn't come from a watched board ("linkedin-alert": a
+        LinkedIn job-alert email). The first one recorded stays."""
+        with self.db:
+            self.db.execute("UPDATE jobs SET via=COALESCE(via, ?) WHERE key=?", (via or None, key))
 
     def board_jobs(self, source: str, company: str) -> dict[str, Job]:
         """Every job ever seen on one board, open or closed, by key."""

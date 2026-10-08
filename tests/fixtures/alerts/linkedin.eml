@@ -1,0 +1,82 @@
+From: LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>
+To: Job Seeker <you@example.com>
+Subject: Senior Software Engineer, Platform at Acme Inc.
+Date: Mon, 05 Oct 2026 14:32:00 +0000
+Message-ID: <alert-0001@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="BOUNDARY"
+
+--BOUNDARY
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Your job alert for Software Engineer in Austin
+New jobs match your preferences.
+
+Senior Software Engineer, Platform
+Acme Inc.
+Austin, TX
+
+This company is actively hiring
+View job: https://www.linkedin.com/comm/jobs/view/4100000001/?trackingId=TRACKING-ID&refId=REF-ID&lipi=urn%3Ali%3Apage%3Aemail_job_alert%3BPLACEHOLDER&midToken=MID-TOKEN&midSig=MID-SIG&trk=eml-job_alert-jobcard_body_0&trkEmail=eml-job_alert-PLACEHOLDER&eid=EMAIL-ID&otpToken=OTP-TOKEN
+
+---------------------------------------------------------
+
+Field Engineer
+Umbrella LLC
+United States
+
+2 connections
+View job: https://www.linkedin.com/comm/jobs/view/4100000002/?trackingId=TRACKING-ID&refId=REF-ID&midToken=MID-TOKEN&otpToken=OTP-TOKEN
+
+---------------------------------------------------------
+
+Account Executive
+Acme Inc.
+London, United Kingdom
+
+View job: https://www.linkedin.com/comm/jobs/view/4100000003/?trackingId=TRACKING-ID&otpToken=OTP-TOKEN
+
+---------------------------------------------------------
+
+See all jobs on LinkedIn: https://www.linkedin.com/comm/jobs/search-results/?keywords=Software%20Engineer&savedSearchId=SAVED-SEARCH-ID
+
+This email was intended for you@example.com.
+Unsubscribe: https://www.linkedin.com/job-alert-email-unsubscribe?savedSearchId=SAVED-SEARCH-ID&otpToken=OTP-TOKEN
+
+--BOUNDARY
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+<html><head><style>.font-bold{font-weight:600}</style></head><body>
+<div style="display:none">Acme Inc. Senior Software Engineer, Platform: Build Python services&hellip;</div>
+<table role="presentation"><tbody>
+<tr><td><h2 data-test-id="email-subheader">New jobs in Austin match your preferences.</h2></td></tr>
+<tr><td class="pt-3" data-test-id="job-card"><table role="presentation"><tbody><tr>
+ <td class="pr-1 w-6" width="48"><a href="https://www.linkedin.com/comm/jobs/view/4100000001/?trackingId=TRACKING-ID&amp;refId=REF-ID&amp;midToken=MID-TOKEN&amp;otpToken=OTP-TOKEN"><img src="https://media.example.com/logo.png" alt="Acme Inc." width="48"></a></td>
+ <td valign="top"><a href="https://www.linkedin.com/comm/jobs/view/4100000001/?trackingId=TRACKING-ID&amp;refId=REF-ID&amp;midToken=MID-TOKEN&amp;otpToken=OTP-TOKEN"><table role="presentation"><tbody>
+  <tr><td class="pb-0"><a href="https://www.linkedin.com/comm/jobs/view/4100000001/?trackingId=TRACKING-ID&amp;refId=REF-ID&amp;midToken=MID-TOKEN&amp;otpToken=OTP-TOKEN" class="font-bold text-md">Senior Software Engineer, Platform</a></td></tr>
+  <tr><td class="pb-0"><p class="text-system-gray-100 text-xs">Acme Inc. &middot; Austin, TX (Remote)</p></td></tr>
+  <tr><td><p class="text-xs">$180K/yr - $240K/yr</p></td></tr>
+ </tbody></table></a></td>
+</tr></tbody></table></td></tr>
+<tr><td><p>This company is actively hiring</p></td></tr>
+<tr><td class="pt-3" data-test-id="job-card"><table role="presentation"><tbody><tr>
+ <td valign="top"><a href="https://www.linkedin.com/comm/jobs/view/4100000002/?trackingId=TRACKING-ID&amp;midToken=MID-TOKEN&amp;otpToken=OTP-TOKEN"><table role="presentation"><tbody>
+  <tr><td class="pb-0"><a href="https://www.linkedin.com/comm/jobs/view/4100000002/?trackingId=TRACKING-ID&amp;midToken=MID-TOKEN&amp;otpToken=OTP-TOKEN" class="font-bold text-md">Field Engineer</a></td></tr>
+  <tr><td class="pb-0"><p class="text-xs">Umbrella LLC &middot; United States (Remote)</p></td></tr>
+ </tbody></table></a></td>
+</tr></tbody></table></td></tr>
+<tr><td><p>2 connections</p></td></tr>
+<tr><td class="pt-3" data-test-id="job-card"><table role="presentation"><tbody><tr>
+ <td valign="top"><a href="https://www.linkedin.com/comm/jobs/view/4100000003/?trackingId=TRACKING-ID&amp;otpToken=OTP-TOKEN"><table role="presentation"><tbody>
+  <tr><td class="pb-0"><a href="https://www.linkedin.com/comm/jobs/view/4100000003/?trackingId=TRACKING-ID&amp;otpToken=OTP-TOKEN" class="font-bold text-md">Account Executive</a></td></tr>
+  <tr><td class="pb-0"><p class="text-xs">Acme Inc. &middot; London, United Kingdom (On-site)</p></td></tr>
+ </tbody></table></a></td>
+</tr></tbody></table></td></tr>
+<tr><td><a href="https://www.linkedin.com/comm/jobs/search-results/?keywords=Software%20Engineer&amp;savedSearchId=SAVED-SEARCH-ID">See all jobs</a></td></tr>
+<tr><td><p>This email was intended for you@example.com.</p>
+<a href="https://www.linkedin.com/job-alert-email-unsubscribe?savedSearchId=SAVED-SEARCH-ID&amp;otpToken=OTP-TOKEN">Unsubscribe</a></td></tr>
+</tbody></table></body></html>
+
+--BOUNDARY--

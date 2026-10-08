@@ -1,0 +1,23 @@
+From: Built In <support@builtin.com>
+To: you@example.com
+Subject: New Software Engineer Job Matches
+Date: Wed, 07 Oct 2026 16:14:00 +0000
+Message-ID: <alert-0002@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BOUNDARY"
+
+--BOUNDARY
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+<!doctype html><html><body><table role=presentation><tbody>
+<tr><td><a href=https://example1.r.us-west-2.awstrack.me/L0/https:%2F%2Fbuiltin.com%2Fprofile%2Fjob-preferences%3Fi=VIEWER-ID%26utm_campaign=job_preference_email_daily/1/MESSAGE-ID/SIGNATURE=000 target=_blank><div style=text-transform:uppercase>Job Preferences</div><div>Software Engineer,</div><span> Austin, Texas, USA, Remote, Senior Level</span></a></td></tr>
+<tr id=job1><td><table role=presentation><tbody>
+<tr><td><a href="https://example1.r.us-west-2.awstrack.me/L0/https:%2F%2Fbuiltin.com%2Fjob%2Fstaff-ai-engineer%2F9000001%3Fi=VIEWER-ID%26utm_campaign=job_preference_email_daily%26utm_medium=email%26utm_source=ses%26preference_id=PREFERENCE-ID/1/MESSAGE-ID/SIGNATURE=000" target=_blank><div style=width:20%;display:inline-block><div><img src="https://images.example.com/logo1.png" height=40 width=40></div></div><div style=width:70%;display:inline-block><div style=font-size:16px>Initech</div><div style=font-size:20px;font-weight:700>Staff AI Engineer</div><div style=font-size:12px><div style=display:inline-block><img alt src=https://images.example.com/RemoteIcon.png><span>Remote</span></div><div style=display:inline-block><img alt src=https://images.example.com/LocationIcon.png><span>United States</span></div></div> <div style=font-size:12px><img alt src=https://images.example.com/SalaryIcon.png><span>$230,000-$300,000</span></div></div></a></td></tr>
+<tr><td><a href="https://example1.r.us-west-2.awstrack.me/L0/https:%2F%2Fbuiltin.com%2Fjob%2Fsenior-data-engineer%2F9000002%3Fi=VIEWER-ID%26utm_campaign=job_preference_email_daily%26utm_source=ses/1/MESSAGE-ID/SIGNATURE=000" target=_blank><div><img src=https://images.example.com/Easy-Apply-Label.png width=122px></div><div style=width:70%;display:inline-block><div style=font-size:16px>Hooli</div><div style=font-size:20px;font-weight:700>Senior Data Engineer</div><div style=font-size:12px><div style=display:inline-block><span>In Office</span></div><div style=display:inline-block><span>Denver, CO</span></div></div></div></a></td></tr>
+</tbody></table></td></tr>
+<tr><td><a href=https://example1.r.us-west-2.awstrack.me/L0/https:%2F%2Fbuiltin.com%2Fjobs%3Fi=VIEWER-ID/1/MESSAGE-ID/SIGNATURE=000>See all your matches</a></td></tr>
+<tr><td><a href=https://example1.r.us-west-2.awstrack.me/L0/https:%2F%2Fbuiltin.com%2Fprofile%2Funsubscribe%3Fi=VIEWER-ID/1/MESSAGE-ID/SIGNATURE=000>Unsubscribe</a></td></tr>
+</tbody></table></body></html>
+
+--BOUNDARY--
