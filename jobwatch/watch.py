@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from . import linkedin, sources
-from .config import Board, Config
+from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts
 from .filters import Filters, red_flags, reject_reason, relevance, search_terms, title_ok
 from .models import Job
@@ -27,6 +27,8 @@ class FetchReport:
 def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None) -> FetchReport:
     """Pull every board in the watchlist and record what is new. Boards that fail are reported and skipped."""
     report = FetchReport()
+    for b in cfg.unknown:  # a source this version can't read: say so, and check the rest
+        report.errors[f"{b.source}:{b.board}"] = UNKNOWN_SOURCE
     # Big boards are searched for the watchlist's titles, and a posting is read in full once: the store has it.
     search, wanted = search_terms(cfg.filters), (lambda title: title_ok(title, cfg.filters))
     known = {b: store.board_jobs(b.source, b.board) for b in cfg.boards if sources.SOURCES[b.source].search}
@@ -144,7 +146,7 @@ def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> boo
     LinkedIn job), or None when jobwatch can't tell. Raises SourceError when the board can't be read now."""
     boards = {} if boards is None else boards
     # one posting can be read by its link: surer than a title search
-    if job.source in ("workday", "rippling", "amazon", "oracle", "smartrecruiters"):
+    if job.source in ("workday", "rippling", "amazon", "oracle", "smartrecruiters", "avature"):
         try:
             return sources.posting(job.url, get) is not None
         except sources.NotFound:
@@ -196,8 +198,8 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
     """Add a job found somewhere else: (the job, whether its posting was read from the link).
 
     A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google,
-    Amazon, Oracle, SmartRecruiters) is read in full, so the job can be scored and prepped like any other; its
-    board needn't be watched.
+    Amazon, Oracle, SmartRecruiters, Avature) is read in full, so the job can be scored and prepped like any
+    other; its board needn't be watched.
     A LinkedIn job link is read from LinkedIn's public posting page, and the same job is looked for on the
     company's own board (a watched one in `boards` under the company's name first): found, that posting is
     tracked, since it's where the application goes; not found, the LinkedIn posting is. Anything else (a

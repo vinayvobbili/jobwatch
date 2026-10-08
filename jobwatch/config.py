@@ -93,18 +93,25 @@ class Config:
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
+    # Boards from a source this jobwatch doesn't know (a newer version's, or a typo): kept in the file and
+    # shown as errors, skipped when checking for jobs, so one bad entry doesn't stop everything else.
+    unknown: list[Board] = field(default_factory=list)
 
 
-def _board(entry, path: Path) -> Board:
-    """ "greenhouse:anthropic", or {source: greenhouse, board: anthropic, name: Anthropic}."""
+UNKNOWN_SOURCE = "unknown source: update jobwatch or remove this board"
+
+
+def _board(entry, path: Path, strict: bool = True) -> Board:
+    """ "greenhouse:anthropic", or {source: greenhouse, board: anthropic, name: Anthropic}.
+    Not strict: a source this version doesn't know is let through (see Config.unknown)."""
     if isinstance(entry, str):
         source, _, board = entry.partition(":")
         entry = {"source": source, "board": board}
     if not isinstance(entry, dict) or not entry.get("source") or not entry.get("board"):
         raise ConfigError(f"{path}: companies entries look like 'greenhouse:anthropic', got {entry!r}")
-    if entry["source"] not in SOURCES:
+    if strict and entry["source"] not in SOURCES:
         raise ConfigError(f"{path}: unknown source {entry['source']!r} (supported: {', '.join(SOURCES)})")
-    return Board(entry["source"], str(entry["board"]), entry.get("name", ""))
+    return Board(str(entry["source"]), str(entry["board"]), entry.get("name", ""))
 
 
 def _path(value, base: Path) -> Path:
@@ -186,7 +193,7 @@ def _companies(path: Path) -> list:
 
 
 def _same(entry, board: Board, path: Path) -> bool:
-    b = _board(entry, path)
+    b = _board(entry, path, strict=False)
     return (b.source, b.board) == (board.source, board.board)
 
 
@@ -205,8 +212,9 @@ def add_board(path: Path, entry: str, name: str = "") -> Config:
 
 
 def remove_board(path: Path, entry: str) -> Config:
-    """Take a board ("greenhouse:stripe") off the watchlist. Jobs already recorded from it are kept."""
-    gone = _board(entry, path)
+    """Take a board ("greenhouse:stripe") off the watchlist. Jobs already recorded from it are kept.
+    One from a source this version doesn't know can be taken off too."""
+    gone = _board(entry, path, strict=False)
     companies = _companies(path)
     kept = [e for e in companies if not _same(e, gone, path)]
     if len(kept) == len(companies):
@@ -238,15 +246,16 @@ def load(explicit: str | Path | None = None) -> Config:
         raise ConfigError(f"{path}: display.theme must be one of {', '.join(THEMES)}, got {theme!r}")
     if width not in WIDTHS:
         raise ConfigError(f"{path}: display.width must be one of {', '.join(WIDTHS)}, got {width!r}")
-    boards = [_board(e, path) for e in raw.get("companies") or []]
-    dupes = {b for b in boards if boards.count(b) > 1}
+    listed = [_board(e, path, strict=False) for e in raw.get("companies") or []]
+    dupes = {b for b in listed if listed.count(b) > 1}
     if dupes:
         raise ConfigError(f"{path}: listed twice: {', '.join(f'{b.source}:{b.board}' for b in dupes)}")
     alerts = raw.get("alerts") or {}
     if not isinstance(alerts, dict) or set(alerts) - {"imap"}:
         raise ConfigError(f"{path}: alerts has one setting, imap (see the README's job-alert emails section)")
+    boards = [b for b in listed if b.source in SOURCES]
     return Config(
-        path=path, boards=boards, filters=filters,
+        path=path, boards=boards, unknown=[b for b in listed if b.source not in SOURCES], filters=filters,
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,

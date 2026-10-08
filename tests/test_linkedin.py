@@ -78,7 +78,8 @@ def test_a_linkedin_job_found_on_the_company_board(tmp_path, web):
 def test_a_linkedin_job_found_by_looking_for_the_board(tmp_path, monkeypatch):
     # Not watched: the board is found under the company's name. Two roles that both fit: neither is picked.
     two = {**GREENHOUSE, "jobs": GREENHOUSE["jobs"] + [{**GREENHOUSE["jobs"][0], "id": 103}]}
-    monkeypatch.setattr(sources, "get_text", FakeWeb({}))  # no SmartRecruiters board under that name either
+    # no SmartRecruiters or Avature board under that name either
+    monkeypatch.setattr(sources, "get_text", FakeWeb({}))
     for jobs, found in ((GREENHOUSE, "greenhouse:acme:101"), (two, None)):
         monkeypatch.setattr(sources, "get_json", FakeWeb({**RESPONSES, sources.SOURCES["greenhouse"].api.format(
             board="acme"): jobs}))

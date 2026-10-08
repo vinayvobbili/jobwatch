@@ -86,6 +86,46 @@ h3 { font-size: 15.5px; margin: 0; letter-spacing: -.005em; }
 .stat:nth-child(4) { animation-delay: 150ms; }
 .filtered { color: var(--muted); font-size: 13px; margin: -10px 0 14px; }
 
+/* the filter bar on Today: the filters in force, each edited in place, and what they hide */
+.fbar { position: relative; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 2px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 7px 10px;
+  box-shadow: var(--shadow); margin: 0 0 18px; font-size: 14px; }
+.fbar > .ico { color: var(--accent); margin: 0 4px 0 4px; }
+.fpart { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid transparent; background: none;
+  font: inherit; color: var(--text); padding: 4px 9px; border-radius: 9px; cursor: pointer; max-width: 100%;
+  text-align: left; transition: background .15s, border-color .15s; }
+.fpart:hover { background: var(--chip); }
+.fpart.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.fpart .k { color: var(--muted); }
+.fpart .v { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px; }
+.fpart.off .v { color: var(--muted); font-weight: 500; }
+.fbar .sep { color: var(--muted); opacity: .45; }
+.fbar .edit { margin-left: auto; }
+.fline { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; color: var(--muted);
+  font-size: 13px; border-top: 1px dashed var(--line); margin-top: 3px; padding: 7px 6px 1px; }
+.fline b { color: var(--text); font-weight: 650; }
+.fline.bad, .fline.bad b { color: var(--bad); }
+.fline a { color: inherit; }
+.hchip { border: 0; font: inherit; font-size: 12.5px; font-weight: 550; background: var(--chip); color: var(--chip-text);
+  border-radius: 999px; padding: 1px 10px; cursor: pointer; transition: background .15s, color .15s; }
+.hchip:hover { background: var(--accent-soft); color: var(--accent); }
+.hchip .n { font-variant-numeric: tabular-nums; font-weight: 750; margin-right: 4px; }
+.fpop { position: absolute; top: calc(100% + 6px); left: 0; width: min(420px, calc(100vw - 32px));
+  background: var(--panel-solid); border: 1px solid var(--line); border-radius: 14px; padding: 2px 16px 14px;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .45); animation: pop .2s cubic-bezier(.2, .8, .2, 1) both; }
+.fpop.all { width: min(680px, calc(100vw - 32px)); }
+.fpop textarea { min-height: 88px; }
+.fpop .foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.fpop .foot .msg { flex: 1; font-size: 13px; }
+.hidden-list .list-item { align-items: flex-start; }
+.hidden-list a.title { color: var(--text); font-weight: 650; text-decoration: none; }
+.hidden-list a.title:hover { color: var(--accent); text-decoration: underline; }
+.hidden-list .meta { margin: 1px 0 0; }
+.chip.why { background: color-mix(in srgb, var(--warn) 13%, transparent); color: var(--warn); white-space: nowrap; }
+.company.bad { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+.company.bad .x { opacity: 1; }
+.company .who .err { color: var(--bad); white-space: normal; font-weight: 550; }
+
 /* pipeline */
 .pipeline { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 16px 18px; box-shadow: var(--shadow); margin: -8px 0 22px; }
@@ -501,6 +541,7 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
   .card.job, .card.app { grid-template-columns: 1fr; } .mono { display: none; }
   .chat-fab { right: 16px; bottom: 16px; } .chat-pop { right: 16px; bottom: 16px; height: calc(100vh - 90px); }
   .fitbox { text-align: left; margin-top: 8px; } .ring { margin: 0; }
+  .fpart .v { max-width: 62vw; } .fbar .sep { display: none; }
 }
 </style>
 </head>
@@ -1324,14 +1365,217 @@ function watchScoring(first, el) {
   if (first.running) scoringTimer = setTimeout(poll, 15000);
 }
 
+// -- filters: the watchlist's filters, edited from Settings or in place from Today's filter bar. Both save the
+// whole `filters` setting through /api/settings, so the watchlist file stays the one place they live.
+
+// The inputs for each filter, filled from the saved ones.
+function filterInputs(f) {
+  const area = (v, placeholder) => { const t = h("textarea", { placeholder }); t.value = lines(v); return t; };
+  const inp = {
+    titles: area(f.titles, "engineer\ndeveloper"), exclude: area(f.exclude_titles, "intern\nmanager"),
+    locations: area(f.locations, "remote\nNew York"),
+    country: h("select", {}, h("option", { value: "US" }, "Remote jobs open in the US"),
+      h("option", { value: "any" }, "Remote jobs anywhere")),
+    minPay: h("input", { type: "number", min: 0, step: 5000, placeholder: "e.g. 150000" }),
+    requirePay: h("input", { type: "checkbox" }),
+    maxAge: h("input", { type: "number", min: 1, placeholder: "e.g. 30" }),
+  };
+  inp.country.value = (f.remote_country || "US").toLowerCase() === "any" ? "any" : "US";
+  inp.minPay.value = f.min_salary ?? "";
+  inp.requirePay.checked = !!f.require_salary;
+  inp.maxAge.value = f.max_age_days ?? "";
+  return inp;
+}
+function filterValues(inp) {
+  return { titles: unlines(inp.titles.value), exclude_titles: unlines(inp.exclude.value),
+    locations: unlines(inp.locations.value), remote_country: inp.country.value,
+    min_salary: inp.minPay.value ? Number(inp.minPay.value) : null, require_salary: inp.requirePay.checked || null,
+    max_age_days: inp.maxAge.value ? Number(inp.maxAge.value) : null };
+}
+// The saved filters with these keys replaced; others (exclude_departments, flags...) are kept as they are.
+function mergeFilters(f, values, keys = Object.keys(values)) {
+  const out = { ...f };
+  for (const k of keys) out[k] = values[k];
+  for (const [k, v] of Object.entries(out)) if (v === null || v === undefined || (Array.isArray(v) && !v.length)) delete out[k];
+  if (String(out.remote_country || "").toUpperCase() === "US") delete out.remote_country;
+  return out;
+}
+function filterLabel(text, hint) { return h("label", {}, text, hint ? [" ", h("span", { class: "hint" }, hint)] : null); }
+
+// What each part of the bar edits: [label, hint] and input pairs, and the filter keys it saves.
+const FILTER_GROUPS = {
+  titles: { keys: ["titles", "exclude_titles"], fields: inp => [
+    filterLabel("Job titles", "one per line; a title must contain one"), inp.titles,
+    filterLabel("Leave out titles with", "one per line"), inp.exclude] },
+  places: { keys: ["locations", "remote_country"], fields: inp => [
+    filterLabel("Places", "“remote”, or a city or state, one per line"), inp.locations,
+    h("div", { style: "margin-top:6px" }, inp.country)] },
+  pay: { keys: ["min_salary", "require_salary"], fields: inp => [
+    filterLabel("Minimum pay per year", "jobs that don't list pay still show"), inp.minPay,
+    h("label", { class: "row" }, inp.requirePay, h("span", { class: "hint" }, "Only show jobs that list pay"))] },
+  age: { keys: ["max_age_days"], fields: inp => [filterLabel("Posted within (days)", "blank: any time"), inp.maxAge] },
+};
+
+function money(n) { return n >= 1e6 ? `$${+(n / 1e6).toFixed(2)}M` : `$${Math.round(n / 1000)}K`; }
+// A title pattern as words, for the bar: "\b(intern|new grad)\b" reads "intern, new grad". The tooltip keeps it as is.
+function readable(patterns) {
+  return patterns.flatMap(p => p.replace(/\\b/g, "").replace(/\\w[*+]/g, "…").replace(/\[[^\]]*\][?*+]?/g, "")
+    .replace(/(^|[^\\])[()^$]/g, "$1").replace(/\\(.)/g, "$1").split("|")).map(s => s.trim()).filter(Boolean);
+}
+function some(list, most = 3) {
+  return list.slice(0, most).join(", ") + (list.length > most ? ` +${list.length - most} more` : "");
+}
+
+// Why a job was hidden, as rejection() in filters.py names it, and which part of the bar changes that filter.
+const HIDDEN = {
+  title: { label: "title", part: "titles", why: "Their titles contain none of your job titles." },
+  excluded: { label: "excluded title", part: "exclude", why: "Their titles contain something you leave out." },
+  department: { label: "department", part: null,
+    why: "Their department is one you leave out (exclude_departments in the watchlist file)." },
+  place: { label: "place", part: "places", why: "Not in one of your places, or remote somewhere else." },
+  pay: { label: "pay", part: "pay",
+    why: "Their listed pay tops out below your minimum, or they don't list pay and you want ones that do." },
+  age: { label: "age", part: "age", why: "Posted longer ago than you want." },
+};
+
+let openFilter = () => {};  // opens a part of Today's filter bar: set by filterBar
+
+// Today's filter bar: "Titles: engineer, architect · Places: Remote (US), Raleigh · Pay ≥ $225K · Posted within
+// 45 days · Edit", each part opening a small editor in place. Saving redraws Today with the new filters.
+function filterBar(hidden) {
+  const f = settings.filters || {};
+  const bar = h("div", { class: "fbar", role: "group", "aria-label": "Filters" });
+  const remote = (f.remote_country || "US").toLowerCase() === "any" ? "Remote (anywhere)" : "Remote (US)";
+  const places = (f.locations || []).map(p => p.toLowerCase() === "remote" ? remote : p);
+  const pay = [f.min_salary ? `≥ ${money(f.min_salary)}` : f.require_salary ? "" : "any",
+    f.require_salary ? "listed only" : ""].filter(Boolean).join(", ");
+  const parts = [
+    ["titles", "Titles", (f.titles || []).length ? some(readable(f.titles)) : "any title", (f.titles || []).join("\n")],
+    (f.exclude_titles || []).length
+      ? ["exclude", "Not", some(readable(f.exclude_titles), 4), f.exclude_titles.join("\n")] : null,
+    ["places", "Places", places.length ? some(places, 4) : "anywhere", places.join("\n")],
+    ["pay", "Pay", pay],
+    ["age", "Posted", f.max_age_days ? `within ${f.max_age_days} days` : "any time"],
+  ].filter(Boolean);
+  const buttons = {};
+  let pop = null;
+  const close = () => {
+    if (!pop) return;
+    pop.remove(); pop = null;
+    for (const b of Object.values(buttons)) b.classList.remove("on");
+    document.removeEventListener("pointerdown", outside, true);
+  };
+  const outside = e => { if (pop && !pop.contains(e.target) && !e.target.closest(".fpart, .fbar .edit")) close(); };
+  const open = which => {
+    const again = pop && pop.dataset.which === which;
+    close();
+    if (again) return;
+    const group = which === "exclude" ? "titles" : which;
+    const groups = group === "all" ? Object.keys(FILTER_GROUPS) : [group];
+    const inp = filterInputs(f), msg = h("span", { class: "msg" });
+    const saveBtn = h("button", { class: "btn primary" }, icon("check", 14), "Save");
+    const save = async () => {
+      const keys = groups.flatMap(g => FILTER_GROUPS[g].keys);
+      saveBtn.disabled = true; msg.textContent = "Saving…"; msg.className = "msg muted";
+      try {
+        await api("/api/settings", { filters: mergeFilters(f, filterValues(inp), keys) });
+        settings = await api("/api/settings");
+        close();
+        toast("Filters saved. Today shows what they match now.");
+        await render();
+      } catch (e) { saveBtn.disabled = false; msg.textContent = e.message; msg.className = "msg error"; }
+    };
+    saveBtn.onclick = save;
+    const body = group === "all"
+      ? h("div", { class: "grid" }, groups.map(g => h("div", {}, FILTER_GROUPS[g].fields(inp))))
+      : FILTER_GROUPS[group].fields(inp);
+    pop = h("div", { class: "fpop" + (group === "all" ? " all" : ""), role: "dialog", "aria-label": "Edit filters" },
+      body, h("div", { class: "foot" }, msg,
+        h("button", { class: "btn ghost", onclick: close }, "Cancel"), saveBtn));
+    pop.dataset.which = which;
+    pop.addEventListener("keydown", e => {
+      if (e.key === "Escape") { e.stopPropagation(); close(); buttons[which] && buttons[which].focus(); }
+      if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); save(); }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); }
+    });
+    bar.append(pop);
+    const anchor = buttons[which];
+    if (anchor) {
+      anchor.classList.add("on");
+      pop.style.left = Math.max(0, Math.min(anchor.offsetLeft, bar.clientWidth - pop.offsetWidth)) + "px";
+    } else pop.style.left = Math.max(0, bar.clientWidth - pop.offsetWidth) + "px";
+    document.addEventListener("pointerdown", outside, true);
+    const first = which === "exclude" ? inp.exclude : pop.querySelector("textarea, input");
+    if (first) first.focus();
+  };
+  openFilter = which => { bar.scrollIntoView({ block: "nearest" }); open(which); };
+  fill(bar, icon("sparkle", 15), parts.map(([which, k, v, full], i) => {
+    const b = buttons[which] = h("button", { class: "fpart" + (/^any/.test(v) ? " off" : ""),
+      title: full ? `${k}:\n${full}\n\nClick to change` : "Click to change", "aria-haspopup": "dialog",
+      onclick: () => open(which) }, h("span", { class: "k" }, k + (k === "Pay" || k === "Posted" ? "" : ":")),
+      h("span", { class: "v" }, v));
+    return [i ? h("span", { class: "sep" }, "·") : null, b];
+  }), buttons.all = h("button", { class: "btn ghost edit", onclick: () => open("all") }, icon("pencil", 13), "Edit"),
+  hiddenLine(hidden), brokenLine());
+  return bar;
+}
+
+// "38 roles hidden by your filters: 20 title · 9 place · 5 pay", each a way to peek at those jobs.
+function hiddenLine(hidden) {
+  if (!hidden) return null;
+  if (!hidden.total) return h("div", { class: "fline" }, "Your filters hide nothing right now.");
+  return h("div", { class: "fline" }, h("span", {}, h("b", {}, hidden.total.toLocaleString()),
+    ` role${hidden.total === 1 ? "" : "s"} hidden by your filters:`),
+    Object.entries(hidden.by).map(([kind, n]) => h("button", { class: "hchip", title: `See the ${n} hidden by ${HIDDEN[kind].label}`,
+      onclick: () => openHidden(kind) }, h("span", { class: "n" }, n.toLocaleString()), HIDDEN[kind].label)));
+}
+
+// Boards the running jobwatch can't read (a newer version's source): they're skipped, and Settings removes them.
+function brokenLine() {
+  const bad = settings.companies.filter(c => c.error);
+  if (!bad.length) return null;
+  return h("div", { class: "fline bad", title: bad[0].error }, h("span", {},
+    h("b", {}, `${bad.length} board${bad.length === 1 ? "" : "s"} skipped: `),
+    bad.map(c => `${c.name || c.board} (${c.source}:${c.board})`).join(", "),
+    ` ${bad.length === 1 ? "uses a source" : "use sources"} this version of jobwatch can't read. Update jobwatch, or remove ${bad.length === 1 ? "it" : "them"} in `,
+    h("a", { href: "#settings", onclick: e => { e.preventDefault(); go("settings"); } }, "Settings"), "."));
+}
+
+// A peek at the jobs one filter hides, with a way to change that filter.
+async function openHidden(kind) {
+  const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
+  const info = HIDDEN[kind];
+  dialog.classList.remove("with-chat");
+  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  overlay.style.display = "flex";
+  try {
+    const d = await api("/api/hidden?kind=" + encodeURIComponent(kind));
+    const n = d.by[kind] || 0;
+    fill(dialog,
+      h("div", { class: "row", style: "align-items:flex-start;flex-wrap:nowrap" },
+        h("div", { style: "flex:1" }, h("h2", {}, `${n.toLocaleString()} hidden by ${info.label}`),
+          h("p", { class: "sub small" }, info.why)),
+        info.part ? h("button", { class: "btn", onclick: () => { closeDetails(); openFilter(info.part); } },
+          icon("pencil", 13), "Change this filter") : null,
+        h("button", { class: "icon-btn", "aria-label": "Close", onclick: closeDetails }, icon("x", 16))),
+      h("div", { class: "hidden-list", style: "margin-top:10px" }, d.jobs.map(j => h("div", { class: "list-item" },
+        h("div", { style: "flex:1;min-width:0" }, link(j.url, j.title, "title"),
+          h("div", { class: "meta" }, h("b", {}, j.company),
+            [j.locations.slice(0, 3).join("; "), j.pay ? h("span", { class: "pay" }, j.pay) : null, age(j.age_days)]
+              .filter(Boolean).map(x => [h("span", { class: "sep" }, "·"), x]))),
+        h("span", { class: "chip why" }, j.why)))),
+      d.more ? h("p", { class: "small muted" }, `and ${d.more.toLocaleString()} more, newest shown first`) : null);
+  } catch (e) { showError(dialog, e); }
+}
+
 const todayView = { q: "", sort: "fit", company: "", kws: new Set(), page: 1 };
 let todayJobs = [], drawToday = () => {};
 
 async function renderToday() {
   if (!settings.companies.length) return renderWelcome();
-  const d = await api("/api/digest");
+  // What the filters hide is a hint, not the page: Today still opens if it can't be counted.
+  const [d, hidden] = await Promise.all([api("/api/digest"), api("/api/hidden").catch(() => null)]);
   todayJobs = d.jobs;
-  const filtered = Object.entries(d.rejected).map(([k, n]) => `${n.toLocaleString()} by ${k}`).join(", ");
   const out = Object.values(d.rejected).reduce((a, b) => a + b, 0);
   const fresh = d.jobs.filter(j => j.status === "new").length, strong = d.jobs.filter(j => j.fit && j.fit.score >= 75).length;
   const byCompany = {}, byKw = {};
@@ -1364,20 +1608,20 @@ async function renderToday() {
     fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
       : `Showing ${jobs.length} of ${todayJobs.length}`, narrowed ? h("button", { class: "btn ghost", onclick: clear }, "Clear filters") : null);
     fill(list, jobs.length ? pg.items.map((j, i) => todayCard(j, d.can_score, i))
-      : emptyState(todayJobs.length ? "No jobs match these filters." : "Nothing to review. Press “Check for new jobs”, or widen your filters in Settings."));
+      : emptyState(todayJobs.length ? "No jobs match these filters." : "Nothing to review. Press “Check for new jobs”, or widen the filters above."));
     fill(pager, pg.nav);
   };
 
   put(
     pagehead("Today", `New roles at the ${settings.companies.length} companies you watch, best fit first.`),
+    filterBar(hidden),
     layout([
       hero([[d.jobs.length, "matching jobs", "lead"], [fresh, "new since last look"],
-        [strong, "strong fits (75+)", strong ? "good" : ""], [out, "filtered out"]]),
+        [strong, "strong fits (75+)", strong ? "good" : ""], [out, "hidden by filters"]]),
       panel(null, search, h("div", { style: "margin-top:10px" },
         segmented([["fit", "Best fit"], ["new", "Newest"], ["pay", "Top pay"]], v.sort, k => { v.sort = k; drawToday(); }))),
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
-      filtered ? h("div", { class: "filtered" }, `Filtered out ${filtered}. Change the filters in Settings.`) : null,
     ], [scoring, showing, list, pager]));
   drawToday();
   if (d.scoring) watchScoring(d.scoring, scoring);
@@ -1727,7 +1971,7 @@ function addForm(d) {
   const url = h("input", { type: "text", placeholder: "https://…" });
   const company = h("input", { type: "text", placeholder: "Company" });
   const title = h("input", { type: "text", placeholder: "Job title" });
-  const text = h("textarea", { rows: 5, placeholder: "Paste the posting here to score it and prep for it (not needed for a Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Amazon, Oracle, SmartRecruiters or LinkedIn job link)" });
+  const text = h("textarea", { rows: 5, placeholder: "Paste the posting here to score it and prep for it (not needed for a Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Amazon, Oracle, SmartRecruiters, Avature or LinkedIn job link)" });
   const stage = queued ? null : stageSelect("applied", d.stages);
   const f = queued ? null : trackFields({ applied_at: d.today });
   const msg = h("span", { class: "small error" });
@@ -1839,8 +2083,10 @@ function renderSettings() {
   const watching = h("div", { class: "muted small", style: "margin:14px 0 8px" });
   const drawCompanies = () => (watching.textContent = `Watching ${companies.length} ${companies.length === 1 ? "company" : "companies"}`,
     companyList.replaceChildren(...(companies.length ? companies.map((c, i) =>
-    h("div", { class: "company" }, monogram(c.name || c.board),
-      h("div", { class: "who" }, h("b", {}, c.name || c.board), h("span", {}, `${c.source}:${c.board}`)),
+    // c.error: a source this version can't read (a newer jobwatch's). It's skipped; remove it or update jobwatch.
+    h("div", { class: "company" + (c.error ? " bad" : ""), title: c.error || null }, monogram(c.name || c.board),
+      h("div", { class: "who" }, h("b", {}, c.name || c.board), h("span", {}, `${c.source}:${c.board}`),
+        c.error ? h("span", { class: "err" }, "Unknown source: update jobwatch or remove") : null),
       h("button", { class: "x", title: `Stop watching ${c.name || c.board}`, "aria-label": "Remove",
         onclick: () => { companies.splice(i, 1); drawCompanies(); } }, "✕")))
     : [h("div", { class: "muted small" }, "No companies yet.")])));
@@ -1862,7 +2108,7 @@ function renderSettings() {
               companies.push({ source: hit.source, board: hit.board, name: hit.name || findInput.value.trim() });
               drawCompanies(); e.target.replaceWith(h("span", { class: "muted small" }, "added"));
             } }, "Add")))
-        : [h("div", { class: "muted small" }, "No Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling or SmartRecruiters board found. Try a link to their " +
+        : [h("div", { class: "muted small" }, "No Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters or Avature board found. Try a link to their " +
             "careers page or one of their job postings. Some companies use other systems that jobwatch can't read yet.")]));
     } catch (e) { findOut.replaceChildren(h("div", { class: "error small" }, e.message)); }
     findBtn.disabled = false;
@@ -1870,16 +2116,8 @@ function renderSettings() {
   findBtn.onclick = find;
   findInput.addEventListener("keydown", e => { if (e.key === "Enter") find(); });
 
-  const titles = h("textarea", { placeholder: "engineer\ndeveloper" }); titles.value = lines(f.titles);
-  const exclude = h("textarea", { placeholder: "intern\nmanager" }); exclude.value = lines(f.exclude_titles);
-  const locations = h("textarea", { placeholder: "remote\nNew York" }); locations.value = lines(f.locations);
-  const country = h("select", {}, h("option", { value: "US" }, "Remote jobs open in the US"),
-    h("option", { value: "any" }, "Remote jobs anywhere"));
-  country.value = (f.remote_country || "US").toLowerCase() === "any" ? "any" : "US";
-  const minPay = h("input", { type: "number", min: 0, step: 5000, placeholder: "e.g. 150000" });
-  minPay.value = f.min_salary ?? "";
-  const requirePay = h("input", { type: "checkbox" }); requirePay.checked = !!f.require_salary;
-  const maxAge = h("input", { type: "number", min: 1, placeholder: "e.g. 30" }); maxAge.value = f.max_age_days ?? "";
+  const inp = filterInputs(f);
+  const { titles, exclude, locations, country, minPay, requirePay, maxAge } = inp;
 
   const kwRows = h("div", {});
   const addKw = (k = "", w = 1) => {
@@ -1920,17 +2158,7 @@ function renderSettings() {
       const [word, weight] = row.querySelectorAll("input, select");
       if (word.value.trim()) keywords[word.value.trim()] = Number(weight.value);
     }
-    const filters = {
-      titles: unlines(titles.value), exclude_titles: unlines(exclude.value), locations: unlines(locations.value),
-      remote_country: country.value, min_salary: minPay.value ? Number(minPay.value) : null,
-      require_salary: requirePay.checked || null, max_age_days: maxAge.value ? Number(maxAge.value) : null,
-    };
-    for (const k of Object.keys(filters)) {
-      const v = filters[k];
-      if (v === null || (Array.isArray(v) && !v.length)) delete filters[k];
-    }
-    if (filters.remote_country === "US") delete filters.remote_country;
-    for (const k of ["exclude_departments", "flags"]) if (f[k]) filters[k] = f[k];  // kept, not edited here
+    const filters = mergeFilters(f, filterValues(inp));  // exclude_departments and flags are kept, not edited here
     saveMsg.textContent = "Saving…"; saveMsg.className = "small muted";
     try {
       await api("/api/settings", { companies, filters, keywords, scoring: { ...scoring, backend: backend.value } });

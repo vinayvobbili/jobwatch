@@ -31,11 +31,13 @@ class Filters:
             raise ValueError(f"unknown filter setting(s): {', '.join(sorted(unknown))}")
         if not isinstance(d.get("flags") or {}, dict):
             raise ValueError("filters.flags maps a pattern to why it matters, e.g. {'TS/SCI': clearance}")
-        for p in (d.get("flags") or {}):
-            try:
-                re.compile(p)
-            except re.error as e:
-                raise ValueError(f"filters.flags: {p!r} isn't a valid pattern: {e}") from None
+        # A pattern that doesn't compile ("c++") is refused when saved, rather than breaking every digest later.
+        for key in ("titles", "exclude_titles", "exclude_departments", "flags"):
+            for p in d.get(key) or []:
+                try:
+                    re.compile(p)
+                except (re.error, TypeError) as e:
+                    raise ValueError(f"filters.{key}: {p!r} isn't a valid pattern: {e}") from None
         return cls(**d)
 
 
@@ -68,28 +70,40 @@ def search_terms(f: Filters) -> list[str]:
     return [t for t in f.titles if not re.search(r"[\\^$.*+?()\[\]{}|]", t)]
 
 
-def reject_reason(job: Job, f: Filters) -> str | None:
-    """Why the job fails the filters, or None if it passes."""
+# Which filter a job failed, in the order they're checked: what rejection() names first.
+KINDS = ("title", "excluded", "department", "place", "pay", "age")
+
+
+def rejection(job: Job, f: Filters) -> tuple[str, str] | None:
+    """(which filter, why) for a job that fails the filters, or None if it passes. The filter is one of KINDS:
+    ("title", "title"), ("excluded", "title matches 'manager'"), ("place", "location"), ("pay", "pay $120K–$160K"),
+    ("age", "posted 45 days ago")."""
     if f.titles and not _any(f.titles, job.title):
-        return "title"
+        return "title", "title"
     if p := _any(f.exclude_titles, job.title):
-        return f"title matches {p!r}"
+        return "excluded", f"title matches {p!r}"
     if job.department and (p := _any(f.exclude_departments, job.department)):
-        return f"department matches {p!r}"
+        return "department", f"department matches {p!r}"
     if f.locations:
         wanted = [w for w in f.locations if w.lower() != "remote"]
         remote_wanted = len(wanted) < len(f.locations)
         if not ((remote_wanted and _remote_ok(job, f.remote_country))
                 or any(w.lower() in loc.lower() for w in wanted for loc in job.locations)):
-            return "location"
+            return "place", "location"
     if job.salary_min is None:
         if f.require_salary:
-            return "pay not listed"
+            return "pay", "pay not listed"
     elif f.min_salary and (job.salary_max or job.salary_min) < f.min_salary:
-        return f"pay {job.pay()}"
+        return "pay", f"pay {job.pay()}"
     if f.max_age_days is not None and (age := job.age_days()) is not None and age > f.max_age_days:
-        return f"posted {age} days ago"
+        return "age", f"posted {age} days ago"
     return None
+
+
+def reject_reason(job: Job, f: Filters) -> str | None:
+    """Why the job fails the filters, or None if it passes."""
+    r = rejection(job, f)
+    return r[1] if r else None
 
 
 def red_flags(job: Job, f: Filters) -> list[str]:

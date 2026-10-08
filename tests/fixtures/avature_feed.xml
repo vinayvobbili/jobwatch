@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:wfw="http://wellformedweb.org/CommentAPI/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:sy="http://purl.org/rss/1.0/modules/syndication/" xmlns:slash="http://purl.org/rss/1.0/modules/slash/">
+  <channel>
+    <title>careers</title>
+    <description>careers</description>
+    <link>https://jobs.lenovo.com/en_US/careers</link>
+    <atom:link href="https://jobs.lenovo.com/en_US/careers/SearchJobs/feed/" rel="self" type="application/rss+xml"/>
+    <item>
+      <title><![CDATA[AI Application Engineer]]></title>
+      <description><![CDATA[ - WD00099290]]></description>
+      <guid isPermaLink="true">https://jobs.lenovo.com/careers/JobDetail/AI-Application-Engineer/77412</guid>
+      <link>https://jobs.lenovo.com/careers/JobDetail/AI-Application-Engineer/77412</link>
+      <pubDate>Tue, 26 May 2026 00:00:00 +0000</pubDate>
+    </item>
+    <item>
+      <title><![CDATA[Sr. Forward Deployed Engineer - REMOTE]]></title>
+      <description><![CDATA[ - WD00102385]]></description>
+      <guid isPermaLink="true">https://jobs.lenovo.com/careers/JobDetail/Sr-Forward-Deployed-Engineer-REMOTE/79788</guid>
+      <link>https://jobs.lenovo.com/careers/JobDetail/Sr-Forward-Deployed-Engineer-REMOTE/79788</link>
+      <pubDate>Tue, 28 Jul 2026 00:00:00 +0000</pubDate>
+    </item>
+    <item>
+      <title><![CDATA[Forward Deployed Engineer]]></title>
+      <description><![CDATA[ - WD00105712]]></description>
+      <guid isPermaLink="true">https://jobs.lenovo.com/careers/JobDetail/Forward-Deployed-Engineer/81926</guid>
+      <link>https://jobs.lenovo.com/careers/JobDetail/Forward-Deployed-Engineer/81926</link>
+      <pubDate>Wed, 30 Sep 2026 00:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>
