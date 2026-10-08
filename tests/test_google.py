@@ -9,11 +9,12 @@ from jobwatch.watch import still_open
 
 from .conftest import FakeWeb
 
-# Four public postings from the feed, their text trimmed: a SOAR role in Austin or remote in the US, one in
-# Toronto or Atlanta whose Canadian pay comes before its US pay, a YouTube role, and a DeepMind one in Singapore.
+# Five public postings from the feed, their text trimmed: a SOAR role in Austin or remote in the US, one in
+# Toronto or Atlanta whose Canadian pay comes before its US pay, a YouTube role, a DeepMind one in Singapore,
+# and a remote one in "Alberta, CA" (Canada, by a code that is also California's) paid in CAD.
 FEED = (Path(__file__).parent / "fixtures" / "google_feed.xml").read_text(encoding="utf-8")
-SOAR, ATLANTA, YOUTUBE, SINGAPORE = "109401147709498054", "105534391874134726", "108518356373381830", \
-    "85260476568478406"
+SOAR, ATLANTA, YOUTUBE, SINGAPORE, ALBERTA = "109401147709498054", "105534391874134726", "108518356373381830", \
+    "85260476568478406", "131798774019171014"
 
 
 def google_web():
@@ -56,6 +57,9 @@ def test_google_any_is_everywhere():
     jobs = {j.id: j for j in sources.fetch("google", "google/any", google_web())}
     assert SINGAPORE in jobs and jobs[SINGAPORE].locations == ["Singapore"] and jobs[SINGAPORE].salary_min is None
     assert jobs[SINGAPORE].key == f"google:google/any:{SINGAPORE}"
+    canada = jobs[ALBERTA]  # not in the US board's list (see above): Canada, not California
+    assert canada.locations == ["Alberta, Canada"] and canada.remote is True
+    assert canada.salary_min is None and "198000" in canada.description  # CAD pay isn't a US range
     with pytest.raises(sources.SourceError):
         sources.fetch("google", "alphabet", google_web())
 
