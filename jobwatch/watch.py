@@ -194,7 +194,7 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
              get=None, page=None, boards: list[Board] = ()) -> tuple[Job, bool]:
     """Add a job found somewhere else: (the job, whether its posting was read from the link).
 
-    A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday, Rippling) is read in
+    A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google) is read in
     full, so the job can be scored and prepped like any other; its board needn't be watched. A LinkedIn job link
     is read from LinkedIn's public posting page, and the same job is looked for on the company's own board
     (a watched one in `boards` under the company's name first): found, that posting is tracked, since it's

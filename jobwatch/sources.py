@@ -1,8 +1,9 @@
-"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe and Rippling.
+"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling and Google.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
-on. Greenhouse, Lever and Ashby return a whole board in one response, and a parser turns it into Jobs.
-Rippling lists a board in one response too, but its postings' text is read one at a time.
+on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
+Google return a whole board in one response, and a parser turns it into Jobs. Rippling lists a board in one
+response too, but its postings' text is read one at a time.
 Workday and Eightfold boards at large companies list thousands of roles, so those are searched for the
 watchlist's job titles, and only the new postings whose titles match are read in full (see fetch).
 """
@@ -12,9 +13,11 @@ from __future__ import annotations
 import html
 import json
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -23,7 +26,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import __version__
 from .models import Job
-from .text import html_to_text, is_remote, parse_salary, split_locations
+from .text import html_to_text, in_us, is_remote, parse_salary, split_locations
 
 USER_AGENT = f"jobwatch/{__version__} (+https://github.com/vinayvobbili/jobwatch)"
 
@@ -429,6 +432,88 @@ def _rippling_read(j: Job, url: str, get) -> Job:
     return j
 
 
+# -- Google (with YouTube and DeepMind): board "google" for its roles in the US, "google/any" for all of them.
+# Google Careers publishes every open role, worldwide and with its full text, as one XML feed for job sites
+# (~20 MB): one request a run, kept for a few minutes so a run's other reads of it don't fetch it again.
+
+GOOGLE_FEED = "https://www.google.com/about/careers/applications/jobs/feed.xml"
+GOOGLE_JOBS = "https://www.google.com/about/careers/applications/jobs/results/"
+GOOGLE_KEEP = 600  # seconds a downloaded feed is used again (Google's own cache time is 25 minutes)
+_google_feed_cache: list = []  # [(downloaded at, feed text)]
+_google_lock = threading.Lock()
+_US_PAY = re.compile(r"US: \$[\d,]+ - \$[\d,]+")  # pay is given per country; this is the US line
+
+
+def _google_feed(get) -> ET.Element:
+    if get:  # tests, or a caller with its own cache
+        text = get(GOOGLE_FEED)
+    else:
+        with _google_lock:
+            if not _google_feed_cache or time.monotonic() - _google_feed_cache[0][0] > GOOGLE_KEEP:
+                _google_feed_cache[:] = [(time.monotonic(), get_text(GOOGLE_FEED, timeout=120))]
+            text = _google_feed_cache[0][1]
+    try:
+        return ET.fromstring(text)
+    except ET.ParseError as e:
+        raise SourceError(f"{GOOGLE_FEED}: {e}") from None
+
+
+def _google_anywhere(board: str) -> bool:
+    if board not in ("google", "google/any"):
+        raise SourceError(f"the Google board is google (its US roles) or google/any, got {board!r}")
+    return board == "google/any"
+
+
+def _google_places(e: ET.Element) -> list[str]:
+    """Each <location> as "City, ST, USA": the feed spreads it over city, state and country however it likes."""
+    return split_locations(*(", ".join(p.strip() for p in (loc.findtext(k) or "" for k in ("city", "state", "country"))
+                                       if p.strip()) for loc in e.iter("location")))
+
+
+def _google_job(e: ET.Element, board: str, read: bool = True) -> Job:
+    """A Job from one feed entry; `read` False keeps it without its text, like a searched board's unread one."""
+    jid = (e.findtext("jobid") or "").strip()
+    slug = urlparse(e.findtext("url") or "").path.rstrip("/").rsplit("/", 1)[-1]
+    j = Job(source="google", company=board, id=jid, title=(e.findtext("title") or "").strip(),
+            url=GOOGLE_JOBS + (slug if slug.startswith(f"{jid}-") else jid), company_name=e.findtext("employer") or "",
+            locations=_google_places(e), remote=True if (e.findtext("isRemote") or "").lower() == "yes" else None,
+            department=", ".join((c.text or "").replace("_", " ").title() for c in e.iter("category")
+                                 if c.text and c.text != "JOB_CATEGORY_UNSPECIFIED"),
+            posted=_time(e.findtext("published")))
+    if read:
+        j.description = html_to_text(e.findtext("description") or "")
+        _salary(j, us.group(0) if (us := _US_PAY.search(j.description)) else j.description)
+    return j
+
+
+def _title_has(title: str, terms) -> bool:
+    """A search term's words are all in the title ("forward deployed" finds "Forward Deployed Engineer")."""
+    title = title.lower()
+    return any(all(w in title for w in re.findall(r"\w+", t.lower())) for t in terms)
+
+
+def fetch_google(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """Google's roles (its US ones, for board "google") whose titles have one of the `search` terms' words, all
+    of them with no terms. One request whatever the size, so `cap` and `known` aren't needed. A role whose title
+    fails `wanted` is kept without its text, as a searched board keeps one it didn't read."""
+    anywhere, jobs = _google_anywhere(board), []
+    for e in _google_feed(get).iter("job"):
+        title = e.findtext("title") or ""
+        if not (e.findtext("jobid") or "").strip() or (search and not _title_has(title, search)):
+            continue
+        if not (anywhere or any(in_us(p) for p in _google_places(e))):
+            continue
+        jobs.append(_google_job(e, board, read=not (wanted and not wanted(title.strip()))))
+    return jobs
+
+
+def _google_posting(pid: str, board: str, get) -> Job:
+    for e in _google_feed(get).iter("job"):
+        if (e.findtext("jobid") or "").strip() == pid:
+            return _google_job(e, board)
+    raise NotFound("Google Careers doesn't list that job any more")
+
+
 @dataclass(frozen=True)
 class Source:
     name: str
@@ -452,6 +537,7 @@ SOURCES = {
                         fetch_eightfold),
     "jibe": Source("jibe", "", None, "https://{board}/careers-home/jobs", fetch_jibe),
     "rippling": Source("rippling", "", None, "https://ats.rippling.com/{board}/jobs", fetch_rippling),
+    "google": Source("google", "", None, GOOGLE_JOBS, fetch_google),
 }
 
 
@@ -477,7 +563,8 @@ def candidate_home(url: str) -> str | None:
 def fetch(source: str, board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
     """The open roles on one company's board. `get` replaces the HTTP call (tests, caching).
 
-    Greenhouse, Lever, Ashby, Workable and Jibe return every role. Workday and Eightfold are searched for each
+    Greenhouse, Lever, Ashby, Workable and Jibe return every role; Google every role whose title has a `search`
+    term's words, from its whole feed. Workday and Eightfold are searched for each
     of `search` (plain title words; nothing searches for everything), reading in full only the postings whose
     title passes `wanted` and that aren't in `known` (key -> Job, read before) already."""
     src = SOURCES[source]
@@ -521,6 +608,8 @@ def detect(url: str) -> tuple[str, str] | None:
         return ("rippling", parts[0]) if parts and parts[0] != "api" else None
     if host == "api.rippling.com" and "board" in parts[:-1]:
         return "rippling", parts[parts.index("board") + 1]
+    if host == "careers.google.com" or (host == "google.com" and parts[:2] == ["about", "careers"]):
+        return "google", "google"
     source = _HOSTS.get(host)
     if not source:
         return None
@@ -545,6 +634,9 @@ def _posting_id(source: str, url: str) -> str | None:
         return parts[2] if len(parts) > 2 and parts[1] == "jobs" else None
     if source == "rippling":
         return parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else None
+    if source == "google":  # .../jobs/results/<id>-<slug>; an .../apply/<uuid> link doesn't name the posting
+        m = re.match(r"\d+(?=-|$)", parts[parts.index("results") + 1]) if "results" in parts[:-1] else None
+        return m.group(0) if m else None
     if source == "workable":
         for marker in ("j", "view"):
             if marker in parts[:-1]:
@@ -559,6 +651,9 @@ def posting(url: str, get=None) -> Job | None:
     if not found:
         return None
     source, board = found
+    if source == "google":  # looked up in the whole feed (an XML one): a link can be to a role outside the US
+        pid = _posting_id(source, url)
+        return _google_posting(pid, board, get) if pid else None
     get = get or get_json
     if source == "workday":
         path = urlparse(url if "//" in url else f"https://{url}").path
@@ -683,7 +778,9 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
                 continue
         return hits
     names = board_names(company)
-    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe")]  # jibe: own domains
+    # jibe: sites on their own domains; google: Google's own board ("Google DeepMind" finds it too)
+    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe", "google")]
+    tries += [("google", "google")] if "google" in names else []
 
     def one(t):
         try:
