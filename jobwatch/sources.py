@@ -1,4 +1,5 @@
-"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling and Google.
+"""Public job-board APIs: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google and
+Avature.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
@@ -6,6 +7,8 @@ Google return a whole board in one response, and a parser turns it into Jobs. Ri
 response too, but its postings' text is read one at a time.
 Workday and Eightfold boards at large companies list thousands of roles, so those are searched for the
 watchlist's job titles, and only the new postings whose titles match are read in full (see fetch).
+Avature careers portals list every posting in the sitemap their robots.txt names; the ones whose titles match
+are read from their public pages, as robots.txt allows.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import parse_qs, quote, urlparse
 
 from . import __version__
@@ -525,6 +529,207 @@ def _google_posting(pid: str, board: str, get) -> Job:
     raise NotFound("Google Careers doesn't list that job any more")
 
 
+# -- Avature: board "host/portal", from a link like https://jobs.acme.com/en_US/careers/JobDetail/<title>/<id>
+# (on the company's own domain, or acme.avature.net). The portal's sitemap, which its robots.txt points search
+# engines to, lists every posting's link with its title in it, so the titles are matched from there and only the
+# new postings that match are read, from their public pages. A portal whose sitemap lists no postings is read
+# from its RSS job feed instead, one search per term; the feed gives a search's 20 oldest roles at most.
+# robots.txt rules out links with qtvc= on every Avature portal: they're never asked for.
+
+AVATURE_WORKERS = 2  # postings are web pages: read a couple at a time
+AVATURE_FEED_MAX = 20
+_AVATURE_LOCALE = re.compile(r"^[a-z]{2}_[A-Z]{2}$")  # Avature links often start /en_US/
+_AVATURE_FIELD = re.compile(r'<div class="article__content__view__field\b([^"]*)"[^>]*>')
+_AVATURE_LABEL = re.compile(r'<div class="article__content__view__field__label[^"]*"[^>]*>')
+_AVATURE_VALUE = re.compile(r'<div class="article__content__view__field__value[^"]*"[^>]*>')
+_DIV = re.compile(r"<(/?)div\b[^>]*>", re.I)
+_AVATURE_DEPARTMENT = ("career area", "business area", "career field", "department", "category", "job family",
+                       "job category", "function", "area")
+_AVATURE_POSTED = ("date", "posted", "posted date", "date posted", "posting date", "publish date")
+_AVATURE_DATES = ("%A, %B %d, %Y", "%B %d, %Y", "%d-%b-%Y", "%Y-%m-%d", "%m/%d/%Y", "%d %B %Y")
+
+
+def _avature_base(board: str) -> str:
+    host, _, portal = board.partition("/")
+    if not (host and portal) or "/" in portal:
+        raise SourceError(f"an Avature board is a careers site's host and portal, like jobs.acme.com/careers, "
+                          f"got {board!r}")
+    return f"https://{host}/{portal}"
+
+
+def _avature_board(url: str) -> str | None:
+    """ "host/portal" from any link on an Avature portal: the portal is the path's first part after a locale."""
+    parsed = urlparse(url if "//" in url else f"https://{url}")
+    parts = [p for p in parsed.path.split("/") if p and not _AVATURE_LOCALE.match(p)]
+    return f"{parsed.netloc.lower()}/{parts[0]}" if parts else None
+
+
+def _avature_company(board: str) -> str:
+    """The company a portal's host names: acme for acme.avature.net or jobs.acme.com."""
+    labels = board.partition("/")[0].split(".")
+    return labels[0] if board.partition("/")[0].endswith(".avature.net") or len(labels) < 2 else labels[-2]
+
+
+def _avature_get(url: str, get) -> str:
+    if "qtvc=" in url:  # robots.txt: not for robots
+        raise SourceError(f"{url}: Avature asks robots not to read links with qtvc=")
+    return get(url)
+
+
+def _avature_id(url: str) -> str | None:
+    """A posting's number, from .../JobDetail/<title>/<id> (or .../JobDetail?jobId=<id>)."""
+    parsed = urlparse(url)
+    parts = [p for p in parsed.path.split("/") if p]
+    if "JobDetail" not in parts:
+        return None
+    rest = parts[parts.index("JobDetail") + 1:]
+    if rest and rest[-1].isdigit():
+        return rest[-1]
+    jid = parse_qs(parsed.query).get("jobId", [""])[0]
+    return jid if jid.isdigit() else None
+
+
+def _avature_slug_title(url: str) -> str:
+    """The title in a JobDetail link ("Sr-Forward-Deployed-Engineer-REMOTE"), as words."""
+    parts = [p for p in urlparse(url).path.split("/") if p]
+    rest = parts[parts.index("JobDetail") + 1:] if "JobDetail" in parts else []
+    return " ".join(rest[0].split("-")).strip() if len(rest) == 2 else ""
+
+
+def _sitemap_locs(text: str, url: str) -> list[str]:
+    if not (text or "").strip():  # some portals answer with an empty sitemap
+        return []
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as e:
+        raise SourceError(f"{url}: {e}") from None
+    return [(e.text or "").strip() for e in root.iter() if e.tag.rsplit("}", 1)[-1] == "loc"]
+
+
+def _avature_sitemap(base: str, get) -> list[str]:
+    """Every posting link in the portal's sitemap (the en_US one, when there's one per language)."""
+    url = f"{base}/sitemap_index.xml"
+    locs = _sitemap_locs(_avature_get(url, get), url)
+    maps = [loc for loc in locs if loc.endswith(".xml")]
+    if maps:  # an index of sitemaps, one per language
+        url = next((m for m in maps if "/en_US/" in m), maps[0])
+        locs = _sitemap_locs(_avature_get(url, get), url)
+    return [loc for loc in locs if _avature_id(loc) and "qtvc=" not in loc]
+
+
+def _avature_feed(base: str, term: str, get) -> list[tuple[str, str, datetime | None]]:
+    """(link, title, posted) for a search's roles in the portal's RSS feed: its 20 oldest, at most."""
+    url = f"{base}/SearchJobs/feed/" + (f"?search={quote(term)}" if term else "")
+    try:
+        root = ET.fromstring(_avature_get(url, get))
+    except ET.ParseError as e:
+        raise SourceError(f"{url}: {e}") from None
+    found = []
+    for item in root.iter("item"):
+        link = (item.findtext("link") or "").strip()
+        try:
+            posted = parsedate_to_datetime(item.findtext("pubDate") or "")
+        except (TypeError, ValueError):
+            posted = None
+        if _avature_id(link) and "qtvc=" not in link:
+            found.append((link, (item.findtext("title") or "").strip(), posted))
+    return found
+
+
+def fetch_avature(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """The roles on an Avature portal whose titles have one of the `search` terms' words (all of them, with no
+    terms), listed from its sitemap; only the ones whose titles pass `wanted` and that aren't in `known` are read
+    in full, from their pages."""
+    get = get or get_text
+    base = _avature_base(board)
+    links = _avature_sitemap(base, get)
+    if links:
+        found = [(link, _avature_slug_title(link), None) for link in links]
+    else:
+        found = [f for term in search or [""] for f in _avature_feed(base, term, get)]
+    listed: dict[str, tuple] = {}
+    for link, title, posted in found:
+        if title and (not search or _title_has(title, search)):
+            listed.setdefault(_avature_id(link), (link, title, posted))
+
+    def job(item) -> Job:
+        pid, (link, title, posted) = item
+        key = f"avature:{board}:{pid}"
+        if known and key in known and known[key].description:
+            return known[key]
+        j = Job(source="avature", company=board, id=pid, title=title, url=link,
+                company_name=_avature_company(board), posted=posted)
+        if wanted and not wanted(j.title):
+            return j
+        return _unread_if_refused(lambda: _avature_read(j, get), j)
+    return _details(list(listed.items())[:cap], job, AVATURE_WORKERS)
+
+
+def _inner_div(page: str, start: int) -> str:
+    """What's inside the <div> whose opening tag ends at `start`, up to its own closing tag."""
+    depth = 1
+    for m in _DIV.finditer(page, start):
+        depth += -1 if m.group(1) else 1
+        if not depth:
+            return page[start:m.start()]
+    return page[start:]
+
+
+def _avature_fields(page: str) -> list[tuple[str, str]]:
+    """(label, text) for each field a posting's page shows, in order; the long ones have no label."""
+    fields = []
+    for m in _AVATURE_FIELD.finditer(page):
+        if "visibility--hidden" in m.group(1):  # copies of a field, for the page's own scripts
+            continue
+        body = _inner_div(page, m.end())
+        label, value = _AVATURE_LABEL.search(body), _AVATURE_VALUE.search(body)
+        text = html_to_text(_inner_div(body, value.end())) if value else ""
+        if text:
+            fields.append((html_to_text(_inner_div(body, label.end())).rstrip(":").strip() if label else "", text))
+    return fields
+
+
+def _avature_date(text: str) -> datetime | None:
+    for fmt in _AVATURE_DATES:
+        try:
+            return datetime.strptime(text.strip(), fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _meta(page: str, name: str) -> str:
+    m = re.search(r'<meta (?:property|name)="' + re.escape(name) + r'" content="([^"]*)"', page)
+    return html.unescape(html.unescape(m.group(1))).strip() if m else ""  # Avature escapes these twice
+
+
+def _avature_read(j: Job, get) -> Job:
+    """Fill an Avature job from its posting's page: labeled fields (place, date, area) and the text."""
+    page = _avature_get(j.url, get)
+    fields = _avature_fields(page)
+    named = {label.lower(): text for label, text in fields if label}
+    j.title = _meta(page, "og:title") or j.title
+    j.url = _meta(page, "og:url") or j.url
+    places = [line for label, text in named.items() if label.startswith("location") or label.endswith(" location")
+              for line in text.splitlines()]
+    parts = [named.get(k, "") for k in ("city", "state", "state/province", "country/region", "country")]
+    places += [", ".join(p for p in parts if p)]
+    for label, text in fields:  # "Additional Locations: * United States of America - North Carolina - Morrisville"
+        if not label and text.lower().startswith("additional locations"):
+            places += [", ".join(reversed(line[2:].split(" - "))) for line in text.splitlines() if line[:2] == "* "]
+    j.locations = split_locations(*places) or j.locations
+    workplace = " ".join(t for k, t in named.items() if "remote" in k or "workplace" in k)
+    j.remote = True if is_remote(workplace) or any(is_remote(p) for p in j.locations) else None
+    j.department = next((named[k] for k in _AVATURE_DEPARTMENT if k in named), j.department)
+    j.company_name = named.get("company") or j.company_name
+    created = re.search(r"\bcreated (\d{1,2}-\w{3}-\d{4})", _meta(page, "Description"))
+    j.posted = next((d for k in _AVATURE_POSTED if k in named and (d := _avature_date(named[k]))), None) \
+        or (_avature_date(created.group(1)) if created else None) or j.posted
+    j.description = "\n\n".join(text for label, text in fields if not label)
+    _salary(j, j.description)
+    return j
+
+
 @dataclass(frozen=True)
 class Source:
     name: str
@@ -549,6 +754,7 @@ SOURCES = {
     "jibe": Source("jibe", "", None, "https://{board}/careers-home/jobs", fetch_jibe),
     "rippling": Source("rippling", "", None, "https://ats.rippling.com/{board}/jobs", fetch_rippling),
     "google": Source("google", "", None, GOOGLE_JOBS, fetch_google),
+    "avature": Source("avature", "", None, "https://{board}/SearchJobs", fetch_avature),
 }
 
 
@@ -575,7 +781,8 @@ def fetch(source: str, board: str, get=None, search=(), wanted=None, known=None,
     """The open roles on one company's board. `get` replaces the HTTP call (tests, caching).
 
     Greenhouse, Lever, Ashby, Workable and Jibe return every role; Google every role whose title has a `search`
-    term's words, from its whole feed. Workday and Eightfold are searched for each
+    term's words, from its whole feed, and Avature the same from a portal's sitemap. Workday and Eightfold are
+    searched for each
     of `search` (plain title words; nothing searches for everything), reading in full only the postings whose
     title passes `wanted` and that aren't in `known` (key -> Job, read before) already."""
     src = SOURCES[source]
@@ -621,6 +828,10 @@ def detect(url: str) -> tuple[str, str] | None:
         return "rippling", parts[parts.index("board") + 1]
     if host == "careers.google.com" or (host == "google.com" and parts[:2] == ["about", "careers"]):
         return "google", "google"
+    # Avature: acme.avature.net/<portal>, or a portal on the company's own domain, known by its page names
+    portal = [p for p in parts if not _AVATURE_LOCALE.match(p)]
+    if (host.endswith(".avature.net") and portal) or (portal[1:2] and portal[1] in ("JobDetail", "SearchJobs")):
+        return "avature", _avature_board(url)
     source = _HOSTS.get(host)
     if not source:
         return None
@@ -648,6 +859,8 @@ def _posting_id(source: str, url: str) -> str | None:
     if source == "google":  # .../jobs/results/<id>-<slug>; an .../apply/<uuid> link doesn't name the posting
         m = re.match(r"\d+(?=-|$)", parts[parts.index("results") + 1]) if "results" in parts[:-1] else None
         return m.group(0) if m else None
+    if source == "avature":
+        return _avature_id(url if "//" in url else f"https://{url}")
     if source == "workable":
         for marker in ("j", "view"):
             if marker in parts[:-1]:
@@ -665,6 +878,17 @@ def posting(url: str, get=None) -> Job | None:
     if source == "google":  # looked up in the whole feed (an XML one): a link can be to a role outside the US
         pid = _posting_id(source, url)
         return _google_posting(pid, board, get) if pid else None
+    if source == "avature":  # read from the posting's own page (without a query: qtvc= is off limits)
+        pid = _posting_id(source, url)
+        if not pid:
+            return None
+        parsed = urlparse(url if "//" in url else f"https://{url}")
+        link = parsed._replace(query="" if parsed.path.endswith(f"/{pid}") else f"jobId={pid}", fragment="").geturl()
+        j = _avature_read(Job(source="avature", company=board, id=pid, title=_avature_slug_title(link), url=link,
+                              company_name=_avature_company(board)), get or get_text)
+        if not j.description:
+            raise NotFound("that Avature posting isn't open any more")
+        return j
     get = get or get_json
     if source == "workday":
         path = urlparse(url if "//" in url else f"https://{url}").path
@@ -756,6 +980,20 @@ def probe_workday(tenant: str, get=None) -> list[tuple[str, list[Job]]]:
     return hits
 
 
+def probe_avature(name: str, get=None) -> list[tuple[str, list[Job]]]:
+    """A company's Avature careers portal by its likely name, name.avature.net/careers: (board, open roles), or
+    nothing. A portal that lives on the company's own domain (jobs.acme.com/careers) is named by that."""
+    board = f"{name}.avature.net/careers"
+    try:
+        url = f"https://{board}/sitemap_index.xml"
+        locs = _sitemap_locs(_avature_get(url, get or get_text), url)
+        board = (_avature_board(locs[0]) if locs else None) or board
+        jobs = _peek("avature", board, get)
+    except SourceError:
+        return []
+    return [(board, jobs)] if jobs else []
+
+
 _LINK = re.compile(r"(?:https?://)?[\w-]+(?:\.[\w-]+)+/")
 _HREF = re.compile(r"https?://[\w.-]+\.[a-z]{2,}(?:/[^\s\"'<>\\]*)?", re.I)
 
@@ -776,7 +1014,7 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
     A link to the company's own careers page is read for links to a board instead (`page` fetches it).
 
     A guessed name can belong to a different company, so check a role or two before adding a board. Roles on
-    a searched board (Workday, Eightfold) are listed, not read in full: a sample of up to PROBE_CAP."""
+    a searched board (Workday, Eightfold, Avature) are listed, not read in full: a sample of up to PROBE_CAP."""
     if found := detect(company):
         source, board = found
         return [(source, board, _peek(source, board, get))]
@@ -790,7 +1028,7 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
         return hits
     names = board_names(company)
     # jibe: sites on their own domains; google: Google's own board ("Google DeepMind" finds it too)
-    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe", "google")]
+    tries = [(s, n) for n in names for s in SOURCES if s not in ("workday", "jibe", "google", "avature")]
     tries += [("google", "google")] if "google" in names else []
 
     def one(t):
@@ -802,4 +1040,6 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
         hits = [(s, n, jobs) for (s, n), jobs in pool.map(one, tries) if jobs]
         for found in pool.map(lambda n: probe_workday(n, get), [n for n in names if "-" not in n]):
             hits += [("workday", board, jobs) for board, jobs in found]
+        for found in pool.map(lambda n: probe_avature(n, get), [n for n in names if "-" not in n]):
+            hits += [("avature", board, jobs) for board, jobs in found]
     return hits

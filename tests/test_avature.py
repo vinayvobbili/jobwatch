@@ -1,0 +1,178 @@
+"""Avature careers portals: postings listed from the portal's sitemap (or its RSS feed), read from their pages."""
+
+from pathlib import Path
+
+import pytest
+
+from jobwatch import sources
+from jobwatch.models import Job
+from jobwatch.watch import still_open
+
+from .conftest import FakeWeb
+
+FIXTURES = Path(__file__).parent / "fixtures"
+# Lenovo's portal, trimmed: the sitemap index (es_ES listed first here, to show en_US is picked), the en_US
+# sitemap with a few non-posting pages and five postings, the RSS feed for one search, and one posting's page.
+INDEX = (FIXTURES / "avature_sitemap_index.xml").read_text(encoding="utf-8")
+SITEMAP = (FIXTURES / "avature_sitemap.xml").read_text(encoding="utf-8")
+FEED = (FIXTURES / "avature_feed.xml").read_text(encoding="utf-8")
+PAGE = (FIXTURES / "avature_job.html").read_text(encoding="utf-8")
+
+BOARD = "jobs.lenovo.com/careers"
+FDE = "https://jobs.lenovo.com/en_US/careers/JobDetail/Forward-Deployed-Engineer/81926"
+FEED_SEARCH = "https://jobs.lenovo.com/careers/SearchJobs/feed/?search=forward%20deployed"
+
+# A posting on another company's portal, trimmed: other labels (Location, Business Area), no date, no og:url.
+BLOOMBERG = "https://bloomberg.avature.net/careers/JobDetail/Buyside-Pre-Sales-Engineer-OMS-Enterprise-Sales-" \
+            "Financial-Solutions/45161"
+BLOOMBERG_PAGE = """<html><head>
+<meta property="og:title" content="Buyside Pre Sales Engineer (OMS), Enterprise Sales - Financial Solutions" />
+<meta property="og:url" content="" />
+<meta name="Description" content="" />
+</head><body><main>
+<article class="article article--details " >
+  <div class="article__content"><div class="article__content__view">
+    <div class="article__content__view__field article__content__view__field__value--font">
+      <div class="article__content__view__field__value">
+        Buyside Pre Sales Engineer (OMS), Enterprise Sales - Financial Solutions
+      </div>
+    </div>
+  </div></div>
+</article>
+<article class="article article--details regular-fields--cols-2Z regular-fields-label--inline" >
+  <div class="article__content"><div class="article__content__view">
+    <div class="article__content__view__field ">
+      <div class="article__content__view__field__label">Location</div>
+      <div class="article__content__view__field__value">London</div>
+    </div>
+    <div class="article__content__view__field ">
+      <div class="article__content__view__field__label">Business Area</div>
+      <div class="article__content__view__field__value">Sales and Client Service</div>
+    </div>
+    <div class="article__content__view__field ">
+      <div class="article__content__view__field__label">Ref #</div>
+      <div class="article__content__view__field__value">10054428</div>
+    </div>
+  </div></div>
+</article>
+<article class="article article--details " >
+  <div class="article__header " ><div class="article__header__text">
+    <h2 class="article__header__text__title title title--04">Description &amp; Requirements</h2>
+  </div></div>
+  <div class="article__content"><div class="article__content__view">
+    <div class="article__content__view__field tf_replaceFieldVideoTokens field--rich-text">
+      <div class="article__content__view__field__value">
+        <div><strong>What's the role?&nbsp;</strong></div><div><br></div><div>We are seeking an experienced \
+Pre-Sales Engineer / Solutions Architect with a deep knowledge of buyside workflows, particularly in order \
+management solutions (OMS).&nbsp;</div>
+      </div>
+    </div>
+  </div></div>
+</article>
+</main></body></html>"""
+
+
+def lenovo_web(**more):
+    return FakeWeb({
+        f"https://{BOARD}/sitemap_index.xml": INDEX,
+        "https://jobs.lenovo.com/en_US/careers/sitemap.xml": SITEMAP,
+        FDE: PAGE,
+        "https://jobs.lenovo.com/careers/JobDetail/Forward-Deployed-Engineer/81926": PAGE,  # redirects to en_US
+        **more,
+    })
+
+
+def test_avature_lists_postings_from_the_sitemap_and_reads_the_wanted_ones():
+    web = lenovo_web()
+    jobs = {j.id: j for j in sources.fetch("avature", BOARD, web, search=["forward deployed"],
+                                           wanted=lambda t: t == "Forward Deployed Engineer")}
+    assert set(jobs) == {"79788", "80745", "81926"}
+    fde = jobs["81926"]
+    assert fde.key == f"avature:{BOARD}:81926" and fde.title == "Forward Deployed Engineer" and fde.url == FDE
+    assert fde.locations == ["Morrisville, North Carolina, United States of America"] and fde.remote is None
+    assert (fde.company_name, fde.department) == ("lenovo", "Artificial Intelligence")
+    assert fde.posted.date().isoformat() == "2026-09-30"
+    assert (fde.salary_min, fde.salary_max, fde.currency) == (152_000, 233_105, "USD")
+    assert "Copilot Studio" in fde.description and "PAY TRANSPARENCY" in fde.description
+    assert "WD00105712" not in fde.description  # labeled fields are the job's details, not its text
+    assert fde.description.count("* United States of America") == 1  # the hidden copies are left out
+    sr = jobs["79788"]  # listed, not read: its title is the one in its link
+    assert sr.title == "Sr Forward Deployed Engineer REMOTE" and sr.description == "" and sr.company_name == "lenovo"
+    assert web.calls == [f"https://{BOARD}/sitemap_index.xml", "https://jobs.lenovo.com/en_US/careers/sitemap.xml",
+                         FDE]
+
+
+def test_avature_without_search_terms_lists_every_posting():
+    jobs = sources.fetch("avature", BOARD, lenovo_web(), wanted=lambda t: False)
+    assert sorted(j.id for j in jobs) == ["48752", "55213", "79788", "80745", "81926"]
+    assert all(not j.description for j in jobs)
+    assert len(sources.fetch("avature", BOARD, lenovo_web(), wanted=lambda t: False, cap=2)) == 2
+
+
+def test_avature_known_postings_are_not_read_again():
+    known = Job(source="avature", company=BOARD, id="81926", title="Forward Deployed Engineer", url=FDE,
+                description="read before")
+    web = lenovo_web()
+    jobs = sources.fetch("avature", BOARD, web, search=["forward deployed"], known={known.key: known})
+    assert next(j for j in jobs if j.id == "81926") is known and FDE not in web.calls
+
+
+def test_a_portal_without_postings_in_its_sitemap_is_read_from_its_feed():
+    web = FakeWeb({f"https://{BOARD}/sitemap_index.xml": INDEX,
+                   "https://jobs.lenovo.com/en_US/careers/sitemap.xml": "", FEED_SEARCH: FEED})
+    jobs = {j.id: j for j in sources.fetch("avature", BOARD, web, search=["forward deployed"], wanted=lambda t: False)}
+    assert set(jobs) == {"79788", "81926"}  # the feed's search found "AI Application Engineer" in its text only
+    assert jobs["79788"].title == "Sr. Forward Deployed Engineer - REMOTE"
+    assert jobs["79788"].posted.date().isoformat() == "2026-07-28"
+    assert jobs["81926"].url == "https://jobs.lenovo.com/careers/JobDetail/Forward-Deployed-Engineer/81926"
+
+
+@pytest.mark.parametrize("url, expected", [
+    (FDE, ("avature", BOARD)),
+    ("https://jobs.lenovo.com/careers/JobDetail/Forward-Deployed-Engineer/81926", ("avature", BOARD)),
+    ("jobs.lenovo.com/en_US/careers/SearchJobs/?search=forward+deployed", ("avature", BOARD)),
+    ("https://lenovo.avature.net/en_US/careers", ("avature", "lenovo.avature.net/careers")),
+    (BLOOMBERG, ("avature", "bloomberg.avature.net/careers")),
+    ("https://lenovo.avature.net/", None),
+    ("https://www.lenovo.com/us/en/", None),
+])
+def test_avature_links(url, expected):
+    assert sources.detect(url) == expected
+
+
+def test_an_avature_link_is_read_from_its_page():
+    web = lenovo_web()
+    job = sources.posting(FDE + "?qtvc=abc123#top", web)  # robots.txt rules out qtvc=: it's dropped
+    assert job.key == f"avature:{BOARD}:81926" and job.salary_max == 233_105 and job.description
+    assert all("qtvc" not in u for u in web.calls)
+    assert sources.posting("https://jobs.lenovo.com/careers/JobDetail/Forward-Deployed-Engineer/81926", web).id == \
+        "81926"
+    assert sources.posting("https://jobs.lenovo.com/en_US/careers/SearchJobs", web) is None
+    assert sources._posting_id("avature", "https://jobs.lenovo.com/en_US/careers/JobDetail?jobId=81926") == "81926"
+    with pytest.raises(sources.NotFound):  # a closed posting's page is Avature's 404 error page
+        sources.posting("https://jobs.lenovo.com/en_US/careers/JobDetail/Forward-Deployed-Engineer/1", web)
+    with pytest.raises(sources.SourceError):
+        sources._avature_get("https://jobs.lenovo.com/careers/SearchJobs?qtvc=abc", web)
+    assert sources.careers_url("avature", BOARD) == "https://jobs.lenovo.com/careers/SearchJobs"
+    with pytest.raises(sources.SourceError):
+        sources.fetch("avature", "jobs.lenovo.com", web)
+
+
+def test_other_portals_name_their_fields_differently():
+    job = sources.posting(BLOOMBERG, FakeWeb({BLOOMBERG: BLOOMBERG_PAGE}))
+    assert job.title == "Buyside Pre Sales Engineer (OMS), Enterprise Sales - Financial Solutions"
+    assert job.url == BLOOMBERG
+    assert job.locations == ["London"] and job.department == "Sales and Client Service"
+    assert job.company_name == "bloomberg" and job.posted is None and job.salary_min is None
+    assert "order management solutions" in job.description and "10054428" not in job.description
+
+
+def test_avature_is_found_by_name_and_its_jobs_checked():
+    web = lenovo_web(**{"https://lenovo.avature.net/careers/sitemap_index.xml": INDEX})
+    hits = sources.probe("Lenovo", web)  # lenovo.avature.net's portal lives on jobs.lenovo.com
+    assert [(s, b, sources.open_roles(j)) for s, b, j in hits] == [("avature", BOARD, "5")]
+    assert not any(s == "avature" for s, _, _ in sources.probe("Globex", web))
+    job = sources.posting(FDE, web)
+    assert still_open(job, web) is True
+    job.url = "https://jobs.lenovo.com/en_US/careers/JobDetail/Forward-Deployed-Engineer/1"
+    assert still_open(job, web) is False

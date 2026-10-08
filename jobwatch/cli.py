@@ -319,7 +319,8 @@ def _tracking(p: argparse.ArgumentParser):
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="jobwatch", description="Watch company job boards (Greenhouse, Lever, "
-                                 "Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google Careers) and get a "
+                                 "Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google Careers, Avature) and "
+                                 "get a "
                                  "ranked digest of new "
                                  "matches.")
     ap.add_argument("--version", action="version", version=f"jobwatch {__version__}")
@@ -375,8 +376,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_mark)
 
     p = sub.add_parser("add", help="add a job found elsewhere (LinkedIn, a referral, a recruiter): `add <link>` "
-                       "reads the posting from Greenhouse, Lever, Ashby, Workable, Workday, Rippling or Google "
-                       "Careers (a LinkedIn "
+                       "reads the posting from Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google "
+                       "Careers or Avature (a LinkedIn "
                        "link is matched to the company's own board); `add <company> <title>` "
                        "for anything else. --status queued to consider it, else it's an application")
     p.add_argument("job", nargs="+", metavar="LINK | COMPANY TITLE")
