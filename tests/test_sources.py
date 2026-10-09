@@ -24,8 +24,8 @@ def test_lever():
     assert j.remote is True
     assert "You will:\n- Ship LLM features" in j.description and "Benefits." in j.description
     assert j.age_days() == 10
-    # An hourly range is not an annual salary.
-    assert jobs[1].salary_min is None
+    # An hourly wage ($60–$80) is kept as the year's pay it comes to, 2,080 hours a year.
+    assert (jobs[1].salary_min, jobs[1].salary_max) == (124_800, 166_400)
 
 
 def test_ashby_skips_unlisted_and_reads_structured_pay():

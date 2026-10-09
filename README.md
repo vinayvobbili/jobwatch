@@ -43,7 +43,8 @@ jobwatch reads those feeds for the companies on your watchlist:
 
 - **Complete and fresh:** a role appears as soon as the company posts it, not when an aggregator picks it up.
 - **Pay ranges:** read from the board's structured fields where they exist (Lever, Ashby), otherwise from
-  the posting text.
+  the posting text. An hourly wage counts as the yearly pay it comes to (2,080 hours), so `$75–$80/hr` is
+  held to `min_salary` as $156K–$166K.
 - **Polite:** one request per company per run on Greenhouse, Lever, Ashby and Workable (a Jibe site: one per 100
   roles). A Workday, Eightfold or Oracle board can
   list thousands of roles, most of them nothing like yours, so jobwatch searches it for your
