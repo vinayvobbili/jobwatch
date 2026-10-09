@@ -128,6 +128,62 @@ def in_us(location: str) -> bool:
     return bool(_US_NAMES.search(location) or _US_CODES.search(location))
 
 
+_DC = re.compile(r"\bWashington,?\s*D\.?\s?C\b\.?|\bDistrict of Columbia\b", re.I)
+# A state by name (any case), or by code in capitals standing on its own ("Remote - CA", "CA, NV, OR or WA"):
+# "or", "in" and "me" are words too.
+_STATE = re.compile(r"(?i:\b(" + "|".join(sorted(STATES.values(), key=len, reverse=True)) + r")\b)"
+                    r"|(?<![\w.])(" + "|".join(STATES) + r")(?![\w.])")
+_CODE_OF = {name.lower(): code for code, name in STATES.items()}
+# What a list of states says besides the states: "California, USA; Nevada, USA", "the following states: CA, NV".
+_LIST_WORDS = re.compile(r"\b(?:and|or|only|states?|following|one|of|the|remote|locations?|in|within)\b|[^\w]+",
+                         re.I)
+
+
+def state_code(name: str) -> str | None:
+    """ "NC" or "North Carolina" (any case) -> "NC"; None for anything that isn't a US state (or DC)."""
+    s = " ".join(name.split()).strip(" .")
+    if s.upper() in STATES:
+        return s.upper()
+    return "DC" if _DC.fullmatch(s) else _CODE_OF.get(s.lower())
+
+
+def us_states(text: str) -> list[str]:
+    """The US states a place names, as codes in order, each once: "Remote-Minnesota-Minneapolis Metro" -> ["MN"],
+    "Remote - Washington D.C." -> ["DC"]."""
+    found = (state_code(m.group(0)) for m in _STATE.finditer(_DC.sub(" DC ", text)))
+    return list(dict.fromkeys(c for c in found if c))
+
+
+def state_list(text: str) -> list[str] | None:
+    """The states, when the text is nothing but a list of US states: "California, USA; Nevada, USA",
+    "CA, NV, OR or WA", "Remote - Texas". None when it names anything else too ("Austin, TX", "anywhere in the
+    United States, with travel to Austin, TX"), or no state at all."""
+    text = _DC.sub(" DC ", text)
+    rest = _STATE.sub(" ", text)
+    rest = _LIST_WORDS.sub(" ", _US_WIDE_CODES.sub(" ", _US_WIDE.sub(" ", rest)))
+    rest = re.sub(r"\b(?:work|from|at|home?|fully|friendly|first|anywhere|hybrid)\b", " ", rest, flags=re.I)
+    return (us_states(text) or None) if not rest.strip() else None
+
+
+# Where a posting says a remote job is open: "Remote locations: California, USA; Nevada, USA.", "remote in CA,
+# NV, OR or WA", "must reside in one of the following states: ...". The rest of the line is checked with state_list.
+_REMOTE_LIMIT = re.compile(
+    r"remote\s+locations?\s*:(?P<a>[^\n]+)"
+    r"|remote\s+(?:only\s+)?(?:in|from|within)\b(?P<b>[^\n]+)"
+    r"|(?:must|required\s+to|need\s+to|should)\s+(?:currently\s+)?(?:reside|live|be\s+located|be\s+based)"
+    r"\s+(?:in|within)\b(?P<c>[^\n]+)", re.I)
+
+
+def remote_states_in_text(text: str) -> list[str]:
+    """The states a posting's text limits a remote job to; [] when it doesn't (or says the whole US)."""
+    out: list[str] = []
+    for m in _REMOTE_LIMIT.finditer(_DC.sub(" DC ", text)):
+        # Up to the end of the sentence; "D.C." is "DC" by now, so a period ends it.
+        segment = re.split(r"\.(?:\s|$)|\.$", m.group("a") or m.group("b") or m.group("c"))[0]
+        out += state_list(segment) or []
+    return list(dict.fromkeys(out))
+
+
 # The whole country, as opposed to a state or city in it.
 _US_WIDE = re.compile(r"\bunited states(?: of america)?\b|\bnorth america\b|\bamericas\b|\bnationwide\b", re.I)
 _US_WIDE_CODES = re.compile(r"\bU\.S\.(?:A\.)?|\bUSA?\b")
