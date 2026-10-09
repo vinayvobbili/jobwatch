@@ -242,6 +242,95 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
     return job, True
 
 
+def set_link(store: Store, key: str, url: str, get=None) -> str:
+    """Give a job added by hand its link and, when it has no posting text yet and the link is to one job on a
+    supported board, read the posting from there (as add_application does): its text, and the pay and places
+    the job has none of. Says what happened, in a few words; a link that can't be read is kept all the same."""
+    store.set_url(key, url)
+    job, _ = store.find(key)
+    if not url.strip() or job.description.strip():
+        return "link saved"
+    try:
+        posting = sources.posting(url, get)
+    except sources.SourceError as e:
+        return f"link saved; couldn't read the posting there: {e}"
+    if posting is None or not posting.description.strip():
+        return "link saved; jobwatch can't read postings on that site: paste the text to score it"
+    store.set_description(key, posting.description, posting)
+    return "link saved; posting read from it"
+
+
+NO_RESUME = ("no_resume", "No resume to score against: add it in Settings (resume: in the watchlist)")
+NO_TEXT = ("no_text", "No posting text: add a link to the company's posting or paste it")
+
+
+def _ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = None, current: str = "",
+                     stopped: str = "") -> dict[str, dict]:
+    """Why each of Today's jobs has no fit score: {job key: {"code", "text"}}. Codes: no_resume, no_text (a job
+    from an alert email may have only its title), failed (with the error), scoring (now), queued (in the
+    background scorer's line: "3rd of 4"), stopped (background scoring stopped, and why), manual (background
+    scoring is off) and same_role (another posting of the same role was scored before this one came in).
+    `failed` (job key -> error), `current` (the key being scored) and `stopped` come from the page's background
+    scorer; without them, a job is described by where it stands in the scorer's line."""
+    failed = failed or {}
+    has_resume = bool(cfg.resume and cfg.resume.is_file())
+    fits = store.scores(resume_id(cfg.resume)) if has_resume else {}
+    entries, _ = _matching(cfg, store, ("new", "shown"))
+    groups = _group(sorted(entries, key=_rank))  # the scorer's order: see unscored
+    line = [e.job.key for e in groups if _scorable(e) and e.job.key not in failed and e.job.key != current]
+    out: dict[str, dict] = {}
+    for e in groups:
+        head = _why_unscored(e, has_resume, cfg.auto_score, failed, current, stopped, line)
+        for job in (e.job, *e.same_title):
+            if job.key in fits:
+                continue
+            why = head
+            if job is not e.job and e.fit:  # its group's score was saved before this posting came in
+                why = ("same_role", f"Same role as another posting here, which scored {e.fit['score']}: press "
+                       "Score fit to score this one")
+            if why:
+                out[job.key] = {"code": why[0], "text": why[1]}
+    return out
+
+
+def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str], current: str, stopped: str,
+                  line: list[str]) -> tuple[str, str] | None:
+    """Why a group's first posting (the one scored for all of them) has no fit score; None when it has one."""
+    if e.fit is not None:
+        return None
+    if not has_resume:
+        return NO_RESUME
+    if not e.job.description.strip():
+        return NO_TEXT
+    if e.job.key in failed:
+        return "failed", f"Scoring failed: {failed[e.job.key]}"
+    if e.job.key == current:
+        return "scoring", "Being scored now"
+    if not auto:
+        return "manual", "Background scoring is off: press Score fit"
+    if stopped:
+        return "stopped", f"Background scoring stopped: {stopped}"
+    return "queued", f"In line to score · {_ordinal(line.index(e.job.key) + 1)} of {len(line)}"
+
+
+def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict] | None = None) -> dict | None:
+    """Why this job, on Today or not, has no fit score (see unscored_reasons; pass `reasons` when you have them
+    already); None when it has one. A job that isn't on Today (queued, applied, hidden by the filters) isn't
+    scored in the background."""
+    if (why := (unscored_reasons(cfg, store) if reasons is None else reasons).get(job.key)) is not None:
+        return why
+    has_resume = bool(cfg.resume and cfg.resume.is_file())
+    if has_resume and store.score(job.key, resume_id(cfg.resume)):
+        return None
+    code, text = (NO_RESUME if not has_resume else NO_TEXT if not job.description.strip()
+                  else ("manual", "Only Today's jobs are scored in the background: press Score fit"))
+    return {"code": code, "text": text}
+
+
 def _rank(e: Entry):
     fit = e.fit["score"] if e.fit else -1
     return (-fit, -e.relevance, e.job.age_days() if e.job.age_days() is not None else 10_000)

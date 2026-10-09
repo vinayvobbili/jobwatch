@@ -266,14 +266,23 @@ class Store:
         with self.db:
             self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
 
-    def set_description(self, key: str, text: str):
+    def set_description(self, key: str, text: str, posting: Job | None = None):
         """Give an application added by hand the posting's text, pasted (found later, or from a copy once the
         posting is gone), so it can be scored and prepped. The pay is read from it if none is set, and the
-        posting kept with the application is replaced: what was kept had no text to keep."""
+        posting kept with the application is replaced: what was kept had no text to keep. With `posting` (the
+        job read from its link later), its pay, places, remote flag, department and posted day fill in what
+        the application has none of."""
         job, rec = self.find(key)
         if job.source != MANUAL:
             raise ValueError(f"{job.key} comes from its board, which sets its text")
         job.description = text.strip()
+        if posting:
+            if job.salary_min is None and posting.salary_min is not None:
+                job.salary_min, job.salary_max, job.currency = posting.salary_min, posting.salary_max, posting.currency
+            job.locations = job.locations or list(posting.locations)
+            job.remote = posting.remote if job.remote is None else job.remote
+            job.department = job.department or posting.department
+            job.posted = job.posted or posting.posted
         if job.salary_min is None and (pay := parse_salary(job.description)):
             job.salary_min, job.salary_max, job.currency = *pay, "USD"
         with self.db:

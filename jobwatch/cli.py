@@ -24,7 +24,9 @@ from .watch import (
     queue,
     save_job,
     score_entries,
+    set_link,
     unscored,
+    unscored_reasons,
     watched_name,
 )
 
@@ -105,6 +107,23 @@ def cmd_score(args, cfg, store):
         print(f"  {key}: {err}")
 
 
+def cmd_unscored(args, cfg, store):
+    """Today's jobs with no fit score, and why: in the background scorer's line (and where), no posting text to
+    score, the same role scored before this posting came in, no resume. Failures and the job being scored
+    right now are what the page itself knows: see Today there."""
+    why = unscored_reasons(cfg, store)
+    if not why:
+        print("Every job on Today has a fit score.")
+        return
+    for key, w in why.items():
+        job, _ = store.find(key)
+        print(f"{job.display_company}: {job.title}\n  {w['text']}\n  {key}")
+    counts: dict[str, int] = {}
+    for w in why.values():
+        counts[w["code"]] = counts.get(w["code"], 0) + 1
+    print(f"\n{len(why)} without a score: " + ", ".join(f"{n} {code.replace('_', ' ')}" for code, n in counts.items()))
+
+
 def cmd_show(args, cfg, store):
     job, rec = store.find(args.key)
     status = rec["status"] + (f" ({rec['note']})" if rec.get("note") else "")
@@ -140,7 +159,7 @@ def cmd_mark(args, cfg, store):
     for k in keys:
         store.track(k, next_step=getattr(args, "next", None), follow_up=getattr(args, "follow_up", None))
         if getattr(args, "url", None) is not None:
-            store.set_url(k, args.url)
+            print(f"  {k}: {set_link(store, k, args.url)}")
         if getattr(args, "add_note", None):
             store.add_note(k, args.add_note)
         print(f"{k}: {args.status or store.find(k)[1]['status']}")
@@ -375,6 +394,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("score", help="score Today's unscored jobs against your resume, most relevant first")
     p.add_argument("--limit", type=int, default=None, metavar="N", help="stop after N jobs")
     p.set_defaults(func=cmd_score)
+
+    p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")
+    p.set_defaults(func=cmd_unscored)
 
     p = sub.add_parser("show", help="a job's full posting text")
     p.add_argument("key", help="job key, its posting id, or its company")

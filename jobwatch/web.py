@@ -28,7 +28,19 @@ from .filters import KINDS, rejection
 from .package import Package
 from .score import ScoringUnavailable, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, STATUSES, Store
-from .watch import build_digest, fetch_all, load_contacts, queue, save_job, score_entries, unscored, watched_name
+from .watch import (
+    build_digest,
+    fetch_all,
+    load_contacts,
+    queue,
+    save_job,
+    score_entries,
+    set_link,
+    unscored,
+    unscored_reason,
+    unscored_reasons,
+    watched_name,
+)
 
 MAX_UPLOAD = 20 * 1024 * 1024
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
@@ -50,11 +62,17 @@ class Scorer:
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._again = False  # asked to run again while running: new jobs may have come in
-        self._failed: set[str] = set()  # jobs that failed to score; not retried until the page restarts
+        self._failed: dict[str, str] = {}  # job key -> why it failed to score; not retried until the page restarts
         self.done = 0
         self.left = 0
         self.current = ""
+        self.current_key = ""
         self.error = ""
+        self.stopped = ""  # why background scoring stopped short, until it runs again
+
+    def reasons(self, cfg, store) -> dict[str, dict]:
+        """Why each of Today's unscored jobs has no score yet, with what this scorer knows (see unscored_reasons)."""
+        return unscored_reasons(cfg, store, self._failed, self.current_key, "" if self._thread else self.stopped)
 
     def status(self) -> dict:
         return {"running": self._thread is not None, "done": self.done, "left": self.left,
@@ -74,15 +92,17 @@ class Scorer:
 
     def _run(self):
         while True:
+            self.stopped = ""
             try:
                 while self._step():
                     pass
             except Exception as e:  # never take the page down: say why scoring stopped
                 self.error = f"{type(e).__name__}: {e}" if not isinstance(e, ScoringUnavailable) else str(e)
+                self.stopped = self.error
                 print(f"jobwatch: background scoring stopped: {self.error}", file=sys.stderr)
             with self._lock:
                 if not self._again:
-                    self._thread, self.current, self.left = None, "", 0
+                    self._thread, self.current, self.current_key, self.left = None, "", "", 0
                     return
                 self._again = False
 
@@ -98,16 +118,17 @@ class Scorer:
             if not todo:
                 return False
             e = todo[0]
-            self.current = f"{e.job.display_company}: {e.job.title}"
+            self.current, self.current_key = f"{e.job.display_company}: {e.job.title}", e.job.key
             with turn(cfg.backend, background=True):
                 scored, errors = score_entries(cfg, store, [e], progress=lambda m: None)
         finally:
             store.close()
         self.done += scored
         self.left -= 1
+        self.current_key = ""
         if errors:
-            self._failed.add(e.job.key)
-            self.error = f"{self.current}: {next(iter(errors.values()))}"
+            self._failed[e.job.key] = next(iter(errors.values()))
+            self.error = f"{self.current}: {self._failed[e.job.key]}"
         return True
 
 
@@ -200,7 +221,9 @@ class App:
     def get_digest(self, q) -> dict:
         def run(cfg, store):
             d = build_digest(cfg, store, include_seen=True, score_top=0)
-            out = {"jobs": [self._entry(e) for e in d.entries], "rejected": d.rejected,
+            why = self.scorer.reasons(cfg, store)
+            out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key)} for e in d.entries],
+                   "rejected": d.rejected,
                    "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({})}
             # "New" shows once: the next visit lists these as seen.
             store.set_status([k for e in d.entries if e.record.get("status") == "new" for k in e.keys], "shown")
@@ -234,8 +257,10 @@ class App:
     def get_queue(self, q) -> list[dict]:
         def run(cfg, store):
             resume = bool(cfg.resume and cfg.resume.is_file())
+            why = self.scorer.reasons(cfg, store)
             # A job added by hand can be scored once it has the posting's text.
-            return [{**self._entry(e), "can_score": resume and bool(e.job.description.strip())}
+            return [{**self._entry(e), "can_score": resume and bool(e.job.description.strip()),
+                     "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why)}
                     for e in queue(cfg, store)]
         return self._with_store(run)
 
@@ -309,7 +334,30 @@ class App:
                     "package": Package(store.packages, job.key).data(),
                     "skills": learn.job_gaps(cfg, store, job), "fit": fit,
                     "can_score": resume and bool(job.description.strip()),
+                    "unscored": None if fit else unscored_reason(cfg, store, job, self.scorer.reasons(cfg, store)),
+                    "manual": job.source == MANUAL,
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
+        return self._with_store(run)
+
+    def post_posting(self, body) -> dict:
+        """A job added by hand gets its posting: a link (read when it's to one job on a supported board) and/or
+        the text, pasted. Says what happened, and whether the job now has text to score."""
+        def run(cfg, store):
+            key = store.find(body.get("key") or "")[0].key
+            said = []
+            try:
+                if (text := (body.get("text") or "").strip()):
+                    store.set_description(key, text)
+                    said.append("text saved")
+                if (url := (body.get("url") or "").strip()):
+                    said.append(set_link(store, key, url))
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+            if not said:
+                raise ApiError("send a link to the posting, or its text")
+            job, _ = store.find(key)
+            self.score_in_background()  # it may have text to score now
+            return {"key": key, "said": "; ".join(said), "has_text": bool(job.description.strip())}
         return self._with_store(run)
 
     def get_prep(self, q) -> dict:
@@ -452,6 +500,7 @@ ROUTES = {
     ("POST", "/api/add"): App.post_add,
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/score"): App.post_score,
+    ("POST", "/api/posting"): App.post_posting,
     ("GET", "/api/scoring"): App.get_scoring,
     ("GET", "/api/chat"): App.get_chat,
     ("GET", "/api/skills"): App.get_skills,

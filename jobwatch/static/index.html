@@ -885,17 +885,49 @@ function detailsButton(job) {
   return h("button", { class: "btn ghost", onclick: () => openDetails(job.key) }, "Details", icon("arrow", 13));
 }
 
+// Why a job has no fit score yet (the server's `unscored`: in line, no posting text, failed...).
+function unscoredNote(job) {
+  return job.unscored ? h("span", { class: "muted small", title: job.unscored.text }, job.unscored.text) : null;
+}
+// A job with only a title (from an alert email) gets its posting here: a link jobwatch reads, or the text.
+function postingButton(job, done) {
+  const b = h("button", { class: "btn", title: "Add a link to the company's posting, or paste its text, so it can be scored" },
+    "Add the posting");
+  b.onclick = () => {
+    const url = h("input", { type: "url", placeholder: "Link to the company's posting" });
+    const text = h("textarea", { rows: 4, placeholder: "…or paste the posting's text" });
+    const save = h("button", { class: "btn primary" }, "Save");
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        const r = await api("/api/posting", { key: job.key, url: url.value, text: text.value });
+        toast(r.said);
+        done(r);
+      } catch (e) { save.disabled = false; toast(e.message); }
+    };
+    b.replaceWith(h("div", { style: "flex-basis:100%; display:grid; gap:8px" }, url, text, h("div", {}, save)));
+  };
+  return b;
+}
+
 function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
-  if (!canScore || job.fit) return null;
+  if (job.fit) return null;
+  const redraw = j => document.getElementById("job-" + j.key).replaceWith(card(j));
+  if (job.unscored?.code === "no_text")
+    return [postingButton(job, r => {
+      if (r.has_text) job.unscored = { code: "queued", text: "Posting added: in line to score" };
+      redraw(job);
+    }), unscoredNote(job)];
+  if (!canScore || job.unscored?.code === "scoring") return unscoredNote(job);
   const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");
   b.onclick = async () => {
     b.disabled = true; b.textContent = "Scoring…";
     try {
       job.fit = await api("/api/score", { key: job.key });
-      document.getElementById("job-" + job.key).replaceWith(card(job));
+      redraw(job);
     } catch (e) { b.disabled = false; b.textContent = "Score fit"; toast(e.message); }
   };
-  return b;
+  return [b, unscoredNote(job)];
 }
 
 function todayCard(job, canScore, i) {
@@ -944,14 +976,16 @@ async function openDetails(key) {
   } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
 }
 function detailsScore(j) {
-  if (j.fit || !j.can_score) return null;
+  if (j.fit) return null;
+  if (j.unscored?.code === "no_text" && j.manual) return [postingButton(j, () => openDetails(j.key)), unscoredNote(j)];
+  if (!j.can_score || j.unscored?.code === "scoring") return unscoredNote(j);
   const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");
   b.onclick = async () => {
     b.disabled = true; b.textContent = "Scoring…";
     try { await api("/api/score", { key: j.key }); openDetails(j.key); }
     catch (e) { b.disabled = false; b.textContent = "Score fit"; toast(e.message); }
   };
-  return b;
+  return [b, unscoredNote(j)];
 }
 // A prep sheet for a call: the posting's asks next to the closest resume line, gaps, what was sent, questions.
 async function openPrep(key) {
