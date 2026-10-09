@@ -79,6 +79,52 @@ def test_pay_floor_uses_the_top_of_the_range():
     assert reject_reason(job(), Filters(require_salary=True)) == "pay not listed"  # ...unless required
 
 
+GOOGLE_STATES = dict(  # Google's feed: a remote role open in four states, listed as the states alone
+    locations=["California, USA", "Nevada, USA", "Oregon, USA", "Washington, USA"], remote=True,
+    description="Note: you can share your preferred working location from the following:\n"
+                "Remote locations: California, USA; Nevada, USA; Oregon, USA; Washington, USA.\n"
+                "In accordance with Washington state law, we are highlighting our benefits.")
+HOME = ["remote", "Raleigh", "Durham"]
+
+
+def test_remote_only_in_other_states_is_left_out_for_a_home_state():
+    assert reject_reason(job(**GOOGLE_STATES), Filters(locations=HOME, home_state="NC")) == \
+        "remote only in CA, NV, OR, WA"
+    assert reject_reason(job(**GOOGLE_STATES), Filters(locations=HOME, home_state="CA")) is None
+    assert reject_reason(job(**GOOGLE_STATES), Filters(locations=HOME)) is None  # no home state: as before
+
+
+@pytest.mark.parametrize("kw, ok", [
+    (dict(locations=["Remote - US"]), True),
+    (dict(locations=["Remote (United States)"], description="Must reside in the United States."), True),
+    (dict(locations=["Austin, TX"], remote=True), True),                  # a city: not a list of states
+    (dict(locations=["New York, United States"], remote=True), True),     # one place: maybe just the office
+    (dict(locations=["Washington DC, United States"], remote=True), True),
+    (dict(locations=["Work At Home-Connecticut"], remote=True), False),   # Workday: remote for people in CT
+    (dict(locations=["TX - Work from home", "MA - Boston"], remote=True), False),
+    (dict(locations=["Texas, USA", "North Carolina, USA"], remote=True), True),
+    (dict(locations=["Remote - North Carolina"]), True),                  # remote in the home state
+    (dict(locations=["Remote - Texas"]), False),
+    (dict(locations=["Remote - US"], description="This role is remote in CA, NV, OR or WA only."), False),
+    (dict(locations=["Remote - US"], description="Candidates must reside in one of the following states: "
+                                                  "Arizona, North Carolina, Texas."), True),
+    (dict(locations=["Remote - US"], description="Remote from anywhere in the United States, with travel to "
+                                                  "Austin, TX."), True),
+    (dict(locations=["Remote"], remote=True, description="Remote locations: Washington D.C.; Virginia."), False),
+    (dict(locations=["Raleigh, NC", "Remote - Texas"]), True),            # a wanted place: the rest doesn't matter
+    (dict(locations=["Charlotte, NC"], description="Must reside in North Carolina."), False),  # not remote
+])
+def test_home_state(kw, ok):
+    assert (reject_reason(job(**kw), Filters(locations=HOME, home_state="North Carolina")) is None) is ok
+
+
+def test_home_state_is_a_us_state():
+    assert Filters.from_dict({"home_state": "north carolina"}).home_state == "NC"
+    assert Filters.from_dict({"home_state": "nc"}).home_state == "NC"
+    with pytest.raises(ValueError, match="isn't a US state"):
+        Filters.from_dict({"home_state": "Ontario"})
+
+
 def test_age():
     old = job(posted=datetime.now(timezone.utc) - timedelta(days=45))
     assert reject_reason(old, Filters(max_age_days=30)) == "posted 45 days ago"

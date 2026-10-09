@@ -283,7 +283,8 @@ filters:
   exclude_titles: ["intern", "manager"]
   locations: ["remote", "New York"]            # "remote" = remote in remote_country; other text is matched
   remote_country: US                           # or "any"
-  min_salary: 150000                           # listed pay must reach this; jobs without pay still pass
+  # home_state: NY                             # leave out remote jobs open only in other states
+  min_salary: 150000                          # listed pay must reach this; jobs without pay still pass
   max_age_days: 30
   # flags:                                     # not filters: warnings on queued jobs whose posting says this
   #   "active (TS|top secret)": clearance
