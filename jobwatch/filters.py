@@ -6,7 +6,17 @@ import re
 from dataclasses import dataclass, field
 
 from .models import Job
-from .text import bare_remote, in_us, is_remote, remote_us_wide
+from .text import (
+    bare_remote,
+    in_us,
+    is_remote,
+    names_a_region,
+    remote_states_in_text,
+    remote_us_wide,
+    state_code,
+    state_list,
+    us_states,
+)
 
 
 @dataclass
@@ -15,6 +25,9 @@ class Filters:
     exclude_titles: list[str] = field(default_factory=list)  # regexes; a match rejects the job
     locations: list[str] = field(default_factory=list)       # "remote", or text to find in a location (none: anywhere)
     remote_country: str = "US"                               # where a remote job must be open: "US" or "any"
+    # The US state the person lives in ("NC" or "North Carolina"): a remote job open only in some states is left
+    # out unless it's one of them. Empty: any US remote job passes.
+    home_state: str = ""
     min_salary: int | None = None                            # a listed range must reach this; unlisted pay passes
     require_salary: bool = False                             # reject jobs that don't list pay
     max_age_days: int | None = None
@@ -40,6 +53,14 @@ class Filters:
                     raise ValueError(f"filters.{key}: {p!r} isn't a valid pattern: {e}") from None
         return cls(**d)
 
+    def __post_init__(self):
+        if self.home_state:  # kept as its code: "North Carolina" -> "NC"
+            code = state_code(str(self.home_state))
+            if not code:
+                raise ValueError(f"filters.home_state: {self.home_state!r} isn't a US state "
+                                 "(e.g. NC or North Carolina)")
+            self.home_state = code
+
 
 def _any(patterns: list[str], text: str) -> str | None:
     return next((p for p in patterns if re.search(p, text, re.I)), None)
@@ -56,6 +77,23 @@ def _remote_ok(job: Job, country: str) -> bool:
         return True
     # The posting's own remote flag, with the location saying where.
     return bool(job.remote) and (anywhere or not job.locations or any(in_us(loc) for loc in job.locations))
+
+
+def remote_states(job: Job) -> list[str]:
+    """The US states a remote job is open in, when it's open only in some (as codes); [] when it's open across the
+    US or doesn't say. From its places ("Remote - Texas"; or, with the remote flag, a list of states alone:
+    "California, USA; Nevada, USA") and its text ("Remote locations: ...", "must reside in ...").
+    One place alone with the remote flag doesn't count: "New York, United States" is often the office of a
+    remote job, and New York and Washington are cities too."""
+    places = [loc for loc in job.locations if is_remote(loc)]
+    out: list[str] = []
+    if not any(remote_us_wide(loc) or bare_remote(loc) for loc in places):
+        out += [s for loc in places if names_a_region(loc) for s in us_states(loc)]
+        lists = [state_list(loc) for loc in job.locations if not is_remote(loc)]
+        if job.remote and len(lists) >= 2 and all(lists):
+            out += [s for states in lists for s in states]
+    out += remote_states_in_text(job.description)
+    return list(dict.fromkeys(out))
 
 
 def title_ok(title: str, f: Filters) -> bool:
@@ -76,8 +114,8 @@ KINDS = ("title", "excluded", "department", "place", "pay", "age")
 
 def rejection(job: Job, f: Filters) -> tuple[str, str] | None:
     """(which filter, why) for a job that fails the filters, or None if it passes. The filter is one of KINDS:
-    ("title", "title"), ("excluded", "title matches 'manager'"), ("place", "location"), ("pay", "pay $120K–$160K"),
-    ("age", "posted 45 days ago")."""
+    ("title", "title"), ("excluded", "title matches 'manager'"), ("place", "location"),
+    ("place", "remote only in CA, NV"), ("pay", "pay $120K–$160K"), ("age", "posted 45 days ago")."""
     if f.titles and not _any(f.titles, job.title):
         return "title", "title"
     if p := _any(f.exclude_titles, job.title):
@@ -87,9 +125,14 @@ def rejection(job: Job, f: Filters) -> tuple[str, str] | None:
     if f.locations:
         wanted = [w for w in f.locations if w.lower() != "remote"]
         remote_wanted = len(wanted) < len(f.locations)
-        if not ((remote_wanted and _remote_ok(job, f.remote_country))
-                or any(w.lower() in loc.lower() for w in wanted for loc in job.locations)):
-            return "place", "location"
+        if not any(w.lower() in loc.lower() for w in wanted for loc in job.locations):
+            remote = remote_wanted and (job.remote or any(is_remote(loc) for loc in job.locations))
+            states = remote_states(job) if remote and f.home_state else []
+            # Remote only in the home state ("Remote - North Carolina") is remote for this person.
+            if not ((remote_wanted and _remote_ok(job, f.remote_country)) or f.home_state in states):
+                return "place", "location"
+            if states and f.home_state not in states:
+                return "place", f"remote only in {', '.join(states)}"
     if job.salary_min is None:
         if f.require_salary:
             return "pay", "pay not listed"
