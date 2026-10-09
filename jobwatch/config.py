@@ -286,6 +286,7 @@ filters:
   # home_state: NY                             # leave out remote jobs open only in other states
   min_salary: 150000                          # listed pay must reach this; jobs without pay still pass
   max_age_days: 30
+  # min_fit: 70                                # hide jobs whose fit score is below this; unscored ones still show
   # flags:                                     # not filters: warnings on queued jobs whose posting says this
   #   "active (TS|top secret)": clearance
 

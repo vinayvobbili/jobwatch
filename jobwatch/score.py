@@ -88,9 +88,29 @@ def _safe(key: str) -> str:
     return re.sub(r"[^\w.-]+", "_", key)
 
 
+def requirement_rows(result, spec) -> list[dict]:
+    """Why a score is what it is: each requirement the posting asks for, its verdict, and the resume's words
+    that back it (only quotes found in the resume)."""
+    asked = {r.id: r.description for r in getattr(spec, "requirements", None) or []}
+    rows = []
+    for r in getattr(result, "requirements", None) or []:
+        unverified = set(r.unverified_quotes)
+        rows.append({"id": r.requirement_id, "requirement": asked.get(r.requirement_id, r.requirement_id),
+                     "kind": r.kind, "verdict": r.verdict,
+                     "evidence": [q for q in r.evidence if q not in unverified],
+                     "evidence_verified": r.evidence_verified, "reasoning": r.reasoning})
+    return rows
+
+
+def brief(fit: dict | None) -> dict | None:
+    """A fit score without its per-requirement detail, for lists of jobs (one job's view keeps it all)."""
+    return {k: v for k, v in fit.items() if k != "requirements"} if fit else fit
+
+
 def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, workers: int = 1,
                progress: Callable[[str], None] | None = None) -> tuple[dict[str, dict], dict[str, str]]:
-    """({job key: result}, {job key: error}). A result has score, must_haves_met/total, gaps and summary."""
+    """({job key: result}, {job key: error}). A result has score, must_haves_met/total, gaps, summary and
+    requirements (see requirement_rows; results saved before it have none)."""
     try:
         from shortlist_ai.backends import get_backend
         from shortlist_ai.extract import Cache, extract_job
@@ -124,5 +144,6 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
         results[by_name[m.job_id]] = {
             "score": r.score, "must_haves_met": r.must_haves_met, "must_haves_total": r.must_haves_total,
             "gaps": m.gaps, "summary": r.summary, "flags": r.flags,
+            "requirements": requirement_rows(r, specs.get(m.job_id)),
         }
     return results, errors

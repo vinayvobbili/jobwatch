@@ -169,8 +169,10 @@ def get_digest(
 @server.tool(annotations=READ)
 def get_job(key: Key) -> dict:
     """Everything about one job, by key or posting id: the full posting text, pay, tracking (status, note, next
-    step, follow-up), its fit score against the resume (score, must-haves met, gaps), people the user knows
-    there plus a LinkedIn search for a referral, skills it asks for that the resume doesn't show, what was
+    step, follow-up), its fit score against the resume (score, must-haves met, gaps, and requirements: each
+    requirement with its verdict, met/partial/not_met, and the resume's words backing it; scores saved
+    before jobwatch kept these have none), people the user knows there plus a LinkedIn search for a
+    referral, skills it asks for that the resume doesn't show, what was
     sent with the application, and candidate_home: the company's page where the person signs in to see the
     application's status (Workday only; each company has its own account). Use it to tailor a resume or decide
     whether to apply; for only what was sent use get_application_package, and for a call or interview use

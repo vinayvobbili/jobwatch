@@ -14,7 +14,7 @@ import yaml
 
 from . import __version__, alerts, chat, config, learn, prep, report, sources
 from .config import ConfigError
-from .score import ScoringUnavailable
+from .score import ScoringUnavailable, resume_id
 from .store import STAGES, STATUSES, Store
 from .watch import (
     build_digest,
@@ -115,6 +115,8 @@ def cmd_show(args, cfg, store):
         print(f"You know: {report.people(known, most=10)}")
     if home := store.candidate_home(job):
         print(f"Your applications there (sign in): {home}")
+    if cfg.resume and cfg.resume.is_file() and (fit := store.score(job.key, resume_id(cfg.resume))):
+        print("\n".join(report.fit_lines(fit)))
 
 
 def cmd_mark(args, cfg, store):

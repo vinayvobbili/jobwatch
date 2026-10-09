@@ -218,8 +218,9 @@ class App:
         def run(cfg, store):
             by: dict[str, int] = {}
             jobs = []
+            fits = store.scores(resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else {}
             for job, _ in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
-                if r := rejection(job, cfg.filters):
+                if r := rejection(job, cfg.filters, fits.get(job.key)):
                     by[r[0]] = by.get(r[0], 0) + 1
                     if r[0] == kind:
                         jobs.append({"key": job.key, "title": job.title, "company": job.display_company,

@@ -134,24 +134,26 @@ def test_age():
 def test_rejection_names_the_filter():
     """Which filter hid a job, for "hidden by your filters": the same checks as reject_reason, in its order."""
     f = Filters(titles=["engineer"], exclude_titles=["manager"], exclude_departments=["sales"], locations=["remote"],
-                min_salary=200_000, require_salary=True, max_age_days=30)
+                min_salary=200_000, require_salary=True, max_age_days=30, min_fit=60)
     ok = dict(locations=["Remote (United States)"], salary_min=200_000, salary_max=250_000)
     old = datetime.now(timezone.utc) - timedelta(days=45)
+    low = {"score": 42.0}
     cases = [
-        (job(**ok), None),
-        (job(**ok, title="Recruiter"), ("title", "title")),
-        (job(**ok, title="Engineering Manager"), ("excluded", "title matches 'manager'")),
-        (job(**ok, department="Sales"), ("department", "department matches 'sales'")),
-        (job(**{**ok, "locations": ["London, UK"]}), ("place", "location")),
-        (job(**{**ok, "salary_min": None, "salary_max": None}), ("pay", "pay not listed")),
-        (job(**{**ok, "salary_min": 120_000, "salary_max": 160_000}), ("pay", "pay $120K–$160K")),
-        (job(**ok, posted=old), ("age", "posted 45 days ago")),
-        (job(**{**ok, "title": "Recruiter", "locations": ["London, UK"]}), ("title", "title")),  # the first one
+        (job(**ok), None, None),
+        (job(**ok, title="Recruiter"), None, ("title", "title")),
+        (job(**ok, title="Engineering Manager"), None, ("excluded", "title matches 'manager'")),
+        (job(**ok, department="Sales"), None, ("department", "department matches 'sales'")),
+        (job(**{**ok, "locations": ["London, UK"]}), None, ("place", "location")),
+        (job(**{**ok, "salary_min": None, "salary_max": None}), None, ("pay", "pay not listed")),
+        (job(**{**ok, "salary_min": 120_000, "salary_max": 160_000}), None, ("pay", "pay $120K–$160K")),
+        (job(**ok, posted=old), None, ("age", "posted 45 days ago")),
+        (job(**ok), low, ("fit", "fit 42/100")),
+        (job(**{**ok, "title": "Recruiter", "locations": ["London, UK"]}), low, ("title", "title")),  # the first one
     ]
-    for j, want in cases:
-        assert rejection(j, f) == want
-        assert reject_reason(j, f) == (want[1] if want else None)
-    assert {r[0] for _, r in cases if r} == set(KINDS)
+    for j, fit, want in cases:
+        assert rejection(j, f, fit) == want
+        assert reject_reason(j, f, fit) == (want[1] if want else None)
+    assert {r[0] for _, _, r in cases if r} == set(KINDS)
 
 
 def test_unknown_filter_setting_is_an_error():

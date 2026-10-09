@@ -205,6 +205,14 @@ button.btn:disabled { opacity: .55; cursor: default; }
   -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .gaps.open { -webkit-line-clamp: unset; }
 .gaps b { color: var(--text); font-weight: 600; }
+.whyfit { font-size: 13.5px; margin: 2px 0 6px; } .whyfit summary { cursor: pointer; color: var(--muted); }
+.whyfit ul { list-style: none; padding: 0; margin: 6px 0 0; } .whyfit li { margin: 4px 0; }
+.whyfit .v { display: inline-block; min-width: 62px; font-size: 11.5px; font-weight: 600; text-transform: uppercase; }
+.whyfit .v.met { color: var(--good); } .whyfit .v.partial { color: var(--warn); }
+.whyfit .v.not_met { color: var(--bad); }
+.whyfit q { display: block; color: var(--muted); margin-left: 66px; font-style: italic; }
+.fitrange { display: flex; align-items: center; gap: 10px; } .fitrange input { flex: 1; }
+.fitrange output { min-width: 34px; font-weight: 600; text-align: right; }
 .empty { text-align: center; color: var(--muted); padding: 56px 16px; border: 1.5px dashed var(--line);
   border-radius: var(--radius); background: color-mix(in srgb, var(--panel) 50%, transparent); }
 .empty .ico { display: block; margin: 0 auto 10px; color: var(--accent); opacity: .7; }
@@ -808,6 +816,17 @@ function gapsLine(fit) {
   return el;
 }
 
+// Each requirement the fit score judged: its verdict and the resume's words behind it.
+const VERDICT = { met: "met", partial: "partly", not_met: "missing" };
+function whyScore(fit) {
+  if (!fit || !fit.requirements || !fit.requirements.length) return null;
+  return h("details", { class: "whyfit" }, h("summary", {}, "Why this score"),
+    h("ul", {}, fit.requirements.map(r => h("li", {},
+      h("span", { class: `v ${r.verdict}` }, VERDICT[r.verdict] || r.verdict),
+      r.requirement, r.kind === "must_have" ? h("span", { class: "muted small" }, " · must-have") : null,
+      (r.evidence || []).slice(0, 2).map(q => h("q", {}, q))))));
+}
+
 // -- job cards
 
 function jobCard(job, actions, i = 0) {
@@ -903,6 +922,7 @@ async function openDetails(key) {
         h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
           (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
         gapsLine(j.fit),
+        whyScore(j.fit),
         knowLine(j, 10),
         h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"), detailsScore(j),
           j.candidate_home ? h("span", { title: "This company's own Workday account: sign in to see where your application stands" },
@@ -1380,12 +1400,18 @@ function filterInputs(f) {
     minPay: h("input", { type: "number", min: 0, step: 5000, placeholder: "e.g. 150000" }),
     requirePay: h("input", { type: "checkbox" }),
     maxAge: h("input", { type: "number", min: 1, placeholder: "e.g. 30" }),
+    minFit: h("input", { type: "range", min: 0, max: 100, step: 5, "aria-label": "Minimum fit score" }),
+    fitOut: h("output", {}),
   };
+  const showFit = () => { inp.fitOut.textContent = Number(inp.minFit.value) ? `≥ ${inp.minFit.value}` : "off"; };
+  inp.minFit.addEventListener("input", showFit);
   inp.country.value = (f.remote_country || "US").toLowerCase() === "any" ? "any" : "US";
   inp.home.value = f.home_state || "";
   inp.minPay.value = f.min_salary ?? "";
   inp.requirePay.checked = !!f.require_salary;
   inp.maxAge.value = f.max_age_days ?? "";
+  inp.minFit.value = f.min_fit || 0;
+  showFit();
   return inp;
 }
 function filterValues(inp) {
@@ -1393,7 +1419,8 @@ function filterValues(inp) {
     locations: unlines(inp.locations.value), remote_country: inp.country.value,
     home_state: inp.home.value.trim() || null,
     min_salary: inp.minPay.value ? Number(inp.minPay.value) : null, require_salary: inp.requirePay.checked || null,
-    max_age_days: inp.maxAge.value ? Number(inp.maxAge.value) : null };
+    max_age_days: inp.maxAge.value ? Number(inp.maxAge.value) : null,
+    min_fit: Number(inp.minFit.value) || null };
 }
 // The saved filters with these keys replaced; others (exclude_departments, flags...) are kept as they are.
 function mergeFilters(f, values, keys = Object.keys(values)) {
@@ -1409,6 +1436,12 @@ function homeField(inp) {
   return h("div", {}, filterLabel("Your state", "remote jobs open only in other states are left out"), inp.home);
 }
 
+// The minimum fit score: a slider in steps of 5, 0 is off. Unscored jobs aren't hidden (scoring catches up).
+function fitField(inp) {
+  return h("div", {}, filterLabel("Minimum fit score", "unscored jobs still show"),
+    h("div", { class: "fitrange" }, inp.minFit, inp.fitOut));
+}
+
 // What each part of the bar edits: [label, hint] and input pairs, and the filter keys it saves.
 const FILTER_GROUPS = {
   titles: { keys: ["titles", "exclude_titles"], fields: inp => [
@@ -1421,6 +1454,7 @@ const FILTER_GROUPS = {
     filterLabel("Minimum pay per year", "jobs that don't list pay still show"), inp.minPay,
     h("label", { class: "row" }, inp.requirePay, h("span", { class: "hint" }, "Only show jobs that list pay"))] },
   age: { keys: ["max_age_days"], fields: inp => [filterLabel("Posted within (days)", "blank: any time"), inp.maxAge] },
+  fit: { keys: ["min_fit"], fields: inp => [fitField(inp)] },
 };
 
 function money(n) { return n >= 1e6 ? `$${+(n / 1e6).toFixed(2)}M` : `$${Math.round(n / 1000)}K`; }
@@ -1444,6 +1478,7 @@ const HIDDEN = {
   pay: { label: "pay", part: "pay",
     why: "Their listed pay tops out below your minimum, or they don't list pay and you want ones that do." },
   age: { label: "age", part: "age", why: "Posted longer ago than you want." },
+  fit: { label: "fit", part: "fit", why: "Their fit score is below your minimum. Jobs not scored yet still show." },
 };
 
 let openFilter = () => {};  // opens a part of Today's filter bar: set by filterBar
@@ -1465,6 +1500,7 @@ function filterBar(hidden) {
     ["places", "Places", places.length ? some(places, 4) : "anywhere", places.join("\n")],
     ["pay", "Pay", pay],
     ["age", "Posted", f.max_age_days ? `within ${f.max_age_days} days` : "any time"],
+    ["fit", "Fit", f.min_fit ? `≥ ${f.min_fit}` : "any"],
   ].filter(Boolean);
   const buttons = {};
   let pop = null;
@@ -1521,7 +1557,7 @@ function filterBar(hidden) {
   fill(bar, icon("sparkle", 15), parts.map(([which, k, v, full], i) => {
     const b = buttons[which] = h("button", { class: "fpart" + (/^any/.test(v) ? " off" : ""),
       title: full ? `${k}:\n${full}\n\nClick to change` : "Click to change", "aria-haspopup": "dialog",
-      onclick: () => open(which) }, h("span", { class: "k" }, k + (k === "Pay" || k === "Posted" ? "" : ":")),
+      onclick: () => open(which) }, h("span", { class: "k" }, k + (k === "Pay" || k === "Posted" || k === "Fit" ? "" : ":")),
       h("span", { class: "v" }, v));
     return [i ? h("span", { class: "sep" }, "·") : null, b];
   }), buttons.all = h("button", { class: "btn ghost edit", onclick: () => open("all") }, icon("pencil", 13), "Edit"),
@@ -2192,7 +2228,7 @@ function renderSettings() {
         h("div", {},
           h("label", {}, "Minimum pay per year ", h("span", { class: "hint" }, "jobs that don't list pay still show")), minPay,
           h("label", { class: "row" }, requirePay, h("span", { class: "hint" }, "Only show jobs that list pay")),
-          h("label", {}, "Posted within (days)"), maxAge)),
+          h("label", {}, "Posted within (days)"), maxAge, fitField(inp))),
       h("label", {}, "Keywords ", h("span", { class: "hint" }, "jobs mentioning these rank higher; a title match counts double")),
       kwRows, h("button", { class: "btn", onclick: () => addKw() }, "Add keyword")),
     h("div", { class: "card" }, h("h3", {}, "Your resume ", h("span", { class: "hint" }, "optional: for fit scores")),
