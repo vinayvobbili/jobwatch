@@ -47,10 +47,15 @@ _NUMBER = r"(\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d+(?:\.\d+)?)"  # 180,000 or 180,00
 _AMOUNT = r"\$\s?" + _NUMBER + r"\s*([kK])?"
 # "USD $140,400.00 - USD $372,300.00" as well as "$180K - $220K"
 _RANGE = re.compile(_AMOUNT + r"\s*(?:USD)?\s*(?:-|–|—|to)\s*(?:USD\s*)?\$?\s?" + _NUMBER + r"\s*([kK])?")
-_NOT_ANNUAL = re.compile(r"\s*(?:USD\s*)?(?:/|per\s+|an?\s+)(?:hour|hr|month|mo|week|day)\b", re.I)
+_NOT_ANNUAL = re.compile(r"\s*(?:USD\s*)?(?:/|per\s+|an?\s+)(hour|hr|month|mo|week|wk|day)\b", re.I)
+# "$75 an hour", "$70/hr": one amount, an hourly wage
+_HOURLY = re.compile(_AMOUNT + r"(?=\s*(?:USD\s*)?(?:/|per\s+|an?\s+)(?:hour|hr)\b)", re.I)
 # "167,000 - 230,000 USD per year" or "88,000 to 136,900.00 USD": no dollar sign, the currency after (a CAD
 # range next to it is skipped)
 _USD_AFTER = re.compile(r"(?<![\d,.$])(\d{2,3},\d{3})(?:\.\d{2})?\s*(?:-|–|—|to)\s*(\d{2,3},\d{3})(?:\.\d{2})?\s*USD\b")
+# Paid hours, days, weeks and months in a year: a rate is compared and shown as the yearly pay it comes to.
+PER_YEAR = {"hour": 2080, "hr": 2080, "day": 260, "week": 52, "wk": 52, "month": 12, "mo": 12}
+_LOWEST = 20_000  # less a year than any salary: a bonus, a stipend or a typo
 
 
 def _dollars(number: str, k: str | None) -> int:
@@ -58,20 +63,42 @@ def _dollars(number: str, k: str | None) -> int:
     return int(value * 1000) if k else int(value)
 
 
-def parse_salary(text: str) -> tuple[int, int] | None:
-    """The first annual pay range in the text, e.g. "$180,000 — $220,000" or "$180K - $220K".
+def annual(amount: float, per: str) -> int:
+    """A rate as the yearly pay it comes to: per is hour, day, week or month (or "year")."""
+    return round(amount * PER_YEAR.get(per.lower(), 1))
 
-    Ranges quoted per hour or month, and amounts too small to be a yearly salary, are skipped."""
-    for m in _RANGE.finditer(text or ""):
+
+def pay_period(interval: str) -> str | None:
+    """A board's pay interval as year, month, week, day or hour: Lever's "per-hour-wage", Ashby's "1 HOUR",
+    schema.org's "HOUR". None when it's none of them."""
+    words = set(re.findall(r"[a-z]+", str(interval or "").lower()))
+    return next((p for p in ("year", "month", "week", "day", "hour") if p in words), None)
+
+
+def parse_salary(text: str) -> tuple[int, int] | None:
+    """The yearly pay range in the text, e.g. "$180,000 — $220,000" or "$180K - $220K".
+
+    A yearly range comes first; without one, an hourly wage ("$75 - $80/hr", "$70 an hour") is turned into
+    the yearly pay it comes to (2,080 hours a year). Amounts per day, week or month are skipped: in free text
+    they're as often a stipend or a budget ("$15k/month for compute") as pay. So are amounts too small to be
+    a yearly salary."""
+    text, hourly = text or "", None
+    for m in _RANGE.finditer(text):
         low, high = _dollars(m.group(1), m.group(2)), _dollars(m.group(3), m.group(4) or m.group(2))
-        if _NOT_ANNUAL.match(text, m.end()) or low < 20_000 or high < low:
+        if high < low:
             continue
-        return low, high
-    for m in _USD_AFTER.finditer(text or ""):
+        if per := _NOT_ANNUAL.match(text, m.end()):
+            if PER_YEAR[per.group(1).lower()] == PER_YEAR["hour"]:
+                hourly = hourly or (annual(low, "hour"), annual(high, "hour"))
+        elif low >= _LOWEST:
+            return low, high
+    for m in _USD_AFTER.finditer(text):
         low, high = _dollars(m.group(1), None), _dollars(m.group(2), None)
         if not (_NOT_ANNUAL.match(text, m.end()) or high < low):
             return low, high
-    return None
+    if not hourly and (m := _HOURLY.search(text)):
+        hourly = (annual(_dollars(m.group(1), m.group(2)), "hour"),) * 2
+    return hourly if hourly and hourly[0] >= _LOWEST else None
 
 
 STATES = {

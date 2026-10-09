@@ -1,6 +1,6 @@
 import pytest
 
-from jobwatch.text import html_to_text, in_us, names_no_place, parse_salary, split_locations
+from jobwatch.text import annual, html_to_text, in_us, names_no_place, parse_salary, pay_period, split_locations
 
 
 def test_html_to_text_handles_escaped_markup_and_lists():
@@ -25,13 +25,36 @@ def test_parse_salary_finds_annual_ranges(text, expected):
 
 @pytest.mark.parametrize("text", [
     "Funding for compute (~$15k/month)",
-    "$45 - $60 per hour",
-    "$40–$55/hr",
+    "Stipend $3,000 - $4,000 per month",
+    "$500 per day travel allowance",
+    "$8 - $9 per hour",  # less than a year's salary
+    "Raised $100M+ to cut energy waste",
     "No pay listed here",
     "",
 ])
 def test_parse_salary_skips_non_annual_and_missing(text):
     assert parse_salary(text) is None
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("$45 - $60 per hour", (93_600, 124_800)),
+    ("$40–$55/hr", (83_200, 114_400)),
+    ("$75–$80/hr on a W2 contract", (156_000, 166_400)),
+    ("Pay: $70 an hour", (145_600, 145_600)),
+    ("$45 - $50 per hour, or $150,000 - $180,000 a year", (150_000, 180_000)),  # a yearly range comes first
+])
+def test_parse_salary_turns_an_hourly_wage_into_a_year(text, expected):
+    assert parse_salary(text) == expected
+
+
+@pytest.mark.parametrize("interval, period", [
+    ("per-hour-wage", "hour"), ("per-year-salary", "year"), ("1 HOUR", "hour"), ("1 MONTH", "month"),
+    ("YEAR", "year"), ("one-time", None), ("", None), (None, None),
+])
+def test_pay_period(interval, period):
+    assert pay_period(interval) == period
+    if period:
+        assert annual(10, period) == {"hour": 20_800, "month": 120, "year": 10}[period]
 
 
 def test_parse_salary_skips_a_monthly_range_and_finds_the_salary_after_it():

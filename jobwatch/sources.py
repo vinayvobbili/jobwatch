@@ -33,7 +33,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import __version__
 from .models import Job
-from .text import html_to_text, in_us, is_remote, parse_salary, split_locations
+from .text import annual, html_to_text, in_us, is_remote, parse_salary, pay_period, split_locations
 
 USER_AGENT = f"jobwatch/{__version__} (+https://github.com/vinayvobbili/jobwatch)"
 
@@ -148,9 +148,9 @@ def parse_lever(data: list, board: str) -> list[Job]:
             posted=_time(j.get("createdAt")), description=description,
         )
         pay = j.get("salaryRange") or {}
-        if pay.get("interval") == "per-year-salary" and pay.get("min"):
-            job.salary_min, job.salary_max, job.currency = int(pay["min"]), int(pay.get("max") or pay["min"]), \
-                pay.get("currency") or "USD"
+        if (per := pay_period(pay.get("interval"))) and pay.get("min"):  # an hourly wage as the year's pay
+            job.salary_min, job.salary_max = annual(pay["min"], per), annual(pay.get("max") or pay["min"], per)
+            job.currency = pay.get("currency") or "USD"
         elif not pay:
             _salary(job, j.get("salaryDescriptionPlain") or job.description)
         jobs.append(job)
@@ -177,10 +177,11 @@ def parse_ashby(data: dict, board: str) -> list[Job]:
         )
         comp = j.get("compensation") or {}
         salaries = [c for t in comp.get("compensationTiers") or [] for c in t.get("components") or []
-                    if c.get("compensationType") == "Salary" and c.get("interval") == "1 YEAR" and c.get("minValue")]
-        if salaries:
-            job.salary_min = int(min(c["minValue"] for c in salaries))
-            job.salary_max = int(max(c.get("maxValue") or c["minValue"] for c in salaries))
+                    if c.get("compensationType") == "Salary" and pay_period(c.get("interval")) and c.get("minValue")]
+        if salaries:  # "1 YEAR", or a rate ("1 HOUR") as the year's pay
+            job.salary_min = min(annual(c["minValue"], pay_period(c["interval"])) for c in salaries)
+            job.salary_max = max(annual(c.get("maxValue") or c["minValue"], pay_period(c["interval"]))
+                                 for c in salaries)
             job.currency = salaries[0].get("currencyCode") or "USD"
         else:
             _salary(job, comp.get("scrapeableCompensationSalarySummary") or job.description)

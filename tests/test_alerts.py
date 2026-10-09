@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from jobwatch import alerts, cli, config, sources
+from jobwatch.filters import Filters, reject_reason
 from jobwatch.store import Store
 from jobwatch.watch import build_digest, fetch_all
 
@@ -167,6 +168,69 @@ def test_no_tracking_survives_in_any_link():
     for msg in emails("linkedin.eml", "builtin.eml", "indeed.eml", "other.eml"):
         for a in alerts.parse(msg):
             assert not PLACEHOLDERS.search(a.url), a.url
+
+
+def test_a_pay_line_reads_as_pay():
+    assert alerts._pay(["Raleigh, NC", "We've delivered $100M+ in energy savings to our customers",
+                        "$150,000 - $190,000 a year"]) == "$150,000 - $190,000 a year"
+    assert alerts._pay(["Helping plants save $2 million a year"]) == ""
+    assert alerts._pay(["$180K/yr - $240K/yr"]) == "$180K/yr - $240K/yr"  # LinkedIn's
+    assert alerts._pay(["Up to $200,000 a year"]) == "Up to $200,000 a year"  # short: kept to show
+
+
+def test_an_hourly_alert_is_compared_as_a_year():
+    job = alerts.email_job(alerts.Alert("AI Architect", "Vandelay Industries", "Raleigh, NC", "$75–$80/hr"))
+    assert (job.salary_min, job.salary_max) == (156_000, 166_400)
+    assert reject_reason(job, Filters(min_salary=225_000)) == "pay $156K–$166K"
+    page = {"baseSalary": {"currency": "USD", "value": {"unitText": "HOUR", "minValue": 60, "maxValue": 70}}}
+    job = alerts.email_job(alerts.Alert("Data Engineer", "Hooli", "Denver, CO"))
+    alerts._fill(job, page)
+    assert (job.salary_min, job.salary_max) == (124_800, 145_600)
+
+
+def test_a_part_without_a_charset_is_read_as_utf8():
+    for kind in ("plain", "html"):
+        raw = (f"From: alerts@example.com\nSubject: Jobs\nContent-Type: text/{kind}\n"
+               "Content-Transfer-Encoding: 8bit\n\nSenior Engineer — Platform, Montréal\n").encode()
+        html, text = alerts.bodies(alerts.message(raw))
+        assert "Senior Engineer — Platform, Montréal" in (html or text)
+    latin = b"From: alerts@example.com\nContent-Type: text/plain\n\nMontr\xe9al\n"  # not UTF-8: Latin-1
+    assert alerts.bodies(alerts.message(latin))[1].strip() == "Montréal"
+    assert alerts.bodies(alerts.message(b"Caf\xc3\xa9 \xe2\x80\x94 jobs"))[1].strip() == "Café — jobs"
+
+
+def _wrapped(path):  # a Built In link inside Amazon SES click tracking, as their emails have it
+    return f"https://x1.r.us-west-2.awstrack.me/L0/https:%2F%2Fbuiltin.com{path.replace('/', '%2F')}%3Fi=V/1/M/S=0"
+
+
+def test_builtin_plain_text_has_each_job_on_one_line():
+    """Built In's emails as a mail connector turns them into text: a table row per job, "Company Title Worked-from
+    Place Pay" and then the link."""
+    body = ("Find top Jobs at Built In\n\n| |\n\n"
+            f"| Job Preferences Software Engineer, Remote [](https://x1.r.us-west-2.awstrack.me/L0/https:%2F%2F"
+            "builtin.com%2Fprofile%2Fjob-preferences/1/M/S=0) |\n\n| |\n"
+            f"| Initech Corp Staff Software Engineer - SOC Platform (Ruby/Rails) Remote United States $200,000-$220,000"
+            f" []({_wrapped('/job/staff-software-engineer-soc-platform-ruby-rails/9000011')}) |\n"
+            f"| Hooli Software Engineer Level 2 or 3 (AHT) In Office Denver, CO $91,800-$171,000"
+            f" []({_wrapped('/job/software-engineer-level-2-or-3-aht/9000012')}) |\n"
+            f"| Globex Senior Data Engineer Hybrid Austin, TX []({_wrapped('/job/senior-data-engineer/9000013')}) |\n"
+            f"| Get More Recommendations []({_wrapped('/jobs')}) |\n")
+    msg = alerts.message(f"From: Built In <support@builtin.com>\nSubject: New matches\n\n{body}")
+    found = alerts.parse(msg)
+    assert [(a.title, a.company, a.location, a.pay, a.url) for a in found] == [
+        ("Staff Software Engineer - SOC Platform (Ruby/Rails)", "Initech Corp", "Remote - United States",
+         "$200,000-$220,000", "https://builtin.com/job/staff-software-engineer-soc-platform-ruby-rails/9000011"),
+        ("Software Engineer Level 2 or 3 (AHT)", "Hooli", "Denver, CO", "$91,800-$171,000",
+         "https://builtin.com/job/software-engineer-level-2-or-3-aht/9000012"),
+        ("Senior Data Engineer", "Globex", "Austin, TX (Hybrid)", "", "https://builtin.com/job/senior-data-engineer/9000013"),
+    ]
+    assert {a.via for a in found} == {"builtin-alert"}
+    assert alerts._builtin_line("| Some text that isn't the title [](", "https://builtin.com/job/staff/1") is None
+
+
+def test_builtin_html_is_preferred_over_its_plain_text():
+    msg = emails("builtin.eml")[0]
+    assert alerts.bodies(msg)[0] and [a.company for a in alerts.parse(msg)] == ["Initech", "Hooli"]
 
 
 def test_a_body_without_headers_is_read_by_its_links():

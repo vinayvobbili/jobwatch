@@ -42,7 +42,7 @@ from . import linkedin, sources
 from .filters import reject_reason
 from .models import Job
 from .store import MANUAL, Store, _slug
-from .text import html_to_text, parse_salary, split_locations
+from .text import annual, html_to_text, parse_salary, pay_period, split_locations
 
 
 class AlertError(RuntimeError):
@@ -142,7 +142,7 @@ def message(raw: str | bytes) -> EmailMessage:
     head = data.lstrip()[:8000]
     if re.match(rb"[!-9;-~]+:", head) and _HEADERS.search(head.split(b"\r\n\r\n")[0].split(b"\n\n")[0]):
         return email.message_from_bytes(data.lstrip(), policy=default_policy)
-    text = data.decode("utf-8", "replace")
+    text = _decode(data)
     msg = EmailMessage()
     is_html = re.search(r"<(?:html|body|table|div|a|p)\b", text, re.I)
     msg.set_content(text, subtype="html" if is_html else "plain")
@@ -185,17 +185,28 @@ def read(paths: list[str], stdin=None) -> list[EmailMessage]:
     return out
 
 
+def _decode(data: bytes) -> str:
+    """Text whose charset nobody named: UTF-8, else Latin-1 (which reads any bytes)."""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode("latin-1")
+
+
 def bodies(msg: EmailMessage) -> tuple[str, str]:
-    """(HTML body, plain-text body): the first of each, attachments aside."""
+    """(HTML body, plain-text body): the first of each, attachments aside. A part that names no charset is read
+    as UTF-8, not ASCII, so its em dashes and accents come through."""
     found = {"text/html": "", "text/plain": ""}
     for part in msg.walk():
         ct = part.get_content_type()
         if part.is_multipart() or ct not in found or found[ct] or part.get_content_disposition() == "attachment":
             continue
         try:
+            if part.get_param("charset") is None:
+                raise LookupError("no charset")
             found[ct] = part.get_content()
         except (LookupError, ValueError, AttributeError):
-            found[ct] = (part.get_payload(decode=True) or b"").decode("utf-8", "replace")
+            found[ct] = _decode(part.get_payload(decode=True) or b"")
     return found["text/html"], found["text/plain"]
 
 
@@ -292,8 +303,13 @@ def text_cards(text: str) -> list[Card]:
         if not urls:
             since.append("" if _RULE.match(line) else line.strip())
             continue
-        found = next((f for f in map(job_link, urls) if f), None)
+        found = next(((u, f) for u in urls if (f := job_link(u))), None)
         if found:
+            url, found = found
+            if found[0] == "builtin" and (lines := _builtin_line(line[:line.find(url)], found[1])):
+                cards.append(Card(found[0], found[1], lines))
+                since = []
+                continue
             paragraphs, para = [], []
             for s in [*since, ""]:
                 if s:
@@ -306,6 +322,30 @@ def text_cards(text: str) -> list[Card]:
                 cards.append(Card(found[0], found[1], lines))
         since = []
     return _unique(cards)
+
+
+_WORKED_FROM = re.compile(r"(In[ -]Office|Remote|Hybrid|On-?site)\b\s*", re.I)
+_PAY_END = re.compile(r"\$\s?[\d,.]+\s*[kK]?(?:\s*(?:-|–|—|to)\s*\$?\s?[\d,.]+\s*[kK]?)?"
+                      r"(?:\s*(?:/|per\s+|an?\s+)[a-z]+)?\s*$", re.I)
+
+
+def _builtin_line(before: str, link: str) -> list[str] | None:
+    """A Built In job squashed onto one line of plain text, before its link: "Acme Staff Engineer (Python)
+    Remote United States $200,000-$220,000". The title is the link's (/job/<title>/<id>): what comes before it
+    is the company, and what follows is where it's worked from, the place and the pay. None when the title
+    isn't there."""
+    text = re.sub(r"^[\s|]+|[\s\[\]()<|]+$", "", before)
+    words = [w for w in urlparse(link).path.split("/")[2].split("-") if w]
+    m = re.search(r"\b" + r"[^a-z0-9]+".join(map(re.escape, words)) + r"\b\)?", text, re.I) if words else None
+    if not m or not text[:m.start()].strip():
+        return None
+    lines, rest = [text[:m.start()].strip(), m.group(0)], text[m.end():].strip()
+    if how := _WORKED_FROM.match(rest):
+        lines.append(how.group(1))
+        rest = rest[how.end():]
+    pay = _PAY_END.search(rest)
+    tail = (rest[:pay.start()], pay.group(0)) if pay else (rest, "")
+    return [*lines, *(x.strip() for x in tail if x.strip())]
 
 
 def _unique(cards: list[Card]) -> list[Card]:
@@ -336,8 +376,15 @@ _PLACE = re.compile(r",\s*[A-Z]{2}\b|\b(?:remote|hybrid|on-?site|united states|u
 _BUTTON = re.compile(r"^(?:view|apply|see|more|details|easy apply|learn more)\b", re.I)
 
 
+_NOT_PAY = re.compile(r"\$\s?[\d,.]+\s*(?:[MB]\b|million|billion)", re.I)
+
+
 def _pay(lines: list[str]) -> str:
-    return next((x for x in lines[:8] if _PAY.search(x)), "")
+    """The card's pay: a line that reads as a salary or a rate ("$150K - $190K", "$75 an hour"), or a short
+    line with an amount ("Up to $200,000 a year"), not a sentence that mentions money ("$100M+ in energy
+    savings")."""
+    return next((x for x in lines[:8] if _PAY.search(x) and not _NOT_PAY.search(x)
+                 and (parse_salary(x.replace("/yr", "")) or len(x) <= 60)), "")
 
 
 def _split_company(line: str, seps=(" · ", " • ", " | ", " - ", " – ")) -> tuple[str, str]:
@@ -573,10 +620,12 @@ def _fill(job: Job, data: dict):
         job.remote = True
     pay = data.get("baseSalary")
     value = pay.get("value") if isinstance(pay, dict) else None
-    if job.salary_min is None and isinstance(value, dict) and str(value.get("unitText", "")).upper() == "YEAR":
+    per = pay_period(value.get("unitText")) if isinstance(value, dict) else None
+    if job.salary_min is None and per:  # YEAR, or a rate (HOUR, MONTH) as the year's pay
         low, high = value.get("minValue"), value.get("maxValue") or value.get("minValue")
         if isinstance(low, (int, float)) and isinstance(high, (int, float)):
-            job.salary_min, job.salary_max, job.currency = int(low), int(high), str(pay.get("currency") or "USD")
+            job.salary_min, job.salary_max = annual(low, per), annual(high, per)
+            job.currency = str(pay.get("currency") or "USD")
     if job.salary_min is None and (found := parse_salary(job.description)):
         job.salary_min, job.salary_max, job.currency = *found, "USD"
     try:
