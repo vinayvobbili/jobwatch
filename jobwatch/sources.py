@@ -711,6 +711,13 @@ _AVATURE_FIELD = re.compile(r'<div class="article__content__view__field\b([^"]*)
 _AVATURE_LABEL = re.compile(r'<div class="article__content__view__field__label[^"]*"[^>]*>')
 _AVATURE_VALUE = re.compile(r'<div class="article__content__view__field__value[^"]*"[^>]*>')
 _DIV = re.compile(r"<(/?)div\b[^>]*>", re.I)
+# Other portals (Deloitte's) lay a field out as <div class="article__view__item"> holding a field-title and a
+# field-value <span>, and list a posting's places in the header, one paragraph each.
+_AVATURE_ITEM = re.compile(r'<div class="article__view__item\b([^"]*)"[^>]*>')
+_AVATURE_ITEM_PART = re.compile(r'<span\b[^>]*\bclass="field-(title|value)"[^>]*>')
+_SPAN = re.compile(r"<(/?)span\b[^>]*>", re.I)
+_AVATURE_PLACES = re.compile(r'<div class="article__header--locations\b[^"]*"[^>]*>')
+_PARAGRAPH = re.compile(r"<p\b[^>]*>(.*?)</p>", re.S)
 _AVATURE_DEPARTMENT = ("career area", "business area", "career field", "department", "category", "job family",
                        "job category", "function", "area")
 _AVATURE_POSTED = ("date", "posted", "posted date", "date posted", "posting date", "publish date")
@@ -833,10 +840,10 @@ def fetch_avature(board: str, get=None, search=(), wanted=None, known=None, cap=
     return _details(list(listed.items())[:cap], job, AVATURE_WORKERS)
 
 
-def _inner_div(page: str, start: int) -> str:
-    """What's inside the <div> whose opening tag ends at `start`, up to its own closing tag."""
+def _inner_div(page: str, start: int, tag: re.Pattern = _DIV) -> str:
+    """What's inside the <div> (or other `tag`) whose opening tag ends at `start`, up to its own closing tag."""
     depth = 1
-    for m in _DIV.finditer(page, start):
+    for m in tag.finditer(page, start):
         depth += -1 if m.group(1) else 1
         if not depth:
             return page[start:m.start()]
@@ -854,7 +861,57 @@ def _avature_fields(page: str) -> list[tuple[str, str]]:
         text = html_to_text(_inner_div(body, value.end())) if value else ""
         if text:
             fields.append((html_to_text(_inner_div(body, label.end())).rstrip(":").strip() if label else "", text))
+    for m in _AVATURE_ITEM.finditer(page):
+        if "visibility--hidden" in m.group(1):
+            continue
+        body = _inner_div(page, m.end())
+        parts: dict[str, str] = {}
+        for part in _AVATURE_ITEM_PART.finditer(body):
+            parts.setdefault(part.group(1), html_to_text(_inner_div(body, part.end(), _SPAN)))
+        if parts.get("value"):
+            fields.append((parts.get("title", "").rstrip(":").strip(), parts["value"]))
     return fields
+
+
+def _avature_header_places(page: str) -> list[str]:
+    """The places a posting's header lists ("Same job available in 40 locations"), one paragraph each."""
+    m = _AVATURE_PLACES.search(page)
+    return [t for p in _PARAGRAPH.findall(_inner_div(page, m.end())) if (t := html_to_text(p))] if m else []
+
+
+def _postings_in(data) -> list[dict]:
+    if isinstance(data, list):
+        return [p for item in data for p in _postings_in(item)]
+    if not isinstance(data, dict):
+        return []
+    kind = data.get("@type")
+    found = [data] if kind == "JobPosting" or (isinstance(kind, list) and "JobPosting" in kind) else []
+    return found + _postings_in(data.get("@graph", []))
+
+
+def job_postings(page: str) -> list[dict]:
+    """Every schema.org JobPosting on the page, in order."""
+    found = []
+    for m in re.finditer(r"<script[^>]*type=[\"']?application/ld(?:\+|&#x2B;|&#43;)json[\"']?[^>]*>(.*?)</script>",
+                         page, re.S | re.I):
+        try:
+            found += _postings_in(json.loads(m.group(1).strip()))
+        except json.JSONDecodeError:
+            continue
+    return found
+
+
+def job_posting_data(page: str) -> dict | None:
+    """The page's schema.org JobPosting, if it has one."""
+    return next(iter(job_postings(page)), None)
+
+
+def _ld_text(value) -> str:
+    """A JobPosting's text field as plain text: HTML or plain, with its lines' stray indentation dropped."""
+    text = html.unescape(str(value or ""))
+    if re.search(r"<[a-z][^>]*>", text, re.I):
+        return html_to_text(text)
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(line.strip() for line in text.splitlines())).strip()
 
 
 def _avature_date(text: str) -> datetime | None:
@@ -872,14 +929,21 @@ def _meta(page: str, name: str) -> str:
 
 
 def _avature_read(j: Job, get) -> Job:
-    """Fill an Avature job from its posting's page: labeled fields (place, date, area) and the text."""
+    """Fill an Avature job from its posting's page: labeled fields (place, date, area) and the text, or the page's
+    JobPosting markup where it has one (its text then leaves out the portal's stock sections)."""
     page = _avature_get(j.url, get)
     fields = _avature_fields(page)
     named = {label.lower(): text for label, text in fields if label}
-    j.title = _meta(page, "og:title") or j.title
+    # og:title is the title the page shows, or (Deloitte) "Check out this job at <company>, <title>"; a page can
+    # carry two JobPostings, one named by an internal requisition title: the one og:title ends with is the shown one
+    postings, og = job_postings(page), _meta(page, "og:title")
+    shown = next((p for p in postings if (t := _ld_text(p.get("title"))) and og.endswith(t)), None)
+    data = shown or (postings[0] if postings else {})
+    j.title = _ld_text(shown["title"]) if shown else (og or _ld_text(data.get("title")) or j.title)
     j.url = _meta(page, "og:url") or j.url
     places = [line for label, text in named.items() if label.startswith("location") or label.endswith(" location")
               for line in text.splitlines()]
+    places += _avature_header_places(page)
     parts = [named.get(k, "") for k in ("city", "state", "state/province", "country/region", "country")]
     places += [", ".join(p for p in parts if p)]
     for label, text in fields:  # "Additional Locations: * United States of America - North Carolina - Morrisville"
@@ -892,8 +956,8 @@ def _avature_read(j: Job, get) -> Job:
     j.company_name = named.get("company") or j.company_name
     created = re.search(r"\bcreated (\d{1,2}-\w{3}-\d{4})", _meta(page, "Description"))
     j.posted = next((d for k in _AVATURE_POSTED if k in named and (d := _avature_date(named[k]))), None) \
-        or (_avature_date(created.group(1)) if created else None) or j.posted
-    j.description = "\n\n".join(text for label, text in fields if not label)
+        or (_avature_date(created.group(1)) if created else None) or _time(data.get("datePosted")) or j.posted
+    j.description = _ld_text(data.get("description")) or "\n\n".join(text for label, text in fields if not label)
     _salary(j, j.description)
     return j
 
@@ -1184,8 +1248,8 @@ def posting(url: str, get=None) -> Job | None:
         link = parsed._replace(query="" if parsed.path.endswith(f"/{pid}") else f"jobId={pid}", fragment="").geturl()
         j = _avature_read(Job(source="avature", company=board, id=pid, title=_avature_slug_title(link), url=link,
                               company_name=_avature_company(board)), get or get_text)
-        if not j.description:
-            raise NotFound("that Avature posting isn't open any more")
+        if not j.description:  # a closed posting's link answers with the portal's error page, a 404 (NotFound)
+            raise SourceError(f"{link}: couldn't read that Avature posting's page (no posting text found on it)")
         return j
     if source == "smartrecruiters":  # read from its own page (a web page): the board's list names only the title
         pid = _posting_id(source, url)

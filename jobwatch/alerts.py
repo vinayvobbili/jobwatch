@@ -24,7 +24,6 @@ from __future__ import annotations
 import email
 import html
 import imaplib
-import json
 import os
 import re
 import ssl
@@ -574,27 +573,7 @@ class Robots:
 
 # -- A job site's page: its JobPosting data (schema.org), which most job pages carry for search engines.
 
-def _postings(data) -> list[dict]:
-    if isinstance(data, list):
-        return [p for item in data for p in _postings(item)]
-    if not isinstance(data, dict):
-        return []
-    kind = data.get("@type")
-    found = [data] if kind == "JobPosting" or (isinstance(kind, list) and "JobPosting" in kind) else []
-    return found + _postings(data.get("@graph", []))
-
-
-def job_posting_data(page: str) -> dict | None:
-    """The page's schema.org JobPosting, if it has one."""
-    for m in re.finditer(r"<script[^>]*type=[\"']?application/ld(?:\+|&#x2B;|&#43;)json[\"']?[^>]*>(.*?)</script>",
-                         page, re.S | re.I):
-        try:
-            found = _postings(json.loads(m.group(1).strip()))
-        except json.JSONDecodeError:
-            continue
-        if found:
-            return found[0]
-    return None
+job_posting_data = sources.job_posting_data
 
 
 def _place(loc) -> str:
