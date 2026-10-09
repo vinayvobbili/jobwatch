@@ -827,6 +827,40 @@ function whyScore(fit) {
       (r.evidence || []).slice(0, 2).map(q => h("q", {}, q))))));
 }
 
+// Expected pay from Levels.fyi (only when the watchlist turns it on), and how it was worked out.
+function payLine(job) {
+  const p = job.expected_pay;
+  if (!p) return null;
+  if (p.pending) return h("div", { class: "small muted", "data-pay": job.key }, "Expected pay: looking it up on Levels.fyi…");
+  return h("details", { class: "whyfit", "data-pay": job.key }, h("summary", {}, "Expected pay: " + p.line),
+    h("ul", {}, p.why.map(w => h("li", {}, w)), h("li", {}, link(p.url, p.credit + " ↗"))));
+}
+
+// Fills in expected pay that's still being looked up in the background, until none is left. One poll per
+// `scope`, so the Details dialog doesn't stop the page's.
+const payTimers = {};
+function watchPay(jobs, scope = "page") {
+  clearTimeout(payTimers[scope]);
+  let tries = 0;
+  const poll = async () => {
+    const waiting = jobs.filter(j => j.expected_pay && j.expected_pay.pending);
+    if (!waiting.length || ++tries > 60) return;
+    try {
+      const r = await api("/api/pay", { keys: waiting.map(j => j.key) });
+      for (const j of waiting) {
+        if (!(j.key in r.pay) || (r.pay[j.key] && r.pay[j.key].pending)) continue;
+        j.expected_pay = r.pay[j.key];
+        document.querySelectorAll(`[data-pay="${CSS.escape(j.key)}"]`).forEach(el => {
+          const line = payLine(j);
+          line ? el.replaceWith(line) : el.remove();
+        });
+      }
+      if (r.running) payTimers[scope] = setTimeout(poll, 5000);
+    } catch { /* the page may be restarting: the next render tries again */ }
+  };
+  payTimers[scope] = setTimeout(poll, 3000);
+}
+
 // -- job cards
 
 function jobCard(job, actions, i = 0) {
@@ -844,6 +878,7 @@ function jobCard(job, actions, i = 0) {
       h("div", { class: "meta" }, h("b", {}, job.company), facts.map(f => [h("span", { class: "sep" }, "·"), f])),
       job.warnings && job.warnings.length
         ? h("div", { class: "warns" }, h("b", {}, "Check: "), job.warnings.join(" · ")) : null,
+      payLine(job),
       gapsLine(job.fit),
       job.keywords.length ? h("div", { class: "chips" }, job.keywords.map(k => h("span", { class: "chip hit" }, k))) : null,
       knowLine(job),
@@ -953,6 +988,7 @@ async function openDetails(key) {
         h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
         h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
           (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
+        payLine(j),
         gapsLine(j.fit),
         whyScore(j.fit),
         knowLine(j, 10),
@@ -973,6 +1009,7 @@ async function openDetails(key) {
           : ["How well do I fit this role, honestly?", "What should my resume lead with for this one?",
             "What are they likely to ask in interviews?", "Draft a short note to a recruiter here"],
       })));
+    watchPay([j], "details");
   } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
 }
 function detailsScore(j) {
@@ -1704,6 +1741,7 @@ async function renderToday() {
     ], [scoring, showing, list, pager]));
   drawToday();
   if (d.scoring) watchScoring(d.scoring, scoring);
+  watchPay(todayJobs);
 }
 
 function renderWelcome() {
@@ -1743,6 +1781,7 @@ async function renderQueue() {
         step(4, "Press “I applied”", "It moves to Applications, where you track what comes next.")),
     ], jobs.length ? [showing, list, pager] : emptyState("The queue is empty. Queue jobs from Today.")));
   drawQueue();
+  watchPay(queueJobs);
 }
 
 function queueCard(job, i) {

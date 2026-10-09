@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS scores (
     scored_at TEXT NOT NULL,
     PRIMARY KEY (key, resume)
 );
+CREATE TABLE IF NOT EXISTS pay_pages (
+    url TEXT PRIMARY KEY,
+    body TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    gone INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -106,6 +112,8 @@ class Store:
                     self.db.execute(f"ALTER TABLE jobs ADD COLUMN {column} TEXT")
                     if backfill:
                         self.db.execute(backfill)
+            if "gone" not in {r["name"] for r in self.db.execute("PRAGMA table_info(pay_pages)")}:
+                self.db.execute("ALTER TABLE pay_pages ADD COLUMN gone INTEGER NOT NULL DEFAULT 0")
 
     def close(self):
         self.db.close()
@@ -368,3 +376,15 @@ class Store:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)",
                             (key, resume, json.dumps(result), _now()))
+
+    # Pay pages (see levels.py), kept on this computer only. An empty body records an empty answer; `gone`, that
+    # there's no such page (or robots.txt says not to read it).
+
+    def pay_page(self, url: str) -> tuple[str, datetime, bool] | None:
+        row = self.db.execute("SELECT body, fetched_at, gone FROM pay_pages WHERE url=?", (url,)).fetchone()
+        return (row["body"], datetime.fromisoformat(row["fetched_at"]), bool(row["gone"])) if row else None
+
+    def save_pay_page(self, url: str, body: str, gone: bool = False):
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO pay_pages (url, body, fetched_at, gone) VALUES (?, ?, ?, ?)",
+                            (url, body, _now(), int(gone)))

@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from . import __version__, alerts, config, contacts, learn, prep, report, sources, watch
+from . import __version__, alerts, config, contacts, learn, levels, prep, report, sources, watch
 from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue, save_job, set_link, unscored_reason, watched_name
@@ -72,6 +72,11 @@ Day = Field(description="A day: YYYY-MM-DD, or +N for N days from today. An empt
 def _open():
     cfg = config.load(os.environ.get("JOBWATCH_CONFIG"))
     return cfg, Store(cfg.state)
+
+
+def _pay(result, job) -> dict:
+    """expected_pay, only when the watchlist turns Levels.fyi pay on (see levels.py)."""
+    return {} if result is None else {"expected_pay": levels.as_dict(result, job)}
 
 
 def _boards(cfg: config.Config) -> list[dict]:
@@ -190,7 +195,8 @@ def get_job(key: Key) -> dict:
                 "contacts": known.at(job.display_company, job.company) if known else [],
                 "find_referral": contacts.linkedin_search(job.display_company),
                 "candidate_home": store.candidate_home(job),
-                "skill_gaps": learn.job_gaps(cfg, store, job), "package": store.package(job.key).data()}
+                "skill_gaps": learn.job_gaps(cfg, store, job), "package": store.package(job.key).data(),
+                **_pay(levels.for_one_job(cfg, store, job), job)}
     finally:
         store.close()
 
@@ -347,8 +353,9 @@ def list_queued_jobs() -> list[dict]:
     try:
         return [{"key": e.job.key, "company": e.job.display_company, "title": e.job.title, "url": e.job.url,
                  "pay": e.job.pay(), "fit": e.fit, "contacts": e.contacts, "note": e.record.get("note"),
-                 "queued_at": e.record.get("status_at"), "closed": e.record.get("closed"), "warnings": e.warnings}
-                for e in queue(cfg, store)]
+                 "queued_at": e.record.get("status_at"), "closed": e.record.get("closed"), "warnings": e.warnings,
+                 **_pay(e.pay, e.job)}
+                for e in queue(cfg, store, pay_budget=levels.QUEUE)]
     finally:
         store.close()
 

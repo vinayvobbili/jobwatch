@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, alerts, chat, config, learn, prep, report, sources
+from . import __version__, alerts, chat, config, learn, levels, prep, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable, resume_id
 from .store import STAGES, STATUSES, Store
@@ -136,6 +136,8 @@ def cmd_show(args, cfg, store):
         print(f"Your applications there (sign in): {home}")
     if cfg.resume and cfg.resume.is_file() and (fit := store.score(job.key, resume_id(cfg.resume))):
         print("\n".join(report.fit_lines(fit)))
+    if (pay := levels.for_one_job(cfg, store, job)) is not None:
+        print("\n".join(report.pay_lines(pay, job)))
 
 
 def cmd_mark(args, cfg, store):
@@ -279,7 +281,7 @@ def cmd_queue(args, cfg, store):
     if args.keys:
         args.status = "queued"
         return cmd_mark(args, cfg, store)
-    _write(report.queue_markdown(queue(cfg, store)), args.out)
+    _write(report.queue_markdown(queue(cfg, store, pay_budget=levels.QUEUE)), args.out)
 
 
 def cmd_check(args, cfg, store):
