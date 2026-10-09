@@ -12,7 +12,7 @@ from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts
 from .filters import Filters, red_flags, reject_reason, relevance, search_terms, title_ok
 from .models import Job
-from .score import resume_id, score_jobs
+from .score import brief, resume_id, score_jobs
 from .store import MANUAL, STAGES, Store
 
 
@@ -98,7 +98,7 @@ def queue(cfg: Config, store: Store) -> list[Entry]:
     out = []
     for job, rec in sorted(store.jobs(("queued",), include_closed=True), key=lambda r: r[1]["status_at"] or ""):
         rel, hits = relevance(job, cfg.keywords)
-        e = Entry(job, rec, rel, hits, fit=store.score(job.key, rid) if rid else None)
+        e = Entry(job, rec, rel, hits, fit=brief(store.score(job.key, rid)) if rid else None)
         e.contacts = contacts.at(job.display_company, job.company) if contacts else []
         e.warnings = warnings(job, cfg.filters)
         out.append(e)
@@ -252,17 +252,15 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...]) -> tuple[lis
     how many were filtered out (reason -> count)."""
     rejected: dict[str, int] = {}
     entries = []
+    rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
+    fits = store.scores(rid) if rid else {}
     for job, record in store.jobs(statuses):
-        if reason := reject_reason(job, cfg.filters):
-            kind = reason.split()[0]  # title, department, location, pay, posted
+        if reason := reject_reason(job, cfg.filters, fits.get(job.key)):
+            kind = reason.split()[0]  # title, department, location, pay, posted, fit
             rejected[kind] = rejected.get(kind, 0) + 1
             continue
         rel, hits = relevance(job, cfg.keywords)
-        entries.append(Entry(job, record, rel, hits))
-    rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
-    if rid:
-        for e in entries:
-            e.fit = store.score(e.job.key, rid)
+        entries.append(Entry(job, record, rel, hits, fit=brief(fits.get(job.key))))
     return entries, rejected
 
 
@@ -289,9 +287,9 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry],
                                  progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)))
     for e in entries:
         if e.job.key in results:
-            e.fit = results[e.job.key]
             for key in e.keys:
-                store.save_score(key, rid, e.fit)
+                store.save_score(key, rid, results[e.job.key])
+            e.fit = brief(results[e.job.key])
     return len(results), errors
 
 

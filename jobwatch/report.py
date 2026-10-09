@@ -24,6 +24,25 @@ def people(contacts: list[dict], most: int = 3) -> str:
     return "; ".join(names) + (f" and {len(contacts) - most} more" if len(contacts) > most else "")
 
 
+VERDICTS = {"met": "met", "partial": "partly", "not_met": "missing"}
+
+
+def _trim(text: str, most: int) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= most else text[:most - 1].rstrip() + "…"
+
+
+def fit_lines(fit: dict) -> list[str]:
+    """A fit score and why: "Fit 85/100, must-haves 5/6", then each requirement with its verdict and the
+    resume's words that back it. Scores saved before requirements were kept show only the first line."""
+    out = [f"Fit {fit['score']:.0f}/100, must-haves {fit['must_haves_met']}/{fit['must_haves_total']}"]
+    for r in fit.get("requirements") or []:
+        kind = "must" if r["kind"] == "must_have" else "nice"
+        quote = f'  "{_trim(r["evidence"][0], 90)}"' if r.get("evidence") else ""
+        out.append(f"  {VERDICTS.get(r['verdict'], r['verdict']):7} [{kind}] {_trim(r['requirement'], 80)}{quote}")
+    return out
+
+
 def _line(e: Entry) -> list[str]:
     j = e.job
     facts = [j.display_company, "; ".join(j.locations[:3]) + (" …" if len(j.locations) > 3 else "")]

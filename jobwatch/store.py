@@ -350,6 +350,11 @@ class Store:
         row = self.db.execute("SELECT result FROM scores WHERE key=? AND resume=?", (key, resume)).fetchone()
         return json.loads(row["result"]) if row else None
 
+    def scores(self, resume: str) -> dict[str, dict]:
+        """Every stored fit score for this resume, by job key: one query for a whole list of jobs."""
+        return {r["key"]: json.loads(r["result"])
+                for r in self.db.execute("SELECT key, result FROM scores WHERE resume=?", (resume,))}
+
     def save_score(self, key: str, resume: str, result: dict):
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)",

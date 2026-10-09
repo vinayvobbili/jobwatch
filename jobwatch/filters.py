@@ -31,6 +31,8 @@ class Filters:
     min_salary: int | None = None                            # a listed range must reach this; unlisted pay passes
     require_salary: bool = False                             # reject jobs that don't list pay
     max_age_days: int | None = None
+    # Hide jobs whose fit score is below this (0-100; 0: off). Jobs not scored yet still show.
+    min_fit: int = 0
     exclude_departments: list[str] = field(default_factory=list)  # regexes
     # regex -> why it matters, found in a posting's text: a warning on queued jobs, not a filter (boilerplate
     # can say "clearance" too). e.g. {"active (?:TS|top secret)": "clearance", "on-?site 5 days": "on-site"}
@@ -60,6 +62,13 @@ class Filters:
                 raise ValueError(f"filters.home_state: {self.home_state!r} isn't a US state "
                                  "(e.g. NC or North Carolina)")
             self.home_state = code
+        try:
+            fit = int(self.min_fit or 0)
+        except (TypeError, ValueError):
+            fit = -1
+        if not 0 <= fit <= 100:
+            raise ValueError(f"filters.min_fit: {self.min_fit!r} isn't a fit score from 0 to 100")
+        self.min_fit = fit
 
 
 def _any(patterns: list[str], text: str) -> str | None:
@@ -109,13 +118,14 @@ def search_terms(f: Filters) -> list[str]:
 
 
 # Which filter a job failed, in the order they're checked: what rejection() names first.
-KINDS = ("title", "excluded", "department", "place", "pay", "age")
+KINDS = ("title", "excluded", "department", "place", "pay", "age", "fit")
 
 
-def rejection(job: Job, f: Filters) -> tuple[str, str] | None:
+def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] | None:
     """(which filter, why) for a job that fails the filters, or None if it passes. The filter is one of KINDS:
     ("title", "title"), ("excluded", "title matches 'manager'"), ("place", "location"),
-    ("place", "remote only in CA, NV"), ("pay", "pay $120K–$160K"), ("age", "posted 45 days ago")."""
+    ("place", "remote only in CA, NV"), ("pay", "pay $120K–$160K"), ("age", "posted 45 days ago"),
+    ("fit", "fit 55/100"). `fit` is the job's stored fit score; a job without one passes min_fit."""
     if f.titles and not _any(f.titles, job.title):
         return "title", "title"
     if p := _any(f.exclude_titles, job.title):
@@ -140,12 +150,14 @@ def rejection(job: Job, f: Filters) -> tuple[str, str] | None:
         return "pay", f"pay {job.pay()}"
     if f.max_age_days is not None and (age := job.age_days()) is not None and age > f.max_age_days:
         return "age", f"posted {age} days ago"
+    if f.min_fit and fit and fit.get("score") is not None and fit["score"] < f.min_fit:
+        return "fit", f"fit {fit['score']:.0f}/100"
     return None
 
 
-def reject_reason(job: Job, f: Filters) -> str | None:
+def reject_reason(job: Job, f: Filters, fit: dict | None = None) -> str | None:
     """Why the job fails the filters, or None if it passes."""
-    r = rejection(job, f)
+    r = rejection(job, f, fit)
     return r[1] if r else None
 
 

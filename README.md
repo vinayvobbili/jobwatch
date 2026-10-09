@@ -167,6 +167,7 @@ filters:
   min_salary: 200000                      # the top of a listed range must reach this
   require_salary: false                   # true: drop postings without pay
   max_age_days: 30
+  min_fit: 70                             # hide jobs whose fit score is below this; unscored jobs still show
   flags:                                  # not filters: a warning on queued jobs whose posting says this
     "active (TS|top secret)": clearance
     "on-?site 5 days": on-site
@@ -224,6 +225,13 @@ how many are left, and a button brings in the new scores when you're ready (the 
 own). A chat reply or a "Score fit" click goes first; background scoring waits for it. It's on by default
 with `scoring.backend: local`. With `claude` every score is a paid API call, so turn it on with
 `scoring.auto: true`. `jobwatch score [--limit N]` does the same in the terminal.
+
+Each score keeps its reasons: every requirement, its verdict (met, partly, missing) and the resume's words
+behind it. They're under "Why this score" in a job's details, at the end of `jobwatch show <key>`, and in
+the MCP `get_job` result. Scores saved before jobwatch kept these have only the summary.
+
+`filters.min_fit` (the Fit slider on Today's filter bar) hides jobs scored below it, counted as "fit" in the
+hidden roles. Jobs not scored yet still show, since scoring catches up in the background.
 
 ## Chat
 
