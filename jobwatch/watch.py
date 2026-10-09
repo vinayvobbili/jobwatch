@@ -114,8 +114,9 @@ def warnings(job: Job, f: Filters) -> list[str]:
         out.append(f"pay {job.pay()} is below ${f.min_salary / 1000:.0f}K")
     # A job added by hand has its place as typed ("Remote (NC)"), which the location rules can't judge.
     if job.source != MANUAL and job.locations and \
-            reject_reason(job, Filters(locations=f.locations, remote_country=f.remote_country)):
-        out.append(f"location: {'; '.join(job.locations[:3])}")
+            (why := reject_reason(job, Filters(locations=f.locations, remote_country=f.remote_country,
+                                               home_state=f.home_state))):
+        out.append(f"location: {'; '.join(job.locations[:3])}" + (f" ({why})" if why != "location" else ""))
     out += red_flags(job, f)
     return out
 

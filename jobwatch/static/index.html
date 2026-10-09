@@ -1376,11 +1376,13 @@ function filterInputs(f) {
     locations: area(f.locations, "remote\nNew York"),
     country: h("select", {}, h("option", { value: "US" }, "Remote jobs open in the US"),
       h("option", { value: "any" }, "Remote jobs anywhere")),
+    home: h("input", { type: "text", placeholder: "e.g. NC", maxlength: 30 }),
     minPay: h("input", { type: "number", min: 0, step: 5000, placeholder: "e.g. 150000" }),
     requirePay: h("input", { type: "checkbox" }),
     maxAge: h("input", { type: "number", min: 1, placeholder: "e.g. 30" }),
   };
   inp.country.value = (f.remote_country || "US").toLowerCase() === "any" ? "any" : "US";
+  inp.home.value = f.home_state || "";
   inp.minPay.value = f.min_salary ?? "";
   inp.requirePay.checked = !!f.require_salary;
   inp.maxAge.value = f.max_age_days ?? "";
@@ -1389,6 +1391,7 @@ function filterInputs(f) {
 function filterValues(inp) {
   return { titles: unlines(inp.titles.value), exclude_titles: unlines(inp.exclude.value),
     locations: unlines(inp.locations.value), remote_country: inp.country.value,
+    home_state: inp.home.value.trim() || null,
     min_salary: inp.minPay.value ? Number(inp.minPay.value) : null, require_salary: inp.requirePay.checked || null,
     max_age_days: inp.maxAge.value ? Number(inp.maxAge.value) : null };
 }
@@ -1401,15 +1404,19 @@ function mergeFilters(f, values, keys = Object.keys(values)) {
   return out;
 }
 function filterLabel(text, hint) { return h("label", {}, text, hint ? [" ", h("span", { class: "hint" }, hint)] : null); }
+// The state you live in: leaves out remote jobs open only in other states ("remote in CA, NV, OR or WA").
+function homeField(inp) {
+  return h("div", {}, filterLabel("Your state", "remote jobs open only in other states are left out"), inp.home);
+}
 
 // What each part of the bar edits: [label, hint] and input pairs, and the filter keys it saves.
 const FILTER_GROUPS = {
   titles: { keys: ["titles", "exclude_titles"], fields: inp => [
     filterLabel("Job titles", "one per line; a title must contain one"), inp.titles,
     filterLabel("Leave out titles with", "one per line"), inp.exclude] },
-  places: { keys: ["locations", "remote_country"], fields: inp => [
+  places: { keys: ["locations", "remote_country", "home_state"], fields: inp => [
     filterLabel("Places", "“remote”, or a city or state, one per line"), inp.locations,
-    h("div", { style: "margin-top:6px" }, inp.country)] },
+    h("div", { style: "margin-top:6px" }, inp.country), homeField(inp)] },
   pay: { keys: ["min_salary", "require_salary"], fields: inp => [
     filterLabel("Minimum pay per year", "jobs that don't list pay still show"), inp.minPay,
     h("label", { class: "row" }, inp.requirePay, h("span", { class: "hint" }, "Only show jobs that list pay"))] },
@@ -1432,7 +1439,8 @@ const HIDDEN = {
   excluded: { label: "excluded title", part: "exclude", why: "Their titles contain something you leave out." },
   department: { label: "department", part: null,
     why: "Their department is one you leave out (exclude_departments in the watchlist file)." },
-  place: { label: "place", part: "places", why: "Not in one of your places, or remote somewhere else." },
+  place: { label: "place", part: "places",
+    why: "Not in one of your places, or remote somewhere else (or only in states other than yours)." },
   pay: { label: "pay", part: "pay",
     why: "Their listed pay tops out below your minimum, or they don't list pay and you want ones that do." },
   age: { label: "age", part: "age", why: "Posted longer ago than you want." },
@@ -1445,7 +1453,8 @@ let openFilter = () => {};  // opens a part of Today's filter bar: set by filter
 function filterBar(hidden) {
   const f = settings.filters || {};
   const bar = h("div", { class: "fbar", role: "group", "aria-label": "Filters" });
-  const remote = (f.remote_country || "US").toLowerCase() === "any" ? "Remote (anywhere)" : "Remote (US)";
+  const remote = ((f.remote_country || "US").toLowerCase() === "any" ? "Remote (anywhere" : "Remote (US") +
+    (f.home_state ? `, open to ${f.home_state})` : ")");
   const places = (f.locations || []).map(p => p.toLowerCase() === "remote" ? remote : p);
   const pay = [f.min_salary ? `≥ ${money(f.min_salary)}` : f.require_salary ? "" : "any",
     f.require_salary ? "listed only" : ""].filter(Boolean).join(", ");
@@ -2117,7 +2126,7 @@ function renderSettings() {
   findInput.addEventListener("keydown", e => { if (e.key === "Enter") find(); });
 
   const inp = filterInputs(f);
-  const { titles, exclude, locations, country, minPay, requirePay, maxAge } = inp;
+  const { titles, exclude, locations, country, minPay, requirePay, maxAge } = inp, home = homeField(inp);
 
   const kwRows = h("div", {});
   const addKw = (k = "", w = 1) => {
@@ -2179,7 +2188,7 @@ function renderSettings() {
         h("div", {}, h("label", {}, "Job titles ", h("span", { class: "hint" }, "one per line; a title must contain one")), titles),
         h("div", {}, h("label", {}, "Leave out titles with ", h("span", { class: "hint" }, "one per line")), exclude),
         h("div", {}, h("label", {}, "Locations ", h("span", { class: "hint" }, "“remote”, or a city or state")), locations,
-          h("div", { style: "margin-top:6px" }, country)),
+          h("div", { style: "margin-top:6px" }, country), home),
         h("div", {},
           h("label", {}, "Minimum pay per year ", h("span", { class: "hint" }, "jobs that don't list pay still show")), minPay,
           h("label", { class: "row" }, requirePay, h("span", { class: "hint" }, "Only show jobs that list pay")),

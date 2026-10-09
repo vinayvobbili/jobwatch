@@ -162,6 +162,7 @@ filters:
   exclude_departments: ["sales"]
   locations: ["remote", "Denver", "Boulder, CO"]
   remote_country: US                      # remote roles must be open in the US ("any" to allow all)
+  home_state: CO                          # leave out remote roles open only in other states (or "Colorado")
   min_salary: 200000                      # the top of a listed range must reach this
   require_salary: false                   # true: drop postings without pay
   max_age_days: 30
@@ -196,6 +197,11 @@ is checked:
 
 - `remote` matches a place that says remote and is in `remote_country`, or says only "Remote". It also
   matches a posting whose own remote flag is set and that lists a US location.
+- With `home_state` set, a remote role open only in some states is left out unless yours is one of them,
+  and one open only in your state ("Remote - Colorado") counts as remote. The states come from the
+  posting's places ("Remote - Texas", or a remote posting that lists only states) and its text ("Remote
+  locations: California, USA; Nevada, USA", "remote in CA, NV, OR or WA", "must reside in one of the
+  following states: ..."). Today's filter bar says why: "remote only in CA, NV, OR, WA".
 - Any other entry matches as text, so `Denver` matches `Denver, CO, United States`.
 
 ## Fit scores
