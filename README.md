@@ -226,6 +226,11 @@ own). A chat reply or a "Score fit" click goes first; background scoring waits f
 with `scoring.backend: local`. With `claude` every score is a paid API call, so turn it on with
 `scoring.auto: true`. `jobwatch score [--limit N]` does the same in the terminal.
 
+A card with no score says why: in line to score (and where), no posting text, the same role scored before
+this posting came in, or a failure. A job from an alert email may have only its title: "Add the posting"
+takes a link to the company's posting (read when it's on a board jobwatch reads) or the pasted text, and so
+does `jobwatch mark <key> --url <link>`. `jobwatch unscored` lists them all.
+
 Each score keeps its reasons: every requirement, its verdict (met, partly, missing) and the resume's words
 behind it. They're under "Why this score" in a job's details, at the end of `jobwatch show <key>`, and in
 the MCP `get_job` result. Scores saved before jobwatch kept these have only the summary.

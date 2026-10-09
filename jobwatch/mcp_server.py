@@ -14,7 +14,7 @@ from pydantic import Field
 from . import __version__, alerts, config, contacts, learn, prep, report, sources, watch
 from .score import resume_id
 from .store import Store
-from .watch import build_digest, fetch_all, load_contacts, queue, save_job, watched_name
+from .watch import build_digest, fetch_all, load_contacts, queue, save_job, set_link, unscored_reason, watched_name
 
 server = MCPServer(
     "jobwatch",
@@ -174,7 +174,9 @@ def get_job(key: Key) -> dict:
     before jobwatch kept these have none), people the user knows there plus a LinkedIn search for a
     referral, skills it asks for that the resume doesn't show, what was
     sent with the application, and candidate_home: the company's page where the person signs in to see the
-    application's status (Workday only; each company has its own account). Use it to tailor a resume or decide
+    application's status (Workday only; each company has its own account). With no fit score, unscored_reason
+    says why ({code, text}: no_text means it needs its posting, a link via mark_job(url=) or the text pasted;
+    queued means it's in the page's background scorer's line). Use it to tailor a resume or decide
     whether to apply; for only what was sent use get_application_package, and for a call or interview use
     get_interview_prep."""
     cfg, store = _open()
@@ -184,6 +186,7 @@ def get_job(key: Key) -> dict:
         fit = store.score(job.key, resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else None
         return {"key": job.key, "company": job.display_company, "title": job.title, "url": job.url,
                 "pay": job.pay(), "locations": job.locations, "text": job.to_text(), **rec, "fit": fit,
+                "unscored_reason": None if fit else unscored_reason(cfg, store, job),
                 "contacts": known.at(job.display_company, job.company) if known else [],
                 "find_referral": contacts.linkedin_search(job.display_company),
                 "candidate_home": store.candidate_home(job),
@@ -192,7 +195,7 @@ def get_job(key: Key) -> dict:
         store.close()
 
 
-@server.tool(annotations=_hints(destructive=True, idempotent=True))
+@server.tool(annotations=_hints(destructive=True, idempotent=True, web=True))
 def mark_job(
     key: Key,
     status: Annotated[Status | None, Field(description=(
@@ -221,10 +224,12 @@ def mark_job(
     there: prefer it for news ("recruiter replied: onsite only"); note replaces the whole note. next_step says
     what happens next ("recruiter screen Tuesday"); follow_up is the day to act (YYYY-MM-DD or +N days);
     applied_on is the day applied, if not today. url sets the link of a job added by hand (its posting, or the
-    company's careers site once the posting is gone), and text its posting's text, pasted (found later, or from
-    a copy once the posting is gone), so it can be scored and prepped. An empty string clears a field.
-    For a job jobwatch doesn't track yet, use add_application."""
+    company's careers site once the posting is gone); when the job has no posting text and the link is to one
+    job on a supported board, the posting is read from it (text, pay, places), so it can be scored. text sets
+    its posting's text, pasted (found later, or from a copy once the posting is gone), so it can be scored and
+    prepped. An empty string clears a field. For a job jobwatch doesn't track yet, use add_application."""
     _, store = _open()
+    said = ""
     try:
         job, rec = store.find(key)
         if text is not None:
@@ -235,10 +240,10 @@ def mark_job(
             store.track(job.key, note=note, applied=applied_on)
         store.track(job.key, next_step=next_step, follow_up=follow_up)
         if url is not None:
-            store.set_url(job.key, url)
+            said = f" ({set_link(store, job.key, url)})"
         if add_note:
             store.add_note(job.key, add_note)
-        return f"{job.key}: {status or rec['status']}"
+        return f"{job.key}: {status or rec['status']}{said}"
     finally:
         store.close()
 
