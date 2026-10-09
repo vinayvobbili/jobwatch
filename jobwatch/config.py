@@ -75,6 +75,32 @@ def _imap(raw, path: Path) -> Imap | None:
         raise ConfigError(f"{path}: alerts.imap: {e}") from None
 
 
+@dataclass(frozen=True)
+class Pay:
+    """pay in the watchlist: what a job's level pays at its company, from Levels.fyi (see levels.py). Off unless
+    levels is true; off, nothing is ever asked of Levels.fyi."""
+    levels: bool = False
+    years: int | None = None   # your years of experience: a title without a seniority word gets the level they fit
+    region: str = ""           # a Levels.fyi location slug (as in its links), for remote jobs and those near you
+
+
+def _pay(raw, path: Path) -> Pay:
+    if not raw:
+        return Pay()
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path}: pay looks like {{levels: true, years: 10}}, got {raw!r}")
+    unknown = set(raw) - set(Pay.__dataclass_fields__)
+    if unknown:
+        raise ConfigError(f"{path}: unknown pay setting(s): {', '.join(sorted(unknown))}")
+    if not isinstance(raw.get("levels", False), bool):
+        raise ConfigError(f"{path}: pay.levels must be true or false, got {raw['levels']!r}")
+    try:
+        years = None if raw.get("years") is None else int(raw["years"])
+    except (TypeError, ValueError):
+        raise ConfigError(f"{path}: pay.years must be a number of years, got {raw['years']!r}") from None
+    return Pay(levels=raw.get("levels", False), years=years, region=str(raw.get("region") or "").strip())
+
+
 @dataclass
 class Config:
     path: Path
@@ -93,6 +119,7 @@ class Config:
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
+    pay: Pay = field(default_factory=Pay)
     # Boards from a source this jobwatch doesn't know (a newer version's, or a typo): kept in the file and
     # shown as errors, skipped when checking for jobs, so one bad entry doesn't stop everything else.
     unknown: list[Board] = field(default_factory=list)
@@ -263,7 +290,7 @@ def load(explicit: str | Path | None = None) -> Config:
         timeline=timeline, near=_near(learning, filters), theme=theme, width=width,
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
-        imap=_imap(alerts.get("imap"), path),
+        imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
     )
 
 

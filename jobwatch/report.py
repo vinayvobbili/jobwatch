@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import date
 
+from . import levels
 from .models import Job
 from .sources import candidate_home
 from .store import ENDED
@@ -43,6 +44,15 @@ def fit_lines(fit: dict) -> list[str]:
     return out
 
 
+def pay_lines(pay, job: Job) -> list[str]:
+    """Expected pay from Levels.fyi and how it was worked out, with its page and credit."""
+    if pay == levels.PENDING:
+        return ["Expected pay: not looked up yet (Levels.fyi is asked a few pages at a time); try again shortly."]
+    if not isinstance(pay, levels.Estimate):
+        return []
+    return [f"Expected pay: {pay.line(job.pay())}", *(f"  - {w}" for w in pay.why), f"  {pay.credit}: {pay.url}"]
+
+
 def _line(e: Entry) -> list[str]:
     j = e.job
     facts = [j.display_company, "; ".join(j.locations[:3]) + (" …" if len(j.locations) > 3 else "")]
@@ -59,6 +69,8 @@ def _line(e: Entry) -> list[str]:
         f = e.fit
         out.append(f"**Fit {f['score']:.0f}/100**, must-haves {f['must_haves_met']}/{f['must_haves_total']}. "
                    + (f"Gaps: {'; '.join(f['gaps'])}" if f["gaps"] else "No must-have gaps."))
+    if isinstance(e.pay, levels.Estimate):  # set on queued jobs only, never in a digest
+        out.append(f"Expected pay: {e.pay.line(j.pay())} ({e.pay.credit}: {e.pay.url})")
     if e.warnings:
         out.append(f"**Check:** {'; '.join(e.warnings)}")
     if e.keywords:

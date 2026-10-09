@@ -7,7 +7,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from . import linkedin, sources
+from . import levels, linkedin, sources
 from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts
 from .filters import Filters, red_flags, reject_reason, relevance, search_terms, title_ok
@@ -64,6 +64,7 @@ class Entry:
     same_title: list[Job] = field(default_factory=list)  # the company's other postings with this title
     contacts: list[dict] = field(default_factory=list)  # people you know there
     warnings: list[str] = field(default_factory=list)  # reasons to look twice before applying (queue)
+    pay: object = None  # expected pay from Levels.fyi (levels.Estimate, levels.PENDING or None; queue only)
 
     @property
     def keys(self) -> list[str]:
@@ -90,17 +91,23 @@ def load_contacts(cfg: Config) -> Contacts | None:
         return None
 
 
-def queue(cfg: Config, store: Store) -> list[Entry]:
+def queue(cfg: Config, store: Store, pay_budget: int = 0) -> list[Entry]:
     """Jobs queued to apply to, in the order they were queued, with fit scores, contacts where known, and
-    warnings: a job queued by hand never passed the filters, and a posting can close while it waits."""
+    warnings: a job queued by hand never passed the filters, and a posting can close while it waits. With
+    pay.levels on, each has its expected pay (see levels.py), asking Levels.fyi for up to `pay_budget` pages."""
     rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
     contacts = load_contacts(cfg)
+    reader = levels.Reader(store, pay_budget) if cfg.pay.levels else None
     out = []
     for job, rec in sorted(store.jobs(("queued",), include_closed=True), key=lambda r: r[1]["status_at"] or ""):
         rel, hits = relevance(job, cfg.keywords)
         e = Entry(job, rec, rel, hits, fit=brief(store.score(job.key, rid)) if rid else None)
         e.contacts = contacts.at(job.display_company, job.company) if contacts else []
         e.warnings = warnings(job, cfg.filters)
+        if reader:
+            e.pay = levels.expected(cfg, store, job, reader=reader)
+            if warn := levels.below(e.pay, cfg.filters.min_salary):
+                e.warnings.append(warn)
         out.append(e)
     return out
 

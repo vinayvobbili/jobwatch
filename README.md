@@ -192,6 +192,11 @@ display:                                  # the browser page
 Relative paths are resolved from the watchlist's folder. State (which jobs you've seen, applied to or
 skipped, and their scores) lives in one SQLite file, by default `~/.local/share/jobwatch/state.db`.
 
+`pay: {levels: true, years: 12}` (off by default) adds an estimate of a queued or viewed job's level and pay from
+the company's public salary pages on Levels.fyi, with a link to the page. It's meant for personal use: you're
+responsible for checking Levels.fyi's terms. What's read stays in the state file and is never put in a digest.
+Data: [Levels.fyi](https://www.levels.fyi).
+
 ### How locations match
 
 A posting can list several places (`London, UK; Remote-Friendly, United States; Austin, TX`), and each one

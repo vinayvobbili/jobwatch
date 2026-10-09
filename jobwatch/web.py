@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
-from . import __version__, chat, config, contacts, learn, prep, report, sources
+from . import __version__, chat, config, contacts, learn, levels, prep, report, sources
 from .config import ConfigError
 from .filters import KINDS, rejection
 from .package import Package
@@ -44,6 +44,7 @@ from .watch import (
 
 MAX_UPLOAD = 20 * 1024 * 1024
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
+TODAY_PAY = 15  # Today's jobs whose pay is looked up on Levels.fyi, most relevant first
 
 
 class ApiError(Exception):
@@ -132,14 +133,63 @@ class Scorer:
         return True
 
 
+class PayLookup:
+    """Looks up expected pay on Levels.fyi in the background for the jobs on the page (see levels.py), so the page
+    never waits on it: up to levels.QUEUE pages a run, a couple of seconds apart. Only runs with pay.levels on."""
+
+    def __init__(self, app: App):
+        from .alerts import Robots
+        self.app = app
+        self.robots = Robots()  # Levels.fyi's robots.txt, read once
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._todo: list[str] = []
+
+    @property
+    def running(self) -> bool:
+        return self._thread is not None
+
+    def kick(self, keys: list[str]):
+        with self._lock:
+            self._todo = list(dict.fromkeys(self._todo + keys))
+            if not self._thread:
+                self._thread = threading.Thread(target=self._run, name="jobwatch-pay", daemon=True)
+                self._thread.start()
+
+    def wait(self, timeout: float | None = None):
+        if t := self._thread:
+            t.join(timeout)
+
+    def _run(self):
+        try:
+            cfg = self.app._cfg()
+            store = Store(cfg.state)
+            try:
+                reader = levels.Reader(store, levels.QUEUE, robots=self.robots)
+                while cfg.pay.levels and reader.budget > 0:
+                    with self._lock:
+                        if not self._todo:
+                            break
+                        key = self._todo.pop(0)
+                    levels.expected(cfg, store, store.find(key)[0], reader=reader)
+            finally:
+                store.close()
+        except Exception as e:  # never take the page down
+            print(f"jobwatch: pay lookup stopped: {type(e).__name__}: {e}", file=sys.stderr)
+        finally:
+            with self._lock:
+                self._thread, self._todo = None, []  # what's left is asked for on the page's next look
+
+
 class App:
     """The API behind the page. Each method takes the request's query or JSON body and returns JSON data.
-    With `background`, fit scores are worked out behind the scenes (see Scorer)."""
+    With `background`, fit scores are worked out behind the scenes (see Scorer), and so is expected pay (PayLookup)."""
 
     def __init__(self, config_path: Path, background: bool = False):
         self.path = config_path
         self.lock = threading.Lock()  # one fetch or save at a time
         self.scorer = Scorer(self)
+        self.pay = PayLookup(self)
         self.background = background
 
     def score_in_background(self):
@@ -171,6 +221,25 @@ class App:
                 "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
                 "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max,
                 "warnings": e.warnings}
+
+    def _pay(self, cfg, store, rows: list[tuple], most: int = 1000) -> dict[str, dict]:
+        """{key: {"expected_pay": …}} for (job, result) pairs from what's kept, asking Levels.fyi for nothing here.
+        A result of None is looked up now, from what's kept. The first `most` jobs still to be looked up are,
+        in the background; the rest show nothing. Empty when pay.levels is off."""
+        if not cfg.pay.levels:
+            return {}
+        out, waiting = {}, []
+        for job, result in rows:
+            result = result or levels.expected(cfg, store, job)
+            if result == levels.PENDING:
+                if len(waiting) >= most:
+                    result = None
+                else:
+                    waiting.append(job.key)
+            out[job.key] = {"expected_pay": levels.as_dict(result, job)}
+        if waiting and self.background:
+            self.pay.kick(waiting)
+        return out
 
     # -- endpoints
 
@@ -222,7 +291,9 @@ class App:
         def run(cfg, store):
             d = build_digest(cfg, store, include_seen=True, score_top=0)
             why = self.scorer.reasons(cfg, store)
-            out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key)} for e in d.entries],
+            pay = self._pay(cfg, store, [(e.job, None) for e in d.entries], most=TODAY_PAY)
+            out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {})}
+                            for e in d.entries],
                    "rejected": d.rejected,
                    "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({})}
             # "New" shows once: the next visit lists these as seen.
@@ -259,9 +330,11 @@ class App:
             resume = bool(cfg.resume and cfg.resume.is_file())
             why = self.scorer.reasons(cfg, store)
             # A job added by hand can be scored once it has the posting's text.
+            entries = queue(cfg, store)
+            pay = self._pay(cfg, store, [(e.job, e.pay) for e in entries])
             return [{**self._entry(e), "can_score": resume and bool(e.job.description.strip()),
-                     "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why)}
-                    for e in queue(cfg, store)]
+                     "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),
+                     **pay.get(e.job.key, {})} for e in entries]
         return self._with_store(run)
 
     def get_jobs(self, q) -> list[dict]:
@@ -336,6 +409,7 @@ class App:
                     "can_score": resume and bool(job.description.strip()),
                     "unscored": None if fit else unscored_reason(cfg, store, job, self.scorer.reasons(cfg, store)),
                     "manual": job.source == MANUAL,
+                    **self._pay(cfg, store, [(job, None)]).get(job.key, {}),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
         return self._with_store(run)
 
@@ -358,6 +432,23 @@ class App:
             job, _ = store.find(key)
             self.score_in_background()  # it may have text to score now
             return {"key": key, "said": "; ".join(said), "has_text": bool(job.description.strip())}
+        return self._with_store(run)
+
+    def post_pay(self, body) -> dict:
+        """Expected pay for these jobs (`keys`) from what's kept, while the ones not known yet are looked up in
+        the background (`running`). The page asks again until none is pending."""
+        def run(cfg, store):
+            if not cfg.pay.levels:
+                return {"enabled": False, "running": False, "pay": {}}
+            jobs = []
+            for k in (body.get("keys") or [])[:TODAY_PAY]:
+                try:
+                    jobs.append(store.find(k)[0])
+                except KeyError:
+                    continue
+            pay = self._pay(cfg, store, [(j, None) for j in jobs])
+            return {"enabled": True, "running": self.pay.running,
+                    "pay": {k: v["expected_pay"] for k, v in pay.items()}}
         return self._with_store(run)
 
     def get_prep(self, q) -> dict:
@@ -501,6 +592,7 @@ ROUTES = {
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/score"): App.post_score,
     ("POST", "/api/posting"): App.post_posting,
+    ("POST", "/api/pay"): App.post_pay,
     ("GET", "/api/scoring"): App.get_scoring,
     ("GET", "/api/chat"): App.get_chat,
     ("GET", "/api/skills"): App.get_skills,
