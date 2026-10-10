@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, alerts, chat, config, dupes, learn, levels, prep, report, sources
+from . import __version__, alerts, chat, config, dupes, learn, levels, prep, report, sources, suggest
 from .config import ConfigError
 from .score import ScoringUnavailable, resume_id
 from .store import STAGES, STATUSES, Store
@@ -261,6 +261,22 @@ def cmd_alerts(args, cfg, store):
         print(alerts.summary(r, every=args.all))
 
 
+def cmd_suggest(args, cfg, store):
+    for which in args.add or []:
+        cfg, s = suggest.accept(cfg, store, which)
+        print(f"Watching {s.name}: {s.entry} is on {cfg.path} now (the old file is kept as {cfg.path.name}.bak). "
+              "`jobwatch fetch` checks it with the rest.")
+    for which in args.dismiss or []:
+        print(f"{suggest.dismiss(store, which).name} won't be suggested again.")
+    if args.add or args.dismiss:
+        return
+    found = suggest.suggestions(cfg, store, limit=args.limit, look=not args.no_lookup)
+    if args.format == "json":
+        print(json.dumps([s.to_dict() for s in found], indent=2, ensure_ascii=False))
+    else:
+        print(suggest.text(found))
+
+
 def cmd_applications(args, cfg, store):
     rows = store.applications()
     if args.due:
@@ -468,6 +484,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true", help="list every new job, also the ones your filters leave out")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_alerts)
+
+    p = sub.add_parser("suggest", help="companies to watch: those whose jobs came in from alerts or `add` while "
+                       "their board isn't on the watchlist, most matching jobs first, with the board to add",
+                       description="Companies to watch. Each job from a job-alert email or `jobwatch add` whose "
+                       "company's board isn't on the watchlist is noted; the companies with the most jobs that pass "
+                       "your filters (recent ones counting more) are listed with their board: the one a job was "
+                       "found on, or one found under the company's name the way `find` looks (once per company, "
+                       "kept). --add puts a board on the watchlist (the file is rewritten, the old one kept as "
+                       ".bak); --dismiss stops suggesting a company.")
+    p.add_argument("--add", action="append", metavar="COMPANY", help="watch this company's board (its name as "
+                   "listed, or the board's entry); repeatable")
+    p.add_argument("--dismiss", action="append", metavar="COMPANY", help="don't suggest this company again; "
+                   "repeatable")
+    p.add_argument("--limit", type=int, default=suggest.LIMIT, metavar="N", help=f"list N (default {suggest.LIMIT})")
+    p.add_argument("--no-lookup", action="store_true", help="look for no boards: list what's known")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_suggest)
 
     p = sub.add_parser("applications", aliases=["apps"],help="where each application stands, follow-ups first")
     p.add_argument("--due", action="store_true", help="only applications to follow up on now")

@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
-from . import __version__, chat, config, contacts, dupes, learn, levels, prep, report, sources
+from . import __version__, chat, config, contacts, dupes, learn, levels, prep, report, sources, suggest
 from .config import ConfigError
 from .filters import KINDS, rejection
 from .package import Package
@@ -304,6 +304,7 @@ class App:
     def __init__(self, config_path: Path, background: bool = False):
         self.path = config_path
         self.lock = threading.Lock()  # one fetch or save at a time
+        self.looking = threading.Lock()  # one look for suggested companies' boards at a time
         self.scorer = Scorer(self)
         self.pay = PayLookup(self)
         self.refresher = Refresher(self)
@@ -398,6 +399,32 @@ class App:
                  "open_roles": sources.open_roles(jobs), "careers": sources.careers_url(s, b),
                  "sample_titles": list(dict.fromkeys(j.title for j in jobs))[:5]}
                 for s, b, jobs in sources.probe(query)]
+
+    def get_suggestions(self, q) -> dict:
+        """Companies to watch (see suggest.py), the best `limit` (5 by default). With lookup=1 the boards not looked
+        for yet are looked for first: the page asks for that after showing what's known, so nothing waits on it."""
+        look = (q.get("lookup") or [""])[0] == "1"
+        limit = int((q.get("limit") or ["5"])[0])
+
+        def run(cfg, store):
+            if not look:
+                return {"companies": [s.to_dict() for s in suggest.suggestions(cfg, store, limit=limit)]}
+            with self.looking:  # two pages open don't look for the same company's board twice
+                return {"companies": [s.to_dict() for s in suggest.suggestions(cfg, store, limit=limit, look=True)]}
+        return self._with_store(run)
+
+    def post_suggestion_add(self, body) -> dict:
+        """Watch a suggested company's board: added to the watchlist the way add_board does."""
+        def run(cfg, store):
+            with self.lock:
+                cfg, s = suggest.accept(cfg, store, body.get("company") or "")
+            return {"added": s.entry, "name": s.name, "companies": len(cfg.boards)}
+        return self._with_store(run)
+
+    def post_suggestion_dismiss(self, body) -> dict:
+        def run(cfg, store):
+            return {"dismissed": suggest.dismiss(store, body.get("company") or "").name}
+        return self._with_store(run)
 
     def post_fetch(self, body) -> dict:
         """Check every board now; while a check is running already (the scheduled one), wait for it instead."""
@@ -705,6 +732,9 @@ ROUTES = {
     ("GET", "/api/settings"): App.get_settings,
     ("POST", "/api/settings"): App.post_settings,
     ("POST", "/api/find"): App.post_find,
+    ("GET", "/api/suggestions"): App.get_suggestions,
+    ("POST", "/api/suggestions/add"): App.post_suggestion_add,
+    ("POST", "/api/suggestions/dismiss"): App.post_suggestion_dismiss,
     ("POST", "/api/fetch"): App.post_fetch,
     ("GET", "/api/checked"): App.get_checked,
     ("GET", "/api/digest"): App.get_digest,

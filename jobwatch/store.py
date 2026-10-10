@@ -9,6 +9,7 @@ import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from . import linkedin
 from .models import Job
 from .package import Package
 from .sources import candidate_home
@@ -66,6 +67,20 @@ CREATE TABLE IF NOT EXISTS hosted_pages (
     up INTEGER NOT NULL,
     checked_at TEXT NOT NULL,
     PRIMARY KEY (source, board)
+);
+CREATE TABLE IF NOT EXISTS unwatched (
+    company TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    entry TEXT,
+    found_by TEXT,
+    found_at TEXT,
+    dismissed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS unwatched_jobs (
+    company TEXT NOT NULL,
+    key TEXT NOT NULL,
+    seen_at TEXT NOT NULL,
+    PRIMARY KEY (company, key)
 );
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
@@ -127,6 +142,7 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
+        older = not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='unwatched_jobs'").fetchone()
         self.db.executescript(_SCHEMA)
         have = {r["name"] for r in self.db.execute("PRAGMA table_info(jobs)")}
         with self.db:
@@ -142,6 +158,8 @@ class Store:
                         self.db.execute(backfill)
             if "gone" not in {r["name"] for r in self.db.execute("PRAGMA table_info(pay_pages)")}:
                 self.db.execute("ALTER TABLE pay_pages ADD COLUMN gone INTEGER NOT NULL DEFAULT 0")
+            if older:  # a state file from before suggestions: what alerts and `add` brought in so far counts
+                self._backfill_unwatched()
 
     def close(self):
         self.db.close()
@@ -457,3 +475,63 @@ class Store:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO pay_pages (url, body, fetched_at, gone) VALUES (?, ?, ?, ?)",
                             (url, body, _now(), int(gone)))
+
+    # Companies whose jobs came in from alerts or `add` while their board isn't watched (see suggest.py), one row
+    # each under the company's bare name ("umbrella" for "Umbrella LLC"). entry is its board, source:board, once
+    # known; an empty one: looked for and none found; NULL: not looked for yet. found_by says how it's known:
+    # posting (one of its jobs is on that board) or name (a board found under its name).
+
+    def note_unwatched(self, company: str, name: str, key: str, entry: str | None = None,
+                       found_by: str | None = None):
+        """Record a job that came in from a company whose board isn't watched, and its board when known."""
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO unwatched (company, name) VALUES (?, ?)", (company, name))
+            self.db.execute("UPDATE unwatched SET name=? WHERE company=?", (name, company))
+            self.db.execute("INSERT OR IGNORE INTO unwatched_jobs (company, key, seen_at) VALUES (?, ?, ?)",
+                            (company, key, _now()))
+        if entry is not None:
+            self.set_unwatched_board(company, entry, found_by)
+
+    def set_unwatched_board(self, company: str, entry: str, found_by: str | None = None):
+        """Keep what's been found of a company's board: a board one of its jobs is on beats one found under its
+        name, and either beats none found. A later find that's no better leaves it as it is."""
+        def rank(e, by):
+            return -1 if e is None else 0 if not e else 2 if by == "posting" else 1
+        row = self.db.execute("SELECT entry, found_by FROM unwatched WHERE company=?", (company,)).fetchone()
+        if row and rank(entry, found_by) > rank(row["entry"], row["found_by"]):
+            with self.db:
+                self.db.execute("UPDATE unwatched SET entry=?, found_by=?, found_at=? WHERE company=?",
+                                (entry, found_by if entry else None, _now(), company))
+
+    def unwatched(self, dismissed: bool = False) -> list[dict]:
+        """The companies recorded (not the dismissed ones, unless asked): company, name, entry, found_by,
+        dismissed_at, and jobs: (job, when it came in) pairs, newest first."""
+        rows = [dict(r) for r in self.db.execute("SELECT * FROM unwatched" + ("" if dismissed else
+                                                 " WHERE dismissed_at IS NULL"))]
+        jobs: dict[str, list[tuple[Job, str]]] = {}
+        for r in self.db.execute("SELECT u.company, u.seen_at, j.data FROM unwatched_jobs u JOIN jobs j "
+                                 "ON j.key=u.key ORDER BY u.seen_at DESC"):
+            jobs.setdefault(r["company"], []).append((Job.from_dict(json.loads(r["data"])), r["seen_at"]))
+        return [{**r, "jobs": jobs.get(r["company"], [])} for r in rows]
+
+    def dismiss_unwatched(self, company: str) -> bool:
+        """Stop suggesting a company. Returns whether it was there."""
+        with self.db:
+            return bool(self.db.execute("UPDATE unwatched SET dismissed_at=COALESCE(dismissed_at, ?) "
+                                        "WHERE company=?", (_now(), company)).rowcount)
+
+    def _backfill_unwatched(self):
+        """Fill in the companies from jobs recorded before there were suggestions: those from job-alert emails
+        (via) or added by hand. Whether a company is watched is told when listing them."""
+        for r in self.db.execute("SELECT key, source, company, data, first_seen FROM jobs "
+                                 "WHERE via IS NOT NULL OR source=?", (MANUAL,)).fetchall():
+            name = Job.from_dict(json.loads(r["data"])).display_company
+            if not (company := linkedin._bare(name)):
+                continue
+            self.db.execute("INSERT OR IGNORE INTO unwatched (company, name) VALUES (?, ?)", (company, name))
+            self.db.execute("INSERT OR IGNORE INTO unwatched_jobs (company, key, seen_at) VALUES (?, ?, ?)",
+                            (company, r["key"], r["first_seen"]))
+            if r["source"] != MANUAL:
+                self.db.execute("UPDATE unwatched SET entry=?, found_by='posting', found_at=? WHERE company=? AND "
+                                "(entry IS NULL OR found_by IS NOT 'posting')",
+                                (f"{r['source']}:{r['company']}", r["first_seen"], company))

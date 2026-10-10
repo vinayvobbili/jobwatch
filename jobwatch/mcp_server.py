@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from . import __version__, alerts, config, contacts, dupes, learn, levels, prep, report, sources, watch
+from . import __version__, alerts, config, contacts, dupes, learn, levels, prep, report, sources, suggest, watch
 from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue, save_job, set_link, unscored_reason, watched_name
@@ -22,7 +22,9 @@ server = MCPServer(
         "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, "
         "Google Careers, Amazon, Oracle Recruiting Cloud, SmartRecruiters, Avature) from a watchlist file. "
         "find_board looks up a company's board (by name, or a job or careers page link), add_board puts it on the "
-        "watchlist, list_boards and remove_board manage the rest. "
+        "watchlist, list_boards and remove_board manage the rest. list_suggested_boards lists companies whose jobs "
+        "keep coming in from alerts or add_application while their board isn't watched, with what to pass "
+        "add_board; dismiss_suggested_board stops suggesting one. "
         "fetch_jobs checks every board; get_digest ranks the new matches (optionally fit-scored with shortlist-ai); "
         "get_job gives a posting's full text for tailoring a resume; mark_job records queued/applied/skipped "
         "and later stages (screening, interviewing, offer, rejected, withdrawn) with a next step and follow-up "
@@ -127,7 +129,8 @@ def add_board(
         "warns about those): its jobs then link there."))] = "",
 ) -> dict:
     """Add a company's board to the watchlist, so fetch_jobs checks it from now on. Find the entry with
-    find_board first and check its sample titles: a guessed board name can belong to another company. Adding
+    find_board first and check its sample titles: a guessed board name can belong to another company
+    (list_suggested_boards gives entries for companies whose jobs keep coming in from alerts). Adding
     one that's already there only updates its name and careers link. For Google, leave name empty: each role
     keeps its own employer (Google, YouTube, DeepMind). Creates the watchlist when there is none yet. The
     watchlist is rewritten (a copy of the old one is kept as .bak; comments in a hand-written file are not
@@ -142,6 +145,41 @@ def remove_board(entry: Entry) -> dict:
     from it are kept. The watchlist is rewritten, with a copy of the old one kept as .bak."""
     cfg = config.remove_board(config.find_config(os.environ.get("JOBWATCH_CONFIG")), entry)
     return {"watchlist": str(cfg.path), "boards": _boards(cfg)}
+
+
+@server.tool(annotations=_hints(idempotent=True, web=True))
+def list_suggested_boards(
+    limit: Annotated[int, Field(ge=1, description="The most companies to return, best first.")] = suggest.LIMIT,
+    look_up_boards: Annotated[bool, Field(description=(
+        "Look for the board of each listed company that hasn't been looked for yet, the way find_board does "
+        "(once per company; what's found is kept). False makes no requests."))] = True,
+) -> list[dict]:
+    """Companies to watch: those whose jobs came in from job-alert emails (import_job_alerts) or add_application
+    while their board isn't on the watchlist, ranked by how many of their jobs pass the watchlist's filters,
+    recent ones counting more. Each: company, matching_jobs, last_seen, board (source:board, or null),
+    board_found (posting: one of its jobs is on that board; name: found under its name, so check with
+    find_board's sample titles that it's theirs), careers, sample_titles, and add_board: the arguments to pass to
+    add_board to watch it (null when no board was found: find_board with a link to its careers page may find
+    one). dismiss_suggested_board stops suggesting one. Suggest; let the person decide which to add."""
+    cfg, store = _open()
+    try:
+        return [s.to_dict() for s in suggest.suggestions(cfg, store, limit=limit, look=look_up_boards)]
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(idempotent=True))
+def dismiss_suggested_board(
+    company: Annotated[str, Field(description=(
+        "The company as list_suggested_boards names it (any case; Inc, LLC and the like aside), or its board."))],
+) -> str:
+    """Stop suggesting a company in list_suggested_boards, when the person doesn't want to watch it. Its jobs
+    stay tracked. To watch one instead, use add_board with its add_board arguments."""
+    _, store = _open()
+    try:
+        return f"{suggest.dismiss(store, company).name} won't be suggested again."
+    finally:
+        store.close()
 
 
 @server.tool(annotations=_hints(idempotent=True, web=True))

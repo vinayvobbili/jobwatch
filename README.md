@@ -90,7 +90,9 @@ their jobs), say what you're looking for, and press **Check for new jobs**. From
 - **Today:** new matching jobs, with pay, how long ago they were posted, keywords, and who you know there.
   **Queue** the ones worth applying to, **Skip** the rest. While the page is running it checks the boards by
   itself every 6 hours (`fetch_every` in the watchlist), and Today says when they were last checked. A job
-  that disappears from its board drops off Today at the next check.
+  that disappears from its board drops off Today at the next check. **Companies to watch**, at the side, lists
+  companies whose jobs keep coming in from alerts while you don't watch them (see
+  [Companies to watch](#companies-to-watch)).
 - **Queue:** your short list. Apply on the company's site, then press **I applied**.
 - Long lists come in pages (12, 24, 48 or 96 at a time, kept per browser).
 - **Applications:** every job you applied to and where it stands (applied, screening, interviewing, offer,
@@ -441,6 +443,28 @@ alerts:
 jobwatch alerts --imap
 ```
 
+### Companies to watch
+
+jobwatch only checks the boards on your watchlist, so a company you never added is never checked, however good
+its jobs. Alerts show which ones you're missing. Each job that comes in from an alert or `jobwatch add`, from a
+company whose board you don't watch, is noted with its company. `jobwatch suggest` lists those companies, the
+ones with the most jobs that pass your filters first (a job from last week counts more than one from last
+season), with a few of their titles and their board:
+
+```
+jobwatch suggest                       # companies to watch, and the board to add for each
+jobwatch suggest --add Umbrella        # put its board on the watchlist
+jobwatch suggest --dismiss Hooli       # don't suggest it again
+```
+
+The board is the one a job was found on when the alert import matched it there, else one found under the
+company's name the way `jobwatch find` looks (check its titles: a guessed name can belong to another company).
+Each company is looked for once, and what's found, or that nothing was, is kept in the state file. `--no-lookup`
+lists what's known without looking. When no board turns up, give `jobwatch find` a link to its careers page.
+`--add` rewrites the watchlist the way Settings does, keeping the old one as `.bak` (comments in a hand-written
+file aren't kept). On the page, the same list is on Today with **Add** and **Dismiss**; in Claude,
+`list_suggested_boards` gives each company's `add_board` arguments, and `dismiss_suggested_board` drops one.
+
 ## Tracking applications
 
 An application moves through stages: `applied`, `screening`, `interviewing`, `offer`, and then `rejected`
@@ -536,7 +560,8 @@ marking them shown. Roles that disappear from a board are marked closed.
 
 `jobwatch-mcp` offers these tools to Claude Code or any MCP client:
 
-- **Watchlist:** `find_board`, `list_boards`, `add_board`, `remove_board`
+- **Watchlist:** `find_board`, `list_boards`, `add_board`, `remove_board`, `list_suggested_boards`,
+  `dismiss_suggested_board`
 - **New jobs:** `fetch_jobs`, `import_job_alerts`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
 - **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`,
   `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`)
