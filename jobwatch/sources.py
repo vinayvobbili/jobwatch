@@ -12,6 +12,8 @@ searched too, from its careers site's pages (its API is closed to crawlers by ro
 page at a time, then each posting's page.
 Avature careers portals list every posting in the sitemap their robots.txt names; the ones whose titles match
 are read from their public pages, as robots.txt allows.
+Hacker News' monthly "Ask HN: Who is hiring?" thread is a board of many companies' posts, read whole from HN's
+search API: each post is one job.
 """
 
 from __future__ import annotations
@@ -1061,6 +1063,251 @@ def _amazon_posting(pid: str, board: str, get) -> Job:
     raise NotFound("amazon.jobs doesn't list that job any more")
 
 
+# -- Hacker News' "Ask HN: Who is hiring?": board "whoishiring" for the latest monthly thread, "whoishiring/N" for
+# the last N months' (up to 12). The account whoishiring posts it at the start of each month; each top-level
+# comment is one company's post, its first line usually "Company | Role(s) | Place | Remote/Onsite | Pay | link".
+# Read from HN's search API (hn.algolia.com), where robots.txt allows it: one request finds the threads, and one
+# reads a thread whole, every post with its text. A deleted or flagged post isn't in it, so its job closes; an
+# edited one is read again. One post is one job, with every role its first line names in the title.
+
+HN_API = "https://hn.algolia.com/api/v1"
+HN_ITEM = "https://news.ycombinator.com/item?id={id}"
+HN_MONTHS = 12
+HN_TITLE_MAX = 150
+_HN_BOARD = re.compile(r"whoishiring(?:/(\d{1,2}))?")
+_HN_THREAD = re.compile(r"Ask HN: Who is hiring\?", re.I)
+_HN_NAMES = {"hn", "hackernews", "whoishiring", "whoshiring", "hnwhoishiring", "hnwhoshiring", "askhnwhoishiring"}
+_HN_ANCHOR = re.compile(r'<a\s[^>]*?href="([^"]*)"[^>]*>.*?</a>', re.I | re.S)
+_HN_URL = re.compile(r"(?:https?://|www\.)\S+", re.I)
+_HN_DOMAIN = re.compile(r"[\w-]+(?:\.[\w-]+)+(?:/\S*)?")  # "acme.example" written out, not linked
+_HN_ROLE = re.compile(
+    r"\b(?:engineers?|engineering|developers?|devs?|swes?|sres?|devops|designers?|scientists?|researchers?|"
+    r"managers?|pms?|architects?|analysts?|leads?|head of|directors?|vp|cto|founding|interns?|internships?|"
+    r"recruiters?|marketers?|account executives?|specialists?|consultants?|administrators?|technicians?|writers?|"
+    r"programmers?|hackers?|counsel|accountants?|coordinators?|gtm|bizops|roles?|positions?|openings?)\b", re.I)
+_HN_WORKPLACE = re.compile(r"\b(?:remote|hybrid|on-?\s?site|in[- ](?:office|person)|wfh|anywhere|worldwide|global|"
+                           r"time\s?zones?|utc|gmt|cet)\b", re.I)
+_HN_CITY = re.compile(r"\b[A-Z][a-z]+(?:[ .-][A-Z][a-z]+)*,\s*[A-Z]{2}\b")  # "Austin, TX", "Utrecht, NL"
+_HN_PLACE = re.compile(
+    r"\b(?:SF|NYC|LA|DC|Bay Area|Silicon Valley|London|Berlin|Paris|Amsterdam|Toronto|Vancouver|Montreal|Dublin|"
+    r"Munich|Zurich|Singapore|Tokyo|Sydney|Melbourne|Bangalore|Bengaluru|Tel Aviv|Stockholm|Copenhagen|Barcelona|"
+    r"Madrid|Lisbon|Seattle|Boston|Austin|Chicago|Denver|Atlanta|Miami|Portland|Los Angeles|San Francisco|New York|"
+    r"Canada|Germany|UK|United Kingdom|Netherlands|France|Spain|India|Europe|EU|EMEA|APAC|LATAM|Ireland|"
+    r"Switzerland|Sweden|Israel|Japan|Australia|Brazil|Mexico|Poland|Portugal|Finland|Norway|Denmark|Austria|"
+    r"Belgium|Italy|Greece|Czechia|Czech Republic|Romania|Hungary|Estonia|Latvia|Lithuania|Ukraine|Croatia|Serbia|"
+    r"Turkey|Egypt|Nigeria|Kenya|South Africa|UAE|Dubai|Korea|China|Taiwan|Hong Kong|Vietnam|Thailand|Indonesia|"
+    r"Philippines|New Zealand|Argentina|Chile|Colombia|Peru|Uruguay)\b")
+_HN_PAY = re.compile(r"[$€£]\s?\d|\d\s?[kK]?\s?(?:USD|EUR|GBP|CAD|CHF)\b|\b\d{2,3}\s?[kK]\b|\bsalary\b|\bOTE\b|"
+                     r"\bcompensation\b", re.I)
+_HN_OTHER_PAY = re.compile(r"[€£]|\b(?:EUR|GBP|CAD|CHF|AUD|INR)\b")  # pay in another currency: not a US range
+_HN_TYPE = re.compile(r"\b(?:full[- ]?time|part[- ]?time|contract(?:or)?|freelance|permanent|perm|employment|1099|"
+                      r"w-?2|ft|pt)\b", re.I)
+_HN_NO_REMOTE = re.compile(r"\(?\b(?:no|not)\s+remote\b\)?", re.I)
+_HN_SENTENCE = re.compile(r"^(?:we|we['’]re|we are|i|i['’]m|i am|our|my|this|it|it['’]s|there|hi|hello|hey)\b", re.I)
+_HN_SEGMENT = 120  # longer, a piece of the first line is a sentence, not roles or a place
+_HN_LINE = 80  # longer, a line further on is a sentence, not a role's title
+# A link to the company's own job pages, short of a board jobwatch reads: a careers path, or a hiring tool's host.
+_HN_CAREERS = re.compile(
+    r"career|\bjobs?\b|\bjoin\b|hiring|work-?with-?us|open-?(?:roles|positions)|positions|apply|vacanc|recruit|"
+    r"talent|workatastartup\.com|wellfound\.com|breezy\.hr|bamboohr\.com|recruitee\.com|teamtailor\.com|personio\.|"
+    r"homerun\.co|jobvite\.com|icims\.com|applytojob\.com|pinpointhq\.com|grnh\.se", re.I)
+# Hosts that aren't the company's own (short links, social sites): a post isn't named after them.
+_HN_NOT_COMPANY = re.compile(r"(?:^|\.)(?:ycombinator\.com|grnh\.se|bit\.ly|lnkd\.in|linkedin\.com|github\.com|"
+                             r"google\.com|forms\.gle|calendly\.com|x\.com|twitter\.com|youtube\.com|usajobs\.gov)$")
+_HN_NOT_JOBS = re.compile(r"(?:^|\.)(?:ycombinator\.com|linkedin\.com)$")  # never a post's job link
+# A post without the usual first line: "Acme is hiring", "At Acme (acme.com) we're hiring", "hiring ... at Acme".
+_HN_PROSE = (re.compile(r"^(?:At\s+)?(?P<c>[A-Z][\w.&'+-]*(?:\s+[A-Z0-9][\w.&'+-]*){0,3})\s*(?:\([^)]*\))?\s*,?\s*"
+                        r"(?:is|are|we['’]re|we are)\s+(?:hiring|looking|building|recruiting)\b", re.M),
+             re.compile(r"\b(?i:hiring)\b[^.\n]{0,60}?\bat\s+(?:the\s+)?"
+                        r"(?P<c>[A-Z][\w.&'+-]*(?:\s+[A-Z0-9][\w.&'+-]*){0,3})"))
+_HN_SEEKER = re.compile(r"willing to relocate\s*:", re.I)  # a "Who wants to be hired?" post in the wrong thread
+_HN_BULLET = re.compile(r"^(?:[-*•–·+>]+|\d{1,2}[.)])\s*")
+
+
+def _hn_months(board: str) -> int:
+    m = _HN_BOARD.fullmatch(board)
+    if not m or not 1 <= int(m.group(1) or 1) <= HN_MONTHS:
+        raise SourceError(f"the HN board is whoishiring (this month's thread) or whoishiring/N (the last N months, "
+                          f"up to {HN_MONTHS}), got {board!r}")
+    return int(m.group(1) or 1)
+
+
+def _hn_plain(markup: str) -> str:
+    """A post's HTML as text, each link written out in full (HN shortens a long link's text with "...")."""
+    return html_to_text(_HN_ANCHOR.sub(lambda m: f" {html.unescape(m.group(1))} ", markup))
+
+
+def _hn_text(c: dict, thread: str) -> str:
+    """A post's text as its job's description, ending with where it was posted."""
+    return f"{_hn_plain(c.get('text') or '')}\n\nPosted in {thread}: {HN_ITEM.format(id=c['id'])}".strip()
+
+
+def _hn_segments(head: str) -> list[str]:
+    """A first line's pieces: split at "|", or at spaced dashes or bullets when it has none."""
+    parts = head.split("|") if "|" in head else re.split(r"\s+[—–-]\s+|\s+[•·]\s+", head)
+    return [" ".join(p.split()) for p in parts if p.strip()]
+
+
+def _hn_bare(text: str) -> tuple[str, list[str]]:
+    """(the text without its links and bracketed parts, the bracketed parts)."""
+    text = _HN_URL.sub(" ", text)
+    inner = [" ".join(p.split()) for p in re.findall(r"\(([^()]*)\)", text) if p.strip()]
+    return " ".join(re.sub(r"\([^()]*\)", " ", text).split()).strip(" ,;:-–—/"), inner
+
+
+def _hn_place(text: str, strict: bool = False) -> bool:
+    """Whether a piece of a first line says where the work is ("Remote (US)", "Austin, TX", "ONSITE"). strict: for
+    the bracketed part of a role ("Engineer (Remote)"), where "(Python, ML)" isn't a "City, ST"."""
+    return bool(_HN_WORKPLACE.search(text) or _HN_PLACE.search(text) or in_us(text) or
+                (not strict and _HN_CITY.search(text)))
+
+
+def _hn_roleish(text: str) -> bool:
+    """A first line's first piece that names roles ("Senior Engineer"), not a company that happens to ("Writer")."""
+    return bool(_HN_ROLE.search(text)) and len(text.split()) >= 2
+
+
+def _hn_body_roles(lines: list[str]) -> list[str]:
+    """The lines of a post's text that are role titles ("- Senior Engineer", "Designer | $150k | Remote"): short,
+    naming a role, and not a sentence."""
+    out = []
+    for line in lines:
+        role = _HN_BULLET.sub("", line).strip()
+        if "|" in role:
+            role = next((p.strip() for p in role.split("|") if _HN_ROLE.search(p)), "")
+        if role and len(role) <= _HN_LINE and _HN_ROLE.search(role) and not _HN_SENTENCE.match(role) \
+                and not re.search(r"[.!?]\s|[.!?:]$|https?://", role) \
+                and (_HN_BULLET.match(line) or len(role.split()) <= 8) and role not in out:
+            out.append(role)
+    return out
+
+
+def _hn_company_from_text(text: str, links: list[str]) -> str:
+    """The company of a post without the usual first line: named in a sentence, else its first link's site."""
+    for pattern in _HN_PROSE:
+        if m := pattern.search(text[:400]):
+            return m.group("c").strip(" .,")
+    for href in links:
+        host = urlparse(href).netloc.lower().removeprefix("www.")
+        if host and not _HN_NOT_COMPANY.search(host) and not detect(href):
+            return re.sub(r"^(?:careers|jobs|apply)\.", "", host)
+    return ""
+
+
+def _hn_link(links: list[str]) -> tuple[str, list[str]]:
+    """(the post's best link, the boards jobwatch reads that it links to): a job on such a board first, then the
+    board, then the company's own job pages (a careers path, a hiring tool); "" when there's none of those."""
+    best, rank, boards = "", 3, []
+    for href in links:
+        p = urlparse(href)
+        if p.scheme not in ("http", "https") or _HN_NOT_JOBS.search(p.netloc.lower()):
+            continue
+        found = detect(href)
+        if found and found[0] != "hn":
+            if (entry := f"{found[0]}:{found[1]}") not in boards:
+                boards.append(entry)
+            r = 0 if _posting_id(found[0], href) or "/job/" in p.path else 1
+        else:
+            r = 2 if _HN_CAREERS.search(p.netloc + p.path) else 3
+        if r < rank:
+            best, rank = href, r
+    return best, boards
+
+
+def _hn_post(c: dict, board: str, description: str) -> Job | None:
+    """One job from a top-level comment; None when it isn't a company's post (a remark, a job seeker's)."""
+    markup = c.get("text") or ""
+    if _HN_SEEKER.search(description):
+        return None
+    # its first line, past a line that's only a link; the rest
+    lines = [line for line in _hn_plain(markup).splitlines() if _HN_URL.sub("", line).strip()]
+    head, rest = (lines[0], lines[1:]) if lines else ("", [])
+    links = [html.unescape(h) for h in _HN_ANCHOR.findall(markup)]
+    pieces = _hn_segments(head)
+    company, places, roles, other, pay = "", [], [], [], ""
+    structured = len(pieces) >= 2
+    if structured:  # "Acme | Senior Engineer, Designer | Remote (US) | $150k-$180k | https://acme.example/jobs"
+        name, inner = _hn_bare(pieces[0])
+        if _hn_roleish(name) or len(name) > 60 or _HN_SENTENCE.match(name):
+            name = ""  # "Senior Engineer — Remote — US only", the company named further on
+        else:
+            pieces = pieces[1:]
+            places += [p for p in inner if _hn_place(p)]  # "Acme (Remote US)"
+        for piece in pieces:
+            bare, inner = _hn_bare(piece)
+            if not bare or len(piece) > _HN_SEGMENT or _HN_SENTENCE.match(bare):
+                continue
+            if _HN_PAY.search(bare):
+                pay = pay or piece
+            elif _HN_ROLE.search(bare):
+                roles.append(bare if _HN_URL.search(piece) else piece)
+                places += [p for p in inner if _hn_place(p, strict=True)]  # "Founding Engineer (Remote)"
+            elif _hn_place(bare):
+                places.append(bare if _HN_URL.search(piece) else piece)
+            elif not (_HN_TYPE.search(bare) or _HN_DOMAIN.fullmatch(bare)):
+                other.append(bare)
+        company = name or (other.pop(0) if other else "") or _hn_company_from_text(description, links)
+    elif _HN_ROLE.search(description) or "hiring" in description.lower():
+        company = _hn_company_from_text(description, links)
+    if not company:
+        return None
+    body = _hn_body_roles(rest)
+    title = ", ".join(roles) or "; ".join(body[:4]) + (" and more" if len(body) > 4 else "") or \
+        (other[0] if other else "") or "Open roles (see the post)"
+    if len(title) > HN_TITLE_MAX:
+        title = title[:HN_TITLE_MAX - 1].rstrip(" ,;") + "…"
+    # "ONSITE" or "Hybrid" alone isn't a place: it's kept when it says remote or names somewhere
+    places = [p for p in (" ".join(_HN_NO_REMOTE.sub(" ", p).split()) for p in places)
+              if is_remote(p) or _HN_PLACE.search(p) or _HN_CITY.search(p) or in_us(p)]
+    # a post without the usual first line: does its first line say remote?
+    remote = any(is_remote(p) for p in places) or (not structured and bool(re.search(r"\bremote\b", head, re.I))
+                                                   and not _HN_NO_REMOTE.search(head))
+    url, boards = _hn_link(links)
+    hn = HN_ITEM.format(id=c["id"])
+    posted = datetime.fromtimestamp(c["created_at_i"], timezone.utc) if isinstance(c.get("created_at_i"), int) \
+        else _time(c.get("created_at"))
+    job = Job(source="hn", company=board, id=str(c["id"]), title=title, url=url or hn, company_name=company,
+              locations=split_locations(*places), remote=True if remote else None, posted=posted,
+              description=description, posting_url=hn if url else "", boards=boards)
+    if not _HN_OTHER_PAY.search(pay or head):  # "€80k", "$150k CAD": not a range in dollars
+        if pay and (found := parse_salary(pay)):
+            job.salary_min, job.salary_max, job.currency = *found, "USD"
+        _salary(job, description)
+    return job
+
+
+def fetch_hn(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """The posts in the latest Who is hiring thread (the last N months' for board whoishiring/N), up to `cap`, one
+    job each. A thread is read whole, so `search` and `wanted` aren't needed; a post in `known` whose text hasn't
+    changed is kept as it was read. robots.txt is checked before each request."""
+    from .alerts import Robots  # alerts reads web pages the same careful way
+
+    get, months, robots = get or get_json, _hn_months(board), Robots()
+
+    def read(url: str) -> dict:
+        if not robots.allowed(url):
+            raise SourceError(f"{urlparse(url).netloc}'s robots.txt doesn't allow reading {url}")
+        return get(url) or {}
+
+    hits = read(f"{HN_API}/search_by_date?tags=story,author_whoishiring&hitsPerPage={4 * months + 4}")
+    threads = [h for h in hits.get("hits") or [] if _HN_THREAD.match(h.get("title") or "")][:months]
+    if not threads:
+        raise SourceError("no \"Ask HN: Who is hiring?\" thread found on HN")
+    jobs: list[Job] = []
+    for t in threads:
+        for c in read(f"{HN_API}/items/{t['objectID']}").get("children") or []:
+            if len(jobs) >= cap:
+                return jobs
+            if c.get("type") != "comment" or not c.get("text") or not c.get("author") or not c.get("id"):
+                continue  # deleted or flagged: not in the thread any more
+            description, old = _hn_text(c, t.get("title") or ""), (known or {}).get(f"hn:{board}:{c['id']}")
+            if old and old.description == description:
+                jobs.append(old)
+            elif job := _hn_post(c, board, description):
+                jobs.append(job)
+    return jobs
+
+
 @dataclass(frozen=True)
 class Hosted:
     """How to tell that a board's own job pages are up, for a source whose pages a company can switch off while
@@ -1095,6 +1342,9 @@ class Source:
     careers: str                   # public job-board page, formatted with board= (or the parts of it)
     search: Callable[..., list[Job]] | None = None  # a searched source's fetch: (board, get, search, wanted, known)
     hosted: Hosted | None = None   # how to tell its hosted job pages are up, when a company can switch them off
+    # A thread of many companies' posts (HN's Who is hiring), not one company's board: each job names its own
+    # company, and the thread is read whole, not searched.
+    many_companies: bool = False
 
 
 SOURCES = {
@@ -1118,6 +1368,8 @@ SOURCES = {
     "smartrecruiters": Source("smartrecruiters", "", None, "https://careers.smartrecruiters.com/{board}",
                               fetch_smartrecruiters),
     "avature": Source("avature", "", None, "https://{board}/SearchJobs", fetch_avature),
+    "hn": Source("hn", "", None, "https://news.ycombinator.com/submitted?id=whoishiring", fetch_hn,
+                 many_companies=True),
 }
 
 
@@ -1170,7 +1422,8 @@ def fetch(source: str, board: str, get=None, search=(), wanted=None, known=None,
     term's words, from its whole feed, and Avature the same from a portal's sitemap. Workday, Eightfold, Amazon,
     Oracle and SmartRecruiters are searched for each of `search` (plain title words; nothing searches for
     everything), reading in full only the postings whose
-    title passes `wanted` and that aren't in `known` (key -> Job, read before) already."""
+    title passes `wanted` and that aren't in `known` (key -> Job, read before) already. HN's Who is hiring returns
+    every post in its thread, one job each, for many companies."""
     src = SOURCES[source]
     if src.search:
         return src.search(board, get, search=search, wanted=wanted, known=known, cap=cap)
@@ -1224,6 +1477,11 @@ def detect(url: str) -> tuple[str, str] | None:
         return "google", "google"
     if host in ("amazon.jobs", "account.amazon.jobs"):  # account.: the sign-in side, never read; its links name the job
         return "amazon", "amazon"
+    # HN's Who is hiring, from the account that posts it (news.ycombinator.com/submitted?id=whoishiring); a link to
+    # one HN item doesn't say whether it's that thread
+    if host == "news.ycombinator.com" and parts[:1] in (["submitted"], ["user"]) and \
+            parse_qs(parsed.query).get("id") == ["whoishiring"]:
+        return "hn", "whoishiring"
     if m := _ORACLE_HOST.fullmatch(host):  # .../hcmUI/CandidateExperience/<lang>/sites/<site>/job/<id>
         return ("oracle", f"{m.group(1)}/{parts[parts.index('sites') + 1]}") if "sites" in parts[:-1] else None
     # Avature: acme.avature.net/<portal>, or a portal on the company's own domain, known by its page names
@@ -1449,11 +1707,12 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
     names = board_names(company)
     # jibe: sites on their own domains; google, amazon: the company's own board ("Google DeepMind", "AWS" find them);
     # oracle: a site's host is a pod code ("eeho.fa.us2") nobody can guess from the name, so it's found from a link;
-    # avature: tried as name.avature.net/careers below
-    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature")
+    # avature: tried as name.avature.net/careers below; hn: one board, HN's Who is hiring ("Hacker News" finds it)
+    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "hn")
     tries = [(s, n) for n in names for s in SOURCES if s not in skip]
     tries += [("google", "google")] if "google" in names else []
     tries += [("amazon", "amazon")] if {"amazon", "aws"} & set(names) else []
+    tries += [("hn", "whoishiring")] if _HN_NAMES & set(names) else []
 
     def one(t):
         try:
