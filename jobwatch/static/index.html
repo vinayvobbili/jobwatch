@@ -786,6 +786,20 @@ function age(days) {
   return days === 0 ? "posted today" : `posted ${days}d ago`;
 }
 
+// "just now", "12 min ago", "2 h ago", "3 days ago", from an ISO time.
+function ago(iso) {
+  const min = Math.max(0, (Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${Math.round(min)} min ago`;
+  if (min < 48 * 60) return `${Math.round(min / 60)} h ago`;
+  return `${Math.round(min / 1440)} days ago`;
+}
+
+// A job whose board's hosted job pages are offline: where to apply instead (the server's link_note).
+function linkNote(job) {
+  return job.link_note ? h("div", { class: "warns linknote" }, h("b", {}, "Link: "), job.link_note) : null;
+}
+
 function people(list, most = 3) {
   const names = list.slice(0, most).map(p => (p.position ? `${p.name} (${p.position})` : p.name) +
     (p.why ? ` — ${p.why}` : ""));
@@ -876,6 +890,7 @@ function jobCard(job, actions, i = 0) {
         job.closed ? h("span", { class: "badge closed" }, "closed") : null,
         link(job.url, job.title, "title")),
       h("div", { class: "meta" }, h("b", {}, job.company), facts.map(f => [h("span", { class: "sep" }, "·"), f])),
+      linkNote(job),
       job.warnings && job.warnings.length
         ? h("div", { class: "warns" }, h("b", {}, "Check: "), job.warnings.join(" · ")) : null,
       payLine(job),
@@ -988,6 +1003,7 @@ async function openDetails(key) {
         h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
         h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
           (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
+        linkNote(j),
         payLine(j),
         gapsLine(j.fit),
         whyScore(j.fit),
@@ -1456,6 +1472,36 @@ function watchScoring(first, el) {
   if (first.running) scoringTimer = setTimeout(poll, 15000);
 }
 
+// When the boards were last checked. The page checks them by itself every few hours (fetch_every in the
+// watchlist) and the button checks now; a check that finishes while you read offers to show what it found.
+let checkedTimer = null;
+function watchChecked(first, el) {
+  clearTimeout(checkedTimer);
+  const seen = first.at;
+  const hours = n => n === 24 ? "day" : n % 24 === 0 ? `${n / 24} days` : n === 1 ? "hour" : `${+n.toFixed(1)} hours`;
+  const draw = c => {
+    const failed = Object.keys(c.errors || {}), warned = Object.keys(c.warnings || {});
+    const fresh = c.at !== seen && !c.running && c.new ? h("button", { class: "btn ghost", onclick: () => renderToday() },
+      `Show ${c.new} new job${c.new === 1 ? "" : "s"}`) : null;
+    el.classList.toggle("spin", c.running);
+    fill(el, c.running ? icon("refresh", 14) : null,
+      c.at ? `Boards checked ${ago(c.at)}` : "Boards not checked yet", c.running ? " · checking now…" : null,
+      c.every_hours ? h("span", { class: "hint" }, ` · every ${hours(c.every_hours)}`) : null,
+      failed.length ? h("span", { class: "hint", title: failed.map(b => `${b}: ${c.errors[b]}`).join("\n") },
+        ` · ${failed.length} failed`) : null,
+      warned.length ? h("span", { class: "hint", title: warned.map(b => `${b}: ${c.warnings[b]}`).join("\n") },
+        ` · ${warned.length} to look at`) : null,
+      c.error ? h("span", { class: "hint", title: c.error }, " · the last scheduled check failed") : null, fresh);
+  };
+  const poll = async () => {
+    if (!el.isConnected) return;
+    try { const c = await api("/api/checked"); draw(c); checkedTimer = setTimeout(poll, c.running ? 5000 : 60000); }
+    catch { /* the page may be restarting: the next render tries again */ }
+  };
+  draw(first);
+  checkedTimer = setTimeout(poll, first.running ? 5000 : 60000);
+}
+
 // -- filters: the watchlist's filters, edited from Settings or in place from Today's filter bar. Both save the
 // whole `filters` setting through /api/settings, so the watchlist file stays the one place they live.
 
@@ -1701,7 +1747,7 @@ async function renderToday() {
   }
   const v = todayView;
   const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
-  const scoring = h("div", { class: "scoring" });
+  const scoring = h("div", { class: "scoring" }), checked = h("div", { class: "scoring checked" });
   const search = h("input", { type: "search", placeholder: "Search titles and companies" });
   search.value = v.q;
   search.oninput = () => { v.q = search.value; drawToday(); };
@@ -1738,8 +1784,9 @@ async function renderToday() {
         segmented([["fit", "Best fit"], ["new", "Newest"], ["pay", "Top pay"]], v.sort, k => { v.sort = k; drawToday(); }))),
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
-    ], [scoring, showing, list, pager]));
+    ], [checked, scoring, showing, list, pager]));
   drawToday();
+  if (d.checked) watchChecked(d.checked, checked);
   if (d.scoring) watchScoring(d.scoring, scoring);
   watchPay(todayJobs);
 }
@@ -2204,6 +2251,8 @@ function renderSettings() {
     // c.error: a source this version can't read (a newer jobwatch's). It's skipped; remove it or update jobwatch.
     h("div", { class: "company" + (c.error ? " bad" : ""), title: c.error || null }, monogram(c.name || c.board),
       h("div", { class: "who" }, h("b", {}, c.name || c.board), h("span", {}, `${c.source}:${c.board}`),
+        // careers: the company's own site, where its jobs link while its board's hosted pages are offline
+        c.careers ? h("span", { title: "Its jobs link to the company's own careers site" }, link(c.careers, "careers site ↗")) : null,
         c.error ? h("span", { class: "err" }, "Unknown source: update jobwatch or remove") : null),
       h("button", { class: "x", title: `Stop watching ${c.name || c.board}`, "aria-label": "Remove",
         onclick: () => { companies.splice(i, 1); drawCompanies(); } }, "✕")))
@@ -2248,6 +2297,16 @@ function renderSettings() {
   Object.entries(s.keywords || {}).forEach(([k, w]) => addKw(k, w));
   if (!Object.keys(s.keywords || {}).length) addKw();
 
+  // How often the page checks the boards by itself (fetch_every). A value written by hand that isn't one of these
+  // shows as itself, and is kept.
+  const EVERY = [["1h", "every hour"], ["3h", "every 3 hours"], ["6h", "every 6 hours"], ["12h", "every 12 hours"],
+    ["1d", "once a day"], ["off", "only when I press “Check for new jobs”"]];
+  const everyNow = s.fetch_every === null || s.fetch_every === undefined ? "6h"
+    : ["0", "false", "no", "never"].includes(String(s.fetch_every).toLowerCase()) ? "off" : String(s.fetch_every);
+  const every = h("select", {}, EVERY.some(([v]) => v === everyNow) ? null : h("option", { value: everyNow }, everyNow),
+    EVERY.map(([v, label]) => h("option", { value: v }, label)));
+  every.value = everyNow;
+
   const scoring = s.scoring || {};
   const backend = h("select", {}, h("option", { value: "claude" }, "Claude API (needs ANTHROPIC_API_KEY)"),
     h("option", { value: "local" }, "On this Mac (Apple Silicon, slower)"));
@@ -2279,7 +2338,8 @@ function renderSettings() {
     const filters = mergeFilters(f, filterValues(inp));  // exclude_departments and flags are kept, not edited here
     saveMsg.textContent = "Saving…"; saveMsg.className = "small muted";
     try {
-      await api("/api/settings", { companies, filters, keywords, scoring: { ...scoring, backend: backend.value } });
+      await api("/api/settings", { companies, filters, keywords, scoring: { ...scoring, backend: backend.value },
+        fetch_every: every.value === everyNow && (s.fetch_every === null || s.fetch_every === undefined) ? null : every.value });
       settings = await api("/api/settings");
       saveMsg.textContent = "Saved."; saveMsg.className = "small";
       if (companies.length) toast("Saved. Press “Check for new jobs” to look now.");
@@ -2291,7 +2351,9 @@ function renderSettings() {
       h("div", { class: "row" }, saveMsg, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings"))),
     h("div", { class: "settings-grid" }, h("div", {}, h("div", { class: "card" }, h("h3", {}, "Companies to watch"),
       h("div", { class: "row", style: "margin-top:8px" }, h("div", { style: "flex:1" }, findInput), findBtn),
-      findOut, watching, companyList), displayCard()),
+      findOut, watching, companyList,
+      h("label", { style: "margin-top:14px" }, "Check for new jobs ", h("span", { class: "hint" }, "while jobwatch is open")), every),
+      displayCard()),
     h("div", {}, h("div", { class: "card" }, h("h3", {}, "What you're looking for"),
       h("div", { class: "grid" },
         h("div", {}, h("label", {}, "Job titles ", h("span", { class: "hint" }, "one per line; a title must contain one")), titles),
@@ -2363,9 +2425,10 @@ document.getElementById("fetchBtn").onclick = async () => {
   btn.disabled = true; btn.classList.add("spin"); status.textContent = "Checking every company…";
   try {
     const r = await api("/api/fetch", {});
-    const failed = Object.keys(r.errors).length;
-    status.textContent = `${r.new} new of ${r.jobs.toLocaleString()} open jobs` + (failed ? ` · ${failed} failed` : "");
-    if (failed) status.title = Object.entries(r.errors).map(([b, e]) => `${b}: ${e}`).join("\n");
+    const failed = Object.keys(r.errors).length, warned = Object.keys(r.warnings || {}).length;
+    status.textContent = `${r.new} new of ${r.jobs.toLocaleString()} open jobs` + (failed ? ` · ${failed} failed` : "") +
+      (warned ? ` · ${warned} to look at` : "");
+    status.title = [...Object.entries(r.errors), ...Object.entries(r.warnings || {})].map(([b, e]) => `${b}: ${e}`).join("\n");
     tab = "today"; lastTab = null; await render();
     if (r.new) { toast(`✨ ${r.new} new job${r.new === 1 ? "" : "s"} to look at`); confetti(btn, { count: 40, power: .6 }); }
   } catch (e) { status.textContent = e.message; }

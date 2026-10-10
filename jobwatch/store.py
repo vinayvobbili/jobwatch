@@ -51,7 +51,23 @@ CREATE TABLE IF NOT EXISTS pay_pages (
     fetched_at TEXT NOT NULL,
     gone INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS fetches (
+    at TEXT NOT NULL,
+    boards INTEGER NOT NULL,
+    jobs INTEGER NOT NULL,
+    new INTEGER NOT NULL,
+    errors TEXT NOT NULL,
+    warnings TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS hosted_pages (
+    source TEXT NOT NULL,
+    board TEXT NOT NULL,
+    up INTEGER NOT NULL,
+    checked_at TEXT NOT NULL,
+    PRIMARY KEY (source, board)
+);
 """
+FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
 
 
 # Columns added after the first release, and how to fill them in an older state file.
@@ -376,6 +392,42 @@ class Store:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)",
                             (key, resume, json.dumps(result), _now()))
+
+    def update(self, job: Job):
+        """Save a recorded job's posting data as it is now (a fetch does this for a watched board's jobs)."""
+        with self.db:
+            self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
+
+    # Checks for new jobs: when each ran and what it found, so the page can say when the boards were last checked
+    # and the next check can be planned from it, whoever ran the last one (the page, `jobwatch fetch`, MCP).
+
+    def record_fetch(self, boards: int, jobs: int, new: int, errors: dict[str, str], warnings: dict[str, str]):
+        with self.db:
+            self.db.execute("INSERT INTO fetches (at, boards, jobs, new, errors, warnings) VALUES (?, ?, ?, ?, ?, ?)",
+                            (_now(), boards, jobs, new, json.dumps(errors), json.dumps(warnings)))
+            self.db.execute("DELETE FROM fetches WHERE rowid NOT IN (SELECT rowid FROM fetches ORDER BY at DESC "
+                            "LIMIT ?)", (FETCHES_KEPT,))
+
+    def last_fetch(self) -> dict | None:
+        """The last check that read at least one board: at (a datetime), boards, jobs, new, and errors and
+        warnings (board -> text). One where every board failed (no network) doesn't count: nothing was checked."""
+        row = self.db.execute("SELECT * FROM fetches WHERE boards > 0 ORDER BY at DESC LIMIT 1").fetchone()
+        if not row:
+            return None
+        return {"at": datetime.fromisoformat(row["at"]), "boards": row["boards"], "jobs": row["jobs"],
+                "new": row["new"], "errors": json.loads(row["errors"]), "warnings": json.loads(row["warnings"])}
+
+    # Whether a board's hosted job pages are up (see sources.Hosted), as last found: (up, when it was checked).
+
+    def hosted_page(self, source: str, board: str) -> tuple[bool, datetime] | None:
+        row = self.db.execute("SELECT up, checked_at FROM hosted_pages WHERE source=? AND board=?",
+                              (source, board)).fetchone()
+        return (bool(row["up"]), datetime.fromisoformat(row["checked_at"])) if row else None
+
+    def save_hosted_page(self, source: str, board: str, up: bool):
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO hosted_pages (source, board, up, checked_at) VALUES (?, ?, ?, ?)",
+                            (source, board, int(up), _now()))
 
     # Pay pages (see levels.py), kept on this computer only. An empty body records an empty answer; `gone`, that
     # there's no such page (or robots.txt says not to read it).

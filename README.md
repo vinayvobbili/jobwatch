@@ -88,7 +88,9 @@ A page opens on your computer. Add the companies you want to watch (type a name 
 their jobs), say what you're looking for, and press **Check for new jobs**. From there:
 
 - **Today:** new matching jobs, with pay, how long ago they were posted, keywords, and who you know there.
-  **Queue** the ones worth applying to, **Skip** the rest.
+  **Queue** the ones worth applying to, **Skip** the rest. While the page is running it checks the boards by
+  itself every 6 hours (`fetch_every` in the watchlist), and Today says when they were last checked. A job
+  that disappears from its board drops off Today at the next check.
 - **Queue:** your short list. Apply on the company's site, then press **I applied**.
 - Long lists come in pages (12, 24, 48 or 96 at a time, kept per browser).
 - **Applications:** every job you applied to and where it stands (applied, screening, interviewing, offer,
@@ -111,6 +113,11 @@ jobwatch service install      # starts jobwatch ui when you log in, and again if
 jobwatch service status       # running? where's the log?
 jobwatch service uninstall
 ```
+
+Running like that, the page keeps Today fresh on its own: it checks every board when it starts (if the last
+check, from the page or `jobwatch fetch`, is older than `fetch_every`) and again every 6 hours. Each check asks
+each board the same as pressing **Check for new jobs**, and pressing the button while a check runs waits for
+that one rather than starting another.
 
 A login item doesn't see variables set in your shell profile, so with `scoring.backend: claude` the page's
 chat and scores need `ANTHROPIC_API_KEY` given to launchd (`launchctl setenv ANTHROPIC_API_KEY ...`), or
@@ -146,6 +153,7 @@ companies:
   - greenhouse:anthropic
   - lever:spotify
   - {source: ashby, board: openai, name: OpenAI}
+  - {board: ashby:acme, careers: https://acme.example/careers}  # job links go to its own site (see below)
   - workable:acme                                       # apply.workable.com/acme
   - {source: workday, board: nvidia.wd5/NVIDIAExternalCareerSite, name: NVIDIA}  # tenant.wdN/site
   - {source: eightfold, board: acme, name: Acme}      # tenant (or tenant/domain), from a link
@@ -187,6 +195,7 @@ scoring:
 display:                                  # the browser page
   theme: system                           # system, light or dark
   width: standard                         # standard, wide or full
+fetch_every: 6h                           # the page checks the boards this often (90m, 1d; off to stop)
 ```
 
 Relative paths are resolved from the watchlist's folder. State (which jobs you've seen, applied to or
@@ -196,6 +205,18 @@ skipped, and their scores) lives in one SQLite file, by default `~/.local/share/
 the company's public salary pages on Levels.fyi, with a link to the page. It's meant for personal use: you're
 responsible for checking Levels.fyi's terms. What's read stays in the state file and is never put in a digest.
 Data: [Levels.fyi](https://www.levels.fyi).
+
+`fetch_every` (6 hours unless set, at least 1 hour) is how often the browser page checks the boards while it's
+open; `off` (or `0`) leaves it to you and `jobwatch fetch`.
+
+### When a company's job pages are offline
+
+Some companies keep listing jobs on their Ashby board while Ashby's own job pages for them say "Page not
+found" (they've moved applying to their own site). jobwatch looks at the board's Ashby page once a day while
+it fetches. If it's offline, `jobwatch fetch` warns about that board, and each of its jobs says to apply
+through the company's own careers site (on Today, in a job's details, in `jobwatch show` and to an AI
+assistant). Add the company's careers site to the board, `{board: ashby:acme, careers:
+https://acme.example/careers}`, and its jobs link there instead. If the page can't be read, nothing changes.
 
 ### How locations match
 

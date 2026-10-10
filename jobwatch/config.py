@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 
 import yaml
@@ -26,10 +27,17 @@ class Board:
     source: str
     board: str
     name: str = ""
+    # The company's own careers site, for a board whose hosted job pages may be offline (see sources.Hosted): its
+    # jobs link there then. Not part of what makes two entries the same board.
+    careers: str = field(default="", compare=False)
 
     @property
     def label(self) -> str:
         return self.name or self.board
+
+    @property
+    def entry(self) -> str:
+        return f"{self.source}:{self.board}"
 
 
 ALERT_SENDERS = ("jobalerts-noreply@linkedin.com", "builtin.com", "jobalert.indeed.com")
@@ -120,25 +128,69 @@ class Config:
     cache: Path = DEFAULT_CACHE
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
     pay: Pay = field(default_factory=Pay)
+    # How often `jobwatch ui` checks the boards by itself (fetch_every); None: only when asked.
+    fetch_every: timedelta | None = None
     # Boards from a source this jobwatch doesn't know (a newer version's, or a typo): kept in the file and
     # shown as errors, skipped when checking for jobs, so one bad entry doesn't stop everything else.
     unknown: list[Board] = field(default_factory=list)
 
 
 UNKNOWN_SOURCE = "unknown source: update jobwatch or remove this board"
+_LINK = re.compile(r"https?://[\w-]+(?:\.[\w-]+)+(?:[/?#]\S*)?", re.I)
 
 
 def _board(entry, path: Path, strict: bool = True) -> Board:
-    """ "greenhouse:anthropic", or {source: greenhouse, board: anthropic, name: Anthropic}.
+    """ "greenhouse:anthropic", or {source: greenhouse, board: anthropic, name: Anthropic}, or the board as
+    source:board in a mapping: {board: "ashby:acme", careers: https://acme.example/careers}. careers is the
+    company's own careers site, for when the board's hosted job pages are offline.
     Not strict: a source this version doesn't know is let through (see Config.unknown)."""
     if isinstance(entry, str):
-        source, _, board = entry.partition(":")
-        entry = {"source": source, "board": board}
+        entry = {"board": entry}
+    if isinstance(entry, dict) and not entry.get("source") and ":" in str(entry.get("board") or ""):
+        source, _, board = str(entry["board"]).partition(":")
+        entry = {**entry, "source": source, "board": board}
     if not isinstance(entry, dict) or not entry.get("source") or not entry.get("board"):
         raise ConfigError(f"{path}: companies entries look like 'greenhouse:anthropic', got {entry!r}")
     if strict and entry["source"] not in SOURCES:
         raise ConfigError(f"{path}: unknown source {entry['source']!r} (supported: {', '.join(SOURCES)})")
-    return Board(str(entry["source"]), str(entry["board"]), entry.get("name", ""))
+    careers = str(entry.get("careers") or "").strip()
+    if careers and not _LINK.fullmatch(careers):
+        raise ConfigError(f"{path}: {entry['source']}:{entry['board']}: careers is a link to the company's own "
+                          f"careers site (https://...), got {careers!r}")
+    return Board(str(entry["source"]), str(entry["board"]), entry.get("name") or "", careers)
+
+
+def _item(b: Board) -> str | dict:
+    """A board as the watchlist writes it: "greenhouse:stripe", or a mapping when it has a name or careers link."""
+    if not (b.name or b.careers):
+        return b.entry
+    return {"source": b.source, "board": b.board, **({"name": b.name} if b.name else {}),
+            **({"careers": b.careers} if b.careers else {})}
+
+
+FETCH_EVERY = timedelta(hours=6)  # fetch_every's default
+FETCH_LEAST = timedelta(hours=1)  # every check asks every board again: no more often than this
+_OFF = ("0", "off", "no", "never", "false")
+_EVERY = re.compile(r"(\d+(?:\.\d+)?)\s*(m|mins?|minutes?|h|hrs?|hours?|d|days?)?", re.I)
+
+
+def _every(raw, path: Path) -> timedelta | None:
+    """fetch_every: "6h", "90m", "1d", or a number of hours; 0 or off: never (YAML reads a bare off as false)."""
+    if raw is None:
+        return FETCH_EVERY
+    if raw is False or str(raw).strip().lower() in _OFF:
+        return None
+    m = _EVERY.fullmatch(str(raw).strip()) if not isinstance(raw, bool) else None
+    if not m:
+        raise ConfigError(f"{path}: fetch_every looks like 6h, 90m or 1d (or off), got {raw!r}")
+    n, unit = float(m.group(1)), (m.group(2) or "h")[0].lower()
+    every = timedelta(minutes=n) if unit == "m" else timedelta(days=n) if unit == "d" else timedelta(hours=n)
+    if not every:
+        return None
+    if every < FETCH_LEAST:
+        raise ConfigError(f"{path}: fetch_every must be at least 1h (each check asks every board again), "
+                          f"got {raw!r}")
+    return every
 
 
 def _path(value, base: Path) -> Path:
@@ -167,7 +219,8 @@ def locate(explicit: str | Path | None = None) -> Path:
         return DEFAULT_PATHS[1]
 
 
-SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring", "learning", "display")
+SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring", "learning", "display",
+            "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -224,17 +277,18 @@ def _same(entry, board: Board, path: Path) -> bool:
     return (b.source, b.board) == (board.source, board.board)
 
 
-def add_board(path: Path, entry: str, name: str = "") -> Config:
+def add_board(path: Path, entry: str, name: str = "", careers: str = "") -> Config:
     """Add a board ("greenhouse:stripe", as find_board gives it) to the watchlist, creating the file if needed.
-    Adding one that's already there only updates its name, when one is given."""
-    new = _board(entry, path)
-    item = {"source": new.source, "board": new.board, "name": name} if name else f"{new.source}:{new.board}"
+    careers: the company's own careers site, for a board whose hosted job pages are offline. Adding one that's
+    already there only updates its name and careers link, when given; the rest of its entry is kept."""
+    new = _board({"board": entry, "careers": careers}, path)  # checks the careers link too
     companies = _companies(path)
     at = next((i for i, e in enumerate(companies) if _same(e, new, path)), None)
     if at is None:
-        companies.append(item)
-    elif name:
-        companies[at] = item
+        companies.append(_item(Board(new.source, new.board, name, new.careers)))
+    elif name or new.careers:
+        old = _board(companies[at], path, strict=False)
+        companies[at] = _item(Board(new.source, new.board, name or old.name, new.careers or old.careers))
     return save(path, {"companies": companies})
 
 
@@ -291,6 +345,7 @@ def load(explicit: str | Path | None = None) -> Config:
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
+        fetch_every=_every(raw.get("fetch_every"), path),
     )
 
 
@@ -304,6 +359,10 @@ companies:
   - lever:spotify
   - ashby:openai
   # - {source: greenhouse, board: stripe, name: Stripe}
+  # - {board: ashby:acme, careers: https://acme.example/careers}   # its Ashby pages are offline: link here
+
+# `jobwatch ui` checks every board by itself this often (6h, 90m, 1d; off: only when you press the button).
+fetch_every: 6h
 
 filters:
   titles: ["engineer", "developer"]            # regexes; the title must match one

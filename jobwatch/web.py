@@ -13,7 +13,8 @@ import sys
 import threading
 import time
 import webbrowser
-from datetime import date
+from concurrent.futures import Future
+from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -133,6 +134,120 @@ class Scorer:
         return True
 
 
+class Refresher:
+    """Checks the boards for new jobs in the background, on the watchlist's schedule (fetch_every: every 6 hours
+    unless it says otherwise; off: only when asked), so Today doesn't go stale while nobody presses the button.
+    When the page starts it checks if the last check (from the page, `jobwatch fetch` or MCP: see
+    Store.last_fetch) is older than that, and then again each time that long has passed. It looks at the clock
+    every `tick` seconds rather than sleeping the whole interval, so a computer that slept checks soon after it
+    wakes, and a new fetch_every applies without a restart. A check where every board failed (no network) is
+    tried again after RETRY.
+
+    One check at a time: pressing the button while one runs (scheduled or not) waits for it and gets its counts,
+    so no board is asked twice. Each check is the same as pressing the button, and the background scorer picks
+    up its new jobs."""
+
+    RETRY = timedelta(minutes=15)
+
+    def __init__(self, app: App, tick: float = 60):
+        self.app, self.tick = app, tick
+        self._lock = threading.Lock()
+        self._current: Future | None = None  # the check running now, which a second ask waits for
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+        self.tried: datetime | None = None   # when the last scheduled check started
+        self.error = ""                      # why the last scheduled check failed, until one works
+
+    @property
+    def running(self) -> bool:
+        return self._current is not None
+
+    def fetch(self) -> dict:
+        """Check every board now, or wait for the check already running; its counts, errors and summary."""
+        with self._lock:
+            mine = self._current is None
+            if mine:
+                self._current = Future()
+            current = self._current
+        if not mine:
+            return current.result()
+        try:
+            with self.app.lock:
+                out = self.app._with_store(self._fetch)
+            current.set_result(out)
+        except BaseException as e:
+            current.set_exception(e)
+            raise
+        finally:
+            with self._lock:
+                self._current = None
+        self.app.score_in_background()
+        return out
+
+    @staticmethod
+    def _fetch(cfg, store) -> dict:
+        r = fetch_all(cfg, store)
+        return {"boards": r.boards, "jobs": r.jobs, "new": len(r.new), "errors": r.errors, "warnings": r.warnings,
+                "summary": report.fetch_summary(r)}
+
+    def due(self, now: datetime | None = None) -> bool:
+        """Whether a scheduled check is due: fetch_every is on, there are boards, and the last check is older
+        than fetch_every (or there's none), and no scheduled check started in the last RETRY."""
+        now = now or datetime.now(timezone.utc)
+        if not self.app.path.is_file():
+            return False
+        try:
+            cfg = self.app._cfg()
+        except ConfigError:  # the page shows what's wrong with the watchlist; check once it's fixed
+            return False
+        if not cfg.fetch_every or not cfg.boards or (self.tried and now - self.tried < self.RETRY):
+            return False
+        store = Store(cfg.state)
+        try:
+            last = store.last_fetch()
+        finally:
+            store.close()
+        return last is None or now - last["at"] >= cfg.fetch_every
+
+    def status(self, cfg, store) -> dict:
+        """For Today: when the boards were last checked (at, ISO), running, how often they're checked by
+        themselves (every_hours; None: off, or no schedule running), and the last check's new count, errors and
+        warnings."""
+        last = store.last_fetch()
+        every = cfg.fetch_every if self._thread else None
+        return {"running": self.running, "at": last["at"].isoformat() if last else None,
+                "every_hours": every.total_seconds() / 3600 if every else None,
+                "new": last["new"] if last else 0, "errors": last["errors"] if last else {},
+                "warnings": last["warnings"] if last else {}, "error": self.error}
+
+    def start(self):
+        with self._lock:
+            if self._thread:
+                return
+            self._stop.clear()
+            self._thread = threading.Thread(target=self._run, name="jobwatch-refresher", daemon=True)
+            self._thread.start()
+
+    def stop(self, timeout: float | None = None):
+        """Stop the schedule, waiting for a check that's running."""
+        self._stop.set()
+        if t := self._thread:
+            t.join(timeout)
+        self._thread = None
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                if self.due():
+                    self.tried = datetime.now(timezone.utc)
+                    out = self.fetch()
+                    self.error = "" if out["boards"] or not out["errors"] else "every board failed"
+            except Exception as e:  # never take the page down: say why, and try again later
+                self.error = f"{type(e).__name__}: {e}"
+                print(f"jobwatch: scheduled check for new jobs failed: {self.error}", file=sys.stderr)
+            self._stop.wait(self.tick)
+
+
 class PayLookup:
     """Looks up expected pay on Levels.fyi in the background for the jobs on the page (see levels.py), so the page
     never waits on it: up to levels.QUEUE pages a run, a couple of seconds apart. Only runs with pay.levels on."""
@@ -183,13 +298,15 @@ class PayLookup:
 
 class App:
     """The API behind the page. Each method takes the request's query or JSON body and returns JSON data.
-    With `background`, fit scores are worked out behind the scenes (see Scorer), and so is expected pay (PayLookup)."""
+    With `background`, fit scores are worked out behind the scenes (see Scorer), and so is expected pay (PayLookup).
+    The boards are checked on a schedule once `refresher.start()` is called (serve does)."""
 
     def __init__(self, config_path: Path, background: bool = False):
         self.path = config_path
         self.lock = threading.Lock()  # one fetch or save at a time
         self.scorer = Scorer(self)
         self.pay = PayLookup(self)
+        self.refresher = Refresher(self)
         self.background = background
 
     def score_in_background(self):
@@ -220,7 +337,7 @@ class App:
                 "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
                 "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
                 "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max,
-                "warnings": e.warnings}
+                "warnings": e.warnings, "link_note": j.link_note or None}
 
     def _pay(self, cfg, store, rows: list[tuple], most: int = 1000) -> dict[str, dict]:
         """{key: {"expected_pay": …}} for (job, result) pairs from what's kept, asking Levels.fyi for nothing here.
@@ -250,19 +367,23 @@ class App:
             # A source this version doesn't know shows as an error on that board, so it can be removed here.
             b = config._board(c, self.path, strict=False)
             companies.append({"source": b.source, "board": b.board, "name": b.name,
+                              **({"careers": b.careers} if b.careers else {}),
                               **({} if b.source in sources.SOURCES else {"error": config.UNKNOWN_SOURCE})})
+        every = raw.get("fetch_every")
         return {"path": str(self.path), "exists": self.path.is_file(), "version": __version__,
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
                 "scoring": raw.get("scoring") or {}, "learning": raw.get("learning") or {},
-                "display": raw.get("display") or {}}
+                "display": raw.get("display") or {},
+                # as written (YAML reads a bare off as false); unset: the default
+                "fetch_every": "off" if every is False else str(every) if every is not None else None}
 
     def post_settings(self, body) -> dict:
         settings = {k: v for k, v in body.items() if k in config.SETTINGS}
-        if "companies" in settings:
-            settings["companies"] = [
-                {"source": c["source"], "board": c["board"], **({"name": c["name"]} if c.get("name") else {})}
-                for c in settings["companies"]]
+        if "companies" in settings:  # each board's name and careers link are kept (see config._item)
+            settings["companies"] = [config._item(config.Board(c["source"], c["board"], c.get("name") or "",
+                                                               (c.get("careers") or "").strip()))
+                                     for c in settings["companies"]]
         with self.lock:
             cfg = config.save(self.path, settings)
         self.score_in_background()  # new filters, resume or scoring setting: maybe more to score
@@ -278,14 +399,12 @@ class App:
                 for s, b, jobs in sources.probe(query)]
 
     def post_fetch(self, body) -> dict:
-        def run(cfg, store):
-            r = fetch_all(cfg, store)
-            return {"boards": r.boards, "jobs": r.jobs, "new": len(r.new), "errors": r.errors,
-                    "summary": report.fetch_summary(r)}
-        with self.lock:
-            out = self._with_store(run)
-        self.score_in_background()
-        return out
+        """Check every board now; while a check is running already (the scheduled one), wait for it instead."""
+        return self.refresher.fetch()
+
+    def get_checked(self, q) -> dict:
+        """When the boards were last checked, and whether a check is running: see Refresher.status."""
+        return self._with_store(self.refresher.status)
 
     def get_digest(self, q) -> dict:
         def run(cfg, store):
@@ -295,7 +414,8 @@ class App:
             out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {})}
                             for e in d.entries],
                    "rejected": d.rejected,
-                   "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({})}
+                   "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({}),
+                   "checked": self.refresher.status(cfg, store)}
             # "New" shows once: the next visit lists these as seen.
             store.set_status([k for e in d.entries if e.record.get("status") == "new" for k in e.keys], "shown")
             return out
@@ -400,6 +520,7 @@ class App:
             resume = bool(cfg.resume and cfg.resume.is_file())
             fit = store.score(job.key, resume_id(cfg.resume)) if resume else None
             return {"key": job.key, "title": job.title, "company": job.display_company, "url": job.url,
+                    "link_note": job.link_note or None,
                     "pay": job.pay(), "locations": job.locations, "text": job.to_text(),
                     "contacts": known.at(job.display_company, job.company) if known else [],
                     "find_referral": contacts.linkedin_search(job.display_company),
@@ -581,6 +702,7 @@ ROUTES = {
     ("POST", "/api/settings"): App.post_settings,
     ("POST", "/api/find"): App.post_find,
     ("POST", "/api/fetch"): App.post_fetch,
+    ("GET", "/api/checked"): App.get_checked,
     ("GET", "/api/digest"): App.get_digest,
     ("GET", "/api/hidden"): App.get_hidden,
     ("GET", "/api/queue"): App.get_queue,
@@ -748,11 +870,13 @@ class _Server(ThreadingHTTPServer):
 
 def serve(config_path: Path, port: int = 8765, open_browser: bool = True, token: str | None = None
           ) -> ThreadingHTTPServer:
-    """Start the server (port 0 picks a free one). Call serve_forever() on the result."""
+    """Start the server (port 0 picks a free one), and the background work: fit scores, and checking the boards
+    on the watchlist's schedule (see Refresher). Call serve_forever() on the result; its `app` is the App."""
     token = token or secrets.token_urlsafe(24)
     port_ref = [port]
     app = App(config_path, background=True)
     server = _Server(("127.0.0.1", port), make_handler(app, token, port_ref))
+    server.app = app
     port_ref[0] = server.server_address[1]
     url = f"http://127.0.0.1:{port_ref[0]}/"
     print(f"jobwatch is running at {url}  (watchlist: {config_path}). Press Ctrl+C to stop.", file=sys.stderr)
@@ -760,4 +884,5 @@ def serve(config_path: Path, port: int = 8765, open_browser: bool = True, token:
         threading.Timer(0.3, webbrowser.open, (url,)).start()
     if config_path.is_file():
         app.score_in_background()  # catch up on jobs fetched while the page was down
+    app.refresher.start()  # checks at once if the last check is older than fetch_every
     return server

@@ -80,8 +80,8 @@ def _pay(result, job) -> dict:
 
 
 def _boards(cfg: config.Config) -> list[dict]:
-    return [{"entry": f"{b.source}:{b.board}", "name": b.name, "careers": sources.careers_url(b.source, b.board)}
-            for b in cfg.boards]
+    return [{"entry": b.entry, "name": b.name, "careers": sources.careers_url(b.source, b.board),
+             "careers_link": b.careers} for b in cfg.boards]
 
 
 @server.tool(annotations=_hints(read_only=True, web=True))
@@ -104,8 +104,9 @@ def find_board(
 
 @server.tool(annotations=READ)
 def list_boards() -> dict:
-    """The boards on the watchlist (entry, display name, careers page) and where the watchlist file is. Use it to
-    see what fetch_jobs checks; add_board and remove_board change it."""
+    """The boards on the watchlist (entry, display name, careers: the board's own page, careers_link: the
+    company's own careers site when the watchlist gives one) and where the watchlist file is. Use it to see what
+    fetch_jobs checks; add_board and remove_board change it."""
     cfg = config.load(os.environ.get("JOBWATCH_CONFIG"))
     return {"watchlist": str(cfg.path), "boards": _boards(cfg)}
 
@@ -116,13 +117,17 @@ def add_board(
     name: Annotated[str, Field(description=(
         "The company's name as it should show, when the board's own name isn't it (e.g. a Workday tenant id)."))]
     = "",
+    careers: Annotated[str, Field(description=(
+        "The company's own careers site (https://...), for a board whose hosted job pages are offline (fetch_jobs "
+        "warns about those): its jobs then link there."))] = "",
 ) -> dict:
     """Add a company's board to the watchlist, so fetch_jobs checks it from now on. Find the entry with
     find_board first and check its sample titles: a guessed board name can belong to another company. Adding
-    one that's already there only updates its name. For Google, leave name empty: each role keeps its own
-    employer (Google, YouTube, DeepMind). Creates the watchlist when there is none yet. The watchlist
-    is rewritten (a copy of the old one is kept as .bak; comments in a hand-written file are not kept)."""
-    cfg = config.add_board(config.locate(os.environ.get("JOBWATCH_CONFIG")), entry, name)
+    one that's already there only updates its name and careers link. For Google, leave name empty: each role
+    keeps its own employer (Google, YouTube, DeepMind). Creates the watchlist when there is none yet. The
+    watchlist is rewritten (a copy of the old one is kept as .bak; comments in a hand-written file are not
+    kept)."""
+    cfg = config.add_board(config.locate(os.environ.get("JOBWATCH_CONFIG")), entry, name, careers)
     return {"watchlist": str(cfg.path), "boards": _boards(cfg)}
 
 
@@ -136,8 +141,10 @@ def remove_board(entry: Entry) -> dict:
 
 @server.tool(annotations=_hints(idempotent=True, web=True))
 def fetch_jobs() -> str:
-    """Check every board in the watchlist and record new roles. Returns counts, and each board that failed to
-    load (skipped; the rest are still recorded). Run it before get_digest, which lists the new roles themselves."""
+    """Check every board in the watchlist and record new roles. Returns counts, each board that failed to load
+    (skipped; the rest are still recorded), and warnings: a board whose hosted job pages are offline while its
+    jobs are still listed, which needs the company's careers site (add_board with careers). Run it before
+    get_digest, which lists the new roles themselves."""
     cfg, store = _open()
     try:
         return report.fetch_summary(fetch_all(cfg, store))
@@ -179,7 +186,9 @@ def get_job(key: Key) -> dict:
     before jobwatch kept these have none), people the user knows there plus a LinkedIn search for a
     referral, skills it asks for that the resume doesn't show, what was
     sent with the application, and candidate_home: the company's page where the person signs in to see the
-    application's status (Workday only; each company has its own account). With no fit score, unscored_reason
+    application's status (Workday only; each company has its own account). link_note, when set, says the board's
+    hosted job pages are offline and where to apply instead (url is then the company's careers site, when the
+    watchlist gives one). With no fit score, unscored_reason
     says why ({code, text}: no_text means it needs its posting, a link via mark_job(url=) or the text pasted;
     queued means it's in the page's background scorer's line). Use it to tailor a resume or decide
     whether to apply; for only what was sent use get_application_package, and for a call or interview use
@@ -190,6 +199,7 @@ def get_job(key: Key) -> dict:
         known = load_contacts(cfg)
         fit = store.score(job.key, resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else None
         return {"key": job.key, "company": job.display_company, "title": job.title, "url": job.url,
+                "link_note": job.link_note or None,
                 "pay": job.pay(), "locations": job.locations, "text": job.to_text(), **rec, "fit": fit,
                 "unscored_reason": None if fit else unscored_reason(cfg, store, job),
                 "contacts": known.at(job.display_company, job.company) if known else [],
@@ -363,12 +373,13 @@ def list_queued_jobs() -> list[dict]:
 @server.tool(annotations=_hints(idempotent=True, web=True))
 def check_postings() -> list[dict]:
     """Check that the postings of queued jobs and open applications still take applications, and record the
-    ones that closed or came back. result is open, closed, reopened, or unknown (check it yourself). Run it
-    before working through list_queued_jobs, so time isn't spent on closed postings."""
-    _, store = _open()
+    ones that closed or came back. result is open, closed, reopened, or unknown (check it yourself); an open
+    job's detail may say its board's hosted pages are offline and where to apply instead. Run it before working
+    through list_queued_jobs, so time isn't spent on closed postings."""
+    cfg, store = _open()
     try:
         return [{"key": c.job.key, "company": c.job.display_company, "title": c.job.title, "url": c.job.url,
-                 "result": c.result, "detail": c.detail} for c in watch.check_postings(store)]
+                 "result": c.result, "detail": c.detail} for c in watch.check_postings(store, watched=cfg.boards)]
     finally:
         store.close()
 

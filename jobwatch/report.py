@@ -15,6 +15,7 @@ from .watch import Digest, Entry, FetchReport
 def fetch_summary(r: FetchReport) -> str:
     out = [f"Checked {r.boards} board(s): {r.jobs} open roles, {len(r.new)} new."]
     out += [f"  failed {board}: {err}" for board, err in r.errors.items()]
+    out += [f"  warning {board}: {text}" for board, text in r.warnings.items()]
     return "\n".join(out)
 
 
@@ -61,6 +62,8 @@ def _line(e: Entry) -> list[str]:
     if (age := j.age_days()) is not None:
         facts.append("posted today" if age == 0 else f"posted {age}d ago")
     out = [f"### [{j.title}]({j.url})", " · ".join(f for f in facts if f)]
+    if j.link_note:
+        out.append(f"**Link:** {j.link_note}")
     if e.same_title:
         places = sorted({loc for other in e.same_title for loc in other.locations[:1]} - set(j.locations))
         out.append(f"Also posted {len(e.same_title)} more time(s)"

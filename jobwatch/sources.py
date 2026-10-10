@@ -1062,12 +1062,39 @@ def _amazon_posting(pid: str, board: str, get) -> Job:
 
 
 @dataclass(frozen=True)
+class Hosted:
+    """How to tell that a board's own job pages are up, for a source whose pages a company can switch off while
+    its API still lists the jobs (their links then show "Page not found"). One page is read: the board's own
+    page (`url`, formatted with board=), and `up` reads its text: True (up), False (offline), or None when the
+    page doesn't say."""
+    name: str                       # the system's name, for messages: "Ashby"
+    url: str
+    up: Callable[[str], bool | None]
+
+
+# A hosted Ashby board's page carries the app's data for the browser. A live board's names its organization; one
+# switched off still answers (200), with "organization":null and "jobBoard":null, and the page says "Page not
+# found".
+_ASHBY_ORG = re.compile(r'window\.__appData\s*=\s*\{.*?"organization"\s*:\s*(null|\{)', re.S)
+
+
+def ashby_up(page: str) -> bool | None:
+    """Whether a hosted Ashby board's page (jobs.ashbyhq.com/<board>) is up; None when it doesn't say."""
+    m = _ASHBY_ORG.search(page)
+    return None if not m else m.group(1) == "{"
+
+
+ASHBY_HOSTED = Hosted("Ashby", "https://jobs.ashbyhq.com/{board}", ashby_up)
+
+
+@dataclass(frozen=True)
 class Source:
     name: str
     api: str                       # formatted with board=; empty for a searched source
     parse: Callable[..., list[Job]] | None
     careers: str                   # public job-board page, formatted with board= (or the parts of it)
     search: Callable[..., list[Job]] | None = None  # a searched source's fetch: (board, get, search, wanted, known)
+    hosted: Hosted | None = None   # how to tell its hosted job pages are up, when a company can switch them off
 
 
 SOURCES = {
@@ -1076,7 +1103,7 @@ SOURCES = {
     "lever": Source("lever", "https://api.lever.co/v0/postings/{board}?mode=json", parse_lever,
                     "https://jobs.lever.co/{board}"),
     "ashby": Source("ashby", "https://api.ashbyhq.com/posting-api/job-board/{board}?includeCompensation=true",
-                    parse_ashby, "https://jobs.ashbyhq.com/{board}"),
+                    parse_ashby, "https://jobs.ashbyhq.com/{board}", hosted=ASHBY_HOSTED),
     "workable": Source("workable", "https://apply.workable.com/api/v1/widget/accounts/{board}?details=true",
                        parse_workable, "https://apply.workable.com/{board}/"),
     "workday": Source("workday", "", None, "https://{tenant}.{pod}.myworkdayjobs.com/{site}", fetch_workday),
@@ -1105,6 +1132,26 @@ def careers_url(source: str, board: str) -> str:
         pod, _, site = board.partition("/")
         return SOURCES[source].careers.format(pod=pod, site=site)
     return SOURCES[source].careers.format(board=board)
+
+
+def hosted_url(source: str, board: str) -> str | None:
+    """The board's own page that says whether its hosted job pages are up (see Hosted); None for a source
+    without such a check."""
+    hosted = SOURCES[source].hosted if source in SOURCES else None
+    return hosted.url.format(board=board) if hosted else None
+
+
+def hosted_up(source: str, board: str, page=None) -> bool | None:
+    """Whether a board's hosted job pages are up, from its own page (`page` replaces the HTTP call): True, False
+    (switched off, while its API may still list the jobs), or None when jobwatch can't tell: no check for this
+    source, the page doesn't say, or it can't be read now. Check robots.txt first (see watch.HostedPages)."""
+    url = hosted_url(source, board)
+    if not url:
+        return None
+    try:
+        return SOURCES[source].hosted.up((page or get_text)(url) or "")
+    except SourceError:
+        return None
 
 
 def candidate_home(url: str) -> str | None:
