@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from . import levels, linkedin, sources
+from . import dupes, levels, linkedin, sources
 from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts
 from .filters import Filters, red_flags, reject_reason, relevance, search_terms, title_ok
@@ -24,6 +24,7 @@ class FetchReport:
     new: list[str] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)  # "source:board" -> error
     warnings: dict[str, str] = field(default_factory=dict)  # "source:board" -> what to do about it
+    duplicates: dict[str, dupes.Match] = field(default_factory=dict)  # new job's key -> the job acted on it matches
 
 
 HOSTED_KEEP = timedelta(days=1)  # how long an answer about a board's hosted job pages is trusted
@@ -126,6 +127,7 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None) 
             return b, None, str(e), None
         return b, jobs, None, hosted.ask(b.source, b.board) if (b.source, b.board) in due else None
 
+    new: list[Job] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for b, jobs, err, up in pool.map(one, cfg.boards):
             if err:
@@ -141,7 +143,11 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None) 
                 report.warnings[b.entry] = offline_warning(b)
             report.boards += 1
             report.jobs += len(jobs)
-            report.new += store.sync(b.source, b.board, jobs)
+            keys = set(found := store.sync(b.source, b.board, jobs))
+            report.new += found
+            new += [j for j in jobs if j.key in keys]
+    # A new posting of a job already applied to (or queued, or skipped) is marked as its duplicate.
+    report.duplicates = dupes.record(store, new) if new else {}
     store.record_fetch(report.boards, report.jobs, len(report.new), report.errors, report.warnings)
     return report
 
@@ -157,6 +163,7 @@ class Entry:
     contacts: list[dict] = field(default_factory=list)  # people you know there
     warnings: list[str] = field(default_factory=list)  # reasons to look twice before applying (queue)
     pay: object = None  # expected pay from Levels.fyi (levels.Estimate, levels.PENDING or None; queue only)
+    duplicate: dupes.Match | None = None  # a job acted on that it's (maybe) the same opening as; also in warnings
 
     @property
     def keys(self) -> list[str]:
@@ -186,16 +193,21 @@ def load_contacts(cfg: Config) -> Contacts | None:
 def queue(cfg: Config, store: Store, pay_budget: int = 0) -> list[Entry]:
     """Jobs queued to apply to, in the order they were queued, with fit scores, contacts where known, and
     warnings: a job queued by hand never passed the filters, and a posting can close while it waits. With
-    pay.levels on, each has its expected pay (see levels.py), asking Levels.fyi for up to `pay_budget` pages."""
+    pay.levels on, each has its expected pay (see levels.py), asking Levels.fyi for up to `pay_budget` pages. The
+    first warning says when a queued job is (maybe) the same opening as one applied to, queued or skipped."""
     rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
     contacts = load_contacts(cfg)
     reader = levels.Reader(store, pay_budget) if cfg.pay.levels else None
+    index = dupes.Index(store)
     out = []
     for job, rec in sorted(store.jobs(("queued",), include_closed=True), key=lambda r: r[1]["status_at"] or ""):
         rel, hits = relevance(job, cfg.keywords)
         e = Entry(job, rec, rel, hits, fit=brief(store.score(job.key, rid)) if rid else None)
         e.contacts = contacts.at(job.display_company, job.company) if contacts else []
         e.warnings = warnings(job, cfg.filters)
+        e.duplicate = index.match(job, rec)
+        if e.duplicate:  # first: applying twice is the costliest mistake here
+            e.warnings.insert(0, e.duplicate.line)
         if reader:
             e.pay = levels.expected(cfg, store, job, reader=reader)
             if warn := levels.below(e.pay, cfg.filters.min_salary):
@@ -315,7 +327,15 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
     company's name first): found, that posting is tracked, since it's where the application goes; not found, the
     job is kept with the LinkedIn link and the pasted text. Anything else (a company's own site) needs the
     company, the title and, to be scored, the posting's text pasted. An application already further along
-    keeps its stage."""
+    keeps its stage. When it's the same opening as a job already applied to, queued or skipped (see dupes.py),
+    that's recorded on it; dupes.check says which, to warn."""
+    job, read = _save_job(store, link, company, title, text, status, note, applied, location, get, page, boards)
+    dupes.record(store, [job])
+    return job, read
+
+
+def _save_job(store: Store, link: str, company: str, title: str, text: str, status: str, note: str | None,
+              applied: str | None, location: str, get, page, boards: list[Board]) -> tuple[Job, bool]:
     link, job = link.strip(), None
     if pid := linkedin.job_id(link):
         if not (company.strip() and title.strip()):
@@ -448,18 +468,23 @@ def _rank(e: Entry):
 
 def _matching(cfg: Config, store: Store, statuses: tuple[str, ...]) -> tuple[list[Entry], dict[str, int]]:
     """Jobs with these statuses that pass the filters, with stored fit scores for the current resume, and
-    how many were filtered out (reason -> count)."""
+    how many were filtered out (reason -> count). A job that's (maybe) the same opening as one acted on stays,
+    flagged: its `duplicate` says which, and its first warning says so (see dupes.py)."""
     rejected: dict[str, int] = {}
     entries = []
     rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
     fits = store.scores(rid) if rid else {}
+    index = dupes.Index(store)
     for job, record in store.jobs(statuses):
         if reason := reject_reason(job, cfg.filters, fits.get(job.key)):
             kind = reason.split()[0]  # title, department, location, pay, posted, fit
             rejected[kind] = rejected.get(kind, 0) + 1
             continue
+        same = index.match(job, record)
         rel, hits = relevance(job, cfg.keywords)
-        entries.append(Entry(job, record, rel, hits, fit=brief(fits.get(job.key))))
+        entries.append(e := Entry(job, record, rel, hits, fit=brief(fits.get(job.key)), duplicate=same))
+        if same:
+            e.warnings.append(same.line)
     return entries, rejected
 
 

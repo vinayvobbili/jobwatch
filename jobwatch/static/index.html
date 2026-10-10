@@ -187,6 +187,8 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .badge.new { color: #fff; background: var(--grad);
   box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); animation: pulse 2.4s ease-out infinite; }
 .badge.closed { background: var(--bad); color: #fff; }
+.badge.dupe { background: var(--warn); color: #fff; text-transform: none; letter-spacing: 0; }
+.badge.dupe.maybe { background: transparent; color: var(--warn); border: 1px solid var(--warn); }
 .fitbox { text-align: center; padding-left: 4px; }
 .ring { width: 66px; height: 66px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto;
   background: conic-gradient(var(--rc) calc(var(--p) * 1%), var(--chip) 0); animation: fade .6s both; }
@@ -888,6 +890,7 @@ function jobCard(job, actions, i = 0) {
       h("div", { class: "row" },
         job.status === "new" ? h("span", { class: "badge new" }, "new") : null,
         job.closed ? h("span", { class: "badge closed" }, "closed") : null,
+        dupeBadge(job.duplicate_of),
         link(job.url, job.title, "title")),
       h("div", { class: "meta" }, h("b", {}, job.company), facts.map(f => [h("span", { class: "sep" }, "·"), f])),
       linkNote(job),
@@ -902,9 +905,17 @@ function jobCard(job, actions, i = 0) {
     fitBox(job.fit));
 }
 
+// The same opening (or maybe) as a job already applied to, queued or skipped: flagged, never hidden.
+function dupeBadge(d) {
+  if (!d) return null;
+  return h("span", { class: "badge dupe" + (d.strong ? "" : " maybe"), title: d.text },
+    d.strong ? d.label : "Possible duplicate");
+}
+
 async function mark(job, status, note, label, undoStatus) {
   const origin = document.activeElement;
-  await api("/api/mark", { keys: job.keys || [job.key], status, note });
+  const r = await api("/api/mark", { keys: job.keys || [job.key], status, note });
+  if (r.warning) label = `${label}. ${r.warning}`;
   const card = document.getElementById("job-" + job.key);
   if (status === "applied") { confetti(origin); label = `🎉 Applied: ${job.title}. ${cheer()}`; }
   await leave(card, status === "skipped" ? -1 : 1);
@@ -1004,6 +1015,7 @@ async function openDetails(key) {
         h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
           (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
         linkNote(j),
+        j.duplicate_of ? h("div", { class: "warns" }, dupeBadge(j.duplicate_of), " ", j.duplicate_of.text) : null,
         payLine(j),
         gapsLine(j.fit),
         whyScore(j.fit),

@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     applied_at TEXT,
     next_step TEXT,
     follow_up TEXT,
-    via TEXT
+    via TEXT,
+    duplicate_of TEXT
 );
 CREATE INDEX IF NOT EXISTS jobs_board ON jobs (source, company);
 CREATE TABLE IF NOT EXISTS scores (
@@ -72,7 +73,7 @@ FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they fo
 
 # Columns added after the first release, and how to fill them in an older state file.
 _ADDED = {"applied_at": "UPDATE jobs SET applied_at=substr(status_at, 1, 10) WHERE status='applied'",
-          "next_step": None, "follow_up": None, "via": None}
+          "next_step": None, "follow_up": None, "via": None, "duplicate_of": None}
 
 
 def _now() -> str:
@@ -114,10 +115,16 @@ def _slug(text: str) -> str:
 
 
 class Store:
-    def __init__(self, path: Path | str):
+    def __init__(self, path: Path | str, read_only: bool = False):
+        """read_only opens an existing state file without changing it, not even to add a newer version's columns
+        (`jobwatch dupes` reads with it)."""
         path = Path(path).expanduser()
-        path.parent.mkdir(parents=True, exist_ok=True)
         self.packages = path.parent / "packages"  # what was sent with each application (see package.py)
+        if read_only:
+            self.db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+            self.db.row_factory = sqlite3.Row
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(_SCHEMA)
@@ -125,7 +132,12 @@ class Store:
         with self.db:
             for column, backfill in _ADDED.items():
                 if column not in have:
-                    self.db.execute(f"ALTER TABLE jobs ADD COLUMN {column} TEXT")
+                    try:
+                        self.db.execute(f"ALTER TABLE jobs ADD COLUMN {column} TEXT")
+                    except sqlite3.OperationalError as e:  # another connection (a page's thread) added it just now
+                        if "duplicate column" not in str(e):
+                            raise
+                        continue
                     if backfill:
                         self.db.execute(backfill)
             if "gone" not in {r["name"] for r in self.db.execute("PRAGMA table_info(pay_pages)")}:
@@ -177,6 +189,11 @@ class Store:
         LinkedIn job-alert email). The first one recorded stays."""
         with self.db:
             self.db.execute("UPDATE jobs SET via=COALESCE(via, ?) WHERE key=?", (via or None, key))
+
+    def set_duplicate(self, key: str, other: str):
+        """Record that a job is the same opening as another one already acted on (see dupes.py), by its key."""
+        with self.db:
+            self.db.execute("UPDATE jobs SET duplicate_of=? WHERE key=?", (other or None, key))
 
     def board_jobs(self, source: str, company: str) -> dict[str, Job]:
         """Every job ever seen on one board, open or closed, by key."""

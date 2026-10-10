@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, alerts, chat, config, learn, levels, prep, report, sources
+from . import __version__, alerts, chat, config, dupes, learn, levels, prep, report, sources
 from .config import ConfigError
 from .score import ScoringUnavailable, resume_id
 from .store import STAGES, STATUSES, Store
@@ -132,6 +132,8 @@ def cmd_show(args, cfg, store):
     print(f"{job.to_text()}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{via}{closed}")
     if job.link_note:
         print(f"Link: {job.link_note}")
+    if same := dupes.check(store, job.key):
+        print(f"Check: {same.line}")
     if (contacts := load_contacts(cfg)) and (known := contacts.at(job.display_company, job.company)):
         print(f"You know: {report.people(known, most=10)}")
     if home := store.candidate_home(job):
@@ -167,6 +169,8 @@ def cmd_mark(args, cfg, store):
         if getattr(args, "add_note", None):
             store.add_note(k, args.add_note)
         print(f"{k}: {args.status or store.find(k)[1]['status']}")
+        if args.status == "queued" and (same := dupes.check(store, k)):  # queued all the same: the person decides
+            print(f"  Check: {same.line}")
         _attach(store.package(k), getattr(args, "attach", None) or [])
 
 
@@ -231,6 +235,13 @@ def cmd_add(args, cfg, store):
         store.add_note(job.key, args.add_note)
     how = "read from the link" if read else "with the posting's text" if text.strip() else ""
     print(f"{job.key}: {args.status}" + (f" ({job.display_company}, {job.title}; {how})" if how else ""))
+    if same := dupes.check(store, job.key):
+        print(f"  Check: {same.line}")
+
+
+def cmd_dupes(args, cfg, store):
+    """Pairs of tracked jobs that are (maybe) the same opening, where you acted on one: read-only."""
+    print(dupes.pairs_text(dupes.pairs(store, strong_only=args.strong)))
 
 
 def cmd_alerts(args, cfg, store):
@@ -525,6 +536,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("list", help="jobs by status, e.g. `jobwatch list --status applied`")
     p.add_argument("--status", choices=STATUSES, action="append")
     p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("dupes", help="jobs tracked twice: pairs that are the same opening (a shared req or posting "
+                       "id) or maybe the same (the same title), where you queued, applied to or skipped one. "
+                       "Read-only: nothing is changed")
+    p.add_argument("--strong", action="store_true", help="only the same opening, not the same title alone")
+    p.set_defaults(func=cmd_dupes, read_only=True)
     return ap
 
 
@@ -534,7 +551,10 @@ def main(argv: list[str] | None = None):
         if getattr(args, "needs_config", True) is False:
             return args.func(args)
         cfg = config.load(args.config)
-        store = Store(cfg.state)
+        read_only = getattr(args, "read_only", False)  # opened without changing the file at all
+        if read_only and not Path(cfg.state).expanduser().is_file():
+            raise ValueError(f"no jobs tracked yet: {cfg.state} doesn't exist")
+        store = Store(cfg.state, read_only=read_only)
         try:
             args.func(args, cfg, store)
         finally:

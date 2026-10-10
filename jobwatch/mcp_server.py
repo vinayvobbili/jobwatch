@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from . import __version__, alerts, config, contacts, learn, levels, prep, report, sources, watch
+from . import __version__, alerts, config, contacts, dupes, learn, levels, prep, report, sources, watch
 from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue, save_job, set_link, unscored_reason, watched_name
@@ -38,7 +38,12 @@ server = MCPServer(
         "interview, and get_interview_prep puts the posting, the resume and what was sent on one sheet. "
         "list_skill_gaps lists what the matching jobs ask for that the resume doesn't show, with courses and "
         "certifications to close each gap. check_postings checks that queued jobs and open applications are still "
-        "posted. jobwatch never applies to anything by itself: the person reviews and submits every application."
+        "posted. The same opening can be tracked twice (an application added by hand, then the job again from an "
+        "alert under another title): before drafting a referral request or an application, check get_job's "
+        "duplicate_of and list_queued_jobs' warnings; strong means the same req or posting id (already applied: "
+        "don't apply or ask for a referral again), otherwise it's the same title only (check it's a different "
+        "opening). find_duplicates lists such pairs already in the store. "
+        "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
     version=__version__,
     website_url="https://github.com/vinayvobbili/jobwatch",
@@ -190,17 +195,22 @@ def get_job(key: Key) -> dict:
     hosted job pages are offline and where to apply instead (url is then the company's careers site, when the
     watchlist gives one). With no fit score, unscored_reason
     says why ({code, text}: no_text means it needs its posting, a link via mark_job(url=) or the text pasted;
-    queued means it's in the page's background scorer's line). Use it to tailor a resume or decide
-    whether to apply; for only what was sent use get_application_package, and for a call or interview use
-    get_interview_prep."""
+    queued means it's in the page's background scorer's line). duplicate_of is the job already applied to,
+    queued or skipped that this one is (maybe) the same opening as: key, title, status, date, why, strong (a
+    shared req or posting id; false: the same title only, so check it's a different opening), reposted, and
+    text, the warning to heed; null when there's none. Check it before drafting a referral request or an
+    application. Use it to tailor a resume or decide whether to apply; for only what was sent use
+    get_application_package, and for a call or interview use get_interview_prep."""
     cfg, store = _open()
     try:
         job, rec = store.find(key)
         known = load_contacts(cfg)
         fit = store.score(job.key, resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else None
+        same = dupes.check(store, job.key)
         return {"key": job.key, "company": job.display_company, "title": job.title, "url": job.url,
                 "link_note": job.link_note or None,
-                "pay": job.pay(), "locations": job.locations, "text": job.to_text(), **rec, "fit": fit,
+                "pay": job.pay(), "locations": job.locations, "text": job.to_text(), **rec,
+                "duplicate_of": same.to_dict() if same else None, "fit": fit,
                 "unscored_reason": None if fit else unscored_reason(cfg, store, job),
                 "contacts": known.at(job.display_company, job.company) if known else [],
                 "find_referral": contacts.linkedin_search(job.display_company),
@@ -243,7 +253,9 @@ def mark_job(
     company's careers site once the posting is gone); when the job has no posting text and the link is to one
     job on a supported board, the posting is read from it (text, pay, places), so it can be scored. text sets
     its posting's text, pasted (found later, or from a copy once the posting is gone), so it can be scored and
-    prepped. An empty string clears a field. For a job jobwatch doesn't track yet, use add_application."""
+    prepped. An empty string clears a field. For a job jobwatch doesn't track yet, use add_application.
+    Queuing a job that's (maybe) the same opening as one applied to or queued still queues it, and the reply
+    ends with the warning: tell the person."""
     _, store = _open()
     said = ""
     try:
@@ -259,7 +271,8 @@ def mark_job(
             said = f" ({set_link(store, job.key, url)})"
         if add_note:
             store.add_note(job.key, add_note)
-        return f"{job.key}: {status or rec['status']}{said}"
+        same = dupes.check(store, job.key) if status == "queued" else None
+        return f"{job.key}: {status or rec['status']}{said}" + (f". Check: {same.line}" if same else "")
     finally:
         store.close()
 
@@ -295,14 +308,17 @@ def add_application(
     and title with it (and text to score it), and it's tracked on the company's own board when the same job is
     found there. Otherwise give company and title, and text (the posting, pasted) so it can be scored.
     For a job jobwatch already tracks (it came from get_digest or get_job), use mark_job instead; for the jobs in
-    job-alert emails, import_job_alerts."""
+    job-alert emails, import_job_alerts. When it's (maybe) the same opening as one already applied to, queued or
+    skipped, the reply ends with that warning: tell the person."""
     cfg, store = _open()
     try:
         job, read = save_job(store, url, company or watched_name(cfg, url), title, text, status=status, note=note,
                              applied=applied_on or None, boards=cfg.boards)
         store.track(job.key, next_step=next_step, follow_up=follow_up)
+        same = dupes.check(store, job.key)
         return f"{job.key}: {status} ({job.display_company}, {job.title}; " \
-               f"{'read from the link' if read else 'text given' if text.strip() else 'title only'})"
+               f"{'read from the link' if read else 'text given' if text.strip() else 'title only'})" + \
+               (f". Check: {same.line}" if same else "")
     finally:
         store.close()
 
@@ -324,8 +340,9 @@ def import_job_alerts(
     company's own board (a link to a supported board is read from there); job sites' pages are read only when
     their robots.txt allows (LinkedIn's and Indeed's don't, so the email's details are used). Jobs already tracked
     are left alone (known); new ones show up in get_digest, with via saying where they came from. Returns
-    counts and each job: key, result (new, known, duplicate), how (board, posting, page or email) and filtered
-    (why the filters leave it out of the digest, or null)."""
+    counts and each job: key, result (new, known, duplicate: twice in these emails), how (board, posting, page or
+    email), filtered (why the filters leave it out of the digest, or null) and duplicate_of (the job applied to,
+    queued or skipped that it's maybe the same opening as, as get_job gives it, or null)."""
     cfg, store = _open()
     try:
         r = alerts.intake(cfg, store, [alerts.message(e) for e in emails if e.strip()], follow=follow_links,
@@ -356,15 +373,16 @@ def list_applications(
 @server.tool(annotations=READ)
 def list_queued_jobs() -> list[dict]:
     """Jobs queued to apply to, oldest first, with fit scores, notes, people the user knows there (ask them for
-    a referral before applying) and warnings to check first (pay, place, flagged text). Use it to pick the next
-    application; jobs get here through mark_job with status queued. For applications already sent use
-    list_applications."""
+    a referral before applying) and warnings to check first (pay, place, flagged text). The first warning, and
+    duplicate_of, say when it's (maybe) the same opening as one already applied to, queued or skipped: read them
+    before asking anyone for a referral. Use it to pick the next application; jobs get here through mark_job
+    with status queued. For applications already sent use list_applications."""
     cfg, store = _open()
     try:
         return [{"key": e.job.key, "company": e.job.display_company, "title": e.job.title, "url": e.job.url,
                  "pay": e.job.pay(), "fit": e.fit, "contacts": e.contacts, "note": e.record.get("note"),
                  "queued_at": e.record.get("status_at"), "closed": e.record.get("closed"), "warnings": e.warnings,
-                 **_pay(e.pay, e.job)}
+                 "duplicate_of": e.duplicate.to_dict() if e.duplicate else None, **_pay(e.pay, e.job)}
                 for e in queue(cfg, store, pay_budget=levels.QUEUE)]
     finally:
         store.close()
@@ -395,6 +413,24 @@ def list_jobs(
     try:
         return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, **rec}
                 for j, rec in store.jobs((status,) if status else None, include_closed=True)]
+    finally:
+        store.close()
+
+
+@server.tool(annotations=READ)
+def find_duplicates(
+    strong_only: Annotated[bool, Field(description=(
+        "Only pairs that share a req or posting id (the same opening), not the same title alone."))] = False,
+) -> list[dict]:
+    """Jobs tracked twice: pairs of tracked jobs, open or closed, where the person queued, applied to or skipped
+    one and the other is the same opening (strong: a shared req or posting id, from a title, note, posting text or
+    link; why says which, "reposted as req ..." for a repost) or maybe the same (why "same title": check it's a
+    different opening). The same opening first, applications first. Each: why, strong, and both jobs (key,
+    company, title, status, date, closed), the one acted on first. Read-only: the person decides what to skip
+    (mark_job). For one job, get_job's duplicate_of says the same."""
+    _, store = _open()
+    try:
+        return [dupes.pair_dict(p) for p in dupes.pairs(store, strong_only=strong_only)]
     finally:
         store.close()
 
