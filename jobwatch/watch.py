@@ -110,7 +110,9 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None) 
 
     For a source whose hosted job pages a company can switch off (Ashby), the board's own page is read too, once
     a day at most (see HostedPages; `page` replaces that HTTP call): when it's offline, the board's jobs link to
-    its careers: site, or say to apply there. The check is recorded in the store (Store.last_fetch)."""
+    its careers: site, or say to apply there. The check is recorded in the store (Store.last_fetch). A new post in
+    a thread of many companies' posts (HN) that passes the filters, from a company whose board isn't watched, makes
+    that company a suggestion to watch (see suggest.py)."""
     report = FetchReport()
     for b in cfg.unknown:  # a source this version can't read: say so, and check the rest
         report.errors[b.entry] = UNKNOWN_SOURCE
@@ -148,6 +150,13 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None) 
             keys = set(found := store.sync(b.source, b.board, jobs))
             report.new += found
             new += [j for j in jobs if j.key in keys]
+            if src.many_companies and keys:
+                # A matching post from a company whose board isn't watched: a suggestion to watch it (see
+                # suggest.py). Only what the post says is kept; nothing is looked for here.
+                try:
+                    suggest.record_posts(store, cfg, [j for j in jobs if j.key in keys])
+                except Exception as e:  # a suggestion is a hint: it never fails a check
+                    report.warnings[b.entry] = f"companies to watch not noted: {e}"
     # A new posting of a job already applied to (or queued, or skipped) is marked as its duplicate.
     report.duplicates = dupes.record(store, new) if new else {}
     store.record_fetch(report.boards, report.jobs, len(report.new), report.errors, report.warnings)

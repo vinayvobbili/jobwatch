@@ -476,10 +476,10 @@ class Store:
             self.db.execute("INSERT OR REPLACE INTO pay_pages (url, body, fetched_at, gone) VALUES (?, ?, ?, ?)",
                             (url, body, _now(), int(gone)))
 
-    # Companies whose jobs came in from alerts or `add` while their board isn't watched (see suggest.py), one row
-    # each under the company's bare name ("umbrella" for "Umbrella LLC"). entry is its board, source:board, once
-    # known; an empty one: looked for and none found; NULL: not looked for yet. found_by says how it's known:
-    # posting (one of its jobs is on that board) or name (a board found under its name).
+    # Companies whose jobs came in from alerts, `add` or HN posts while their board isn't watched (see suggest.py),
+    # one row each under the company's bare name ("umbrella" for "Umbrella LLC"). entry is its board, source:board,
+    # once known; an empty one: looked for and none found; NULL: not looked for yet. found_by says how it's known:
+    # posting (one of its jobs is on that board, or its HN post links to it) or name (a board found under its name).
 
     def note_unwatched(self, company: str, name: str, key: str, entry: str | None = None,
                        found_by: str | None = None):

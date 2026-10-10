@@ -92,7 +92,7 @@ their jobs), say what you're looking for, and press **Check for new jobs**. From
   **Queue** the ones worth applying to, **Skip** the rest. While the page is running it checks the boards by
   itself every 6 hours (`fetch_every` in the watchlist), and Today says when they were last checked. A job
   that disappears from its board drops off Today at the next check. **Companies to watch**, at the side, lists
-  companies whose jobs keep coming in from alerts while you don't watch them (see
+  companies whose jobs keep coming in from alerts or Hacker News posts while you don't watch them (see
   [Companies to watch](#companies-to-watch)).
 - **Queue:** your short list. Apply on the company's site, then press **I applied**.
 - Long lists come in pages (12, 24, 48 or 96 at a time, kept per browser).
@@ -231,8 +231,9 @@ after its company, with every role its first line names in the title ("Senior En
 listed further on when the first line has none). The place, remote and pay come from that first line
 (`Acme | Senior Engineer | Remote (US) | $180k-$220k | link`), and the post's text is the description. The job
 links to the company's own job page when the post has one (a posting on a board jobwatch reads first, then that
-board, then a careers page), else to the post on HN. Boards it links to are noted with the job, not read: add
-one to the watchlist to watch it. A post that's deleted or flagged is gone from the thread, so its job closes;
+board, then a careers page), else to the post on HN. Boards it links to are noted with the job, not read: a
+company whose post passes your filters shows up under [Companies to watch](#companies-to-watch), with the board
+its post links to when there is one. A post that's deleted or flagged is gone from the thread, so its job closes;
 an edited one is read again. Replies, remarks and job seekers' posts aren't jobs. The first line is free text,
 so a post written in sentences may come out as "Open roles (see the post)".
 
@@ -463,7 +464,8 @@ jobwatch alerts --imap
 
 jobwatch only checks the boards on your watchlist, so a company you never added is never checked, however good
 its jobs. Alerts show which ones you're missing. Each job that comes in from an alert or `jobwatch add`, from a
-company whose board you don't watch, is noted with its company. `jobwatch suggest` lists those companies, the
+company whose board you don't watch, is noted with its company; so is each new Hacker News post that passes your
+filters, when you watch the Who is hiring thread. `jobwatch suggest` lists those companies, the
 ones with the most jobs that pass your filters first (a job from last week counts more than one from last
 season), with a few of their titles and their board:
 
@@ -473,7 +475,8 @@ jobwatch suggest --add Umbrella        # put its board on the watchlist
 jobwatch suggest --dismiss Hooli       # don't suggest it again
 ```
 
-The board is the one a job was found on when the alert import matched it there, else one found under the
+The board is the one a job was found on when the alert import matched it there (or the one an HN post links
+to), else one found under the
 company's name the way `jobwatch find` looks (check its titles: a guessed name can belong to another company).
 Each company is looked for once, and what's found, or that nothing was, is kept in the state file. `--no-lookup`
 lists what's known without looking. When no board turns up, give `jobwatch find` a link to its careers page.

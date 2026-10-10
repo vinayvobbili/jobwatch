@@ -486,12 +486,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_alerts)
 
-    p = sub.add_parser("suggest", help="companies to watch: those whose jobs came in from alerts or `add` while "
-                       "their board isn't on the watchlist, most matching jobs first, with the board to add",
-                       description="Companies to watch. Each job from a job-alert email or `jobwatch add` whose "
-                       "company's board isn't on the watchlist is noted; the companies with the most jobs that pass "
-                       "your filters (recent ones counting more) are listed with their board: the one a job was "
-                       "found on, or one found under the company's name the way `find` looks (once per company, "
+    p = sub.add_parser("suggest", help="companies to watch: those whose jobs came in from alerts, `add` or HN "
+                       "posts while their board isn't on the watchlist, most matching jobs first, with the board to "
+                       "add",
+                       description="Companies to watch. Each job from a job-alert email, `jobwatch add` or a post "
+                       "in HN's Who is hiring thread (one that passes your filters) whose company's board isn't on "
+                       "the watchlist is noted; the companies with the most jobs that pass your filters (recent "
+                       "ones counting more) are listed with their board: the one a job was found on or its HN post "
+                       "links to, or one found under the company's name the way `find` looks (once per company, "
                        "kept). --add puts a board on the watchlist (the file is rewritten, the old one kept as "
                        ".bak); --dismiss stops suggesting a company.")
     p.add_argument("--add", action="append", metavar="COMPANY", help="watch this company's board (its name as "

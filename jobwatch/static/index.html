@@ -1811,7 +1811,8 @@ async function renderToday() {
   watchPay(todayJobs);
 }
 
-// Companies whose jobs come in from alerts (or Add a job) while their board isn't watched: watch one, or dismiss it.
+// Companies whose jobs come in from alerts (or Add a job, or HN posts) while their board isn't watched: watch one, or
+// dismiss it.
 // It fills in after Today is drawn: what's known first, then again once any boards not looked for yet are.
 function toWatchPanel() {
   const body = h("div", {}), el = panel("Companies to watch", body);

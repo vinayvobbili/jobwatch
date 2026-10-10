@@ -1,8 +1,10 @@
-"""Companies to watch: the ones whose jobs keep coming in from job-alert emails (or `add`) while their board isn't
-on the watchlist. A company that's never watched is never checked, however good its jobs; alerts show which.
+"""Companies to watch: the ones whose jobs keep coming in from job-alert emails (or `add`, or Hacker News' Who is
+hiring thread) while their board isn't on the watchlist. A company that's never watched is never checked, however
+good its jobs; alerts and HN posts show which.
 
-Each job that comes in that way is recorded with its company. Its board is kept when it's known: the board the
-job itself was found on (the alert import matched it there, or its link was to one), else a board found under the
+Each job that comes in that way is recorded with its company (a thread's new posts only when they pass the
+filters: a thread has hundreds). Its board is kept when it's known: the board the job itself was found on (the
+alert import matched it there, its link was to one, or the HN post links to one), else a board found under the
 company's name, the way `jobwatch find` looks (each source's official API; robots.txt for any page). A company is
 looked for once: what's found, or that nothing was, is kept in the state file. jobwatch never reads LinkedIn or
 Indeed for it.
@@ -76,21 +78,36 @@ def watched(boards: list[Board], name: str, entry: str = "") -> bool:
                or linkedin.same_company(b.board, name) for b in boards)
 
 
+def posted_on(job: Job) -> list[str]:
+    """The boards a job is on (source:board each): the one it was found on, or for a post in a thread of many
+    companies' posts (HN), the ones the post links to. None for a job added by hand, or a post that links none."""
+    if (src := sources.SOURCES.get(job.source)) and src.many_companies:
+        return list(job.boards)
+    return [f"{job.source}:{job.company}"] if job.source != MANUAL else []
+
+
 def record(store: Store, boards: list[Board], job: Job, found: list[tuple] | None = None):
-    """Note a job that came in from an alert or `add`, when its company's board isn't watched. found: the boards
-    already looked for under the company's name ((source, board, ...) each; empty: none found), or None when
-    nobody looked."""
-    name = job.display_company
-    on_board = f"{job.source}:{job.company}" if job.source != MANUAL else ""
-    if not company_id(name) or watched(boards, name, on_board):
+    """Note a job that came in from an alert, `add` or an HN post, when its company's board isn't watched. found:
+    the boards already looked for under the company's name ((source, board, ...) each; empty: none found), or
+    None when nobody looked."""
+    name, on = job.display_company, posted_on(job)
+    if not company_id(name) or any(watched(boards, name, e) for e in on or [""]):
         return
-    if on_board:
-        entry, by = on_board, "posting"
+    if on:
+        entry, by = on[0], "posting"
     elif found:
         entry, by = f"{found[0][0]}:{found[0][1]}", "name"
     else:
         entry, by = None if found is None else "", None
     store.note_unwatched(company_id(name), name, job.key, entry, by)
+
+
+def record_posts(store: Store, cfg: Config, jobs: list[Job]):
+    """Note the companies of a thread's new posts (HN), the ones that pass the filters, as record does. Nothing is
+    looked for (no request is made): a post that links no board leaves its company to be looked for later."""
+    for job in jobs:
+        if reject_reason(job, cfg.filters) is None:
+            record(store, cfg.boards, job)
 
 
 def look_up(store: Store, s: Suggestion, page=None):
@@ -168,9 +185,10 @@ def dismiss(store: Store, which: str) -> Suggestion:
 
 def text(found: list[Suggestion]) -> str:
     if not found:
-        return ("No companies to suggest: none of the jobs from alerts or `add` that pass your filters are from a "
-                "company you don't watch.")
-    out = ["Companies to watch: their jobs came in from alerts or `add`, and their board isn't on your watchlist."]
+        return ("No companies to suggest: none of the jobs from alerts, `add` or HN posts that pass your filters are "
+                "from a company you don't watch.")
+    out = ["Companies to watch: their jobs came in from alerts, `add` or HN posts, and their board isn't on your "
+           "watchlist."]
     for s in found:
         n = len(s.jobs)
         out.append(f"\n{s.name}: {n} matching job{'s' if n != 1 else ''}, the latest on {s.last_seen}")

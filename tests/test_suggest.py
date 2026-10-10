@@ -1,6 +1,6 @@
-"""Companies to watch: noted from alert imports and `add` when their board isn't watched, ranked by matching jobs
-(recent ones counting more), each board looked for once, accepted onto the watchlist or dismissed. No network: the
-boards are canned (the `web` fixture)."""
+"""Companies to watch: noted from alert imports, `add` and HN posts when their board isn't watched, ranked by
+matching jobs (recent ones counting more), each board looked for once, accepted onto the watchlist or dismissed. No
+network: the boards are canned (the `web` fixture)."""
 
 import json
 import sqlite3
@@ -8,13 +8,16 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from jobwatch import cli, config, suggest
+from jobwatch import cli, config, sources, suggest, watch
 from jobwatch.store import Store
 from jobwatch.watch import save_job
 from jobwatch.web import App
 
-from .conftest import TOKEN, iso, request
+from .conftest import TOKEN, FakeWeb, iso, request
 from .test_alerts import FIXTURES, take
+from .test_hn import hn_web
+from .test_hn import link as hn_link
+from .test_hn import post as hn_post
 
 UMBRELLA = "https://boards-api.greenhouse.io/v1/boards/umbrella/jobs?content=true"
 HOOLI = "https://api.lever.co/v0/postings/hooli?mode=json"
@@ -157,6 +160,75 @@ def test_a_board_found_that_is_watched_drops_it(web, watchlist):
     store.set_unwatched_board("initechlabsgroup", "", None)    # (not found under that name by the import)
     store.set_unwatched_board("initechlabsgroup", "ashby:initech", "posting")
     assert suggest.suggestions(cfg, store, look=True) == []
+
+
+# -- From Hacker News' Who is hiring
+
+ROBOTICS = hn_post(9100001, "Acme Robotics | Senior Python Engineer | Remote (US) | "
+                            f"{hn_link('https://jobs.ashbyhq.com/acmerobotics/0a1b2c3d-0000-4000-8000-000000000001')}"
+                            "<p>We build warehouse robots.")
+BLUEBIRD = hn_post(9100002, "Bluebird Labs | Backend Engineer | Remote | "
+                            f"{hn_link('https://bluebird.example/careers')} {hn_link('https://bit.ly/bluebird-jobs')}")
+COBALT = hn_post(9100003, "Cobalt Systems | ML Engineer | Remote | "
+                          f"{hn_link('https://job-boards.greenhouse.io/cobalt-hq/jobs/7001')}")  # a watched board
+DYNAMO = hn_post(9100004, "Dynamo Analytics | Data Engineer | Remote")  # watched under its name
+EMBER = hn_post(9100005, "Ember Health | Platform Engineer | London, UK (ONSITE) | "
+                         f"{hn_link('https://jobs.ashbyhq.com/emberhealth')}")  # fails the filters: not remote
+
+
+@pytest.fixture
+def hn_watched(tmp_path, monkeypatch):
+    """A watchlist with HN's thread and two boards, one of them under its company's name; no network."""
+    path = tmp_path / "jobwatch.yaml"
+    path.write_text("companies:\n  - hn:whoishiring\n  - greenhouse:cobalt-hq\n"
+                    "  - {source: lever, board: dynamo, name: Dynamo Analytics}\n"
+                    "filters:\n  locations: [remote]\n  max_age_days: 30\nstate: state.db\ncache: cache\n")
+    fake = FakeWeb({**hn_web([ROBOTICS, BLUEBIRD, COBALT, DYNAMO, EMBER]),
+                    "https://boards-api.greenhouse.io/v1/boards/cobalt-hq/jobs?content=true": {"jobs": []},
+                    "https://api.lever.co/v0/postings/dynamo?mode=json": []})
+    monkeypatch.setattr(sources, "get_json", fake)
+    monkeypatch.setattr(sources, "get_text", FakeWeb({}))  # no robots.txt: reading is allowed
+    cfg = config.load(path)
+    store = Store(cfg.state)
+    yield cfg, store, fake
+    store.close()
+
+
+def test_hn_posts_suggest_their_companies(hn_watched):
+    cfg, store, fake = hn_watched
+    r = watch.fetch_all(cfg, store)
+    assert (len(r.new), r.errors, r.warnings) == (5, {}, {})
+    got = rows(store)
+    # Cobalt's post links a watched board and Dynamo is watched under its name; Ember's job fails the filters
+    assert set(got) == {"acmerobotics", "bluebird"}
+    # the board the post links to, found by the post (not the thread's own hn:whoishiring)
+    assert (got["acmerobotics"]["entry"], got["acmerobotics"]["found_by"]) == ("ashby:acmerobotics", "posting")
+    assert [j.key for j, _ in got["acmerobotics"]["jobs"]] == ["hn:whoishiring:9100001"]
+    # a careers page and a short link aren't boards: left to be looked for under its name
+    assert got["bluebird"]["entry"] is None
+    # nothing was read but the thread and the watched boards
+    assert not [u for u in fake.calls if "ashbyhq" in u or "bluebird" in u or "bit.ly" in u]
+    found = {s.name: s.to_dict() for s in suggest.suggestions(cfg, store)}
+    assert set(found) == {"Acme Robotics", "Bluebird Labs"}
+    assert found["Acme Robotics"]["add_board"] == {"entry": "ashby:acmerobotics", "name": "Acme Robotics"}
+    assert found["Acme Robotics"]["board_found"] == "posting"
+    assert found["Bluebird Labs"]["looked_up"] is False
+    assert found["Bluebird Labs"]["sample_titles"] == ["Backend Engineer"]
+    # checking again: the same posts aren't new, so nothing counts twice
+    watch.fetch_all(cfg, store)
+    assert [len(rows(store)[c]["jobs"]) for c in ("acmerobotics", "bluebird")] == [1, 1]
+
+
+def test_a_failure_noting_hn_companies_never_fails_the_check(hn_watched, monkeypatch):
+    cfg, store, _ = hn_watched
+
+    def broken(*args):
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(suggest, "record", broken)
+    r = watch.fetch_all(cfg, store)
+    assert len(r.new) == 5 and r.errors == {}
+    assert r.warnings == {"hn:whoishiring": "companies to watch not noted: database is locked"}
+    assert rows(store) == {}
 
 
 # -- Accepting and dismissing

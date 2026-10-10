@@ -24,7 +24,7 @@ server = MCPServer(
         "\"Ask HN: Who is hiring?\" thread (one job per company's post) from a watchlist file. "
         "find_board looks up a company's board (by name, or a job or careers page link), add_board puts it on the "
         "watchlist, list_boards and remove_board manage the rest. list_suggested_boards lists companies whose jobs "
-        "keep coming in from alerts or add_application while their board isn't watched, with what to pass "
+        "keep coming in from alerts, add_application or HN posts while their board isn't watched, with what to pass "
         "add_board; dismiss_suggested_board stops suggesting one. "
         "fetch_jobs checks every board; get_digest ranks the new matches (optionally fit-scored with shortlist-ai); "
         "get_job gives a posting's full text for tailoring a resume; mark_job records queued/applied/skipped "
@@ -133,7 +133,7 @@ def add_board(
 ) -> dict:
     """Add a company's board to the watchlist, so fetch_jobs checks it from now on. Find the entry with
     find_board first and check its sample titles: a guessed board name can belong to another company
-    (list_suggested_boards gives entries for companies whose jobs keep coming in from alerts). Adding
+    (list_suggested_boards gives entries for companies whose jobs keep coming in from alerts or HN). Adding
     one that's already there only updates its name and careers link. For Google, leave name empty: each role
     keeps its own employer (Google, YouTube, DeepMind). Creates the watchlist when there is none yet. The
     watchlist is rewritten (a copy of the old one is kept as .bak; comments in a hand-written file are not
@@ -157,10 +157,11 @@ def list_suggested_boards(
         "Look for the board of each listed company that hasn't been looked for yet, the way find_board does "
         "(once per company; what's found is kept). False makes no requests."))] = True,
 ) -> list[dict]:
-    """Companies to watch: those whose jobs came in from job-alert emails (import_job_alerts) or add_application
-    while their board isn't on the watchlist, ranked by how many of their jobs pass the watchlist's filters,
-    recent ones counting more. Each: company, matching_jobs, last_seen, board (source:board, or null),
-    board_found (posting: one of its jobs is on that board; name: found under its name, so check with
+    """Companies to watch: those whose jobs came in from job-alert emails (import_job_alerts), add_application or
+    posts in HN's Who is hiring thread (fetch_jobs, when it's watched) while their board isn't on the watchlist,
+    ranked by how many of their jobs pass the watchlist's filters, recent ones counting more. Each: company,
+    matching_jobs, last_seen, board (source:board, or null), board_found (posting: one of its jobs is on that
+    board, or its HN post links to it; name: found under its name, so check with
     find_board's sample titles that it's theirs), careers, sample_titles, and add_board: the arguments to pass to
     add_board to watch it (null when no board was found: find_board with a link to its careers page may find
     one). dismiss_suggested_board stops suggesting one. Suggest; let the person decide which to add."""
