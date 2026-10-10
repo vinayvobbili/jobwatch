@@ -12,7 +12,7 @@ from pathlib import Path
 from . import linkedin
 from .models import Job
 from .package import Package
-from .sources import candidate_home
+from .sources import SOURCES, candidate_home
 from .text import parse_salary
 
 # queued: to apply to next. After applying: applied, then screening, interviewing, offer, or it ends.
@@ -20,6 +20,10 @@ STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdraw
 ENDED = ("rejected", "withdrawn")
 STATUSES = ("new", "shown", "queued", *STAGES, "skipped")
 MANUAL = "manual"  # the source of applications added by hand (found elsewhere, not on a watched board)
+# Posts from a thread of many companies' posts (HN's Who is hiring) aren't fit-scored (see watch.scorable): a
+# score saved for one before that is left out when scores are read (it stays in the file, unused).
+_SCORED = "key NOT IN (SELECT key FROM jobs WHERE source IN ({}))".format(
+    ", ".join(f"'{s.name}'" for s in SOURCES.values() if s.many_companies) or "''")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -427,13 +431,14 @@ class Store:
         return candidate_home(job.url) or ((other := self.linked(job)) and candidate_home(other.url)) or None
 
     def score(self, key: str, resume: str) -> dict | None:
-        row = self.db.execute("SELECT result FROM scores WHERE key=? AND resume=?", (key, resume)).fetchone()
+        row = self.db.execute(f"SELECT result FROM scores WHERE key=? AND resume=? AND {_SCORED}",
+                              (key, resume)).fetchone()
         return json.loads(row["result"]) if row else None
 
     def scores(self, resume: str) -> dict[str, dict]:
         """Every stored fit score for this resume, by job key: one query for a whole list of jobs."""
         return {r["key"]: json.loads(r["result"])
-                for r in self.db.execute("SELECT key, result FROM scores WHERE resume=?", (resume,))}
+                for r in self.db.execute(f"SELECT key, result FROM scores WHERE resume=? AND {_SCORED}", (resume,))}
 
     def save_score(self, key: str, resume: str, result: dict):
         with self.db:

@@ -1,13 +1,18 @@
 """Why a job has no fit score yet: in the scorer's line, no posting text, failed, the same role scored
-before; and a job added by hand that gets its posting read once a link to it is added."""
+before, a Hacker News post listing several roles (never scored); and a job added by hand that gets its posting
+read once a link to it is added."""
+
+import json
 
 import pytest
 import yaml
 
-from jobwatch import cli, config, sources, watch
+from jobwatch import cli, config, report, sources, watch
 from jobwatch.mcp_server import get_job, mark_job
+from jobwatch.models import Job
+from jobwatch.score import resume_id
 from jobwatch.store import Store
-from jobwatch.web import App
+from jobwatch.web import ApiError, App
 
 FIT = {"score": 70, "must_haves_met": 2, "must_haves_total": 3, "gaps": ["Go"], "summary": ""}
 POSTING = "https://job-boards.greenhouse.io/acme/jobs/101"
@@ -163,3 +168,77 @@ def test_cli_and_mcp(resume_watchlist, web, capsys, monkeypatch):
     assert get_job(job.key)["unscored_reason"]["code"] == "no_text"
     assert mark_job(job.key, url=POSTING).endswith("(link saved; posting read from it)")
     assert get_job(job.key)["unscored_reason"]["code"] == "queued"
+
+
+# -- a Hacker News post: one job per company's post, often listing several roles, places and links
+
+NOTE = "Not scored: a post listing several roles; watch the company's board to score each one."
+
+
+def _post(store) -> Job:
+    job = Job("hn", "whoishiring", "9000201", "Product Engineer, Data Platform Engineer",
+              "https://job-boards.greenhouse.io/acmerobotics/jobs/5001", company_name="Acme Robotics",
+              locations=["United States (Remote)", "SF (Hybrid)"], remote=True,
+              description="Acme Robotics | Product Engineer | NAMER, EMEA, APJ (Remote) or SF (Hybrid)\n"
+                          "Data Platform Engineer | United States (Remote)\nWe build robots with Python and LLMs.",
+              boards=["greenhouse:acmerobotics"])
+    store.sync("hn", "whoishiring", [job])
+    return job
+
+
+def test_a_post_listing_several_roles_isnt_scored(resume_watchlist, monkeypatch):
+    asked = []
+
+    def fake(jobs, resume, backend, cache_dir, workers=1, progress=None):
+        asked.extend(j.key for j in jobs)
+        return {j.key: FIT for j in jobs}, {}
+
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    cfg, store = _fetched(resume_watchlist)
+    post = _post(store)
+    assert post.key not in [e.job.key for e in watch.unscored(cfg, store)]  # not in the background scorer's line
+    d = watch.build_digest(cfg, store, score_top=10)
+    assert post.key not in asked and "greenhouse:acme:101" in asked  # a board's job is still scored
+    assert next(e for e in d.entries if e.job.key == post.key).fit is None
+    assert watch.unscored_reasons(cfg, store)[post.key] == {"code": "many_roles", "text": NOTE[:-1]}
+    store.set_status([post.key], "queued")
+    assert watch.unscored_reason(cfg, store, post)["code"] == "many_roles"
+    store.close()
+
+
+def test_a_score_saved_for_a_post_before_is_left_out(resume_watchlist, scored):
+    cfg, store = _fetched(resume_watchlist)
+    post = _post(store)
+    rid = resume_id(cfg.resume)
+    store.save_score(post.key, rid, {**FIT, "score": 4})  # scored as one posting by an older version
+    store.save_score("greenhouse:acme:101", rid, FIT)
+    assert store.score(post.key, rid) is None and set(store.scores(rid)) == {"greenhouse:acme:101"}
+    cfg.filters.min_fit = 50  # its low score doesn't hide it: a job with no score still shows
+    keys = [e.job.key for e in watch.build_digest(cfg, store, score_top=0).entries]
+    assert keys.index("greenhouse:acme:101") < keys.index(post.key)
+    store.close()
+
+
+def test_the_note_shows_instead_of_a_score(resume_watchlist, scored, capsys, monkeypatch):
+    cfg, store = _fetched(resume_watchlist)
+    post = _post(store)
+    store.save_score(post.key, resume_id(cfg.resume), {**FIT, "score": 4})
+    d = watch.build_digest(cfg, store, score_top=0)
+    store.close()
+    md = report.to_markdown(d)
+    assert NOTE in md and "Fit 4/100" not in md
+    jobs = {(j["source"], j["id"]): j for j in json.loads(report.to_json(d))["jobs"]}
+    assert jobs[("hn", "9000201")]["not_scored"] == NOTE[:-1] and jobs[("greenhouse", "101")]["not_scored"] is None
+    cli.main(["--config", str(resume_watchlist), "show", post.key])
+    out = capsys.readouterr().out
+    assert NOTE in out and "Fit 4/100" not in out
+    # the page: the note where the score would be, and no Score fit button
+    app = App(resume_watchlist)
+    got = app.get_job({"key": [post.key]})
+    assert got["fit"] is None and got["can_score"] is False and got["unscored"]["code"] == "many_roles"
+    today = {j["key"]: j for j in app.get_digest({})["jobs"]}
+    assert today[post.key]["unscored"] == {"code": "many_roles", "text": NOTE[:-1]}
+    with pytest.raises(ApiError, match="Not scored"):
+        app.post_score({"key": post.key})
+    monkeypatch.setenv("JOBWATCH_CONFIG", str(resume_watchlist))
+    assert get_job(post.key)["fit"] is None and get_job(post.key)["unscored_reason"]["code"] == "many_roles"

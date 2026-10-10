@@ -424,6 +424,15 @@ def set_link(store: Store, key: str, url: str, get=None) -> str:
 
 NO_RESUME = ("no_resume", "No resume to score against: add it in Settings (resume: in the watchlist)")
 NO_TEXT = ("no_text", "No posting text: add a link to the company's posting or paste it")
+MANY_ROLES = ("many_roles", "Not scored: a post listing several roles; watch the company's board to score each one")
+
+
+def scorable(job: Job) -> bool:
+    """Can this job be fit-scored? Not a post from a thread of many companies' posts (HN's Who is hiring): it
+    lists several roles, places and links, and scored as one posting they all turn into must-haves ("Located
+    in SF (Hybrid)"), so its score would say nothing. Its company's board, once watched, has each role."""
+    src = sources.SOURCES.get(job.source)
+    return not (src and src.many_companies)
 
 
 def _ordinal(n: int) -> str:
@@ -435,7 +444,8 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
     """Why each of Today's jobs has no fit score: {job key: {"code", "text"}}. Codes: no_resume, no_text (a job
     from an alert email may have only its title), failed (with the error), scoring (now), queued (in the
     background scorer's line: "3rd of 4"), stopped (background scoring stopped, and why), manual (background
-    scoring is off) and same_role (another posting of the same role was scored before this one came in).
+    scoring is off), same_role (another posting of the same role was scored before this one came in) and
+    many_roles (a post listing several roles, never scored: see scorable).
     `failed` (job key -> error), `current` (the key being scored) and `stopped` come from the page's background
     scorer; without them, a job is described by where it stands in the scorer's line."""
     failed = failed or {}
@@ -464,6 +474,8 @@ def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str]
     """Why a group's first posting (the one scored for all of them) has no fit score; None when it has one."""
     if e.fit is not None:
         return None
+    if not scorable(e.job):
+        return MANY_ROLES
     if not has_resume:
         return NO_RESUME
     if not e.job.description.strip():
@@ -488,7 +500,8 @@ def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict
     has_resume = bool(cfg.resume and cfg.resume.is_file())
     if has_resume and store.score(job.key, resume_id(cfg.resume)):
         return None
-    code, text = (NO_RESUME if not has_resume else NO_TEXT if not job.description.strip()
+    code, text = (MANY_ROLES if not scorable(job) else NO_RESUME if not has_resume
+                  else NO_TEXT if not job.description.strip()
                   else ("manual", "Only Today's jobs are scored in the background: press Score fit"))
     return {"code": code, "text": text}
 
@@ -530,8 +543,9 @@ def unscored(cfg: Config, store: Store, skip: set[str] = frozenset()) -> list[En
 
 
 def _scorable(e: Entry) -> bool:
-    """Unscored, and with a posting's text to score (a job from an alert email may have only its title)."""
-    return e.fit is None and bool(e.job.description.strip())
+    """Unscored, scorable, and with a posting's text to score (a job from an alert email may have only its
+    title)."""
+    return e.fit is None and scorable(e.job) and bool(e.job.description.strip())
 
 
 def score_entries(cfg: Config, store: Store, entries: list[Entry],

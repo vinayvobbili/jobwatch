@@ -960,6 +960,8 @@ function detailsButton(job) {
 }
 
 // Why a job has no fit score yet (the server's `unscored`: in line, no posting text, failed...).
+// No Score fit button while it's being scored, or for a post listing several roles (never scored).
+const NO_SCORE_BUTTON = ["scoring", "many_roles"];
 function unscoredNote(job) {
   return job.unscored ? h("span", { class: "muted small", title: job.unscored.text }, job.unscored.text) : null;
 }
@@ -992,7 +994,7 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
       if (r.has_text) job.unscored = { code: "queued", text: "Posting added: in line to score" };
       redraw(job);
     }), unscoredNote(job)];
-  if (!canScore || job.unscored?.code === "scoring") return unscoredNote(job);
+  if (!canScore || NO_SCORE_BUTTON.includes(job.unscored?.code)) return unscoredNote(job);
   const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");
   b.onclick = async () => {
     b.disabled = true; b.textContent = "Scoring…";
@@ -1056,7 +1058,7 @@ async function openDetails(key) {
 function detailsScore(j) {
   if (j.fit) return null;
   if (j.unscored?.code === "no_text" && j.manual) return [postingButton(j, () => openDetails(j.key)), unscoredNote(j)];
-  if (!j.can_score || j.unscored?.code === "scoring") return unscoredNote(j);
+  if (!j.can_score || NO_SCORE_BUTTON.includes(j.unscored?.code)) return unscoredNote(j);
   const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");
   b.onclick = async () => {
     b.disabled = true; b.textContent = "Scoring…";

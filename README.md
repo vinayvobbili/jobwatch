@@ -247,7 +247,9 @@ board, then a careers page), else to the post on HN. Boards it links to are note
 company whose post passes your filters shows up under [Companies to watch](#companies-to-watch), with the board
 its post links to when there is one. A post that's deleted or flagged is gone from the thread, so its job closes;
 an edited one is read again. Replies, remarks and job seekers' posts aren't jobs. The first line is free text,
-so a post written in sentences may come out as "Open roles (see the post)".
+so a post written in sentences may come out as "Open roles (see the post)". Posts aren't fit-scored: one lists
+several roles, places and links, which a score would read as one job's must-haves; watch the company's board to
+score each role.
 
 ### How locations match
 

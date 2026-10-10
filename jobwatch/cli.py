@@ -17,6 +17,7 @@ from .config import ConfigError
 from .score import ScoringUnavailable, resume_id
 from .store import STAGES, STATUSES, Store
 from .watch import (
+    MANY_ROLES,
     build_digest,
     check_postings,
     fetch_all,
@@ -24,6 +25,7 @@ from .watch import (
     pace,
     queue,
     save_job,
+    scorable,
     score_entries,
     set_link,
     unscored,
@@ -142,7 +144,9 @@ def cmd_show(args, cfg, store):
         print(f"You know: {report.people(known, most=10)}")
     if home := store.candidate_home(job):
         print(f"Your applications there (sign in): {home}")
-    if cfg.resume and cfg.resume.is_file() and (fit := store.score(job.key, resume_id(cfg.resume))):
+    if not scorable(job):
+        print(f"{MANY_ROLES[1]}.")
+    elif cfg.resume and cfg.resume.is_file() and (fit := store.score(job.key, resume_id(cfg.resume))):
         print("\n".join(report.fit_lines(fit)))
     if (pay := levels.for_one_job(cfg, store, job)) is not None:
         print("\n".join(report.pay_lines(pay, job)))

@@ -224,7 +224,8 @@ def get_digest(
     with people the user knows at each company. Call fetch_jobs first to pick up today's postings. This is for
     finding jobs to consider; for jobs already queued use list_queued_jobs, and for applications use
     list_applications. total is how many matched before the limit (jobs left out stay new for the next
-    digest). pace, unless the user turned it off: applications sent today against how many they aim for a day
+    digest). not_scored, when set, says why a job is never fit-scored (a Hacker News post listing several
+    roles). pace, unless the user turned it off: applications sent today against how many they aim for a day
     (daily) and the most (max); once met, suggest the rest wait for tomorrow, but never refuse to help."""
     cfg, store = _open()
     try:
@@ -249,7 +250,8 @@ def get_job(key: Key) -> dict:
     hosted job pages are offline and where to apply instead (url is then the company's careers site, when the
     watchlist gives one). With no fit score, unscored_reason
     says why ({code, text}: no_text means it needs its posting, a link via mark_job(url=) or the text pasted;
-    queued means it's in the page's background scorer's line). duplicate_of is the job already applied to,
+    queued means it's in the page's background scorer's line; many_roles, a post listing several roles, is never
+    scored). duplicate_of is the job already applied to,
     queued or skipped that this one is (maybe) the same opening as: key, title, status, date, why, strong (a
     shared req or posting id; false: the same title only, so check it's a different opening), reposted, and
     text, the warning to heed; null when there's none. Check it before drafting a referral request or an

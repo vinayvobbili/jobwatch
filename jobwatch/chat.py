@@ -20,7 +20,7 @@ from .config import Config
 from .resume import resume_text
 from .score import LOCAL, resume_id
 from .store import Store
-from .watch import build_digest
+from .watch import MANY_ROLES, build_digest, scorable
 
 CLAUDE_MODEL = "claude-sonnet-5-5"  # quick, conversational replies; fit scores keep their own model
 LOCAL_MODEL = "mlx-community/Qwen3.5-9B-MLX-4bit"  # shortlist-ai's local model: one download serves both
@@ -144,7 +144,8 @@ def job_context(cfg: Config, store: Store, key: str) -> str:
                                             ("applied_at", "next_step", "follow_up", "note") if rec.get(k)]
     sent = store.package(job.key).context()
     return "\n".join(["## The job the user is looking at", "; ".join(track),
-                      _fit_line(fit) or "Not scored against the resume yet.",
+                      _fit_line(fit) or (f"{MANY_ROLES[1]}." if not scorable(job)
+                                         else "Not scored against the resume yet."),
                       "<posting>", job.to_text()[:24000], "</posting>"] + (["", sent] if sent else []))
 
 

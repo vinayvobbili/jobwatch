@@ -9,7 +9,7 @@ from . import levels
 from .models import Job
 from .sources import candidate_home
 from .store import ENDED
-from .watch import Digest, Entry, FetchReport
+from .watch import MANY_ROLES, Digest, Entry, FetchReport, scorable
 
 
 def fetch_summary(r: FetchReport) -> str:
@@ -72,6 +72,8 @@ def _line(e: Entry) -> list[str]:
         f = e.fit
         out.append(f"**Fit {f['score']:.0f}/100**, must-haves {f['must_haves_met']}/{f['must_haves_total']}. "
                    + (f"Gaps: {'; '.join(f['gaps'])}" if f["gaps"] else "No must-have gaps."))
+    elif not scorable(j):
+        out.append(f"{MANY_ROLES[1]}.")
     if isinstance(e.pay, levels.Estimate):  # set on queued jobs only, never in a digest
         out.append(f"Expected pay: {e.pay.line(j.pay())} ({e.pay.credit}: {e.pay.url})")
     if e.warnings:
@@ -156,7 +158,8 @@ def to_json(d: Digest) -> str:
     return json.dumps({
         "jobs": [{**{k: v for k, v in e.job.to_dict().items() if k != "description"},
                   "status": e.record["status"], "first_seen": e.record["first_seen"], "via": e.record.get("via"),
-                  "relevance": e.relevance, "keywords": e.keywords, "fit": e.fit, "contacts": e.contacts,
+                  "relevance": e.relevance, "keywords": e.keywords, "fit": e.fit,
+                  "not_scored": None if scorable(e.job) else MANY_ROLES[1], "contacts": e.contacts,
                   "same_title": [{"key": o.key, "url": o.url, "locations": o.locations} for o in e.same_title],
                   "duplicate_of": e.duplicate.to_dict() if e.duplicate else None}
                  for e in d.entries],

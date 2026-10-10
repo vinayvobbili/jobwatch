@@ -30,12 +30,14 @@ from .package import Package
 from .score import ScoringUnavailable, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, STATUSES, Store
 from .watch import (
+    MANY_ROLES,
     build_digest,
     fetch_all,
     load_contacts,
     pace,
     queue,
     save_job,
+    scorable,
     score_entries,
     set_link,
     unscored,
@@ -487,7 +489,7 @@ class App:
             # A job added by hand can be scored once it has the posting's text.
             entries = queue(cfg, store)
             pay = self._pay(cfg, store, [(e.job, e.pay) for e in entries])
-            return [{**self._entry(e), "can_score": resume and bool(e.job.description.strip()),
+            return [{**self._entry(e), "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
                      "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),
                      **pay.get(e.job.key, {})} for e in entries]
         return self._with_store(run)
@@ -562,7 +564,7 @@ class App:
                     "candidate_home": store.candidate_home(job),
                     "package": Package(store.packages, job.key).data(),
                     "skills": learn.job_gaps(cfg, store, job), "fit": fit,
-                    "can_score": resume and bool(job.description.strip()),
+                    "can_score": resume and scorable(job) and bool(job.description.strip()),
                     "unscored": None if fit else unscored_reason(cfg, store, job, self.scorer.reasons(cfg, store)),
                     "manual": job.source == MANUAL,
                     "duplicate_of": (same := dupes.check(store, job.key)) and same.to_dict(),
@@ -671,6 +673,8 @@ class App:
     def post_score(self, body) -> dict:
         def run(cfg, store):
             job, _ = store.find(body.get("key") or "")
+            if not scorable(job):
+                raise ApiError(MANY_ROLES[1] + ".")
             if not (cfg.resume and cfg.resume.is_file()):
                 raise ApiError("Add your resume in Settings to score fit.")
             rid = resume_id(cfg.resume)
