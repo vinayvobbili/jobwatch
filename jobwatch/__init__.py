@@ -1,3 +1,3 @@
 """jobwatch: watch company job boards and get a ranked digest of new matches."""
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
