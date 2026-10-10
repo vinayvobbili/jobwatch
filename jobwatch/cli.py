@@ -130,6 +130,8 @@ def cmd_show(args, cfg, store):
     closed = f", closed {rec['closed'][:10]}" if rec["closed"] else ""
     via = f" (via {rec['via']})" if rec.get("via") else ""
     print(f"{job.to_text()}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{via}{closed}")
+    if job.link_note:
+        print(f"Link: {job.link_note}")
     if (contacts := load_contacts(cfg)) and (known := contacts.at(job.display_company, job.company)):
         print(f"You know: {report.people(known, most=10)}")
     if home := store.candidate_home(job):
@@ -285,7 +287,8 @@ def cmd_queue(args, cfg, store):
 
 
 def cmd_check(args, cfg, store):
-    checks = check_postings(store, tuple(args.status or ("queued", "applied", "screening", "interviewing")))
+    checks = check_postings(store, tuple(args.status or ("queued", "applied", "screening", "interviewing")),
+                            watched=cfg.boards)
     order = {"closed": 0, "reopened": 1, "unknown": 2, "open": 3}
     for c in sorted(checks, key=lambda c: order[c.result]):
         if c.result != "open" or args.all:

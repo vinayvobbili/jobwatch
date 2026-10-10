@@ -6,6 +6,7 @@ import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 from . import levels, linkedin, sources
 from .config import UNKNOWN_SOURCE, Board, Config
@@ -22,35 +23,126 @@ class FetchReport:
     jobs: int = 0
     new: list[str] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)  # "source:board" -> error
+    warnings: dict[str, str] = field(default_factory=dict)  # "source:board" -> what to do about it
 
 
-def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None) -> FetchReport:
-    """Pull every board in the watchlist and record what is new. Boards that fail are reported and skipped."""
+HOSTED_KEEP = timedelta(days=1)  # how long an answer about a board's hosted job pages is trusted
+
+
+class HostedPages:
+    """Whether boards' hosted job pages are up (see sources.Hosted): each board's own page is read at most once a
+    day, where robots.txt allows, and the answer kept in the store. When it can't be read now, the last answer
+    stands (or none, the first time): a network error changes nothing. Use the store from one thread; `ask`, the
+    one request, can run in others."""
+
+    def __init__(self, store: Store, page=None):
+        self.store, self.page = store, page
+        self._robots = None
+
+    def due(self, boards: list[tuple[str, str]]) -> set[tuple[str, str]]:
+        """The (source, board) pairs to ask about now: a source with the check, not asked in the last day, and
+        robots.txt allows reading the page (it's read once per site)."""
+        now, out = datetime.now(timezone.utc), set()
+        for source, board in boards:
+            if not (url := sources.hosted_url(source, board)):
+                continue
+            kept = self.store.hosted_page(source, board)
+            if kept and now - kept[1] < HOSTED_KEEP:
+                continue
+            if self._robots is None:
+                from .alerts import Robots  # alerts reads job pages the same careful way
+                self._robots = Robots(self.page)
+            if self._robots.allowed(url):
+                out.add((source, board))
+        return out
+
+    def ask(self, source: str, board: str) -> bool | None:
+        return sources.hosted_up(source, board, self.page)
+
+    def answer(self, source: str, board: str, fresh: bool | None) -> bool | None:
+        """Keep a fresh answer; return it, or the last one kept when there's none (None: never known)."""
+        if fresh is not None:
+            self.store.save_hosted_page(source, board, fresh)
+            return fresh
+        kept = self.store.hosted_page(source, board)
+        return kept[0] if kept else None
+
+    def check(self, source: str, board: str) -> bool | None:
+        """due, ask and answer for one board."""
+        fresh = self.ask(source, board) if (source, board) in self.due([(source, board)]) else None
+        return self.answer(source, board, fresh)
+
+
+def offline_note(job: Job, careers: str = "") -> str:
+    """The line shown with a job whose board's hosted pages are offline: where to apply instead."""
+    system, company = sources.SOURCES[job.source].hosted.name, job.display_company
+    if careers:
+        return f"{company}'s {system} job pages are offline: this job's link goes to {company}'s own careers site."
+    return (f"{company}'s {system} job pages are offline (its link shows \"Page not found\"): apply through "
+            f"{company}'s own careers site.")
+
+
+def mark_hosted(job: Job, up: bool | None, careers: str = "") -> bool:
+    """Point a job at the company's careers site (`careers`, when the watchlist gives one) and say why, when its
+    board's hosted pages are offline; put it back when they're up again. None (not known) changes nothing.
+    Without `careers`, a careers link the job was given before is kept. Returns whether the job changed."""
+    before = (job.url, job.posting_url, job.link_note)
+    if up is not None:
+        own, careers = job.posting_url or job.url, careers or (job.url if job.posting_url else "")
+        if up:
+            job.url, job.posting_url, job.link_note = own, "", ""
+        else:
+            job.url, job.posting_url, job.link_note = careers or own, own if careers else "", \
+                offline_note(job, careers)
+    return (job.url, job.posting_url, job.link_note) != before
+
+
+def offline_warning(b: Board) -> str:
+    """What `jobwatch fetch` says about a board whose hosted pages are offline and has no careers link."""
+    system = sources.SOURCES[b.source].hosted.name
+    return (f"its {system} job pages are offline (\"Page not found\") though its jobs are still listed: add the "
+            f"company's careers site to the watchlist, {{board: {b.entry}, careers: https://...}}")
+
+
+def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None) -> FetchReport:
+    """Pull every board in the watchlist and record what is new. Boards that fail are reported and skipped.
+
+    For a source whose hosted job pages a company can switch off (Ashby), the board's own page is read too, once
+    a day at most (see HostedPages; `page` replaces that HTTP call): when it's offline, the board's jobs link to
+    its careers: site, or say to apply there. The check is recorded in the store (Store.last_fetch)."""
     report = FetchReport()
     for b in cfg.unknown:  # a source this version can't read: say so, and check the rest
-        report.errors[f"{b.source}:{b.board}"] = UNKNOWN_SOURCE
+        report.errors[b.entry] = UNKNOWN_SOURCE
     # Big boards are searched for the watchlist's titles, and a posting is read in full once: the store has it.
     search, wanted = search_terms(cfg.filters), (lambda title: title_ok(title, cfg.filters))
     known = {b: store.board_jobs(b.source, b.board) for b in cfg.boards if sources.SOURCES[b.source].search}
+    hosted = HostedPages(store, page)
+    due = hosted.due([(b.source, b.board) for b in cfg.boards])
 
     def one(b: Board):
         try:
-            return b, sources.fetch(b.source, b.board, get, search=search, wanted=wanted, known=known.get(b)), None
+            jobs = sources.fetch(b.source, b.board, get, search=search, wanted=wanted, known=known.get(b))
         except sources.SourceError as e:
-            return b, None, str(e)
+            return b, None, str(e), None
+        return b, jobs, None, hosted.ask(b.source, b.board) if (b.source, b.board) in due else None
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for b, jobs, err in pool.map(one, cfg.boards):
+        for b, jobs, err, up in pool.map(one, cfg.boards):
             if err:
-                report.errors[f"{b.source}:{b.board}"] = err
+                report.errors[b.entry] = err
                 continue
+            up = hosted.answer(b.source, b.board, up) if sources.SOURCES[b.source].hosted else None
             for j in jobs:
                 # A searched board's name is only its tenant id ("acme"): the watchlist's name reads better.
                 j.company_name = (b.name or j.company_name) if sources.SOURCES[b.source].search else \
                     (j.company_name or b.name)
+                mark_hosted(j, up, b.careers)
+            if up is False and not b.careers:
+                report.warnings[b.entry] = offline_warning(b)
             report.boards += 1
             report.jobs += len(jobs)
             report.new += store.sync(b.source, b.board, jobs)
+    store.record_fetch(report.boards, report.jobs, len(report.new), report.errors, report.warnings)
     return report
 
 
@@ -154,10 +246,11 @@ def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> boo
     when jobwatch can't tell (a LinkedIn job: LinkedIn's robots.txt doesn't allow reading it). Raises SourceError
     when the board can't be read now."""
     boards = {} if boards is None else boards
-    # one posting can be read by its link: surer than a title search
+    # one posting can be read by its link: surer than a title search (the board's own link, when the job's link
+    # is the company's careers site: see mark_hosted)
     if job.source in ("workday", "rippling", "amazon", "oracle", "smartrecruiters", "avature"):
         try:
-            return sources.posting(job.url, get) is not None
+            return sources.posting(job.posting_url or job.url, get) is not None
         except sources.NotFound:
             return False
     if job.source in sources.SOURCES:
@@ -171,11 +264,15 @@ def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> boo
 
 
 def check_postings(store: Store, statuses: tuple[str, ...] = ("queued", "applied", "screening", "interviewing"),
-                   get=None, page=None) -> list[Check]:
+                   get=None, page=None, watched: list[Board] = ()) -> list[Check]:
     """Check that the postings of queued jobs and open applications are still up, and record the ones that
     closed (or came back). Jobs from watched boards are checked by every fetch too; this also covers jobs added
-    by hand from a link, and boards that aren't watched."""
+    by hand from a link, and boards that aren't watched.
+    A job whose board's hosted pages are offline (see HostedPages) is still open while the board's API lists it:
+    its detail says where to apply, and it links to the careers site its board has in `watched`, if any."""
     boards: dict = {}
+    hosted, pages = HostedPages(store, page), {}
+    careers = {(b.source, b.board): b.careers for b in watched}
     out = []
     for job, rec in store.jobs(statuses, include_closed=True):
         try:
@@ -183,13 +280,19 @@ def check_postings(store: Store, statuses: tuple[str, ...] = ("queued", "applied
         except sources.SourceError as e:
             out.append(Check(job, "unknown", str(e)))
             continue
+        if up and sources.hosted_url(job.source, job.company):
+            if (job.source, job.company) not in pages:
+                pages[job.source, job.company] = hosted.check(job.source, job.company)
+            if mark_hosted(job, pages[job.source, job.company], careers.get((job.source, job.company), "")):
+                store.update(job)
         if up is None:
             out.append(Check(job, "unknown", "no link jobwatch can read" if not job.url else "jobwatch can't read "
                              "that site: check it yourself"))
         elif store.set_closed(job.key, not up):
-            out.append(Check(job, "reopened" if up else "closed"))
+            out.append(Check(job, "reopened" if up else "closed", job.link_note if up else ""))
         else:
-            out.append(Check(job, "open" if up else "closed", "" if up else f"since {(rec['closed'] or '')[:10]}"))
+            out.append(Check(job, "open" if up else "closed",
+                             job.link_note if up else f"since {(rec['closed'] or '')[:10]}"))
     return out
 
 

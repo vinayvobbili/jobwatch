@@ -22,6 +22,11 @@ class Job:
     currency: str = ""
     posted: datetime | None = None
     description: str = ""
+    # When the board's hosted job pages are offline (see sources.Hosted): a line to show with the job, saying so
+    # and where to apply instead; and the board's own link for the posting, when `url` became the company's
+    # careers site.
+    link_note: str = ""
+    posting_url: str = ""
 
     @property
     def key(self) -> str:

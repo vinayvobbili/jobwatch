@@ -167,6 +167,7 @@ def server(watchlist, web):
     srv = serve(watchlist, port=0, open_browser=False, token=TOKEN)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv.server_address[1]
+    srv.app.refresher.stop(10)  # its first check (on the fake boards) ends before they go away
     srv.shutdown()
     srv.server_close()
 
