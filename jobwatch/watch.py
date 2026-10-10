@@ -134,10 +134,12 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None) 
                 report.errors[b.entry] = err
                 continue
             up = hosted.answer(b.source, b.board, up) if sources.SOURCES[b.source].hosted else None
+            src = sources.SOURCES[b.source]
             for j in jobs:
-                # A searched board's name is only its tenant id ("acme"): the watchlist's name reads better.
-                j.company_name = (b.name or j.company_name) if sources.SOURCES[b.source].search else \
-                    (j.company_name or b.name)
+                # A searched board's name is only its tenant id ("acme"): the watchlist's name reads better. A
+                # thread of many companies' posts (HN) names each post's own.
+                if not src.many_companies:
+                    j.company_name = (b.name or j.company_name) if src.search else (j.company_name or b.name)
                 mark_hosted(j, up, b.careers)
             if up is False and not b.careers:
                 report.warnings[b.entry] = offline_warning(b)
@@ -245,8 +247,9 @@ def _never(title: str) -> bool:
 
 def _open_ids(job: Job, get, boards: dict) -> set[str]:
     """The ids open on a job's board now: a whole board is listed once per check, a searched one is searched for
-    the job's title (nothing is read in full)."""
-    searched = bool(sources.SOURCES[job.source].search)
+    the job's title (nothing is read in full). An HN thread is read whole, once."""
+    src = sources.SOURCES[job.source]
+    searched = bool(src.search) and not src.many_companies
     k = (job.source, job.company, job.title if searched else "")
     if k not in boards:
         boards[k] = {j.id for j in sources.fetch(job.source, job.company, get, search=[job.title], wanted=_never)}

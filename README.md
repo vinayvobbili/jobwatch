@@ -38,7 +38,8 @@ Workday (some through Eightfold, Oracle Recruiting Cloud, SmartRecruiters or a J
 small companies through Rippling. Each publishes open roles as public JSON so anyone can build a careers page, with
 no API key or scraping; Google publishes its own (with YouTube's and DeepMind's) as an XML feed for job sites,
 Amazon's careers site (amazon.jobs, with AWS) answers its own search in JSON, and Avature careers portals
-(Lenovo's, for one) list every posting in a sitemap for search engines.
+(Lenovo's, for one) list every posting in a sitemap for search engines. Hundreds of startups post once a month
+in Hacker News' "Ask HN: Who is hiring?" thread, which HN's search API serves whole.
 jobwatch reads those feeds for the companies on your watchlist:
 
 - **Complete and fresh:** a role appears as soon as the company posts it, not when an aggregator picks it up.
@@ -59,7 +60,7 @@ jobwatch reads those feeds for the companies on your watchlist:
   US roles unless the board is `amazon/any`. A SmartRecruiters board is searched the same way, 24 titles a
   page, and each posting it reads is one page. An Avature portal's sitemap is one request a run; a posting
   whose title has your `filters.titles` words and passes your title filters is read from its page, once, two at
-  a time.
+  a time. HN's Who is hiring is one request to find the thread and one to read it whole.
 - **Within the rules:** it reads public APIs meant for this, and follows robots.txt. SmartRecruiters' own API
   host asks crawlers to stay away, so jobwatch doesn't use it: it reads the company's public careers site
   (careers.smartrecruiters.com, and each posting's page on jobs.smartrecruiters.com), which robots.txt leaves
@@ -166,6 +167,7 @@ companies:
   - {source: oracle, board: eeho.fa.us2/CX_45001, name: Oracle}  # pod.fa.region/site, from a job link
   - smartrecruiters:ServiceNow                          # careers.smartrecruiters.com/ServiceNow
   - {source: avature, board: jobs.lenovo.com/careers, name: Lenovo}  # an Avature portal: host/portal
+  - hn:whoishiring                                      # HN's Who is hiring thread (whoishiring/3: last 3 months')
 
 filters:
   titles: ["engineer", "architect"]       # regexes; the title must match one
@@ -219,6 +221,20 @@ it fetches. If it's offline, `jobwatch fetch` warns about that board, and each o
 through the company's own careers site (on Today, in a job's details, in `jobwatch show` and to an AI
 assistant). Add the company's careers site to the board, `{board: ashby:acme, careers:
 https://acme.example/careers}`, and its jobs link there instead. If the page can't be read, nothing changes.
+
+### Hacker News' Who is hiring
+
+`hn:whoishiring` watches the latest monthly "Ask HN: Who is hiring?" thread; `hn:whoishiring/3` the last three
+(up to 12). It's read from HN's search API (hn.algolia.com), which robots.txt allows: one request finds the
+threads and one reads each whole, so a run never asks for a post at a time. Each company's post is one job, named
+after its company, with every role its first line names in the title ("Senior Engineer, Designer"; roles
+listed further on when the first line has none). The place, remote and pay come from that first line
+(`Acme | Senior Engineer | Remote (US) | $180k-$220k | link`), and the post's text is the description. The job
+links to the company's own job page when the post has one (a posting on a board jobwatch reads first, then that
+board, then a careers page), else to the post on HN. Boards it links to are noted with the job, not read: add
+one to the watchlist to watch it. A post that's deleted or flagged is gone from the thread, so its job closes;
+an edited one is read again. Replies, remarks and job seekers' posts aren't jobs. The first line is free text,
+so a post written in sentences may come out as "Open roles (see the post)".
 
 ### How locations match
 

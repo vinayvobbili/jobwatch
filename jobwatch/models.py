@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 @dataclass
 class Job:
-    source: str                 # greenhouse | lever | ashby | workday | eightfold
+    source: str                 # greenhouse | lever | ashby | workday | eightfold | ... | hn
     company: str                # the company's board name on that system, e.g. "anthropic"
     id: str                     # the posting's id on that system
     title: str
@@ -24,9 +24,11 @@ class Job:
     description: str = ""
     # When the board's hosted job pages are offline (see sources.Hosted): a line to show with the job, saying so
     # and where to apply instead; and the board's own link for the posting, when `url` became the company's
-    # careers site.
+    # careers site (or, for an HN post, its link on HN when `url` is the company's own job page).
     link_note: str = ""
     posting_url: str = ""
+    # An HN post's links to boards jobwatch can read ("greenhouse:acme"): ones to suggest watching. Not read.
+    boards: list[str] = field(default_factory=list)
 
     @property
     def key(self) -> str:

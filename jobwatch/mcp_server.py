@@ -20,7 +20,8 @@ server = MCPServer(
     "jobwatch",
     instructions=(
         "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, "
-        "Google Careers, Amazon, Oracle Recruiting Cloud, SmartRecruiters, Avature) from a watchlist file. "
+        "Google Careers, Amazon, Oracle Recruiting Cloud, SmartRecruiters, Avature) and Hacker News' monthly "
+        "\"Ask HN: Who is hiring?\" thread (one job per company's post) from a watchlist file. "
         "find_board looks up a company's board (by name, or a job or careers page link), add_board puts it on the "
         "watchlist, list_boards and remove_board manage the rest. list_suggested_boards lists companies whose jobs "
         "keep coming in from alerts or add_application while their board isn't watched, with what to pass "
@@ -103,6 +104,8 @@ def find_board(
     A Workday, Oracle Recruiting Cloud or Jibe board that isn't found by name is found from a link to a job on it.
     An Avature careers portal is host/portal (avature:jobs.lenovo.com/careers); a name finds one only at
     name.avature.net/careers, so give a job link from any other.
+    Hacker News' "Who is hiring?" thread is one board, hn:whoishiring (hn:whoishiring/N: the last N months'),
+    found by "Hacker News" or the news.ycombinator.com/submitted?id=whoishiring link.
     Use it before add_board; to track one job from its link, use add_application instead."""
     return [{"entry": f"{s}:{b}", "open_roles": sources.open_roles(jobs), "careers": sources.careers_url(s, b),
              "sample_titles": [j.title for j in jobs[:5]]}
