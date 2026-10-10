@@ -475,6 +475,10 @@ jobwatch suggest --add Umbrella        # put its board on the watchlist
 jobwatch suggest --dismiss Hooli       # don't suggest it again
 ```
 
+After changing your filters, or for HN posts fetched before they were noted, `jobwatch suggest --rescan` notes
+the companies of the open posts already in the state file first (nothing is read from the web; running it again
+counts nothing twice).
+
 The board is the one a job was found on when the alert import matched it there (or the one an HN post links
 to), else one found under the
 company's name the way `jobwatch find` looks (check its titles: a guessed name can belong to another company).

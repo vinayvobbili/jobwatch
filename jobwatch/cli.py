@@ -270,6 +270,10 @@ def cmd_suggest(args, cfg, store):
         print(f"{suggest.dismiss(store, which).name} won't be suggested again.")
     if args.add or args.dismiss:
         return
+    if args.rescan:
+        n = suggest.rescan(cfg, store)
+        if args.format != "json":
+            print(f"Rescanned the HN posts already kept: {n} compan{'y' if n == 1 else 'ies'} noted.\n")
     found = suggest.suggestions(cfg, store, limit=args.limit, look=not args.no_lookup)
     if args.format == "json":
         print(json.dumps([s.to_dict() for s in found], indent=2, ensure_ascii=False))
@@ -495,13 +499,16 @@ def build_parser() -> argparse.ArgumentParser:
                        "ones counting more) are listed with their board: the one a job was found on or its HN post "
                        "links to, or one found under the company's name the way `find` looks (once per company, "
                        "kept). --add puts a board on the watchlist (the file is rewritten, the old one kept as "
-                       ".bak); --dismiss stops suggesting a company.")
+                       ".bak); --dismiss stops suggesting a company; --rescan notes the HN posts already kept first "
+                       "(after changing your filters, or for posts fetched before they were noted).")
     p.add_argument("--add", action="append", metavar="COMPANY", help="watch this company's board (its name as "
                    "listed, or the board's entry); repeatable")
     p.add_argument("--dismiss", action="append", metavar="COMPANY", help="don't suggest this company again; "
                    "repeatable")
     p.add_argument("--limit", type=int, default=suggest.LIMIT, metavar="N", help=f"list N (default {suggest.LIMIT})")
     p.add_argument("--no-lookup", action="store_true", help="look for no boards: list what's known")
+    p.add_argument("--rescan", action="store_true", help="first note the companies of the HN posts already kept "
+                   "that pass your filters (still open; nothing is read from the web)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_suggest)
 

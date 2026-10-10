@@ -86,28 +86,43 @@ def posted_on(job: Job) -> list[str]:
     return [f"{job.source}:{job.company}"] if job.source != MANUAL else []
 
 
-def record(store: Store, boards: list[Board], job: Job, found: list[tuple] | None = None):
+def record(store: Store, boards: list[Board], job: Job, found: list[tuple] | None = None,
+           at: str | None = None) -> bool:
     """Note a job that came in from an alert, `add` or an HN post, when its company's board isn't watched. found:
     the boards already looked for under the company's name ((source, board, ...) each; empty: none found), or
-    None when nobody looked."""
+    None when nobody looked. at: when it came in (default now). Returns whether it's newly noted."""
     name, on = job.display_company, posted_on(job)
     if not company_id(name) or any(watched(boards, name, e) for e in on or [""]):
-        return
+        return False
     if on:
         entry, by = on[0], "posting"
     elif found:
         entry, by = f"{found[0][0]}:{found[0][1]}", "name"
     else:
         entry, by = None if found is None else "", None
-    store.note_unwatched(company_id(name), name, job.key, entry, by)
+    return store.note_unwatched(company_id(name), name, job.key, entry, by, at)
 
 
-def record_posts(store: Store, cfg: Config, jobs: list[Job]):
+def record_posts(store: Store, cfg: Config, jobs: list[Job], at: dict[str, str] | None = None) -> set[str]:
     """Note the companies of a thread's new posts (HN), the ones that pass the filters, as record does. Nothing is
-    looked for (no request is made): a post that links no board leaves its company to be looked for later."""
-    for job in jobs:
-        if reject_reason(job, cfg.filters) is None:
-            record(store, cfg.boards, job)
+    looked for (no request is made): a post that links no board leaves its company to be looked for later. at:
+    when each came in, by key (default now). Returns the companies (their ids) with a post newly noted."""
+    at = at or {}
+    return {company_id(job.display_company) for job in jobs
+            if reject_reason(job, cfg.filters) is None and record(store, cfg.boards, job, None, at.get(job.key))}
+
+
+def rescan(cfg: Config, store: Store) -> int:
+    """Note the companies of the posts already kept from each watched thread (HN), the ones still open, as
+    record_posts does for new ones: posts fetched before they were noted, or that pass the filters only since
+    they changed. Each counts from when it was first seen. Nothing is read from the web, and a post already noted
+    isn't noted again. Returns how many companies had a post newly noted, dismissed ones aside."""
+    noted = set()
+    for b in cfg.boards:
+        if (src := sources.SOURCES.get(b.source)) and src.many_companies:
+            kept = store.open_board_jobs(b.source, b.board)
+            noted |= record_posts(store, cfg, [j for j, _ in kept], at={j.key: seen for j, seen in kept})
+    return len(noted - {r["company"] for r in store.unwatched(dismissed=True) if r["dismissed_at"]})
 
 
 def look_up(store: Store, s: Suggestion, page=None):

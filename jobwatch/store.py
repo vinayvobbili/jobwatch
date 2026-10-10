@@ -218,6 +218,12 @@ class Store:
         rows = self.db.execute("SELECT key, data FROM jobs WHERE source=? AND company=?", (source, company))
         return {r["key"]: Job.from_dict(json.loads(r["data"])) for r in rows}
 
+    def open_board_jobs(self, source: str, company: str) -> list[tuple[Job, str]]:
+        """One board's jobs still open, newest first, each with when it was first seen."""
+        rows = self.db.execute("SELECT data, first_seen FROM jobs WHERE source=? AND company=? AND closed IS NULL "
+                               "ORDER BY first_seen DESC", (source, company))
+        return [(Job.from_dict(json.loads(r["data"])), r["first_seen"]) for r in rows]
+
     def set_closed(self, key: str, closed: bool) -> bool:
         """Record whether a job's posting is gone, as found by checking it (`jobwatch check`); a watched board's
         jobs are also kept up to date by every fetch. Returns whether that changed anything."""
@@ -482,15 +488,17 @@ class Store:
     # posting (one of its jobs is on that board, or its HN post links to it) or name (a board found under its name).
 
     def note_unwatched(self, company: str, name: str, key: str, entry: str | None = None,
-                       found_by: str | None = None):
-        """Record a job that came in from a company whose board isn't watched, and its board when known."""
+                       found_by: str | None = None, seen_at: str | None = None) -> bool:
+        """Record a job that came in from a company whose board isn't watched (at seen_at, default now), and its
+        board when known. Returns whether the job is newly recorded: one already recorded keeps when it came in."""
         with self.db:
             self.db.execute("INSERT OR IGNORE INTO unwatched (company, name) VALUES (?, ?)", (company, name))
             self.db.execute("UPDATE unwatched SET name=? WHERE company=?", (name, company))
-            self.db.execute("INSERT OR IGNORE INTO unwatched_jobs (company, key, seen_at) VALUES (?, ?, ?)",
-                            (company, key, _now()))
+            new = self.db.execute("INSERT OR IGNORE INTO unwatched_jobs (company, key, seen_at) VALUES (?, ?, ?)",
+                                  (company, key, seen_at or _now())).rowcount
         if entry is not None:
             self.set_unwatched_board(company, entry, found_by)
+        return bool(new)
 
     def set_unwatched_board(self, company: str, entry: str, found_by: str | None = None):
         """Keep what's been found of a company's board: a board one of its jobs is on beats one found under its

@@ -231,7 +231,79 @@ def test_a_failure_noting_hn_companies_never_fails_the_check(hn_watched, monkeyp
     assert rows(store) == {}
 
 
-# -- Accepting and dismissing
+def kept_unnoted(cfg, store, monkeypatch):
+    """Check the thread the way a version before HN suggestions did: its posts are kept, their companies not
+    noted."""
+    with monkeypatch.context() as m:
+        m.setattr(suggest, "record_posts", lambda *args: set())
+        assert len(watch.fetch_all(cfg, store).new) == 5
+
+
+def test_a_rescan_notes_the_posts_kept_before(hn_watched, monkeypatch):
+    cfg, store, fake = hn_watched
+    kept_unnoted(cfg, store, monkeypatch)
+    assert rows(store) == {}
+    # each post is kept with the boards it links to
+    kept = {j.key: (j, seen) for j, seen in store.open_board_jobs("hn", "whoishiring")}
+    assert kept["hn:whoishiring:9100001"][0].boards == ["ashby:acmerobotics"]
+    fake.calls.clear()
+    assert suggest.rescan(cfg, store) == 2
+    assert fake.calls == []  # nothing read from the web
+    got = rows(store)
+    # Cobalt's post links a watched board and Dynamo is watched under its name; Ember's job fails the filters
+    assert set(got) == {"acmerobotics", "bluebird"}
+    assert (got["acmerobotics"]["entry"], got["acmerobotics"]["found_by"]) == ("ashby:acmerobotics", "posting")
+    assert got["acmerobotics"]["jobs"][0][1] == kept["hn:whoishiring:9100001"][1]  # counts from when it was kept
+    before = [s.to_dict() for s in suggest.suggestions(cfg, store)]
+    assert [s["company"] for s in before] == ["Acme Robotics", "Bluebird Labs"]
+    # again: nothing new, nothing counted twice
+    assert suggest.rescan(cfg, store) == 0
+    assert [s.to_dict() for s in suggest.suggestions(cfg, store)] == before
+    assert [len(rows(store)[c]["jobs"]) for c in ("acmerobotics", "bluebird")] == [1, 1]
+
+
+def test_a_rescan_after_the_filters_change(hn_watched, tmp_path):
+    cfg, store, _ = hn_watched
+    watch.fetch_all(cfg, store)  # noted as they came in
+    assert set(rows(store)) == {"acmerobotics", "bluebird"}
+    assert suggest.rescan(cfg, store) == 0
+    path = tmp_path / "jobwatch.yaml"
+    path.write_text(path.read_text().replace("locations: [remote]", "locations: [remote, london]"))
+    cfg = config.load(path)
+    assert suggest.rescan(cfg, store) == 1  # Ember's London post passes now
+    assert rows(store)["emberhealth"]["entry"] == "ashby:emberhealth"
+    assert "Ember Health" in {s.name for s in suggest.suggestions(cfg, store)}
+
+
+def test_a_rescan_skips_closed_posts_and_keeps_dismissed_ones_dismissed(hn_watched, monkeypatch):
+    cfg, store, _ = hn_watched
+    store.note_unwatched("acmerobotics", "Acme Robotics", "manual:acmerobotics:engineer")
+    suggest.dismiss(store, "Acme Robotics")
+    kept_unnoted(cfg, store, monkeypatch)
+    store.set_closed("hn:whoishiring:9100002", True)  # Bluebird's post is gone from the thread
+    assert suggest.rescan(cfg, store) == 0  # Acme is dismissed: not counted
+    got = rows(store)
+    assert set(got) == {"acmerobotics"} and got["acmerobotics"]["dismissed_at"]
+    assert [j.key for j, _ in got["acmerobotics"]["jobs"]] == ["hn:whoishiring:9100001"]  # its post is tracked
+    assert suggest.suggestions(cfg, store) == []
+
+
+def test_rescan_from_the_cli_and_mcp(hn_watched, monkeypatch, tmp_path, capsys):
+    cfg, store, _ = hn_watched
+    kept_unnoted(cfg, store, monkeypatch)
+    path = str(tmp_path / "jobwatch.yaml")
+    cli.main(["-c", path, "suggest", "--no-lookup"])
+    assert capsys.readouterr().out.startswith("No companies to suggest")
+    cli.main(["-c", path, "suggest", "--rescan", "--no-lookup"])
+    out = capsys.readouterr().out
+    assert out.startswith("Rescanned the HN posts already kept: 2 companies noted.")
+    assert "Acme Robotics: 1 matching job" in out and "Bluebird Labs: 1 matching job" in out
+    mcp = pytest.importorskip("jobwatch.mcp_server")
+    monkeypatch.setenv("JOBWATCH_CONFIG", path)
+    store.dismiss_unwatched("bluebird")
+    found = mcp.list_suggested_boards(look_up_boards=False, rescan=True)
+    assert [s["company"] for s in found] == ["Acme Robotics"]
+
 
 def test_accept_writes_the_watchlist(web, watchlist):
     umbrella_board(web)

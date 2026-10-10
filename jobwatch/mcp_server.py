@@ -156,6 +156,10 @@ def list_suggested_boards(
     look_up_boards: Annotated[bool, Field(description=(
         "Look for the board of each listed company that hasn't been looked for yet, the way find_board does "
         "(once per company; what's found is kept). False makes no requests."))] = True,
+    rescan: Annotated[bool, Field(description=(
+        "First note the companies of the HN posts already kept (still open) that pass the filters: after the "
+        "filters change, or for posts fetched before they were noted. Reads nothing from the web; safe to "
+        "repeat."))] = False,
 ) -> list[dict]:
     """Companies to watch: those whose jobs came in from job-alert emails (import_job_alerts), add_application or
     posts in HN's Who is hiring thread (fetch_jobs, when it's watched) while their board isn't on the watchlist,
@@ -164,9 +168,12 @@ def list_suggested_boards(
     board, or its HN post links to it; name: found under its name, so check with
     find_board's sample titles that it's theirs), careers, sample_titles, and add_board: the arguments to pass to
     add_board to watch it (null when no board was found: find_board with a link to its careers page may find
-    one). dismiss_suggested_board stops suggesting one. Suggest; let the person decide which to add."""
+    one). dismiss_suggested_board stops suggesting one. rescan picks up HN posts kept before (see its
+    description). Suggest; let the person decide which to add."""
     cfg, store = _open()
     try:
+        if rescan:
+            suggest.rescan(cfg, store)
         return [s.to_dict() for s in suggest.suggestions(cfg, store, limit=limit, look=look_up_boards)]
     finally:
         store.close()
