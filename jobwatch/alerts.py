@@ -17,6 +17,8 @@ redirect wrappers. Then, for the jobs that pass the watchlist's filters on what 
 A job found on its company's board is tracked there; otherwise from what the email (and the page) said. Jobs
 already tracked, including the same job seen on its board, are left alone. New ones are status new, so they go
 through the filters into the digest like any other, with `via` saying where they came from (linkedin-alert...).
+A new one that's (maybe) the same opening as a job already applied to, queued or skipped (see dupes.py) says
+so, and the same opening (a shared id) is recorded as its duplicate; it's still in the digest, flagged.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlencode, urlparse
 
-from . import linkedin, sources
+from . import dupes, linkedin, sources
 from .filters import reject_reason
 from .models import Job
 from .store import MANUAL, Store, _slug
@@ -635,6 +637,7 @@ class Found:
     result: str = ""       # new, or known (already tracked), or duplicate (twice in these emails)
     reason: str | None = None  # why the filters leave it out of the digest; None: it passes
     notes: list[str] = field(default_factory=list)  # links not read (robots.txt), errors
+    same: dupes.Match | None = None  # a new job that's (maybe) the same opening as one acted on
 
     @property
     def key(self) -> str:
@@ -779,6 +782,7 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
     is kept as the email has it. dry_run: nothing is recorded, the result says what would be."""
     result = Intake(emails=len(messages), dry_run=dry_run)
     tracked = _Tracked(store)
+    acted = dupes.Index(store)
     resolver = _Resolver(cfg.boards, page)
     seen: dict[str, Found] = {}
     for msg in messages:
@@ -807,6 +811,7 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
                 f.reason = reject_reason(f.job, cfg.filters)
                 continue
             f.result = "new"
+            f.same = acted.match(f.job)
             if not dry_run:
                 _record(store, f)
             tracked.add(f.job)
@@ -816,6 +821,8 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
 def _record(store: Store, f: Found):
     store.keep(f.job)
     store.set_via(f.job.key, f.alert.via)
+    if f.same and f.same.strong:
+        store.set_duplicate(f.job.key, f.same.other.key)
     if f.how in ("board", "posting") and f.alert.url and f.alert.url != f.job.url:
         label = LABELS.get(f.alert.via, f.alert.via.removesuffix("-alert"))
         store.add_note(f.job.key, f"From a {label} job alert: {f.alert.url}")
@@ -840,6 +847,8 @@ def summary(r: Intake, every: bool = False) -> str:
         j = f.job
         mark = "" if f.reason is None else f"  [filtered: {f.reason}]"
         out.append(f"  {j.key}  {j.display_company}: {j.title}  ({HOW[f.how]}; via {f.alert.via}){mark}")
+        if f.same:
+            out.append(f"    {f.same.line}")
     if r.empty:
         out.append(f"No jobs found in {len(r.empty)} email(s): " + "; ".join(r.empty[:5])
                    + (" ..." if len(r.empty) > 5 else ""))
@@ -853,7 +862,8 @@ def to_dict(r: Intake) -> dict:
         "new_passing_filters": sum(f.result == "new" and f.reason is None for f in r.found),
         "found": [{"key": f.key, "result": f.result, "how": f.how, "via": f.alert.via, "company": f.alert.company,
                    "title": f.alert.title, "location": f.alert.location, "pay": f.alert.pay, "link": f.alert.url,
-                   "tracked_link": f.job.url if f.job else "", "filtered": f.reason, "notes": f.notes}
+                   "tracked_link": f.job.url if f.job else "", "filtered": f.reason, "notes": f.notes,
+                   "duplicate_of": f.same.to_dict() if f.same else None}
                   for f in r.found],
         "no_jobs_in": r.empty,
     }

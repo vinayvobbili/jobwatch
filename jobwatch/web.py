@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
-from . import __version__, chat, config, contacts, learn, levels, prep, report, sources
+from . import __version__, chat, config, contacts, dupes, learn, levels, prep, report, sources
 from .config import ConfigError
 from .filters import KINDS, rejection
 from .package import Package
@@ -337,7 +337,8 @@ class App:
                 "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
                 "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
                 "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max,
-                "warnings": e.warnings, "link_note": j.link_note or None}
+                "warnings": e.warnings, "link_note": j.link_note or None,
+                "duplicate_of": e.duplicate.to_dict() if e.duplicate else None}
 
     def _pay(self, cfg, store, rows: list[tuple], most: int = 1000) -> dict[str, dict]:
         """{key: {"expected_pay": …}} for (job, result) pairs from what's kept, asking Levels.fyi for nothing here.
@@ -530,6 +531,7 @@ class App:
                     "can_score": resume and bool(job.description.strip()),
                     "unscored": None if fit else unscored_reason(cfg, store, job, self.scorer.reasons(cfg, store)),
                     "manual": job.source == MANUAL,
+                    "duplicate_of": (same := dupes.check(store, job.key)) and same.to_dict(),
                     **self._pay(cfg, store, [(job, None)]).get(job.key, {}),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
         return self._with_store(run)
@@ -627,7 +629,9 @@ class App:
         def run(cfg, store):
             full = [store.find(k)[0].key for k in keys]
             store.set_status(full, status, body.get("note"))
-            return {"keys": full, "status": status}
+            # Queued all the same, with a word when it's (maybe) the same opening as one acted on.
+            same = dupes.check(store, full[0]) if status == "queued" else None
+            return {"keys": full, "status": status, "warning": same.line if same else None}
         return self._with_store(run)
 
     def post_score(self, body) -> dict:

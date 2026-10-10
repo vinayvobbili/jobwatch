@@ -347,6 +347,31 @@ watch (a LinkedIn job can't be checked: LinkedIn's robots.txt doesn't allow read
 jobwatch check                             # closed (or back) since the last check; --all lists the open ones too
 ```
 
+### The same opening twice
+
+One opening can reach you more than once: from its board and a job-alert email, under a new title, or
+reposted under a new req after you applied. Every job a fetch, an alert import or `jobwatch add` brings in
+is compared with the ones you've queued, applied to (or got further with) and skipped, at the same company:
+
+- **The same opening:** the two share a req or posting id: in the title or posting text ("Req ID: R-0123456",
+  "(482913)"), in the posting's link, or in your note on the other job (its link, "req 482913", or a note
+  that it was reposted as another posting). The job is shown with "Already applied 2026-03-02", or
+  "Reposted: you applied 2026-03-02 (old req …)" when your note says it was reposted.
+- **Possibly the same:** only the title matches, setting aside dashes, a req in the title, "(Remote)" and a
+  seniority word only one of them has. It's shown with "Possible duplicate of your 2026-03-02 application:
+  check it's a different opening". Two postings on one board, two different reqs, or "Senior" against
+  "Staff" are never matched by title.
+
+Nothing is hidden: the job stays in the digest and the queue, with the badge in the browser and the warning
+first among the queue's checks, in `jobwatch show`, and when you queue it (it's queued all the same). To
+list every pair you track, without changing anything:
+
+```
+jobwatch dupes                             # --strong: only the ones sharing an id
+```
+
+Skip the one you don't need with `jobwatch mark skipped <key>`.
+
 ### Jobs you found somewhere else
 
 A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
@@ -513,7 +538,8 @@ marking them shown. Roles that disappear from a board are marked closed.
 
 - **Watchlist:** `find_board`, `list_boards`, `add_board`, `remove_board`
 - **New jobs:** `fetch_jobs`, `import_job_alerts`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
-- **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`
+- **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`,
+  `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`)
 - **What was sent:** `save_application_package`, `get_application_package`, `get_interview_prep`
 
 (0.3.0 renamed them to verb_noun: `digest` is now `get_digest`, `job_details` is `get_job`, `apply_queue` is
