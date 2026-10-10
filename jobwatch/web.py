@@ -33,6 +33,7 @@ from .watch import (
     build_digest,
     fetch_all,
     load_contacts,
+    pace,
     queue,
     save_job,
     score_entries,
@@ -376,7 +377,7 @@ class App:
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
                 "scoring": raw.get("scoring") or {}, "learning": raw.get("learning") or {},
-                "display": raw.get("display") or {},
+                "display": raw.get("display") or {}, "pace": raw.get("pace") or {},
                 # as written (YAML reads a bare off as false); unset: the default
                 "fetch_every": "off" if every is False else str(every) if every is not None else None}
 
@@ -443,7 +444,9 @@ class App:
                             for e in d.entries],
                    "rejected": d.rejected,
                    "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({}),
-                   "checked": self.refresher.status(cfg, store)}
+                   "checked": self.refresher.status(cfg, store),
+                   # Today leads with the top `picks` in the order picked (0: every match), and says the pace.
+                   "picks": cfg.today, "pace": pace(cfg, store)}
             # "New" shows once: the next visit lists these as seen.
             store.set_status([k for e in d.entries if e.record.get("status") == "new" for k in e.keys], "shown")
             return out
@@ -472,6 +475,10 @@ class App:
             return {"total": sum(by.values()), "by": {k: by[k] for k in KINDS if k in by}, "kind": kind or None,
                     "jobs": jobs[:limit], "more": max(0, len(jobs) - limit)}
         return self._with_store(run)
+
+    def get_pace(self, q) -> dict:
+        """Applications sent today against the watchlist's pace (see watch.pace); null when it's off."""
+        return {"pace": self._with_store(pace)}
 
     def get_queue(self, q) -> list[dict]:
         def run(cfg, store):
@@ -740,6 +747,7 @@ ROUTES = {
     ("GET", "/api/digest"): App.get_digest,
     ("GET", "/api/hidden"): App.get_hidden,
     ("GET", "/api/queue"): App.get_queue,
+    ("GET", "/api/pace"): App.get_pace,
     ("GET", "/api/jobs"): App.get_jobs,
     ("GET", "/api/job"): App.get_job,
     ("POST", "/api/mark"): App.post_mark,

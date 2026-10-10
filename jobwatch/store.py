@@ -254,6 +254,12 @@ class Store:
         rows.sort(key=lambda r: (r[1]["status"] in ENDED, r[1]["follow_up"] is None, r[1]["follow_up"] or ""))
         return rows
 
+    def applied_on(self, on: str | date) -> int:
+        """How many applications went out on this day, whatever stage they're at now. applied_at is the local
+        calendar day (see set_status), so "today" is the day on this computer's clock, not UTC's."""
+        return self.db.execute(f"SELECT COUNT(*) FROM jobs WHERE applied_at=? AND status IN "
+                               f"({','.join('?' * len(STAGES))})", (day(on), *STAGES)).fetchone()[0]
+
     def find(self, key: str) -> tuple[Job, dict]:
         """A job by its full key, by a unique ending of it (the posting id is enough), or else by its company's
         name or part of it, in any case, when that names one job: the one queued or applied to there, or the only

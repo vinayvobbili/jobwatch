@@ -213,7 +213,9 @@ def get_digest(
         "0 (the default) skips scoring; each job takes minutes on the local backend, so keep it small."))] = 0,
     include_seen: Annotated[bool, Field(description=(
         "Also include jobs already shown in an earlier digest, not just new ones."))] = False,
-    limit: Annotated[int, Field(ge=1, description="The most jobs to return, best first.")] = 25,
+    limit: Annotated[int | None, Field(ge=1, description=(
+        "The most jobs to return, best first. Default: the watchlist's display.today (10 unless set; 25 when "
+        "it's 0, for every match)."))] = None,
     mark_shown: Annotated[bool, Field(description=(
         "Mark the returned jobs as shown, so the next digest leaves them out. False to peek without "
         "changing anything."))] = True,
@@ -221,13 +223,16 @@ def get_digest(
     """New jobs that pass the watchlist's filters, best first (fit score when scored, then keyword relevance),
     with people the user knows at each company. Call fetch_jobs first to pick up today's postings. This is for
     finding jobs to consider; for jobs already queued use list_queued_jobs, and for applications use
-    list_applications."""
+    list_applications. total is how many matched before the limit (jobs left out stay new for the next
+    digest). pace, unless the user turned it off: applications sent today against how many they aim for a day
+    (daily) and the most (max); once met, suggest the rest wait for tomorrow, but never refuse to help."""
     cfg, store = _open()
     try:
-        d = build_digest(cfg, store, include_seen=include_seen, score_top=score_top, limit=limit)
+        d = build_digest(cfg, store, include_seen=include_seen, score_top=score_top,
+                         limit=limit or cfg.today or 25)
         if mark_shown:
             store.set_status([k for e in d.entries for k in e.keys], "shown")
-        return json.loads(report.to_json(d))
+        return {**json.loads(report.to_json(d)), "pace": watch.pace(cfg, store)}
     finally:
         store.close()
 

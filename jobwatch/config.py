@@ -109,6 +109,38 @@ def _pay(raw, path: Path) -> Pay:
     return Pay(levels=raw.get("levels", False), years=years, region=str(raw.get("region") or "").strip())
 
 
+def _whole(raw, name: str, path: Path, zero: str) -> int:
+    """A setting that's a whole number, 0 or more; `zero` says what 0 means."""
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+        raise ConfigError(f"{path}: {name} must be a whole number, 0 or more ({zero}), got {raw!r}")
+    return raw
+
+
+@dataclass(frozen=True)
+class Pace:
+    """pace in the watchlist: how many applications to send a day (daily), and the most (max). Today and the
+    queue say how many went out today. A few good ones a day beat a burst; daily 0 turns it off, for someone
+    fully in the job market."""
+    daily: int = 3
+    max: int = 5
+
+
+def _pace(raw, path: Path) -> Pace:
+    if raw is None:
+        return Pace()
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path}: pace looks like {{daily: 3, max: 5}}, got {raw!r}")
+    unknown = set(raw) - set(Pace.__dataclass_fields__)
+    if unknown:
+        raise ConfigError(f"{path}: unknown pace setting(s): {', '.join(sorted(unknown))}")
+    daily = _whole(raw.get("daily", Pace.daily), "pace.daily", path, "0 turns the pace off")
+    most = _whole(raw["max"], "pace.max", path, "the most a day") if "max" in raw else max(Pace.max, daily)
+    if daily and most < daily:
+        raise ConfigError(f"{path}: pace.max (the most a day) can't be less than pace.daily, got "
+                          f"daily {daily} and max {most}")
+    return Pace(daily, most)
+
+
 @dataclass
 class Config:
     path: Path
@@ -124,6 +156,8 @@ class Config:
     near: str = ""             # a city, for certificate programs at colleges nearby
     theme: str = "system"      # the page: see THEMES and WIDTHS
     width: str = "standard"
+    today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
+    pace: Pace = field(default_factory=Pace)
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
@@ -220,7 +254,7 @@ def locate(explicit: str | Path | None = None) -> Path:
 
 
 SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring", "learning", "display",
-            "fetch_every")
+            "pace", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -327,6 +361,7 @@ def load(explicit: str | Path | None = None) -> Config:
         raise ConfigError(f"{path}: display.theme must be one of {', '.join(THEMES)}, got {theme!r}")
     if width not in WIDTHS:
         raise ConfigError(f"{path}: display.width must be one of {', '.join(WIDTHS)}, got {width!r}")
+    today = _whole(display.get("today", 10), "display.today", path, "0 shows every match")
     listed = [_board(e, path, strict=False) for e in raw.get("companies") or []]
     dupes = {b for b in listed if listed.count(b) > 1}
     if dupes:
@@ -341,7 +376,8 @@ def load(explicit: str | Path | None = None) -> Config:
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
         backend=backend, score_top=int(scoring.get("top", 0)), auto_score=auto_score,
-        timeline=timeline, near=_near(learning, filters), theme=theme, width=width,
+        timeline=timeline, near=_near(learning, filters), theme=theme, width=width, today=today,
+        pace=_pace(raw.get("pace"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
@@ -375,6 +411,16 @@ filters:
   # min_fit: 70                                # hide jobs whose fit score is below this; unscored ones still show
   # flags:                                     # not filters: warnings on queued jobs whose posting says this
   #   "active (TS|top secret)": clearance
+
+# Today (and `jobwatch digest`) lead with your best few matches; the rest are a click (or --all) away.
+# display:
+#   today: 10            # how many picks a day; 0 shows every match
+
+# How many applications to send a day: a few good ones beat a burst. Today and the queue say how many went
+# out today. Nothing is ever blocked. daily: 0 turns it off (when looking for work is your full-time job).
+# pace:
+#   daily: 3
+#   max: 5
 
 # Relevance: keyword -> weight. Title hits count double. Prefix "re:" for a regex.
 keywords:

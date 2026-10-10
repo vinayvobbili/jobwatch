@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from . import dupes, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config
@@ -188,6 +188,24 @@ class Digest:
     scored: int = 0
     score_errors: dict[str, str] = field(default_factory=dict)
     note: str = ""
+    total: int = 0                # how many matched, before the limit: more than len(entries) when it cut some
+
+
+def pace(cfg: Config, store: Store, today: date | None = None) -> dict | None:
+    """How many applications went out today (the local day) against the watchlist's pace: applied, daily, max,
+    met (daily reached), at_max, and a line to show. None when pace.daily is 0 (off). It's advice: nothing is
+    held back when it's met."""
+    p = cfg.pace
+    if not p.daily:
+        return None
+    n = store.applied_on(today or date.today())
+    if n >= p.max:
+        line = f"Applied today: {n}. That's plenty for one day: the rest can wait until tomorrow."
+    elif n >= p.daily:
+        line = f"Applied today: {n}. That's your {p.daily} for today."
+    else:
+        line = f"Applied today: {n} of {p.daily}"
+    return {"applied": n, "daily": p.daily, "max": p.max, "met": n >= p.daily, "at_max": n >= p.max, "line": line}
 
 
 def load_contacts(cfg: Config) -> Contacts | None:
@@ -552,7 +570,9 @@ def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_to
             if todo:
                 digest.scored, digest.score_errors = score_entries(cfg, store, todo, progress)
     entries.sort(key=_rank)
-    digest.entries = _group(entries)[:limit] if limit else _group(entries)
+    grouped = _group(entries)
+    digest.total = len(grouped)
+    digest.entries = grouped[:limit] if limit else grouped
     return digest
 
 

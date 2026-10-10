@@ -22,6 +22,7 @@ Checked 48 board(s): 9,412 open roles, 37 new.
 # jobwatch digest
 
 6 matching job(s). Filtered out: 22 by location, 4 by pay, 5 by title.
+Applied today: 1 of 3.
 
 ### [Staff Data Engineer](https://jobs.ashbyhq.com/initech/c1)
 Initech · Denver, CO, United States; Remote · $230K–$300K · posted today
@@ -89,19 +90,26 @@ A page opens on your computer. Add the companies you want to watch (type a name 
 their jobs), say what you're looking for, and press **Check for new jobs**. From there:
 
 - **Today:** new matching jobs, with pay, how long ago they were posted, keywords, and who you know there.
-  **Queue** the ones worth applying to, **Skip** the rest. While the page is running it checks the boards by
-  itself every 6 hours (`fetch_every` in the watchlist), and Today says when they were last checked. A job
-  that disappears from its board drops off Today at the next check. **Companies to watch**, at the side, lists
+  It leads with **today's picks**: the top 10 in the order you sort by (best fit, newest or top pay), since
+  a few good applications a day beat a long list. **Show all** opens every match, and the search and
+  company filter always look through all of them. A line says how many you've applied to today against your
+  pace ("Applied today: 1 of 3"). **Queue** the ones worth applying to, **Skip** the rest. While the page is
+  running it checks the boards by itself every 6 hours (`fetch_every` in the watchlist), and Today says when
+  they were last checked. A job that disappears from its board drops off Today at the next check. **Companies
+  to watch**, at the side, lists
   companies whose jobs keep coming in from alerts or Hacker News posts while you don't watch them (see
   [Companies to watch](#companies-to-watch)).
-- **Queue:** your short list. Apply on the company's site, then press **I applied**.
+- **Queue:** your short list. Apply on the company's site, then press **I applied**. The pace line counts
+  it: once you reach your 3 for the day it says so, and at 5 that the rest can wait until tomorrow. It's
+  advice; nothing is ever blocked.
 - Long lists come in pages (12, 24, 48 or 96 at a time, kept per browser).
 - **Applications:** every job you applied to and where it stands (applied, screening, interviewing, offer,
   rejected, withdrawn), with the next step and a follow-up day. Those due come first. Filter by status with
   the chips over the list (or click the pipeline bar), and switch between **Cards** and a sortable **Table**.
   **Add an application** covers jobs you found elsewhere, such as a referral or a recruiter.
-- **Settings:** companies, filters, keywords, your resume (for fit scores), your LinkedIn connections, and the
-  page's theme (system, light or dark) and width (standard, wide or full, for a big monitor).
+- **Settings:** companies, filters, keywords, how many picks Today shows, the minimum fit score and your
+  daily pace, your resume (for fit scores), your LinkedIn connections, and the page's theme (system, light or
+  dark) and width (standard, wide or full, for a big monitor).
 - **Ask jobwatch:** a chat on Today (about all of today's jobs and your applications) and beside each job's
   details (about that posting). See [Chat](#chat).
 
@@ -199,6 +207,10 @@ scoring:
 display:                                  # the browser page
   theme: system                           # system, light or dark
   width: standard                         # standard, wide or full
+  today: 10                               # Today's picks, and the digest's length; 0 shows every match
+pace:                                     # applications a day: counted on Today and the queue, never enforced
+  daily: 3                                # 0 turns it off, for when job hunting is your full-time job
+  max: 5                                  # from this many on, the rest can wait until tomorrow
 fetch_every: 6h                           # the page checks the boards this often (90m, 1d; off to stop)
 ```
 
@@ -280,8 +292,9 @@ Each score keeps its reasons: every requirement, its verdict (met, partly, missi
 behind it. They're under "Why this score" in a job's details, at the end of `jobwatch show <key>`, and in
 the MCP `get_job` result. Scores saved before jobwatch kept these have only the summary.
 
-`filters.min_fit` (the Fit slider on Today's filter bar) hides jobs scored below it, counted as "fit" in the
-hidden roles. Jobs not scored yet still show, since scoring catches up in the background.
+`filters.min_fit` (the Fit slider on Today's filter bar, and in Settings next to how many picks Today shows)
+hides jobs scored below it, counted as "fit" in the hidden roles. Jobs not scored yet still show, since
+scoring catches up in the background.
 
 ## Chat
 
@@ -576,8 +589,10 @@ to a LinkedIn search of your 2nd-degree network there, to find someone who can i
 Companies are matched by name, ignoring suffixes like "Inc." and "Corporation". Your LinkedIn data is only
 read on your machine.
 
-A digest lists each job once. Use `digest --all` to include jobs already shown, or `--peek` to look without
-marking them shown. Roles that disappear from a board are marked closed.
+A digest lists each job once, the top `display.today` (10) of them, and ends with how many more match;
+those stay new for the next digest. Use `digest --all` for every match, including jobs already shown,
+`--limit N` for another number, or `--peek` to look without marking them shown. Roles that disappear from a
+board are marked closed. The MCP `get_digest` returns the same top 10 by default, with today's pace.
 
 ## MCP server
 

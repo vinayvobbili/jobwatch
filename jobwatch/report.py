@@ -88,10 +88,16 @@ def _line(e: Entry) -> list[str]:
     return [*out, ""]
 
 
-def to_markdown(d: Digest, title: str = "jobwatch digest") -> str:
-    out = [f"# {title}", "", f"{len(d.entries)} matching job(s)."]
+def to_markdown(d: Digest, title: str = "jobwatch digest", more: str = "", pace: dict | None = None) -> str:
+    """The digest to read. When the limit cut some (d.total), it says so, and ends with `more`: how to see
+    them. `pace`: today's applications against the pace (see watch.pace)."""
+    more_n = d.total - len(d.entries)
+    out = [f"# {title}", "", (f"Top {len(d.entries)} of {d.total}" if more_n > 0 else str(len(d.entries)))
+           + " matching job(s)."]
     if d.rejected:
         out[-1] += " Filtered out: " + ", ".join(f"{n} by {k}" for k, n in sorted(d.rejected.items())) + "."
+    if pace:
+        out.append(pace["line"] + ("" if pace["line"].endswith(".") else "."))
     if d.scored:
         out.append(f"Scored {d.scored} with shortlist-ai.")
     if d.note:
@@ -100,6 +106,8 @@ def to_markdown(d: Digest, title: str = "jobwatch digest") -> str:
     out.append("")
     for e in d.entries:
         out += _line(e)
+    if more_n > 0:
+        out.append(f"{more_n} more match" + (f": {more}" if more else "."))
     return "\n".join(out).rstrip() + "\n"
 
 
@@ -153,4 +161,5 @@ def to_json(d: Digest) -> str:
                   "duplicate_of": e.duplicate.to_dict() if e.duplicate else None}
                  for e in d.entries],
         "rejected": d.rejected, "scored": d.scored, "score_errors": d.score_errors, "note": d.note,
+        "total": max(d.total, len(d.entries)),
     }, indent=2, ensure_ascii=False)

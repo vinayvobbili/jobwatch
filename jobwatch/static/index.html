@@ -396,7 +396,7 @@ main.quiet .card, main.quiet .stat, main.quiet .seg, main.quiet .ring, main.quie
   max-height: calc(100vh - 104px); overflow-y: auto; padding: 2px 4px 12px 2px; margin: -2px -4px 0 -2px;
   scrollbar-width: thin; }
 .layout > aside .hero { grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
-.layout > aside .hero .stat:only-child { grid-column: 1 / -1; }
+.layout > aside .hero .stat:only-child, .layout > aside .hero .stat.wide { grid-column: 1 / -1; }
 .layout > aside .stat { padding: 12px 14px; }
 .layout > aside .stat .num { font-size: 24px; }
 .layout > aside .filtered { margin: 0; padding: 0 4px; }
@@ -434,6 +434,12 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .scoring { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13.5px; margin: 0 0 10px; min-height: 30px; }
 .scoring.spin .ico { animation: spin 2.4s linear infinite; }
 .showing { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13.5px; margin: 0 0 10px; min-height: 30px; }
+.pace:empty { display: none; }
+.pace { display: flex; margin: 0 0 10px; }
+.pace span { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 16px; font-size: 13.5px;
+  background: var(--chip); color: var(--chip-text); }
+.pace.met span { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); font-weight: 600; }
+.more-all { display: flex; justify-content: center; margin: 18px 0 4px; }
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 14px; }
 .grid-cards > .card { margin: 0; }
 .grid-cards > .empty { grid-column: 1 / -1; }
@@ -924,7 +930,7 @@ async function mark(job, status, note, label, undoStatus) {
   const r = await api("/api/mark", { keys: job.keys || [job.key], status, note });
   if (r.warning) label = `${label}. ${r.warning}`;
   const card = document.getElementById("job-" + job.key);
-  if (status === "applied") { confetti(origin); label = `🎉 Applied: ${job.title}. ${cheer()}`; }
+  if (status === "applied") { confetti(origin); label = `🎉 Applied: ${job.title}. ${cheer()}`; drawPace(); }
   await leave(card, status === "skipped" ? -1 : 1);
   if (tab === "today") {
     todayJobs = todayJobs.filter(j => j.key !== job.key);
@@ -1574,7 +1580,7 @@ function homeField(inp) {
 
 // The minimum fit score: a slider in steps of 5, 0 is off. Unscored jobs aren't hidden (scoring catches up).
 function fitField(inp) {
-  return h("div", {}, filterLabel("Minimum fit score", "unscored jobs still show"),
+  return h("div", {}, filterLabel("Minimum fit score", "hides jobs scored below it; jobs not scored yet still show"),
     h("div", { class: "fitrange" }, inp.minFit, inp.fitOut));
 }
 
@@ -1749,7 +1755,24 @@ async function openHidden(kind) {
   } catch (e) { showError(dialog, e); }
 }
 
-const todayView = { q: "", sort: "fit", company: "", kws: new Set(), page: 1 };
+// Applications sent today against the watchlist's pace: "Applied today: 1 of 3". Advice only: nothing is held
+// back once it's met. Nothing shows when the pace is off (pace.daily 0). "I applied" redraws it.
+let drawPace = () => {};
+function paceLine(el, p) {
+  const draw = p => {
+    el.classList.toggle("met", !!(p && p.met));
+    fill(el, p ? h("span", { title: `Your pace: ${p.daily} a day, ${p.max} at most (Settings)` }, p.line) : null);
+  };
+  drawPace = async () => {
+    try { if (el.isConnected) draw((await api("/api/pace")).pace); } catch { /* a hint, not the page */ }
+  };
+  draw(p);
+  return el;
+}
+
+// all: every matching job, paged, rather than today's picks (the top display.today in the order picked).
+const todayView = { q: "", sort: "fit", company: "", kws: new Set(), page: 1, all: false };
+const SORTED = { fit: "best fit first", new: "newest first", pay: "top pay first" };
 let todayJobs = [], drawToday = () => {};
 
 async function renderToday() {
@@ -1759,6 +1782,7 @@ async function renderToday() {
   todayJobs = d.jobs;
   const out = Object.values(d.rejected).reduce((a, b) => a + b, 0);
   const fresh = d.jobs.filter(j => j.status === "new").length, strong = d.jobs.filter(j => j.fit && j.fit.score >= 75).length;
+  const picks = d.picks && d.jobs.length > d.picks ? d.picks : 0;  // Today's picks lead when there are more matches
   const byCompany = {}, byKw = {};
   for (const j of d.jobs) {
     byCompany[j.company] = (byCompany[j.company] || 0) + 1;
@@ -1785,9 +1809,20 @@ async function renderToday() {
     if (v.sort === "new") jobs = [...jobs].sort((a, b) => (a.age_days ?? 1e4) - (b.age_days ?? 1e4));
     if (v.sort === "pay") jobs = [...jobs].sort((a, b) => (b.salary_max ?? -1) - (a.salary_max ?? -1));
     const narrowed = v.q || v.company || v.kws.size;
+    // Today's picks: the top few in this order. A search, company or keyword looks through every match.
+    const top = d.picks && jobs.length > d.picks;
+    if (top && !narrowed && !v.all) {
+      fill(showing, `Today's ${d.picks} picks, ${SORTED[v.sort]}, of ${jobs.length} matching jobs`);
+      fill(list, jobs.slice(0, d.picks).map((j, i) => todayCard(j, d.can_score, i)));
+      fill(pager, h("div", { class: "more-all" }, h("button", { class: "btn", onclick: () => { v.all = true; drawToday(); } },
+        `Show all ${jobs.length} matching jobs`)));
+      return;
+    }
     const pg = paged(jobs, v, JSON.stringify([v.q, v.company, [...v.kws], v.sort]), drawToday);
+    const back = top && !narrowed ? h("button", { class: "btn ghost", onclick: () => {
+      v.all = false; drawToday(); scrollTo({ top: 0, behavior: REDUCED ? "auto" : "smooth" }); } }, `Back to today's ${d.picks} picks`) : null;
     fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
-      : `Showing ${jobs.length} of ${todayJobs.length}`, narrowed ? h("button", { class: "btn ghost", onclick: clear }, "Clear filters") : null);
+      : `Showing ${jobs.length} of ${todayJobs.length}`, narrowed ? h("button", { class: "btn ghost", onclick: clear }, "Clear filters") : back);
     fill(list, jobs.length ? pg.items.map((j, i) => todayCard(j, d.can_score, i))
       : emptyState(todayJobs.length ? "No jobs match these filters." : "Nothing to review. Press “Check for new jobs”, or widen the filters above."));
     fill(pager, pg.nav);
@@ -1797,14 +1832,14 @@ async function renderToday() {
     pagehead("Today", `New roles at the ${settings.companies.length} companies you watch, best fit first.`),
     filterBar(hidden),
     layout([
-      hero([[d.jobs.length, "matching jobs", "lead"], [fresh, "new since last look"],
-        [strong, "strong fits (75+)", strong ? "good" : ""], [out, "hidden by filters"]]),
+      hero([picks ? [picks, "picks for today", "lead wide"] : null, [d.jobs.length, picks ? "matching" : "matching jobs", picks ? "" : "lead"],
+        [fresh, "new since last look"], [strong, "strong fits (75+)", strong ? "good" : ""], [out, "hidden by filters"]].filter(Boolean)),
       panel(null, search, h("div", { style: "margin-top:10px" },
         segmented([["fit", "Best fit"], ["new", "Newest"], ["pay", "Top pay"]], v.sort, k => { v.sort = k; drawToday(); }))),
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
       toWatchPanel(),
-    ], [checked, scoring, showing, list, pager]));
+    ], [paceLine(h("div", { class: "pace" }), d.pace), checked, scoring, showing, list, pager]));
   drawToday();
   if (d.checked) watchChecked(d.checked, checked);
   if (d.scoring) watchScoring(d.scoring, scoring);
@@ -1871,7 +1906,9 @@ const queueView = { page: 1 };
 let queueJobs = [], drawQueue = () => {};
 
 async function renderQueue() {
-  const jobs = queueJobs = await api("/api/queue");
+  const [jobs, p] = await Promise.all([api("/api/queue"), api("/api/pace").then(r => r.pace).catch(() => null)]);
+  queueJobs = jobs;
+  const pace = paceLine(h("div", { class: "pace" }), p);
   const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
   drawQueue = () => {
     const pg = paged(queueJobs, queueView, "", drawQueue);
@@ -1893,7 +1930,7 @@ async function renderQueue() {
         step(2, "Tailor your resume", "Match it to the posting, from things you've really done."),
         step(3, "Apply on their site", "Answer honestly and press Submit yourself."),
         step(4, "Press “I applied”", "It moves to Applications, where you track what comes next.")),
-    ], jobs.length ? [showing, list, pager] : emptyState("The queue is empty. Queue jobs from Today.")));
+    ], [pace, jobs.length ? [showing, list, pager] : emptyState("The queue is empty. Queue jobs from Today.")]));
   drawQueue();
   watchPay(queueJobs);
 }
@@ -2245,8 +2282,10 @@ function displayCard() {
     d[k] = v;
     applyDisplay(d);
     try {
-      await api("/api/settings", { display: { ...d } });
-      settings.display = { ...d };
+      // display.today is saved with the rest of Settings: keep what's saved now
+      const display = { ...(settings.display || {}), theme: d.theme, width: d.width };
+      await api("/api/settings", { display });
+      settings.display = display;
       msg.textContent = "Saved."; msg.className = "small muted";
     } catch (e) { msg.textContent = e.message; msg.className = "small error"; }
   };
@@ -2374,6 +2413,12 @@ function renderSettings() {
     EVERY.map(([v, label]) => h("option", { value: v }, label)));
   every.value = everyNow;
 
+  // Today's picks (display.today) and the pace (pace.daily, pace.max). Blank: the default.
+  const num = (v, placeholder) => { const i = h("input", { type: "number", min: 0, step: 1, placeholder }); i.value = v ?? ""; return i; };
+  const whole = i => i.value.trim() === "" ? null : Number(i.value);
+  const pace = s.pace || {};
+  const picksN = num((s.display || {}).today, "10"), daily = num(pace.daily, "3"), most = num(pace.max, "5");
+
   const scoring = s.scoring || {};
   const backend = h("select", {}, h("option", { value: "claude" }, "Claude API (needs ANTHROPIC_API_KEY)"),
     h("option", { value: "local" }, "On this Mac (Apple Silicon, slower)"));
@@ -2403,9 +2448,13 @@ function renderSettings() {
       if (word.value.trim()) keywords[word.value.trim()] = Number(weight.value);
     }
     const filters = mergeFilters(f, filterValues(inp));  // exclude_departments and flags are kept, not edited here
+    const display = { ...(settings.display || {}), today: whole(picksN) };  // theme and width save on their own
+    if (display.today === null) delete display.today;
+    const paced = Object.fromEntries([["daily", whole(daily)], ["max", whole(most)]].filter(([, v]) => v !== null));
     saveMsg.textContent = "Saving…"; saveMsg.className = "small muted";
     try {
       await api("/api/settings", { companies, filters, keywords, scoring: { ...scoring, backend: backend.value },
+        display, pace: Object.keys(paced).length ? paced : null,
         fetch_every: every.value === everyNow && (s.fetch_every === null || s.fetch_every === undefined) ? null : every.value });
       settings = await api("/api/settings");
       saveMsg.textContent = "Saved."; saveMsg.className = "small";
@@ -2430,9 +2479,15 @@ function renderSettings() {
         h("div", {},
           h("label", {}, "Minimum pay per year ", h("span", { class: "hint" }, "jobs that don't list pay still show")), minPay,
           h("label", { class: "row" }, requirePay, h("span", { class: "hint" }, "Only show jobs that list pay")),
-          h("label", {}, "Posted within (days)"), maxAge, fitField(inp))),
+          h("label", {}, "Posted within (days)"), maxAge)),
       h("label", {}, "Keywords ", h("span", { class: "hint" }, "jobs mentioning these rank higher; a title match counts double")),
       kwRows, h("button", { class: "btn", onclick: () => addKw() }, "Add keyword")),
+    h("div", { class: "card" }, h("h3", {}, "Today's picks and your pace"),
+      h("div", { class: "grid" },
+        h("div", {}, filterLabel("Today shows the top", "in the order you sort by; 0 shows every match. The rest are a click away."), picksN),
+        fitField(inp),
+        h("div", {}, filterLabel("Applications a day", "Today and the queue count them. 0 turns this off, for when job hunting is your full-time job."), daily),
+        h("div", {}, filterLabel("At most", "past this, a note says the rest can wait until tomorrow. Nothing is ever blocked."), most))),
     h("div", { class: "card" }, h("h3", {}, "Your resume ", h("span", { class: "hint" }, "optional: for fit scores")),
       upload("resume", ".pdf,.docx,.txt,.md", s.resume, "Fit scores compare a posting's requirements with your resume. " +
         "They need the scoring add-on: pip install 'jobwatch[score]'."),

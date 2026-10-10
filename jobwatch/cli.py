@@ -21,6 +21,7 @@ from .watch import (
     check_postings,
     fetch_all,
     load_contacts,
+    pace,
     queue,
     save_job,
     score_entries,
@@ -62,8 +63,11 @@ def cmd_find(args):
 
 
 def _digest(args, cfg, store):
-    d = build_digest(cfg, store, include_seen=args.all, score_top=args.score, limit=args.limit)
-    text = report.to_json(d) if args.format == "json" else report.to_markdown(d)
+    # The top display.today unless --all or --limit says otherwise; the rest stay new for the next digest.
+    limit = args.limit if args.limit is not None else None if args.all else cfg.today or None
+    d = build_digest(cfg, store, include_seen=args.all, score_top=args.score, limit=limit)
+    text = report.to_json(d) if args.format == "json" else report.to_markdown(
+        d, more="`jobwatch digest --all`", pace=pace(cfg, store))
     if not args.peek:
         store.set_status([k for e in d.entries for k in e.keys], "shown")
     return text
@@ -421,9 +425,11 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name, help=help_)
         p.add_argument("--score", type=int, default=None, metavar="N",
                        help="score the N most relevant unscored jobs with shortlist-ai (default: config)")
-        p.add_argument("--all", action="store_true", help="include jobs already shown in an earlier digest")
+        p.add_argument("--all", action="store_true", help="every matching job: past the top display.today, and "
+                       "those already shown in an earlier digest")
         p.add_argument("--peek", action="store_true", help="don't mark the listed jobs as shown")
-        p.add_argument("--limit", type=int, default=None)
+        p.add_argument("--limit", type=int, default=None, metavar="N",
+                       help="list the top N (default: display.today in the watchlist, 10 unless set)")
         p.add_argument("--format", choices=["md", "json"], default="md")
         p.add_argument("-o", "--out", type=Path)
         p.set_defaults(func=func)

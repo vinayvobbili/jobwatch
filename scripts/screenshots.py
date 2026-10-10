@@ -113,16 +113,18 @@ def shoot(config: Path, out: Path, themes=("light", "dark"), sizes=tuple(SIZES),
                     page.wait_for_load_state("networkidle")
                     page.wait_for_timeout(1200)  # let entrance animations settle
                     page.screenshot(path=out / f"{tab}-{theme}-{size}.png", full_page=full_page)
-                # The dialogs and forms that only open on a click.
-                for tab, button, name in (("applied", "Add an application", "applied-add"),
-                                          ("applied", "Table", "applied-table"),
-                                          ("today", "Next →", "today-page2"),
-                                          ("today", "Details", "details")):
+                # The dialogs and forms that only open on a click (or a few, in order).
+                for tab, buttons, name in (("applied", ("Add an application",), "applied-add"),
+                                           ("applied", ("Table",), "applied-table"),
+                                           ("today", ("Show all",), "today-all"),
+                                           ("today", ("Show all", "Next →"), "today-page2"),
+                                           ("today", ("Details",), "details")):
                     open_tab(page, url, tab, settle=0)
                     try:
-                        page.get_by_role("button", name=button).first.click(timeout=5000)
+                        for button in buttons:
+                            page.get_by_role("button", name=button).first.click(timeout=5000)
                     except PlaywrightTimeout:
-                        continue  # nothing to open, e.g. no jobs today
+                        continue  # nothing to open, e.g. no jobs today, or no more than today's picks
                     page.wait_for_timeout(600)
                     page.screenshot(path=out / f"{name}-{theme}-{size}.png")
                 # What you sent, on an application's page: attach a file and save an answer through the page.
