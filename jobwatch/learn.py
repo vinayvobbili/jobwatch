@@ -161,7 +161,7 @@ def for_job(job: Job, fit: dict | None, resume: str) -> list[Demand]:
 
 
 def _fit(cfg: Config, store: Store, key: str) -> dict | None:
-    return store.score(key, resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else None
+    return store.score(key, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else None
 
 
 def gather(cfg: Config, store: Store, timeline: str | None = None, entries: list | None = None) -> Report:

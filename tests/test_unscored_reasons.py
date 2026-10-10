@@ -30,7 +30,7 @@ def resume_watchlist(watchlist, web):
 def scored(monkeypatch):
     fail = set()
 
-    def fake(jobs, resume, backend, cache_dir, workers=1, progress=None):
+    def fake(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None):
         return ({j.key: FIT for j in jobs if j.key not in fail},
                 {j.key: "model said no" for j in jobs if j.key in fail})
 
@@ -189,7 +189,7 @@ def _post(store) -> Job:
 def test_a_post_listing_several_roles_isnt_scored(resume_watchlist, monkeypatch):
     asked = []
 
-    def fake(jobs, resume, backend, cache_dir, workers=1, progress=None):
+    def fake(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None):
         asked.extend(j.key for j in jobs)
         return {j.key: FIT for j in jobs}, {}
 

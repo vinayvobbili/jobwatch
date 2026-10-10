@@ -27,7 +27,7 @@ from . import __version__, chat, config, contacts, dupes, learn, levels, prep, r
 from .config import ConfigError
 from .filters import KINDS, rejection
 from .package import Package
-from .score import ScoringUnavailable, resume_id, score_jobs, turn
+from .score import ScoringUnavailable, prompt_info, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
@@ -375,11 +375,14 @@ class App:
                               **({"careers": b.careers} if b.careers else {}),
                               **({} if b.source in sources.SOURCES else {"error": config.UNKNOWN_SOURCE})})
         every = raw.get("fetch_every")
+        scoring = raw.get("scoring") or {}
         return {"path": str(self.path), "exists": self.path.is_file(), "version": __version__,
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
-                "scoring": raw.get("scoring") or {}, "learning": raw.get("learning") or {},
+                "scoring": scoring, "learning": raw.get("learning") or {},
                 "display": raw.get("display") or {}, "pace": raw.get("pace") or {},
+                # the prompts fit scoring sends: shortlist-ai's, with the edited ones (scoring.prompts) in place
+                "fit_prompts": prompt_info(scoring.get("prompts") if isinstance(scoring.get("prompts"), dict) else {}),
                 # as written (YAML reads a bare off as false); unset: the default
                 "fetch_every": "off" if every is False else str(every) if every is not None else None}
 
@@ -465,7 +468,7 @@ class App:
         def run(cfg, store):
             by: dict[str, int] = {}
             jobs = []
-            fits = store.scores(resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else {}
+            fits = store.scores(resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
             for job, _ in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
                 if r := rejection(job, cfg.filters, fits.get(job.key)):
                     by[r[0]] = by.get(r[0], 0) + 1
@@ -555,7 +558,7 @@ class App:
             job, rec = store.find(key)
             known = load_contacts(cfg)
             resume = bool(cfg.resume and cfg.resume.is_file())
-            fit = store.score(job.key, resume_id(cfg.resume)) if resume else None
+            fit = store.score(job.key, resume_id(cfg.resume, cfg.prompts)) if resume else None
             return {"key": job.key, "title": job.title, "company": job.display_company, "url": job.url,
                     "link_note": job.link_note or None,
                     "pay": job.pay(), "locations": job.locations, "text": job.to_text(),
@@ -677,11 +680,11 @@ class App:
                 raise ApiError(MANY_ROLES[1] + ".")
             if not (cfg.resume and cfg.resume.is_file()):
                 raise ApiError("Add your resume in Settings to score fit.")
-            rid = resume_id(cfg.resume)
+            rid = resume_id(cfg.resume, cfg.prompts)
             if cached := store.score(job.key, rid):
                 return cached
             with turn(cfg.backend):  # ahead of background scoring
-                results, errors = score_jobs([job], cfg.resume, cfg.backend, cfg.cache)
+                results, errors = score_jobs([job], cfg.resume, cfg.backend, cfg.cache, prompts=cfg.prompts)
             if job.key not in results:
                 raise ApiError(errors.get(job.key, "scoring failed"), HTTPStatus.BAD_GATEWAY)
             store.save_score(job.key, rid, results[job.key])

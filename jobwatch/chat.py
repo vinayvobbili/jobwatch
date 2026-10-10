@@ -139,7 +139,7 @@ def home_context(cfg: Config, store: Store) -> str:
 def job_context(cfg: Config, store: Store, key: str) -> str:
     """One posting (fenced as data), its fit score and where the application stands."""
     job, rec = store.find(key)
-    fit = store.score(job.key, resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else None
+    fit = store.score(job.key, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else None
     track = [f"status: {rec['status']}"] + [f"{k.replace('_', ' ')}: {rec[k]}" for k in
                                             ("applied_at", "next_step", "follow_up", "note") if rec.get(k)]
     sent = store.package(job.key).context()

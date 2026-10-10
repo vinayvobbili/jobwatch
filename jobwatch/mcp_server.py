@@ -261,7 +261,7 @@ def get_job(key: Key) -> dict:
     try:
         job, rec = store.find(key)
         known = load_contacts(cfg)
-        fit = store.score(job.key, resume_id(cfg.resume)) if cfg.resume and cfg.resume.is_file() else None
+        fit = store.score(job.key, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else None
         same = dupes.check(store, job.key)
         return {"key": job.key, "company": job.display_company, "title": job.title, "url": job.url,
                 "link_note": job.link_note or None,

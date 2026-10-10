@@ -14,7 +14,7 @@ import yaml
 
 from . import __version__, alerts, chat, config, dupes, learn, levels, prep, report, sources, suggest
 from .config import ConfigError
-from .score import ScoringUnavailable, resume_id
+from .score import ScoringUnavailable, prompt_info, resume_id
 from .store import STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
@@ -90,7 +90,14 @@ def cmd_run(args, cfg, store):
 
 def cmd_score(args, cfg, store):
     """Score Today's unscored jobs now, most relevant first and one at a time, so stopping keeps what's done.
-    `jobwatch ui` does the same in the background."""
+    `jobwatch ui` does the same in the background. --show-prompts prints the prompts it sends instead."""
+    if args.show_prompts:
+        info = prompt_info(cfg.prompts)
+        if info["note"]:
+            print(info["note"], file=sys.stderr)
+        for p in info["prompts"]:
+            print(f"== {p['name']}{' (edited)' if p['edited'] else ''}: {p['about']}\n{p['text']}\n")
+        return
     if not (cfg.resume and cfg.resume.is_file()):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
     todo = unscored(cfg, store)
@@ -146,7 +153,7 @@ def cmd_show(args, cfg, store):
         print(f"Your applications there (sign in): {home}")
     if not scorable(job):
         print(f"{MANY_ROLES[1]}.")
-    elif cfg.resume and cfg.resume.is_file() and (fit := store.score(job.key, resume_id(cfg.resume))):
+    elif cfg.resume and cfg.resume.is_file() and (fit := store.score(job.key, resume_id(cfg.resume, cfg.prompts))):
         print("\n".join(report.fit_lines(fit)))
     if (pay := levels.for_one_job(cfg, store, job)) is not None:
         print("\n".join(report.pay_lines(pay, job)))
@@ -440,6 +447,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("score", help="score Today's unscored jobs against your resume, most relevant first")
     p.add_argument("--limit", type=int, default=None, metavar="N", help="stop after N jobs")
+    p.add_argument("--show-prompts", action="store_true",
+                   help="print the prompts scoring sends (edited ones from scoring.prompts) and stop")
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")

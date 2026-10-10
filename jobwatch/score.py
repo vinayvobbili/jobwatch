@@ -3,15 +3,18 @@
 shortlist-ai (https://github.com/vinayvobbili/shortlist-ai) turns a posting into must-have and
 nice-to-have requirements and judges each one against the resume, with quotes it checks. It is
 slow next to keyword relevance, so only the top few jobs get scored, and each score is stored
-against that exact resume file.
+against that exact resume file and the prompts it was scored with. The prompts can be edited in
+Settings (scoring.prompts holds the edited ones), with a shortlist-ai that takes edited prompts.
 """
 
 from __future__ import annotations
 
 import hashlib
+import importlib
+import json
 import re
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
@@ -79,9 +82,78 @@ def turn(backend: str, background: bool = False):
     return LOCAL.background() if background else LOCAL.foreground()
 
 
-def resume_id(resume: Path) -> str:
-    """Scores are tied to the resume's content, so an edited resume is scored afresh."""
-    return f"{resume.name}:{hashlib.sha256(resume.read_bytes()).hexdigest()[:12]}"
+def resume_id(resume: Path, prompts: Mapping[str, str] | None = None) -> str:
+    """Scores are tied to the resume's content and to any edited prompts (scoring.prompts), so an edited resume
+    or prompt is scored afresh. With no prompt edited the key is the resume's alone, as before prompts could be
+    edited: putting the prompts back brings back the scores made with them."""
+    rid = f"{resume.name}:{hashlib.sha256(resume.read_bytes()).hexdigest()[:12]}"
+    if prompts:
+        rid += ":prompts-" + hashlib.sha256(json.dumps(dict(prompts), sort_keys=True).encode()).hexdigest()[:12]
+    return rid
+
+
+# The prompts shortlist-ai had before they could be edited (0.1.1): shown read-only (see prompt_info).
+_FIXED_PROMPTS = (
+    ("resume_system", "shortlist_ai.extract", "RESUME_SYSTEM", "Reads a resume into structured fields."),
+    ("job_system", "shortlist_ai.extract", "JOB_SYSTEM", "Turns a posting into must-haves and nice-to-haves."),
+    ("score_system", "shortlist_ai.score", "SCORE_SYSTEM", "Judges each requirement met, partial or not met."),
+    ("years_system", "shortlist_ai.years", "ROLES_SYSTEM", 'For "N+ years of X": which roles count toward the years.'),
+)
+UPDATE_HINT = "pip install -U shortlist-ai"
+
+
+def _editable_prompts():
+    """shortlist-ai's prompts by name ({name: Prompt}, see shortlist_ai.prompts), or None when it's missing or too
+    old to take edited prompts."""
+    try:
+        from shortlist_ai.prompts import PROMPTS
+    except ImportError:
+        return None
+    return PROMPTS
+
+
+def check_prompts(prompts: Mapping[str, str]) -> str | None:
+    """What's wrong with these edited prompts (scoring.prompts), or None. Checked by the shortlist-ai that's
+    installed; without one that takes edited prompts they aren't checked here (scoring says so instead)."""
+    if _editable_prompts() is None:
+        return None
+    from shortlist_ai.prompts import PromptError, check
+    for name, text in prompts.items():
+        try:
+            check(name, text)
+        except PromptError as e:
+            return str(e)
+    return None
+
+
+def prompt_info(edited: Mapping[str, str] | None = None) -> dict:
+    """The prompts fit scoring sends, for Settings: installed (shortlist-ai is), editable (it takes edited prompts),
+    a note when it can't, and each prompt's name, about (one line), placeholders (ones a template must keep),
+    default, text (the edited one, or the default) and edited."""
+    edited = dict(edited or {})
+    defaults = _editable_prompts()
+    if defaults is not None:
+        rows = [(p.name, p.about, list(p.placeholders), p.default) for p in defaults.values()]
+        return {"installed": True, "editable": True, "note": None, "prompts": _rows(rows, edited)}
+    rows = []
+    for name, module, constant, about in _FIXED_PROMPTS:
+        try:
+            rows.append((name, about, [], getattr(importlib.import_module(module), constant)))
+        except (ImportError, AttributeError):
+            pass
+    if not rows:
+        return {"installed": False, "editable": False, "note": f"Fit scoring isn't installed: {INSTALL_HINT}",
+                "prompts": []}
+    note = f"This shortlist-ai can't take edited prompts: {UPDATE_HINT} to edit them."
+    if edited:
+        note += " The watchlist has edited ones, so scoring stops until then (or until they're removed)."
+    return {"installed": True, "editable": False, "note": note, "prompts": _rows(rows, edited)}
+
+
+def _rows(rows, edited: dict) -> list[dict]:
+    return [{"name": name, "about": about, "placeholders": placeholders, "default": default,
+             "text": edited.get(name, default), "edited": name in edited}
+            for name, about, placeholders, default in rows]
 
 
 def _safe(key: str) -> str:
@@ -108,15 +180,24 @@ def brief(fit: dict | None) -> dict | None:
 
 
 def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, workers: int = 1,
-               progress: Callable[[str], None] | None = None) -> tuple[dict[str, dict], dict[str, str]]:
+               progress: Callable[[str], None] | None = None,
+               prompts: Mapping[str, str] | None = None) -> tuple[dict[str, dict], dict[str, str]]:
     """({job key: result}, {job key: error}). A result has score, must_haves_met/total, gaps, summary and
-    requirements (see requirement_rows; results saved before it have none)."""
+    requirements (see requirement_rows; results saved before it have none). prompts: the edited ones
+    (scoring.prompts) in place of shortlist-ai's own; results belong under resume_id(resume, prompts)."""
     try:
         from shortlist_ai.backends import get_backend
         from shortlist_ai.extract import Cache, extract_job
         from shortlist_ai.pipeline import match_jobs
     except ImportError:
         raise ScoringUnavailable(f"scoring needs shortlist-ai: {INSTALL_HINT}") from None
+    # Never score with the shipped prompts what will be stored as scored with the edited ones.
+    if prompts and _editable_prompts() is None:
+        raise ScoringUnavailable(f"the fit-score prompts are edited (scoring.prompts) and this shortlist-ai can't "
+                                 f"use edited prompts: {UPDATE_HINT}, or reset them in Settings")
+    if prompts and (problem := check_prompts(prompts)):
+        raise ScoringUnavailable(f"scoring.prompts: {problem}")
+    edits = {"prompts": dict(prompts)} if prompts else {}  # none: works with a shortlist-ai from before prompts
 
     progress = progress or (lambda msg: None)
     model = get_backend(backend)
@@ -131,12 +212,12 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
         path.write_text(job.to_text(), encoding="utf-8")
         progress(f"requirements  {job.display_company}: {job.title}")
         try:
-            specs[name] = extract_job(path, model, cache)
+            specs[name] = extract_job(path, model, cache, **edits)
         except Exception as e:
             errors[job.key] = f"{type(e).__name__}: {e}"
     if not specs:
         return {}, errors
-    matches = match_jobs(resume, specs, model, cache=cache, workers=workers, progress=progress)
+    matches = match_jobs(resume, specs, model, cache=cache, workers=workers, progress=progress, **edits)
     errors.update({by_name[k]: v for k, v in matches.errors.items()})
     results = {}
     for m in matches.matches:

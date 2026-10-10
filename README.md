@@ -108,7 +108,8 @@ their jobs), say what you're looking for, and press **Check for new jobs**. From
   the chips over the list (or click the pipeline bar), and switch between **Cards** and a sortable **Table**.
   **Add an application** covers jobs you found elsewhere, such as a referral or a recruiter.
 - **Settings:** companies, filters, keywords, how many picks Today shows, the minimum fit score and your
-  daily pace, your resume (for fit scores), your LinkedIn connections, and the page's theme (system, light or
+  daily pace, your resume (for fit scores) and the [prompt that scores fit](#the-fit-score-prompt), your
+  LinkedIn connections, and the page's theme (system, light or
   dark) and width (standard, wide or full, for a big monitor).
 - **Ask jobwatch:** a chat on Today (about all of today's jobs and your applications) and beside each job's
   details (about that posting). See [Chat](#chat).
@@ -297,6 +298,16 @@ the MCP `get_job` result. Scores saved before jobwatch kept these have only the 
 `filters.min_fit` (the Fit slider on Today's filter bar, and in Settings next to how many picks Today shows)
 hides jobs scored below it, counted as "fit" in the hidden roles. Jobs not scored yet still show, since
 scoring catches up in the background.
+
+### The fit score prompt
+
+Settings → **Fit score prompt** shows what the model is told: each of shortlist-ai's prompts (reading the
+resume, turning a posting into requirements, judging each requirement, counting years), each in a box you can
+edit, with "Reset to default". Only the edited ones are saved, as `scoring.prompts` in the watchlist. The two
+request templates must keep their `{placeholders}`; saving says so if one is missing. An edited prompt
+changes scores from then on: scores made with other prompts are set aside and Today's jobs are scored again,
+and putting the prompts back brings the old scores back. `jobwatch score --show-prompts` prints them.
+Editing needs a shortlist-ai that takes edited prompts; with an older one they show read-only.
 
 ## Chat
 

@@ -224,7 +224,7 @@ def queue(cfg: Config, store: Store, pay_budget: int = 0) -> list[Entry]:
     warnings: a job queued by hand never passed the filters, and a posting can close while it waits. With
     pay.levels on, each has its expected pay (see levels.py), asking Levels.fyi for up to `pay_budget` pages. The
     first warning says when a queued job is (maybe) the same opening as one applied to, queued or skipped."""
-    rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
+    rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
     contacts = load_contacts(cfg)
     reader = levels.Reader(store, pay_budget) if cfg.pay.levels else None
     index = dupes.Index(store)
@@ -450,7 +450,7 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
     scorer; without them, a job is described by where it stands in the scorer's line."""
     failed = failed or {}
     has_resume = bool(cfg.resume and cfg.resume.is_file())
-    fits = store.scores(resume_id(cfg.resume)) if has_resume else {}
+    fits = store.scores(resume_id(cfg.resume, cfg.prompts)) if has_resume else {}
     entries, _ = _matching(cfg, store, ("new", "shown"))
     groups = _group(sorted(entries, key=_rank))  # the scorer's order: see unscored
     line = [e.job.key for e in groups if _scorable(e) and e.job.key not in failed and e.job.key != current]
@@ -498,7 +498,7 @@ def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict
     if (why := (unscored_reasons(cfg, store) if reasons is None else reasons).get(job.key)) is not None:
         return why
     has_resume = bool(cfg.resume and cfg.resume.is_file())
-    if has_resume and store.score(job.key, resume_id(cfg.resume)):
+    if has_resume and store.score(job.key, resume_id(cfg.resume, cfg.prompts)):
         return None
     code, text = (MANY_ROLES if not scorable(job) else NO_RESUME if not has_resume
                   else NO_TEXT if not job.description.strip()
@@ -517,7 +517,7 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...]) -> tuple[lis
     flagged: its `duplicate` says which, and its first warning says so (see dupes.py)."""
     rejected: dict[str, int] = {}
     entries = []
-    rid = resume_id(cfg.resume) if cfg.resume and cfg.resume.is_file() else None
+    rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
     fits = store.scores(rid) if rid else {}
     index = dupes.Index(store)
     for job, record in store.jobs(statuses):
@@ -552,9 +552,10 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry],
                   progress: Callable[[str], None] | None = None) -> tuple[int, dict[str, str]]:
     """Score these jobs against the resume and store each result, for the job and its same-title postings.
     (how many were scored, {job key: error})."""
-    rid = resume_id(cfg.resume)
+    rid = resume_id(cfg.resume, cfg.prompts)
     results, errors = score_jobs([e.job for e in entries], cfg.resume, cfg.backend, cfg.cache,
-                                 progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)))
+                                 progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)),
+                                 prompts=cfg.prompts)
     for e in entries:
         if e.job.key in results:
             for key in e.keys:

@@ -459,6 +459,15 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .settings-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 20px; align-items: start; }
 .settings-grid > .card:first-child { margin-top: 12px; }
 .companies { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+/* Settings: the fit-score prompts, one per fold */
+.prompt { border-top: 1px solid var(--line); padding: 9px 0; }
+.prompt:last-child { padding-bottom: 0; }
+.prompt summary { cursor: pointer; }
+.prompt summary code { font-weight: 650; margin-right: 6px; }
+.prompt summary .hint { display: block; margin: 2px 0 0 16px; }
+.prompt textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px;
+  line-height: 1.5; margin-top: 8px; }
+.prompt .row { justify-content: space-between; margin-top: 6px; }
 /* chat: a floating panel on Today, a column beside the posting in a job's details */
 .chat { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--panel-solid);
   border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
@@ -2299,6 +2308,40 @@ function displayCard() {
         segmented([["standard", "Standard"], ["wide", "Wide"], ["full", "Full"]], d.width, v => set("width", v)))));
 }
 
+// The prompts fit scoring sends (shortlist-ai's), one fold each. Only the edited ones are saved (scoring.prompts),
+// with the rest of Settings; "Reset to default" puts one back. Read-only, with a note, when the installed
+// shortlist-ai can't take edited prompts; no card when fit scoring isn't installed. card.edited() gives what to save.
+function fitPromptsCard(info) {
+  if (!info || !info.installed) return null;
+  const boxes = info.prompts.map(p => {
+    const text = h("textarea", { spellcheck: "false", readonly: !info.editable, "aria-label": p.name,
+      rows: Math.min(20, p.text.split("\n").length + 1) });
+    text.value = p.text;
+    const mark = h("span", { class: "chip hit" }, "edited");
+    const reset = h("button", { class: "btn", onclick: () => { text.value = p.default; sync(); } }, "Reset to default");
+    const changed = () => text.value.trim() !== p.default.trim();
+    const sync = () => { mark.style.display = changed() ? "" : "none"; reset.disabled = !changed(); };
+    text.addEventListener("input", sync);
+    sync();
+    const keep = p.placeholders.length ? h("span", { class: "hint" }, "Keep ",
+      p.placeholders.map((x, i) => [i ? ", " : "", h("code", {}, `{${x}}`)]), ": the data goes there.") : h("span");
+    const fold = h("details", { class: "prompt", open: p.edited || null },
+      h("summary", {}, h("code", {}, p.name), mark, h("span", { class: "hint" }, p.about)),
+      text, info.editable ? h("div", { class: "row" }, keep, reset) : null);
+    return { p, text, changed, fold };
+  });
+  const card = h("div", { class: "card" }, h("h3", {}, "Fit score prompt ",
+      h("span", { class: "hint" }, "what the model is told when it scores a job")),
+    h("p", { class: "small muted" }, "An edited prompt changes fit scores from the next one on. The scores you have " +
+      "were made with the prompts as they were: saving an edit sets them aside and Today's jobs are scored again " +
+      "(putting the prompts back brings those scores back)."),
+    info.note ? h("p", { class: "small error" }, info.note) : null,
+    boxes.map(b => b.fold));
+  card.editable = info.editable;
+  card.edited = () => Object.fromEntries(boxes.filter(b => b.changed()).map(b => [b.p.name, b.text.value]));
+  return card;
+}
+
 // -- skills: what the matching jobs ask for that the resume doesn't show, and where to learn it
 const skillsView = { timeline: null, covered: false };
 const TIMELINES = [["week", "Week"], ["month", "Month"], ["quarter", "Quarter"], ["any", "Any"]];
@@ -2425,6 +2468,15 @@ function renderSettings() {
   const backend = h("select", {}, h("option", { value: "claude" }, "Claude API (needs ANTHROPIC_API_KEY)"),
     h("option", { value: "local" }, "On this Mac (Apple Silicon, slower)"));
   backend.value = scoring.backend || "claude";
+  const prompts = fitPromptsCard(s.fit_prompts);
+  const scoringValues = () => {
+    const out = { ...scoring, backend: backend.value };
+    if (prompts && prompts.editable) {  // otherwise the watchlist's are kept as they are
+      const edited = prompts.edited();
+      if (Object.keys(edited).length) out.prompts = edited; else delete out.prompts;
+    }
+    return out;
+  };
 
   const upload = (kind, accept, current, help) => {
     const input = h("input", { type: "file", accept });
@@ -2455,7 +2507,7 @@ function renderSettings() {
     const paced = Object.fromEntries([["daily", whole(daily)], ["max", whole(most)]].filter(([, v]) => v !== null));
     saveMsg.textContent = "Saving…"; saveMsg.className = "small muted";
     try {
-      await api("/api/settings", { companies, filters, keywords, scoring: { ...scoring, backend: backend.value },
+      await api("/api/settings", { companies, filters, keywords, scoring: scoringValues(),
         display, pace: Object.keys(paced).length ? paced : null,
         fetch_every: every.value === everyNow && (s.fetch_every === null || s.fetch_every === undefined) ? null : every.value });
       settings = await api("/api/settings");
@@ -2494,6 +2546,7 @@ function renderSettings() {
       upload("resume", ".pdf,.docx,.txt,.md", s.resume, "Fit scores compare a posting's requirements with your resume. " +
         "They need the scoring add-on: pip install 'jobwatch[score]'."),
       h("label", {}, "Score with"), backend),
+    prompts,
     h("div", { class: "card" }, h("h3", {}, "People you know ", h("span", { class: "hint" }, "optional")),
       upload("connections", ".zip,.csv", s.connections, "On LinkedIn: Settings → Data privacy → Get a copy of your " +
         "data. Upload the archive (.zip) LinkedIn emails you, and each job shows who you know there, the people you " +

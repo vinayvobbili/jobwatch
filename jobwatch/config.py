@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from .filters import Filters
+from .score import check_prompts
 from .sources import SOURCES
 
 DEFAULT_PATHS = (Path("jobwatch.yaml"), Path.home() / ".config" / "jobwatch" / "config.yaml")
@@ -141,6 +142,18 @@ def _pace(raw, path: Path) -> Pace:
     return Pace(daily, most)
 
 
+def _prompts(raw, path: Path) -> dict[str, str]:
+    """scoring.prompts: {name: text} for the fit-score prompts that were edited; one left out is shortlist-ai's own.
+    Checked by the installed shortlist-ai, when it takes edited prompts (see score.check_prompts)."""
+    if not raw:
+        return {}
+    if not isinstance(raw, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in raw.items()):
+        raise ConfigError(f"{path}: scoring.prompts maps a prompt's name to its text, got {raw!r:.80}")
+    if problem := check_prompts(raw):
+        raise ConfigError(f"{path}: scoring.prompts: {problem}")
+    return dict(raw)
+
+
 @dataclass
 class Config:
     path: Path
@@ -152,6 +165,7 @@ class Config:
     backend: str = "local"
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
+    prompts: dict[str, str] = field(default_factory=dict)  # scoring.prompts: the edited fit-score prompts
     timeline: str = "quarter"  # how soon you want to close a skill gap: see TIMELINES
     near: str = ""             # a city, for certificate programs at colleges nearby
     theme: str = "system"      # the page: see THEMES and WIDTHS
@@ -268,6 +282,14 @@ def _near(learning: dict, filters: Filters) -> str:
                  and not re.search(r"[\\^$*+?()[\]{}|]", loc)), "")
 
 
+class _Dumper(yaml.SafeDumper):
+    """Writes text of several lines (an edited prompt) as a block, so the file stays readable and editable by hand."""
+
+
+_Dumper.add_representer(str, lambda dumper, s: dumper.represent_scalar(
+    "tag:yaml.org,2002:str", s, style="|" if "\n" in s else None))
+
+
 def save(path: Path, settings: dict) -> Config:
     """Update the watchlist's settings (other keys, such as state, are kept) and write it.
 
@@ -284,7 +306,7 @@ def save(path: Path, settings: dict) -> Config:
             raw[key] = value
     path.parent.mkdir(parents=True, exist_ok=True)
     text = "# jobwatch watchlist, saved by jobwatch. Docs: https://github.com/vinayvobbili/jobwatch\n" + \
-        yaml.safe_dump(raw, sort_keys=False, allow_unicode=True)
+        yaml.dump(raw, Dumper=_Dumper, sort_keys=False, allow_unicode=True)
     tmp = path.with_name(path.name + ".new")
     tmp.write_text(text, encoding="utf-8")
     try:
@@ -376,6 +398,7 @@ def load(explicit: str | Path | None = None) -> Config:
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
         backend=backend, score_top=int(scoring.get("top", 0)), auto_score=auto_score,
+        prompts=_prompts(scoring.get("prompts"), path),
         timeline=timeline, near=_near(learning, filters), theme=theme, width=width, today=today,
         pace=_pace(raw.get("pace"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
@@ -434,6 +457,7 @@ scoring:
   backend: claude        # claude (ANTHROPIC_API_KEY) or local (Apple Silicon, pip install 'jobwatch[local]')
   top: 0                 # score this many of the most relevant new jobs per digest
   # auto: true           # `jobwatch ui` scores every new match in the background (default: on for local)
+  # prompts: {}          # edited fit-score prompts, by name (Settings > Fit score prompt; see --show-prompts)
 
 # Optional: LinkedIn's Connections.csv, to show who you know at each company (a referral beats applying cold).
 # connections: ~/Downloads/Connections.csv
