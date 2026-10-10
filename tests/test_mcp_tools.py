@@ -35,12 +35,14 @@ def test_status_lists_its_values():
     ("mark_job", "add_application"), ("add_application", "mark_job"), ("find_board", "add_application"),
     ("find_board", "add_board"), ("add_board", "find_board"), ("list_boards", "add_board"),
     ("fetch_jobs", "get_digest"), ("import_job_alerts", "get_digest"), ("add_application", "import_job_alerts"),
+    ("list_suggested_boards", "add_board"), ("list_suggested_boards", "dismiss_suggested_board"),
+    ("dismiss_suggested_board", "add_board"), ("add_board", "list_suggested_boards"),
 ])
 def test_overlapping_tools_point_to_each_other(tool, sibling):
     assert sibling in TOOLS[tool].description
 
 
-VERBS = {"add", "check", "fetch", "find", "get", "import", "list", "mark", "remove", "save"}
+VERBS = {"add", "check", "dismiss", "fetch", "find", "get", "import", "list", "mark", "remove", "save"}
 
 
 def test_tool_names_start_with_a_verb():

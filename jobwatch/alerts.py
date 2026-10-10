@@ -19,6 +19,8 @@ already tracked, including the same job seen on its board, are left alone. New o
 through the filters into the digest like any other, with `via` saying where they came from (linkedin-alert...).
 A new one that's (maybe) the same opening as a job already applied to, queued or skipped (see dupes.py) says
 so, and the same opening (a shared id) is recorded as its duplicate; it's still in the digest, flagged.
+A new one from a company whose board isn't watched makes that company a suggestion to watch (see suggest.py),
+with the board it was found on, or the ones looked for under its name, so they're not looked for again.
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlencode, urlparse
 
-from . import dupes, linkedin, sources
+from . import dupes, linkedin, sources, suggest
 from .filters import reject_reason
 from .models import Job
 from .store import MANUAL, Store, _slug
@@ -716,6 +718,10 @@ class _Resolver:
             self.found_boards[key] = hits
         return self.found_boards[key]
 
+    def looked(self, company: str) -> list[tuple[str, str, str]] | None:
+        """The company's boards found this run, or None if they weren't looked for."""
+        return self.found_boards.get(linkedin._bare(company))
+
     def on_board(self, title: str, company: str, location: str, description: str = "") -> Job | None:
         boards = self.company_boards(company)
         if not boards:
@@ -814,6 +820,8 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
             f.same = acted.match(f.job)
             if not dry_run:
                 _record(store, f)
+                # A company whose board isn't watched: a suggestion to watch it (see suggest.py)
+                suggest.record(store, cfg.boards, f.job, resolver.looked(f.alert.company))
             tracked.add(f.job)
     return result
 

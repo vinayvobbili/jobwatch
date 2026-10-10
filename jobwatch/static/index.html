@@ -419,6 +419,13 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .facet .c { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
 .facet.more { color: var(--accent); font-size: 13px; justify-content: flex-start; }
 .facet .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: var(--sc); margin-right: 8px; }
+.to-watch { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.to-watch:last-child { border-bottom: 0; padding-bottom: 0; }
+.to-watch .top { display: flex; justify-content: space-between; gap: 8px; }
+.to-watch .c { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; }
+.to-watch .hint { font-size: 12.5px; overflow-wrap: anywhere; }
+.to-watch .acts { display: flex; gap: 6px; margin-top: 6px; }
+.to-watch .acts .btn { font-size: 13px; padding: 3px 10px; }
 .chip.toggle { cursor: pointer; border: 0; font: inherit; font-size: 12.5px; font-weight: 500; transition: transform .12s; }
 .chip.toggle:hover { transform: translateY(-1px); }
 .chip.toggle.on { background: var(--grad); color: #fff; }
@@ -1796,11 +1803,58 @@ async function renderToday() {
         segmented([["fit", "Best fit"], ["new", "Newest"], ["pay", "Top pay"]], v.sort, k => { v.sort = k; drawToday(); }))),
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
+      toWatchPanel(),
     ], [checked, scoring, showing, list, pager]));
   drawToday();
   if (d.checked) watchChecked(d.checked, checked);
   if (d.scoring) watchScoring(d.scoring, scoring);
   watchPay(todayJobs);
+}
+
+// Companies whose jobs come in from alerts (or Add a job) while their board isn't watched: watch one, or dismiss it.
+// It fills in after Today is drawn: what's known first, then again once any boards not looked for yet are.
+function toWatchPanel() {
+  const body = h("div", {}), el = panel("Companies to watch", body);
+  el.style.display = "none";
+  const draw = list => {
+    el.style.display = list.length ? "" : "none";
+    fill(body, list.map(s => {
+      const row = h("div", { class: "to-watch" },
+        h("div", { class: "top" }, h("b", {}, s.company),
+          h("span", { class: "c", title: `last one ${s.last_seen}` }, `${s.matching_jobs} job${s.matching_jobs === 1 ? "" : "s"}`)),
+        h("div", { class: "hint" }, "e.g. " + s.sample_titles.slice(0, 2).join(" · ")),
+        h("div", { class: "hint" }, s.board
+          ? [link(s.careers, s.board), s.board_found === "name" ? " (found by name: check it's theirs)" : null]
+          : s.looked_up ? "No board found by name: try a link to its careers page in Settings." : "Looking for its board…"),
+        h("div", { class: "acts" },
+          s.board ? h("button", { class: "btn primary", title: `Watch ${s.board}`, onclick: () => act("add", s, row) }, "Add") : null,
+          h("button", { class: "btn ghost", title: "Don't suggest it again", onclick: () => act("dismiss", s, row) }, "Dismiss")));
+      return row;
+    }));
+  };
+  const act = async (what, s, row) => {
+    for (const b of row.querySelectorAll("button")) b.disabled = true;
+    try {
+      await api("/api/suggestions/" + what, { company: s.company });
+      if (what === "add") {
+        settings = await api("/api/settings");
+        toast(`Watching ${s.company}. Press “Check for new jobs” to see its roles.`);
+      } else toast(`${s.company} won't be suggested again.`);
+      draw(await load(false));
+    } catch (e) {
+      toast(e.message);
+      for (const b of row.querySelectorAll("button")) b.disabled = false;
+    }
+  };
+  const load = async lookup => (await api("/api/suggestions" + (lookup ? "?lookup=1" : ""))).companies;
+  (async () => {
+    try {
+      const list = await load(false);
+      draw(list);
+      if (list.some(s => !s.looked_up)) draw(await load(true));
+    } catch { /* a suggestion, not the page: Today works without it */ }
+  })();
+  return el;
 }
 
 function renderWelcome() {

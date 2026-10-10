@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from . import dupes, levels, linkedin, sources
+from . import dupes, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts
 from .filters import Filters, red_flags, reject_reason, relevance, search_terms, title_ok
@@ -328,9 +328,11 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
     job is kept with the LinkedIn link and the pasted text. Anything else (a company's own site) needs the
     company, the title and, to be scored, the posting's text pasted. An application already further along
     keeps its stage. When it's the same opening as a job already applied to, queued or skipped (see dupes.py),
-    that's recorded on it; dupes.check says which, to warn."""
+    that's recorded on it; dupes.check says which, to warn. A company whose board isn't in `boards` becomes a
+    suggestion to watch (see suggest.py)."""
     job, read = _save_job(store, link, company, title, text, status, note, applied, location, get, page, boards)
     dupes.record(store, [job])
+    suggest.record(store, boards, job)
     return job, read
 
 
