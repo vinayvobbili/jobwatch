@@ -48,7 +48,6 @@ from .watch import (
 
 MAX_UPLOAD = 20 * 1024 * 1024
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
-TODAY_PAY = 15  # Today's jobs whose pay is looked up on Levels.fyi, most relevant first
 
 
 class ApiError(Exception):
@@ -376,13 +375,22 @@ class App:
                               **({} if b.source in sources.SOURCES else {"error": config.UNKNOWN_SOURCE})})
         every = raw.get("fetch_every")
         scoring = raw.get("scoring") or {}
+        talk = raw.get("chat") if isinstance(raw.get("chat"), dict) else {}
         return {"path": str(self.path), "exists": self.path.is_file(), "version": __version__,
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
-                "scoring": scoring, "learning": raw.get("learning") or {},
-                "display": raw.get("display") or {}, "pace": raw.get("pace") or {},
+                "scoring": scoring, "chat": talk, "learning": raw.get("learning") or {},
+                "display": raw.get("display") or {}, "pace": raw.get("pace") or {}, "pay": raw.get("pay") or {},
+                "alerts": raw.get("alerts") or {}, "suggestions": raw.get("suggestions") or {},
+                # where the history is kept: shown, changed only in the file (a new path starts an empty history)
+                "state": raw.get("state"), "cache": raw.get("cache"),
+                # what each setting left out is, for the page to show
+                "defaults": config.defaults(),
                 # the prompts fit scoring sends: shortlist-ai's, with the edited ones (scoring.prompts) in place
                 "fit_prompts": prompt_info(scoring.get("prompts") if isinstance(scoring.get("prompts"), dict) else {}),
+                # the chat's instructions: its own, or the edited one (chat.prompt)
+                "chat_prompt": {"default": chat.SYSTEM, "text": talk.get("prompt") or chat.SYSTEM,
+                                "edited": bool(talk.get("prompt")), "placeholders": list(config.CHAT_PLACEHOLDERS)},
                 # as written (YAML reads a bare off as false); unset: the default
                 "fetch_every": "off" if every is False else str(every) if every is not None else None}
 
@@ -392,11 +400,13 @@ class App:
             settings["companies"] = [config._item(config.Board(c["source"], c["board"], c.get("name") or "",
                                                                (c.get("careers") or "").strip()))
                                      for c in settings["companies"]]
+        talk = settings.get("chat")
+        if isinstance(talk, dict) and str(talk.get("prompt") or "").strip() == chat.SYSTEM.strip():
+            settings["chat"] = {k: v for k, v in talk.items() if k != "prompt"}  # only an edited one is kept
         with self.lock:
             cfg = config.save(self.path, settings)
         self.score_in_background()  # new filters, resume or scoring setting: maybe more to score
         return {"saved": str(cfg.path), "companies": len(cfg.boards)}
-
     def post_find(self, body) -> list[dict]:
         query = (body.get("company") or "").strip()
         if not query:
@@ -407,12 +417,13 @@ class App:
                 for s, b, jobs in sources.probe(query)]
 
     def get_suggestions(self, q) -> dict:
-        """Companies to watch (see suggest.py), the best `limit` (5 by default). With lookup=1 the boards not looked
-        for yet are looked for first: the page asks for that after showing what's known, so nothing waits on it."""
+        """Companies to watch (see suggest.py), the best `limit` (by default suggestions.limit, 5 at most: Today's
+        panel). With lookup=1 the boards not looked for yet are looked for first: the page asks for that after
+        showing what's known, so nothing waits on it."""
         look = (q.get("lookup") or [""])[0] == "1"
-        limit = int((q.get("limit") or ["5"])[0])
 
         def run(cfg, store):
+            limit = int(q["limit"][0]) if q.get("limit") else min(5, cfg.suggest.limit)
             if not look:
                 return {"companies": [s.to_dict() for s in suggest.suggestions(cfg, store, limit=limit)]}
             with self.looking:  # two pages open don't look for the same company's board twice
@@ -444,7 +455,7 @@ class App:
         def run(cfg, store):
             d = build_digest(cfg, store, include_seen=True, score_top=0)
             why = self.scorer.reasons(cfg, store)
-            pay = self._pay(cfg, store, [(e.job, None) for e in d.entries], most=TODAY_PAY)
+            pay = self._pay(cfg, store, [(e.job, None) for e in d.entries], most=cfg.pay.today)
             out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {})}
                             for e in d.entries],
                    "rejected": d.rejected,
@@ -603,7 +614,7 @@ class App:
             if not cfg.pay.levels:
                 return {"enabled": False, "running": False, "pay": {}}
             jobs = []
-            for k in (body.get("keys") or [])[:TODAY_PAY]:
+            for k in (body.get("keys") or [])[:cfg.pay.today]:
                 try:
                     jobs.append(store.find(k)[0])
                 except KeyError:
@@ -684,7 +695,8 @@ class App:
             if cached := store.score(job.key, rid):
                 return cached
             with turn(cfg.backend):  # ahead of background scoring
-                results, errors = score_jobs([job], cfg.resume, cfg.backend, cfg.cache, prompts=cfg.prompts)
+                results, errors = score_jobs([job], cfg.resume, cfg.backend, cfg.cache, prompts=cfg.prompts,
+                                             model=cfg.score_model)
             if job.key not in results:
                 raise ApiError(errors.get(job.key, "scoring failed"), HTTPStatus.BAD_GATEWAY)
             store.save_score(job.key, rid, results[job.key])
@@ -696,13 +708,16 @@ class App:
         return {**self.scorer.status(), "enabled": self.background}
 
     def get_chat(self, q) -> dict:
-        return chat.where(self._cfg().backend)
+        c = self._cfg().chat
+        return chat.where(c.backend, c.model)
 
     def chat(self, body) -> tuple[dict, object]:
         """({where replies come from}, the reply in pieces), about one job (`key`) or today's jobs and your
         applications. Everything that can fail does so here, before the reply starts streaming."""
-        messages = chat.clean(body.get("messages"))
-        return self._with_store(lambda cfg, store: chat.start(cfg, store, messages, body.get("key")))
+        def run(cfg, store):
+            messages = chat.clean(body.get("messages"), cfg.chat.max_turns)
+            return chat.start(cfg, store, messages, body.get("key"))
+        return self._with_store(run)
 
     def upload(self, kind: str, filename: str, data: bytes) -> dict:
         """Save an uploaded resume or LinkedIn export next to the watchlist and point the watchlist at it."""

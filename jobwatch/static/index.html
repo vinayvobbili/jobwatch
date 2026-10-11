@@ -456,15 +456,56 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .step b { color: var(--text); display: block; }
 .step .n { flex: none; width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; font-weight: 800;
   font-size: 12.5px; color: #fff; background: var(--grad); }
-.settings-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 0 20px; align-items: start; }
-.settings-grid > .card:first-child { margin-top: 12px; }
+/* Settings: two columns of cards (the long ones span both), each a grid of fields that fills its width */
+.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.settings-grid > .card { margin: 0; scroll-margin-top: calc(var(--head, 64px) + 64px); }
+.settings-grid > .card.full { grid-column: 1 / -1; }
+.settings-grid h3 { margin: 0 0 4px; }
+.settings-grid .lead { margin: 2px 0 8px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 2px 16px; align-items: start; }
+.fields .wide { grid-column: 1 / -1; }
+.fields .span3 { grid-column: span 3; }  /* only in a full-width card: it has 4 columns or more off a phone */
+.field > label { margin: 10px 0 4px; font-size: 13.5px; }
+.field .help, .card .help { color: var(--muted); font-size: 12.5px; line-height: 1.4; margin-top: 4px; }
+.field textarea { min-height: 64px; }
+.field .stack { display: grid; gap: 6px; }
+label.check { display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 13.5px; margin: 10px 0 0; }
+label.check input { flex: none; width: auto; margin: 0; }
+.kw.flag { grid-template-columns: 1.4fr 1fr auto; }
+.code.path, code.path { display: block; font-size: 12.5px; padding: 7px 10px; border-radius: 10px; background: var(--chip);
+  overflow-wrap: anywhere; }
+.row.between { justify-content: space-between; flex-wrap: wrap; margin: 12px 0 8px; }
+.row.every select { width: auto; }
+.row.find { margin-top: 8px; }
+.row.end { justify-content: flex-end; margin-top: 16px; }
+.row.upload { margin: 6px 0 0; flex-wrap: wrap; }
+.row.upload input[type=file] { max-width: 100%; font-size: 13px; }
 .companies { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-/* Settings: the fit-score prompts, one per fold */
+.company .x { display: grid; place-items: center; }
+@media (hover: none) { .company .x { opacity: .75; } }  /* no hover on a touch screen: always there */
+.company.editing { grid-column: span 2; align-items: flex-start; }
+.company.editing .who { gap: 6px; }
+.company.editing input { padding: 5px 9px; font-size: 13.5px; }
+.unsaved { color: var(--warn); font-weight: 600; }
+.snav { position: sticky; top: var(--head, 64px); z-index: 4; display: flex; align-items: center; gap: 12px;
+  margin: -6px 0 14px; padding: 8px 10px 8px 14px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel-solid) 86%, transparent); backdrop-filter: saturate(1.5) blur(16px);
+  -webkit-backdrop-filter: saturate(1.5) blur(16px); box-shadow: var(--shadow); }
+.snav .links { flex: 1; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.snav .links::-webkit-scrollbar { display: none; }
+.snav .links a { flex: none; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 550; color: var(--muted);
+  text-decoration: none; }
+.snav .links a:hover { background: var(--chip); color: var(--text); }
+.snav .btn { flex: none; }
+.snav > span { flex: none; max-width: 40%; }
+/* Settings: prompts, one per fold, closed until opened */
 .prompt { border-top: 1px solid var(--line); padding: 9px 0; }
 .prompt:last-child { padding-bottom: 0; }
 .prompt summary { cursor: pointer; }
 .prompt summary code { font-weight: 650; margin-right: 6px; }
-.prompt summary .hint { display: block; margin: 2px 0 0 16px; }
+.prompt summary .hint { margin-left: 4px; }
+details.fold { margin-top: 6px; }
+details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; padding: 4px 0; }
 .prompt textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px;
   line-height: 1.5; margin-top: 8px; }
 .prompt .row { justify-content: space-between; margin-top: 6px; }
@@ -550,7 +591,7 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
   .layout { grid-template-columns: minmax(0, 1fr); }
   .layout > aside { position: static; max-height: none; overflow: visible; margin: 0; padding: 0; }
   .layout > aside .hero { grid-template-columns: repeat(4, 1fr); }
-  .settings-grid { grid-template-columns: 1fr; }
+  .settings-grid { grid-template-columns: minmax(0, 1fr); }
   .grid-cards { grid-template-columns: 1fr; }
 }
 @keyframes bump { 40% { transform: scale(1.45); } }
@@ -574,6 +615,20 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
   .chat-fab { right: 16px; bottom: 16px; } .chat-pop { right: 16px; bottom: 16px; height: calc(100vh - 90px); }
   .fitbox { text-align: left; margin-top: 8px; } .ring { margin: 0; }
   .fpart .v { max-width: 62vw; } .fbar .sep { display: none; }
+  /* the tabs get a row of their own, scrolling sideways if they must, so the page never does */
+  nav#tabs { order: 3; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; gap: 0; }
+  nav#tabs button { flex: 1 0 auto; justify-content: center; padding: 6px 5px; gap: 4px; font-size: 13.5px; }
+  .snav .links { mask-image: linear-gradient(90deg, #000 80%, transparent); }
+  .company.editing { grid-column: auto; }
+  /* numbers two to a row; text, lists, choices and switches get the width */
+  .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; grid-auto-flow: row dense; }
+  .field:has(textarea, select, input[type=text], .seg-ctl, .fitrange, .stack, code.path) { grid-column: 1 / -1; }
+  .settings-grid > .card { padding: 14px 14px 14px 16px; }
+  .snav { padding: 6px 6px 6px 8px; gap: 8px; }
+  .snav { flex-wrap: wrap; }
+  .snav > span { order: 3; flex-basis: 100%; max-width: none; padding: 0 4px; }
+  .snav > span:empty { display: none; }
+  .snav .btn { padding: 6px 10px; }
 }
 </style>
 </head>
@@ -2285,8 +2340,57 @@ function addForm(d) {
 function lines(v) { return (v || []).join("\n"); }
 function unlines(v) { return v.split(/[\n,]/).map(s => s.trim()).filter(Boolean); }
 
+// A setting in Settings: a short label, its input, and a line of help under it (so inputs side by side line up).
+function field(label, input, help, cls) {
+  return h("div", { class: "field" + (cls ? " " + cls : "") }, h("label", {}, label), input,
+    help ? h("div", { class: "help" }, help) : null);
+}
+// Inputs for settings that may be left blank: blank is the default, shown as the placeholder.
+function numInput(value, placeholder, { min = 0, max, step = 1 } = {}) {
+  const i = h("input", { type: "number", min, max, step, placeholder: placeholder ?? "" });
+  i.value = value ?? "";
+  return i;
+}
+function textInput(value, placeholder) {
+  const i = h("input", { type: "text", placeholder: placeholder ?? "" });
+  i.value = value ?? "";
+  return i;
+}
+function areaInput(list, placeholder) {
+  const t = h("textarea", { placeholder: placeholder ?? "" });
+  t.value = lines(list);
+  return t;
+}
+function choice(options, value) {
+  const s = h("select", {}, options.map(([v, label]) => h("option", { value: v }, label)));
+  s.value = value ?? "";
+  return s;
+}
+function checkLine(on, text) {
+  const box = h("input", { type: "checkbox" });
+  box.checked = !!on;
+  return { box, el: h("label", { class: "check" }, box, h("span", {}, text)) };
+}
+function numberOf(i) { return i.value.trim() === "" ? null : Number(i.value); }
+function textOf(i) { return i.value.trim() || null; }
+// A watchlist section as saved, with these settings set; one left blank (null) is left out, for its default.
+// Settings in it that the page doesn't edit are kept. null when nothing's left.
+function merged(base, values) {
+  const out = { ...(base || {}) };
+  for (const [k, v] of Object.entries(values)) {
+    if (v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)) delete out[k];
+    else out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+// A Settings card, with an id for the bar's links to it
+function setCard(id, title, hint, ...kids) {
+  return h("div", { class: "card", id: "set-" + id }, h("h3", {}, title, hint ? [" ", h("span", { class: "hint" }, hint)] : null), kids);
+}
+
 // Theme and page width: they change the page at once and are saved right away, apart from "Save settings".
-function displayCard() {
+// Where the history and cache are kept is shown, not edited: a new path would start an empty history.
+function displayCard(s) {
   const d = { theme: "system", width: "standard", ...(settings.display || {}) };
   const msg = h("span", { class: "small muted" });
   const set = async (k, v) => {
@@ -2300,12 +2404,36 @@ function displayCard() {
       msg.textContent = "Saved."; msg.className = "small muted";
     } catch (e) { msg.textContent = e.message; msg.className = "small error"; }
   };
-  return h("div", { class: "card" }, h("h3", {}, "Display ", msg),
-    h("div", { class: "grid" },
-      h("div", {}, h("label", {}, "Theme"),
-        segmented([["system", "System"], ["light", "Light"], ["dark", "Dark"]], d.theme, v => set("theme", v))),
-      h("div", {}, h("label", {}, "Page width ", h("span", { class: "hint" }, "wider fits more on a big monitor")),
-        segmented([["standard", "Standard"], ["wide", "Wide"], ["full", "Full"]], d.width, v => set("width", v)))));
+  const path = (v, dflt) => h("code", { class: "path" }, v || dflt);
+  const c = h("div", { class: "card full", id: "set-display" }, h("h3", {}, "Display and files ", msg),
+    h("div", { class: "fields" },
+      field("Theme", segmented([["system", "System"], ["light", "Light"], ["dark", "Dark"]], d.theme, v => set("theme", v)),
+        "System follows your computer. Saved at once."),
+      field("Page width", segmented([["standard", "Standard"], ["wide", "Wide"], ["full", "Full"]], d.width, v => set("width", v)),
+        "Wider fits more on a big monitor."),
+      field("History", path(s.state, s.defaults.state), "Jobs seen, applied to and scored (state: in the watchlist file)."),
+      field("Cache", path(s.cache, s.defaults.cache), "Posting text kept for fit scores (cache: in the file).")));
+  return c;
+}
+
+// One prompt in a fold, closed until opened: its text to edit, "edited" while it isn't the default, "Reset to
+// default", and the placeholders it must keep. p: {name, about, text, default, placeholders}. {fold, text, changed}.
+function promptFold(p, editable = true) {
+  const text = h("textarea", { spellcheck: "false", readonly: !editable, "aria-label": p.name,
+    rows: Math.min(20, p.text.split("\n").length + 1) });
+  text.value = p.text;
+  const mark = h("span", { class: "chip hit" }, "edited");
+  const reset = h("button", { class: "btn", onclick: () => { text.value = p.default; sync(); } }, "Reset to default");
+  const changed = () => text.value.trim() !== p.default.trim();
+  const sync = () => { mark.style.display = changed() ? "" : "none"; reset.disabled = !changed(); };
+  text.addEventListener("input", sync);
+  sync();
+  const keep = p.placeholders.length ? h("span", { class: "hint" }, "Keep ",
+    p.placeholders.map((x, i) => [i ? ", " : "", h("code", {}, `{${x}}`)]), ": the data goes there.") : h("span");
+  const fold = h("details", { class: "prompt" },
+    h("summary", {}, h("code", {}, p.name), mark, h("span", { class: "hint" }, p.about)),
+    text, editable ? h("div", { class: "row" }, keep, reset) : null);
+  return { text, changed, fold };
 }
 
 // The prompts fit scoring sends (shortlist-ai's), one fold each. Only the edited ones are saved (scoring.prompts),
@@ -2313,33 +2441,91 @@ function displayCard() {
 // shortlist-ai can't take edited prompts; no card when fit scoring isn't installed. card.edited() gives what to save.
 function fitPromptsCard(info) {
   if (!info || !info.installed) return null;
-  const boxes = info.prompts.map(p => {
-    const text = h("textarea", { spellcheck: "false", readonly: !info.editable, "aria-label": p.name,
-      rows: Math.min(20, p.text.split("\n").length + 1) });
-    text.value = p.text;
-    const mark = h("span", { class: "chip hit" }, "edited");
-    const reset = h("button", { class: "btn", onclick: () => { text.value = p.default; sync(); } }, "Reset to default");
-    const changed = () => text.value.trim() !== p.default.trim();
-    const sync = () => { mark.style.display = changed() ? "" : "none"; reset.disabled = !changed(); };
-    text.addEventListener("input", sync);
-    sync();
-    const keep = p.placeholders.length ? h("span", { class: "hint" }, "Keep ",
-      p.placeholders.map((x, i) => [i ? ", " : "", h("code", {}, `{${x}}`)]), ": the data goes there.") : h("span");
-    const fold = h("details", { class: "prompt", open: p.edited || null },
-      h("summary", {}, h("code", {}, p.name), mark, h("span", { class: "hint" }, p.about)),
-      text, info.editable ? h("div", { class: "row" }, keep, reset) : null);
-    return { p, text, changed, fold };
-  });
-  const card = h("div", { class: "card" }, h("h3", {}, "Fit score prompt ",
-      h("span", { class: "hint" }, "what the model is told when it scores a job")),
-    h("p", { class: "small muted" }, "An edited prompt changes fit scores from the next one on. The scores you have " +
+  const boxes = info.prompts.map(p => ({ p, ...promptFold(p, info.editable) }));
+  const c = setCard("prompts", "Fit score prompt", "what the model is told when it scores a job",
+    h("p", { class: "small muted lead" }, "An edited prompt changes fit scores from the next one on. The scores you have " +
       "were made with the prompts as they were: saving an edit sets them aside and Today's jobs are scored again " +
       "(putting the prompts back brings those scores back)."),
     info.note ? h("p", { class: "small error" }, info.note) : null,
     boxes.map(b => b.fold));
-  card.editable = info.editable;
-  card.edited = () => Object.fromEntries(boxes.filter(b => b.changed()).map(b => [b.p.name, b.text.value]));
-  return card;
+  c.classList.add("full");
+  c.editable = info.editable;
+  c.edited = () => Object.fromEntries(boxes.filter(b => b.changed()).map(b => [b.p.name, b.text.value]));
+  return c;
+}
+
+// The chat (Ask jobwatch): where its model runs, which model, how long it goes on, and its instructions (chat.prompt,
+// saved only when edited). card.values() gives the chat section to save.
+function chatCard(s) {
+  const c = s.chat || {}, d = s.defaults.chat;
+  const backend = choice([["", "Same as fit scores"], ["claude", "Claude API (needs ANTHROPIC_API_KEY)"],
+    ["local", "On this Mac (Apple Silicon)"]], c.backend);
+  const claude = textInput(c.claude_model, d.claude_model), local = textInput(c.local_model, d.local_model);
+  const tokens = numInput(c.max_tokens, d.max_tokens, { min: 1, max: 64000, step: 100 });
+  const turns = numInput(c.max_turns, d.max_turns, { min: 1, max: 200 });
+  const prompt = promptFold({ name: "chat prompt", about: "what the assistant is told before every question: its " +
+    "rules, then today's date and the jobs, applications and resume it reads", ...s.chat_prompt });
+  const el = setCard("chat", "Chat", "Ask jobwatch, on Today and beside each job",
+    h("div", { class: "fields" },
+      field("Runs on", backend, "Claude gets your question, resume and the jobs; this Mac keeps them here."),
+      field("Claude model", claude, "When it runs on Claude."),
+      field("Model on this Mac", local, "An MLX model; the first answer waits for it to load."),
+      field("Longest reply", tokens, "In tokens, about ¾ of a word each."),
+      field("Messages sent", turns, "The latest messages of a conversation sent with each question.")),
+    prompt.fold);
+  el.classList.add("full");
+  el.values = () => merged(c, { backend: backend.value || null, claude_model: textOf(claude), local_model: textOf(local),
+    max_tokens: numberOf(tokens), max_turns: numberOf(turns), prompt: prompt.changed() ? prompt.text.value : null });
+  return el;
+}
+
+// Expected pay from Levels.fyi (pay): off unless turned on. card.values() gives the pay section.
+function payCard(s) {
+  const p = s.pay || {}, d = s.defaults.pay;
+  const on = checkLine(p.levels, "Look up what a job's level pays on Levels.fyi");
+  const years = numInput(p.years, "e.g. 10"), region = textInput(p.region, "e.g. new-york-city-area");
+  const over = numInput(p.ask_over, d.ask_over, { max: 100, step: 1 });
+  const round = numInput(p.round, d.round, { step: 1000 }), today = numInput(p.today, d.today);
+  const el = setCard("pay", "Expected pay", "from Levels.fyi, on queued and opened jobs",
+    on.el, h("div", { class: "help" }, "Off, nothing is asked of Levels.fyi. For personal use: check its terms."),
+    h("div", { class: "fields" },
+      field("Your years", years, "For a title with no seniority word: the level your years fit."),
+      field("Region", region, "A Levels.fyi location, as in its links: remote jobs and ones near you."),
+      field("Ask over the median", over, "Percent over the level's median base salary."),
+      field("Round the ask up to", round, "In dollars; 0 doesn't round."),
+      field("Looked up on Today", today, "How many of Today's jobs, most relevant first.")));
+  el.values = () => merged(p, { levels: on.box.checked || null, years: numberOf(years), region: textOf(region),
+    ask_over: numberOf(over), round: numberOf(round), today: numberOf(today) });
+  el.classList.add("full");  // its short fields fit one row
+  return el;
+}
+
+// Job-alert emails read from a mailbox (alerts.imap): off unless set. The password is never here: the name of an
+// environment variable or a keychain item that holds it. card.values() gives alerts.
+function alertsCard(s) {
+  const m = (s.alerts || {}).imap || {}, d = s.defaults.alerts.imap;
+  const host = textInput(m.host, "e.g. imap.gmail.com"), user = textInput(m.user, "e.g. you@example.com");
+  const env = textInput(m.password_env, "e.g. JOBWATCH_IMAP_PASSWORD"), keychain = textInput(m.keychain, "e.g. jobwatch-imap");
+  const port = numInput(m.port, d.port, { min: 1, max: 65535 }), folder = textInput(m.folder, d.folder);
+  const days = numInput(m.days, d.days, { min: 1 });
+  const senders = areaInput(m.senders, d.senders.join("\n"));
+  senders.rows = d.senders.length;
+  const el = setCard("alerts", "Job-alert emails", "LinkedIn, Built In, Indeed and others",
+    h("p", { class: "small muted lead" }, "Save alert emails and run jobwatch alerts, or have it read them from your " +
+      "mailbox (IMAP): read-only, nothing is marked read. Off until a server is set."),
+    h("div", { class: "fields" },
+      field("Server", host), field("User", user),
+      field("Password variable", env, "An environment variable holding the password."),
+      field("or keychain item", keychain, "A macOS keychain item holding it."),
+      field("Port", port), field("Folder", folder), field("Days back", days, "Emails from the last few days."),
+      field("Senders", senders, "Whose emails are job alerts: an address or a domain, one per line.", "span3")));
+  el.values = () => {
+    const imap = merged(m, { host: textOf(host), user: textOf(user), password_env: textOf(env), keychain: textOf(keychain),
+      port: numberOf(port), folder: textOf(folder), days: numberOf(days), senders: unlines(senders.value) });
+    return imap ? { imap } : null;
+  };
+  el.classList.add("full");
+  return el;
 }
 
 // -- skills: what the matching jobs ask for that the resume doesn't show, and where to learn it
@@ -2394,19 +2580,32 @@ async function renderSkills() {
 
 function renderSettings() {
   const s = settings, f = s.filters || {};
-  const companies = [...s.companies];
+  const companies = s.companies.map(c => ({ ...c }));
   const companyList = h("div", { class: "companies" });
-  const watching = h("div", { class: "muted small", style: "margin:14px 0 8px" });
+  const watching = h("span", { class: "muted small" });
+  let editing = null;  // the company whose name and careers link are being edited
+  // Its name as shown, and careers: the company's own site, where its jobs link while its board's hosted pages
+  // are offline. Edited in place; saved with the rest.
+  const editRow = c => {
+    const name = textInput(c.name, c.board), careers = textInput(c.careers, "https://… (only if its board's pages are offline)");
+    name.oninput = () => { c.name = name.value.trim(); };
+    careers.oninput = () => { c.careers = careers.value.trim(); };
+    setTimeout(() => name.focus());
+    return h("div", { class: "company editing" }, h("div", { class: "who" },
+      h("span", {}, `${c.source}:${c.board}`), name, careers),
+      h("button", { class: "btn", onclick: () => { editing = null; drawCompanies(); } }, "Done"));
+  };
   const drawCompanies = () => (watching.textContent = `Watching ${companies.length} ${companies.length === 1 ? "company" : "companies"}`,
-    companyList.replaceChildren(...(companies.length ? companies.map((c, i) =>
+    companyList.replaceChildren(...(companies.length ? companies.map((c, i) => i === editing ? editRow(c) :
     // c.error: a source this version can't read (a newer jobwatch's). It's skipped; remove it or update jobwatch.
     h("div", { class: "company" + (c.error ? " bad" : ""), title: c.error || null }, monogram(c.name || c.board),
       h("div", { class: "who" }, h("b", {}, c.name || c.board), h("span", {}, `${c.source}:${c.board}`),
-        // careers: the company's own site, where its jobs link while its board's hosted pages are offline
         c.careers ? h("span", { title: "Its jobs link to the company's own careers site" }, link(c.careers, "careers site ↗")) : null,
         c.error ? h("span", { class: "err" }, "Unknown source: update jobwatch or remove") : null),
+      h("button", { class: "x", title: `Edit ${c.name || c.board}'s name or careers link`, "aria-label": "Edit",
+        onclick: () => { editing = i; drawCompanies(); } }, icon("pencil", 13)),
       h("button", { class: "x", title: `Stop watching ${c.name || c.board}`, "aria-label": "Remove",
-        onclick: () => { companies.splice(i, 1); drawCompanies(); } }, "✕")))
+        onclick: () => { companies.splice(i, 1); editing = null; drawCompanies(); } }, "✕")))
     : [h("div", { class: "muted small" }, "No companies yet.")])));
   drawCompanies();
 
@@ -2435,7 +2634,25 @@ function renderSettings() {
   findInput.addEventListener("keydown", e => { if (e.key === "Enter") find(); });
 
   const inp = filterInputs(f);
-  const { titles, exclude, locations, country, minPay, requirePay, maxAge } = inp, home = homeField(inp);
+  const { titles, exclude, locations, country, minPay, requirePay, maxAge } = inp;
+  const departments = areaInput(f.exclude_departments, "sales\nrecruiting");
+
+  // filters.flags: not filters, warnings on queued jobs whose posting says this (a pattern and why it matters)
+  const flagRows = h("div", {});
+  const addFlag = (pattern = "", why = "") => {
+    const p = textInput(pattern, "e.g. active (TS|top secret)"), w = textInput(why, "e.g. clearance");
+    const row = h("div", { class: "kw flag" }, p, w, h("button", { class: "btn", onclick: () => row.remove() }, "✕"));
+    flagRows.append(row);
+  };
+  Object.entries(f.flags || {}).forEach(([p, w]) => addFlag(p, w));
+  const flagValues = () => {
+    const out = {};
+    for (const row of flagRows.children) {
+      const [p, w] = row.querySelectorAll("input");
+      if (p.value.trim()) out[p.value.trim()] = w.value.trim() || "check this";
+    }
+    return Object.keys(out).length ? out : null;
+  };
 
   const kwRows = h("div", {});
   const addKw = (k = "", w = 1) => {
@@ -2458,25 +2675,40 @@ function renderSettings() {
     EVERY.map(([v, label]) => h("option", { value: v }, label)));
   every.value = everyNow;
 
-  // Today's picks (display.today) and the pace (pace.daily, pace.max). Blank: the default.
-  const num = (v, placeholder) => { const i = h("input", { type: "number", min: 0, step: 1, placeholder }); i.value = v ?? ""; return i; };
-  const whole = i => i.value.trim() === "" ? null : Number(i.value);
-  const pace = s.pace || {};
-  const picksN = num((s.display || {}).today, "10"), daily = num(pace.daily, "3"), most = num(pace.max, "5");
+  // Today's picks (display.today) and the pace (pace.daily, pace.max). Blank: the default, shown greyed.
+  const D = s.defaults, pace = s.pace || {};
+  const picksN = numInput((s.display || {}).today, D.display.today), daily = numInput(pace.daily, D.pace.daily),
+    most = numInput(pace.max, D.pace.max);
 
+  // Fit scores: where the model runs, which one, and when it scores by itself (on for the local model unless set).
   const scoring = s.scoring || {};
-  const backend = h("select", {}, h("option", { value: "claude" }, "Claude API (needs ANTHROPIC_API_KEY)"),
-    h("option", { value: "local" }, "On this Mac (Apple Silicon, slower)"));
-  backend.value = scoring.backend || "claude";
+  const backend = choice([["local", "On this Mac (Apple Silicon)"], ["claude", "Claude API (needs ANTHROPIC_API_KEY)"]],
+    scoring.backend || D.scoring.backend);
+  const scoreModel = textInput(scoring.model, "default");
+  const autoDefault = () => backend.value === "local";
+  const auto = checkLine(scoring.auto ?? autoDefault(), "Score new jobs by themselves while the page is open");
+  backend.addEventListener("change", () => { if (scoring.auto === undefined) auto.box.checked = autoDefault(); });
+  const top = numInput(scoring.top, D.scoring.top);
   const prompts = fitPromptsCard(s.fit_prompts);
   const scoringValues = () => {
-    const out = { ...scoring, backend: backend.value };
+    const out = merged(scoring, { backend: backend.value, model: textOf(scoreModel), top: numberOf(top),
+      auto: auto.box.checked === autoDefault() ? null : auto.box.checked });
     if (prompts && prompts.editable) {  // otherwise the watchlist's are kept as they are
       const edited = prompts.edited();
       if (Object.keys(edited).length) out.prompts = edited; else delete out.prompts;
     }
     return out;
   };
+  const chatC = chatCard(s), payC = payCard(s), alertsC = alertsCard(s);
+
+  // Companies to watch (suggestions) and Skills to build (learning)
+  const sug = s.suggestions || {}, learning = s.learning || {};
+  const halfLife = numInput(sug.half_life, D.suggestions.half_life, { min: 1, max: 3650 });
+  const sugLimit = numInput(sug.limit, D.suggestions.limit, { min: 1, max: 50 });
+  const timeline = choice(TIMELINES.map(([v, label]) => [v, v === "any" ? "Any time" : `Within a ${label.toLowerCase()}`]),
+    learning.timeline || D.learning.timeline);
+  const near = textInput(learning.near, "e.g. Boulder, CO");
+  const exampleJobs = numInput(learning.jobs, D.learning.jobs);
 
   const upload = (kind, accept, current, help) => {
     const input = h("input", { type: "file", accept });
@@ -2491,69 +2723,125 @@ function renderSettings() {
           (r.known !== undefined ? `, ${r.known} you've been in touch with` : "") + ")" : "");
       } catch (e) { status.textContent = e.message; status.className = "error small"; }
     };
-    return h("div", {}, h("div", { class: "row" }, input, status), h("div", { class: "hint" }, help));
+    return h("div", {}, h("div", { class: "row upload" }, input, status), h("div", { class: "help" }, help));
   };
 
-  const saveMsg = h("span", { class: "small" });
+  const saveMsg = h("span", { class: "small muted", role: "status" });
   const save = async () => {
     const keywords = {};
     for (const row of kwRows.children) {
       const [word, weight] = row.querySelectorAll("input, select");
       if (word.value.trim()) keywords[word.value.trim()] = Number(weight.value);
     }
-    const filters = mergeFilters(f, filterValues(inp));  // exclude_departments and flags are kept, not edited here
-    const display = { ...(settings.display || {}), today: whole(picksN) };  // theme and width save on their own
-    if (display.today === null) delete display.today;
-    const paced = Object.fromEntries([["daily", whole(daily)], ["max", whole(most)]].filter(([, v]) => v !== null));
+    const filters = mergeFilters(f, { ...filterValues(inp), exclude_departments: unlines(departments.value),
+      flags: flagValues() });
+    // theme and width save on their own
+    const display = merged(settings.display, { today: numberOf(picksN) });
     saveMsg.textContent = "Saving…"; saveMsg.className = "small muted";
     try {
-      await api("/api/settings", { companies, filters, keywords, scoring: scoringValues(),
-        display, pace: Object.keys(paced).length ? paced : null,
+      await api("/api/settings", { companies: companies.map(c => ({ ...c, careers: c.careers || null })),
+        filters, keywords, scoring: scoringValues(), chat: chatC.values(),
+        learning: merged(learning, { timeline: timeline.value === D.learning.timeline && !learning.timeline ? null
+          : timeline.value, near: textOf(near), jobs: numberOf(exampleJobs) }),
+        display, pace: merged(pace, { daily: numberOf(daily), max: numberOf(most) }),
+        pay: payC.values(), alerts: alertsC.values(),
+        suggestions: merged(sug, { half_life: numberOf(halfLife), limit: numberOf(sugLimit) }),
         fetch_every: every.value === everyNow && (s.fetch_every === null || s.fetch_every === undefined) ? null : every.value });
       settings = await api("/api/settings");
-      saveMsg.textContent = "Saved."; saveMsg.className = "small";
+      saveMsg.textContent = "Saved."; saveMsg.className = "small muted";
       if (companies.length) toast("Saved. Press “Check for new jobs” to look now.");
     } catch (e) { saveMsg.textContent = e.message; saveMsg.className = "small error"; }
   };
 
-  put(
-    pagehead("Settings", h("span", {}, "Your watchlist, saved to ", h("code", {}, s.path)),
-      h("div", { class: "row" }, saveMsg, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings"))),
-    h("div", { class: "settings-grid" }, h("div", {}, h("div", { class: "card" }, h("h3", {}, "Companies to watch"),
-      h("div", { class: "row", style: "margin-top:8px" }, h("div", { style: "flex:1" }, findInput), findBtn),
-      findOut, watching, companyList,
-      h("label", { style: "margin-top:14px" }, "Check for new jobs ", h("span", { class: "hint" }, "while jobwatch is open")), every),
-      displayCard()),
-    h("div", {}, h("div", { class: "card" }, h("h3", {}, "What you're looking for"),
-      h("div", { class: "grid" },
-        h("div", {}, h("label", {}, "Job titles ", h("span", { class: "hint" }, "one per line; a title must contain one")), titles),
-        h("div", {}, h("label", {}, "Leave out titles with ", h("span", { class: "hint" }, "one per line")), exclude),
-        h("div", {}, h("label", {}, "Locations ", h("span", { class: "hint" }, "“remote”, or a city or state")), locations,
-          h("div", { style: "margin-top:6px" }, country), home),
-        h("div", {},
-          h("label", {}, "Minimum pay per year ", h("span", { class: "hint" }, "jobs that don't list pay still show")), minPay,
-          h("label", { class: "row" }, requirePay, h("span", { class: "hint" }, "Only show jobs that list pay")),
-          h("label", {}, "Posted within (days)"), maxAge)),
-      h("label", {}, "Keywords ", h("span", { class: "hint" }, "jobs mentioning these rank higher; a title match counts double")),
+  const companiesCard = setCard("companies", "Companies you watch", null,
+    h("div", { class: "row find" }, h("div", { style: "flex:1" }, findInput), findBtn),
+    findOut,
+    h("div", { class: "row between" }, watching,
+      h("div", { class: "row every" }, h("span", { class: "small muted" }, "Check for new jobs"), every)),
+    companyList);
+  companiesCard.classList.add("full");
+
+  const filtersCard = setCard("filters", "What you're looking for", "a job must pass these to show",
+    h("div", { class: "fields" },
+      field("Job titles", titles, "One per line; a title must contain one."),
+      field("Leave out titles with", exclude, "One per line."),
+      field("Places", h("div", { class: "stack" }, locations, country), "“remote”, or a city or state, one per line."),
+      field("Leave out departments", departments, "One per line, for boards that list a department."),
+      field("Your state", inp.home, "Remote jobs open only in other states are left out."),
+      field("Minimum pay per year", h("div", { class: "stack" }, minPay,
+        h("label", { class: "check" }, requirePay, h("span", {}, "Only jobs that list pay"))),
+        "Jobs that don't list pay still show, unless ticked."),
+      field("Posted within (days)", maxAge, "Older postings are left out."),
+      field("Minimum fit score", h("div", { class: "fitrange" }, inp.minFit, inp.fitOut),
+        "Hides jobs scored below it; jobs not scored yet still show."),
+      field("Warnings", h("div", {}, flagRows, h("button", { class: "btn", onclick: () => addFlag() }, "Add warning")),
+        "Not filters: a queued job whose posting says this (a pattern) is flagged, with why it matters.", "wide")));
+  filtersCard.classList.add("full");
+
+  const cards = [
+    companiesCard,
+    filtersCard,
+    setCard("keywords", "Keywords", "jobs mentioning these rank higher; a title match counts double",
       kwRows, h("button", { class: "btn", onclick: () => addKw() }, "Add keyword")),
-    h("div", { class: "card" }, h("h3", {}, "Today's picks and your pace"),
-      h("div", { class: "grid" },
-        h("div", {}, filterLabel("Today shows the top", "in the order you sort by; 0 shows every match. The rest are a click away."), picksN),
-        fitField(inp),
-        h("div", {}, filterLabel("Applications a day", "Today and the queue count them. 0 turns this off, for when job hunting is your full-time job."), daily),
-        h("div", {}, filterLabel("At most", "past this, a note says the rest can wait until tomorrow. Nothing is ever blocked."), most))),
-    h("div", { class: "card" }, h("h3", {}, "Your resume ", h("span", { class: "hint" }, "optional: for fit scores")),
+    setCard("today", "Today's picks and your pace", null,
+      h("div", { class: "fields" },
+        field("Today shows the top", picksN, "In the order you sort by; 0 shows every match."),
+        field("Applications a day", daily, "Today and the queue count them; 0 turns this off."),
+        field("At most", most, "Past this, a note says the rest can wait. Nothing is ever blocked."))),
+    setCard("resume", "Your resume and fit scores", "optional",
       upload("resume", ".pdf,.docx,.txt,.md", s.resume, "Fit scores compare a posting's requirements with your resume. " +
         "They need the scoring add-on: pip install 'jobwatch[score]'."),
-      h("label", {}, "Score with"), backend),
-    prompts,
-    h("div", { class: "card" }, h("h3", {}, "People you know ", h("span", { class: "hint" }, "optional")),
+      h("div", { class: "fields" },
+        field("Score with", backend, "This Mac keeps the posting and resume here."),
+        field("Model", scoreModel, "Blank: shortlist-ai's own for where it runs."),
+        field("Score per digest", top, "jobwatch digest scores this many new jobs; 0 none.")),
+      auto.el),
+    setCard("people", "People you know", "optional",
       upload("connections", ".zip,.csv", s.connections, "On LinkedIn: Settings → Data privacy → Get a copy of your " +
         "data. Upload the archive (.zip) LinkedIn emails you, and each job shows who you know there, the people you " +
         "actually talk to first (from how often you've messaged, recommended or endorsed each other). Only those " +
         "counts are kept, never your messages. Connections.csv on its own works too. Everything stays on this " +
-        "computer.")))),
-    h("div", { class: "row" }, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings")));
+        "computer.")),
+    prompts,
+    chatC,
+    payC,
+    alertsC,
+    setCard("suggestions", "Companies to watch", "suggested from alerts, jobs you add and HN posts",
+      h("div", { class: "fields" },
+        field("Recent counts more", halfLife, "Days: a job this old counts half as much as today's."),
+        field("Companies listed", sugLimit, "Today's panel shows up to 5 of them."))),
+    setCard("skills", "Skills to build", null,
+      h("div", { class: "fields" },
+        field("How soon", timeline, "Courses longer than this are greyed."),
+        field("Programs near", near, "A city, for certificate programs nearby. Blank: your first place."),
+        field("Example jobs", exampleJobs, "Jobs listed with each skill."))),
+    displayCard(s),
+  ].filter(Boolean);
+
+  // A bar that stays on screen: a link to each card, what's unsaved, and Save.
+  const NAMES = { companies: "Companies", filters: "Filters", keywords: "Keywords", today: "Today", resume: "Resume",
+    people: "People", prompts: "Fit prompt", chat: "Chat", pay: "Pay", alerts: "Alerts", suggestions: "Suggestions",
+    skills: "Skills", display: "Display" };
+  const jump = id => h("a", { href: "#" + id, onclick: e => {
+    e.preventDefault(); document.getElementById(id).scrollIntoView({ behavior: "smooth", block: "start" });
+  } }, NAMES[id.slice(4)]);
+  const bar = h("div", { class: "snav" }, h("div", { class: "links" }, cards.map(c => jump(c.id))),
+    saveMsg, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings"));
+  const grid = h("div", { class: "settings-grid" }, cards);
+  const dirty = e => {
+    if (e.target.closest("#set-display")) return;  // theme and width save at once
+    saveMsg.textContent = "Unsaved changes"; saveMsg.className = "small unsaved";
+  };
+  grid.addEventListener("input", dirty);
+  grid.addEventListener("change", dirty);
+  grid.addEventListener("click", e => { if (e.target.closest(".company .x, .kw .btn, .prompt .btn, .list-item .btn")) dirty(e); });
+  // the bar sits under the header, whose height changes as it wraps on a narrow screen
+  const sizeBar = () => document.documentElement.style.setProperty("--head", document.querySelector("header").offsetHeight + "px");
+  sizeBar();
+  if (!renderSettings.sized) { addEventListener("resize", sizeBar); renderSettings.sized = true; }
+
+  put(pagehead("Settings", h("span", {}, "Your watchlist, saved to ", h("code", {}, s.path))), bar, grid,
+    h("div", { class: "row end" }, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings")));
 }
 
 // -- shell

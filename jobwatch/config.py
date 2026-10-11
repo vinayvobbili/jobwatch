@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from pathlib import Path
+from string import Formatter
 
 import yaml
 
@@ -84,30 +85,16 @@ def _imap(raw, path: Path) -> Imap | None:
         raise ConfigError(f"{path}: alerts.imap: {e}") from None
 
 
-@dataclass(frozen=True)
-class Pay:
-    """pay in the watchlist: what a job's level pays at its company, from Levels.fyi (see levels.py). Off unless
-    levels is true; off, nothing is ever asked of Levels.fyi."""
-    levels: bool = False
-    years: int | None = None   # your years of experience: a title without a seniority word gets the level they fit
-    region: str = ""           # a Levels.fyi location slug (as in its links), for remote jobs and those near you
-
-
-def _pay(raw, path: Path) -> Pay:
+def _section(raw, name: str, cls, path: Path, example: str) -> dict:
+    """A mapping of settings (pay, chat...): checked for names `cls` doesn't have. A setting left empty is unset."""
     if not raw:
-        return Pay()
+        return {}
     if not isinstance(raw, dict):
-        raise ConfigError(f"{path}: pay looks like {{levels: true, years: 10}}, got {raw!r}")
-    unknown = set(raw) - set(Pay.__dataclass_fields__)
+        raise ConfigError(f"{path}: {name} looks like {example}, got {raw!r}")
+    unknown = set(raw) - set(cls.__dataclass_fields__)
     if unknown:
-        raise ConfigError(f"{path}: unknown pay setting(s): {', '.join(sorted(unknown))}")
-    if not isinstance(raw.get("levels", False), bool):
-        raise ConfigError(f"{path}: pay.levels must be true or false, got {raw['levels']!r}")
-    try:
-        years = None if raw.get("years") is None else int(raw["years"])
-    except (TypeError, ValueError):
-        raise ConfigError(f"{path}: pay.years must be a number of years, got {raw['years']!r}") from None
-    return Pay(levels=raw.get("levels", False), years=years, region=str(raw.get("region") or "").strip())
+        raise ConfigError(f"{path}: unknown {name} setting(s): {', '.join(sorted(unknown))}")
+    return {k: v for k, v in raw.items() if v is not None and v != ""}
 
 
 def _whole(raw, name: str, path: Path, zero: str) -> int:
@@ -115,6 +102,117 @@ def _whole(raw, name: str, path: Path, zero: str) -> int:
     if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
         raise ConfigError(f"{path}: {name} must be a whole number, 0 or more ({zero}), got {raw!r}")
     return raw
+
+
+def _between(raw, name: str, path: Path, low: float, high: float | None = None, means: str = "",
+             whole: bool = True):
+    """A number from low to high (no top without high); `means` says what it is."""
+    kinds = int if whole else (int, float)
+    if isinstance(raw, bool) or not isinstance(raw, kinds) or raw < low or (high is not None and raw > high):
+        span = f"from {low} to {high}" if high is not None else f"{low} or more"
+        raise ConfigError(f"{path}: {name} must be a {'whole ' if whole else ''}number {span}"
+                          f"{f' ({means})' if means else ''}, got {raw!r}")
+    return raw
+
+
+@dataclass(frozen=True)
+class Pay:
+    """pay in the watchlist: what a job's level pays at its company, from Levels.fyi (see levels.py). Off unless
+    levels is true; off, nothing is ever asked of Levels.fyi."""
+    levels: bool = False
+    years: int | None = None   # your years of experience: a title without a seniority word gets the level they fit
+    region: str = ""           # a Levels.fyi location slug (as in its links), for remote jobs and those near you
+    ask_over: float = 10       # percent over the level's median base to ask for: room to meet in the middle
+    round: int = 5000          # the ask is rounded up to this (0: not rounded)
+    today: int = 15            # Today's jobs (most relevant first) whose pay is looked up
+
+
+def _pay(raw, path: Path) -> Pay:
+    raw = _section(raw, "pay", Pay, path, "{levels: true, years: 10}")
+    if not isinstance(raw.get("levels", False), bool):
+        raise ConfigError(f"{path}: pay.levels must be true or false, got {raw['levels']!r}")
+    try:
+        years = None if raw.get("years") is None else int(raw["years"])
+    except (TypeError, ValueError):
+        raise ConfigError(f"{path}: pay.years must be a number of years, got {raw['years']!r}") from None
+    return Pay(levels=raw.get("levels", False), years=years, region=str(raw.get("region") or "").strip(),
+               ask_over=_between(raw.get("ask_over", Pay.ask_over), "pay.ask_over", path, 0, 100,
+                                 "percent over the level's median base", whole=False),
+               round=_whole(raw.get("round", Pay.round), "pay.round", path, "0 doesn't round"),
+               today=_whole(raw.get("today", Pay.today), "pay.today", path, "0 looks up none of Today's"))
+
+
+BACKENDS = ("claude", "local")  # Anthropic's API, or the on-device model (Apple Silicon)
+CHAT_PLACEHOLDERS = ("today", "context")  # what chat.prompt must keep: today's date, and the data it reads
+
+
+@dataclass(frozen=True)
+class Chat:
+    """chat in the watchlist: the assistant's model and how long it goes on (see chat.py)."""
+    backend: str = ""          # claude or local; unset: scoring.backend's (load fills it in)
+    claude_model: str = "claude-sonnet-5-5"  # quick, conversational replies; fit scores keep their own model
+    local_model: str = "mlx-community/Qwen3.5-9B-MLX-4bit"  # shortlist-ai's local model: one download serves both
+    max_tokens: int = 1500     # the longest reply
+    max_turns: int = 24        # the most recent messages of a conversation sent with each question
+    prompt: str = ""           # the edited system prompt; unset: chat.SYSTEM
+
+    @property
+    def model(self) -> str:
+        return self.claude_model if self.backend == "claude" else self.local_model
+
+
+def _template(text: str, name: str, fields: tuple[str, ...], path: Path) -> str:
+    """An edited prompt filled in with str.format: it must keep each of `fields`, and only those."""
+    try:
+        found = {f for _, f, _, _ in Formatter().parse(text) if f is not None}
+    except ValueError as e:
+        raise ConfigError(f"{path}: {name}: {e} (write a literal brace as {{{{ or }}}})") from None
+    braces = ", ".join("{" + f + "}" for f in fields)
+    if missing := [f for f in fields if f not in found]:
+        raise ConfigError(f"{path}: {name} must keep {', '.join('{' + f + '}' for f in missing)}: the data goes "
+                          "there")
+    if unknown := sorted(found - set(fields)):
+        raise ConfigError(f"{path}: {name} has unknown placeholder(s) {', '.join('{' + f + '}' for f in unknown)} "
+                          f"(it takes {braces}; write a literal brace as {{{{ or }}}})")
+    try:
+        text.format(**{f: "" for f in fields})
+    except (ValueError, KeyError, IndexError) as e:
+        raise ConfigError(f"{path}: {name}: {e}") from None
+    return text
+
+
+def _chat(raw, backend: str, path: Path) -> Chat:
+    raw = _section(raw, "chat", Chat, path, "{backend: local, max_tokens: 1500}")
+    chosen = str(raw.get("backend") or backend)
+    if chosen not in BACKENDS:
+        raise ConfigError(f"{path}: chat.backend must be one of {', '.join(BACKENDS)} (or left out for "
+                          f"scoring.backend's), got {chosen!r}")
+    prompt = raw.get("prompt") or ""
+    if not isinstance(prompt, str):
+        raise ConfigError(f"{path}: chat.prompt is the assistant's instructions, as text, got {prompt!r:.80}")
+    return Chat(backend=chosen, claude_model=str(raw.get("claude_model", Chat.claude_model)).strip(),
+                local_model=str(raw.get("local_model", Chat.local_model)).strip(),
+                max_tokens=_between(raw.get("max_tokens", Chat.max_tokens), "chat.max_tokens", path, 1, 64000,
+                                    "the longest reply, in tokens"),
+                max_turns=_between(raw.get("max_turns", Chat.max_turns), "chat.max_turns", path, 1, 200,
+                                   "the latest messages sent with each question"),
+                prompt=_template(prompt, "chat.prompt", CHAT_PLACEHOLDERS, path) if prompt.strip() else "")
+
+
+@dataclass(frozen=True)
+class Suggestions:
+    """suggestions in the watchlist: Companies to watch (see suggest.py)."""
+    half_life: int = 30  # days: a job that came in this long ago counts half as much as one that came in today
+    limit: int = 10      # companies listed, and so the most looked for at once
+
+
+def _suggestions(raw, path: Path) -> Suggestions:
+    raw = _section(raw, "suggestions", Suggestions, path, "{half_life: 30, limit: 10}")
+    return Suggestions(
+        half_life=_between(raw.get("half_life", Suggestions.half_life), "suggestions.half_life", path, 1, 3650,
+                           "days until a job counts half"),
+        limit=_between(raw.get("limit", Suggestions.limit), "suggestions.limit", path, 1, 50,
+                       "companies listed"))
 
 
 @dataclass(frozen=True)
@@ -163,11 +261,15 @@ class Config:
     resume: Path | None = None
     connections: Path | None = None  # LinkedIn Connections.csv, for "you know someone there"
     backend: str = "local"
+    score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
     prompts: dict[str, str] = field(default_factory=dict)  # scoring.prompts: the edited fit-score prompts
+    chat: Chat = field(default_factory=lambda: Chat(backend="local"))
     timeline: str = "quarter"  # how soon you want to close a skill gap: see TIMELINES
     near: str = ""             # a city, for certificate programs at colleges nearby
+    learn_jobs: int = 5        # learning.jobs: example jobs listed with each skill
+    suggest: Suggestions = field(default_factory=Suggestions)
     theme: str = "system"      # the page: see THEMES and WIDTHS
     width: str = "standard"
     today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
@@ -267,8 +369,8 @@ def locate(explicit: str | Path | None = None) -> Path:
         return DEFAULT_PATHS[1]
 
 
-SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring", "learning", "display",
-            "pace", "fetch_every")
+SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring", "chat", "learning", "display",
+            "pace", "pay", "alerts", "suggestions", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -368,7 +470,9 @@ def load(explicit: str | Path | None = None) -> Config:
     except (TypeError, ValueError) as e:
         raise ConfigError(f"{path}: {e}") from None
     scoring = raw.get("scoring") or {}
-    backend = scoring.get("backend", "local")
+    backend = scoring.get("backend") or "local"
+    if backend not in BACKENDS:
+        raise ConfigError(f"{path}: scoring.backend must be one of {', '.join(BACKENDS)}, got {backend!r}")
     # On by default only for the on-device model: with Claude every score is a paid API call.
     auto_score = scoring.get("auto", backend == "local")
     if not isinstance(auto_score, bool):
@@ -397,15 +501,34 @@ def load(explicit: str | Path | None = None) -> Config:
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
-        backend=backend, score_top=int(scoring.get("top", 0)), auto_score=auto_score,
-        prompts=_prompts(scoring.get("prompts"), path),
-        timeline=timeline, near=_near(learning, filters), theme=theme, width=width, today=today,
+        backend=backend, score_model=str(scoring.get("model") or "").strip(),
+        score_top=_whole(scoring.get("top", 0), "scoring.top", path, "0 scores none when the digest is made"),
+        auto_score=auto_score, prompts=_prompts(scoring.get("prompts"), path),
+        chat=_chat(raw.get("chat"), backend, path),
+        timeline=timeline, near=_near(learning, filters),
+        learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
+        suggest=_suggestions(raw.get("suggestions"), path),
+        theme=theme, width=width, today=today,
         pace=_pace(raw.get("pace"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
         fetch_every=_every(raw.get("fetch_every"), path),
     )
+
+
+def defaults() -> dict:
+    """What each setting is when the watchlist leaves it out, as Settings shows it (by section, as written)."""
+    imap = Imap("", "")
+    return {"scoring": {"backend": "local", "top": 0},
+            "chat": {k: v for k, v in asdict(Chat()).items() if k not in ("backend", "prompt")},
+            "learning": {"timeline": "quarter", "jobs": Config.learn_jobs},
+            "display": {"theme": "system", "width": "standard", "today": Config.today},
+            "pace": asdict(Pace()), "pay": {k: v for k, v in asdict(Pay()).items() if k != "years"},
+            "suggestions": asdict(Suggestions()),
+            "alerts": {"imap": {"port": imap.port, "folder": imap.folder, "days": imap.days,
+                                "senders": list(imap.senders)}},
+            "fetch_every": "6h", "state": str(DEFAULT_STATE), "cache": str(DEFAULT_CACHE)}
 
 
 EXAMPLE = """\
@@ -456,8 +579,36 @@ keywords:
 scoring:
   backend: claude        # claude (ANTHROPIC_API_KEY) or local (Apple Silicon, pip install 'jobwatch[local]')
   top: 0                 # score this many of the most relevant new jobs per digest
+  # model: ""            # the model fit scores use; leave out for shortlist-ai's own for the backend
   # auto: true           # `jobwatch ui` scores every new match in the background (default: on for local)
   # prompts: {}          # edited fit-score prompts, by name (Settings > Fit score prompt; see --show-prompts)
+
+# The assistant (`jobwatch ask`, Ask jobwatch on the page). Leave a setting out for its default.
+# chat:
+#   backend: local                                  # claude or local; default: scoring.backend
+#   claude_model: claude-sonnet-5-5
+#   local_model: mlx-community/Qwen3.5-9B-MLX-4bit
+#   max_tokens: 1500                                # the longest reply
+#   max_turns: 24                                   # the latest messages sent with each question
+#   # prompt: |                                     # its instructions (Settings > Chat); keep {today} and {context}
+
+# Expected pay from Levels.fyi (off unless levels is true). See the README.
+# pay:
+#   levels: true
+#   years: 10              # your years of experience
+#   ask_over: 10           # ask this many percent over the level's median base
+#   round: 5000            # rounded up to this
+#   today: 15              # how many of Today's jobs get looked up
+
+# Companies to watch (from alerts, `add` and HN posts):
+# suggestions:
+#   half_life: 30          # days: a job this old counts half as much as one from today
+#   limit: 10              # how many companies are listed
+
+# Skills to build:
+# learning:
+#   timeline: quarter      # week, month, quarter or any
+#   jobs: 5                # example jobs listed with each skill
 
 # Optional: LinkedIn's Connections.csv, to show who you know at each company (a referral beats applying cold).
 # connections: ~/Downloads/Connections.csv

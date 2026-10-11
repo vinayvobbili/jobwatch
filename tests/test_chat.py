@@ -15,8 +15,8 @@ def fake_model(monkeypatch):
     """Stands in for Claude or the local model: records what it was sent, answers in two pieces."""
     seen = {}
 
-    def reply(backend, system, messages):
-        seen.update(backend=backend, system=system, messages=messages)
+    def reply(backend, system, messages, model="", max_tokens=0):
+        seen.update(backend=backend, system=system, messages=messages, model=model, max_tokens=max_tokens)
         yield {"status": "Waiting for a fit score to finish"}
         yield "Hello"
         yield ", there."
@@ -102,7 +102,7 @@ def test_chat_streams_lines(server, fake_model):
 
 
 def test_a_failed_reply_ends_with_an_error_line(server, monkeypatch):
-    def broken(backend, system, messages):
+    def broken(backend, system, messages, **kw):
         yield "Partial"
         raise RuntimeError("model fell over")
     monkeypatch.setattr(chat, "check", lambda backend: None)

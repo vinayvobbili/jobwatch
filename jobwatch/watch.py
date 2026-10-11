@@ -555,7 +555,7 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry],
     rid = resume_id(cfg.resume, cfg.prompts)
     results, errors = score_jobs([e.job for e in entries], cfg.resume, cfg.backend, cfg.cache,
                                  progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)),
-                                 prompts=cfg.prompts)
+                                 prompts=cfg.prompts, model=cfg.score_model)
     for e in entries:
         if e.job.key in results:
             for key in e.keys:

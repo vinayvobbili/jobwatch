@@ -1,7 +1,11 @@
-"""Ask about your search in plain words, with the model you picked for fit scores (`scoring.backend`).
+"""Ask about your search in plain words, with the model set in `chat` (by default the one for fit scores,
+`scoring.backend`).
 
 - claude: Anthropic's API (ANTHROPIC_API_KEY). What you ask, your resume and the job data go to Anthropic.
 - local: the same on-device MLX model shortlist-ai uses (pip install 'jobwatch[local]'). Nothing leaves the machine.
+
+The models, the longest reply, how much of the conversation is sent and the instructions (SYSTEM, or an edited
+`chat.prompt`) are settings: see config.Chat.
 
 The chat can only read what it's given (the jobs on screen, your applications, your resume) and has no tools:
 it can't change anything, apply, or send anything.
@@ -16,16 +20,12 @@ from datetime import date
 from functools import lru_cache
 
 from . import learn, report
-from .config import Config
+from .config import Chat, Config
 from .resume import resume_text
 from .score import LOCAL, resume_id
 from .store import Store
 from .watch import MANY_ROLES, build_digest, scorable
 
-CLAUDE_MODEL = "claude-sonnet-5-5"  # quick, conversational replies; fit scores keep their own model
-LOCAL_MODEL = "mlx-community/Qwen3.5-9B-MLX-4bit"  # shortlist-ai's local model: one download serves both
-MAX_TOKENS = 1500
-MAX_TURNS = 24
 MAX_MESSAGE = 8000
 
 SYSTEM = """You are the assistant inside jobwatch, a job-search tool running on the user's own computer. \
@@ -49,11 +49,11 @@ class ChatUnavailable(RuntimeError):
     pass
 
 
-def where(backend: str) -> dict:
+def where(backend: str, model: str = "") -> dict:
     """What the page shows about where messages go."""
     if backend == "claude":
-        return {"backend": "claude", "model": CLAUDE_MODEL, "label": "Claude", "local": False}
-    return {"backend": "local", "model": LOCAL_MODEL, "label": "On this computer", "local": True}
+        return {"backend": "claude", "model": model or Chat.claude_model, "label": "Claude", "local": False}
+    return {"backend": "local", "model": model or Chat.local_model, "label": "On this computer", "local": True}
 
 
 def check(backend: str):
@@ -65,7 +65,7 @@ def check(backend: str):
             raise ChatUnavailable("chat with Claude needs: pip install 'jobwatch[score]'") from None
         if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
             raise ChatUnavailable("set ANTHROPIC_API_KEY before `jobwatch ui` to chat with Claude, "
-                                  "or switch scoring to the local model")
+                                  "or switch the chat to the local model (Settings > Chat)")
     elif backend == "local":
         try:
             import mlx_lm  # noqa: F401
@@ -73,15 +73,16 @@ def check(backend: str):
             raise ChatUnavailable("chat on this computer needs Apple Silicon and: "
                                   "pip install 'jobwatch[local]'") from None
     else:
-        raise ChatUnavailable(f"unknown scoring backend {backend!r}")
+        raise ChatUnavailable(f"unknown chat backend {backend!r}")
 
 
-def clean(messages) -> list[dict]:
-    """The conversation from the page: alternating user and assistant turns, ending with the user's."""
+def clean(messages, turns: int = Chat.max_turns) -> list[dict]:
+    """The conversation from the page, its last `turns` messages: alternating user and assistant turns, ending
+    with the user's."""
     if not isinstance(messages, list) or not messages:
         raise ValueError("send messages: [{role, content}, ...]")
     out = []
-    for m in messages[-MAX_TURNS:]:
+    for m in messages[-turns:]:
         if not (isinstance(m, dict) and m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)):
             raise ValueError("each message needs a role (user or assistant) and text content")
         text = m["content"].strip()[:MAX_MESSAGE]
@@ -98,8 +99,9 @@ def clean(messages) -> list[dict]:
     return out
 
 
-def system_prompt(context: str, today: date | None = None) -> str:
-    return SYSTEM.format(today=(today or date.today()).isoformat(), context=context.strip())
+def system_prompt(context: str, today: date | None = None, template: str = "") -> str:
+    """The instructions with today's date and the data filled in: SYSTEM's, or an edited one (chat.prompt)."""
+    return (template or SYSTEM).format(today=(today or date.today()).isoformat(), context=context.strip())
 
 
 def _fit_line(fit: dict | None) -> str:
@@ -152,7 +154,8 @@ def job_context(cfg: Config, store: Store, key: str) -> str:
 def start(cfg: Config, store: Store, messages: list[dict], key: str | None = None) -> tuple[dict, Iterator[str]]:
     """({where the reply comes from}, the reply in pieces), about one job or, without a key, the whole search.
     The context is read now, so the store can close while the reply streams."""
-    check(cfg.backend)
+    c = cfg.chat
+    check(c.backend)
     context = job_context(cfg, store, key) if key else home_context(cfg, store)
     sent = store.package(key).resume() if key else None
     if resume := resume_text(sent):  # what the employer actually has
@@ -161,16 +164,18 @@ def start(cfg: Config, store: Store, messages: list[dict], key: str | None = Non
         resume = resume_text(cfg.resume)
         context += ("\n\n## The user's resume\n" + (f"<resume>\n{resume}\n</resume>" if resume else
                     "Not added yet (Settings > Resume). Say so if a question needs it."))
-    return where(cfg.backend), reply(cfg.backend, system_prompt(context), messages)
+    return where(c.backend, c.model), reply(c.backend, system_prompt(context, template=c.prompt), messages,
+                                            model=c.model, max_tokens=c.max_tokens)
 
 
-def reply(backend: str, system: str, messages: list[dict]) -> Iterator[str | dict]:
+def reply(backend: str, system: str, messages: list[dict], model: str = "",
+          max_tokens: int = Chat.max_tokens) -> Iterator[str | dict]:
     """The answer, in pieces as the model writes them, then a dict of what the model reports about the reply
     (input_tokens, output_tokens and, on this computer, tokens_per_sec, peak_memory_gb and waited_seconds).
-    A {"status"} dict before the text says what the reply is waiting for."""
+    A {"status"} dict before the text says what the reply is waiting for. model: the backend's default unless set."""
     if backend == "claude":
-        return _claude(system, messages)
-    return _local(system, messages)
+        return _claude(system, messages, model or Chat.claude_model, max_tokens)
+    return _local(system, messages, model or Chat.local_model, max_tokens)
 
 
 def stats_line(stats: dict) -> str:
@@ -183,10 +188,10 @@ def stats_line(stats: dict) -> str:
     return " · ".join(p for p in parts if p)
 
 
-def _claude(system: str, messages: list[dict]) -> Iterator[str | dict]:
+def _claude(system: str, messages: list[dict], model: str, max_tokens: int) -> Iterator[str | dict]:
     import anthropic
 
-    with anthropic.Anthropic().messages.stream(model=CLAUDE_MODEL, max_tokens=MAX_TOKENS, system=system,
+    with anthropic.Anthropic().messages.stream(model=model, max_tokens=max_tokens, system=system,
                                                messages=messages) as stream:
         yield from stream.text_stream
         usage = stream.get_final_message().usage
@@ -200,7 +205,7 @@ def _local_model(name: str):
     return mlx_lm.load(name)
 
 
-def _local(system: str, messages: list[dict]) -> Iterator[str | dict]:
+def _local(system: str, messages: list[dict], name: str, max_tokens: int) -> Iterator[str | dict]:
     import mlx_lm
 
     if LOCAL.busy:
@@ -208,11 +213,11 @@ def _local(system: str, messages: list[dict]) -> Iterator[str | dict]:
     asked = time.monotonic()
     with LOCAL.foreground():  # background fit scoring gives way after the job it's on
         waited = time.monotonic() - asked
-        model, tokenizer = _local_model(LOCAL_MODEL)
+        model, tokenizer = _local_model(name)
         prompt = tokenizer.apply_chat_template([{"role": "system", "content": system}, *messages],
                                                add_generation_prompt=True, tokenize=False, enable_thinking=False)
         last = None
-        for last in mlx_lm.stream_generate(model, tokenizer, prompt, max_tokens=MAX_TOKENS):
+        for last in mlx_lm.stream_generate(model, tokenizer, prompt, max_tokens=max_tokens):
             if last.text:
                 yield last.text
         if last:

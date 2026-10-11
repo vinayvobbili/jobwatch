@@ -26,8 +26,6 @@ from .resume import resume_text
 from .score import resume_id
 from .store import Store
 
-MOST_JOBS = 5  # example jobs listed per skill
-
 # How long an option takes, and the longest each timeline allows.
 TIME = {"hours": 1, "weeks": 2, "months": 3}
 FITS = {"week": 1, "month": 2, "quarter": 3, "any": 4}
@@ -117,6 +115,7 @@ class Report:
     has_resume: bool
     timeline: str = "quarter"
     near: str = ""
+    most_jobs: int = Config.learn_jobs    # example jobs listed per skill (learning.jobs)
 
     def gaps(self) -> list[Demand]:
         return [d for d in self.skills if not d.on_resume]
@@ -178,7 +177,9 @@ def gather(cfg: Config, store: Store, timeline: str | None = None, entries: list
         if job.key not in seen:
             pairs.append((job, _fit(cfg, store, job.key)))
             seen.add(job.key)
-    return build(pairs, resume_text(cfg.resume), timeline or cfg.timeline, cfg.near)
+    report = build(pairs, resume_text(cfg.resume), timeline or cfg.timeline, cfg.near)
+    report.most_jobs = cfg.learn_jobs
+    return report
 
 
 def job_gaps(cfg: Config, store: Store, job: Job) -> list[dict]:
@@ -199,16 +200,17 @@ def options(skill: Skill, timeline: str) -> list[dict]:
             for o in sorted(skill.options, key=lambda o: TIME.get(o.get("time", "months"), 3))]
 
 
-def demand_dict(d: Demand, total: int, timeline: str = "quarter", near: str = "") -> dict:
+def demand_dict(d: Demand, total: int, timeline: str = "quarter", near: str = "",
+                most_jobs: int = Config.learn_jobs) -> dict:
     return {"id": d.skill.id, "name": d.skill.name, "on_resume": d.on_resume, "count": len(d.jobs), "of": total,
             "gap_count": len(d.gap_jobs), "years": d.years, "options": options(d.skill, timeline),
             "more": more(d.skill, timeline, near),
-            "jobs": [_job(j) for j in (d.gap_jobs + [j for j in d.jobs if j not in d.gap_jobs])[:MOST_JOBS]]}
+            "jobs": [_job(j) for j in (d.gap_jobs + [j for j in d.jobs if j not in d.gap_jobs])[:most_jobs]]}
 
 
 def to_dict(r: Report) -> dict:
     return {"jobs": r.jobs, "scored": r.scored, "has_resume": r.has_resume, "timeline": r.timeline,
-            "near": r.near, "skills": [demand_dict(d, r.jobs, r.timeline, r.near) for d in r.skills],
+            "near": r.near, "skills": [demand_dict(d, r.jobs, r.timeline, r.near, r.most_jobs) for d in r.skills],
             "other_gaps": [{"gap": g, "search": search_url(g), **_job(j)} for g, j in r.other_gaps],
             "blockers": [{"label": label, "gaps": [{"gap": g, **_job(j)} for g, j in items]}
                          for label, items in r.blockers.items()]}

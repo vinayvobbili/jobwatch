@@ -181,10 +181,11 @@ def brief(fit: dict | None) -> dict | None:
 
 def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, workers: int = 1,
                progress: Callable[[str], None] | None = None,
-               prompts: Mapping[str, str] | None = None) -> tuple[dict[str, dict], dict[str, str]]:
+               prompts: Mapping[str, str] | None = None, model: str = "") -> tuple[dict[str, dict], dict[str, str]]:
     """({job key: result}, {job key: error}). A result has score, must_haves_met/total, gaps, summary and
     requirements (see requirement_rows; results saved before it have none). prompts: the edited ones
-    (scoring.prompts) in place of shortlist-ai's own; results belong under resume_id(resume, prompts)."""
+    (scoring.prompts) in place of shortlist-ai's own; results belong under resume_id(resume, prompts).
+    model: the backend's model (scoring.model); unset, shortlist-ai's own."""
     try:
         from shortlist_ai.backends import get_backend
         from shortlist_ai.extract import Cache, extract_job
@@ -200,7 +201,7 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
     edits = {"prompts": dict(prompts)} if prompts else {}  # none: works with a shortlist-ai from before prompts
 
     progress = progress or (lambda msg: None)
-    model = get_backend(backend)
+    model = get_backend(backend, model) if model else get_backend(backend)
     cache = Cache(cache_dir / "shortlist")
     postings = cache_dir / "postings"
     postings.mkdir(parents=True, exist_ok=True)

@@ -101,6 +101,15 @@ def test_an_estimate_from_the_us_page_and_its_level_page(store):
     assert any("its level page" in w for w in e.why) and any("10% over" in w for w in e.why)
 
 
+def test_the_ask_follows_pay_ask_over_and_round(store):
+    posted = job(low=150_000, high=240_000)
+    e = levels.estimate(posted, Pay(levels=True, years=20, ask_over=20, round=10_000), None, reader(store))
+    assert e.ask == 200_000  # $160K base + 20% = $192K, rounded up to $10K
+    assert "Ask: 20% over the median base, rounded up to $10K: $200,000" in e.why
+    e = levels.estimate(posted, Pay(levels=True, years=20, ask_over=2.5, round=0), None, reader(store))
+    assert e.ask == 164_000 and "Ask: 2.5% over the median base: $164,000" in e.why  # 0: not rounded
+
+
 def test_the_ask_stays_within_a_posted_range(store):
     e = levels.estimate(job(low=120_000, high=170_000), Pay(levels=True), None, reader(store))
     assert e.ask == 170_000 and any("capped at the posting's top" in w for w in e.why)
@@ -263,9 +272,16 @@ def test_pay_settings(tmp_path):
     assert config.load(path).pay == Pay()
     path.write_text("companies: [greenhouse:acme]\npay: {levels: true, years: 12, region: test-metro-area}\n")
     assert config.load(path).pay == Pay(levels=True, years=12, region="test-metro-area")
-    for bad in ("pay: {levels: yes please}", "pay: {years: lots}", "pay: {level: true}", "pay: true"):
+    path.write_text("companies: [greenhouse:acme]\npay: {levels: true, ask_over: 7.5, round: 0, today: 3}\n")
+    assert config.load(path).pay == Pay(levels=True, ask_over=7.5, round=0, today=3)
+    assert (Pay().ask_over, Pay().round, Pay().today) == (10, 5000, 15)
+    for bad, says in (("pay: {levels: yes please}", "pay.levels"), ("pay: {years: lots}", "pay.years"),
+                      ("pay: {level: true}", "unknown pay setting"), ("pay: true", "pay looks like"),
+                      ("pay: {ask_over: 150}", r"pay\.ask_over must be a number from 0 to 100"),
+                      ("pay: {ask_over: lots}", r"pay\.ask_over"), ("pay: {round: -5}", r"pay\.round"),
+                      ("pay: {round: 2.5}", r"pay\.round"), ("pay: {today: many}", r"pay\.today")):
         path.write_text(f"companies: [greenhouse:acme]\n{bad}\n")
-        with pytest.raises(ConfigError, match="pay"):
+        with pytest.raises(ConfigError, match=says):
             config.load(path)
 
 
@@ -349,6 +365,14 @@ def test_the_digest_never_has_expected_pay(levels_site, watchlist, capsys):
     for text in (report.to_markdown(d), report.to_json(d)):
         assert "Levels.fyi" not in text and "expected_pay" not in text and "Expected pay" not in text
     assert all("expected_pay" not in j for j in json.loads(report.to_json(d))["jobs"])
+
+
+def test_pay_today_is_how_many_jobs_the_page_looks_up(levels_site, watchlist, capsys):
+    _fetch_and_queue(watchlist, capsys, pay="{levels: true, years: 20, today: 1}")
+    keys = ["greenhouse:acme:101", "ashby:initech:c1", "lever:globex:aaaa-1111"]
+    assert list(App(watchlist).post_pay({"keys": keys})["pay"]) == keys[:1]
+    pending = [j for j in App(watchlist).get_digest({})["jobs"] if (j.get("expected_pay") or {}).get("pending")]
+    assert len(pending) == 1
 
 
 def test_the_page_looks_pay_up_in_the_background(levels_site, watchlist, capsys):

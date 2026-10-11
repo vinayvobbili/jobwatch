@@ -216,6 +216,25 @@ def test_with_nothing_edited_shortlist_ai_is_called_as_before(tmp_path, shortlis
     assert calls == [("extract_job", {}), ("match_jobs", {})]
 
 
+def test_scoring_model_is_the_model_fit_scores_use(resume_watchlist, shortlist, monkeypatch):
+    shortlist("editable")
+    asked = []
+    monkeypatch.setattr(sys.modules["shortlist_ai.backends"], "get_backend",
+                        lambda name, *model: asked.append((name, *model)) or name)
+    raw = yaml.safe_load(resume_watchlist.read_text())
+    for scoring, want in (({"backend": "local", "model": "mlx-community/Tiny-Test-4bit"},
+                           ("local", "mlx-community/Tiny-Test-4bit")),
+                          ({"backend": "local"}, ("local",))):  # unset: shortlist-ai's own, asked as before
+        resume_watchlist.write_text(yaml.safe_dump({**raw, "scoring": scoring}))
+        cfg = config.load(resume_watchlist)
+        store = Store(cfg.state)
+        watch.fetch_all(cfg, store)
+        asked.clear()
+        watch.score_entries(cfg, store, watch.unscored(cfg, store)[:1], progress=lambda m: None)
+        assert asked == [want]
+        store.close()
+
+
 def test_edited_prompts_need_a_shortlist_ai_that_takes_them(tmp_path, shortlist):
     calls = shortlist("old")
     with pytest.raises(ScoringUnavailable, match="pip install -U shortlist-ai"):

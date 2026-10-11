@@ -97,6 +97,20 @@ def test_learning_settings(watchlist):
     with pytest.raises(config.ConfigError, match=r"learning\.timeline"):
         config.save(watchlist, {"learning": {"timeline": "someday"}})
     assert config.load(watchlist).timeline == "week"  # a bad save leaves the file alone
+    assert cfg.learn_jobs == 5
+    config.save(watchlist, {"learning": {"jobs": 2}})
+    assert config.load(watchlist).learn_jobs == 2
+    for bad in (-1, "a few", True):
+        with pytest.raises(config.ConfigError, match=r"learning\.jobs must be a whole number"):
+            config.save(watchlist, {"learning": {"jobs": bad}})
+
+
+def test_learning_jobs_is_how_many_example_jobs_each_skill_lists(watchlist, web):
+    app = App(watchlist)
+    app.post_fetch({})
+    assert all(s["jobs"] for s in app.get_skills({"timeline": ["any"]})["skills"])
+    app.post_settings({"learning": {"jobs": 0}})  # 0 lists none
+    assert not any(s["jobs"] for s in app.get_skills({"timeline": ["any"]})["skills"])
 
 
 def test_skills_in_the_page_and_the_terminal(watchlist, web, capsys):

@@ -25,9 +25,8 @@ from .filters import reject_reason
 from .models import Job
 from .store import MANUAL, Store
 
-HALF_LIFE = 30  # days: a job that came in this long ago counts half as much as one that came in today
-LIMIT = 10      # suggestions listed, and so the most companies looked for at once
-
+# How the ranking fades with age (suggestions.half_life) and how many are listed (suggestions.limit): see
+# config.Suggestions.
 
 @dataclass
 class Suggestion:
@@ -37,7 +36,7 @@ class Suggestion:
     found_by: str | None = None  # posting: one of its jobs is on that board; name: found under its name
     jobs: list[Job] = field(default_factory=list)  # the ones that pass the filters, newest first
     last_seen: str = ""          # when the newest of those came in (YYYY-MM-DD)
-    weight: float = 0.0          # the ranking: each job counts 1, halving every HALF_LIFE days since it came in
+    weight: float = 0.0          # the ranking: each job counts 1, halving every half_life days since it came in
 
     @property
     def sample_titles(self) -> list[str]:
@@ -140,11 +139,14 @@ def _age(at: str, now: datetime) -> float:
     return max(0.0, (now - datetime.fromisoformat(at)).total_seconds() / 86400)
 
 
-def suggestions(cfg: Config, store: Store, limit: int | None = LIMIT, look: bool = False, page=None,
+def suggestions(cfg: Config, store: Store, limit: int | None = None, look: bool = False, page=None,
                 now: datetime | None = None) -> list[Suggestion]:
-    """Unwatched companies with jobs that pass the filters, best first. look: look for the board of each one
-    listed that hasn't been looked for yet (see look_up); one found that's already watched drops it."""
+    """Unwatched companies with jobs that pass the filters, best first: `limit` of them (None: suggestions.limit;
+    0: all). look: look for the board of each one listed that hasn't been looked for yet (see look_up); one
+    found that's already watched drops it."""
     now, out = now or datetime.now(timezone.utc), []
+    limit = cfg.suggest.limit if limit is None else limit
+    half_life = cfg.suggest.half_life
     for row in store.unwatched():
         if watched(cfg.boards, row["name"], row["entry"] or ""):
             continue
@@ -153,7 +155,7 @@ def suggestions(cfg: Config, store: Store, limit: int | None = LIMIT, look: bool
             continue
         out.append(Suggestion(row["company"], row["name"], row["entry"], row["found_by"], [j for j, _ in jobs],
                               last_seen=jobs[0][1][:10],
-                              weight=sum(0.5 ** (_age(at, now) / HALF_LIFE) for _, at in jobs)))
+                              weight=sum(0.5 ** (_age(at, now) / half_life) for _, at in jobs)))
     out.sort(key=lambda s: s.name.lower())
     out.sort(key=lambda s: (s.weight, s.last_seen), reverse=True)
     if not look:

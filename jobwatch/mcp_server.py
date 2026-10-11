@@ -152,7 +152,9 @@ def remove_board(entry: Entry) -> dict:
 
 @server.tool(annotations=_hints(idempotent=True, web=True))
 def list_suggested_boards(
-    limit: Annotated[int, Field(ge=1, description="The most companies to return, best first.")] = suggest.LIMIT,
+    limit: Annotated[int | None, Field(ge=1, description=(
+        "The most companies to return, best first. Omit for the watchlist's suggestions.limit (10 unless "
+        "set)."))] = None,
     look_up_boards: Annotated[bool, Field(description=(
         "Look for the board of each listed company that hasn't been looked for yet, the way find_board does "
         "(once per company; what's found is kept). False makes no requests."))] = True,

@@ -524,7 +524,8 @@ def build_parser() -> argparse.ArgumentParser:
                    "listed, or the board's entry); repeatable")
     p.add_argument("--dismiss", action="append", metavar="COMPANY", help="don't suggest this company again; "
                    "repeatable")
-    p.add_argument("--limit", type=int, default=suggest.LIMIT, metavar="N", help=f"list N (default {suggest.LIMIT})")
+    p.add_argument("--limit", type=int, default=None, metavar="N",
+                   help="list N (default: suggestions.limit in the watchlist, 10 unless set; 0: all)")
     p.add_argument("--no-lookup", action="store_true", help="look for no boards: list what's known")
     p.add_argument("--rescan", action="store_true", help="first note the companies of the HN posts already kept "
                    "that pass your filters (still open; nothing is read from the web)")

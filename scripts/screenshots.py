@@ -2,6 +2,11 @@
 
     pip install playwright && python -m playwright install chromium
     python scripts/screenshots.py -c path/to/jobwatch.yaml -o shots/
+    python scripts/screenshots.py -c path/to/jobwatch.yaml -o shots/ --tab settings --size laptop --size phone
+
+Settings is also taken with every fold open (settings-open-*.png), then saved unchanged: a save the page refuses
+is reported, as is a page that scrolls sideways. --pages takes each tab a screen at a time as well, for reading
+a long phone page.
 
 Opening Today marks its new jobs as seen, as in the browser: point -c at a copy of your watchlist (with its own
 `state:`) to keep your real history as it is.
@@ -27,7 +32,8 @@ from playwright.sync_api import sync_playwright
 from jobwatch import chat
 from jobwatch.web import serve
 
-SIZES = {"ultrawide": (2560, 1440), "wide": (1920, 1080), "desktop": (1280, 900), "phone": (390, 844)}
+SIZES = {"ultrawide": (2560, 1440), "wide": (1920, 1080), "laptop": (1600, 1000), "desktop": (1280, 900),
+         "phone": (390, 844)}
 TABS = ("today", "queue", "applied", "skills", "settings")
 DEMO_VIEW = {"width": 1280, "height": 760}  # the demo's slides show it 1200 px wide, cropped from the top
 
@@ -38,7 +44,7 @@ CANNED = ("Three stand out:\n\n1. **The best fit** matches most of your must-hav
 
 def canned_chat(text: str = CANNED):
     """Answer every chat with `text`, streamed a word at a time as a model would."""
-    def reply(backend, system, messages):
+    def reply(backend, system, messages, **settings):
         for word in text.split(" "):
             yield word + " "
     chat.check = lambda backend: None
@@ -95,9 +101,49 @@ def hide_folder(page, folder: Path):
           w.currentNode.nodeValue = w.currentNode.nodeValue.replaceAll(p, '~/'); }""", str(folder) + os.sep)
 
 
+def screens(page, out: Path, name: str, most: int = 12):
+    """The page a screen at a time, scrolled as a person would (name-p1.png, -p2...): a long phone page is too tall
+    to read as one picture. Sticky bars show on each, as they do on the phone."""
+    tall = page.evaluate("document.documentElement.scrollHeight")
+    high = page.viewport_size["height"]
+    for n in range(min(most, -(-tall // high))):
+        page.evaluate(f"window.scrollTo(0, {n * high})")
+        page.wait_for_timeout(150)
+        page.screenshot(path=out / f"{name}-p{n + 1}.png")
+    page.evaluate("window.scrollTo(0, 0)")
+
+
+def save_unchanged(page) -> str:
+    """Press Save on Settings without changing anything, as a check that what the page shows saves as it is:
+    "" when it did, else what the page said."""
+    page.locator(".snav .btn.primary").click(timeout=5000)
+    page.wait_for_function("!['', 'Saving…'].includes(document.querySelector('.snav span[role=status]').textContent)",
+                           timeout=10000)
+    said = page.locator(".snav span[role=status]").text_content()
+    return "" if said == "Saved." else said
+
+
+def sideways(page) -> int:
+    """How far the page scrolls sideways: 0 when it fits the window, as it must on a phone."""
+    return page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")
+
+
+# The dialogs and forms that only open on a click (or a few, in order): (tab, buttons, name).
+CLICKS = (("applied", ("Add an application",), "applied-add"),
+          ("applied", ("Table",), "applied-table"),
+          ("today", ("Show all",), "today-all"),
+          ("today", ("Show all", "Next →"), "today-page2"),
+          ("today", ("Details",), "details"))
+# Settings with its folded editors open (the prompts, the IMAP account), the whole page.
+SETTINGS_OPEN = "for (const d of document.querySelectorAll('main details')) d.open = true"
+
+
 def shoot(config: Path, out: Path, themes=("light", "dark"), sizes=tuple(SIZES), full_page: bool = True,
-          reply: str = CANNED):
+          reply: str = CANNED, tabs=TABS, pages: bool = False):
+    """Each of `tabs` in each theme and size, with the dialogs, forms and chats that open on those tabs.
+    pages: each tab a screen at a time as well (see screens)."""
     out.mkdir(parents=True, exist_ok=True)
+    folder = config.expanduser().resolve().parent
     canned_chat(reply)
     with serving(config) as url, sync_playwright() as p:
         browser = p.chromium.launch()
@@ -108,17 +154,25 @@ def shoot(config: Path, out: Path, themes=("light", "dark"), sizes=tuple(SIZES),
                                         device_scale_factor=2 if size == "phone" else 1)
                 errors = []
                 page.on("pageerror", lambda e, errors=errors: errors.append(str(e)))
-                for tab in TABS:
+                for tab in tabs:
                     page.goto(f"{url}#{tab}")
                     page.wait_for_load_state("networkidle")
                     page.wait_for_timeout(1200)  # let entrance animations settle
+                    hide_folder(page, folder)
                     page.screenshot(path=out / f"{tab}-{theme}-{size}.png", full_page=full_page)
-                # The dialogs and forms that only open on a click (or a few, in order).
-                for tab, buttons, name in (("applied", ("Add an application",), "applied-add"),
-                                           ("applied", ("Table",), "applied-table"),
-                                           ("today", ("Show all",), "today-all"),
-                                           ("today", ("Show all", "Next →"), "today-page2"),
-                                           ("today", ("Details",), "details")):
+                    if pages:
+                        screens(page, out, f"{tab}-{theme}-{size}")
+                    if wide := sideways(page):
+                        print(f"{theme}/{size}: {tab} scrolls sideways by {wide}px")
+                    if tab == "settings":
+                        page.evaluate(SETTINGS_OPEN)
+                        page.wait_for_timeout(300)
+                        page.screenshot(path=out / f"settings-open-{theme}-{size}.png", full_page=full_page)
+                        if said := save_unchanged(page):
+                            print(f"{theme}/{size}: saving Settings as they are said: {said}")
+                for tab, buttons, name in CLICKS:
+                    if tab not in tabs:
+                        continue
                     open_tab(page, url, tab, settle=0)
                     try:
                         for button in buttons:
@@ -128,14 +182,15 @@ def shoot(config: Path, out: Path, themes=("light", "dark"), sizes=tuple(SIZES),
                     page.wait_for_timeout(600)
                     page.screenshot(path=out / f"{name}-{theme}-{size}.png")
                 # What you sent, on an application's page: attach a file and save an answer through the page.
-                open_tab(page, url, "applied", settle=0)
-                try:
-                    fill_package(page)
-                    page.screenshot(path=out / f"applied-sent-{theme}-{size}.png")
-                except PlaywrightTimeout as e:
-                    print(f"{theme}/{size}: skipped applied-sent: {e.message.splitlines()[0]}")
+                if "applied" in tabs:
+                    open_tab(page, url, "applied", settle=0)
+                    try:
+                        fill_package(page)
+                        page.screenshot(path=out / f"applied-sent-{theme}-{size}.png")
+                    except PlaywrightTimeout as e:
+                        print(f"{theme}/{size}: skipped applied-sent: {e.message.splitlines()[0]}")
                 # Chat: Today's floating panel, then the column in a job's details, each after one question.
-                for name, button in (("chat-home", "Ask jobwatch"), ("chat-job", "Details")):
+                for name, button in (("chat-home", "Ask jobwatch"), ("chat-job", "Details")) if "today" in tabs else ():
                     open_tab(page, url, "today", settle=0)
                     try:
                         ask_first_suggestion(page, button)
@@ -202,6 +257,8 @@ def main():
     ap.add_argument("--theme", choices=["light", "dark"], action="append")
     ap.add_argument("--size", choices=list(SIZES), action="append")
     ap.add_argument("--viewport", action="store_true", help="only the visible part, not the whole page")
+    ap.add_argument("--tab", choices=TABS, action="append", help="only this tab (and what opens on it)")
+    ap.add_argument("--pages", action="store_true", help="each tab a screen at a time too (TAB-THEME-SIZE-p1.png...)")
     ap.add_argument("--demo", action="store_true", help="the README demo video's scenes (scripts/demo)")
     ap.add_argument("--reply", type=Path, metavar="FILE", help="what the chat answers, instead of a generic reply")
     args = ap.parse_args()
@@ -210,7 +267,7 @@ def main():
         return demo(args.config, args.out, reply)
     sizes = tuple(args.size or ("wide", "desktop", "phone"))  # ultrawide only when asked for
     shoot(args.config, args.out, tuple(args.theme or ("light", "dark")), sizes, full_page=not args.viewport,
-          reply=reply)
+          reply=reply, tabs=tuple(args.tab or TABS), pages=args.pages)
 
 
 if __name__ == "__main__":

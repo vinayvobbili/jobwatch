@@ -107,10 +107,16 @@ their jobs), say what you're looking for, and press **Check for new jobs**. From
   rejected, withdrawn), with the next step and a follow-up day. Those due come first. Filter by status with
   the chips over the list (or click the pipeline bar), and switch between **Cards** and a sortable **Table**.
   **Add an application** covers jobs you found elsewhere, such as a referral or a recruiter.
-- **Settings:** companies, filters, keywords, how many picks Today shows, the minimum fit score and your
-  daily pace, your resume (for fit scores) and the [prompt that scores fit](#the-fit-score-prompt), your
-  LinkedIn connections, and the page's theme (system, light or
-  dark) and width (standard, wide or full, for a big monitor).
+- **Settings:** the whole watchlist, one card per part, with a bar that jumps to each card and keeps Save in
+  reach: the companies you watch (with each one's name and careers link) and how often to check them; filters
+  (titles, places, departments, pay, age, minimum fit score, and warnings to flag in a posting); keywords;
+  how many picks Today shows and your daily pace; your resume, where fit scores run, their model and the
+  [prompt that scores fit](#the-fit-score-prompt); your LinkedIn connections; the [chat](#chat)'s model,
+  reply length and instructions; [expected pay](#the-watchlist); [job-alert emails](#job-alert-emails) from
+  a mailbox; [Companies to watch](#companies-to-watch) and [Skills to build](#skills-to-build); and the
+  page's theme (system, light or dark) and width (standard, wide or full, for a big monitor). Each setting
+  says in a line what it does, a blank one shows its default, and a bad value is refused with why, leaving
+  the file as it was.
 - **Ask jobwatch:** a chat on Today (about all of today's jobs and your applications) and beside each job's
   details (about that posting). See [Chat](#chat).
 
@@ -202,9 +208,30 @@ keywords:                                 # relevance: title hits count double
 resume: ~/Documents/resume.pdf            # for fit scores
 connections: ~/Downloads/linkedin.zip     # who you know at each company (see below)
 scoring:
-  backend: claude                         # or local
+  backend: claude                         # or local (the default)
+  # model: ...                            # the model fit scores use; default: shortlist-ai's for the backend
   top: 5                                  # score the 5 most relevant new jobs per digest
   auto: true                              # the page scores every new match in the background
+chat:                                     # Ask jobwatch; leave any of these out for its default
+  backend: local                          # claude or local; default: scoring.backend
+  claude_model: claude-sonnet-5-5
+  local_model: mlx-community/Qwen3.5-9B-MLX-4bit
+  max_tokens: 1500                        # the longest reply
+  max_turns: 24                           # the latest messages of a conversation sent with each question
+  # prompt: ...                           # its instructions (Settings > Chat); must keep {today} and {context}
+pay:                                      # expected pay from Levels.fyi: off unless levels is true (below)
+  levels: true
+  years: 12                               # your years, for a title with no seniority word
+  # region: new-york-city-area            # a Levels.fyi location, for remote jobs and ones near you
+  ask_over: 10                            # ask this many percent over the level's median base
+  round: 5000                             # rounded up to this (0: not rounded)
+  today: 15                               # how many of Today's jobs get looked up
+suggestions:                              # Companies to watch
+  half_life: 30                           # days: a job this old counts half as much as today's
+  limit: 10                               # how many companies are listed
+learning:                                 # Skills to build
+  timeline: quarter
+  jobs: 5                                 # example jobs listed with each skill
 display:                                  # the browser page
   theme: system                           # system, light or dark
   width: standard                         # standard, wide or full
@@ -216,10 +243,12 @@ fetch_every: 6h                           # the page checks the boards this ofte
 ```
 
 Relative paths are resolved from the watchlist's folder. State (which jobs you've seen, applied to or
-skipped, and their scores) lives in one SQLite file, by default `~/.local/share/jobwatch/state.db`.
+skipped, and their scores) lives in one SQLite file, by default `~/.local/share/jobwatch/state.db`. Settings
+shows where it and the cache are; change them in the file (a new state path starts an empty history).
 
 `pay: {levels: true, years: 12}` (off by default) adds an estimate of a queued or viewed job's level and pay from
-the company's public salary pages on Levels.fyi, with a link to the page. It's meant for personal use: you're
+the company's public salary pages on Levels.fyi, with a link to the page. The ask it suggests is
+`pay.ask_over` percent over the level's median base, rounded up to `pay.round`, kept within a posted range. It's meant for personal use: you're
 responsible for checking Levels.fyi's terms. What's read stays in the state file and is never put in a digest.
 Data: [Levels.fyi](https://www.levels.fyi).
 
@@ -312,13 +341,19 @@ Editing needs a shortlist-ai that takes edited prompts; with an older one they s
 ## Chat
 
 Ask questions in plain words: "which three should I apply to first?", "what follow-ups are due?", "how well
-do I fit this one, honestly?", "what will they ask in interviews?". The chat uses the model you set for fit
-scores:
+do I fit this one, honestly?", "what will they ask in interviews?". The chat runs where fit scores do,
+unless `chat.backend` says otherwise:
 
-- `scoring.backend: local`: the same on-device model as scoring (`pip install 'jobwatch[local]'`). Nothing
-  leaves your computer. The first answer waits for the model to load.
-- `scoring.backend: claude`: Claude Sonnet via Anthropic's API (`ANTHROPIC_API_KEY`). Your question, your resume
-  and the jobs it's about are sent to Anthropic.
+- `local`: the same on-device model as scoring (`pip install 'jobwatch[local]'`). Nothing leaves your
+  computer. The first answer waits for the model to load.
+- `claude`: Claude Sonnet via Anthropic's API (`ANTHROPIC_API_KEY`). Your question, your resume and the jobs
+  it's about are sent to Anthropic.
+
+Settings → **Chat** sets the model for each (`chat.claude_model`, `chat.local_model`), the longest reply
+(`chat.max_tokens`) and how many of a conversation's latest messages go with each question
+(`chat.max_turns`). Its instructions are there too, folded like the fit score prompts: edit them, or "Reset
+to default". Only an edited one is saved (`chat.prompt`), and it must keep `{today}` and `{context}`, where
+the date and the jobs it reads go.
 
 It reads today's matching jobs and your applications, or one posting with its fit score and
 [what you sent](#what-you-sent), plus your resume (the one you sent for that job, when it's kept).
@@ -363,6 +398,7 @@ must-haves asking for years of something: a course gives you something concrete 
 learning:
   timeline: quarter       # week, month, quarter or any
   near: Denver            # for colleges nearby; default: the first city in filters.locations
+  jobs: 5                 # example jobs listed with each skill
 ```
 
 The chat knows the top gaps too ("what should I learn this month?"), and a job's details list the skills
@@ -493,7 +529,8 @@ its jobs. Alerts show which ones you're missing. Each job that comes in from an 
 company whose board you don't watch, is noted with its company; so is each new Hacker News post that passes your
 filters, when you watch the Who is hiring thread. `jobwatch suggest` lists those companies, the
 ones with the most jobs that pass your filters first (a job from last week counts more than one from last
-season), with a few of their titles and their board:
+season: one `suggestions.half_life` days old, 30 unless set, counts half), `suggestions.limit` of them (10
+unless set; `--limit 0` lists all), with a few of their titles and their board:
 
 ```
 jobwatch suggest                       # companies to watch, and the board to add for each

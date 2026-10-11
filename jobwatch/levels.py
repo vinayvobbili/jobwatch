@@ -13,6 +13,7 @@ looking at or has queued.
 
 from __future__ import annotations
 
+import math
 import re
 import threading
 import time
@@ -212,10 +213,6 @@ def near(job: Job, region: str, home_state: str | None) -> bool:
 
 # -- the estimate
 
-ASK_OVER = 0.10  # ask this much over the level's median base: room to meet in the middle
-ROUND = 5000
-
-
 @dataclass
 class Estimate:
     company: str
@@ -272,8 +269,9 @@ def _pick(fam: Family, title: str, years: int | None) -> tuple[int, str]:
     return i, why
 
 
-def _round_up(n: float) -> int:
-    return int(-(-n // ROUND) * ROUND)
+def _round_up(n: float, step: int) -> int:
+    """n rounded up to a multiple of step (pay.round); 0 only to a whole dollar."""
+    return int(-(-n // step) * step) if step else math.ceil(n)
 
 
 def estimate(job: Job, pay, home_state: str | None, reader: Reader) -> Estimate | str | None:
@@ -323,8 +321,10 @@ def estimate(job: Job, pay, home_state: str | None, reader: Reader) -> Estimate 
                                       "stock" + (f", ${fam.mix[2]:,} bonus" if fam.mix[2] else "") if fam.mix else ""))
     ask = None
     if base:
-        ask = _round_up(base * (1 + ASK_OVER))
-        why.append(f"Ask: {ASK_OVER:.0%} over the median base, rounded up to ${ROUND // 1000}K: ${ask:,}")
+        # pay.ask_over and pay.round: room to meet in the middle
+        ask = _round_up(base * (1 + pay.ask_over / 100), pay.round)
+        why.append(f"Ask: {pay.ask_over:g}% over the median base"
+                   + (f", rounded up to ${pay.round / 1000:g}K" if pay.round else "") + f": ${ask:,}")
         low, high = job.salary_min, job.salary_max or job.salary_min
         if low is not None and job.currency in ("", "USD"):
             if ask > high:

@@ -7,6 +7,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import yaml
 
 from jobwatch import cli, config, sources, suggest, watch
 from jobwatch.store import Store
@@ -120,6 +121,31 @@ def test_ranked_by_matching_jobs_recent_ones_counting_more(web, watchlist):
     d = found[1].to_dict()
     assert d["command"] == "jobwatch suggest --add 'Vandelay Industries'" and d["board"] is None
     assert d["looked_up"] is False and d["add_board"] is None
+
+
+def test_suggestions_half_life_and_limit_come_from_the_watchlist(web, watchlist):
+    cfg = config.load(watchlist)
+    assert (cfg.suggest.half_life, cfg.suggest.limit) == (30, 10)
+    store = Store(cfg.state)
+    added(cfg, store, "Umbrella", "Platform Engineer")
+    added(cfg, store, "Umbrella", "Data Engineer")
+    for t in ("Engineer I", "Engineer II", "Engineer III"):
+        came_in(store, added(cfg, store, "Hooli", t).key, 120)
+    added(cfg, store, "Vandelay Industries", "Python Developer")
+    assert suggest.suggestions(cfg, store)[0].name == "Umbrella"
+    watchlist.write_text(watchlist.read_text() + "suggestions: {half_life: 365, limit: 2}\n")
+    cfg = config.load(watchlist)
+    # A slower fade: Hooli's three older jobs now outweigh Umbrella's two new ones. Two are listed.
+    assert [s.name for s in suggest.suggestions(cfg, store)] == ["Hooli", "Umbrella"]
+    assert len(suggest.suggestions(cfg, store, limit=0)) == 3  # 0: all of them
+    for bad, says in (("{half_life: 0}", r"suggestions\.half_life must be a whole number from 1 to 3650"),
+                      ("{limit: 99}", r"suggestions\.limit must be a whole number from 1 to 50"),
+                      ("{limit: lots}", r"suggestions\.limit"), ("{top: 3}", "unknown suggestions setting"),
+                      ("10", "suggestions looks like")):
+        with pytest.raises(config.ConfigError, match=says):
+            config.save(watchlist, {"suggestions": yaml.safe_load(bad)})
+    assert config.load(watchlist).suggest.limit == 2  # a bad save leaves the file as it was
+    store.close()
 
 
 def test_watched_ones_drop_out(web, watchlist):
