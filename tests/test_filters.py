@@ -28,8 +28,9 @@ def test_exclude_departments():
 
 
 @pytest.mark.parametrize("locations, remote, shown", [
-    (["San Francisco, California"], True, ["San Francisco, California", "Remote"]),  # Ashby: city + Remote flag
-    (["Remote - US"], True, ["Remote - US"]),                                          # already says so
+    (["San Francisco, California"], True, ["San Francisco, California (Remote)"]),  # Ashby: city + Remote flag
+    ([], True, ["Remote"]),
+    (["Remote - US"], True, ["Remote - US"]),                                        # already says so
     (["Austin, TX"], None, ["Austin, TX"]),
 ])
 def test_places_show_the_remote_flag(locations, remote, shown):

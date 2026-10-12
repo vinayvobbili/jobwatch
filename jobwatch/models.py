@@ -42,10 +42,10 @@ class Job:
 
     @property
     def places(self) -> list[str]:
-        """The locations to show: with "Remote" added when only the board's remote flag says so (an Ashby job
-        listed as "San Francisco" but marked Remote), so a remote job doesn't read as office-only."""
+        """The locations to show, each marked "(Remote)" when only the board's remote flag says so: an Ashby job
+        listed in "San Francisco" and marked Remote is remote from that place, not "San Francisco or remote"."""
         if self.remote and not any(is_remote(loc) for loc in self.locations):
-            return [*self.locations, "Remote"]
+            return [f"{loc} (Remote)" for loc in self.locations] or ["Remote"]
         return list(self.locations)
 
     def pay(self) -> str:
