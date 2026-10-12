@@ -54,7 +54,9 @@ jobwatch reads those feeds for the companies on your watchlist:
   after that, a run costs a few searches per company. Titles written as regexes can't be searched for, so
   keep a plain word or two ("engineer", "data platform") among them. A board that answers "too many
   requests" (HTTP 429) is asked again after a pause; a posting it still won't serve is kept without its text
-  and read on the next run. Eightfold boards are read one request at a time. Google's feed is every role it
+  and read on the next run. Eightfold boards are read one request at a time; a posting's own "work site" line (days in the office, or
+  how much is from home) decides whether it is remote, and up to 100 stored postings per board are re-read each
+  run until they have it. Google's feed is every role it
   has, one request (about 20 MB) a run; jobwatch keeps the ones whose titles have your `filters.titles` words,
   in the US unless the board is `google/any`. Amazon is searched like a Workday board, newest roles first and
   100 a request, one request at a time; each result has the role's full text, so nothing more is read. It keeps

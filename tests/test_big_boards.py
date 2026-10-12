@@ -129,6 +129,62 @@ def test_eightfold():
     assert by_id["10"].remote is True and by_id["10"].locations == ["United States"]
     assert (lead.salary_min, lead.url) == (200_000, "https://globex.eightfold.ai/careers/job/1")
     assert by_id["2"].description == "" and lead.posted.year == 2026
+    assert lead.description.startswith("Work site: not stated\n")
+
+
+def worksite_web(positions, sites, travel=None):
+    """A search answering `positions` and details whose efcustomTextWorkSite is sites[id]."""
+    responses = {f"{EF}/search?domain=globex.com&query=&start=0": {"data": {"count": len(positions),
+                                                                           "positions": positions}}}
+    for p in positions:
+        data = {"jobDescription": "<p>Build things</p>", "efcustomTextWorkSite": sites[p["id"]]}
+        if travel:
+            data["efcustomTextRequiredTravel"] = travel
+        responses[f"{EF}/position_details?position_id={p['id']}&domain=globex.com"] = {"data": data}
+    return FakeWeb(responses)
+
+
+def test_eightfold_work_site_marks_remote():
+    positions = [ef_position(1, "A", ["United States, Multiple Locations"], "onsite"),
+                 ef_position(2, "B", ["United States, Multiple Locations"], "onsite"),
+                 ef_position(3, "C", ["United States, Multiple Locations"], "remote"),
+                 ef_position(4, "D", ["United States, Multiple Locations"], "onsite")]
+    sites = {1: ["0 days / week in-office – remote"], 2: ["3 days / week in-office"],
+             3: "['1 days / week in-office']", 4: ["Up to 100% work from home"]}
+    web = worksite_web(positions, sites, travel=["Less than 25%"])
+    by_id = {j.id: j for j in sources.fetch("eightfold", "globex", web)}
+    assert by_id["1"].remote is True  # in-office 0 days beats "onsite"
+    assert not by_id["2"].remote
+    assert not by_id["3"].remote  # in-office days beat workLocationOption "remote"
+    assert by_id["4"].remote is True
+    assert by_id["1"].description.startswith(
+        "Work site: 0 days / week in-office – remote\nRequired travel: Less than 25%\n\nBuild things")
+
+
+@pytest.mark.parametrize("site, expected", [
+    ("Up to 100% work from home", True), ("Up to 50% work from home", False), ("Fully remote", True),
+    ("2 days per week in-office", False), ("0 days / week in-office", True), ("", None), ("Hybrid", None)])
+def test_worksite_remote(site, expected):
+    assert sources._worksite_remote(site) is expected
+
+
+def test_eightfold_backfills_stored_jobs_without_a_work_site(monkeypatch):
+    monkeypatch.setattr(sources, "EIGHTFOLD_BACKFILL", 2)
+    positions = [ef_position(n, f"Engineer {n}", ["United States"], "onsite") for n in range(1, 6)]
+    web = worksite_web(positions, {n: ["0 days / week in-office – remote"] for n in range(1, 6)})
+
+    def stored(n, description):
+        return Job(source="eightfold", company="globex", id=str(n), title=f"Engineer {n}", url="",
+                   description=description)
+    known = {j.key: j for j in [stored(1, "old text"), stored(2, "old text"), stored(3, "old text"),
+                                stored(4, "Work site: 3 days / week in-office\n\nold"), stored(5, "old text")]}
+    jobs = {j.id: j for j in sources.fetch("eightfold", "globex", web, known=known,
+                                           wanted=lambda t: t != "Engineer 5")}
+    details = [c for c in web.calls if "position_details" in c]
+    assert len(details) == 2  # the cap; 4 already has its work site, 5 is not a wanted title
+    assert jobs["1"].remote and jobs["2"].remote and jobs["1"].description.startswith("Work site:")
+    assert jobs["3"] is known["eightfold:globex:3"] and jobs["3"].description == "old text"  # next run
+    assert jobs["4"].description.startswith("Work site: 3 days") and jobs["5"].description == "old text"
 
 
 @pytest.mark.parametrize("url, expected", [

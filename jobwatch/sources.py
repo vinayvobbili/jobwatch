@@ -305,6 +305,7 @@ def _workday_read(j: Job, api: str, path: str, get) -> Job:
 # -- Eightfold: board "tenant" or "tenant/domain", from https://tenant.eightfold.ai/careers?domain=domain
 
 EIGHTFOLD_PAGE = 10
+EIGHTFOLD_BACKFILL = 100  # stored jobs per board re-read each run to add the work site they were stored without
 EIGHTFOLD_WORKERS = 1  # pages are 10 roles, so a big board is hundreds of requests: parallel ones get HTTP 429
 
 
@@ -320,6 +321,19 @@ def _listish(value) -> list[str]:
     return re.findall(r"'([^']*)'", value or "") or ([value] if value else [])
 
 
+def _worksite_remote(text: str) -> bool | None:
+    """Whether an Eightfold work-site value ("0 days / week in-office – remote", "Up to 50% work from home") says the
+    role is remote: True, not remote: False, or None when it doesn't say."""
+    t = text.lower()
+    days = re.search(r"(\d+)\s*days?\s*/?\s*(?:a |per )?(?:week\s*)?in[- ]office", t)
+    if days:
+        return int(days.group(1)) == 0
+    home = re.search(r"(\d+)\s*%\s*(?:work(?:ing)? from home|remote)", t)
+    if home:
+        return int(home.group(1)) >= 100
+    return True if "remote" in t else None
+
+
 def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
     get = get or get_json
     api, domain = _eightfold_parts(board)
@@ -332,11 +346,18 @@ def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, ca
         for p in _search_all(page, EIGHTFOLD_PAGE, cap, EIGHTFOLD_WORKERS):
             positions.setdefault(str(p["id"]), p)
 
+    backfill = [EIGHTFOLD_BACKFILL]  # re-reads left this run: a big board's stored jobs are caught up over a few runs
+
     def job(item) -> Job:
         pid, p = item
         key = f"eightfold:{board}:{pid}"
-        if known and key in known and known[key].description:
-            return known[key]
+        stored = known.get(key) if known else None
+        if stored and stored.description:
+            # Stored before the work site was read (it is the first line of the text): read again, a few per run.
+            if stored.description.startswith("Work site:") or (wanted and not wanted(stored.title)) \
+                    or backfill[0] <= 0:
+                return stored
+            backfill[0] -= 1
         where = p.get("workLocationOption") or ""
         posted = p.get("postedTs") or p.get("creationTs")
         j = Job(source="eightfold", company=board, id=pid, title=(p.get("name") or "").strip(),
@@ -350,10 +371,17 @@ def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, ca
         def read() -> Job:
             info = (get(f"{api}/position_details?position_id={pid}&domain={quote(domain)}") or {}).get("data") or {}
             j.url = info.get("publicUrl") or j.url
+            site = " ".join(_listish(info.get("efcustomTextWorkSite")))
+            travel = " ".join(_listish(info.get("efcustomTextRequiredTravel")))
+            remote = _worksite_remote(site)  # the work site is the posting's own word: it beats workLocationOption
+            j.remote = j.remote if remote is None else remote
             j.description = html_to_text(info.get("jobDescription") or "")
             _salary(j, j.description)
+            # Always a first line, so a stored job without one is known to be unread (see the backfill above).
+            j.description = "\n".join([f"Work site: {site or 'not stated'}"]
+                                      + ([f"Required travel: {travel}"] if travel else []) + ["", j.description])
             return j
-        return _unread_if_refused(read, j)
+        return _unread_if_refused(read, j) if not stored else _unread_if_refused(read, stored)
     return _details(list(positions.items()), job, EIGHTFOLD_WORKERS)
 
 
