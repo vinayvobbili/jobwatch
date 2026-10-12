@@ -701,7 +701,11 @@ function h(tag, attrs, ...kids) {
 function fill(el, ...kids) { el.replaceChildren(...kids.flat(Infinity).filter(k => k !== null && k !== undefined && k !== false)); }
 function put(...kids) { fill(main, ...kids); }
 function safeUrl(u) { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : "#"; } catch { return "#"; } }
-function link(url, text, cls) { return h("a", { href: url, target: "_blank", rel: "noopener noreferrer", class: cls }, text); }
+// No link without a URL: an empty href opens jobwatch itself in a new tab (a job added by hand with no posting link).
+function link(url, text, cls) {
+  if (!url || url === "#") return h("span", { class: cls }, text);
+  return h("a", { href: url, target: "_blank", rel: "noopener noreferrer", class: cls }, text);
+}
 
 const ICONS = {
   refresh: "M21 12a9 9 0 1 1-2.64-6.36L21 8M21 3v5h-5",
