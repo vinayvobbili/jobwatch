@@ -218,6 +218,12 @@ def test_an_unknown_source_can_be_removed_by_name(watchlist):
         config.add_board(watchlist, "nosuch:acme")  # a new board still has to be one jobwatch can read
 
 
+def test_links_without_a_url_are_plain_text(server):
+    """A job added by hand with no posting link: its title isn't a link to "" (which reopened jobwatch)."""
+    page = request(server, "GET", "/")[1].decode()
+    assert 'if (!url || url === "#") return h("span"' in page
+
+
 def test_page_has_the_filter_bar(server):
     """Today shows the filters in force, edits them in place, and says what they hide."""
     page = request(server, "GET", "/")[1].decode()
