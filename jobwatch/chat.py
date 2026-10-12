@@ -117,7 +117,7 @@ def home_context(cfg: Config, store: Store) -> str:
     out = [f"## Today's matching jobs ({len(d.entries)}, best first; shown on the user's screen)"]
     for e in d.entries[:40]:
         j = e.job
-        bits = [f"{j.display_company} — {j.title}", "; ".join(j.locations[:3]), j.pay(),
+        bits = [f"{j.display_company} — {j.title}", "; ".join(j.places[:3]), j.pay(),
                 f"posted {j.age_days()} days ago" if j.age_days() is not None else "", _fit_line(e.fit),
                 f"mentions {', '.join(e.keywords)}" if e.keywords else "",
                 f"the user knows {len(e.contacts)} people there" if e.contacts else ""]

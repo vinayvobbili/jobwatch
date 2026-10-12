@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
+from .text import is_remote
+
 
 @dataclass
 class Job:
@@ -38,6 +40,14 @@ class Job:
     def display_company(self) -> str:
         return self.company_name or self.company
 
+    @property
+    def places(self) -> list[str]:
+        """The locations to show: with "Remote" added when only the board's remote flag says so (an Ashby job
+        listed as "San Francisco" but marked Remote), so a remote job doesn't read as office-only."""
+        if self.remote and not any(is_remote(loc) for loc in self.locations):
+            return [*self.locations, "Remote"]
+        return list(self.locations)
+
     def pay(self) -> str:
         if self.salary_min is None:
             return ""
@@ -54,8 +64,8 @@ class Job:
     def to_text(self) -> str:
         """The posting as one document: what a scorer (or a person tailoring a resume) reads."""
         head = [f"# {self.title}", f"Company: {self.display_company}"]
-        if self.locations:
-            head.append(f"Location: {'; '.join(self.locations)}")
+        if self.places:
+            head.append(f"Location: {'; '.join(self.places)}")
         if self.pay():
             head.append(f"Pay: {self.pay()}")
         if self.url:

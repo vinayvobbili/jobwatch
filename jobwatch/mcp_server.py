@@ -267,7 +267,7 @@ def get_job(key: Key) -> dict:
         same = dupes.check(store, job.key)
         return {"key": job.key, "company": job.display_company, "title": job.title, "url": job.url,
                 "link_note": job.link_note or None,
-                "pay": job.pay(), "locations": job.locations, "text": job.to_text(), **rec,
+                "pay": job.pay(), "locations": job.places, "text": job.to_text(), **rec,
                 "duplicate_of": same.to_dict() if same else None, "fit": fit,
                 "unscored_reason": None if fit else unscored_reason(cfg, store, job),
                 "contacts": known.at(job.display_company, job.company) if known else [],

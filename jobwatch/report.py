@@ -56,7 +56,7 @@ def pay_lines(pay, job: Job) -> list[str]:
 
 def _line(e: Entry) -> list[str]:
     j = e.job
-    facts = [j.display_company, "; ".join(j.locations[:3]) + (" …" if len(j.locations) > 3 else "")]
+    facts = [j.display_company, "; ".join(j.places[:3]) + (" …" if len(j.places) > 3 else "")]
     if j.pay():
         facts.append(j.pay())
     if (age := j.age_days()) is not None:

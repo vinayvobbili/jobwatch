@@ -335,7 +335,7 @@ class App:
     def _entry(e) -> dict:
         j = e.job
         return {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url,
-                "locations": j.locations, "pay": j.pay(), "age_days": j.age_days(), "department": j.department,
+                "locations": j.places, "pay": j.pay(), "age_days": j.age_days(), "department": j.department,
                 "status": e.record.get("status"), "note": e.record.get("note"), "closed": e.record.get("closed"),
                 "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
                 "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
@@ -485,7 +485,7 @@ class App:
                     by[r[0]] = by.get(r[0], 0) + 1
                     if r[0] == kind:
                         jobs.append({"key": job.key, "title": job.title, "company": job.display_company,
-                                     "url": job.url, "locations": job.locations, "pay": job.pay(),
+                                     "url": job.url, "locations": job.places, "pay": job.pay(),
                                      "age_days": job.age_days(), "why": r[1]})
             jobs.sort(key=lambda j: j["age_days"] if j["age_days"] is not None else 10_000)
             return {"total": sum(by.values()), "by": {k: by[k] for k in KINDS if k in by}, "kind": kind or None,
@@ -572,7 +572,7 @@ class App:
             fit = store.score(job.key, resume_id(cfg.resume, cfg.prompts)) if resume else None
             return {"key": job.key, "title": job.title, "company": job.display_company, "url": job.url,
                     "link_note": job.link_note or None,
-                    "pay": job.pay(), "locations": job.locations, "text": job.to_text(),
+                    "pay": job.pay(), "locations": job.places, "text": job.to_text(),
                     "contacts": known.at(job.display_company, job.company) if known else [],
                     "find_referral": contacts.linkedin_search(job.display_company),
                     "candidate_home": store.candidate_home(job),

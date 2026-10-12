@@ -27,6 +27,17 @@ def test_exclude_departments():
     assert reject_reason(job(department="Sales"), Filters(exclude_departments=["sales"])) is not None
 
 
+@pytest.mark.parametrize("locations, remote, shown", [
+    (["San Francisco, California"], True, ["San Francisco, California", "Remote"]),  # Ashby: city + Remote flag
+    (["Remote - US"], True, ["Remote - US"]),                                          # already says so
+    (["Austin, TX"], None, ["Austin, TX"]),
+])
+def test_places_show_the_remote_flag(locations, remote, shown):
+    j = job(locations=locations, remote=remote)
+    assert j.places == shown
+    assert f"Location: {'; '.join(shown)}" in j.to_text()
+
+
 @pytest.mark.parametrize("locations, remote, ok", [
     (["Remote (United States)"], None, True),
     (["Remote"], None, True),
