@@ -3,6 +3,9 @@ the gaps to be honest about, what was sent, and questions to expect and to ask.
 
 Everything on it comes from the posting, the resume and the tracker: nothing is written for you, so nothing on it
 is a claim you haven't made yourself.
+
+The one exception is asked for (draft): likely questions with answer outlines that a model drafts from your
+stories and resume only, and that the code checks before they go on the sheet (see drafts.py).
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ import re
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 
+from . import drafts
 from .config import Config
 from .learn import _fit, for_job
 from .models import Job
@@ -95,6 +99,9 @@ class Sheet:
     expect: list[str] = field(default_factory=list)
     ask: list[str] = field(default_factory=list)
     posting: str = ""
+    # Asked for with draft (see drafts.check for each one's fields); none: expect's questions stand.
+    drafted: list[dict] = field(default_factory=list)
+    draft_note: str = ""                                 # how the drafts were made, or why there are none
 
 
 def _stems(text: str) -> dict[str, str]:
@@ -189,7 +196,9 @@ def pair(ask_lines: list[tuple[str, str]], resume: str) -> list[Match]:
     return out
 
 
-def build(cfg: Config, store: Store, key: str) -> Sheet:
+def build(cfg: Config, store: Store, key: str, draft: bool = False) -> Sheet:
+    """The sheet, rule-based and instant. draft: also ask the chat's model for role-specific questions with
+    answers drafted from the stories and resume (slow, and with the claude backend they're sent to Anthropic)."""
     job, rec = store.find(key)
     posting: Job = store.linked(job) or job
     pkg = store.package(job.key)
@@ -202,14 +211,17 @@ def build(cfg: Config, store: Store, key: str) -> Sheet:
     stage = rec["status"]
     expect = SCREEN_QUESTIONS if stage in ("applied", "screening", "queued") else INTERVIEW_QUESTIONS
     ask = ASK_SCREEN if stage in ("applied", "screening", "queued") else ASK_INTERVIEW
+    ask_lines = asks(posting.description)
+    drafted, draft_note = drafts.draft(cfg, store, job.key, ask_lines, expect is SCREEN_QUESTIONS, resume,
+                                       posting.to_text()) if draft else ([], "")
     data = pkg.data()
     return Sheet(key=job.key, company=job.display_company, title=job.title, status=stage, url=posting.url or job.url,
                  posting_key=posting.key if posting is not job else "",
                  **{k: rec.get(k) for k in ("applied_at", "next_step", "follow_up", "note")}, fit=fit,
                  gaps=[{"name": d.skill.name, "must_have": bool(d.gap_jobs)} for d in for_job(posting, fit, resume)],
-                 matches=pair(asks(posting.description), resume), resume_used=resume_used,
+                 matches=pair(ask_lines, resume), resume_used=resume_used,
                  sent={"files": [f["name"] for f in data["files"]], "answers": data["answers"], "note": data["note"]},
-                 expect=expect, ask=ask, posting=posting.to_text())
+                 expect=expect, ask=ask, posting=posting.to_text(), drafted=drafted, draft_note=draft_note)
 
 
 def to_dict(s: Sheet) -> dict:
@@ -259,7 +271,11 @@ def markdown(s: Sheet) -> str:
         out += [f"- **{a['question']}** {a['answer']}" for a in s.sent["answers"]]
         if s.sent["note"]:
             out += ["", s.sent["note"]]
-    out += ["", "## They'll likely ask"] + [f"- {q}" for q in s.expect]
+    if s.drafted:  # the drafted questions take the generic ones' place
+        out.append(drafts.markdown(s.drafted, s.draft_note).rstrip("\n"))
+    else:
+        out += ["", "## They'll likely ask"] + ([f"_{s.draft_note}_"] if s.draft_note else []) \
+            + [f"- {q}" for q in s.expect]
     out += ["", "## Ask them"] + [f"- {q}" for q in s.ask]
     return "\n".join(out) + "\n"
 
@@ -345,7 +361,19 @@ def _sent_part(s: Sheet):
 
 
 def _expect_part(s: Sheet):
-    return "They'll likely ask", _ul([_e(q) for q in s.expect])
+    note = f'<p class="small muted">{_e(s.draft_note)}</p>' if s.draft_note else ""
+    if not s.drafted:
+        return "They'll likely ask", note + _ul([_e(q) for q in s.expect])
+    cards = []
+    for d in s.drafted:
+        probes = f'<div class="kind">Probes: {_e(d["probes"])}</div>' if d["probes"] else ""
+        if d["no_story"]:
+            body = f'<div class="none">No story yet. {_e(d["angle"])}</div>'
+        else:
+            body = (f'<div class="small muted">From: {_e(", ".join(st["title"] for st in d["stories"]))}</div>'
+                    + '<div class="you">' + _ul([_e(p) for p in d["outline"]]) + "</div>")
+        cards.append(f'<div class="card">{probes}<div><b>{_e(d["question"])}</b></div>{body}</div>')
+    return "Likely questions for this role, with drafted answers", note + "".join(cards)
 
 
 def _ask_part(s: Sheet):

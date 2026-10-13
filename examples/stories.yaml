@@ -1,0 +1,45 @@
+# A story bank for jobwatch: your real projects, in your own words.
+#
+# Point the watchlist at it (stories: ~/Documents/stories.yaml), then `jobwatch prep KEY --draft` drafts the
+# questions a role is likely to bring up, with answer outlines built only from these stories and your resume.
+# An answer can only cite a story here, and a number only counts if it's in the story or the resume, so write
+# the numbers you'd stand behind on a call. A question none of them answers comes back "no story yet".
+#
+# Each story:
+#   id      a short name answers cite it by: lowercase letters, digits and dashes
+#   title   a few words: what it was
+#   did     what you did, yourself (not the team)
+#   hard    the hard part: what made it more than routine
+#   result  what came of it, with numbers if you have them
+#   skills  optional: tools and skills it shows
+#
+# Everything below is made up: Jane Doe at Initech. Replace it with your own.
+
+- id: alert-dedupe
+  title: Cut duplicate on-call alerts at Initech
+  did: >
+    Built a Python service that groups alerts about the same incident before they page anyone, and moved
+    three teams' alerts onto it.
+  hard: >
+    The teams named the same hosts three different ways, so I wrote a matcher that learned the aliases from
+    a month of past incidents instead of asking every team to rename theirs.
+  result: Pages per week went from 120 to 35 in two months, with no missed incidents in the next quarter.
+  skills: [Python, Kafka, on-call]
+
+- id: billing-migration
+  title: Moved billing off the old monolith
+  did: >
+    Led the move of invoicing from the monolith to its own service: wrote the plan, split the work across
+    four engineers and ran the cutover.
+  hard: >
+    Invoices couldn't be wrong for even one customer, so we ran both systems side by side for six weeks and
+    compared every invoice before switching.
+  result: Cut over with zero billing errors; month-end close went from 3 days to 1.
+  skills: [Go, PostgreSQL, migrations, leading a project]
+
+- id: mentoring-reviews
+  title: Started design reviews for the platform team
+  did: Set up a weekly design review and mentored two junior engineers through their first designs.
+  hard: Getting senior people to show up when it wasn't required; I kept each review to 30 minutes with a one-page doc.
+  result: Both engineers led their own projects within a year.
+  skills: [mentoring, design reviews]

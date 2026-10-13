@@ -320,7 +320,9 @@ def cmd_ask(args, cfg, store):
 
 
 def cmd_prep(args, cfg, store):
-    sheet = prep.build(cfg, store, args.key)
+    sheet = prep.build(cfg, store, args.key, draft=args.draft)
+    if args.draft:
+        print(f"({sheet.draft_note})", file=sys.stderr)
     if args.open:  # the browser needs a file to open; --out names it, otherwise it's a temp file
         out = args.out or Path(tempfile.mkdtemp(prefix="jobwatch-")) / "prep.html"
         _write(prep.html(sheet), out)
@@ -571,6 +573,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="html is a standalone page that prints on Letter paper")
     p.add_argument("--open", action="store_true", help="write the HTML page (to -o, or a temp file) and open it "
                                                        "in the browser")
+    p.add_argument("--draft", action="store_true", help="also draft likely questions for this role, with answer "
+                   "outlines from your stories and resume only, with the chat's model (slow; kept for next time)")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_prep)
 

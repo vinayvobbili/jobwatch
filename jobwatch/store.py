@@ -86,6 +86,13 @@ CREATE TABLE IF NOT EXISTS unwatched_jobs (
     seen_at TEXT NOT NULL,
     PRIMARY KEY (company, key)
 );
+CREATE TABLE IF NOT EXISTS drafts (
+    key TEXT NOT NULL,
+    inputs TEXT NOT NULL,
+    reply TEXT NOT NULL,
+    made_at TEXT NOT NULL,
+    PRIMARY KEY (key, inputs)
+);
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
 
@@ -444,6 +451,18 @@ class Store:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)",
                             (key, resume, json.dumps(result), _now()))
+
+    # Drafted prep-sheet answers (see drafts.py): the model's reply as it came, under a hash of everything it was
+    # sent, so opening a sheet again doesn't ask again. It's checked again each time it's read.
+
+    def draft(self, key: str, inputs: str) -> str | None:
+        row = self.db.execute("SELECT reply FROM drafts WHERE key=? AND inputs=?", (key, inputs)).fetchone()
+        return row["reply"] if row else None
+
+    def save_draft(self, key: str, inputs: str, reply: str):
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO drafts (key, inputs, reply, made_at) VALUES (?, ?, ?, ?)",
+                            (key, inputs, reply, _now()))
 
     def update(self, job: Job):
         """Save a recorded job's posting data as it is now (a fetch does this for a watched board's jobs)."""

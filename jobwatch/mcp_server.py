@@ -532,15 +532,25 @@ def get_application_package(key: Key) -> dict:
 
 
 @server.tool(annotations=READ)
-def get_interview_prep(key: Key) -> dict:
+def get_interview_prep(
+    key: Key,
+    draft_answers: Annotated[bool, Field(description=(
+        "Also have jobwatch's own model (the chat's backend) draft 6-10 questions likely for this role, each with "
+        "the ask it probes and an answer outline built only from the person's story file and resume, citing the "
+        "story ids used; one with no story says so (no_story) with an honest angle. Invented story ids and "
+        "numbers are taken out before they're returned. Slow the first time, then kept. With the claude backend "
+        "the posting, resume and stories go to Anthropic. False is rule-based and instant."))] = False,
+) -> dict:
     """A prep sheet for a recruiter call or interview: stage and next step, each requirement and responsibility
     in the posting next to the closest resume line (quoted, never written), gaps to be honest about, what was
     sent, questions to expect and to ask, and the posting. For an application added by hand, the posting is found
-    on a watched board by its requisition id. markdown is the sheet ready to read. Use it before a call;
-    get_job and get_application_package give the raw pieces."""
+    on a watched board by its requisition id. markdown is the sheet ready to read. With draft_answers, drafted
+    holds the drafted questions and draft_note how they were made, or why there are none (then expect's
+    questions stand). Present a drafted answer as the person's only where it cites their stories. Use it before
+    a call; get_job and get_application_package give the raw pieces."""
     cfg, store = _open()
     try:
-        sheet = prep.build(cfg, store, key)
+        sheet = prep.build(cfg, store, key, draft=draft_answers)
         return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet)}
     finally:
         store.close()

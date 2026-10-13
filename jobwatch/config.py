@@ -199,6 +199,27 @@ def _chat(raw, backend: str, path: Path) -> Chat:
                 prompt=_template(prompt, "chat.prompt", CHAT_PLACEHOLDERS, path) if prompt.strip() else "")
 
 
+PREP_PLACEHOLDERS = ("context",)  # what prep.prompt must keep: the posting, resume and stories it reads
+
+
+@dataclass(frozen=True)
+class Prep:
+    """prep in the watchlist: drafted questions and answers on a prep sheet (see drafts.py). They use the chat's
+    backend and model."""
+    max_tokens: int = 4000     # the longest draft: eight or so questions with outlines, as JSON
+    prompt: str = ""           # the edited instructions; unset: drafts.PROMPT
+
+
+def _prep(raw, path: Path) -> Prep:
+    raw = _section(raw, "prep", Prep, path, "{max_tokens: 4000}")
+    prompt = raw.get("prompt") or ""
+    if not isinstance(prompt, str):
+        raise ConfigError(f"{path}: prep.prompt is the drafting instructions, as text, got {prompt!r:.80}")
+    return Prep(max_tokens=_between(raw.get("max_tokens", Prep.max_tokens), "prep.max_tokens", path, 500, 64000,
+                                    "the longest draft, in tokens"),
+                prompt=_template(prompt, "prep.prompt", PREP_PLACEHOLDERS, path) if prompt.strip() else "")
+
+
 @dataclass(frozen=True)
 class Suggestions:
     """suggestions in the watchlist: Companies to watch (see suggest.py)."""
@@ -260,12 +281,14 @@ class Config:
     keywords: dict[str, float] = field(default_factory=dict)
     resume: Path | None = None
     connections: Path | None = None  # LinkedIn Connections.csv, for "you know someone there"
+    stories: Path | None = None      # your projects, for drafted interview answers (see stories.py)
     backend: str = "local"
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
     prompts: dict[str, str] = field(default_factory=dict)  # scoring.prompts: the edited fit-score prompts
     chat: Chat = field(default_factory=lambda: Chat(backend="local"))
+    prep: Prep = field(default_factory=Prep)
     timeline: str = "quarter"  # how soon you want to close a skill gap: see TIMELINES
     near: str = ""             # a city, for certificate programs at colleges nearby
     learn_jobs: int = 5        # learning.jobs: example jobs listed with each skill
@@ -369,8 +392,8 @@ def locate(explicit: str | Path | None = None) -> Path:
         return DEFAULT_PATHS[1]
 
 
-SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "scoring", "chat", "learning", "display",
-            "pace", "pay", "alerts", "suggestions", "fetch_every")
+SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "stories", "scoring", "chat", "prep",
+            "learning", "display", "pace", "pay", "alerts", "suggestions", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -501,10 +524,11 @@ def load(explicit: str | Path | None = None) -> Config:
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
+        stories=_path(raw["stories"], base) if raw.get("stories") else None,
         backend=backend, score_model=str(scoring.get("model") or "").strip(),
         score_top=_whole(scoring.get("top", 0), "scoring.top", path, "0 scores none when the digest is made"),
         auto_score=auto_score, prompts=_prompts(scoring.get("prompts"), path),
-        chat=_chat(raw.get("chat"), backend, path),
+        chat=_chat(raw.get("chat"), backend, path), prep=_prep(raw.get("prep"), path),
         timeline=timeline, near=_near(learning, filters),
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
         suggest=_suggestions(raw.get("suggestions"), path),
@@ -591,6 +615,13 @@ scoring:
 #   max_tokens: 1500                                # the longest reply
 #   max_turns: 24                                   # the latest messages sent with each question
 #   # prompt: |                                     # its instructions (Settings > Chat); keep {today} and {context}
+
+# Optional: your projects in your own words (see examples/stories.yaml in the repo). `jobwatch prep KEY --draft`
+# drafts likely questions and answer outlines from them and your resume only, with the chat's model.
+# stories: ~/Documents/stories.yaml
+# prep:
+#   max_tokens: 4000                                # the longest draft
+#   # prompt: |                                     # the drafting instructions; keep {context}
 
 # Expected pay from Levels.fyi (off unless levels is true). See the README.
 # pay:

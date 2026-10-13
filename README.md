@@ -123,7 +123,8 @@ their jobs), say what you're looking for, and press **Check for new jobs**. From
   details (about that posting). See [Chat](#chat).
 
 The page only talks to jobwatch on your own machine. The one exception is a model you choose: with
-`scoring.backend: claude`, fit scores and chat send the posting and your resume to Anthropic. It's the same
+`scoring.backend: claude`, fit scores and chat send the posting and your resume to Anthropic (and
+[drafted prep](#drafted-answers-from-your-stories), your stories too). It's the same
 watchlist file and history as the command line, so you can switch between the two.
 
 To have the page always there, even after a restart, on a Mac:
@@ -221,6 +222,10 @@ chat:                                     # Ask jobwatch; leave any of these out
   max_tokens: 1500                        # the longest reply
   max_turns: 24                           # the latest messages of a conversation sent with each question
   # prompt: ...                           # its instructions (Settings > Chat); must keep {today} and {context}
+stories: ~/Documents/stories.yaml         # your projects, for drafted prep answers (see Prep sheets)
+prep:                                     # drafted prep (`jobwatch prep KEY --draft`), with the chat's model
+  max_tokens: 4000                        # the longest draft
+  # prompt: ...                           # its instructions; must keep {context}
 pay:                                      # expected pay from Levels.fyi: off unless levels is true (below)
   levels: true
   years: 12                               # your years, for a title with no seniority word
@@ -625,6 +630,45 @@ paper; `--format html -o prep.html` saves that page, and the default `--format m
 Nothing on it is written for you: it quotes the posting and your resume. For an application you added by hand,
 jobwatch looks for the posting on your watched boards by the requisition id in its title (`R0123456`,
 `REQ-4711`, `Job 20769`), so a Workday posting fetched later fills in the sheet.
+
+### Drafted answers from your stories
+
+`jobwatch prep c1 --draft` adds the one part that is written for you, and only from what you've written
+yourself: 6 to 10 questions this role is likely to bring up, each with the requirement it probes, and an
+answer outline built from your stories and your resume, naming the stories it used. A question none of them
+answers says "no story yet", with one honest line: what's closest, and how you'd ramp up.
+
+Your stories are a YAML file you write once and point the watchlist at (`stories: ~/Documents/stories.yaml`).
+Each is a project you'd talk about on a call:
+
+```yaml
+- id: alert-dedupe                    # what answers cite it by
+  title: Cut duplicate on-call alerts
+  did: Built a Python service that groups alerts about the same incident before they page anyone.
+  hard: The teams named the same hosts three different ways.
+  result: Pages per week went from 120 to 35 in two months.
+  skills: [Python, Kafka]             # optional
+```
+
+[examples/stories.yaml](examples/stories.yaml) has a few more, made up. A mistake in the file (a missing
+`result`, two stories with the same id) is reported with the story and what to fix.
+
+The model is told never to invent experience, numbers, employers or credentials, and its answer is checked
+anyway before it reaches the sheet:
+- an answer citing a story you don't have is dropped;
+- a point with a number that's in neither the stories it cites nor your resume is dropped (a number is what
+  you'd repeat word for word, so it isn't just flagged);
+- an answer left with no story becomes "no story yet";
+- it's cut to length, and a reply that isn't the JSON asked for gives no drafts.
+The sheet says what was taken out. With no model, an error or nothing usable, it keeps the usual questions:
+prep never fails because the model did.
+
+It uses the chat's model (`chat.backend`): `local` keeps everything on your computer; with `claude` the
+posting, your resume and your stories go to Anthropic. A draft takes a while, so it's kept in the state file
+and opening the sheet again reads it; a change to the posting, resume, stories, stage, model or instructions
+drafts afresh. Its instructions are `drafts.PROMPT`, or your own in `prep.prompt` (keep `{context}`, where the
+posting, resume and stories go); `prep.max_tokens` (4000) is the longest draft. MCP clients ask for it with
+`get_interview_prep`'s `draft_answers`.
 
 ## Who you know there
 

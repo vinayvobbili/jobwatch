@@ -197,3 +197,27 @@ def test_web_returns_html(setup):
     job = store.add("Initech", "Staff Detection Engineer (R0123456)")
     got = App(path).get_prep({"key": [job.key]})
     assert got["html"].startswith("<!DOCTYPE html>") and "Staff Detection Engineer" in got["html"]
+
+
+DRAFTED = [{"question": "How did you cut alert noise?", "probes": "Lead the design of detection pipelines",
+            "kind": "do", "stories": [{"id": "alert-dedupe", "title": "Cut duplicate alerts"}],
+            "outline": ["Grouped alerts <before> paging"], "no_story": False, "angle": ""},
+           {"question": "How deep is your Kubernetes?", "probes": "", "kind": "", "stories": [], "outline": [],
+            "no_story": True, "angle": "Say what's closest."}]
+
+
+def test_drafted_questions_take_the_generic_ones_place(setup):
+    cfg, store, _ = setup
+    job, _ = store.find("workday:initech.wd5/External:R0123456-1")
+    store.set_status([job.key], "applied")
+    sheet = prep.build(cfg, store, job.key)
+    sheet.drafted, sheet.draft_note = DRAFTED, "Drafted by a test model."
+    text, page = prep.markdown(sheet), prep.html(sheet)
+    for out in (text, page):
+        assert "Likely questions for this role, with drafted answers" in out and "They'll likely ask" not in out
+        assert "Drafted by a test model." in out and "No story yet. Say what" in out
+    assert "Cut duplicate alerts (`alert-dedupe`)" in text and "&lt;before&gt;" in page
+    # Drafting asked for but nothing came of it: the generic questions stand, with the reason.
+    sheet.drafted, sheet.draft_note = [], "Not drafted: no model."
+    assert "They'll likely ask\n_Not drafted: no model._" in prep.markdown(sheet)
+    assert "Not drafted: no model." in prep.html(sheet) and sheet.expect[0] in prep.html(sheet)

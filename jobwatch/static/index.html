@@ -1136,12 +1136,14 @@ function detailsScore(j) {
   return [b, unscoredNote(j)];
 }
 // A prep sheet for a call: the posting's asks next to the closest resume line, gaps, what was sent, questions.
-async function openPrep(key) {
+// draft: the chat's model drafts likely questions with answers from the story file (slow the first time, then kept).
+async function openPrep(key, draft = false) {
   const dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
-  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  dialog.replaceChildren(h("div", { class: "muted" }, draft ? "Drafting questions and answers from your stories… "
+    + "(the first time can take a minute or two)" : "Loading…"));
   try {
-    const p = await api("/api/prep?key=" + encodeURIComponent(key));
+    const p = await api("/api/prep?key=" + encodeURIComponent(key) + (draft ? "&draft=1" : ""));
     const list = items => h("ul", {}, ...items.map(i => h("li", {}, i)));
     const KIND = { need: "They ask for", do: "You'd be doing", nice: "Nice to have" };
     const which = { sent: "the resume you sent", base: "your resume" }[p.resume_used];
@@ -1183,7 +1185,18 @@ async function openPrep(key) {
       sent ? [h("h3", {}, "What you sent"), p.sent.files.length ? h("div", { class: "small" }, "Files: " + p.sent.files.join(", ")) : null,
         p.sent.answers.length ? list(p.sent.answers.map(a => h("span", {}, h("b", {}, a.question + " "), a.answer))) : null,
         p.sent.note ? h("div", { class: "posting", style: "max-height:none" }, p.sent.note) : null] : null,
-      h("h3", {}, "They'll likely ask"), list(p.expect),
+      p.drafted.length ? [h("h3", {}, "Likely questions for this role, with drafted answers"),
+        h("div", { class: "small muted" }, p.draft_note),
+        ...p.drafted.map(d => h("div", { class: "ask" }, d.probes ? h("div", { class: "kind" }, "Probes: " + d.probes) : null,
+          h("div", {}, h("b", {}, d.question)),
+          d.no_story ? h("div", { class: "none" }, "No story yet. " + d.angle)
+            : [h("div", { class: "small muted", style: "margin-top:4px" }, "From: " + d.stories.map(s => s.title).join(", ")),
+              h("div", { class: "you" }, list(d.outline))]))]
+        : [h("h3", {}, "They'll likely ask"), p.draft_note ? h("div", { class: "small muted" }, p.draft_note) : null,
+          list(p.expect),
+          draft ? null : h("button", { class: "btn no-print", style: "margin-top:6px", onclick: () => openPrep(key, true),
+            title: "Questions this role is likely to bring up, with answer outlines from your story file and resume only" },
+            "Draft answers from my stories")],
       h("h3", {}, "Ask them"), list(p.ask)));
   } catch (e) { showError(dialog, e); }
 }
