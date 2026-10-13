@@ -7,6 +7,8 @@ import json
 import os
 import re
 import sys
+import tempfile
+import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -318,7 +320,13 @@ def cmd_ask(args, cfg, store):
 
 
 def cmd_prep(args, cfg, store):
-    _write(prep.markdown(prep.build(cfg, store, args.key)), args.out)
+    sheet = prep.build(cfg, store, args.key)
+    if args.open:  # the browser needs a file to open; --out names it, otherwise it's a temp file
+        out = args.out or Path(tempfile.mkdtemp(prefix="jobwatch-")) / "prep.html"
+        _write(prep.html(sheet), out)
+        webbrowser.open(out.resolve().as_uri())
+    else:
+        _write(prep.html(sheet) if args.format == "html" else prep.markdown(sheet), args.out)
 
 
 def cmd_skills(args, cfg, store):
@@ -559,6 +567,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("prep", help="a prep sheet for a recruiter call or interview: their asks next to your "
                                     "resume lines, gaps to be honest about, what you sent, questions to expect")
     p.add_argument("key")
+    p.add_argument("--format", choices=["markdown", "html"], default="markdown",
+                   help="html is a standalone page that prints on Letter paper")
+    p.add_argument("--open", action="store_true", help="write the HTML page (to -o, or a temp file) and open it "
+                                                       "in the browser")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_prep)
 

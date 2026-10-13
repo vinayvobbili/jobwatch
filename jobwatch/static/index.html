@@ -1153,9 +1153,16 @@ async function openPrep(key) {
       try { await navigator.clipboard.writeText(p.markdown); toast("Copied the prep sheet"); }
       catch { toast("Couldn't copy: your browser blocked it"); }
     };
+    // The standalone page, in a new tab: it prints cleanly and can be saved or sent as it is.
+    const page = h("button", { class: "btn", title: "The same sheet as its own page, to print or save" }, "Open as page");
+    page.onclick = () => {
+      const url = URL.createObjectURL(new Blob([p.html], { type: "text/html" }));
+      if (!window.open(url, "_blank")) toast("Couldn't open a new tab: your browser blocked it");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    };
     fill(dialog, h("div", { class: "prep" },
       h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openDetails(key) }, "← Details"),
-        h("span", { style: "flex:1" }), copy, h("button", { class: "btn", onclick: () => print() }, "Print"),
+        h("span", { style: "flex:1" }), copy, page, h("button", { class: "btn", onclick: () => print() }, "Print"),
         h("button", { class: "btn", onclick: closeDetails }, "Close")),
       h("h2", {}, `Prep: ${p.title}`),
       h("div", { class: "meta" }, [p.company, `Stage: ${p.status}`, p.applied_at && `applied ${p.applied_at}`,

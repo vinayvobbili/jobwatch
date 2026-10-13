@@ -7,6 +7,7 @@ is a claim you haven't made yourself.
 
 from __future__ import annotations
 
+import html as _html
 import math
 import re
 from collections import Counter
@@ -261,3 +262,111 @@ def markdown(s: Sheet) -> str:
     out += ["", "## They'll likely ask"] + [f"- {q}" for q in s.expect]
     out += ["", "## Ask them"] + [f"- {q}" for q in s.ask]
     return "\n".join(out) + "\n"
+
+
+_CSS = """
+:root{color-scheme:light dark;--bg:#fff;--fg:#1d2330;--muted:#5d6678;--line:#d9dde5;--card:#f5f7fa;--accent:#1f5fbf}
+@media (prefers-color-scheme:dark){:root{--bg:#161a22;--fg:#e4e8ef;--muted:#9aa3b5;--line:#2c3342;--card:#1e232e;
+--accent:#7fb0ff}}
+body{margin:0 auto;max-width:46rem;padding:1.5rem 1rem 3rem;background:var(--bg);color:var(--fg);
+font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+h1{font-size:1.5rem;margin:0 0 .3rem}h2{font-size:1.1rem;margin:1.6rem 0 .5rem;border-bottom:1px solid var(--line)}
+a{color:var(--accent)}.meta,.muted{color:var(--muted)}.small{font-size:.9rem}
+ul{margin:.3rem 0;padding-left:1.3rem}li{margin:.2rem 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.5rem .75rem;margin:.5rem 0}
+.kind{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.you{margin-top:.25rem;padding-left:.6rem;border-left:3px solid var(--accent)}.none{margin-top:.25rem;font-style:italic;
+color:var(--muted)}
+.note{white-space:pre-wrap}
+@media print{:root{--bg:#fff;--fg:#000;--muted:#444;--line:#bbb;--card:#fff;--accent:#000}
+body{max-width:none;padding:0;font-size:11pt}.card,li,h2{break-inside:avoid}h2{break-after:avoid}
+a{text-decoration:none}@page{size:Letter;margin:.7in}}
+"""
+
+
+def _e(text) -> str:
+    """Posting text is written by employers: nothing from it reaches the page unescaped."""
+    return _html.escape(str(text), quote=True)
+
+
+def _link(url: str, label: str) -> str:
+    """A link only for http(s) URLs: a javascript: or data: URL from a posting is shown as text."""
+    if not re.match(r"https?://", url, re.I):
+        return _e(label)
+    return f'<a href="{_e(url)}" rel="noopener noreferrer">{_e(label)}</a>'
+
+
+def _ul(items: list[str]) -> str:
+    return "<ul>" + "".join(f"<li>{i}</li>" for i in items) + "</ul>"
+
+
+# Each section is a function returning (heading, body html), or None when the sheet has nothing for it. To add a
+# section, write one and put it in html()'s list.
+def _fit_part(s: Sheet):
+    if s.fit:
+        body = f"<p>{s.fit.get('score', 0):.0f}/100, {s.fit.get('must_haves_met', 0)} of " \
+               f"{s.fit.get('must_haves_total', 0)} must-haves.</p>"
+        if s.fit.get("summary"):
+            body += f'<p class="small muted">{_e(s.fit["summary"])}</p>'
+        return "Fit", body
+
+
+def _matches_part(s: Sheet):
+    if not s.matches:
+        return "", ('<p class="muted">No requirements found in the posting text. An application added by hand has '
+                    'only its title until a watched board lists the same requisition id.</p>')
+    which = {"sent": "the resume you sent", "base": "your resume"}.get(s.resume_used, "")
+    cards = "".join(
+        f'<div class="card"><div class="kind">{_KIND[m.kind]}</div><div>{_e(m.ask)}</div>'
+        + (f'<div class="you">{_e(m.resume)}</div>' if m.resume else
+           '<div class="none">Nothing close on the resume: have a story, or say plainly how you\'d get there.</div>')
+        + "</div>" for m in s.matches)
+    return "Their asks and your closest line" + (f" ({which})" if which else ""), cards
+
+
+def _gaps_part(s: Sheet):
+    gaps = [g for g in s.gaps if g["must_have"]] + [g for g in s.gaps if not g["must_have"]]
+    fit_gaps = (s.fit or {}).get("gaps") or []
+    if gaps or fit_gaps:
+        items = [_e(g) for g in fit_gaps] + [_e(g["name"]) + (" (a must-have)" if g["must_have"] else "")
+                                             for g in gaps]
+        return "Be ready to be honest about", ('<p class="small muted">Say what\'s closest and how you\'d ramp up. '
+                                               "Don't claim what you haven't done.</p>" + _ul(items))
+
+
+def _sent_part(s: Sheet):
+    if s.sent["files"] or s.sent["answers"] or s.sent["note"]:
+        body = f'<p>Files: {_e(", ".join(s.sent["files"]))}</p>' if s.sent["files"] else ""
+        if s.sent["answers"]:
+            body += _ul([f"<b>{_e(a['question'])}</b> {_e(a['answer'])}" for a in s.sent["answers"]])
+        if s.sent["note"]:
+            body += f'<p class="note">{_e(s.sent["note"])}</p>'
+        return "What you sent", body
+
+
+def _expect_part(s: Sheet):
+    return "They'll likely ask", _ul([_e(q) for q in s.expect])
+
+
+def _ask_part(s: Sheet):
+    return "Ask them", _ul([_e(q) for q in s.ask])
+
+
+def html(s: Sheet) -> str:
+    """The same sheet as a standalone page: inline CSS only, no scripts or network loads, and print styles."""
+    track = [f"<b>Stage:</b> {_e(s.status)}"] + [f"<b>{label}:</b> {_e(v)}" for label, v in
+                                                 (("Applied", s.applied_at), ("Next step", s.next_step),
+                                                  ("Follow up", s.follow_up)) if v]
+    head = [f"<h1>Prep: {_e(s.title)}, {_e(s.company)}</h1>", f'<div class="meta">{" · ".join(track)}</div>']
+    if s.note:
+        head.append(f'<p class="note"><b>Notes:</b> {_e(s.note)}</p>')
+    if s.url:
+        head.append("<p>" + _link(s.url, "The posting") + (f" (found on a watched board: <code>{_e(s.posting_key)}"
+                                                         "</code>)" if s.posting_key else "") + "</p>")
+    parts = [p for p in (_fit_part(s), _matches_part(s), _gaps_part(s), _sent_part(s), _expect_part(s),
+                         _ask_part(s)) if p]
+    body = "\n".join(head + [(f"<section><h2>{_e(h)}</h2>{b}</section>" if h else b) for h, b in parts])
+    return ('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            f"<title>{_e('Prep: ' + s.title + ', ' + s.company)}</title><style>{_CSS}</style></head>\n"
+            f"<body>\n{body}\n</body></html>\n")

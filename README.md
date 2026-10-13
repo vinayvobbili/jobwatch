@@ -619,6 +619,9 @@ Before a recruiter call or an interview, open the application's **Details** and 
 - what you sent;
 - questions to expect and questions to ask, for a screen or for interviews.
 
+**Open as page** (or `jobwatch prep c1 --open`) shows it as a standalone HTML page that prints cleanly on Letter
+paper; `--format html -o prep.html` saves that page, and the default `--format markdown` prints text.
+
 Nothing on it is written for you: it quotes the posting and your resume. For an application you added by hand,
 jobwatch looks for the posting on your watched boards by the requisition id in its title (`R0123456`,
 `REQ-4711`, `Job 20769`), so a Workday posting fetched later fills in the sheet.

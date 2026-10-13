@@ -629,7 +629,7 @@ class App:
 
         def run(cfg, store):
             sheet = prep.build(cfg, store, key)
-            return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet)}
+            return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet), "html": prep.html(sheet)}
         return self._with_store(run)
 
     def get_skills(self, q) -> dict:

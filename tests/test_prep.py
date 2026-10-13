@@ -151,3 +151,49 @@ def test_cli_and_web(setup, capsys):
     assert "# Prep: Staff Detection Engineer" in capsys.readouterr().out
     got = App(path).get_prep({"key": [job.key]})
     assert got["posting_key"].endswith("R0123456-1") and got["markdown"].startswith("# Prep:")
+
+
+def test_html_has_the_sections_and_the_resume_lines(setup):
+    cfg, store, _ = setup
+    job = store.add("Initech", "Staff Detection Engineer (R0123456)", status="screening")
+    store.package(job.key).write(answers=[{"question": "Why us?", "answer": "Detection at scale."}])
+    page = prep.html(prep.build(cfg, store, job.key))
+    assert page.startswith("<!DOCTYPE html>") and "<script" not in page and "http" not in page.split("</style>")[0]
+    for text in ("<h1>Prep: Staff Detection Engineer (R0123456), Initech</h1>", "Their asks and your closest line",
+                 "Built Python detection services", "Be ready to be honest about", "What you sent",
+                 "<b>Why us?</b> Detection at scale.", "They&#x27;ll likely ask", "Ask them",
+                 '<a href="https://initech.wd5.myworkdayjobs.com'):
+        assert text in page, text
+
+
+def test_html_escapes_what_the_posting_says(setup):
+    cfg, store, _ = setup
+    evil = "<script>alert(1)</script>"
+    store.sync("workday", "Hooli", [Job("workday", "hooli.wd1/Jobs", "R9", f"Engineer {evil}", "javascript:alert(2)",
+                                        company_name="Hooli", description="Requirements:\n"
+                                        f"- 5+ years of Python {evil} <img src=x onerror=alert(3)> in production\n")])
+    job, _ = store.find("workday:hooli.wd1/Jobs:R9")
+    store.set_status([job.key], "applied")
+    page = prep.html(prep.build(cfg, store, job.key))
+    assert "<script>" not in page and "<img" not in page and "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+    assert "&lt;img src=x onerror=alert(3)&gt;" in page  # shown as text, so it can't run
+    assert "href" not in page.split("<body>")[1]  # a javascript: link is text, not a link
+
+
+def test_cli_html(setup, capsys, tmp_path, monkeypatch):
+    _, store, path = setup
+    job = store.add("Initech", "Staff Detection Engineer (R0123456)")
+    cli.main(["--config", str(path), "prep", job.key, "--format", "html"])
+    assert capsys.readouterr().out.startswith("<!DOCTYPE html>")
+    opened = []
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    out = tmp_path / "prep.html"
+    cli.main(["--config", str(path), "prep", job.key, "--open", "-o", str(out)])
+    assert "<h1>Prep:" in out.read_text() and opened == [out.resolve().as_uri()]
+
+
+def test_web_returns_html(setup):
+    _, store, path = setup
+    job = store.add("Initech", "Staff Detection Engineer (R0123456)")
+    got = App(path).get_prep({"key": [job.key]})
+    assert got["html"].startswith("<!DOCTYPE html>") and "Staff Detection Engineer" in got["html"]
