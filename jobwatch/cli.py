@@ -567,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("prep", help="a prep sheet for a recruiter call or interview: their asks next to your "
                                     "resume lines, gaps to be honest about, what you sent, questions to expect")
     p.add_argument("key")
-    p.add_argument("--format", choices=["markdown", "html"], default="markdown",
+    p.add_argument("--format", choices=["md", "html"], default="md",
                    help="html is a standalone page that prints on Letter paper")
     p.add_argument("--open", action="store_true", help="write the HTML page (to -o, or a temp file) and open it "
                                                        "in the browser")
