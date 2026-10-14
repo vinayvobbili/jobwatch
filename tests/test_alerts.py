@@ -179,7 +179,7 @@ def test_a_pay_line_reads_as_pay():
 
 
 def test_an_hourly_alert_is_compared_as_a_year():
-    job = alerts.email_job(alerts.Alert("AI Architect", "Vandelay Industries", "Denver, CO", "$75–$80/hr"))
+    job = alerts.email_job(alerts.Alert("Data Architect", "Vandelay Industries", "Denver, CO", "$75–$80/hr"))
     assert (job.salary_min, job.salary_max) == (156_000, 166_400)
     assert reject_reason(job, Filters(min_salary=180_000)) == "pay $156K–$166K"
     page = {"baseSalary": {"currency": "USD", "value": {"unitText": "HOUR", "minValue": 60, "maxValue": 70}}}

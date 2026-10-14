@@ -148,7 +148,7 @@ run `jobwatch ui` from a terminal instead. The local backend needs nothing.
 
 ```
 jobwatch init                         # writes an example jobwatch.yaml
-jobwatch find "Globex" "Scale AI"  # find each company's board
+jobwatch find "Globex" "Scale AI"   # find each company's board
 jobwatch find https://jobs.lever.co/spotify/4f1c2a9e-...   # or paste any job link
 ```
 
@@ -183,7 +183,7 @@ companies:
   - google:google                                       # Google, YouTube, DeepMind in the US (google/any: all)
   - amazon:amazon                                       # Amazon and AWS in the US (amazon/any: all)
   - {source: oracle, board: eeho.fa.us2/CX_45001, name: Oracle}  # pod.fa.region/site, from a job link
-  - smartrecruiters:Initech                          # careers.smartrecruiters.com/Initech
+  - smartrecruiters:Initech                             # careers.smartrecruiters.com/Initech
   - {source: avature, board: careers.initech.example/careers, name: Initech}  # an Avature portal: host/portal
   - hn:whoishiring                                      # HN's Who is hiring thread (whoishiring/3: last 3 months')
 

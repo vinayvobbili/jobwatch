@@ -17,8 +17,8 @@
     "posted_date": "August 27, 2026",
     "job_path": "/en/jobs/10600001/sr-data-platform-engineer-aws-data-platform-engineering",
     "url_next_step": "https://account.amazon.jobs/jobs/10600001/apply",
-    "description": "A Data Platform Engineer (FDE) embeds directly inside a strategic enterprise customer to design, build, deploy, and run AI-powered production systems alongside the customer's engineering team.<br/><br/>Mentorship and Career Growth<br/>We’re continuously raising our performance bar as we strive to become Earth’s Best Employer.<br/><br/>10047",
-    "basic_qualifications": "- 5+ years of non-internship professional software development experience<br/>- Experience with AI tools: eval frameworks, agent tooling, RAG pipelines, and prompt engineering",
+    "description": "A Data Platform Engineer works with a strategic enterprise customer to design, build, deploy, and run production data systems alongside the customer's engineering team.<br/><br/>Mentorship and Career Growth<br/>We’re continuously raising our performance bar as we strive to become Earth’s Best Employer.<br/><br/>10047",
+    "basic_qualifications": "- 5+ years of non-internship professional software development experience<br/>- Experience with data pipelines, orchestration, streaming, and data modeling",
     "preferred_qualifications": "- Bachelor's degree in computer science or equivalent<br/>- Experience working with AWS Services<br/><br/><p><span class=\"ProseMirror-FontColor\">Amazon also offers comprehensive benefits including health insurance (medical, dental, vision, prescription, Basic Life &amp; AD&amp;D insurance), 401(k) matching, paid time off, and parental leave.</span></p><br/><br/>USA, CA, Mountain View - 193,300.00 - 261,500.00 USD annually<br/>USA, NY, New York - 184,900.00 - 250,200.00 USD annually<br/>USA, WA, Seattle - 168,100.00 - 227,400.00 USD annually"
   },
   {
@@ -77,8 +77,8 @@
     "posted_date": "October  7, 2026",
     "job_path": "/en/jobs/10600002/software-development-engineer-aws-data-platform-engineering",
     "url_next_step": "https://account.amazon.jobs/jobs/10600002/apply",
-    "description": "We're looking for a Software Development Engineer (SDE) who wants to build AI-powered production systems inside strategic enterprise customers.<br/><br/>Travel requirement: This role requires 30–50% travel.<br/><br/>10047",
+    "description": "We're looking for a Software Development Engineer (SDE) who wants to build production data platforms inside strategic enterprise customers.<br/><br/>Travel requirement: This role requires 30–50% travel.<br/><br/>10047",
     "basic_qualifications": "- 3+ years of non-internship professional software development experience",
-    "preferred_qualifications": "- Experience with agentic workflows, RAG pipelines, or foundation model integration"
+    "preferred_qualifications": "- Experience with batch and streaming pipelines, data lakes, or warehouse design"
   }
 ]

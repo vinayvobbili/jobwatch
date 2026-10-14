@@ -12,7 +12,8 @@ from jobwatch.watch import still_open
 from .conftest import FakeWeb
 
 FIXTURES = Path(__file__).parent / "fixtures"
-# Two public Initech postings, trimmed: a remote Data Platform role with its pay, and an expired one.
+# Two made-up Initech postings in SmartRecruiters's page layout: a remote Data Platform role with its pay, and an
+# expired one.
 POSTING = (FIXTURES / "smartrecruiters_posting.html").read_text(encoding="utf-8")
 EXPIRED = (FIXTURES / "smartrecruiters_expired.html").read_text(encoding="utf-8")
 
@@ -60,13 +61,13 @@ def test_a_board_is_listed_page_by_page_and_wanted_roles_read(web):
     assert [c for c in web.calls if c.startswith(LIST)] == [f"{LIST}?page=0", f"{LIST}?page=1", f"{LIST}?page=2"]
     fde = jobs[FDE]
     assert fde.key == f"smartrecruiters:Initech:{FDE}" and fde.title == "Data Platform Solution Engineer – " \
-        "Applied AI FDE"
+        "Applied Data"
     assert fde.url == f"{JOB}{FDE}-data-platform-solution-engineer-applied-data"
     assert (fde.company_name, fde.locations, fde.remote) == ("Initech", ["Santa Clara, California, United States"],
                                                              True)
     assert fde.posted.date().isoformat() == "2026-10-07"
     assert (fde.salary_min, fde.salary_max, fde.currency) == (201_300, 352_300, "USD")
-    assert "LLM-enabled applications" in fde.description and "Work Personas" in fde.description
+    assert "data-driven applications" in fde.description and "Work Personas" in fde.description
     assert "By clicking" not in fde.description and "I'm interested" not in fde.description
     assert jobs[VOICE].title == "Staff Software Engineer_Voice Connectivity" and not jobs[VOICE].description
     assert [c for c in web.calls if c.startswith(JOB)] == [f"{JOB}{FDE}"]  # unwanted titles: listed, not read
@@ -74,8 +75,8 @@ def test_a_board_is_listed_page_by_page_and_wanted_roles_read(web):
 
 def test_a_board_is_searched_for_the_watchlist_titles(web):
     known = {f"smartrecruiters:Initech:{FDE}": Job(source="smartrecruiters", company="Initech", id=FDE,
-                                                      title="Data Platform", url=f"{JOB}{FDE}",
-                                                      description="Read before.")}
+                                                   title="Data Platform", url=f"{JOB}{FDE}",
+                                                   description="Read before.")}
     jobs = sources.fetch("smartrecruiters", "Initech", web, search=["data platform"], known=known)
     assert sorted(j.id for j in jobs) == sorted([FDE, HRBP])
     assert f"{LIST}?page=0" not in web.calls and f"{JOB}{FDE}" not in web.calls  # read once, kept since
@@ -109,7 +110,7 @@ def test_not_a_board():
 def test_a_posting_is_read_from_its_link(web):
     j = sources.posting(f"{JOB}{FDE}-data-platform-solution-engineer-applied-data", web)
     assert j.key == f"smartrecruiters:Initech:{FDE}" and j.salary_min == 201_300
-    assert j.url.endswith("-applied-ai-fde")
+    assert j.url.endswith("-applied-data")
     assert sources.posting("https://careers.smartrecruiters.com/Initech", web) is None  # the whole board
     with pytest.raises(sources.NotFound, match="expired"):
         sources.posting(f"{JOB}{GONE}-software-quality-engineer-intern-summer-2025", web)

@@ -92,7 +92,7 @@ PLATFORM = posting("Initech's ML platform serves every product team.",
                    ["Run the training and serving platform on Kubernetes", "Build Python tooling for model teams"],
                    ["Python and distributed systems", "Kubernetes and Terraform", "On-call for production systems"],
                    ["Experience with GPUs", "Spark or Ray"])
-FDE = posting("Globex sends engineers to sit with customers and ship.",
+CUSTOMER = posting("Globex sends engineers to sit with customers and ship.",
               ["Deploy LLM agents at customer sites", "Turn field feedback into product changes"],
               ["Strong Python", "Customer-facing engineering experience", "Comfort with ambiguity"],
               ["Travel up to 25%"])
@@ -117,7 +117,7 @@ BOARDS = {
     ],
     ("lever", "globex"): [
         job("lever", "globex", "Globex", "a7c2", "Data Platform Engineer", ["Remote, United States"],
-            180000, 230000, 2, FDE),
+            180000, 230000, 2, CUSTOMER),
         job("lever", "globex", "Globex", "a6f1", "Senior Backend Engineer (Python)", ["Denver, CO, United States"],
             175000, 220000, 8, GENERIC),
         job("lever", "globex", "Globex", "a5d9", "Machine Learning Engineer", ["Remote, United States"],

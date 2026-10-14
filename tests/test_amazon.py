@@ -10,7 +10,7 @@ from jobwatch import sources
 from jobwatch.filters import Filters, reject_reason
 from jobwatch.watch import still_open
 
-# Four public postings from amazon.jobs's search, their text trimmed: a data platform engineer role in three
+# Four postings shaped like amazon.jobs's search, their text trimmed: a data platform engineer role in three
 # US cities with a pay line for each, one virtual anywhere in the US, one virtual in Texas only, and one in London.
 POSTINGS = json.loads((Path(__file__).parent / "fixtures" / "amazon_search.json").read_text(encoding="utf-8"))
 FDE, PENTEST, TEXAS, LONDON = "10600001", "10541168", "10482387", "10600002"
