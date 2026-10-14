@@ -2226,6 +2226,7 @@ function paged(items, state, filterKey, redraw) {
 async function renderApplied() {
   const d = await api("/api/applications");
   const all = d.applications;
+  const feed = (await api("/api/calendar")).path;  // follow-ups and interviews, for a calendar app on this computer
   const counts = {};
   for (const a of all) counts[a.status] = (counts[a.status] || 0) + 1;
   const isEnded = a => ["rejected", "withdrawn"].includes(a.status);
@@ -2284,6 +2285,9 @@ async function renderApplied() {
 
   put(
     pagehead("Applications", "Where each one stands and what to do next. Follow-ups come to the top on their day.",
+      h("button", { class: "btn ghost", onclick: () => { location.href = `webcal://${location.host}${feed}`; },
+        title: "Subscribe your calendar app to your follow-up days and interviews. jobwatch gives your calendar app nothing but this link, which only works on this computer." },
+        icon("calendar", 14), "Add to calendar"),
       h("button", { class: "btn primary", onclick: () => fill(addArea, addForm(d)) }, icon("plus", 14), "Add an application")),
     layout([
       hero([[all.length, "applications", "lead"], [talking, "in conversation"],

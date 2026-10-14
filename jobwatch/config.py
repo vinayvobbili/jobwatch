@@ -288,6 +288,25 @@ def _pace(raw, path: Path) -> Pace:
     return Pace(daily, most)
 
 
+@dataclass(frozen=True)
+class Calendar:
+    """calendar in the watchlist: remind, the minutes before an interview or call that the calendar feed has a
+    reminder (see ics.py); 0 for none. Follow-up days are all-day events and never have one."""
+    remind: int = 0
+
+
+def _calendar(raw, path: Path) -> Calendar:
+    if raw is None:
+        return Calendar()
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path}: calendar looks like {{remind: 30}}, got {raw!r}")
+    unknown = set(raw) - set(Calendar.__dataclass_fields__)
+    if unknown:
+        raise ConfigError(f"{path}: unknown calendar setting(s): {', '.join(sorted(unknown))}")
+    return Calendar(_between(raw.get("remind", Calendar.remind), "calendar.remind", path, 0, 10080,
+                             "minutes before an interview; 0 for no reminder"))
+
+
 def _prompts(raw, path: Path) -> dict[str, str]:
     """scoring.prompts: {name: text} for the fit-score prompts that were edited; one left out is shortlist-ai's own.
     Checked by the installed shortlist-ai, when it takes edited prompts (see score.check_prompts)."""
@@ -327,6 +346,7 @@ class Config:
     width: str = "standard"
     today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
     pace: Pace = field(default_factory=Pace)
+    calendar: Calendar = field(default_factory=Calendar)
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
@@ -423,7 +443,7 @@ def locate(explicit: str | Path | None = None) -> Path:
 
 
 SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "stories", "scoring", "chat", "prep",
-            "learning", "display", "pace", "pay", "alerts", "suggestions", "fetch_every")
+            "learning", "display", "pace", "calendar", "pay", "alerts", "suggestions", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -566,7 +586,7 @@ def load(explicit: str | Path | None = None) -> Config:
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
         suggest=_suggestions(raw.get("suggestions"), path),
         theme=theme, width=width, today=today,
-        pace=_pace(raw.get("pace"), path),
+        pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
@@ -582,6 +602,7 @@ def defaults() -> dict:
             "learning": {"timeline": "quarter", "jobs": Config.learn_jobs},
             "display": {"theme": "system", "width": "standard", "today": Config.today},
             "pace": asdict(Pace()),
+            "calendar": asdict(Calendar()),
             "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "target_max", "floor")},
             "suggestions": asdict(Suggestions()),
             "alerts": {"imap": {"port": imap.port, "folder": imap.folder, "days": imap.days,
@@ -625,6 +646,11 @@ filters:
 # pace:
 #   daily: 3
 #   max: 5
+
+# `jobwatch calendar` writes your follow-up days and interviews as a .ics file; the page serves the same feed
+# to subscribe to. remind: minutes before an interview or call to be reminded (0: no reminder).
+# calendar:
+#   remind: 30
 
 # Relevance: keyword -> weight. Title hits count double. Prefix "re:" for a regex.
 keywords:

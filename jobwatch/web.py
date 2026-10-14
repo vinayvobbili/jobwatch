@@ -1,7 +1,8 @@
 """`jobwatch ui`: the same watchlist, digest and queue in a browser page, served from this computer only.
 
 The server listens on 127.0.0.1. Every API call must carry the token embedded in the page it served, and a
-Host header naming this machine, so other websites open in the browser can't read or change anything.
+Host header naming this machine, so other websites open in the browser can't read or change anything. The one
+exception is the calendar feed, whose address holds a secret instead (a calendar app can't send the token).
 """
 
 from __future__ import annotations
@@ -23,7 +24,22 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
-from . import __version__, chat, company, config, contacts, dupes, learn, levels, mock, prep, report, sources, suggest
+from . import (
+    __version__,
+    chat,
+    company,
+    config,
+    contacts,
+    dupes,
+    ics,
+    learn,
+    levels,
+    mock,
+    prep,
+    report,
+    sources,
+    suggest,
+)
 from .config import ConfigError
 from .filters import KINDS, rejection
 from .package import Package
@@ -554,6 +570,18 @@ class App:
                 for j, rec in store.applications()]}
         return self._with_store(run)
 
+    def get_calendar(self, q) -> dict:
+        """Where the follow-up and interview feed is served: a path with this install's secret in it, for a
+        calendar app that can't send the page's token to subscribe to (see calendar_feed)."""
+        return {"path": self._with_store(lambda cfg, store: f"/calendar/{store.secret('calendar')}.ics")}
+
+    def calendar_feed(self, secret: str) -> bytes | None:
+        """The feed (see ics.py) when `secret` is this install's, else None."""
+        def run(cfg, store):
+            if secrets.compare_digest(secret, store.secret("calendar")):
+                return ics.calendar(store.applications(), remind=cfg.calendar.remind).encode()
+        return self._with_store(run)
+
     def post_add(self, body) -> dict:
         def run(cfg, store):
             status = body.get("status") or "applied"
@@ -847,6 +875,7 @@ ROUTES = {
     ("GET", "/api/company"): App.get_company,
     ("POST", "/api/mark"): App.post_mark,
     ("GET", "/api/applications"): App.get_applications,
+    ("GET", "/api/calendar"): App.get_calendar,
     ("POST", "/api/add"): App.post_add,
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/score"): App.post_score,
@@ -946,6 +975,12 @@ def make_handler(app: App, token: str, port_ref: list[int]):
             url = urlparse(self.path)
             if method == "GET" and url.path in ("/", "/index.html"):
                 return self._send(HTTPStatus.OK, page(token), "text/html; charset=utf-8")
+            if method == "GET" and url.path.startswith("/calendar/") and url.path.endswith(".ics"):
+                # A calendar app can't send the token header: the secret in the address stands in for it.
+                feed = app.calendar_feed(url.path[len("/calendar/"):-len(".ics")])
+                if feed is None:
+                    return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                return self._send(HTTPStatus.OK, feed, "text/calendar; charset=utf-8")
             if not url.path.startswith("/api/"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             if not secrets.compare_digest(self.headers.get("X-Jobwatch-Token", ""), token):

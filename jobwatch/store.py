@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -100,6 +101,10 @@ CREATE TABLE IF NOT EXISTS drafts (
     reply TEXT NOT NULL,
     made_at TEXT NOT NULL,
     PRIMARY KEY (key, inputs)
+);
+CREATE TABLE IF NOT EXISTS secrets (
+    name TEXT PRIMARY KEY,
+    value TEXT NOT NULL
 );
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
@@ -485,6 +490,14 @@ class Store:
 
     # Drafted prep-sheet answers (see drafts.py): the model's reply as it came, under a hash of everything it was
     # sent, so opening a sheet again doesn't ask again. It's checked again each time it's read.
+
+    def secret(self, name: str) -> str:
+        """A random string made the first time it's asked for and kept in this file: it stays the same for as long
+        as the state does (the calendar feed's address, which an app subscribes to, relies on that)."""
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO secrets (name, value) VALUES (?, ?)",
+                            (name, secrets.token_urlsafe(24)))
+        return self.db.execute("SELECT value FROM secrets WHERE name=?", (name,)).fetchone()[0]
 
     def draft(self, key: str, inputs: str) -> str | None:
         row = self.db.execute("SELECT reply FROM drafts WHERE key=? AND inputs=?", (key, inputs)).fetchone()
