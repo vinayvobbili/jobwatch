@@ -18,6 +18,7 @@ from . import (
     config,
     contacts,
     dupes,
+    inbox,
     learn,
     levels,
     prep,
@@ -50,6 +51,9 @@ server = MCPServer(
         "import_job_alerts takes job-alert emails (LinkedIn, Built In, Indeed and others) that you fetched with a "
         "mail connector, as raw messages or HTML bodies, and tracks their jobs (matched to the company's own board "
         "where it can) as new jobs for get_digest; it never needs the person's mail password. "
+        "read_status_emails reads emails about the person's applications (confirmations, rejections, interview "
+        "invitations, assignments, offers, recruiter replies) and proposes each one's new status and a dated note: "
+        "present the proposals and call mark_job only for the ones the person confirms. "
         "list_applications shows where each stands. After the person submits, save_application_package keeps the "
         "resume, cover letter and form answers they sent; get_application_package reads them back before a call or "
         "interview, and get_interview_prep puts the posting, the resume and what was sent on one sheet. "
@@ -416,12 +420,38 @@ def import_job_alerts(
     are left alone (known); new ones show up in get_digest, with via saying where they came from. Returns
     counts and each job: key, result (new, known, duplicate: twice in these emails), how (board, posting, page or
     email), filtered (why the filters leave it out of the digest, or null) and duplicate_of (the job applied to,
-    queued or skipped that it's maybe the same opening as, as get_job gives it, or null)."""
+    queued or skipped that it's maybe the same opening as, as get_job gives it, or null). For emails about the
+    person's applications (confirmations, rejections, interviews), use read_status_emails."""
     cfg, store = _open()
     try:
         r = alerts.intake(cfg, store, [alerts.message(e) for e in emails if e.strip()], follow=follow_links,
                           dry_run=dry_run)
         return alerts.to_dict(r)
+    finally:
+        store.close()
+
+
+@server.tool(annotations=READ)
+def read_status_emails(
+    emails: Annotated[list[str], Field(description=(
+        "The emails about applications, one string each: the raw message (RFC822, as a mail connector's raw format "
+        "gives it; best, since it names the sender and date) or just its HTML or plain-text body."))],
+) -> dict:
+    """Read emails about the person's applications (a "thank you for applying" confirmation, a rejection, an
+    interview invitation or scheduling link, a take-home assignment, an offer, a recruiter's reply) and PROPOSE
+    what changes; nothing is recorded. Search the person's mail first (e.g. their applications' companies, or
+    "thank you for applying", "your application", "interview"), and pass each message in; jobwatch never needs a
+    mail password. Present the proposals to the person and only call mark_job for the ones they confirm, with
+    the proposal's mark_job arguments (status, add_note, next_step, follow_up). Returns proposals (key, company,
+    title, current_status, suggested_status (null: only a note), kind, note, next_step, email (date, sender,
+    subject), confidence, why, mark_job), unmatched (emails about no tracked application, with the company
+    guessed: offer to add it with add_application, or say it's an application it can't tell apart), nothing_new
+    (emails that add nothing: already recorded or already past that stage) and other (the count of emails that
+    aren't about an application). A status only moves forward: a late confirmation for an application already
+    interviewing is not a proposal. For job-alert emails use import_job_alerts."""
+    _, store = _open()
+    try:
+        return inbox.to_dict(inbox.propose(store, [alerts.message(e) for e in emails if e.strip()]))
     finally:
         store.close()
 
