@@ -1220,7 +1220,7 @@ async function openPrep(key, draft = false, questions = false) {
         list(gaps)] : null,
       p.pay.posted !== undefined ? [h("h3", {}, "Pay"), h("ul", {},
         h("li", {}, h("b", {}, "Posted range: "), p.pay.posted ? p.pay.posted + " (from the posting)" : "not in the posting"),
-        p.pay.target ? h("li", {}, h("b", {}, "Your target: "), money(p.pay.target) + (p.pay.target_note ? ", " + p.pay.target_note : "")) : null,
+        p.pay.target ? h("li", {}, h("b", {}, "Your target: "), (p.pay.target_text || money(p.pay.target)) + (p.pay.target_note ? ", " + p.pay.target_note : "")) : null,
         p.pay.floor ? h("li", {}, h("b", {}, "Your floor (private): "), money(p.pay.floor) +
           (p.pay.floor_note ? ", " + p.pay.floor_note : "") + ". Never sent to Claude") : null)] : null,
       sent ? [h("h3", {}, "What you sent"), p.sent.files.length ? h("div", { class: "small" }, "Files: " + p.sent.files.join(", ")) : null,

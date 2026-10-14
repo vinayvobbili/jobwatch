@@ -120,7 +120,8 @@ def pay_context(pay: dict, backend: str) -> tuple[str, bool]:
     either backend; the floor is private and only ever goes to the on-device model. pay is prep's pay dict."""
     withheld = bool(pay.get("floor")) and not chat.where(backend)["local"]
     lines = [f"Posted range: {pay['posted']}" if pay.get("posted") else "",
-             f"The user's target: ${pay['target']:,}" if pay.get("target") else "",
+             f"The user's target: ${pay['target']:,}" + (f" to ${pay['target_max']:,}" if pay.get("target_max")
+                                                          else "") if pay.get("target") else "",
              f"The user's private floor: ${pay['floor']:,}" if pay.get("floor") and not withheld else ""]
     return "\n".join(x for x in lines if x), withheld
 

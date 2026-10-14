@@ -592,7 +592,8 @@ def get_interview_prep(
     on a watched board by its requisition id. markdown is the sheet ready to read. Also: brief, the company as
     the posting and the person's own notes tell it (about: the posting's lines; facts; notes; contacts: people
     they know there; source), nothing looked up elsewhere, so say it's from the posting; pay, the posted range
-    (posted, posted_min, posted_max), the person's target and how it sits against the range (target_note); and
+    (posted, posted_min, posted_max), the person's target (target, and target_max when it's a range) and how it
+    sits against the range (target_note); and
     role_questions, questions for this role written from the posting's asks (questions_note says where they came
     from; empty: expect's generic questions stand). The person's private pay floor is never returned here
     (pay.floor_withheld says one is set): don't ask for it or guess it. With draft_answers, drafted holds the

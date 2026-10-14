@@ -233,7 +233,7 @@ pay:                                      # expected pay from Levels.fyi: off un
   ask_over: 10                            # ask this many percent over the level's median base
   round: 5000                             # rounded up to this (0: not rounded)
   today: 15                               # how many of Today's jobs get looked up
-  target: 180000                          # your target base, for prep sheets
+  target: 180000                          # your target base, for prep sheets (or a range: 180000-210000)
   floor: 150000                           # your private floor: your own sheet only, never sent to Claude
 suggestions:                              # Companies to watch
   half_life: 30                           # days: a job this old counts half as much as today's
@@ -642,7 +642,7 @@ Before a recruiter call or an interview, open the application's **Details** and 
 - a company brief: what the posting says about the company in its own words, its place and team, your notes
   on the job and who you know there. It's drawn from the posting and your notes only (nothing is looked up
   on the web) and says so;
-- pay: the posted range, your target (`pay.target`) and your floor (`pay.floor`), with how each sits against the
+- pay: the posted range, your target (`pay.target`, a number or a range) and your floor (`pay.floor`), with how each sits against the
   range. The floor is marked private: it is on your own sheet and nowhere else (see below);
 - what you sent;
 - questions to expect and questions to ask, for a screen or for interviews.
@@ -656,7 +656,8 @@ or interview questions stand and the sheet says why. `prep.role_questions(cfg, s
 anything else that wants them (such as a mock interview).
 
 **Your pay floor stays on your computer.** Set `pay.target` and `pay.floor` (a yearly base, in the posting's
-currency) in the watchlist. The sheet shows the floor labelled private. It is never put in a prompt for Claude:
+currency) in the watchlist; the target may be a range (`target: 180000-210000`, or `target_max: 210000`), and
+the sheet says whether it sits below, inside, across or above the posted range. The sheet shows the floor labelled private. It is never put in a prompt for Claude:
 with `chat.backend: claude` the posted range and your target may go in the questions prompt, the floor is left
 out, and the sheet says so. The on-device model may see it. `get_interview_prep` over MCP leaves it out too
 (`pay.floor_withheld`), since the client may be a cloud assistant.
