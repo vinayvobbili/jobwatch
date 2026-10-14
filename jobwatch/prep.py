@@ -4,8 +4,11 @@ the gaps to be honest about, what was sent, and questions to expect and to ask.
 Everything on it comes from the posting, the resume and the tracker: nothing is written for you, so nothing on it
 is a claim you haven't made yourself.
 
-The one exception is asked for (draft): likely questions with answer outlines that a model drafts from your
-stories and resume only, and that the code checks before they go on the sheet (see drafts.py).
+The exceptions are asked for (draft, questions): likely questions, from the posting's asks, that a model writes
+for this role (questions), and answer outlines drafted from your stories and resume only (draft); the code checks
+both before they go on the sheet (see drafts.py). The company brief and the pay section need no model: the brief
+quotes the posting and your notes, the pay section the posted range and your own settings (pay.target, and a pay.floor
+that never leaves this computer).
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ import html as _html
 import math
 import re
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 
 from . import drafts
 from .config import Config
@@ -22,6 +25,7 @@ from .learn import _fit, for_job
 from .models import Job
 from .resume import resume_text
 from .store import Store
+from .watch import load_contacts
 
 # Section headings in a posting, by what follows them.
 _NEED = re.compile(r"qualif|requir|must|you have|you bring|you'll bring|looking for|about you|what we need|"
@@ -99,6 +103,12 @@ class Sheet:
     expect: list[str] = field(default_factory=list)
     ask: list[str] = field(default_factory=list)
     posting: str = ""
+    # Questions written for this role from the posting's asks (see drafts.questions): saved ones, or made when
+    # asked for; none: expect's generic ones stand. questions_note says where they came from, or why there are none.
+    role_questions: list[str] = field(default_factory=list)
+    questions_note: str = ""
+    brief: dict = field(default_factory=dict)            # the company, as the posting and your notes tell it
+    pay: dict = field(default_factory=dict)              # the posted range, your target and your private floor
     # Asked for with draft (see drafts.check for each one's fields); none: expect's questions stand.
     drafted: list[dict] = field(default_factory=list)
     draft_note: str = ""                                 # how the drafts were made, or why there are none
@@ -197,9 +207,101 @@ def pair(ask_lines: list[tuple[str, str]], resume: str) -> list[Match]:
     return out
 
 
-def build(cfg: Config, store: Store, key: str, draft: bool = False) -> Sheet:
-    """The sheet, rule-based and instant. draft: also ask the chat's model for role-specific questions with
-    answers drafted from the stories and resume (slow, and with the claude backend they're sent to Anthropic)."""
+def _screen(status: str) -> bool:
+    """Whether the next conversation is a screen (the first call) rather than interviews."""
+    return status in ("applied", "screening", "queued")
+
+
+def _money(n: int) -> str:
+    return f"${n / 1000:g}K" if n % 1000 == 0 else f"${n:,}"
+
+
+def pay_info(cfg: Config, job: Job) -> dict:
+    """The pay section: {posted, posted_min, posted_max (from the posting), target, floor (from pay.target and
+    pay.floor, 0 when unset), target_note, floor_note (how each sits against the posted range), floor_withheld}.
+    {} when there's nothing to show. The floor is private: see without_floor for the copy that leaves."""
+    low, high = job.salary_min or 0, job.salary_max or job.salary_min or 0
+    target, floor = cfg.pay.target, cfg.pay.floor
+    if not (job.pay() or target or floor):
+        return {}
+    notes = {"target_note": "", "floor_note": ""}
+    if low and target:
+        notes["target_note"] = ("below the posted range" if target < low else
+                                "above the posted range" if target > high else "inside the posted range")
+    if high and floor:
+        notes["floor_note"] = ("above the top of the posted range: they may not reach it" if floor > high else
+                               "inside the posted range" if floor >= low else "below the posted range")
+    return {"posted": job.pay(), "posted_min": low, "posted_max": high, "target": target, "floor": floor,
+            "floor_withheld": False, **notes}
+
+
+def without_floor(s: Sheet) -> Sheet:
+    """The sheet as it may leave this computer (to an assistant or a cloud model): the pay floor, and what was
+    said about it, taken out and marked as left out."""
+    if not s.pay.get("floor"):
+        return s
+    return replace(s, pay={**s.pay, "floor": 0, "floor_note": "", "floor_withheld": True})
+
+
+_ABOUT = ("about us|about the company|who we are|our mission|our story|our company|company overview|overview|"
+          "what we do")
+
+
+def _about(description: str, company: str, most: int = 4) -> list[str]:
+    """What the posting says about the company, in its words: the lines under its "About us" kind of heading, or
+    failing that, the sentences in its first lines that name the company."""
+    head = re.compile(rf"^(?:{_ABOUT}|about {re.escape(company)})\b", re.I) if company else re.compile(_ABOUT, re.I)
+    lines, inside = [], False
+    for raw in description.splitlines():
+        line = _BULLET.sub("", raw).strip()
+        if not line:
+            continue
+        if _heading(raw):
+            inside = bool(head.search(line.rstrip(":")))
+            continue
+        if inside and 4 <= len(line.split()) <= 60:
+            lines.append(line)
+    if not lines and company:
+        for line in description.splitlines()[:25]:
+            lines += [x for x in re.split(r"(?<=[.!?])\s+", _BULLET.sub("", line).strip())
+                      if company.lower() in x.lower() and len(x.split()) >= 4]
+    return [drafts._clip(x, 300) for x in lines[:most]]
+
+
+def company_brief(cfg: Config, job: Job, posting: Job, rec: dict) -> dict:
+    """The company as the posting and your own notes tell it: {about (the posting's lines), facts ([{label,
+    value}] from the posting's record), notes (your note on the job), contacts (people you know there), source}.
+    Nothing is looked up and nothing is added: {} when the sources say nothing."""
+    company = posting.display_company
+    facts = [{"label": label, "value": value} for label, value in
+             (("Locations", "; ".join(posting.places)), ("Team", posting.department)) if value]
+    known = load_contacts(cfg)
+    people = [{"name": p["name"], "position": p.get("position", ""), "why": p.get("why", "")}
+              for p in (known.at(job.display_company, job.company, company) if known else [])]
+    brief = {"about": _about(posting.description, company), "facts": facts, "notes": rec.get("note") or "",
+             "contacts": people[:5]}
+    return {**brief, "source": "Drawn from the posting and your notes; nothing else was looked up."} \
+        if any(brief.values()) else {}
+
+
+def role_questions(cfg: Config, store: Store, key: str, generate: bool = True) -> list[str]:
+    """The questions this role is likely to bring up, for the stage it is at: written by the chat's model from the
+    posting's asks, or the generic screen / interview list when there's no model, no posting text or nothing
+    usable (it never raises for the model's sake). Saved per job and posting text, so asking again doesn't call
+    the model; without generate only saved ones are read. For a mock interview or any other caller."""
+    job, rec = store.find(key)
+    posting: Job = store.linked(job) or job
+    screen = _screen(rec["status"])
+    got, _ = drafts.questions(cfg, store, job.key, asks(posting.description), screen, posting.to_text(),
+                              pay_info(cfg, posting if posting.salary_min is not None else job), generate)
+    return got or list(SCREEN_QUESTIONS if screen else INTERVIEW_QUESTIONS)
+
+
+def build(cfg: Config, store: Store, key: str, draft: bool = False, questions: bool = False) -> Sheet:
+    """The sheet, rule-based and instant. questions: also have the chat's model write questions for this role
+    from the posting's asks (saved ones are always read; with the claude backend the posting goes to Anthropic).
+    draft: also ask it for role-specific questions with answers drafted from the stories and resume (slower, and
+    with the claude backend they're sent to Anthropic too)."""
     job, rec = store.find(key)
     posting: Job = store.linked(job) or job
     pkg = store.package(job.key)
@@ -210,11 +312,18 @@ def build(cfg: Config, store: Store, key: str, draft: bool = False) -> Sheet:
     if not resume and (resume := resume_text(cfg.resume)):
         resume_used = "base"
     stage = rec["status"]
-    expect = SCREEN_QUESTIONS if stage in ("applied", "screening", "queued") else INTERVIEW_QUESTIONS
-    ask = ASK_SCREEN if stage in ("applied", "screening", "queued") else ASK_INTERVIEW
+    screen = _screen(stage)
+    expect = SCREEN_QUESTIONS if screen else INTERVIEW_QUESTIONS
+    ask = ASK_SCREEN if screen else ASK_INTERVIEW
     ask_lines = asks(posting.description)
-    drafted, draft_note = drafts.draft(cfg, store, job.key, ask_lines, expect is SCREEN_QUESTIONS, resume,
+    pay = pay_info(cfg, posting if posting.salary_min is not None else job)
+    drafted, draft_note = drafts.draft(cfg, store, job.key, ask_lines, screen, resume,
                                        posting.to_text()) if draft else ([], "")
+    if drafted:  # already role-specific: no second call
+        written, questions_note = [d["question"] for d in drafted], ""
+    else:
+        written, questions_note = drafts.questions(cfg, store, job.key, ask_lines, screen, posting.to_text(), pay,
+                                                   generate=questions)
     data = pkg.data()
     return Sheet(key=job.key, company=job.display_company, title=job.title, status=stage, url=posting.url or job.url,
                  posting_key=posting.key if posting is not job else "",
@@ -223,7 +332,8 @@ def build(cfg: Config, store: Store, key: str, draft: bool = False) -> Sheet:
                  matches=pair(ask_lines, resume), resume_used=resume_used,
                  sent={"files": [f["name"] for f in data["files"]], "answers": data["answers"], "note": data["note"]},
                  expect=expect, ask=ask, posting=posting.to_text(), drafted=drafted, draft_note=draft_note,
-                 practised=pkg.practised())
+                 role_questions=written, questions_note=questions_note, pay=pay,
+                 brief=company_brief(cfg, job, posting, rec), practised=pkg.practised())
 
 
 def to_dict(s: Sheet) -> dict:
@@ -231,6 +341,21 @@ def to_dict(s: Sheet) -> dict:
 
 
 _KIND = {"need": "They ask for", "do": "You'd be doing", "nice": "Nice to have"}
+
+
+def _pay_lines(pay: dict) -> list[tuple[str, str]]:
+    """(label, text) for the pay section. The floor is labelled private: it stays on this computer."""
+    out = [("Posted range", pay["posted"] + " (from the posting)" if pay.get("posted") else
+            "not in the posting")]
+    if pay.get("target"):
+        out.append(("Your target", _money(pay["target"]) + (f", {pay['target_note']}" if pay.get("target_note")
+                                                           else "")))
+    if pay.get("floor"):
+        out.append(("Your floor (private)", _money(pay["floor"]) + (f", {pay['floor_note']}" if pay.get("floor_note")
+                                                                  else "") + ". Never sent to Claude"))
+    elif pay.get("floor_withheld"):
+        out.append(("Your floor (private)", "set, and left out of this copy"))
+    return out
 
 
 def markdown(s: Sheet) -> str:
@@ -249,6 +374,15 @@ def markdown(s: Sheet) -> str:
                 f"{s.fit.get('must_haves_total', 0)} must-haves."]
         if s.fit.get("summary"):
             out.append(s.fit["summary"])
+    if s.brief:
+        out += ["", "## Company brief", f"_{s.brief['source']}_"]
+        out += [f"- {a}" for a in s.brief["about"]] + [f"- {f['label']}: {f['value']}" for f in s.brief["facts"]]
+        if s.brief["notes"]:
+            out.append(f"\n**Your notes:** {s.brief['notes']}")
+        if s.brief["contacts"]:
+            out.append("\n**You know:** " + "; ".join(
+                p["name"] + (f" ({p['position']})" if p["position"] else "") + (f" [{p['why']}]" if p["why"] else "")
+                for p in s.brief["contacts"]))
     if s.matches:
         which = {"sent": "the resume you sent", "base": "your resume"}.get(s.resume_used, "")
         out += ["", "## Their asks and your closest line" + (f" ({which})" if which else "")]
@@ -266,6 +400,8 @@ def markdown(s: Sheet) -> str:
                 "Say what's closest and how you'd ramp up. Don't claim what you haven't done."]
         out += [f"- {g}" for g in fit_gaps]
         out += [f"- {g['name']}" + (" (a must-have)" if g["must_have"] else "") for g in gaps]
+    if s.pay:
+        out += ["", "## Pay"] + [f"- **{label}:** {value}" for label, value in _pay_lines(s.pay)]
     if s.sent["files"] or s.sent["answers"] or s.sent["note"]:
         out += ["", "## What you sent"]
         if s.sent["files"]:
@@ -276,8 +412,8 @@ def markdown(s: Sheet) -> str:
     if s.drafted:  # the drafted questions take the generic ones' place
         out.append(drafts.markdown(s.drafted, s.draft_note).rstrip("\n"))
     else:
-        out += ["", "## They'll likely ask"] + ([f"_{s.draft_note}_"] if s.draft_note else []) \
-            + [f"- {q}" for q in s.expect]
+        out += ["", "## They'll likely ask"] + [f"_{n}_" for n in (s.draft_note, s.questions_note) if n] \
+            + [f"- {q}" for q in s.role_questions or s.expect]
     if s.practised:
         out += ["", "## Practised answers", "Tightened in mock interviews, from what you said and your stories."]
         for p in s.practised:
@@ -333,6 +469,25 @@ def _fit_part(s: Sheet):
         return "Fit", body
 
 
+def _brief_part(s: Sheet):
+    if s.brief:
+        b = s.brief
+        items = [_e(a) for a in b["about"]] + [f"{_e(f['label'])}: {_e(f['value'])}" for f in b["facts"]]
+        body = f'<p class="small muted">{_e(b["source"])}</p>' + (_ul(items) if items else "")
+        if b["notes"]:
+            body += f'<p class="note"><b>Your notes:</b> {_e(b["notes"])}</p>'
+        if b["contacts"]:
+            body += "<p><b>You know:</b> " + "; ".join(
+                _e(p["name"]) + (f" ({_e(p['position'])})" if p["position"] else "")
+                + (f' <span class="muted">[{_e(p["why"])}]</span>' if p["why"] else "") for p in b["contacts"]) + "</p>"
+        return "Company brief", body
+
+
+def _pay_part(s: Sheet):
+    if s.pay:
+        return "Pay", _ul([f"<b>{_e(label)}:</b> {_e(value)}" for label, value in _pay_lines(s.pay)])
+
+
 def _matches_part(s: Sheet):
     if not s.matches:
         return "", ('<p class="muted">No requirements found in the posting text. An application added by hand has '
@@ -367,9 +522,9 @@ def _sent_part(s: Sheet):
 
 
 def _expect_part(s: Sheet):
-    note = f'<p class="small muted">{_e(s.draft_note)}</p>' if s.draft_note else ""
+    note = "".join(f'<p class="small muted">{_e(n)}</p>' for n in (s.draft_note, s.questions_note) if n)
     if not s.drafted:
-        return "They'll likely ask", note + _ul([_e(q) for q in s.expect])
+        return "They'll likely ask", note + _ul([_e(q) for q in s.role_questions or s.expect])
     cards = []
     for d in s.drafted:
         probes = f'<div class="kind">Probes: {_e(d["probes"])}</div>' if d["probes"] else ""
@@ -405,8 +560,8 @@ def html(s: Sheet) -> str:
     if s.url:
         head.append("<p>" + _link(s.url, "The posting") + (f" (found on a watched board: <code>{_e(s.posting_key)}"
                                                          "</code>)" if s.posting_key else "") + "</p>")
-    parts = [p for p in (_fit_part(s), _matches_part(s), _gaps_part(s), _sent_part(s), _expect_part(s),
-                         _practised_part(s), _ask_part(s)) if p]
+    parts = [p for p in (_fit_part(s), _brief_part(s), _matches_part(s), _gaps_part(s), _pay_part(s),
+                         _sent_part(s), _expect_part(s), _practised_part(s), _ask_part(s)) if p]
     body = "\n".join(head + [(f"<section><h2>{_e(h)}</h2>{b}</section>" if h else b) for h, b in parts])
     return ('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'

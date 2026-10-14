@@ -80,9 +80,11 @@ def role_questions(matches: list) -> list[dict]:
 
 
 def pick(sheet: prep.Sheet) -> list[dict]:
-    """The session's questions, each once: drafted ones for this role when the sheet has them, then the ones the
-    posting's asks give rise to, then the sheet's usual questions for the stage."""
+    """The session's questions, each once: drafted ones for this role when the sheet has them, then the ones
+    written for this role (prep --questions), then the ones the posting's asks give rise to, then the sheet's usual
+    questions for the stage."""
     wanted = [{"question": d["question"], "probes": d["probes"]} for d in sheet.drafted]
+    wanted += [{"question": q, "probes": ""} for q in sheet.role_questions if q not in sheet.expect]
     wanted += role_questions(sheet.matches) + [{"question": q, "probes": ""} for q in sheet.expect]
     seen, out = set(), []
     for item in wanted:

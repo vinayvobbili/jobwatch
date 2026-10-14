@@ -233,6 +233,8 @@ pay:                                      # expected pay from Levels.fyi: off un
   ask_over: 10                            # ask this many percent over the level's median base
   round: 5000                             # rounded up to this (0: not rounded)
   today: 15                               # how many of Today's jobs get looked up
+  target: 180000                          # your target base, for prep sheets
+  floor: 150000                           # your private floor: your own sheet only, never sent to Claude
 suggestions:                              # Companies to watch
   half_life: 30                           # days: a job this old counts half as much as today's
   limit: 10                               # how many companies are listed
@@ -621,8 +623,27 @@ Before a recruiter call or an interview, open the application's **Details** and 
 - each requirement and responsibility in the posting, next to the line on your resume closest to it (the
   resume you sent, if you kept it), or a plain "nothing close" so you can prepare a story or an honest answer;
 - skills they ask for that your resume doesn't show, with the fit score's missing must-haves;
+- a company brief: what the posting says about the company in its own words, its place and team, your notes
+  on the job and who you know there. It's drawn from the posting and your notes only (nothing is looked up
+  on the web) and says so;
+- pay: the posted range, your target (`pay.target`) and your floor (`pay.floor`), with how each sits against the
+  range. The floor is marked private: it is on your own sheet and nowhere else (see below);
 - what you sent;
 - questions to expect and questions to ask, for a screen or for interviews.
+
+**Questions for this role.** `jobwatch prep c1 --questions` (or **Write questions for this role** on the page)
+has the chat's model write the questions this role is likely to bring up from the posting's asks, each probing
+one of them. Only the posting goes to the model (no resume, no stories, nothing of yours), and a question with a
+number the posting doesn't contain is dropped. They're kept per job and posting text, so opening the sheet again
+doesn't call the model, and a changed posting asks afresh. With no model, or nothing usable, the generic screen
+or interview questions stand and the sheet says why. `prep.role_questions(cfg, store, key)` returns them for
+anything else that wants them (such as a mock interview).
+
+**Your pay floor stays on your computer.** Set `pay.target` and `pay.floor` (a yearly base, in the posting's
+currency) in the watchlist. The sheet shows the floor labelled private. It is never put in a prompt for Claude:
+with `chat.backend: claude` the posted range and your target may go in the questions prompt, the floor is left
+out, and the sheet says so. The on-device model may see it. `get_interview_prep` over MCP leaves it out too
+(`pay.floor_withheld`), since the client may be a cloud assistant.
 
 **Open as page** (or `jobwatch prep c1 --open`) shows it as a standalone HTML page that prints cleanly on Letter
 paper; `--format html -o prep.html` saves that page, and the default `--format md` prints Markdown.
@@ -668,7 +689,8 @@ posting, your resume and your stories go to Anthropic. A draft takes a while, so
 and opening the sheet again reads it; a change to the posting, resume, stories, stage, model or instructions
 drafts afresh. Its instructions are `drafts.PROMPT`, or your own in `prep.prompt` (keep `{context}`, where the
 posting, resume and stories go); `prep.max_tokens` (4000) is the longest draft. MCP clients ask for it with
-`get_interview_prep`'s `draft_answers`.
+`get_interview_prep`'s `draft_answers`, and for role questions `role_questions`; the sheet it returns has
+`brief`, `pay` and `role_questions` as fields of their own.
 
 ### Mock interview
 

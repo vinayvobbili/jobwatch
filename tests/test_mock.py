@@ -79,6 +79,16 @@ def test_drafted_questions_lead_and_nothing_repeats(setup):
     assert questions[:2] == [sheet.expect[0], "A drafted one?"] and len(questions) == len(set(questions))
 
 
+def test_questions_written_for_the_role_come_after_drafted_ones(setup):
+    cfg, store, _, key = setup
+    sheet = prep.build(cfg, store, key)
+    sheet.drafted = [{"question": "A drafted one?", "probes": "A1"}]
+    sheet.role_questions = ["How would you size the robot fleet?", "A drafted one?"]
+    questions = [q["question"] for q in mock.pick(sheet)]
+    assert questions[:2] == ["A drafted one?", "How would you size the robot fleet?"]
+    assert len(questions) == len(set(questions))
+
+
 def test_the_prompt_forbids_inventing_and_holds_the_facts(setup, fake_model):
     cfg, store, _, key = setup
     session = mock.start(cfg, store, key)
