@@ -11,16 +11,17 @@ from jobwatch.watch import still_open
 from .conftest import FakeWeb
 
 FIXTURES = Path(__file__).parent / "fixtures"
-# Initech's portal, trimmed: the sitemap index (es_ES listed first here, to show en_US is picked), the en_US
-# sitemap with a few non-posting pages and five postings, the RSS feed for one search, and one posting's page.
+# A made-up Initech portal, laid out like a real one: the sitemap index (es_ES listed first here, to show en_US
+# is picked), the en_US sitemap with a few non-posting pages and five postings, the RSS feed for one search,
+# and one posting's page.
 INDEX = (FIXTURES / "avature_sitemap_index.xml").read_text(encoding="utf-8")
 SITEMAP = (FIXTURES / "avature_sitemap.xml").read_text(encoding="utf-8")
 FEED = (FIXTURES / "avature_feed.xml").read_text(encoding="utf-8")
 PAGE = (FIXTURES / "avature_job.html").read_text(encoding="utf-8")
 
 BOARD = "careers.initech.example/careers"
-FDE = "https://careers.initech.example/en_US/careers/JobDetail/Data-Platform-Engineer/31415"
-FEED_SEARCH = "https://careers.initech.example/careers/SearchJobs/feed/?search=data%20platform"
+FDE = "https://careers.initech.example/en_US/careers/JobDetail/Senior-Platform-Engineer/31415"
+FEED_SEARCH = "https://careers.initech.example/careers/SearchJobs/feed/?search=platform"
 
 # A posting on another company's portal, trimmed: other labels (Location, Business Area), no date, no og:url.
 BLOOMBERG = "https://bloomberg.avature.net/careers/JobDetail/Buyside-Pre-Sales-Engineer-OMS-Enterprise-Sales-" \
@@ -139,27 +140,27 @@ def initech_web(**more):
         f"https://{BOARD}/sitemap_index.xml": INDEX,
         "https://careers.initech.example/en_US/careers/sitemap.xml": SITEMAP,
         FDE: PAGE,
-        "https://careers.initech.example/careers/JobDetail/Data-Platform-Engineer/31415": PAGE,  # redirects to en_US
+        "https://careers.initech.example/careers/JobDetail/Senior-Platform-Engineer/31415": PAGE,  # redirects to en_US
         **more,
     })
 
 
 def test_avature_lists_postings_from_the_sitemap_and_reads_the_wanted_ones():
     web = initech_web()
-    jobs = {j.id: j for j in sources.fetch("avature", BOARD, web, search=["data platform"],
-                                           wanted=lambda t: t == "Data Platform Engineer")}
+    jobs = {j.id: j for j in sources.fetch("avature", BOARD, web, search=["platform"],
+                                           wanted=lambda t: t == "Senior Platform Engineer")}
     assert set(jobs) == {"27182", "29979", "31415"}
     fde = jobs["31415"]
-    assert fde.key == f"avature:{BOARD}:31415" and fde.title == "Data Platform Engineer" and fde.url == FDE
+    assert fde.key == f"avature:{BOARD}:31415" and fde.title == "Senior Platform Engineer" and fde.url == FDE
     assert fde.locations == ["Golden, Colorado, United States of America"] and fde.remote is None
-    assert (fde.company_name, fde.department) == ("initech", "Artificial Intelligence")
+    assert (fde.company_name, fde.department) == ("initech", "Engineering")
     assert fde.posted.date().isoformat() == "2026-09-30"
-    assert (fde.salary_min, fde.salary_max, fde.currency) == (152_000, 210_000, "USD")
-    assert "Copilot Studio" in fde.description and "PAY TRANSPARENCY" in fde.description
+    assert (fde.salary_min, fde.salary_max, fde.currency) == (140_000, 210_000, "USD")
+    assert "Terraform" in fde.description and "PAY TRANSPARENCY" in fde.description
     assert "REQ-0003" not in fde.description  # labeled fields are the job's details, not its text
     assert fde.description.count("* United States of America") == 1  # the hidden copies are left out
     sr = jobs["27182"]  # listed, not read: its title is the one in its link
-    assert sr.title == "Sr Data Platform Engineer REMOTE" and sr.description == "" and sr.company_name == "initech"
+    assert sr.title == "Sr Platform Engineer REMOTE" and sr.description == "" and sr.company_name == "initech"
     assert web.calls == [f"https://{BOARD}/sitemap_index.xml", "https://careers.initech.example/en_US/careers/sitemap.xml",
                          FDE]
 
@@ -172,27 +173,27 @@ def test_avature_without_search_terms_lists_every_posting():
 
 
 def test_avature_known_postings_are_not_read_again():
-    known = Job(source="avature", company=BOARD, id="31415", title="Data Platform Engineer", url=FDE,
+    known = Job(source="avature", company=BOARD, id="31415", title="Senior Platform Engineer", url=FDE,
                 description="read before")
     web = initech_web()
-    jobs = sources.fetch("avature", BOARD, web, search=["data platform"], known={known.key: known})
+    jobs = sources.fetch("avature", BOARD, web, search=["platform"], known={known.key: known})
     assert next(j for j in jobs if j.id == "31415") is known and FDE not in web.calls
 
 
 def test_a_portal_without_postings_in_its_sitemap_is_read_from_its_feed():
     web = FakeWeb({f"https://{BOARD}/sitemap_index.xml": INDEX,
                    "https://careers.initech.example/en_US/careers/sitemap.xml": "", FEED_SEARCH: FEED})
-    jobs = {j.id: j for j in sources.fetch("avature", BOARD, web, search=["data platform"], wanted=lambda t: False)}
-    assert set(jobs) == {"27182", "31415"}  # the feed's search found "AI Application Engineer" in its text only
-    assert jobs["27182"].title == "Sr. Data Platform Engineer - REMOTE"
+    jobs = {j.id: j for j in sources.fetch("avature", BOARD, web, search=["platform"], wanted=lambda t: False)}
+    assert set(jobs) == {"27182", "31415"}  # the feed's search found "Application Developer" in its text only
+    assert jobs["27182"].title == "Sr. Platform Engineer - REMOTE"
     assert jobs["27182"].posted.date().isoformat() == "2026-07-28"
-    assert jobs["31415"].url == "https://careers.initech.example/careers/JobDetail/Data-Platform-Engineer/31415"
+    assert jobs["31415"].url == "https://careers.initech.example/careers/JobDetail/Senior-Platform-Engineer/31415"
 
 
 @pytest.mark.parametrize("url, expected", [
     (FDE, ("avature", BOARD)),
-    ("https://careers.initech.example/careers/JobDetail/Data-Platform-Engineer/31415", ("avature", BOARD)),
-    ("careers.initech.example/en_US/careers/SearchJobs/?search=forward+deployed", ("avature", BOARD)),
+    ("https://careers.initech.example/careers/JobDetail/Senior-Platform-Engineer/31415", ("avature", BOARD)),
+    ("careers.initech.example/en_US/careers/SearchJobs/?search=platform", ("avature", BOARD)),
     ("https://initech.avature.net/en_US/careers", ("avature", "initech.avature.net/careers")),
     (BLOOMBERG, ("avature", "bloomberg.avature.net/careers")),
     ("https://initech.avature.net/", None),
@@ -207,12 +208,12 @@ def test_an_avature_link_is_read_from_its_page():
     job = sources.posting(FDE + "?qtvc=abc123#top", web)  # robots.txt rules out qtvc=: it's dropped
     assert job.key == f"avature:{BOARD}:31415" and job.salary_max == 210_000 and job.description
     assert all("qtvc" not in u for u in web.calls)
-    assert sources.posting("https://careers.initech.example/careers/JobDetail/Data-Platform-Engineer/31415", web).id == \
-        "31415"
+    assert sources.posting(FDE.replace("/en_US", ""), web).id == "31415"
     assert sources.posting("https://careers.initech.example/en_US/careers/SearchJobs", web) is None
-    assert sources._posting_id("avature", "https://careers.initech.example/en_US/careers/JobDetail?jobId=31415") == "31415"
+    detail = "https://careers.initech.example/en_US/careers/JobDetail"
+    assert sources._posting_id("avature", f"{detail}?jobId=31415") == "31415"
     with pytest.raises(sources.NotFound):  # a closed posting's page is Avature's 404 error page
-        sources.posting("https://careers.initech.example/en_US/careers/JobDetail/Data-Platform-Engineer/1", web)
+        sources.posting("https://careers.initech.example/en_US/careers/JobDetail/Senior-Platform-Engineer/1", web)
     with pytest.raises(sources.SourceError):
         sources._avature_get("https://careers.initech.example/careers/SearchJobs?qtvc=abc", web)
     assert sources.careers_url("avature", BOARD) == "https://careers.initech.example/careers/SearchJobs"
@@ -282,5 +283,5 @@ def test_avature_is_found_by_name_and_its_jobs_checked():
     assert not any(s == "avature" for s, _, _ in sources.probe("Globex", web))
     job = sources.posting(FDE, web)
     assert still_open(job, web) is True
-    job.url = "https://careers.initech.example/en_US/careers/JobDetail/Data-Platform-Engineer/1"
+    job.url = "https://careers.initech.example/en_US/careers/JobDetail/Senior-Platform-Engineer/1"
     assert still_open(job, web) is False

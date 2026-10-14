@@ -700,7 +700,7 @@ def _google_job(e: ET.Element, board: str, read: bool = True) -> Job:
 
 
 def _title_has(title: str, terms) -> bool:
-    """A search term's words are all in the title ("data platform" finds "Data Platform Engineer")."""
+    """A search term's words are all in the title ("platform engineer" finds "Senior Platform Engineer")."""
     title = title.lower()
     return any(all(w in title for w in re.findall(r"\w+", t.lower())) for t in terms)
 
@@ -795,7 +795,7 @@ def _avature_id(url: str) -> str | None:
 
 
 def _avature_slug_title(url: str) -> str:
-    """The title in a JobDetail link ("Sr-Data-Platform-Engineer-REMOTE"), as words."""
+    """The title in a JobDetail link ("Sr-Platform-Engineer-REMOTE"), as words."""
     parts = [p for p in urlparse(url).path.split("/") if p]
     rest = parts[parts.index("JobDetail") + 1:] if "JobDetail" in parts else []
     return " ".join(rest[0].split("-")).strip() if len(rest) == 2 else ""

@@ -39,7 +39,7 @@ Workday (some through Eightfold, Oracle Recruiting Cloud, SmartRecruiters or a J
 small companies through Rippling. Each publishes open roles as public JSON so anyone can build a careers page, with
 no API key or scraping; Google publishes its own (with YouTube's and DeepMind's) as an XML feed for job sites,
 Amazon's careers site (amazon.jobs, with AWS) answers its own search in JSON, and Avature careers portals
-(Initech's, for one) list every posting in a sitemap for search engines. Hundreds of startups post once a month
+(company career sites on Avature) list every posting in a sitemap for search engines. Hundreds of startups post once a month
 in Hacker News' "Ask HN: Who is hiring?" thread, which HN's search API serves whole.
 jobwatch reads those feeds for the companies on your watchlist:
 

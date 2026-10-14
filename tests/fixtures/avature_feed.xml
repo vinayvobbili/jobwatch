@@ -1,29 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:wfw="http://wellformedweb.org/CommentAPI/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:sy="http://purl.org/rss/1.0/modules/syndication/" xmlns:slash="http://purl.org/rss/1.0/modules/slash/">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>careers</title>
     <description>careers</description>
     <link>https://careers.initech.example/en_US/careers</link>
     <atom:link href="https://careers.initech.example/en_US/careers/SearchJobs/feed/" rel="self" type="application/rss+xml"/>
     <item>
-      <title><![CDATA[AI Application Engineer]]></title>
+      <title><![CDATA[Application Developer]]></title>
       <description><![CDATA[ - REQ-0001]]></description>
-      <guid isPermaLink="true">https://careers.initech.example/careers/JobDetail/AI-Application-Engineer/22360</guid>
-      <link>https://careers.initech.example/careers/JobDetail/AI-Application-Engineer/22360</link>
+      <guid isPermaLink="true">https://careers.initech.example/careers/JobDetail/Application-Developer/22360</guid>
+      <link>https://careers.initech.example/careers/JobDetail/Application-Developer/22360</link>
       <pubDate>Tue, 26 May 2026 00:00:00 +0000</pubDate>
     </item>
     <item>
-      <title><![CDATA[Sr. Data Platform Engineer - REMOTE]]></title>
+      <title><![CDATA[Sr. Platform Engineer - REMOTE]]></title>
       <description><![CDATA[ - REQ-0002]]></description>
-      <guid isPermaLink="true">https://careers.initech.example/careers/JobDetail/Sr-Data-Platform-Engineer-REMOTE/27182</guid>
-      <link>https://careers.initech.example/careers/JobDetail/Sr-Data-Platform-Engineer-REMOTE/27182</link>
+      <guid isPermaLink="true">https://careers.initech.example/careers/JobDetail/Sr-Platform-Engineer-REMOTE/27182</guid>
+      <link>https://careers.initech.example/careers/JobDetail/Sr-Platform-Engineer-REMOTE/27182</link>
       <pubDate>Tue, 28 Jul 2026 00:00:00 +0000</pubDate>
     </item>
     <item>
-      <title><![CDATA[Data Platform Engineer]]></title>
+      <title><![CDATA[Senior Platform Engineer]]></title>
       <description><![CDATA[ - REQ-0003]]></description>
-      <guid isPermaLink="true">https://careers.initech.example/careers/JobDetail/Data-Platform-Engineer/31415</guid>
-      <link>https://careers.initech.example/careers/JobDetail/Data-Platform-Engineer/31415</link>
+      <guid isPermaLink="true">https://careers.initech.example/careers/JobDetail/Senior-Platform-Engineer/31415</guid>
+      <link>https://careers.initech.example/careers/JobDetail/Senior-Platform-Engineer/31415</link>
       <pubDate>Wed, 30 Sep 2026 00:00:00 +0000</pubDate>
     </item>
   </channel>
