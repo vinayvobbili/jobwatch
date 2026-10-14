@@ -56,4 +56,5 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["network: reaches the real internet; skipped unless its environment variable is set"]
+markers = ["network: reaches the real internet; skipped unless its environment variable is set",
+           "scheduled: the `server` fixture keeps the watchlist's own schedule (the page checks the boards at once)"]

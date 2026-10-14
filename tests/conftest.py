@@ -160,9 +160,14 @@ def watchlist(tmp_path):
 
 
 @pytest.fixture
-def server(watchlist, web):
-    """`jobwatch ui` on a free port, serving the test watchlist; yields the port."""
+def server(request, watchlist, web):
+    """`jobwatch ui` on a free port, serving the test watchlist; yields the port. serve() starts the schedule, whose
+    first check would run on the fake boards at a moment the test doesn't control (and make a test's own check
+    find nothing new), so it's off unless the test is marked `scheduled`."""
     from jobwatch.web import serve
+
+    if not request.node.get_closest_marker("scheduled"):
+        watchlist.write_text(watchlist.read_text() + "fetch_every: off\n")
 
     srv = serve(watchlist, port=0, open_browser=False, token=TOKEN)
     threading.Thread(target=srv.serve_forever, daemon=True).start()

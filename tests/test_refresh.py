@@ -174,6 +174,7 @@ def test_today_says_when_the_boards_were_checked(watchlist, web):
     app.refresher._thread = None
 
 
+@pytest.mark.scheduled
 def test_the_page_checks_when_it_starts(server, watchlist):
     """serve() starts the schedule: the boards are checked at once (never checked before), and /api/checked says
     when."""
