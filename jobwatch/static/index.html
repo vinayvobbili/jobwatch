@@ -1140,13 +1140,13 @@ function detailsScore(j) {
 }
 // A prep sheet for a call: the posting's asks next to the closest resume line, gaps, what was sent, questions.
 // draft: the chat's model drafts likely questions with answers from the story file (slow the first time, then kept).
-async function openPrep(key, draft = false) {
+async function openPrep(key, draft = false, questions = false) {
   const dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
   dialog.replaceChildren(h("div", { class: "muted" }, draft ? "Drafting questions and answers from your stories… "
     + "(the first time can take a minute or two)" : "Loading…"));
   try {
-    const p = await api("/api/prep?key=" + encodeURIComponent(key) + (draft ? "&draft=1" : ""));
+    const p = await api("/api/prep?key=" + encodeURIComponent(key) + (draft ? "&draft=1" : "") + (questions ? "&questions=1" : ""));
     const list = items => h("ul", {}, ...items.map(i => h("li", {}, i)));
     const KIND = { need: "They ask for", do: "You'd be doing", nice: "Nice to have" };
     const which = { sent: "the resume you sent", base: "your resume" }[p.resume_used];
@@ -1179,6 +1179,11 @@ async function openPrep(key, draft = false) {
         p.posting_key ? h("span", { class: "muted" }, " · found on a watched board by its requisition id") : null) : null,
       p.fit ? [h("h3", {}, "Fit"), h("div", {}, `${Math.round(p.fit.score || 0)}/100, ${p.fit.must_haves_met || 0} of ` +
         `${p.fit.must_haves_total || 0} must-haves.`), p.fit.summary ? h("p", { class: "small muted" }, p.fit.summary) : null] : null,
+      p.brief.source ? [h("h3", {}, "Company brief"), h("div", { class: "small muted" }, p.brief.source),
+        list([...p.brief.about, ...p.brief.facts.map(f => `${f.label}: ${f.value}`)]),
+        p.brief.notes ? h("div", { class: "small", style: "white-space:pre-wrap" }, h("b", {}, "Your notes: "), p.brief.notes) : null,
+        p.brief.contacts.length ? h("div", { class: "small" }, h("b", {}, "You know: "), p.brief.contacts.map(c =>
+          c.name + (c.position ? ` (${c.position})` : "") + (c.why ? ` [${c.why}]` : "")).join("; ")) : null] : null,
       p.matches.length ? [h("h3", {}, "Their asks and your closest line" + (which ? ` (${which})` : "")),
         ...p.matches.map(m => h("div", { class: "ask" }, h("div", { class: "kind" }, KIND[m.kind]), h("div", {}, m.ask),
           m.resume ? h("div", { class: "you" }, m.resume)
@@ -1187,6 +1192,11 @@ async function openPrep(key, draft = false) {
       gaps.length ? [h("h3", {}, "Be ready to be honest about"),
         h("div", { class: "small muted" }, "Say what's closest and how you'd ramp up. Don't claim what you haven't done."),
         list(gaps)] : null,
+      p.pay.posted !== undefined ? [h("h3", {}, "Pay"), h("ul", {},
+        h("li", {}, h("b", {}, "Posted range: "), p.pay.posted ? p.pay.posted + " (from the posting)" : "not in the posting"),
+        p.pay.target ? h("li", {}, h("b", {}, "Your target: "), money(p.pay.target) + (p.pay.target_note ? ", " + p.pay.target_note : "")) : null,
+        p.pay.floor ? h("li", {}, h("b", {}, "Your floor (private): "), money(p.pay.floor) +
+          (p.pay.floor_note ? ", " + p.pay.floor_note : "") + ". Never sent to Claude") : null)] : null,
       sent ? [h("h3", {}, "What you sent"), p.sent.files.length ? h("div", { class: "small" }, "Files: " + p.sent.files.join(", ")) : null,
         p.sent.answers.length ? list(p.sent.answers.map(a => h("span", {}, h("b", {}, a.question + " "), a.answer))) : null,
         p.sent.note ? h("div", { class: "posting", style: "max-height:none" }, p.sent.note) : null] : null,
@@ -1198,7 +1208,12 @@ async function openPrep(key, draft = false) {
             : [h("div", { class: "small muted", style: "margin-top:4px" }, "From: " + d.stories.map(s => s.title).join(", ")),
               h("div", { class: "you" }, list(d.outline))]))]
         : [h("h3", {}, "They'll likely ask"), p.draft_note ? h("div", { class: "small muted" }, p.draft_note) : null,
-          list(p.expect),
+          p.questions_note ? h("div", { class: "small muted" }, p.questions_note) : null,
+          list(p.role_questions.length ? p.role_questions : p.expect),
+          p.role_questions.length || questions || draft ? null : h("button", { class: "btn no-print", style: "margin:6px 6px 0 0",
+            onclick: () => openPrep(key, false, true),
+            title: "Questions for this role, written from the posting's asks (only the posting is sent to the model)" },
+            "Write questions for this role"),
           draft ? null : h("button", { class: "btn no-print", style: "margin-top:6px", onclick: () => openPrep(key, true),
             title: "Questions this role is likely to bring up, with answer outlines from your story file and resume only" },
             "Draft answers from my stories")],

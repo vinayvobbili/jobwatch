@@ -627,9 +627,10 @@ class App:
     def get_prep(self, q) -> dict:
         key = (q.get("key") or [""])[0]
         draft = (q.get("draft") or [""])[0] == "1"  # the model drafts questions from the stories (slow once)
+        questions = (q.get("questions") or [""])[0] == "1"  # the model writes questions from the posting's asks
 
         def run(cfg, store):
-            sheet = prep.build(cfg, store, key, draft=draft)
+            sheet = prep.build(cfg, store, key, draft=draft, questions=questions)
             return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet), "html": prep.html(sheet)}
         return self._with_store(run)
 
