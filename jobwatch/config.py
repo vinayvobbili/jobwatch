@@ -307,6 +307,31 @@ def _calendar(raw, path: Path) -> Calendar:
                              "minutes before an interview; 0 for no reminder"))
 
 
+@dataclass(frozen=True)
+class Quiet:
+    """quiet in the watchlist: days without news (a stage change or a note) before an application counts as
+    gone quiet, by stage; 0 never counts that stage. `long`: days after which a quiet one stops crowding the
+    follow-ups due (it sorts below the fresh ones). The days a stage waits shrink as it gets closer to an offer."""
+    applied: int = 21
+    screening: int = 14
+    interviewing: int = 10
+    long: int = 45
+
+
+def _quiet(raw, path: Path) -> Quiet:
+    if raw is None:
+        return Quiet()
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path}: quiet looks like {{applied: 21, screening: 14, interviewing: 10, long: 45}}, "
+                          f"got {raw!r}")
+    unknown = set(raw) - set(Quiet.__dataclass_fields__)
+    if unknown:
+        raise ConfigError(f"{path}: unknown quiet setting(s): {', '.join(sorted(unknown))}")
+    return Quiet(**{k: _whole(raw.get(k, getattr(Quiet, k)), f"quiet.{k}", path,
+                              "0 never counts it" if k != "long" else "0 never sorts them below")
+                    for k in Quiet.__dataclass_fields__})
+
+
 def _prompts(raw, path: Path) -> dict[str, str]:
     """scoring.prompts: {name: text} for the fit-score prompts that were edited; one left out is shortlist-ai's own.
     Checked by the installed shortlist-ai, when it takes edited prompts (see score.check_prompts)."""
@@ -347,6 +372,7 @@ class Config:
     today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
     pace: Pace = field(default_factory=Pace)
     calendar: Calendar = field(default_factory=Calendar)
+    quiet: Quiet = field(default_factory=Quiet)
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
@@ -587,6 +613,7 @@ def load(explicit: str | Path | None = None) -> Config:
         suggest=_suggestions(raw.get("suggestions"), path),
         theme=theme, width=width, today=today,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
+        quiet=_quiet(raw.get("quiet"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
@@ -651,6 +678,14 @@ filters:
 # to subscribe to. remind: minutes before an interview or call to be reminded (0: no reminder).
 # calendar:
 #   remind: 30
+# An application with no news (a stage change or a note) for this many days has gone quiet: the Applications
+# page groups them, `jobwatch quiet` lists them with what to do next, and one that's quiet for `long` days
+# stops crowding the follow-ups due. Nothing is ever changed for you. 0 never counts that stage.
+# quiet:
+#   applied: 21
+#   screening: 14
+#   interviewing: 10
+#   long: 45
 
 # Relevance: keyword -> weight. Title hits count double. Prefix "re:" for a regex.
 keywords:

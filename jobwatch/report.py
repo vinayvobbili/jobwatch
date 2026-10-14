@@ -128,8 +128,16 @@ def due(rec: dict, today: str | None = None) -> bool:
         today or date.today().isoformat())
 
 
+def quiet_line(q: dict) -> str:
+    """ "Quiet 25 days (since 2026-09-19), posting open. A short check-in... You know: Ana Li (Engineer)" """
+    out = (f"**Gone quiet:** {q['days']} days (since {q['since']}), posting "
+           f"{'open' if q['posting_open'] else 'closed'}. {q['advice']}")
+    return out + (f" You know: {people(q['contacts'])}" if q.get("contacts") else "")
+
+
 def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None,
-                          homes: dict[str, str | None] | None = None) -> str:
+                          homes: dict[str, str | None] | None = None, quiet: dict[str, dict] | None = None,
+                          more: str = "") -> str:
     if not rows:
         return "No applications yet. Mark a job applied, or add one with `jobwatch add \"Company\" \"Title\"`.\n"
     counts: dict[str, int] = {}
@@ -138,6 +146,8 @@ def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None
     late = sum(due(rec, today) for _, rec in rows)
     out = [f"# Applications ({len(rows)})", "", ", ".join(f"{n} {s}" for s, n in counts.items())
            + (f". **{late} to follow up on now.**" if late else "."), ""]
+    if gone := len(quiet or {}):
+        out[-2] += f" {gone} gone quiet (`jobwatch quiet`)."
     for job, rec in rows:
         title = f"[{job.title}]({job.url})" if job.url else job.title
         facts = [f"**{rec['status']}**", f"applied {rec['applied_at']}" if rec.get("applied_at") else "",
@@ -146,12 +156,31 @@ def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None
         if rec.get("next_step") or rec.get("follow_up"):
             when = f" by {rec['follow_up']}" if rec.get("follow_up") else ""
             out.append(("**Due:** " if due(rec, today) else "Next: ") + (rec.get("next_step") or "follow up") + when)
+        if q := (quiet or {}).get(job.key):
+            out.append(quiet_line(q))
         if rec.get("note"):
             out.append(f"Note: {rec['note']}")
         if home := (homes or {}).get(job.key) or candidate_home(job.url):
             out.append(f"Status page (sign in): {home}")
         out += [f"`{job.key}`", ""]
+    if more:
+        out.append(more)
     return "\n".join(out).rstrip() + "\n"
+
+
+def quiet_markdown(rows: list[tuple[Job, dict]], found: dict[str, dict]) -> str:
+    """The applications that have gone quiet, the longest quiet first, each with what to do next."""
+    if not found:
+        return "Nothing has gone quiet. An application is quiet after a few weeks with no news; see `quiet:` " \
+               "in the watchlist.\n"
+    out = [f"# Gone quiet ({len(found)})", ""]
+    for job, rec in sorted((r for r in rows if r[0].key in found), key=lambda r: -found[r[0].key]["days"]):
+        title = f"[{job.title}]({job.url})" if job.url else job.title
+        out += [f"### {job.display_company}: {title}", f"**{rec['status']}** · " + quiet_line(found[job.key]),
+                f"`{job.key}`", ""]
+    out.append("To push one out: `jobwatch snooze KEY [--days 7]`. To end one: `jobwatch mark rejected KEY` (or "
+               "withdrawn). `jobwatch check` refreshes whether the postings are still up. Nothing changes by itself.")
+    return "\n".join(out) + "\n"
 
 
 def to_json(d: Digest) -> str:

@@ -402,6 +402,20 @@ class Store:
         line = text if re.match(r"\d{4}-\d{2}-\d{2}\b", text) else f"{date.today().isoformat()}: {text}"
         self.track(key, note=f"{rec['note']} {line}" if rec.get("note") else line)
 
+    def snooze(self, key: str, days: int = 7) -> str:
+        """Push an open application's follow-up day `days` out from today, leaving its stage alone, and note it
+        ("Snoozed 7 days": quiet.py doesn't count that line as news, so a snoozed application stays quiet).
+        Returns the new day."""
+        job, rec = self.find(key)
+        if rec["status"] not in STAGES or rec["status"] in ENDED:
+            raise ValueError(f"{job.key} isn't an open application ({rec['status']})")
+        if days < 1:
+            raise ValueError("snooze for at least a day")
+        until = day(f"+{days}")
+        self.add_note(job.key, f"Snoozed {days} day{'s' * (days != 1)}: follow up {until}.")
+        self.track(job.key, follow_up=until)
+        return until
+
     def add(self, company: str, title: str, url: str = "", status: str = "applied", applied: str | None = None,
             location: str = "", note: str | None = None, next_step: str | None = None,
             follow_up: str | None = None, description: str = "") -> Job:
