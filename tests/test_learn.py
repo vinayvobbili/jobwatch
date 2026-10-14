@@ -4,7 +4,7 @@ import urllib.request
 
 import pytest
 
-from jobwatch import cli, config, learn
+from jobwatch import cli, config, learn, sources
 from jobwatch.models import Job
 from jobwatch.web import ApiError, App
 
@@ -136,7 +136,7 @@ def test_catalog_links_resolve():
     urls = sorted({o["url"] for s in learn.catalog() for o in s.options})
     broken = []
     for url in urls:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (jobwatch link check)"})
+        req = urllib.request.Request(url, headers={"User-Agent": sources.USER_AGENT})  # never a browser's
         try:
             with urllib.request.urlopen(req, timeout=20):
                 pass
