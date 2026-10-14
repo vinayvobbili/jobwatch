@@ -127,8 +127,24 @@ class Pay:
     today: int = 15            # Today's jobs (most relevant first) whose pay is looked up
     # Your own numbers, for the prep sheet (annual base, in the posting's currency; 0: not set). The floor is
     # private: it is shown on your own sheet and never put in anything sent to Claude (see prep.py).
-    target: int = 0            # what you'd like to be offered
+    target: int = 0            # what you'd like to be offered (the low end when target_max is set)
+    target_max: int = 0        # the top of a target range (0: a single target); `target: 180000-210000` sets both
     floor: int = 0             # the least you'd accept
+
+
+def _target(raw, path: Path) -> tuple[int, int]:
+    """pay.target as (low, high): a whole number, or a range written 180000-210000 or 180K-210K; (n, 0) for one."""
+    if isinstance(raw, str):
+        parts = [p.strip().lower().replace(",", "").replace("$", "") for p in re.split(r"\s*[-–—]\s*|\s+to\s+", raw)]
+        try:
+            n = [int(float(p[:-1]) * 1000) if p.endswith("k") else int(p) for p in parts]
+        except ValueError:
+            n = []
+        if len(n) == 2 and 0 < n[0] <= n[1]:
+            return n[0], n[1]
+        raise ConfigError(f"{path}: pay.target must be a whole number or a range like 180000-210000 "
+                          f"(low first), got {raw!r}")
+    return _whole(raw, "pay.target", path, "0 leaves it unset"), 0
 
 
 def _pay(raw, path: Path) -> Pay:
@@ -139,12 +155,17 @@ def _pay(raw, path: Path) -> Pay:
         years = None if raw.get("years") is None else int(raw["years"])
     except (TypeError, ValueError):
         raise ConfigError(f"{path}: pay.years must be a number of years, got {raw['years']!r}") from None
+    target, top = _target(raw.get("target", Pay.target), path)
+    if "target_max" in raw:
+        top = _whole(raw["target_max"], "pay.target_max", path, "0 means a single target")
+    if top and top < target:
+        raise ConfigError(f"{path}: pay.target_max ({top}) is below pay.target ({target}): the range goes low to high")
     return Pay(levels=raw.get("levels", False), years=years, region=str(raw.get("region") or "").strip(),
                ask_over=_between(raw.get("ask_over", Pay.ask_over), "pay.ask_over", path, 0, 100,
                                  "percent over the level's median base", whole=False),
                round=_whole(raw.get("round", Pay.round), "pay.round", path, "0 doesn't round"),
                today=_whole(raw.get("today", Pay.today), "pay.today", path, "0 looks up none of Today's"),
-               target=_whole(raw.get("target", Pay.target), "pay.target", path, "0 leaves it unset"),
+               target=target, target_max=top if top != target else 0,
                floor=_whole(raw.get("floor", Pay.floor), "pay.floor", path, "0 leaves it unset"))
 
 
@@ -555,7 +576,7 @@ def defaults() -> dict:
             "learning": {"timeline": "quarter", "jobs": Config.learn_jobs},
             "display": {"theme": "system", "width": "standard", "today": Config.today},
             "pace": asdict(Pace()),
-            "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "floor")},
+            "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "target_max", "floor")},
             "suggestions": asdict(Suggestions()),
             "alerts": {"imap": {"port": imap.port, "folder": imap.folder, "days": imap.days,
                                 "senders": list(imap.senders)}},
@@ -638,6 +659,7 @@ scoring:
 #   round: 5000            # rounded up to this
 #   today: 15              # how many of Today's jobs get looked up
 #   target: 180000         # your target base: shown on prep sheets next to the posted range
+#   # target: 180000-210000  # or a range (or target_max: 210000 beside target: 180000)
 #   floor: 150000          # your private floor: on your own sheet only, never sent to Claude
 
 # Companies to watch (from alerts, `add` and HN posts):

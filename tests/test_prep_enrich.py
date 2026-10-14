@@ -310,3 +310,52 @@ def test_the_page_shows_them():
     page = (Path(prep.__file__).parent / "static" / "index.html").read_text()
     assert '"Company brief"' in page and '"Your floor (private): "' in page
     assert "Write questions for this role" in page and "&questions=1" in page
+
+
+# --- a target range ----------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("pay, want", [
+    ("{target: 180000}", (180000, 0)),
+    ("{target: 180000-210000}", (180000, 210000)),
+    ("{target: 180K-210K}", (180000, 210000)),
+    ("{target: '$180,000 to $210,000'}", (180000, 210000)),
+    ("{target: 180000, target_max: 210000}", (180000, 210000)),
+    ("{target: 200000-200000}", (200000, 0)),
+])
+def test_the_target_is_a_number_or_a_range(tmp_path, pay, want):
+    cfg, store, _key, _ = make(tmp_path, pay=f"pay: {pay}\n")
+    assert (cfg.pay.target, cfg.pay.target_max) == want
+    store.close()
+
+
+@pytest.mark.parametrize("pay", ["{target: 210000-180000}", "{target: lots-more}", "{target: 1-2-3}",
+                                 "{target: 180000, target_max: 150000}", "{target: 180000, target_max: -1}"])
+def test_a_bad_target_range_is_refused(tmp_path, pay):
+    path = tmp_path / "jobwatch.yaml"
+    path.write_text(f"companies: []\npay: {pay}\n")
+    with pytest.raises(ConfigError, match=r"pay\.target"):
+        config.load(path)
+
+
+@pytest.mark.parametrize("target, note", [
+    ("120000-140000", "below the posted range"), ("160000-180000", "inside the posted range"),
+    ("200000-220000", "above the posted range"), ("140000-170000", "starts below the posted range"),
+    ("170000-210000", "reaches above the posted range"), ("140000-210000", "wider than the posted range")])
+def test_a_target_range_shows_and_sits_against_the_posted_range(tmp_path, target, note):
+    cfg, store, key, _ = make(tmp_path, pay=f"pay: {{target: {target}, floor: {FLOOR}}}\n")
+    sheet = prep.build(cfg, store, key)
+    low, high = (int(n) for n in target.split("-"))
+    assert sheet.pay["target_note"] == note and (sheet.pay["target"], sheet.pay["target_max"]) == (low, high)
+    assert f"**Your target:** ${low // 1000}K–${high // 1000}K, {note}" in prep.markdown(sheet)
+    assert f"${low // 1000}K–${high // 1000}K, {note}" in prep.html(sheet)
+    assert str(FLOOR) not in str(prep.without_floor(sheet).pay.get("floor"))
+    store.close()
+
+
+def test_a_target_range_may_go_to_claude_but_the_floor_may_not(tmp_path, fake_model):
+    cfg, store, key, _ = make(tmp_path, backend="claude", pay=f"pay: {{target: 170000-190000, floor: {FLOOR}}}\n")
+    prep.build(cfg, store, key, questions=True)
+    prep.build(cfg, store, key, draft=True)
+    pay_prompt = next(s for s in fake_model["systems"] if "## The pay" in s)
+    assert "$170,000 to $190,000" in pay_prompt and f"{FLOOR:,}" not in pay_prompt
+    store.close()

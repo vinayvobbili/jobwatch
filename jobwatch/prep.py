@@ -217,22 +217,30 @@ def _money(n: int) -> str:
 
 
 def pay_info(cfg: Config, job: Job) -> dict:
-    """The pay section: {posted, posted_min, posted_max (from the posting), target, floor (from pay.target and
-    pay.floor, 0 when unset), target_note, floor_note (how each sits against the posted range), floor_withheld}.
+    """The pay section: {posted, posted_min, posted_max (from the posting), target, target_max, floor (from
+    pay.target, its range's top and pay.floor, 0 when unset), target_text (the target or its range as money),
+    target_note, floor_note (how each sits against the posted range), floor_withheld}.
     {} when there's nothing to show. The floor is private: see without_floor for the copy that leaves."""
     low, high = job.salary_min or 0, job.salary_max or job.salary_min or 0
-    target, floor = cfg.pay.target, cfg.pay.floor
+    target, top, floor = cfg.pay.target, cfg.pay.target_max, cfg.pay.floor
     if not (job.pay() or target or floor):
         return {}
     notes = {"target_note": "", "floor_note": ""}
     if low and target:
-        notes["target_note"] = ("below the posted range" if target < low else
-                                "above the posted range" if target > high else "inside the posted range")
+        top = top or target
+        notes["target_note"] = ("below the posted range" if top < low else
+                                "above the posted range" if target > high else
+                                "inside the posted range" if target >= low and top <= high else
+                                "wider than the posted range" if target < low and top > high else
+                                "starts below the posted range" if target < low else
+                                "reaches above the posted range")
     if high and floor:
         notes["floor_note"] = ("above the top of the posted range: they may not reach it" if floor > high else
                                "inside the posted range" if floor >= low else "below the posted range")
-    return {"posted": job.pay(), "posted_min": low, "posted_max": high, "target": target, "floor": floor,
-            "floor_withheld": False, **notes}
+    return {"posted": job.pay(), "posted_min": low, "posted_max": high, "target": target,
+            "target_max": cfg.pay.target_max,
+            "target_text": _money(target) + (f"–{_money(cfg.pay.target_max)}" if cfg.pay.target_max else ""),
+            "floor": floor, "floor_withheld": False, **notes}
 
 
 def without_floor(s: Sheet) -> Sheet:
@@ -348,8 +356,8 @@ def _pay_lines(pay: dict) -> list[tuple[str, str]]:
     out = [("Posted range", pay["posted"] + " (from the posting)" if pay.get("posted") else
             "not in the posting")]
     if pay.get("target"):
-        out.append(("Your target", _money(pay["target"]) + (f", {pay['target_note']}" if pay.get("target_note")
-                                                           else "")))
+        out.append(("Your target", (pay.get("target_text") or _money(pay["target"])) +
+                    (f", {pay['target_note']}" if pay.get("target_note") else "")))
     if pay.get("floor"):
         out.append(("Your floor (private)", _money(pay["floor"]) + (f", {pay['floor_note']}" if pay.get("floor_note")
                                                                   else "") + ". Never sent to Claude"))
