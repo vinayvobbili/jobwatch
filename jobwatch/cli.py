@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, alerts, chat, config, dupes, learn, levels, prep, report, sources, suggest
+from . import __version__, alerts, chat, company, config, dupes, learn, levels, prep, report, sources, suggest
 from .config import ConfigError
 from .score import ScoringUnavailable, prompt_info, resume_id
 from .store import STAGES, STATUSES, Store
@@ -259,6 +259,16 @@ def cmd_add(args, cfg, store):
 def cmd_dupes(args, cfg, store):
     """Pairs of tracked jobs that are (maybe) the same opening, where you acted on one: read-only."""
     print(dupes.pairs_text(dupes.pairs(store, strong_only=args.strong)))
+
+
+def cmd_company(args, cfg, store):
+    """Everything tracked at one company, whatever status its jobs are in: read-only."""
+    name = " ".join(args.name)
+    v = company.view(cfg, store, name)
+    if args.format == "json":
+        print(json.dumps(v, indent=2, ensure_ascii=False))
+    else:
+        print(company.text(v, name))
 
 
 def cmd_alerts(args, cfg, store):
@@ -621,6 +631,12 @@ def build_parser() -> argparse.ArgumentParser:
                        "Read-only: nothing is changed")
     p.add_argument("--strong", action="store_true", help="only the same opening, not the same title alone")
     p.set_defaults(func=cmd_dupes, read_only=True)
+
+    p = sub.add_parser("company", help="everything tracked at a company, whatever status: its jobs, dates, next "
+                       "steps, people you know, and whether its board is watched. Read-only")
+    p.add_argument("name", nargs="+", help="the company's name, part of it, or its domain (acme.com)")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_company, read_only=True)
     return ap
 
 

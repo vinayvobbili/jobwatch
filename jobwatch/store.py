@@ -257,6 +257,13 @@ class Store:
         rows = self.db.execute(sql + " ORDER BY first_seen DESC", args).fetchall()
         return [(Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}) for r in rows]
 
+    def company_counts(self) -> list[dict]:
+        """How many jobs each company has, by status and whether closed, without reading any posting: source,
+        company (the board), name (what its jobs call it), status, closed (bool) and n."""
+        return [dict(r) for r in self.db.execute(
+            "SELECT source, company, json_extract(data, '$.company_name') AS name, status, closed IS NOT NULL AS "
+            "closed, COUNT(*) AS n FROM jobs GROUP BY source, company, name, status, closed IS NOT NULL")]
+
     def applications(self) -> list[tuple[Job, dict]]:
         """Everything applied to. Open applications come first, those with the soonest follow-up day at the top,
         then the most recent; rejected and withdrawn ones last."""
