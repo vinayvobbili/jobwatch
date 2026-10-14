@@ -540,17 +540,27 @@ def get_interview_prep(
         "story ids used; one with no story says so (no_story) with an honest angle. Invented story ids and "
         "numbers are taken out before they're returned. Slow the first time, then kept. With the claude backend "
         "the posting, resume and stories go to Anthropic. False is rule-based and instant."))] = False,
+    role_questions: Annotated[bool, Field(description=(
+        "Also have jobwatch's own model (the chat's backend) write questions for this role from the posting's asks "
+        "(role_questions), without answers. Only the posting goes to the model, and to Anthropic with the claude "
+        "backend. Slow the first time, then kept; questions saved earlier are always returned."))] = False,
 ) -> dict:
     """A prep sheet for a recruiter call or interview: stage and next step, each requirement and responsibility
     in the posting next to the closest resume line (quoted, never written), gaps to be honest about, what was
     sent, questions to expect and to ask, and the posting. For an application added by hand, the posting is found
-    on a watched board by its requisition id. markdown is the sheet ready to read. With draft_answers, drafted
-    holds the drafted questions and draft_note how they were made, or why there are none (then expect's
-    questions stand). Present a drafted answer as the person's only where it cites their stories. Use it before
-    a call; get_job and get_application_package give the raw pieces."""
+    on a watched board by its requisition id. markdown is the sheet ready to read. Also: brief, the company as
+    the posting and the person's own notes tell it (about: the posting's lines; facts; notes; contacts: people
+    they know there; source), nothing looked up elsewhere, so say it's from the posting; pay, the posted range
+    (posted, posted_min, posted_max), the person's target and how it sits against the range (target_note); and
+    role_questions, questions for this role written from the posting's asks (questions_note says where they came
+    from; empty: expect's generic questions stand). The person's private pay floor is never returned here
+    (pay.floor_withheld says one is set): don't ask for it or guess it. With draft_answers, drafted holds the
+    drafted questions and draft_note how they were made, or why there are none. Present a drafted answer as the
+    person's only where it cites their stories. Use it before a call; get_job and get_application_package give
+    the raw pieces."""
     cfg, store = _open()
     try:
-        sheet = prep.build(cfg, store, key, draft=draft_answers)
+        sheet = prep.without_floor(prep.build(cfg, store, key, draft=draft_answers, questions=role_questions))
         return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet)}
     finally:
         store.close()

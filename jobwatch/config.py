@@ -125,6 +125,10 @@ class Pay:
     ask_over: float = 10       # percent over the level's median base to ask for: room to meet in the middle
     round: int = 5000          # the ask is rounded up to this (0: not rounded)
     today: int = 15            # Today's jobs (most relevant first) whose pay is looked up
+    # Your own numbers, for the prep sheet (annual base, in the posting's currency; 0: not set). The floor is
+    # private: it is shown on your own sheet and never put in anything sent to Claude (see prep.py).
+    target: int = 0            # what you'd like to be offered
+    floor: int = 0             # the least you'd accept
 
 
 def _pay(raw, path: Path) -> Pay:
@@ -139,7 +143,9 @@ def _pay(raw, path: Path) -> Pay:
                ask_over=_between(raw.get("ask_over", Pay.ask_over), "pay.ask_over", path, 0, 100,
                                  "percent over the level's median base", whole=False),
                round=_whole(raw.get("round", Pay.round), "pay.round", path, "0 doesn't round"),
-               today=_whole(raw.get("today", Pay.today), "pay.today", path, "0 looks up none of Today's"))
+               today=_whole(raw.get("today", Pay.today), "pay.today", path, "0 looks up none of Today's"),
+               target=_whole(raw.get("target", Pay.target), "pay.target", path, "0 leaves it unset"),
+               floor=_whole(raw.get("floor", Pay.floor), "pay.floor", path, "0 leaves it unset"))
 
 
 BACKENDS = ("claude", "local")  # Anthropic's API, or the on-device model (Apple Silicon)
@@ -548,7 +554,7 @@ def defaults() -> dict:
             "chat": {k: v for k, v in asdict(Chat()).items() if k not in ("backend", "prompt")},
             "learning": {"timeline": "quarter", "jobs": Config.learn_jobs},
             "display": {"theme": "system", "width": "standard", "today": Config.today},
-            "pace": asdict(Pace()), "pay": {k: v for k, v in asdict(Pay()).items() if k != "years"},
+            "pace": asdict(Pace()), "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "floor")},
             "suggestions": asdict(Suggestions()),
             "alerts": {"imap": {"port": imap.port, "folder": imap.folder, "days": imap.days,
                                 "senders": list(imap.senders)}},
@@ -630,6 +636,8 @@ scoring:
 #   ask_over: 10           # ask this many percent over the level's median base
 #   round: 5000            # rounded up to this
 #   today: 15              # how many of Today's jobs get looked up
+#   target: 180000         # your target base: shown on prep sheets next to the posted range
+#   floor: 150000          # your private floor: on your own sheet only, never sent to Claude
 
 # Companies to watch (from alerts, `add` and HN posts):
 # suggestions:
