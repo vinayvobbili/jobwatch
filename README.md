@@ -335,6 +335,10 @@ before the next batch; a new check for jobs or resume starts the next batch at o
 runs the page at a lower priority (nice 10, low-priority disk), so scoring stays out of your way; run it again
 to apply that to a service installed earlier.
 
+A job the scorer failed on (no reply, a bad answer) isn't tried again for 3 days, so a down model doesn't make
+every pass start with the same failures; that is remembered across restarts, and a change to the resume, the
+prompts or the model tries it at once. Its card shows the error.
+
 A card with no score says why: in line to score (and where), no posting text, the same role scored before
 this posting came in, or a failure. A job from an alert email may have only its title: "Add the posting"
 takes a link to the company's posting (read when it's on a board jobwatch reads) or the pasted text, and so
