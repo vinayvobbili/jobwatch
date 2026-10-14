@@ -546,6 +546,35 @@ alerts:
 jobwatch alerts --imap
 ```
 
+### Status updates from application emails
+
+The emails that tell you how an application is going (a "thank you for applying" confirmation, a rejection, an
+interview invitation or scheduling link, a take-home assignment, an offer, a recruiter's reply) can be read for
+you. Save them the way you would alerts and give them to `jobwatch inbox`. It proposes; you decide:
+
+```
+jobwatch inbox ~/Downloads/replies/                # what each email says, nothing recorded
+jobwatch inbox ~/Downloads/replies/ --apply        # ask y/n about each proposal
+jobwatch inbox ~/Downloads/replies/ --yes          # record them all
+pbpaste | jobwatch inbox -                         # one message's source, from the clipboard
+```
+
+Each email is sorted into a confirmation, rejection, interview or scheduling email, assessment (take-home, coding
+test), offer, or other (a recruiter's reply), by the phrasings and senders of the common applicant-tracking
+systems in `jobwatch/data/inbox.yaml`. It's matched to the application by the sender's domain or name, how the
+body names the company, the requisition or posting id and the job's title. A proposal gives the application,
+its status now and the one suggested, a dated note quoting the decisive phrase, the email's date, sender and
+subject, and how sure the match is and why. Recording one sets the status and adds the note, as `jobwatch mark`
+does; a rejection also clears the next step and follow-up day, and an interview, assessment or offer sets a next
+step when there's none.
+
+A status only moves forward. A confirmation that arrives after you're interviewing isn't a proposal, and an email
+about an application that has ended is a note at most. Emails that match no application (or several, with
+nothing to tell them apart) are listed with the company they seem to be from, so you can `jobwatch add` it.
+`--format json` is for scripts. In Claude, `read_status_emails` takes the messages the same way and returns the
+proposals, each with the `mark_job` arguments that record it; the assistant shows them to you, and calls
+`mark_job` only for the ones you confirm. jobwatch never asks for your mail password and reads no network.
+
 ### Companies to watch
 
 jobwatch only checks the boards on your watchlist, so a company you never added is never checked, however good
