@@ -1,13 +1,15 @@
 """Fit scores worked out as jobs come in: the page's background scorer, `jobwatch score`, and the model gate
 that keeps a chat reply ahead of both."""
 
+import sys
 import threading
 import time
+from datetime import timedelta
 
 import pytest
 import yaml
 
-from jobwatch import cli, config, score, watch
+from jobwatch import cli, config, score, watch, web
 from jobwatch.store import Store
 from jobwatch.web import App
 
@@ -189,3 +191,161 @@ def test_score_command(resume_watchlist, scored, capsys):
     assert asked[-1] == "greenhouse:acme:101"
     cli.main(["-c", str(resume_watchlist), "score"])
     assert "Every job on Today has a fit score." in capsys.readouterr().out
+
+
+@pytest.fixture
+def local_model(monkeypatch):
+    """A stand-in for the loaded on-device model: counts loads, and unloads through score.unload_local_models."""
+    loads = []
+
+    class Backends:  # what shortlist_ai.backends has once it's loaded a model
+        class _load_local_generator:
+            @staticmethod
+            def cache_clear():
+                loads.append("unload")
+
+    monkeypatch.setitem(sys.modules, "shortlist_ai.backends", Backends)
+    monkeypatch.setattr(score, "LOCAL", score.ModelGate())
+    monkeypatch.setattr("jobwatch.web.LOCAL", score.LOCAL)
+    return loads
+
+
+def test_nothing_to_score_loads_no_model_and_leaves_no_thread_or_timer(watchlist, web, local_model, monkeypatch):
+    """A page with no resume (or every job scored) starts without touching the model and goes quiet."""
+    called = []
+    monkeypatch.setattr(watch, "score_jobs", lambda *a, **k: called.append(a) or ({}, {}))
+    app = App(watchlist, background=True)
+    app.post_fetch({})
+    app.scorer.wait(10)
+    assert called == [] and local_model == []
+    assert app.scorer._thread is None and app.scorer._rest is None and score.LOCAL._timer is None
+    assert not [t for t in threading.enumerate() if t.name == "jobwatch-scorer"]
+
+
+def test_the_model_is_let_go_after_the_idle_time_and_not_before(monkeypatch):
+    gate, unloads = score.ModelGate(idle_after=0.15), []
+    monkeypatch.setattr(score, "unload_local_models", lambda: unloads.append(1))
+    with gate.background():
+        pass
+    time.sleep(0.05)
+    assert unloads == []
+    with gate.foreground():  # used again: the clock starts over
+        time.sleep(0.2)
+    assert unloads == []  # busy for longer than the idle time, and not idle meanwhile
+    time.sleep(0.4)
+    assert unloads == [1]
+    time.sleep(0.4)
+    assert unloads == [1]  # unloaded once, and no timer left to unload again
+    assert gate._timer is None or not gate._timer.is_alive()
+
+
+def test_a_gate_with_no_idle_time_keeps_the_model_and_never_starts_a_timer():
+    gate = score.ModelGate()
+    with gate.background():
+        pass
+    assert gate._timer is None
+
+
+def test_unloading_forgets_every_loaded_model(local_model):
+    cleared = []
+    score.UNLOADERS.append(lambda: cleared.append("chat"))
+    try:
+        score.unload_local_models()
+    finally:
+        score.UNLOADERS.pop()
+    assert local_model == ["unload"] and cleared == ["chat"]
+
+
+def test_scored_jobs_are_not_scored_again_by_later_runs(resume_watchlist, scored):
+    asked, _ = scored
+    app = App(resume_watchlist, background=True)
+    app.post_fetch({})
+    app.scorer.wait(10)
+    assert len(asked) == 3
+    for _ in range(3):
+        app.scorer.kick()
+        app.scorer.wait(10)
+    assert len(asked) == 3
+
+
+def test_a_long_line_is_scored_in_batches_with_a_rest_between(resume_watchlist, scored):
+    asked, _ = scored
+    raw = yaml.safe_load(resume_watchlist.read_text())
+    resume_watchlist.write_text(yaml.safe_dump({**raw, "scoring": {"batch": 2, "rest": 1}}))
+    app = App(resume_watchlist, background=True)
+    app.post_fetch({})
+    app.scorer.wait(10)
+    assert len(asked) == 2
+    assert app.scorer._rest is not None and app.scorer._rest.interval == 60  # waiting, not polling
+    assert app.get_scoring({})["left"] == 1 and app.scorer.status()["running"] is False
+    app.scorer._rest.cancel()
+    app.scorer.kick()  # the rest is over (or something new came in)
+    app.scorer.wait(10)
+    assert len(asked) == 3 and app.scorer._rest is None
+
+
+def test_the_scorer_does_not_spin_while_it_has_nothing_to_do(resume_watchlist, scored, monkeypatch):
+    """Each kick looks once; between kicks the scorer's thread is gone, so there is nothing to poll."""
+    app = App(resume_watchlist, background=True)
+    app.post_fetch({})
+    app.scorer.wait(10)
+    looks, original = [], web.unscored
+    monkeypatch.setattr(web, "unscored", lambda *a, **k: looks.append(1) or original(*a, **k))
+    time.sleep(0.5)
+    assert looks == [] and app.scorer._thread is None
+    app.scorer.kick()
+    app.scorer.wait(10)
+    assert looks == [1]
+
+
+def test_new_settings_are_read_and_checked(watchlist):
+    cfg = config.load(watchlist)
+    assert (cfg.score_batch, cfg.score_rest, cfg.unload_after) == (10, 10, 5)
+    raw = yaml.safe_load(watchlist.read_text())
+    watchlist.write_text(yaml.safe_dump({**raw, "scoring": {"batch": 3, "rest": 0, "unload_after": 0}}))
+    cfg = config.load(watchlist)
+    assert (cfg.score_batch, cfg.score_rest, cfg.unload_after) == (3, 0, 0)
+    watchlist.write_text(yaml.safe_dump({**raw, "scoring": {"unload_after": "soon"}}))
+    with pytest.raises(config.ConfigError, match=r"scoring\.unload_after"):
+        config.load(watchlist)
+
+
+def test_a_failed_job_is_not_tried_again_after_a_restart_until_something_changes(resume_watchlist, scored):
+    asked, fail = scored
+    fail.add("lever:globex:aaaa-1111")
+    app = App(resume_watchlist, background=True)
+    app.post_fetch({})
+    app.scorer.wait(10)
+    assert asked.count("lever:globex:aaaa-1111") == 1
+    asked.clear()
+    restarted = App(resume_watchlist, background=True)  # a new process: nothing in memory
+    restarted.scorer.kick()
+    restarted.scorer.wait(10)
+    assert asked == []
+    why = restarted.scorer.reasons(config.load(resume_watchlist), Store(config.load(resume_watchlist).state))
+    assert why["lever:globex:aaaa-1111"] == {"code": "failed", "text": "Scoring failed: model said no"}
+    (resume_watchlist.parent / "cv.md").write_text("Python, LLMs, RAG, Go")  # a new resume: tried again
+    restarted = App(resume_watchlist, background=True)
+    restarted.scorer.kick()
+    restarted.scorer.wait(10)
+    assert "lever:globex:aaaa-1111" in asked
+
+
+def test_a_failed_job_is_tried_again_for_another_model_or_after_the_retry_time(resume_watchlist, scored, monkeypatch):
+    _, fail = scored
+    fail.add("lever:globex:aaaa-1111")
+    cfg = config.load(resume_watchlist)
+    store = Store(cfg.state)
+    watch.fetch_all(cfg, store)
+    watch.score_entries(cfg, store, watch.unscored(cfg, store), progress=lambda m: None)
+    assert "lever:globex:aaaa-1111" in watch.failed_scores(cfg, store)
+    assert "lever:globex:aaaa-1111" not in [e.job.key for e in watch.unscored(cfg, store)]
+    raw = yaml.safe_load(resume_watchlist.read_text())
+    resume_watchlist.write_text(yaml.safe_dump({**raw, "scoring": {"model": "another-model"}}))
+    assert "lever:globex:aaaa-1111" in [e.job.key for e in watch.unscored(config.load(resume_watchlist), store)]
+    monkeypatch.setattr(watch, "SCORE_RETRY", timedelta(seconds=-1))  # the time is up
+    assert watch.failed_scores(cfg, store) == {}
+    store.save_score("lever:globex:aaaa-1111", score.resume_id(cfg.resume, cfg.prompts), FIT)
+    monkeypatch.undo()
+    assert watch.failed_scores(cfg, store) == {}  # a score replaces the record of the failure
+    store.close()

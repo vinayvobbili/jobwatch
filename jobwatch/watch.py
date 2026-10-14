@@ -448,7 +448,7 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
     many_roles (a post listing several roles, never scored: see scorable).
     `failed` (job key -> error), `current` (the key being scored) and `stopped` come from the page's background
     scorer; without them, a job is described by where it stands in the scorer's line."""
-    failed = failed or {}
+    failed = {**failed_scores(cfg, store), **(failed or {})}
     has_resume = bool(cfg.resume and cfg.resume.is_file())
     fits = store.scores(resume_id(cfg.resume, cfg.prompts)) if has_resume else {}
     entries, _ = _matching(cfg, store, ("new", "shown"))
@@ -533,12 +533,25 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...]) -> tuple[lis
     return entries, rejected
 
 
+SCORE_RETRY = timedelta(days=3)  # a job that failed to score is tried again after this, or at once after a change
+
+
+def failed_scores(cfg: Config, store: Store) -> dict[str, str]:
+    """{job key: error} for jobs that failed to score for the current resume, prompts and model within SCORE_RETRY:
+    left alone until then (a restart doesn't try them again), unless the resume, the prompts or the model change."""
+    if not (cfg.resume and cfg.resume.is_file()):
+        return {}
+    return store.score_failures(resume_id(cfg.resume, cfg.prompts), cfg.score_model, SCORE_RETRY)
+
+
 def unscored(cfg: Config, store: Store, skip: set[str] = frozenset()) -> list[Entry]:
     """Today's jobs with no fit score for the current resume, most relevant first, one per company and title
-    (the same role posted per region scores the same). Keys in `skip` are left out."""
+    (the same role posted per region scores the same). Keys in `skip`, and ones that failed lately (see
+    failed_scores), are left out."""
     if not (cfg.resume and cfg.resume.is_file()):
         return []
     entries, _ = _matching(cfg, store, ("new", "shown"))
+    skip = {*skip, *failed_scores(cfg, store)}
     return [e for e in _group(sorted(entries, key=_rank)) if _scorable(e) and e.job.key not in skip]
 
 
@@ -561,6 +574,8 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry],
             for key in e.keys:
                 store.save_score(key, rid, results[e.job.key])
             e.fit = brief(results[e.job.key])
+        elif e.job.key in errors:
+            store.save_score_failure(e.job.key, rid, cfg.score_model, errors[e.job.key])
     return len(results), errors
 
 
@@ -581,7 +596,8 @@ def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_to
         if not (cfg.resume and cfg.resume.is_file()):
             digest.note = "scoring skipped: set `resume:` in the config to a resume file"
         else:
-            todo = [e for e in _group(sorted(entries, key=_rank)) if _scorable(e)][:top]
+            failed = failed_scores(cfg, store)
+            todo = [e for e in _group(sorted(entries, key=_rank)) if _scorable(e) and e.job.key not in failed][:top]
             if todo:
                 digest.scored, digest.score_errors = score_entries(cfg, store, todo, progress)
     entries.sort(key=_rank)
