@@ -1479,8 +1479,9 @@ def detect(url: str) -> tuple[str, str] | None:
     if m := re.fullmatch(r"([\w-]+)\.(wd\d+)\.myworkdayjobs\.com", host):
         site = [p for p in parts if not _LOCALE.match(p)][:1]
         return ("workday", f"{m.group(1)}.{m.group(2)}/{site[0]}") if site and site[0] != "wday" else None
-    if (m := re.fullmatch(r"(wd\d+)\.myworkdaysite\.com", host)) and len(parts) >= 3 and parts[0] == "recruiting":
-        return "workday", f"{parts[1]}.{m.group(1)}/{parts[2]}"
+    if m := re.fullmatch(r"(wd\d+)\.myworkdaysite\.com", host):
+        site = [p for p in parts if not _LOCALE.match(p)]  # shared links start /en-US/recruiting/...
+        return ("workday", f"{site[1]}.{m.group(1)}/{site[2]}") if len(site) >= 3 and site[0] == "recruiting" else None
     if m := re.fullmatch(r"([\w-]+)\.eightfold\.ai", host):
         domain = parse_qs(parsed.query).get("domain", [""])[0]
         return "eightfold", m.group(1) + (f"/{domain}" if domain and domain != f"{m.group(1)}.com" else "")
