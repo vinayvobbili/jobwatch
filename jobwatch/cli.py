@@ -14,7 +14,22 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, alerts, chat, company, config, dupes, learn, levels, mock, prep, report, sources, suggest
+from . import (
+    __version__,
+    alerts,
+    chat,
+    company,
+    config,
+    dupes,
+    learn,
+    levels,
+    mock,
+    prep,
+    quiet,
+    report,
+    sources,
+    suggest,
+)
 from .config import ConfigError
 from .score import ScoringUnavailable, prompt_info, resume_id
 from .store import STAGES, STATUSES, Store
@@ -310,9 +325,25 @@ def cmd_suggest(args, cfg, store):
 
 def cmd_applications(args, cfg, store):
     rows = store.applications()
+    found = quiet.find(rows, cfg.quiet, known=load_contacts(cfg))
+    rows, more = quiet.order(rows, found), ""
     if args.due:
         rows = [r for r in rows if report.due(r[1])]
-    _write(report.applications_markdown(rows, homes={j.key: store.candidate_home(j) for j, _ in rows}), args.out)
+        stale = [r for r in rows if found.get(r[0].key, {}).get("long")]
+        rows = [r for r in rows if r not in stale]
+        more = f"{len(stale)} more due, quiet for {cfg.quiet.long}+ days: `jobwatch quiet`." if stale else ""
+    _write(report.applications_markdown(rows, homes={j.key: store.candidate_home(j) for j, _ in rows},
+                                        quiet=found, more=more), args.out)
+
+
+def cmd_quiet(args, cfg, store):
+    rows = store.applications()
+    _write(report.quiet_markdown(rows, quiet.find(rows, cfg.quiet, known=load_contacts(cfg))), args.out)
+
+
+def cmd_snooze(args, cfg, store):
+    for k in args.keys:
+        print(f"{k}: follow up {store.snooze(k, args.days)}")
 
 
 def _stream(pieces) -> dict:
@@ -612,6 +643,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--due", action="store_true", help="only applications to follow up on now")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_applications)
+
+    p = sub.add_parser("quiet", help="applications with no news for a few weeks (see `quiet:` in the watchlist), "
+                       "and what to do next: a check-in, or mark it closed. Changes nothing")
+    p.add_argument("-o", "--out", type=Path)
+    p.set_defaults(func=cmd_quiet)
+
+    p = sub.add_parser("snooze", help="push an application's follow-up out, keeping its stage; noted in its history")
+    p.add_argument("keys", nargs="+", metavar="KEY", help="the application: its key, posting id or company")
+    p.add_argument("--days", type=int, default=7, help="days from today (default 7)")
+    p.set_defaults(func=cmd_snooze)
 
     p = sub.add_parser("attach", help="keep what you sent with an application: the resume, a cover letter, the "
                                       "form's answers (copies, so later edits don't change them)")
