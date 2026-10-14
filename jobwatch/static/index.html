@@ -3084,7 +3084,7 @@ function companyJob(j, today) {
         STAGE_NAMES[j.status] || j.status[0].toUpperCase() + j.status.slice(1))),
     h("div", { class: "small muted" }, facts),
     j.next_step || j.follow_up ? h("div", { class: "small" + (j.due ? " warns" : "") },
-      (j.due ? "Due: " : "Next: ") + (j.next_step || "follow up") + (j.follow_up ? ` by ${fmtDay(j.follow_up, today)}` : "")) : null,
+      (j.due ? "Due: " : "Next: ") + [j.next_step, j.follow_up && `follow up ${fmtDay(j.follow_up, today)}`].filter(Boolean).join(" · ")) : null,
     j.note ? h("div", { class: "small" }, "Note: " + j.note) : null,
     j.duplicate_of ? h("div", { class: "warns small" }, j.duplicate_of.text) : null,
     h("div", { class: "row actions" }, h("button", { class: "btn", onclick: () => openDetails(j.key) }, "Details"),

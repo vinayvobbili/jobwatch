@@ -178,8 +178,8 @@ def _line(j: dict) -> list[str]:
         facts.append("package saved")
     out = [f"  {j['title']}", f"    {' · '.join(facts)}"]
     if j["next_step"] or j["follow_up"]:
-        when = f" by {j['follow_up']}" if j["follow_up"] else ""
-        out.append(("    Due: " if j["due"] else "    Next: ") + (j["next_step"] or "follow up") + when)
+        step = " · ".join(x for x in (j["next_step"], f"follow up {j['follow_up']}" if j["follow_up"] else "") if x)
+        out.append(("    Due: " if j["due"] else "    Next: ") + step)
     if j["note"]:
         out.append(f"    Note: {j['note']}")
     if j["duplicate_of"]:

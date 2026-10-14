@@ -139,9 +139,21 @@ def test_a_package_a_duplicate_and_contacts_show_up(cfg, store, tracked, tmp_pat
 def test_text_reads_well(cfg, store, tracked):
     out = company.text(company.view(cfg, store, "acme"), "acme")
     assert out.startswith("# Acme Robotics\n2 jobs: 1 interviewing, 1 skipped.")
-    assert "applied 2026-09-10" in out and "Next: onsite by 2026-10-20" in out
+    assert "applied 2026-09-10" in out and "Next: onsite · follow up 2026-10-20" in out
     assert "Note: phone screen done" in out and "1 closed posting you never acted on not listed" in out
     assert "Not watched" in out and "Find someone who could refer you" in out
+
+
+def test_text_words_a_follow_up_like_the_rest(cfg, store, tracked):
+    job = company.view(cfg, store, "acme")["jobs"][0]
+
+    def lines(**changes):
+        return company._line({**job, **changes})
+
+    assert "    Next: onsite · follow up 2026-10-20" in lines(due=False)
+    assert "    Due: onsite · follow up 2026-10-20" in lines(due=True)
+    assert "    Next: follow up 2026-10-20" in lines(next_step=None)
+    assert "    Next: onsite" in lines(follow_up=None) and "    Next: onsite by" not in lines(follow_up=None)
 
 
 # -- the command, the MCP tool and the page
