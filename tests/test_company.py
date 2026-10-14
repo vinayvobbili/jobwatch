@@ -156,6 +156,27 @@ def test_text_words_a_follow_up_like_the_rest(cfg, store, tracked):
     assert "    Next: onsite" in lines(follow_up=None) and "    Next: onsite by" not in lines(follow_up=None)
 
 
+def test_text_shows_a_compact_note_and_json_keeps_all_of_it(cfg, store, tracked):
+    key = store.find("acme-robotics:perception-engineer")[0].key
+    store.add_note(key, "2026-09-12: recruiter called, " + "long story " * 60)
+    store.add_note(key, "2026-10-01: asked for availability " + "x" * 400)
+    v = company.view(cfg, store, "acme")
+    out = company.text(v, "acme")
+    note = next(line for line in out.splitlines() if line.startswith("    Note:"))
+    assert "2026-10-01: asked for availability" in note and "phone screen done" not in note
+    assert "long story" not in note and "…" in note and len(note) < 330
+    assert f"`jobwatch show {key}`" in note and "--format json" in note
+    full = next(j["note"] for j in v["jobs"] if j["key"] == key)
+    assert "phone screen done" in full and "long story" in full and "2026-10-01" in full  # JSON stays whole
+
+
+def test_a_short_note_prints_whole_and_a_single_long_one_is_cut(cfg, store, tracked):
+    assert company.note_preview("phone screen done") == ("phone screen done", False)
+    assert company.note_preview("2026-09-01: a. 2026-09-02: b") == ("2026-09-02: b", True)
+    shown, cut = company.note_preview("word " * 100)
+    assert cut and len(shown) == company.NOTE_SHOWN and shown.endswith("…")
+
+
 # -- the command, the MCP tool and the page
 
 def test_company_command(watchlist, tracked, capsys):

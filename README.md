@@ -606,7 +606,8 @@ jobwatch company acme                # a name, part of one, or a domain: acme.co
 It finds the company under any status (new, queued, applied, interviewing, rejected, skipped...), open or
 closed postings, and shows each job with its dates, next step, follow-up and note, whether a package was
 saved, a duplicate warning, people you know there, and, when its board isn't on your watchlist, what to run
-to add it. The MCP tool is `get_company`.
+to add it. A long note shows as its latest dated entry, cut to about 200 characters (the page folds it until
+clicked); `--format json` and `jobwatch show KEY` have all of it. The MCP tool is `get_company`.
 
 ### What you sent
 
