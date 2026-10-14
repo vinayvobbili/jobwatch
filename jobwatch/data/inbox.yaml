@@ -1,0 +1,110 @@
+# How inbox.py reads an email about an application: what each kind of email says, and who sends them.
+#
+# kinds: checked in this order, the first with a match wins (a rejection often mentions the interviews it follows).
+#   label: what the note calls it. status: the stage it suggests (none: a note only). next_step: set when the
+#   application has none ("" clears it, and the follow-up day with it).
+#   patterns: regular expressions, case-insensitive, matched on the subject and the body; the text they match is
+#   the decisive phrase quoted in the note. links: link domains that say as much on their own (a scheduling tool).
+#   screening: for interviews, a phrase that makes it a screening (a recruiter call) rather than an interview.
+# hedges: a sentence with one of these is left out when reading offers, assessments and interviews ("If your
+#   background fits, we'll schedule an interview"): a confirmation says what might happen, not what did.
+# ats: senders that are an applicant-tracking system's, not the company's: their domain says nothing about it.
+# noise: words dropped from a sender's display name to leave the company ("Acme Robotics Recruiting").
+# company, title: how the body names the company and the job; the first group is what's wanted.
+
+kinds:
+  rejection:
+    label: rejection email
+    status: rejected
+    next_step: ""
+    patterns:
+      - '(?:decided|chosen|elected|determined) to (?:move|proceed|go) forward with (?:other|another|different|more \w+) (?:candidates?|applicants?)'
+      - '(?:move|moving|proceed|proceeding) forward with (?:other|another) (?:candidates?|applicants?)'
+      - '(?:will|would|do|does) not be (?:moving|proceeding|going) forward with your (?:application|candidacy)'
+      - 'not (?:be )?(?:moving|proceeding) forward with your (?:application|candidacy)'
+      - 'unfortunately,? we (?:will not|won''t|are unable|have decided|cannot)\b[^.]{0,60}'
+      - 'we regret to inform you[^.]{0,60}'
+      - 'unable to (?:offer you|move forward|proceed)[^.]{0,40}'
+      - '(?:you were|you have been|you weren''t|you were not) not selected[^.]{0,30}'
+      - 'position (?:has been|was|is now) (?:filled|closed)'
+      - 'no longer (?:being )?considered'
+      - 'pursu(?:e|ing) other candidates'
+      - 'will not be (?:extending|making) an offer'
+  offer:
+    label: offer email
+    status: offer
+    next_step: Review the offer
+    patterns:
+      - '(?:pleased|delighted|excited|thrilled|happy) to (?:extend|offer)\b[^.]{0,60}'
+      - 'extend (?:you )?an? (?:formal |verbal )?offer'
+      - 'offer letter'
+      - 'offer of employment'
+  assessment:
+    label: assessment email
+    status: screening
+    next_step: Complete the assessment
+    patterns:
+      - 'take-?\s?home (?:assignment|assessment|exercise|challenge|project|test)'
+      - '(?:coding|technical|online|skills|case study|work sample) (?:assessment|challenge|test|exercise|assignment)'
+      - 'complete (?:the|an|this|our|a) (?:following |short |brief )?(?:assessment|assignment|exercise|challenge)'
+      - 'invited you to (?:complete|take) (?:an?|the) [a-z ]{0,20}(?:assessment|test)'
+    links: [codesignal.com, hackerrank.com, codility.com, hirevue.com, testgorilla.com, karat.com]
+  interview:
+    label: interview email
+    status: interviewing
+    next_step: Schedule the interview
+    patterns:
+      - 'invite you to (?:an? |the |our )?(?:[a-z-]+ ){0,2}(?:interview|call|conversation|chat)'
+      - 'schedule (?:an? |your |the |our )?(?:[a-z-]+ ){0,3}(?:interview|call|chat|conversation|screen)'
+      - '(?:like|love|want|hope|hoping|would like) to (?:schedule|set up|speak with you|chat with you|connect with you|talk with you|talk to you)'
+      - '(?:pick|select|choose|book|reserve) (?:a|your|an) (?:time|slot|available)'
+      - '(?:on-?site|virtual|panel|final[- ]round|technical|hiring manager) interview'
+      - 'phone screen'
+      - 'interview (?:invitation|invite|confirmation)'
+    links: [calendly.com, goodtime.io, cal.com, savvycal.com, youcanbook.me]
+    screening: '(?:phone|recruiter|intro\w*|initial|quick|screening)[ -](?:screen|call|chat|conversation)|introductory|screening'
+  confirmation:
+    label: confirmation email
+    status: applied
+    patterns:
+      - 'thank(?:s| you) for (?:applying|your application|submitting your application|your interest in)'
+      - 'we(?:''ve| have)? (?:successfully )?received your application'
+      - 'your application (?:has been |was |is )?(?:successfully )?(?:received|submitted)'
+      - 'application (?:received|confirmation)'
+      - 'successfully (?:submitted|applied)'
+
+hedges: '\b(?:if|should|in the event|in case|unless)\b|(?:will|may|might|would) (?:be in touch|reach out|contact you|follow up|get back)'
+
+ats:
+  - greenhouse.io
+  - greenhouse-mail.io
+  - lever.co
+  - ashbyhq.com
+  - myworkday.com
+  - myworkdayjobs.com
+  - icims.com
+  - smartrecruiters.com
+  - avature.net
+  - jobvite.com
+  - taleo.net
+  - workable.com
+  - bamboohr.com
+  - successfactors.com
+  - recruitee.com
+  - breezy.hr
+  - teamtailor.com
+  - rippling.com
+
+free_mail: [gmail.com, outlook.com, hotmail.com, yahoo.com, icloud.com, proton.me, protonmail.com, aol.com]
+
+noise: '\b(?:recruiting|recruitment|recruiter|recruiters|careers?|talent|acquisition|jobs?|hiring|hr|human resources|people|team|no-?reply|notifications?|do not reply|applications?|applicant tracking|greenhouse|lever|ashby|workday|icims|smartrecruiters|avature|jobvite|taleo|workable)\b'
+
+company:
+  - '(?:applying|application|applied|interest)\s+(?:to|with|at|in)\s+(?:joining\s+|working\s+(?:at|with|for)\s+)?(?-i:(?P<company>[A-Z][\w&.''’-]*(?:[ ][A-Z&][\w&.''’-]*){0,3}))'
+  - '(?:position|role|opportunity|job|opening)\s+(?:at|with)\s+(?-i:(?P<company>[A-Z][\w&.''’-]*(?:[ ][A-Z&][\w&.''’-]*){0,3}))'
+  - '\bThe\s+(?-i:(?P<company>[A-Z][\w&.''’-]*(?:[ ][A-Z&][\w&.''’-]*){0,3}))\s+(?:(?:Recruiting|Talent|Hiring|People)\s+)?Team\b'
+  - '(?:team|recruiter|recruiting)\s+at\s+(?-i:(?P<company>[A-Z][\w&.''’-]*(?:[ ][A-Z&][\w&.''’-]*){0,3}))'
+
+title:
+  - '(?:for|to) the (?P<title>[^\n.,:;!?]{3,80}?) (?:position|role|opening|job)\b'
+  - '(?:position|role) of (?P<title>[^\n.,:;!?]{3,80})'
