@@ -4,6 +4,7 @@ that keeps a chat reply ahead of both."""
 import sys
 import threading
 import time
+from datetime import timedelta
 
 import pytest
 import yaml
@@ -307,3 +308,44 @@ def test_new_settings_are_read_and_checked(watchlist):
     watchlist.write_text(yaml.safe_dump({**raw, "scoring": {"unload_after": "soon"}}))
     with pytest.raises(config.ConfigError, match=r"scoring\.unload_after"):
         config.load(watchlist)
+
+
+def test_a_failed_job_is_not_tried_again_after_a_restart_until_something_changes(resume_watchlist, scored):
+    asked, fail = scored
+    fail.add("lever:globex:aaaa-1111")
+    app = App(resume_watchlist, background=True)
+    app.post_fetch({})
+    app.scorer.wait(10)
+    assert asked.count("lever:globex:aaaa-1111") == 1
+    asked.clear()
+    restarted = App(resume_watchlist, background=True)  # a new process: nothing in memory
+    restarted.scorer.kick()
+    restarted.scorer.wait(10)
+    assert asked == []
+    why = restarted.scorer.reasons(config.load(resume_watchlist), Store(config.load(resume_watchlist).state))
+    assert why["lever:globex:aaaa-1111"] == {"code": "failed", "text": "Scoring failed: model said no"}
+    (resume_watchlist.parent / "cv.md").write_text("Python, LLMs, RAG, Go")  # a new resume: tried again
+    restarted = App(resume_watchlist, background=True)
+    restarted.scorer.kick()
+    restarted.scorer.wait(10)
+    assert "lever:globex:aaaa-1111" in asked
+
+
+def test_a_failed_job_is_tried_again_for_another_model_or_after_the_retry_time(resume_watchlist, scored, monkeypatch):
+    _, fail = scored
+    fail.add("lever:globex:aaaa-1111")
+    cfg = config.load(resume_watchlist)
+    store = Store(cfg.state)
+    watch.fetch_all(cfg, store)
+    watch.score_entries(cfg, store, watch.unscored(cfg, store), progress=lambda m: None)
+    assert "lever:globex:aaaa-1111" in watch.failed_scores(cfg, store)
+    assert "lever:globex:aaaa-1111" not in [e.job.key for e in watch.unscored(cfg, store)]
+    raw = yaml.safe_load(resume_watchlist.read_text())
+    resume_watchlist.write_text(yaml.safe_dump({**raw, "scoring": {"model": "another-model"}}))
+    assert "lever:globex:aaaa-1111" in [e.job.key for e in watch.unscored(config.load(resume_watchlist), store)]
+    monkeypatch.setattr(watch, "SCORE_RETRY", timedelta(seconds=-1))  # the time is up
+    assert watch.failed_scores(cfg, store) == {}
+    store.save_score("lever:globex:aaaa-1111", score.resume_id(cfg.resume, cfg.prompts), FIT)
+    monkeypatch.undo()
+    assert watch.failed_scores(cfg, store) == {}  # a score replaces the record of the failure
+    store.close()
