@@ -292,6 +292,9 @@ class Config:
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
+    score_batch: int = 10      # scoring.batch: jobs the page scores in a row before it rests (0: no rests)
+    score_rest: int = 10       # scoring.rest: minutes it rests between batches
+    unload_after: int = 5      # scoring.unload_after: minutes idle before the local model leaves memory (0: never)
     prompts: dict[str, str] = field(default_factory=dict)  # scoring.prompts: the edited fit-score prompts
     chat: Chat = field(default_factory=lambda: Chat(backend="local"))
     prep: Prep = field(default_factory=Prep)
@@ -534,6 +537,9 @@ def load(explicit: str | Path | None = None) -> Config:
         backend=backend, score_model=str(scoring.get("model") or "").strip(),
         score_top=_whole(scoring.get("top", 0), "scoring.top", path, "0 scores none when the digest is made"),
         auto_score=auto_score, prompts=_prompts(scoring.get("prompts"), path),
+        score_batch=_whole(scoring.get("batch", 10), "scoring.batch", path, "0 scores everything in one go"),
+        score_rest=_whole(scoring.get("rest", 10), "scoring.rest", path, "0 rests not at all"),
+        unload_after=_whole(scoring.get("unload_after", 5), "scoring.unload_after", path, "0 keeps the model loaded"),
         chat=_chat(raw.get("chat"), backend, path), prep=_prep(raw.get("prep"), path),
         timeline=timeline, near=_near(learning, filters),
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
@@ -612,6 +618,9 @@ scoring:
   top: 0                 # score this many of the most relevant new jobs per digest
   # model: ""            # the model fit scores use; leave out for shortlist-ai's own for the backend
   # auto: true           # `jobwatch ui` scores every new match in the background (default: on for local)
+  # batch: 10            # ...this many jobs in a row, then rests (0: no rests)
+  # rest: 10             # ...for this many minutes
+  # unload_after: 5      # minutes idle before the local model leaves memory (0: keep it loaded)
   # prompts: {}          # edited fit-score prompts, by name (Settings > Fit score prompt; see --show-prompts)
 
 # The assistant (`jobwatch ask`, Ask jobwatch on the page). Leave a setting out for its default.

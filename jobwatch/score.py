@@ -9,10 +9,12 @@ Settings (scoring.prompts holds the edited ones), with a shortlist-ai that takes
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import importlib
 import json
 import re
+import sys
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, nullcontext
@@ -30,22 +32,48 @@ class ScoringUnavailable(RuntimeError):
 class ModelGate:
     """Turns on the on-device model: one generation at a time (MLX isn't thread-safe), and the person first.
     A chat reply or a Score fit click waits at most for the job being scored; background scoring waits while
-    either is waiting or running."""
+    either is waiting or running.
 
-    def __init__(self):
+    The model stays in memory (several GB) between turns so the next one starts at once, but not for ever: after
+    `idle_after` seconds with nobody using it, it's let go (see unload_local_models) and loaded again by the next
+    turn. One timer per use, no polling; None keeps the model for good."""
+
+    def __init__(self, idle_after: float | None = None):
         self._cond = threading.Condition()
         self._busy = False
         self._waiting = 0  # foreground turns waiting
+        self.idle_after = idle_after
+        self._used = False  # a turn has had the model since it was last let go
+        self._timer: threading.Timer | None = None
 
     @property
     def busy(self) -> bool:
         """Something is using the model now: a turn would have to wait."""
         return self._busy
 
-    def _release(self):
+    def _release(self, rest: bool = True):
         with self._cond:
             self._busy = False
             self._cond.notify_all()
+            if self._timer:
+                self._timer.cancel()
+                self._timer = None
+            if rest and self._used and self.idle_after:
+                self._timer = threading.Timer(self.idle_after, self._let_go)
+                self._timer.daemon = True
+                self._timer.start()
+
+    def _let_go(self):
+        """The idle time is up: unload the model, unless a turn has come in meanwhile."""
+        with self._cond:
+            if self._busy or self._waiting:
+                return
+            self._busy = True  # nobody starts a turn on a model that's being let go
+            self._used = False
+        try:
+            unload_local_models()
+        finally:
+            self._release(rest=False)
 
     @contextmanager
     def foreground(self) -> Iterator[None]:
@@ -55,7 +83,7 @@ class ModelGate:
                 self._cond.wait_for(lambda: not self._busy)
             finally:
                 self._waiting -= 1
-            self._busy = True
+            self._busy, self._used = True, True
         try:
             yield
         finally:
@@ -65,11 +93,29 @@ class ModelGate:
     def background(self) -> Iterator[None]:
         with self._cond:
             self._cond.wait_for(lambda: not self._busy and not self._waiting)
-            self._busy = True
+            self._busy, self._used = True, True
         try:
             yield
         finally:
             self._release()
+
+
+# What lets go of a model loaded by something else (the chat's, see chat._local_model); shortlist-ai's is found below.
+UNLOADERS: list[Callable[[], None]] = []
+
+
+def unload_local_models():
+    """Let the on-device models go: forget the loaded ones (shortlist-ai's, once it has loaded one, and the
+    chat's) and give MLX's cached GPU memory back, so an idle page holds close to nothing."""
+    backends = sys.modules.get("shortlist_ai.backends")
+    if clear := getattr(getattr(backends, "_load_local_generator", None), "cache_clear", None):
+        clear()
+    for unload in UNLOADERS:
+        unload()
+    gc.collect()
+    if mx := sys.modules.get("mlx.core"):
+        if clear := getattr(mx, "clear_cache", None):
+            clear()
 
 
 LOCAL = ModelGate()
