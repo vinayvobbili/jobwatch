@@ -11,7 +11,21 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from . import __version__, alerts, config, contacts, dupes, learn, levels, prep, report, sources, suggest, watch
+from . import (
+    __version__,
+    alerts,
+    company,
+    config,
+    contacts,
+    dupes,
+    learn,
+    levels,
+    prep,
+    report,
+    sources,
+    suggest,
+    watch,
+)
 from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue, save_job, set_link, unscored_reason, watched_name
@@ -45,7 +59,9 @@ server = MCPServer(
         "alert under another title): before drafting a referral request or an application, check get_job's "
         "duplicate_of and list_queued_jobs' warnings; strong means the same req or posting id (already applied: "
         "don't apply or ask for a referral again), otherwise it's the same title only (check it's a different "
-        "opening). find_duplicates lists such pairs already in the store. "
+        "opening). find_duplicates lists such pairs already in the store. get_company looks one company up by name "
+        "or domain across every status, closed postings too: its jobs, people the user knows there, and whether its "
+        "board is watched. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
     version=__version__,
@@ -489,6 +505,31 @@ def find_duplicates(
     _, store = _open()
     try:
         return [dupes.pair_dict(p) for p in dupes.pairs(store, strong_only=strong_only)]
+    finally:
+        store.close()
+
+
+@server.tool(annotations=READ)
+def get_company(
+    name: Annotated[str, Field(description=(
+        "A company's name (\"Acme Robotics\"), part of it (\"acme\"), or its domain (\"acme.com\"); case, "
+        "punctuation and suffixes such as Inc don't matter."))],
+) -> dict:
+    """Everything tracked at one company, whatever the status of its jobs (new, queued, applied, screening,
+    interviewing, offer, rejected, withdrawn, skipped) and open or closed. company, counts (jobs by status), and
+    jobs: each with key, title, status, posted, applied_at, closed, next_step, follow_up, due, note, package
+    (what was saved: files, answers, note) and duplicate_of (see get_job); contacts: people the user knows there,
+    with find_referral, a LinkedIn search for someone who could introduce them; watch: whether the company's
+    board is on the watchlist and, when it isn't, add_board (the entry and name to pass add_board) and command.
+    Closed postings never acted on are only counted (closed_unacted) and open ones not acted on are listed up to
+    25 (more_open). also names other companies the name matched. Returns an error when none matches. Use it when
+    the person names a company and you don't know which stage it's at; for one job's full text, fit and prep use
+    get_job, for every application list_applications, and for all jobs of one status list_jobs."""
+    cfg, store = _open()
+    try:
+        if not (v := company.view(cfg, store, name)):
+            raise ValueError(f"no tracked job is at a company matching {name!r}")
+        return v
     finally:
         store.close()
 

@@ -156,7 +156,10 @@ def test_the_brief_is_the_posting_notes_and_contacts(setup):
 
 
 def test_the_brief_falls_back_to_sentences_naming_the_company(tmp_path):
-    cfg, store, key, _ = make(tmp_path, description="Initech makes widgets for logistics teams. Great team.\n\nRequirements:\n- Python")
+    cfg, store, key, _ = make(
+        tmp_path,
+        description="Initech makes widgets for logistics teams. Great team.\n\n"
+                    "Requirements:\n- Python")
     brief = prep.build(cfg, store, key).brief
     assert brief["about"] == ["Initech makes widgets for logistics teams."]
     store.close()
@@ -187,11 +190,11 @@ def test_the_brief_never_goes_to_the_web(setup, monkeypatch):
 # --- pay ---------------------------------------------------------------------------------------------------------
 
 def test_pay_settings_are_read_checked_and_documented(tmp_path):
-    cfg, store, key, path = make(tmp_path, pay="pay: {target: 180000, floor: 150000}\n")
+    cfg, store, _key, path = make(tmp_path, pay="pay: {target: 180000, floor: 150000}\n")
     assert (cfg.pay.target, cfg.pay.floor) == (180000, 150000) and config.Pay().floor == 0
     store.close()
     path.write_text("companies: []\npay: {floor: lots}\n")
-    with pytest.raises(ConfigError, match="pay.floor must be a whole number"):
+    with pytest.raises(ConfigError, match=r"pay.floor must be a whole number"):
         config.load(path)
     assert "target:" in config.EXAMPLE and "floor:" in config.EXAMPLE and "never sent to Claude" in config.EXAMPLE
     assert "floor" not in config.defaults()["pay"] and "target" not in config.defaults()["pay"]
@@ -278,7 +281,7 @@ def test_what_leaves_for_an_assistant_has_no_floor(setup):
 
 def test_the_mcp_sheet_has_the_new_sections_and_no_floor(setup, monkeypatch):
     mcp = pytest.importorskip("jobwatch.mcp_server")
-    cfg, store, key, path = setup
+    _cfg, store, key, path = setup
     store.close()
     monkeypatch.setenv("JOBWATCH_CONFIG", str(path))
     got = mcp.get_interview_prep(key)
@@ -291,7 +294,7 @@ def test_the_mcp_sheet_has_the_new_sections_and_no_floor(setup, monkeypatch):
 # --- the CLI and the page ----------------------------------------------------------------------------------------
 
 def test_cli_and_web_carry_the_new_sections(setup, fake_model, capsys):
-    cfg, store, key, path = setup
+    _cfg, _store, key, path = setup
     cli.main(["--config", str(path), "prep", key, "--questions"])
     out = capsys.readouterr()
     assert "## Company brief" in out.out and "## Pay" in out.out and "Your floor (private)" in out.out

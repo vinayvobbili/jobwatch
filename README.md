@@ -592,6 +592,22 @@ login under that company's own address. For one you added by hand whose posting 
 it the company's careers site (`jobwatch mark <key> --url https://acme.wd1.myworkdayjobs.com/Careers`)
 and the page link follows.
 
+### Looking up a company
+
+Today only shows new roles on the boards you watch, so a company you added by hand, or one you're already
+talking to, isn't there. In the browser, press `/` (or click the search box at the top) on any tab and type a
+name: the matching companies come up, and one opens its page. A tab whose own search finds nothing says when
+a tracked job at a matching company is elsewhere, with a link to it. On the command line:
+
+```
+jobwatch company acme                # a name, part of one, or a domain: acme.com; --format json
+```
+
+It finds the company under any status (new, queued, applied, interviewing, rejected, skipped...), open or
+closed postings, and shows each job with its dates, next step, follow-up and note, whether a package was
+saved, a duplicate warning, people you know there, and, when its board isn't on your watchlist, what to run
+to add it. The MCP tool is `get_company`.
+
 ### What you sent
 
 Each application keeps what you submitted, as copies:
@@ -740,7 +756,7 @@ board are marked closed. The MCP `get_digest` returns the same top 10 by default
   `dismiss_suggested_board`
 - **New jobs:** `fetch_jobs`, `import_job_alerts`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
 - **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`,
-  `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`)
+  `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`), `get_company`
 - **What was sent:** `save_application_package`, `get_application_package`, `get_interview_prep`
 
 (0.3.0 renamed them to verb_noun: `digest` is now `get_digest`, `job_details` is `get_job`, `apply_queue` is
