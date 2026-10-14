@@ -23,7 +23,22 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
-from . import __version__, chat, company, config, contacts, dupes, learn, levels, mock, prep, report, sources, suggest
+from . import (
+    __version__,
+    chat,
+    company,
+    config,
+    contacts,
+    dupes,
+    learn,
+    levels,
+    mock,
+    prep,
+    quiet,
+    report,
+    sources,
+    suggest,
+)
 from .config import ConfigError
 from .filters import KINDS, rejection
 from .package import Package
@@ -545,13 +560,15 @@ class App:
 
     def get_applications(self, q) -> dict:
         def run(cfg, store):
+            rows = store.applications()
+            found = quiet.find(rows, cfg.quiet, known=load_contacts(cfg))
             return {"stages": STAGES, "today": date.today().isoformat(), "applications": [
                 {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
-                 "manual": j.source == MANUAL, "due": report.due(rec),
+                 "manual": j.source == MANUAL, "due": report.due(rec), "quiet": found.get(j.key),
                  "package": Package(store.packages, j.key).summary(),
                  **{k: rec.get(k) for k in ("status", "status_at", "applied_at", "next_step", "follow_up", "note",
                                             "closed")}}
-                for j, rec in store.applications()]}
+                for j, rec in quiet.order(rows, found)]}
         return self._with_store(run)
 
     def post_add(self, body) -> dict:
@@ -583,7 +600,22 @@ class App:
                 store.set_status([key], status)
             store.track(key, note=body.get("note"), next_step=body.get("next_step"),
                         follow_up=body.get("follow_up"), applied=body.get("applied_at"))
+            if body.get("add_note"):
+                store.add_note(key, body["add_note"])
             return {"key": key}
+        return self._with_store(run)
+
+    def post_snooze(self, body) -> dict:
+        """One open application's follow-up pushed `days` out (7 if left out); its stage stays, and the note says so."""
+        days = body.get("days", 7)
+        if isinstance(days, bool) or not isinstance(days, int) or days < 1:
+            raise ApiError("days must be a whole number, 1 or more")
+
+        def run(cfg, store):
+            try:
+                return {"follow_up": store.snooze(body.get("key") or "", days)}
+            except ValueError as e:
+                raise ApiError(str(e)) from None
         return self._with_store(run)
 
     def get_job(self, q) -> dict:
@@ -849,6 +881,7 @@ ROUTES = {
     ("GET", "/api/applications"): App.get_applications,
     ("POST", "/api/add"): App.post_add,
     ("POST", "/api/track"): App.post_track,
+    ("POST", "/api/snooze"): App.post_snooze,
     ("POST", "/api/score"): App.post_score,
     ("POST", "/api/posting"): App.post_posting,
     ("POST", "/api/pay"): App.post_pay,

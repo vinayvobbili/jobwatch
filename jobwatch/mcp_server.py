@@ -21,6 +21,7 @@ from . import (
     learn,
     levels,
     prep,
+    quiet,
     report,
     sources,
     suggest,
@@ -432,14 +433,20 @@ def list_applications(
 ) -> list[dict]:
     """Every application (applied or a later stage) and where it stands, follow-ups due soonest first;
     candidate_home is the company's page for checking its status, when it has one (Workday). Use it to see what
-    needs a follow-up; for jobs not applied to yet use list_queued_jobs, and for any status use list_jobs."""
-    _, store = _open()
+    needs a follow-up; for jobs not applied to yet use list_queued_jobs, and for any status use list_jobs.
+    quiet is set on an application with no stage change or note for weeks (the watchlist's quiet: days per
+    stage): days, since, posting_open, long (quiet so long that it sorts below the fresher ones), move (nudge:
+    a short check-in to the recruiter or a contact, or close: likely closed, ask the person whether to mark it
+    rejected or withdrawn; never change it on your own), advice, and contacts the person knows there."""
+    cfg, store = _open()
     try:
         fields = ("status", "applied_at", "status_at", "next_step", "follow_up", "note", "closed")
+        rows = store.applications()
+        found = quiet.find(rows, cfg.quiet, known=watch.load_contacts(cfg))
         return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, "pay": j.pay(),
-                 "candidate_home": store.candidate_home(j), "due": report.due(rec),
+                 "candidate_home": store.candidate_home(j), "due": report.due(rec), "quiet": found.get(j.key),
                  **{k: rec.get(k) for k in fields}}
-                for j, rec in store.applications() if report.due(rec) or not due_only]
+                for j, rec in quiet.order(rows, found) if report.due(rec) or not due_only]
     finally:
         store.close()
 
