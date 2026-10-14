@@ -1,7 +1,7 @@
 """Follow-ups and interviews as an iCalendar (RFC 5545) feed, for a calendar app to import or subscribe to.
 
 Each open application's follow-up day is an all-day event. When its next step names an interview or call with a
-date and a time ("Panel interview Thu 10/16 10:00 AM ET", "call Fri 10/16 3:45-4:30 PM ET", an ISO datetime), that
+date and a time ("Panel interview Tue 3/10 10:00 AM ET", "call Wed 3/11 2:15-3:00 PM ET", an ISO datetime), that
 is a timed event too. Text that can't be read with confidence (no time, two dates, a weekday that doesn't fit the
 date) gives no timed event: the follow-up day is still there. jobwatch never gets access to a calendar: the
 calendar app reads the file. Nothing here uses the network.

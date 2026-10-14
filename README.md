@@ -676,8 +676,8 @@ jobwatch calendar -o jobwatch.ics   # import this file (or print it to stdout wi
 
 Every open application's follow-up day is an all-day event, "Follow up: Acme Robotics — Staff Engineer", with
 the next step, a link to the posting and the application's jobwatch key in its description. When the next step
-names an interview or call with a date and a time, that is a timed event too: `Panel interview Thu 10/16 10:00
-AM ET`, `call Fri 10/16 3:45-4:30 PM ET`, `intro call 2026-10-16T09:30:00-07:00`. Times can be in ET, PT, CT, MT
+names an interview or call with a date and a time, that is a timed event too: `Panel interview Tue 3/10 10:00
+AM ET`, `call Wed 3/11 2:15-3:00 PM ET`, `intro call 2026-03-12T09:30:00-07:00`. Times can be in ET, PT, CT, MT
 (daylight saving applied), EST, EDT, CST, CDT, MST, MDT, PST, PDT, UTC or GMT, and without a zone they stay the
 same clock time wherever you are; an event with no end lasts an hour. When the text isn't clear (no time, a bare
 `10:00` with no am/pm, two dates, a weekday that isn't that date's) there is no timed event, only the follow-up.
