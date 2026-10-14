@@ -51,6 +51,14 @@ CREATE TABLE IF NOT EXISTS scores (
     scored_at TEXT NOT NULL,
     PRIMARY KEY (key, resume)
 );
+CREATE TABLE IF NOT EXISTS score_failures (
+    key TEXT NOT NULL,
+    resume TEXT NOT NULL,
+    model TEXT NOT NULL,
+    error TEXT NOT NULL,
+    failed_at TEXT NOT NULL,
+    PRIMARY KEY (key, resume)
+);
 CREATE TABLE IF NOT EXISTS pay_pages (
     url TEXT PRIMARY KEY,
     body TEXT NOT NULL,
@@ -458,6 +466,22 @@ class Store:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)",
                             (key, resume, json.dumps(result), _now()))
+            self.db.execute("DELETE FROM score_failures WHERE key=? AND resume=?", (key, resume))
+
+    def save_score_failure(self, key: str, resume: str, model: str, error: str):
+        """A job that failed to score for this resume (and prompts) with this model, and why, so a restart doesn't
+        try it again at once (see score_failures)."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO score_failures (key, resume, model, error, failed_at) "
+                            "VALUES (?, ?, ?, ?, ?)", (key, resume, model, error, _now()))
+
+    def score_failures(self, resume: str, model: str, within: timedelta) -> dict[str, str]:
+        """{job key: error} for the jobs that failed to score for this resume with this model in the last `within`.
+        A new resume, edited prompts, another model or the time passing leaves a job out: it's tried again."""
+        since = (datetime.now(timezone.utc) - within).isoformat(timespec="microseconds")
+        return {r["key"]: r["error"] for r in self.db.execute(
+            "SELECT key, error FROM score_failures WHERE resume=? AND model=? AND failed_at>=?",
+            (resume, model, since))}
 
     # Drafted prep-sheet answers (see drafts.py): the model's reply as it came, under a hash of everything it was
     # sent, so opening a sheet again doesn't ask again. It's checked again each time it's read.

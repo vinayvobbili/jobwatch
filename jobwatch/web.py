@@ -27,7 +27,7 @@ from . import __version__, chat, company, config, contacts, dupes, learn, levels
 from .config import ConfigError
 from .filters import KINDS, rejection
 from .package import Package
-from .score import ScoringUnavailable, prompt_info, resume_id, score_jobs, turn
+from .score import LOCAL, ScoringUnavailable, prompt_info, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
@@ -59,14 +59,19 @@ class ApiError(Exception):
 class Scorer:
     """Scores Today's jobs in the background, most relevant first and one at a time, so fit scores are there
     when you look. It runs when the page starts, after each check for new jobs and after a new resume, and
-    saves each score as it lands. A chat reply or a Score fit click goes first (see score.ModelGate)."""
+    saves each score as it lands. A chat reply or a Score fit click goes first (see score.ModelGate).
+
+    It works in batches (scoring.batch jobs), then rests (scoring.rest minutes) so a long line of jobs doesn't
+    keep the computer busy for hours, and the model leaves memory once it's idle (scoring.unload_after). With
+    nothing left to score it stops: no thread, no timer, and the model isn't loaded until a job needs it."""
 
     def __init__(self, app: App):
         self.app = app
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._again = False  # asked to run again while running: new jobs may have come in
-        self._failed: dict[str, str] = {}  # job key -> why it failed to score; not retried until the page restarts
+        self._rest: threading.Timer | None = None  # runs the next batch when the rest is over
+        self._failed: dict[str, str] = {}  # job key -> why it failed to score (also kept in the store)
         self.done = 0
         self.left = 0
         self.current = ""
@@ -87,6 +92,7 @@ class Scorer:
             if self._thread:
                 self._again = True
                 return
+            self._stop_rest()  # something new came in: no need to wait out the rest
             self._thread = threading.Thread(target=self._run, name="jobwatch-scorer", daemon=True)
             self._thread.start()
 
@@ -94,19 +100,35 @@ class Scorer:
         if t := self._thread:
             t.join(timeout)
 
+    def _stop_rest(self):
+        if self._rest:
+            self._rest.cancel()
+            self._rest = None
+
     def _run(self):
         while True:
             self.stopped = ""
+            rest = 0  # seconds to rest before the rest of the line, when a batch ends with jobs left
             try:
+                batch = self.app._cfg().score_batch
+                steps = 0
                 while self._step():
-                    pass
+                    steps += 1
+                    if batch and steps >= batch and self.left:
+                        rest = self.app._cfg().score_rest * 60
+                        break
             except Exception as e:  # never take the page down: say why scoring stopped
                 self.error = f"{type(e).__name__}: {e}" if not isinstance(e, ScoringUnavailable) else str(e)
                 self.stopped = self.error
                 print(f"jobwatch: background scoring stopped: {self.error}", file=sys.stderr)
             with self._lock:
                 if not self._again:
-                    self._thread, self.current, self.current_key, self.left = None, "", "", 0
+                    left = self.left
+                    self._thread, self.current, self.current_key, self.left = None, "", "", (left if rest else 0)
+                    if rest:
+                        self._rest = threading.Timer(rest, self.kick)
+                        self._rest.daemon = True
+                        self._rest.start()
                     return
                 self._again = False
 
@@ -321,7 +343,9 @@ class App:
     def _cfg(self) -> config.Config:
         if not self.path.is_file():
             raise ApiError("No watchlist yet. Add companies in Settings first.", HTTPStatus.CONFLICT)
-        return config.load(self.path)
+        cfg = config.load(self.path)
+        LOCAL.idle_after = cfg.unload_after * 60 or None  # how long the local model stays loaded unused
+        return cfg
 
     def _with_store(self, fn):
         cfg = self._cfg()

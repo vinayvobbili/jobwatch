@@ -42,6 +42,8 @@ def definition(config: Path, port: int) -> dict:
         "RunAtLoad": True,       # at login
         "KeepAlive": True,       # and again if it exits
         "ThrottleInterval": 30,  # not in a tight loop when it can't start (the port is taken, the file is gone)
+        "Nice": 10,              # behind what you're doing: fit scoring is never urgent
+        "LowPriorityIO": True,
         "StandardOutPath": str(log_path()),
         "StandardErrorPath": str(log_path()),
         "EnvironmentVariables": {"PYTHONUNBUFFERED": "1"},

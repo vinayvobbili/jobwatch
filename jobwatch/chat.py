@@ -22,7 +22,7 @@ from functools import lru_cache
 from . import learn, report
 from .config import Chat, Config
 from .resume import resume_text
-from .score import LOCAL, resume_id
+from .score import LOCAL, UNLOADERS, resume_id
 from .store import Store
 from .watch import MANY_ROLES, build_digest, scorable
 
@@ -203,6 +203,9 @@ def _local_model(name: str):
     import mlx_lm
 
     return mlx_lm.load(name)
+
+
+UNLOADERS.append(_local_model.cache_clear)  # the model goes when the page has been idle (see score.ModelGate)
 
 
 def _local(system: str, messages: list[dict], name: str, max_tokens: int) -> Iterator[str | dict]:
