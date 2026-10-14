@@ -199,3 +199,14 @@ def test_registry_entry_matches_the_release():
     entry = json.loads((root / "server.json").read_text())
     assert entry["version"] == entry["packages"][0]["version"] == __version__
     assert f"mcp-name: {entry['name']}" in (root / "README.md").read_text()
+
+
+def test_python_dash_m_runs_the_command_line(tmp_path, capsys, monkeypatch):
+    import runpy
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["jobwatch", "init"])
+    runpy.run_module("jobwatch", run_name="__main__")
+    assert (tmp_path / "jobwatch.yaml").is_file()
+    monkeypatch.setattr(sys, "argv", ["jobwatch", "init"])
+    with pytest.raises(SystemExit, match="exists"):  # errors end the same way as the console script
+        runpy.run_module("jobwatch", run_name="__main__")
