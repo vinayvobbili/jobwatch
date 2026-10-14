@@ -160,6 +160,8 @@ def test_mcp_tools(watchlist, web, tmp_path, monkeypatch):
     saved = mcp.save_application_package("c1", files=[str(cv)], answers=[{"question": "Q", "answer": "A"}])
     assert saved["files"][0]["name"] == "Resume.pdf"
     assert mcp.get_application_package("c1")["answers"] == saved["answers"]
+    empty = mcp.get_application_package("aaaa-1111")  # nothing kept: an empty package, not an error
+    assert empty["files"] == [] and empty["answers"] == [] and empty["note"] == ""
 
 
 def test_mcp_get_job_and_notes(watchlist, web, monkeypatch, capsys):
