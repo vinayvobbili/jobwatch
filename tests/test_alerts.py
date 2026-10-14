@@ -2,6 +2,7 @@
 company's own board, deduped against what's tracked, and into the digest. No network: boards are canned (the
 `web` fixture) and every page jobwatch reads comes from `Pages`."""
 
+import base64
 import io
 import json
 import re
@@ -502,3 +503,16 @@ def test_fixtures_hold_no_personal_data():
                              "alert-0002@example.com", "alert-0003@example.com", "alert-0004@example.com"}, f
         # No real tracking tokens: long opaque runs of letters and digits
         assert not re.search(r"(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{20,}", text), f
+
+
+def test_a_base64_raw_message_is_decoded():
+    """Gmail's API gives a raw message base64url-encoded, unpadded; a connector may pass that along as is."""
+    raw = (FIXTURES / "indeed.eml").read_bytes()
+    want = [a.company for a in alerts.parse(alerts.message(raw))]
+    gmail = base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+    assert [a.company for a in alerts.parse(alerts.message(gmail))] == want
+    wrapped = base64.encodebytes(raw)  # standard alphabet, line-wrapped
+    assert [a.company for a in alerts.parse(alerts.message(wrapped))] == want
+    # Text that merely looks like base64 stays text.
+    plain = "Engineers wanted for remote roles at Hooli and Globex this week apply soon thanks a lot"
+    assert alerts.bodies(alerts.message(plain))[1].strip() == plain
