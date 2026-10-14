@@ -219,6 +219,25 @@ button.btn:disabled { opacity: .55; cursor: default; }
   border-radius: var(--radius); background: color-mix(in srgb, var(--panel) 50%, transparent); }
 .empty .ico { display: block; margin: 0 auto 10px; color: var(--accent); opacity: .7; }
 
+/* find a company: the box in the header, on every tab */
+.jump { position: relative; width: 210px; flex: none; }
+.jump input[type=search] { padding-right: 30px; }
+.jump kbd { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); pointer-events: none; font: inherit;
+  font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+.jump input:focus + kbd, .jump input:not(:placeholder-shown) + kbd { display: none; }
+.jump-list { position: absolute; top: calc(100% + 6px); left: 0; width: 340px; max-width: 90vw; display: none; z-index: 6;
+  background: var(--panel-solid); border: 1px solid var(--line); border-radius: 12px; padding: 4px;
+  box-shadow: 0 18px 50px -16px rgba(0, 0, 0, .45); }
+.jump-list button { display: block; width: 100%; text-align: left; background: none; border: 0; font: inherit;
+  color: var(--text); padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.jump-list button.on, .jump-list button:hover { background: var(--accent-soft); }
+.jump-list .small { display: block; }
+.jump-list .none { padding: 8px 10px; color: var(--muted); font-size: 13.5px; }
+.cjob { border-top: 1px solid var(--line); padding: 10px 0; }
+.cjob .row { align-items: center; gap: 8px; }
+.cjob .row b { flex: 1; }
+.elsewhere { margin-top: 10px; font-size: 14px; }
+
 /* applications */
 .section { display: flex; align-items: center; gap: 10px; margin: 26px 0 4px; }
 .section h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
@@ -619,6 +638,7 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
   .fitbox { text-align: left; margin-top: 8px; } .ring { margin: 0; }
   .fpart .v { max-width: 62vw; } .fbar .sep { display: none; }
   /* the tabs get a row of their own, scrolling sideways if they must, so the page never does */
+  .jump { order: 4; flex: 1 0 100%; width: auto; } .jump-list { width: 100%; }
   nav#tabs { order: 3; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; gap: 0; }
   nav#tabs button { flex: 1 0 auto; justify-content: center; padding: 6px 5px; gap: 4px; font-size: 13.5px; }
   .snav .links { mask-image: linear-gradient(90deg, #000 80%, transparent); }
@@ -655,6 +675,12 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
       <button data-tab="skills">Skills</button>
       <button data-tab="settings">Settings</button>
     </nav>
+    <div class="jump">
+      <input type="search" id="jump" placeholder="Find a company" aria-label="Find a company" autocomplete="off"
+        title="Look a company up under any status: press / from anywhere">
+      <kbd>/</kbd>
+      <div id="jumpList" class="jump-list" role="listbox"></div>
+    </div>
     <span class="spacer"></span>
     <span id="fetchStatus" class="status"></span>
     <button id="fetchBtn" class="btn primary"></button>
@@ -759,7 +785,7 @@ function hero(tiles) {
 function section(title, n, cls) {
   return h("div", { class: "section " + (cls || "") }, h("h3", {}, title), h("span", { class: "n" }, n));
 }
-function emptyState(text) { return h("div", { class: "empty" }, icon("inbox", 30), text); }
+function emptyState(text, extra) { return h("div", { class: "empty" }, icon("inbox", 30), text, extra); }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function fmtDay(day, today) {
@@ -2017,7 +2043,8 @@ async function renderToday() {
     fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
       : `Showing ${jobs.length} of ${todayJobs.length}`, narrowed ? h("button", { class: "btn ghost", onclick: clear }, "Clear filters") : back);
     fill(list, jobs.length ? pg.items.map((j, i) => todayCard(j, d.can_score, i))
-      : emptyState(todayJobs.length ? "No jobs match these filters." : "Nothing to review. Press “Check for new jobs”, or widen the filters above."));
+      : emptyState(todayJobs.length ? "No jobs match these filters." : "Nothing to review. Press “Check for new jobs”, or widen the filters above.",
+        v.q.trim() ? elsewhere(v.q) : null));
     fill(pager, pg.nav);
   };
 
@@ -2248,7 +2275,7 @@ async function renderApplied() {
       h("span", { class: "spacer" }),
       segmented([["cards", "Cards"], ["table", "Table"]], appView.view, v => { appView.view = v; remember("apps.view", v); draw(); }));
     fill(body, all.length ? null : emptyState("No applications yet. Mark a queued job “I applied”, or add one you applied to somewhere else."),
-      all.length && !apps.length ? emptyState("No applications match.") : null,
+      all.length && !apps.length ? emptyState("No applications match.", appView.q.trim() ? elsewhere(appView.q) : null) : null,
       !apps.length ? null : table ? appTable(page, d, draw)
         : [group("Follow up now", due, "hot", whole.due), group("In progress", open, null, whole.open),
           group("Ended", ended, null, whole.ended)]);
@@ -2984,6 +3011,118 @@ async function refreshQueueCount() {
     const due = ready ? (await api("/api/applications")).applications.filter(a => a.due).length : 0;
     document.getElementById("duecount").replaceChildren(due ? h("span", { class: "count", title: "follow-ups due" }, due) : "");
   } catch { /* the page still works without the counts */ }
+}
+
+// -- find a company: any status, open or closed. The box in the header suggests matches as you type; `/` focuses it.
+
+function companyBlurb(c) {
+  const n = (k, what) => c[k] ? `${c[k]} ${what}` : null;
+  return [n("applications", c.applications === 1 ? "application" : "applications"), n("queued", "queued"), n("skipped", "skipped"),
+    n("open", c.open === 1 ? "open role" : "open roles")].filter(Boolean).join(" · ") || "closed postings";
+}
+// When a tab's own search finds nothing: say so if tracked jobs at a matching company are somewhere else.
+function elsewhere(q) {
+  const el = h("div", { class: "elsewhere" });
+  if (q.trim().length >= 2) api("/api/companies?q=" + encodeURIComponent(q.trim())).then(hits => {
+    if (!hits.length) return;
+    fill(el, `${companyBlurb(hits[0])} at ${hits[0].name} (matches “${q.trim()}”): `,
+      h("a", { href: "#", onclick: e => { e.preventDefault(); openCompany(hits[0].name); } }, "open →"),
+      hits.length > 1 ? ` (and ${hits.length - 1} more compan${hits.length === 2 ? "y" : "ies"})` : null);
+  }).catch(() => { /* a hint, not the page */ });
+  return el;
+}
+
+const jump = document.getElementById("jump"), jumpList = document.getElementById("jumpList");
+let jumpHits = [], jumpAt = -1, jumpSeq = 0, jumpTimer;
+function jumpClose() { jumpList.style.display = "none"; jumpAt = -1; }
+function jumpDraw() {
+  fill(jumpList, jumpHits.length ? jumpHits.map((c, i) => h("button", { class: i === jumpAt ? "on" : "", role: "option",
+    onmousedown: e => { e.preventDefault(); openCompany(c.name); } }, c.name, h("span", { class: "small muted" }, companyBlurb(c))))
+    : h("div", { class: "none" }, "No tracked job at a company with that name"));
+  jumpList.style.display = "block";
+}
+async function jumpFind() {
+  const q = jump.value.trim(), seq = ++jumpSeq;
+  if (q.length < 2) return jumpClose();
+  try {
+    const hits = await api("/api/companies?q=" + encodeURIComponent(q));
+    if (seq !== jumpSeq) return;
+    jumpHits = hits; jumpAt = hits.length ? 0 : -1; jumpDraw();
+  } catch { jumpClose(); }
+}
+jump.addEventListener("input", () => { clearTimeout(jumpTimer); jumpTimer = setTimeout(jumpFind, 120); });
+jump.addEventListener("focus", () => { if (jump.value.trim().length >= 2) jumpFind(); });
+jump.addEventListener("blur", jumpClose);
+jump.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    if (!jumpHits.length) return;
+    e.preventDefault();
+    jumpAt = (jumpAt + (e.key === "ArrowDown" ? 1 : -1) + jumpHits.length) % jumpHits.length; jumpDraw();
+  } else if (e.key === "Enter" && jump.value.trim() && !e.isComposing) {
+    e.preventDefault();
+    openCompany(jumpHits[jumpAt]?.name || jump.value.trim());
+  } else if (e.key === "Escape") { jump.value = ""; jumpClose(); jump.blur(); }
+});
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || t.closest?.("input, textarea, select, [contenteditable]") ||
+    document.getElementById("overlay").style.display === "flex") return;
+  e.preventDefault();
+  jump.focus();
+  jump.select();
+});
+
+function companyJob(j, today) {
+  const stage = APPLIED.includes(j.status);
+  const facts = [j.applied_at ? `applied ${fmtDay(j.applied_at, today)}` : j.posted ? `posted ${fmtDay(j.posted, today)}`
+    : j.first_seen ? `first seen ${fmtDay(j.first_seen, today)}` : "", j.locations.join("; "), j.pay,
+    j.closed ? `posting closed ${fmtDay(j.closed, today)}` : ""].filter(Boolean).join(" · ");
+  return h("div", { class: "cjob" },
+    h("div", { class: "row" }, h("b", {}, j.title),
+      j.closed ? h("span", { class: "badge closed" }, "CLOSED") : null, dupeBadge(j.duplicate_of),
+      h("span", { class: "chip", style: stage ? `background:color-mix(in srgb, var(--s-${j.status}) 15%, transparent);color:var(--s-${j.status})` : null },
+        STAGE_NAMES[j.status] || j.status[0].toUpperCase() + j.status.slice(1))),
+    h("div", { class: "small muted" }, facts),
+    j.next_step || j.follow_up ? h("div", { class: "small" + (j.due ? " warns" : "") },
+      (j.due ? "Due: " : "Next: ") + (j.next_step || "follow up") + (j.follow_up ? ` by ${fmtDay(j.follow_up, today)}` : "")) : null,
+    j.note ? h("div", { class: "small" }, "Note: " + j.note) : null,
+    j.duplicate_of ? h("div", { class: "warns small" }, j.duplicate_of.text) : null,
+    h("div", { class: "row actions" }, h("button", { class: "btn", onclick: () => openDetails(j.key) }, "Details"),
+      link(j.url, "Posting ↗"),
+      j.has_package ? h("span", { class: "sent-chip", title: "What you sent is saved with this job" }, icon("clip", 13), "package saved") : null));
+}
+async function openCompany(q) {
+  jump.value = ""; jumpClose(); jump.blur();
+  const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
+  dialog.classList.remove("with-chat");
+  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  overlay.style.display = "flex";
+  try {
+    const c = await api("/api/company?q=" + encodeURIComponent(q)), w = c.watch, today = new Date().toISOString().slice(0, 10);
+    const watch = async b => {
+      b.disabled = true;
+      try {
+        await api("/api/suggestions/add", { company: c.company });
+        settings = await api("/api/settings");
+        toast(`Watching ${c.company}. Press “Check for new jobs” to see its roles.`);
+        openCompany(c.company);
+      } catch (e) { b.disabled = false; toast(e.message); }
+    };
+    fill(dialog,
+      h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, c.company),
+        h("button", { class: "btn", onclick: closeDetails }, "Close")),
+      h("div", { class: "small muted" }, Object.entries(c.counts).map(([s, n]) => `${n} ${STAGE_NAMES[s] ? STAGE_NAMES[s].toLowerCase() : s}`).join(" · ")),
+      c.contacts.length || c.find_referral ? knowLine(c, 10) : null,
+      w.watched ? null : h("div", { class: "warns" }, "Not watched: its board isn't on your watchlist, so new roles there aren't checked. ",
+        w.suggested ? h("button", { class: "btn", onclick: e => watch(e.currentTarget),
+          title: w.entry ? `Watch ${w.entry}` : "Look for its board by name and watch it" }, "Watch its board")
+          : w.entry ? `Add ${w.entry} in Settings.` : "Look for its board with Settings → Add a company."),
+      c.jobs.map(j => companyJob(j, today)),
+      c.more_open ? h("div", { class: "small muted" }, `and ${c.more_open} more open roles you haven't acted on: see Today`) : null,
+      c.closed_unacted ? h("div", { class: "small muted" }, `${c.closed_unacted} closed posting${c.closed_unacted === 1 ? "" : "s"} you never acted on, not listed`) : null,
+      c.also.length ? h("div", { class: "small", style: "margin-top:10px" }, "Also matches: ",
+        c.also.map(n => h("button", { class: "chip toggle", onclick: () => openCompany(n) }, n))) : null);
+  } catch (e) { showError(dialog, e); }
 }
 
 let lastTab = null;

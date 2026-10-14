@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
-from . import __version__, chat, config, contacts, dupes, learn, levels, mock, prep, report, sources, suggest
+from . import __version__, chat, company, config, contacts, dupes, learn, levels, mock, prep, report, sources, suggest
 from .config import ConfigError
 from .filters import KINDS, rejection
 from .package import Package
@@ -586,6 +586,21 @@ class App:
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
         return self._with_store(run)
 
+    def get_companies(self, q) -> list[dict]:
+        """The companies a name (or part of one, or a domain) matches among all tracked jobs, for the search box."""
+        text = (q.get("q") or [""])[0]
+        return self._with_store(lambda cfg, store: company.search(store, text))
+
+    def get_company(self, q) -> dict:
+        """One company's page: every tracked job there whatever its status (see company.view)."""
+        text = (q.get("q") or [""])[0]
+
+        def run(cfg, store):
+            if not (v := company.view(cfg, store, text)):
+                raise ApiError(f"no tracked job is at a company matching {text!r}", HTTPStatus.NOT_FOUND)
+            return v
+        return self._with_store(run)
+
     def post_posting(self, body) -> dict:
         """A job added by hand gets its posting: a link (read when it's to one job on a supported board) and/or
         the text, pasted. Says what happened, and whether the job now has text to score."""
@@ -804,6 +819,8 @@ ROUTES = {
     ("GET", "/api/pace"): App.get_pace,
     ("GET", "/api/jobs"): App.get_jobs,
     ("GET", "/api/job"): App.get_job,
+    ("GET", "/api/companies"): App.get_companies,
+    ("GET", "/api/company"): App.get_company,
     ("POST", "/api/mark"): App.post_mark,
     ("GET", "/api/applications"): App.get_applications,
     ("POST", "/api/add"): App.post_add,
