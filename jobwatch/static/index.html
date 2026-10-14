@@ -575,6 +575,9 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
 .prep .ask .you { margin-top: 6px; padding-left: 10px; border-left: 3px solid var(--accent, #5a5cf2); font-size: 14px; }
 .prep .ask .none { margin-top: 6px; font-size: 13px; color: var(--muted); font-style: italic; }
 .prep ul { margin: 4px 0; padding-left: 20px; } .prep li { margin: 3px 0; }
+.prep .mock-q { font-size: 16px; font-weight: 600; margin: 10px 0 8px; }
+.prep .mock-a { width: 100%; box-sizing: border-box; min-height: 110px; }
+.prep .mock-fb { margin-top: 10px; } .prep .mock-fb p { margin: 0 0 7px; }
 @media print {
   body > *:not(#overlay) { display: none !important; }
   .overlay { position: static; background: none; backdrop-filter: none; padding: 0; display: block !important; }
@@ -1164,7 +1167,9 @@ async function openPrep(key, draft = false) {
     };
     fill(dialog, h("div", { class: "prep" },
       h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openDetails(key) }, "← Details"),
-        h("span", { style: "flex:1" }), copy, page, h("button", { class: "btn", onclick: () => print() }, "Print"),
+        h("span", { style: "flex:1" }), h("button", { class: "btn", onclick: () => openMock(key),
+          title: "Practise the likely questions one at a time, with feedback on each answer" }, "Mock interview"),
+        copy, page, h("button", { class: "btn", onclick: () => print() }, "Print"),
         h("button", { class: "btn", onclick: closeDetails }, "Close")),
       h("h2", {}, `Prep: ${p.title}`),
       h("div", { class: "meta" }, [p.company, `Stage: ${p.status}`, p.applied_at && `applied ${p.applied_at}`,
@@ -1197,8 +1202,91 @@ async function openPrep(key, draft = false) {
           draft ? null : h("button", { class: "btn no-print", style: "margin-top:6px", onclick: () => openPrep(key, true),
             title: "Questions this role is likely to bring up, with answer outlines from your story file and resume only" },
             "Draft answers from my stories")],
+      p.practised.length ? [h("h3", {}, "Practised answers"),
+        h("div", { class: "small muted" }, "Tightened in mock interviews, from what you said and your stories."),
+        ...p.practised.map(a => h("div", { class: "ask" }, h("div", {}, h("b", {}, a.question)),
+          h("div", { class: "you", style: "white-space:pre-wrap" }, a.improved)))] : null,
       h("h3", {}, "Ask them"), list(p.ask)));
   } catch (e) { showError(dialog, e); }
+}
+// A mock interview for one job: its likely questions one at a time, your answer, the chat model's feedback (streamed)
+// and a tightened answer built only from what you said and your stories, which you can keep on the prep sheet.
+async function openMock(key) {
+  const dialog = document.getElementById("dialog");
+  dialog.classList.remove("with-chat");
+  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  let m;
+  try { m = await api("/api/mock?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
+  let n = 0, kept = 0, answered = 0, busy = null;
+  const cut = t => { const f = [...t.matchAll(/^[\s#*_>]*tightened answer[\s*_:]*/gim)].pop(); return f ? t.slice(0, f.index) : t; };
+  const top = (...more) => h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openPrep(key) }, "← Prep sheet"),
+    h("span", { style: "flex:1" }), ...more);
+  const done = () => fill(dialog, h("div", { class: "prep" }, top(h("button", { class: "btn", onclick: closeDetails }, "Close")),
+    h("h2", {}, "Mock interview done"),
+    h("p", {}, `${answered} answered, ${kept} saved to the prep sheet.`),
+    h("button", { class: "btn", onclick: () => openPrep(key) }, "Back to the prep sheet")));
+  const next = () => { n++; n < m.questions.length ? ask() : done(); };
+  function ask() {
+    const q = m.questions[n], box = h("textarea", { class: "mock-a", placeholder: "Your answer, as you'd say it", "aria-label": "Your answer" });
+    const out = h("div", { class: "mock-fb" });
+    const go = h("button", { class: "btn primary" }, "Get feedback");
+    const skip = h("button", { class: "btn" }, "Skip");
+    go.onclick = async () => {
+      const answer = box.value.trim();
+      if (!answer) return toast("Type an answer first");
+      busy = new AbortController();
+      go.disabled = box.disabled = skip.disabled = true;
+      let reply = "", improved = "", note = "", failed = null;
+      fill(out, h("div", { class: "muted" }, `Thinking… (${m.where.label}: ${m.where.model})`));
+      try {
+        const r = await fetch("/api/mock/feedback", { method: "POST", signal: busy.signal,
+          body: JSON.stringify({ key, question: q.question, answer }),
+          headers: { "X-Jobwatch-Token": TOKEN, "Content-Type": "application/json" } });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+        const reader = r.body.getReader(), dec = new TextDecoder();
+        let buf = "";
+        for (;;) {
+          const { value, done: end } = await reader.read();
+          if (end) break;
+          buf += dec.decode(value, { stream: true });
+          let nl;
+          while ((nl = buf.indexOf("\n")) >= 0) {
+            const msg = JSON.parse(buf.slice(0, nl));
+            buf = buf.slice(nl + 1);
+            if (msg.text) { reply += msg.text; fill(out, h("div", { class: "msg bot" }, md(cut(reply)))); }
+            if (msg.stats) { improved = msg.stats.improved || ""; note = msg.stats.note || ""; }
+            if (msg.error) failed = msg.error;
+          }
+        }
+      } catch (e) { failed = e.name === "AbortError" ? "stopped" : e.message; }
+      busy = null;
+      if (failed && !reply) { go.disabled = box.disabled = skip.disabled = false; return fill(out, h("div", { class: "msg bot err" }, failed)); }
+      answered++;
+      const save = h("button", { class: "btn primary" }, "Save to the prep sheet");
+      save.onclick = async () => {
+        try {
+          await api("/api/mock/save", { key, question: q.question, answer, improved });
+          kept++; save.disabled = true; save.textContent = "Saved"; toast("Saved to the prep sheet");
+        } catch (e) { toast(e.message); }
+      };
+      fill(out, h("div", { class: "msg bot" }, md(cut(reply))),
+        failed ? h("p", { class: "stopped" }, `Cut off: ${failed}`) : null,
+        note ? h("div", { class: "small muted", style: "margin-top:6px" }, note) : null,
+        improved ? h("div", { class: "ask", style: "margin-top:10px" }, h("div", { class: "kind" }, "Tightened answer"),
+          h("div", { class: "you", style: "white-space:pre-wrap" }, improved), h("div", { class: "row", style: "margin-top:8px" }, save)) : null,
+        h("div", { class: "row", style: "margin-top:10px" }, h("button", { class: "btn", onclick: next },
+          n + 1 < m.questions.length ? "Next question" : "Finish")));
+    };
+    skip.onclick = next;
+    fill(dialog, h("div", { class: "prep" }, top(h("button", { class: "btn", onclick: done }, "End")),
+      h("h2", {}, "Mock interview"),
+      h("div", { class: "small muted" }, `Question ${n + 1} of ${m.questions.length} · ${m.where.local ? "private, runs on this computer" : m.where.label + " (cloud)"}`),
+      q.probes ? h("div", { class: "kind", style: "margin-top:10px" }, "Probes: " + q.probes) : null,
+      h("div", { class: "mock-q" }, q.question), box,
+      h("div", { class: "row", style: "margin-top:8px" }, go, skip), out));
+    box.focus();
+  }
+  m.questions.length ? ask() : done();
 }
 // Skills this posting asks for that the resume doesn't show; solid = a must-have a fit score found missing.
 function gapChips(skills) {

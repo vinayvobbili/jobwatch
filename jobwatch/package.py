@@ -16,7 +16,8 @@ from pathlib import Path
 
 from .models import Job
 
-MANIFEST = "package.json"   # {"answers": [{"question", "answer"}], "note": "...", "files": {name: {...}}}
+MANIFEST = "package.json"   # {"answers": [{"question", "answer"}], "note": "...", "files": {name: {...}},
+                            #  "practised": [{"question", "answer", "improved", "saved"}]}
 POSTING = "posting.md"
 REMOVED = ".removed"        # files taken out of a package are moved here, not deleted
 MAX_FILE = 20 * 1024 * 1024
@@ -47,7 +48,8 @@ class Package:
     def _manifest(self) -> dict:
         path = self.dir / MANIFEST
         m = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-        return {"answers": m.get("answers") or [], "note": m.get("note") or "", "files": m.get("files") or {}}
+        return {"answers": m.get("answers") or [], "note": m.get("note") or "", "files": m.get("files") or {},
+                "practised": m.get("practised") or []}
 
     def data(self) -> dict:
         """Files (newest first), answers, note, and when the posting was saved."""
@@ -59,6 +61,10 @@ class Package:
         saved = posting.read_text(encoding="utf-8").split("\n", 1)[0] if posting.is_file() else ""
         return {"files": files, "answers": m["answers"], "note": m["note"], "folder": str(self.dir),
                 "posting_saved": saved.removeprefix("<!-- saved ").removesuffix(" -->") if saved else None}
+
+    def practised(self) -> list[dict]:
+        """The answers kept from mock interviews (see mock.py), oldest first."""
+        return self._manifest()["practised"]
 
     def summary(self) -> dict:
         m = self._manifest()
@@ -141,6 +147,17 @@ class Package:
             m["answers"] = [{"question": q, "answer": a} for q, a in pairs if q or a]
         if note is not None:
             m["note"] = str(note).strip()[:MAX_TEXT]
+        self._save(m)
+
+    def practise(self, question: str, answer: str, improved: str):
+        """Keep an answer practised in a mock interview: what was said and the tightened version. One per
+        question: practising it again replaces it."""
+        question, answer, improved = (str(x).strip()[:MAX_TEXT] for x in (question, answer, improved))
+        if not (question and improved):
+            raise ValueError("a practised answer needs a question and the answer to keep")
+        m = self._manifest()
+        m["practised"] = [p for p in m["practised"] if p["question"].lower() != question.lower()] + [
+            {"question": question, "answer": answer, "improved": improved, "saved": date.today().isoformat()}]
         self._save(m)
 
     # -- for the chat

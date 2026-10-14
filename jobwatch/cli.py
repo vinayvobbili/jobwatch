@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, alerts, chat, config, dupes, learn, levels, prep, report, sources, suggest
+from . import __version__, alerts, chat, config, dupes, learn, levels, mock, prep, report, sources, suggest
 from .config import ConfigError
 from .score import ScoringUnavailable, prompt_info, resume_id
 from .store import STAGES, STATUSES, Store
@@ -305,18 +305,72 @@ def cmd_applications(args, cfg, store):
     _write(report.applications_markdown(rows, homes={j.key: store.candidate_home(j) for j, _ in rows}), args.out)
 
 
-def cmd_ask(args, cfg, store):
-    info, pieces = chat.start(cfg, store, chat.clean([{"role": "user", "content": " ".join(args.question)}]),
-                              args.job)
-    print(f"({info['label']}: {info['model']})", file=sys.stderr)
+def _stream(pieces) -> dict:
+    """Print a reply as it's written (what the model reports goes to stderr); returns the dicts it yielded."""
+    got = {}
     for piece in pieces:
         if isinstance(piece, dict):  # what it's waiting for, or what the model reports at the end
-            print(f"({piece['status']}…)" if "status" in piece else "\n(" + chat.stats_line(piece) + ")",
-                  file=sys.stderr)
+            got.update(piece)
+            if "status" in piece or "output_tokens" in piece:
+                print(f"({piece['status']}…)" if "status" in piece else "\n(" + chat.stats_line(piece) + ")",
+                      file=sys.stderr)
             continue
         sys.stdout.write(piece)
         sys.stdout.flush()
     sys.stdout.write("\n")
+    return got
+
+
+def cmd_mock(args, cfg, store):
+    """A mock interview for one job: a question, your answer, feedback; skip, repeat and quit work at any prompt."""
+    session = mock.start(cfg, store, args.job)
+    print(f"({session.where['label']}: {session.where['model']})", file=sys.stderr)
+    print(f"Mock interview: {len(session.questions)} questions. Type your answer, or skip, repeat, quit.\n")
+    answered, skipped, kept = 0, 0, []
+    for n, item in enumerate(session.questions, 1):
+        answer = "repeat"
+        while answer.lower() == "repeat" or not answer:  # a blank line isn't an answer: ask again
+            if answer:
+                print(f"Question {n} of {len(session.questions)}: {item['question']}")
+            try:
+                answer = input("> ").strip()
+            except EOFError:
+                answer = "quit"
+        if answer.lower() == "quit":
+            break
+        if answer.lower() == "skip":
+            skipped += 1
+            print()
+            continue
+        answered += 1
+        print()
+        got = _stream(mock.feedback(session, item["question"], answer))
+        if got.get("note"):
+            print(f"({got['note']})")
+        if got.get("improved"):
+            try:
+                keep = input("\nSave the tightened answer to the prep sheet? [y/N] ").strip().lower() == "y"
+            except EOFError:
+                keep = False
+            if keep:
+                mock.save(store, session.key, item["question"], answer, got["improved"])
+                kept.append(item["question"])
+        print()
+    print(f"Done: {answered} answered, {skipped} skipped, {len(kept)} saved."
+          + (f" See them with: jobwatch prep {args.job}" if kept else ""))
+
+
+def cmd_ask(args, cfg, store):
+    if args.mock:
+        if not args.job:
+            raise SystemExit("--mock needs --job KEY: which job to practise for")
+        return cmd_mock(args, cfg, store)
+    if not args.question:
+        raise SystemExit("ask what? e.g. jobwatch ask \"What follow-ups are due?\"")
+    info, pieces = chat.start(cfg, store, chat.clean([{"role": "user", "content": " ".join(args.question)}]),
+                              args.job)
+    print(f"({info['label']}: {info['model']})", file=sys.stderr)
+    _stream(pieces)
 
 
 def cmd_prep(args, cfg, store):
@@ -562,8 +616,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("ask", help="ask about today's jobs and your applications, or one job (--job), with the "
                                    "model set in scoring.backend")
-    p.add_argument("question", nargs="+")
+    p.add_argument("question", nargs="*")
     p.add_argument("--job", metavar="KEY", help="ask about this job (its key, or the end of it)")
+    p.add_argument("--mock", action="store_true", help="with --job: a mock interview, one question at a time from "
+                   "its prep sheet, with feedback and a tightened answer you can save to the sheet")
     p.set_defaults(func=cmd_ask)
 
     p = sub.add_parser("prep", help="a prep sheet for a recruiter call or interview: their asks next to your "

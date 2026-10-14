@@ -546,7 +546,9 @@ def get_interview_prep(
     sent, questions to expect and to ask, and the posting. For an application added by hand, the posting is found
     on a watched board by its requisition id. markdown is the sheet ready to read. With draft_answers, drafted
     holds the drafted questions and draft_note how they were made, or why there are none (then expect's
-    questions stand). Present a drafted answer as the person's only where it cites their stories. Use it before
+    questions stand). practised holds the answers the person kept from mock interviews (jobwatch ask --job KEY
+    --mock): question, answer as they said it, and improved, the tightened version built from their own words and
+    stories. Present a drafted answer as the person's only where it cites their stories. Use it before
     a call; get_job and get_application_package give the raw pieces."""
     cfg, store = _open()
     try:

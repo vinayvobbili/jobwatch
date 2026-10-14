@@ -670,6 +670,23 @@ drafts afresh. Its instructions are `drafts.PROMPT`, or your own in `prep.prompt
 posting, resume and stories go); `prep.max_tokens` (4000) is the longest draft. MCP clients ask for it with
 `get_interview_prep`'s `draft_answers`.
 
+### Mock interview
+
+`jobwatch ask --job c1 --mock` (or **Mock interview** at the top of the prep sheet in `jobwatch ui`) practises
+the call one question at a time. The questions come from the prep sheet: one for each requirement and
+responsibility in the posting first, then the usual ones for the stage (and the drafted ones, when you've
+drafted them). Type your answer, or `skip`, `repeat` or `quit`; a summary closes the session.
+
+Each answer gets short feedback from the chat's model: what landed, what's missing against the posting's asks,
+and a tightened version. The model is told to use only facts from your answer, your stories and your resume,
+never to invent experience, numbers, employers or tools, and to write "[add a real example of X]" where
+something is missing. The code checks the numbers too: a tightened answer with one that's in none of those isn't
+offered. Saving it is your call (`y/N`, or **Save to the prep sheet**): saved answers are kept with the job's
+package, one per question, and show on its prep sheet under **Practised answers**, and in MCP's
+`get_interview_prep` as `practised`. It runs on the chat's backend like the rest (`local` stays on your
+computer; with `claude` the posting, your resume and your stories go to Anthropic); with none available it says
+what to install, before asking anything.
+
 ## Who you know there
 
 A referral gets read before an application does. Download your LinkedIn data (Settings → Data privacy →

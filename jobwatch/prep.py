@@ -102,6 +102,7 @@ class Sheet:
     # Asked for with draft (see drafts.check for each one's fields); none: expect's questions stand.
     drafted: list[dict] = field(default_factory=list)
     draft_note: str = ""                                 # how the drafts were made, or why there are none
+    practised: list[dict] = field(default_factory=list)  # answers kept from mock interviews (see mock.py)
 
 
 def _stems(text: str) -> dict[str, str]:
@@ -221,7 +222,8 @@ def build(cfg: Config, store: Store, key: str, draft: bool = False) -> Sheet:
                  gaps=[{"name": d.skill.name, "must_have": bool(d.gap_jobs)} for d in for_job(posting, fit, resume)],
                  matches=pair(ask_lines, resume), resume_used=resume_used,
                  sent={"files": [f["name"] for f in data["files"]], "answers": data["answers"], "note": data["note"]},
-                 expect=expect, ask=ask, posting=posting.to_text(), drafted=drafted, draft_note=draft_note)
+                 expect=expect, ask=ask, posting=posting.to_text(), drafted=drafted, draft_note=draft_note,
+                 practised=pkg.practised())
 
 
 def to_dict(s: Sheet) -> dict:
@@ -276,6 +278,10 @@ def markdown(s: Sheet) -> str:
     else:
         out += ["", "## They'll likely ask"] + ([f"_{s.draft_note}_"] if s.draft_note else []) \
             + [f"- {q}" for q in s.expect]
+    if s.practised:
+        out += ["", "## Practised answers", "Tightened in mock interviews, from what you said and your stories."]
+        for p in s.practised:
+            out += [f"- **{p['question']}**", f"  - {p['improved']}"]
     out += ["", "## Ask them"] + [f"- {q}" for q in s.ask]
     return "\n".join(out) + "\n"
 
@@ -376,6 +382,14 @@ def _expect_part(s: Sheet):
     return "Likely questions for this role, with drafted answers", note + "".join(cards)
 
 
+def _practised_part(s: Sheet):
+    if s.practised:
+        cards = "".join(f'<div class="card"><div><b>{_e(p["question"])}</b></div>'
+                        f'<div class="you note">{_e(p["improved"])}</div></div>' for p in s.practised)
+        return "Practised answers", ('<p class="small muted">Tightened in mock interviews, from what you said '
+                                     "and your stories.</p>" + cards)
+
+
 def _ask_part(s: Sheet):
     return "Ask them", _ul([_e(q) for q in s.ask])
 
@@ -392,7 +406,7 @@ def html(s: Sheet) -> str:
         head.append("<p>" + _link(s.url, "The posting") + (f" (found on a watched board: <code>{_e(s.posting_key)}"
                                                          "</code>)" if s.posting_key else "") + "</p>")
     parts = [p for p in (_fit_part(s), _matches_part(s), _gaps_part(s), _sent_part(s), _expect_part(s),
-                         _ask_part(s)) if p]
+                         _practised_part(s), _ask_part(s)) if p]
     body = "\n".join(head + [(f"<section><h2>{_e(h)}</h2>{b}</section>" if h else b) for h, b in parts])
     return ('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'

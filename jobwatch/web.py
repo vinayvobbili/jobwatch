@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import yaml
 
-from . import __version__, chat, config, contacts, dupes, learn, levels, prep, report, sources, suggest
+from . import __version__, chat, config, contacts, dupes, learn, levels, mock, prep, report, sources, suggest
 from .config import ConfigError
 from .filters import KINDS, rejection
 from .package import Package
@@ -720,6 +720,36 @@ class App:
             return chat.start(cfg, store, messages, body.get("key"))
         return self._with_store(run)
 
+    def get_mock(self, q) -> dict:
+        """A mock interview for one job (`key`): its questions, where feedback comes from, and the answers kept."""
+        key = (q.get("key") or [""])[0]
+
+        def run(cfg, store):
+            session = mock.start(cfg, store, key)
+            return {"key": session.key, "questions": session.questions, "where": session.where,
+                    "saved": store.package(session.key).practised()}
+        return self._with_store(run)
+
+    def mock_feedback(self, body) -> tuple[dict, object]:
+        """({where feedback comes from}, the feedback in pieces) on one answer (`answer`) to one question
+        (`question`) for a job (`key`). The last piece reports {improved, note}: the tightened answer, vetted."""
+        def run(cfg, store):
+            session = mock.start(cfg, store, str(body.get("key") or ""))
+            question = str(body.get("question") or "").strip()
+            if not question:
+                raise ApiError("send the question being answered")
+            return session.where, mock.feedback(session, question, str(body.get("answer") or ""))
+        return self._with_store(run)
+
+    def post_mock_save(self, body) -> dict:
+        """Keep a tightened answer on the job's prep sheet; returns every answer kept for it."""
+        def run(cfg, store):
+            key = store.find(str(body.get("key") or ""))[0].key
+            mock.save(store, key, str(body.get("question") or ""), str(body.get("answer") or ""),
+                      str(body.get("improved") or ""))
+            return {"saved": store.package(key).practised()}
+        return self._with_store(run)
+
     def upload(self, kind: str, filename: str, data: bytes) -> dict:
         """Save an uploaded resume or LinkedIn export next to the watchlist and point the watchlist at it."""
         suffix = Path(filename).suffix.lower()
@@ -784,6 +814,8 @@ ROUTES = {
     ("GET", "/api/chat"): App.get_chat,
     ("GET", "/api/skills"): App.get_skills,
     ("GET", "/api/prep"): App.get_prep,
+    ("GET", "/api/mock"): App.get_mock,
+    ("POST", "/api/mock/save"): App.post_mock_save,
     ("POST", "/api/package"): App.post_package,
     ("POST", "/api/package/remove"): App.post_package_remove,
 }
@@ -895,6 +927,11 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
                     return self._stream(*app.chat(body))
+                elif method == "POST" and url.path == "/api/mock/feedback":
+                    body = json.loads(raw or b"{}")
+                    if not isinstance(body, dict):
+                        raise ApiError("send a JSON object")
+                    return self._stream(*app.mock_feedback(body))
                 elif (route := ROUTES.get((method, url.path))) is None:
                     raise ApiError("not found", HTTPStatus.NOT_FOUND)
                 elif method == "POST":
