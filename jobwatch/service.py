@@ -16,9 +16,11 @@ import plistlib
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 LABEL = "io.github.jobwatch.ui"
+GONE_WAIT = 15  # seconds to wait for a replaced job to stop before loading the new one
 
 
 class ServiceError(RuntimeError):
@@ -67,6 +69,14 @@ def _mac():
                            "--no-browser` from your system's service manager (e.g. a systemd user unit)")
 
 
+def _wait_gone(seconds: float = GONE_WAIT):
+    """Until launchd has let go of the old job: bootout returns while a running page is still stopping, and a
+    bootstrap then fails with "Bootstrap failed: 5: Input/output error"."""
+    deadline = time.monotonic() + seconds
+    while _launchctl("print", f"{_domain()}/{LABEL}", check=False).returncode == 0 and time.monotonic() < deadline:
+        time.sleep(0.2)
+
+
 def install(config: Path, port: int = 8765) -> str:
     """Write and load the agent (replacing one installed before); returns the page's address."""
     _mac()
@@ -77,6 +87,7 @@ def install(config: Path, port: int = 8765) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     log_path().parent.mkdir(parents=True, exist_ok=True)
     _launchctl("bootout", f"{_domain()}/{LABEL}", check=False)  # an older version, if any
+    _wait_gone()
     with path.open("wb") as f:
         plistlib.dump(definition(config, port), f)
     _launchctl("bootstrap", _domain(), str(path))

@@ -33,13 +33,32 @@ def test_install_writes_a_login_item_for_this_watchlist(launchd, watchlist, caps
     assert job["Label"] == service.LABEL and job["RunAtLoad"] and job["KeepAlive"]
     assert job["ProgramArguments"] == [sys.executable, "-m", "jobwatch.cli", "-c", str(watchlist.resolve()), "ui",
                                        "--no-browser", "--port", "8800"]
-    assert [c[0] for c in launchd] == ["bootout", "bootstrap"]
+    assert [c[0] for c in launchd] == ["bootout", "print", "bootstrap"]
     assert service.status() == {"installed": True, "running": True, "pid": 4242, "log": str(service.log_path()),
                                 "url": "http://127.0.0.1:8800/"}
     cli.main(["service", "uninstall"])
     assert not service.plist_path().exists() and "Removed" in capsys.readouterr().out
     cli.main(["service", "status"])
     assert "Not installed" in capsys.readouterr().out
+
+
+def test_a_reinstall_waits_for_the_old_page_to_stop(tmp_path, monkeypatch, watchlist):
+    monkeypatch.setattr(service.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(service.sys, "platform", "darwin")
+    monkeypatch.setattr(service.time, "sleep", lambda s: None)
+    calls, stopping = [], [2]  # launchd still lists the old job twice after bootout
+
+    def run(cmd, **kwargs):
+        calls.append(cmd[1])
+        if cmd[1] == "print":
+            stopping[0] -= 1
+            return subprocess.CompletedProcess(cmd, 0 if stopping[0] >= 0 else 113, "", "")
+        if cmd[1] == "bootstrap" and stopping[0] >= 0:
+            return subprocess.CompletedProcess(cmd, 5, "", "Bootstrap failed: 5: Input/output error")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(service.subprocess, "run", run)
+    service.install(watchlist)
+    assert calls == ["bootout", "print", "print", "print", "bootstrap"]
 
 
 def test_install_needs_a_watchlist_and_a_mac(launchd, tmp_path, monkeypatch):
