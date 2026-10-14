@@ -22,6 +22,7 @@ from . import (
     config,
     dupes,
     ics,
+    inbox,
     learn,
     levels,
     mock,
@@ -302,6 +303,27 @@ def cmd_alerts(args, cfg, store):
         print(json.dumps(alerts.to_dict(r), indent=2, ensure_ascii=False))
     else:
         print(alerts.summary(r, every=args.all))
+
+
+def cmd_inbox(args, cfg, store):
+    if not args.emails:
+        raise ValueError("give the emails about your applications: .eml or .mbox files, a folder of them, or - to "
+                         "read stdin")
+    asking = args.apply and not args.yes
+    if asking and "-" in args.emails:
+        raise ValueError("stdin has the emails, so there's nowhere to ask: save them to files, or give --yes")
+    r = inbox.propose(store, alerts.read(args.emails, sys.stdin))
+    if args.format == "json":
+        print(json.dumps(inbox.to_dict(r), indent=2, ensure_ascii=False))
+    else:
+        print(inbox.summary(r))
+    if not (args.apply or args.yes):
+        if r.proposals and args.format == "text":
+            print("\nNothing is recorded. --apply asks about each one; --yes records them all.")
+        return
+    for p in r.proposals:
+        if args.yes or input(f"\nRecord this for {p.key}? [y/N] ").strip().lower() in ("y", "yes"):
+            print(f"  {inbox.apply(store, p)}")
 
 
 def cmd_suggest(args, cfg, store):
@@ -625,6 +647,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true", help="list every new job, also the ones your filters leave out")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_alerts)
+
+    p = sub.add_parser("inbox", help="status updates from application emails (confirmations, rejections, interview "
+                       "invitations, assignments, offers): proposes each application's new status and note; records "
+                       "only what you confirm", description="Read emails about your applications and propose what "
+                       "changes: the new status (only ever forward), a dated note quoting the decisive phrase, and "
+                       "the next step. Give saved emails (.eml), an mbox export, a folder of them, or - to read one "
+                       "email (or an mbox) from stdin. Each is matched to an application by its sender, company, "
+                       "req id and title; the ones that match none are listed so you can add the application. "
+                       "Nothing is recorded unless you give --apply (asks about each proposal) or --yes.")
+    p.add_argument("emails", nargs="*", metavar="FILE | FOLDER | -", help=".eml or .mbox files, folders of them, "
+                   "or - for stdin")
+    p.add_argument("--apply", action="store_true", help="ask y/n about each proposal and record the ones you accept")
+    p.add_argument("--yes", action="store_true", help="record every proposal without asking")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_inbox)
 
     p = sub.add_parser("suggest", help="companies to watch: those whose jobs came in from alerts, `add` or HN "
                        "posts while their board isn't on the watchlist, most matching jobs first, with the board to "
