@@ -603,6 +603,39 @@ login under that company's own address. For one you added by hand whose posting 
 it the company's careers site (`jobwatch mark <key> --url https://acme.wd1.myworkdayjobs.com/Careers`)
 and the page link follows.
 
+### On your calendar
+
+Follow-up days and interviews can show up in Apple Calendar, Google Calendar, Outlook or any other calendar
+app, without giving jobwatch access to it: jobwatch writes an iCalendar (`.ics`) feed, and your calendar app
+reads it.
+
+```
+jobwatch calendar -o jobwatch.ics   # import this file (or print it to stdout without -o)
+```
+
+Every open application's follow-up day is an all-day event, "Follow up: Acme Robotics — Staff Engineer", with
+the next step, a link to the posting and the application's jobwatch key in its description. When the next step
+names an interview or call with a date and a time, that is a timed event too: `Panel interview Thu 10/16 10:00
+AM ET`, `call Fri 10/16 3:45-4:30 PM ET`, `intro call 2026-10-16T09:30:00-07:00`. Times can be in ET, PT, CT, MT
+(daylight saving applied), EST, EDT, CST, CDT, MST, MDT, PST, PDT, UTC or GMT, and without a zone they stay the
+same clock time wherever you are; an event with no end lasts an hour. When the text isn't clear (no time, a bare
+`10:00` with no am/pm, two dates, a weekday that isn't that date's) there is no timed event, only the follow-up.
+Rejected and withdrawn applications are left out. Each event keeps the same id, so importing the file again, or
+a subscription refreshing, updates events instead of adding copies.
+
+To subscribe instead of importing, press **Add to calendar** in the Applications tab of `jobwatch ui`. It opens
+`http://127.0.0.1:<port>/calendar/<secret>.ics` in your calendar app (as a `webcal://` link), which refreshes it
+by itself. The secret is made once, kept in the state file, and is what lets your calendar app in (it can't send
+the page's token); the address works only on this computer, and nobody else can read the feed. The calendar app
+needs jobwatch to be running (`jobwatch service install` keeps it so) to refresh.
+
+For a reminder before interviews and calls (not follow-up days), set the minutes in the watchlist:
+
+```yaml
+calendar:
+  remind: 30    # 0 (the default): no reminder
+```
+
 ### Looking up a company
 
 Today only shows new roles on the boards you watch, so a company you added by hand, or one you're already

@@ -14,7 +14,22 @@ from pathlib import Path
 
 import yaml
 
-from . import __version__, alerts, chat, company, config, dupes, learn, levels, mock, prep, report, sources, suggest
+from . import (
+    __version__,
+    alerts,
+    chat,
+    company,
+    config,
+    dupes,
+    ics,
+    learn,
+    levels,
+    mock,
+    prep,
+    report,
+    sources,
+    suggest,
+)
 from .config import ConfigError
 from .score import ScoringUnavailable, prompt_info, resume_id
 from .store import STAGES, STATUSES, Store
@@ -315,6 +330,15 @@ def cmd_applications(args, cfg, store):
     _write(report.applications_markdown(rows, homes={j.key: store.candidate_home(j) for j, _ in rows}), args.out)
 
 
+def cmd_calendar(args, cfg, store):
+    feed = ics.calendar(store.applications(), remind=cfg.calendar.remind)
+    if args.out:
+        args.out.write_bytes(feed.encode())  # bytes: the lines end in CRLF whatever the platform
+        print(f"Wrote {args.out}", file=sys.stderr)
+    else:
+        sys.stdout.write(feed)
+
+
 def _stream(pieces) -> dict:
     """Print a reply as it's written (what the model reports goes to stderr); returns the dicts it yielded."""
     got = {}
@@ -612,6 +636,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--due", action="store_true", help="only applications to follow up on now")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_applications)
+
+    p = sub.add_parser("calendar", help="your follow-up days and interviews as an iCalendar (.ics) file to import "
+                       "into a calendar app; `jobwatch ui` serves the same feed to subscribe to")
+    p.add_argument("-o", "--out", type=Path, help="write the file here (default: print it)")
+    p.set_defaults(func=cmd_calendar, read_only=True)
 
     p = sub.add_parser("attach", help="keep what you sent with an application: the resume, a cover letter, the "
                                       "form's answers (copies, so later edits don't change them)")
