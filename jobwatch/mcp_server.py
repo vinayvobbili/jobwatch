@@ -405,8 +405,9 @@ def add_application(
 @server.tool(annotations=_hints(idempotent=True, web=True))
 def import_job_alerts(
     emails: Annotated[list[str], Field(description=(
-        "The alert emails, one string each: the raw message (RFC822, as a mail connector's raw format gives it; "
-        "best, since it names the sender) or just its HTML or plain-text body."))],
+        "The alert emails, one string each: the raw message (RFC822, as a mail connector's raw format gives it, "
+        "base64url-encoded as from Gmail's API is fine too; best, since it names the sender) or just its HTML or "
+        "plain-text body."))],
     follow_links: Annotated[bool, Field(description=(
         "Look for each job that passes the filters on the company's own board, and read links robots.txt "
         "allows. False tracks each job as the email has it, with no requests."))] = True,
@@ -436,7 +437,8 @@ def import_job_alerts(
 def read_status_emails(
     emails: Annotated[list[str], Field(description=(
         "The emails about applications, one string each: the raw message (RFC822, as a mail connector's raw format "
-        "gives it; best, since it names the sender and date) or just its HTML or plain-text body."))],
+        "gives it, base64url-encoded as from Gmail's API is fine too; best, since it names the sender and date) or "
+        "just its HTML or plain-text body."))],
 ) -> dict:
     """Read emails about the person's applications (a "thank you for applying" confirmation, a rejection, an
     interview invitation or scheduling link, a take-home assignment, an offer, a recruiter's reply) and PROPOSE

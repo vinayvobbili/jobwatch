@@ -25,6 +25,7 @@ with the board it was found on, or the ones looked for under its name, so they'r
 
 from __future__ import annotations
 
+import base64
 import email
 import html
 import imaplib
@@ -139,9 +140,29 @@ _HEADERS = re.compile(rb"(?im)^(?:from|subject|received|return-path|mime-version
                       rb"content-type|to):")
 
 
+_BASE64 = re.compile(rb"[A-Za-z0-9_\-+/=\s]+")
+
+
+def _unbase64(data: bytes) -> bytes | None:
+    """A whole message in base64 or base64url (Gmail's raw format, which mail connectors pass along), decoded;
+    None when it isn't one."""
+    s = data.strip()
+    if len(s) < 64 or not _BASE64.fullmatch(s):
+        return None
+    s = re.sub(rb"\s+", b"", s).rstrip(b"=").replace(b"+", b"-").replace(b"/", b"_")
+    try:
+        out = base64.urlsafe_b64decode(s + b"=" * (-len(s) % 4))
+    except ValueError:
+        return None
+    head = out.lstrip()[:8000]
+    return out if re.match(rb"[!-9;-~]+:", head) and _HEADERS.search(head) else None
+
+
 def message(raw: str | bytes) -> EmailMessage:
-    """An email from its raw RFC822 text, or from just its body (HTML or plain text) when that's all there is."""
+    """An email from its raw RFC822 text (base64-encoded too, as Gmail's API gives it), or from just its body
+    (HTML or plain text) when that's all there is."""
     data = raw.encode("utf-8") if isinstance(raw, str) else raw
+    data = _unbase64(data) or data
     head = data.lstrip()[:8000]
     if re.match(rb"[!-9;-~]+:", head) and _HEADERS.search(head.split(b"\r\n\r\n")[0].split(b"\n\n")[0]):
         return email.message_from_bytes(data.lstrip(), policy=default_policy)
