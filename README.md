@@ -215,6 +215,9 @@ scoring:
   # model: ...                            # the model fit scores use; default: shortlist-ai's for the backend
   top: 5                                  # score the 5 most relevant new jobs per digest
   auto: true                              # the page scores every new match in the background
+  # batch: 10                             # ...this many jobs in a row, then a rest (0: no rests)
+  # rest: 10                              # ...of this many minutes
+  # unload_after: 5                       # minutes idle before the local model leaves memory (0: keep it)
 chat:                                     # Ask jobwatch; leave any of these out for its default
   backend: local                          # claude or local; default: scoring.backend
   claude_model: claude-sonnet-5-5
@@ -323,6 +326,14 @@ how many are left, and a button brings in the new scores when you're ready (the 
 own). A chat reply or a "Score fit" click goes first; background scoring waits for it. It's on by default
 with `scoring.backend: local`. With `claude` every score is a paid API call, so turn it on with
 `scoring.auto: true`. `jobwatch score [--limit N]` does the same in the terminal.
+
+The page is meant to sit close to idle. With nothing left to score it runs no scoring thread and doesn't load
+the model; the on-device model (several GB) loads when a job needs it and leaves memory after
+`scoring.unload_after` minutes unused (default 5; 0 keeps it loaded). A long line of jobs is scored in batches:
+`scoring.batch` jobs in a row (default 10; 0 for no rests), then a rest of `scoring.rest` minutes (default 10)
+before the next batch; a new check for jobs or resume starts the next batch at once. `jobwatch service install`
+runs the page at a lower priority (nice 10, low-priority disk), so scoring stays out of your way; run it again
+to apply that to a service installed earlier.
 
 A card with no score says why: in line to score (and where), no posting text, the same role scored before
 this posting came in, or a failure. A job from an alert email may have only its title: "Add the posting"
