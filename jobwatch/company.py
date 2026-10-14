@@ -161,6 +161,19 @@ def view(cfg: Config, store: Store, text: str) -> dict | None:
             "also": [f["name"] for f in found[1:]]}
 
 
+NOTE_SHOWN = 200  # characters of a note the text view prints
+
+
+def note_preview(note: str, most: int = NOTE_SHOWN) -> tuple[str, bool]:
+    """(the note for a terminal, whether some was left out): the latest dated entry (notes grow a dated line at a
+    time), cut to `most` characters with an ellipsis."""
+    note = " ".join(note.split())
+    latest = re.split(r"\s(?=\d{4}-\d{2}-\d{2}\b)", note)[-1]
+    if len(latest) > most:
+        latest = latest[:most - 1].rstrip() + "…"
+    return latest, latest != note
+
+
 def _line(j: dict) -> list[str]:
     """One job: its status and dates, then what's next, the note and any warning."""
     facts = [j["status"]]
@@ -181,7 +194,8 @@ def _line(j: dict) -> list[str]:
         step = " · ".join(x for x in (j["next_step"], f"follow up {j['follow_up']}" if j["follow_up"] else "") if x)
         out.append(("    Due: " if j["due"] else "    Next: ") + step)
     if j["note"]:
-        out.append(f"    Note: {j['note']}")
+        shown, cut = note_preview(j["note"])
+        out.append(f"    Note: {shown}" + (f" (all of it: `jobwatch show {j['key']}` or --format json)" if cut else ""))
     if j["duplicate_of"]:
         out.append(f"    Check: {j['duplicate_of']['text']}")
     return [*out, f"    `{j['key']}`"]

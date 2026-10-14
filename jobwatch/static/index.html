@@ -3072,6 +3072,15 @@ document.addEventListener("keydown", e => {
   jump.select();
 });
 
+// A long note (dated entries added over weeks) is two lines until clicked.
+function noteLine(note) {
+  const el = h("div", { class: "small" }, "Note: " + note);
+  if (note.length <= 200) return el;
+  el.classList.add("gaps");
+  el.title = "Click to see the whole note";
+  el.onclick = () => el.classList.toggle("open");
+  return el;
+}
 function companyJob(j, today) {
   const stage = APPLIED.includes(j.status);
   const facts = [j.applied_at ? `applied ${fmtDay(j.applied_at, today)}` : j.posted ? `posted ${fmtDay(j.posted, today)}`
@@ -3085,7 +3094,7 @@ function companyJob(j, today) {
     h("div", { class: "small muted" }, facts),
     j.next_step || j.follow_up ? h("div", { class: "small" + (j.due ? " warns" : "") },
       (j.due ? "Due: " : "Next: ") + [j.next_step, j.follow_up && `follow up ${fmtDay(j.follow_up, today)}`].filter(Boolean).join(" · ")) : null,
-    j.note ? h("div", { class: "small" }, "Note: " + j.note) : null,
+    j.note ? noteLine(j.note) : null,
     j.duplicate_of ? h("div", { class: "warns small" }, j.duplicate_of.text) : null,
     h("div", { class: "row actions" }, h("button", { class: "btn", onclick: () => openDetails(j.key) }, "Details"),
       link(j.url, "Posting ↗"),
