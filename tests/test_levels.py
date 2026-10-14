@@ -127,9 +127,9 @@ def test_a_remote_job_uses_the_home_region_first(store):
     assert e.line() == \
         "Levels.fyi A3 median $170K total, base not given; $150K base across all levels (Test Metro Area)"
     # A job in another state isn't the region's: the US page.
-    assert levels.estimate(job(where=("Austin, TX",)), pay, "NC", reader(store, responses)).where == "US-wide"
+    assert levels.estimate(job(where=("Austin, TX",)), pay, "CO", reader(store, responses)).where == "US-wide"
     # A job in the home state is.
-    assert levels.estimate(job(where=("Denver, CO",)), pay, "NC", reader(store, responses)).where == \
+    assert levels.estimate(job(where=("Denver, CO",)), pay, "CO", reader(store, responses)).where == \
         "Test Metro Area"
 
 

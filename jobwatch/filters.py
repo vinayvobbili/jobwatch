@@ -25,7 +25,7 @@ class Filters:
     exclude_titles: list[str] = field(default_factory=list)  # regexes; a match rejects the job
     locations: list[str] = field(default_factory=list)       # "remote", or text to find in a location (none: anywhere)
     remote_country: str = "US"                               # where a remote job must be open: "US" or "any"
-    # The US state the person lives in ("NC" or "North Carolina"): a remote job open only in some states is left
+    # The US state the person lives in ("CO" or "Colorado"): a remote job open only in some states is left
     # out unless it's one of them. Empty: any US remote job passes.
     home_state: str = ""
     min_salary: int | None = None                            # a listed range must reach this; unlisted pay passes
@@ -56,11 +56,11 @@ class Filters:
         return cls(**d)
 
     def __post_init__(self):
-        if self.home_state:  # kept as its code: "North Carolina" -> "NC"
+        if self.home_state:  # kept as its code: "Colorado" -> "CO"
             code = state_code(str(self.home_state))
             if not code:
                 raise ValueError(f"filters.home_state: {self.home_state!r} isn't a US state "
-                                 "(e.g. NC or North Carolina)")
+                                 "(e.g. CO or Colorado)")
             self.home_state = code
         try:
             fit = int(self.min_fit or 0)
@@ -138,7 +138,7 @@ def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] 
         if not any(w.lower() in loc.lower() for w in wanted for loc in job.locations):
             remote = remote_wanted and (job.remote or any(is_remote(loc) for loc in job.locations))
             states = remote_states(job) if remote and f.home_state else []
-            # Remote only in the home state ("Remote - North Carolina") is remote for this person.
+            # Remote only in the home state ("Remote - Colorado") is remote for this person.
             if not ((remote_wanted and _remote_ok(job, f.remote_country)) or f.home_state in states):
                 return "place", "location"
             if states and f.home_state not in states:

@@ -976,7 +976,7 @@ def _avature_read(j: Job, get) -> Job:
     places += _avature_header_places(page)
     parts = [named.get(k, "") for k in ("city", "state", "state/province", "country/region", "country")]
     places += [", ".join(p for p in parts if p)]
-    for label, text in fields:  # "Additional Locations: * United States of America - North Carolina - Golden"
+    for label, text in fields:  # "Additional Locations: * United States of America - Colorado - Golden"
         if not label and text.lower().startswith("additional locations"):
             places += [", ".join(reversed(line[2:].split(" - "))) for line in text.splitlines() if line[:2] == "* "]
     j.locations = split_locations(*places) or j.locations

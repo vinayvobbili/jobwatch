@@ -140,7 +140,7 @@ _LIST_WORDS = re.compile(r"\b(?:and|or|only|states?|following|one|of|the|remote|
 
 
 def state_code(name: str) -> str | None:
-    """ "NC" or "North Carolina" (any case) -> "NC"; None for anything that isn't a US state (or DC)."""
+    """ "CO" or "Colorado" (any case) -> "CO"; None for anything that isn't a US state (or DC)."""
     s = " ".join(name.split()).strip(" .")
     if s.upper() in STATES:
         return s.upper()

@@ -66,8 +66,8 @@ def test_remote_in_us(locations, remote, ok):
 
 
 def test_remote_in_a_wanted_state():
-    f = Filters(locations=["remote", "North Carolina"])
-    assert reject_reason(job(locations=["Remote - North Carolina"]), f) is None
+    f = Filters(locations=["remote", "Colorado"])
+    assert reject_reason(job(locations=["Remote - Colorado"]), f) is None
     assert reject_reason(job(locations=["Remote - Virginia"]), f) == "location"
 
 
@@ -80,7 +80,7 @@ def test_named_places_match_as_text():
     f = Filters(locations=["remote", "Denver", "Boulder, CO"])
     assert reject_reason(job(locations=["Denver, CO"]), f) is None
     assert reject_reason(job(locations=["Boulder, CO, United States"]), f) is None
-    assert reject_reason(job(locations=["Charlotte, CO"]), f) == "location"
+    assert reject_reason(job(locations=["Colorado Springs, CO"]), f) == "location"
 
 
 def test_pay_floor_uses_the_top_of_the_range():
@@ -100,7 +100,7 @@ HOME = ["remote", "Denver", "Boulder"]
 
 
 def test_remote_only_in_other_states_is_left_out_for_a_home_state():
-    assert reject_reason(job(**GOOGLE_STATES), Filters(locations=HOME, home_state="NC")) == \
+    assert reject_reason(job(**GOOGLE_STATES), Filters(locations=HOME, home_state="CO")) == \
         "remote only in CA, NV, OR, WA"
     assert reject_reason(job(**GOOGLE_STATES), Filters(locations=HOME, home_state="CA")) is None
     assert reject_reason(job(**GOOGLE_STATES), Filters(locations=HOME)) is None  # no home state: as before
@@ -114,25 +114,25 @@ def test_remote_only_in_other_states_is_left_out_for_a_home_state():
     (dict(locations=["Washington DC, United States"], remote=True), True),
     (dict(locations=["Work At Home-Connecticut"], remote=True), False),   # Workday: remote for people in CT
     (dict(locations=["TX - Work from home", "MA - Boston"], remote=True), False),
-    (dict(locations=["Texas, USA", "North Carolina, USA"], remote=True), True),
-    (dict(locations=["Remote - North Carolina"]), True),                  # remote in the home state
+    (dict(locations=["Texas, USA", "Colorado, USA"], remote=True), True),
+    (dict(locations=["Remote - Colorado"]), True),                 # remote in the home state
     (dict(locations=["Remote - Texas"]), False),
     (dict(locations=["Remote - US"], description="This role is remote in CA, NV, OR or WA only."), False),
     (dict(locations=["Remote - US"], description="Candidates must reside in one of the following states: "
-                                                  "Arizona, North Carolina, Texas."), True),
+                                                  "Arizona, Colorado, Texas."), True),
     (dict(locations=["Remote - US"], description="Remote from anywhere in the United States, with travel to "
                                                   "Austin, TX."), True),
     (dict(locations=["Remote"], remote=True, description="Remote locations: Washington D.C.; Virginia."), False),
-    (dict(locations=["Denver, CO", "Remote - Texas"]), True),            # a wanted place: the rest doesn't matter
-    (dict(locations=["Colorado Springs, CO"], description="Must reside in North Carolina."), False),  # not remote
+    (dict(locations=["Denver, CO", "Remote - Texas"]), True),             # a wanted place: the rest doesn't matter
+    (dict(locations=["Colorado Springs, CO"], description="Must reside in Colorado."), False),  # not remote
 ])
 def test_home_state(kw, ok):
-    assert (reject_reason(job(**kw), Filters(locations=HOME, home_state="North Carolina")) is None) is ok
+    assert (reject_reason(job(**kw), Filters(locations=HOME, home_state="Colorado")) is None) is ok
 
 
 def test_home_state_is_a_us_state():
-    assert Filters.from_dict({"home_state": "north carolina"}).home_state == "NC"
-    assert Filters.from_dict({"home_state": "nc"}).home_state == "NC"
+    assert Filters.from_dict({"home_state": "colorado"}).home_state == "CO"
+    assert Filters.from_dict({"home_state": "co"}).home_state == "CO"
     with pytest.raises(ValueError, match="isn't a US state"):
         Filters.from_dict({"home_state": "Ontario"})
 

@@ -151,7 +151,7 @@ def test_avature_lists_postings_from_the_sitemap_and_reads_the_wanted_ones():
     assert set(jobs) == {"27182", "29979", "31415"}
     fde = jobs["31415"]
     assert fde.key == f"avature:{BOARD}:31415" and fde.title == "Data Platform Engineer" and fde.url == FDE
-    assert fde.locations == ["Golden, North Carolina, United States of America"] and fde.remote is None
+    assert fde.locations == ["Golden, Colorado, United States of America"] and fde.remote is None
     assert (fde.company_name, fde.department) == ("initech", "Artificial Intelligence")
     assert fde.posted.date().isoformat() == "2026-09-30"
     assert (fde.salary_min, fde.salary_max, fde.currency) == (152_000, 210_000, "USD")
