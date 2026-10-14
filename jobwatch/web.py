@@ -71,7 +71,7 @@ class Scorer:
         self._thread: threading.Thread | None = None
         self._again = False  # asked to run again while running: new jobs may have come in
         self._rest: threading.Timer | None = None  # runs the next batch when the rest is over
-        self._failed: dict[str, str] = {}  # job key -> why it failed to score (kept in the store too: watch.failed_scores)
+        self._failed: dict[str, str] = {}  # job key -> why it failed to score (also kept in the store)
         self.done = 0
         self.left = 0
         self.current = ""
