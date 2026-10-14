@@ -335,6 +335,10 @@ before the next batch; a new check for jobs or resume starts the next batch at o
 runs the page at a lower priority (nice 10, low-priority disk), so scoring stays out of your way; run it again
 to apply that to a service installed earlier.
 
+A job the scorer failed on (no reply, a bad answer) isn't tried again for 3 days, so a down model doesn't make
+every pass start with the same failures; that is remembered across restarts, and a change to the resume, the
+prompts or the model tries it at once. Its card shows the error.
+
 A card with no score says why: in line to score (and where), no posting text, the same role scored before
 this posting came in, or a failure. A job from an alert email may have only its title: "Add the posting"
 takes a link to the company's posting (read when it's on a board jobwatch reads) or the pasted text, and so
@@ -594,6 +598,34 @@ The day you applied is kept as an application moves through the stages. `--next 
 clears a field. An application added by hand with only a company and a title can get its posting's text
 later with `--text` (a copy from a job board, or `-` to paste it), so it can be scored and `jobwatch prep`
 has something to work from; the posting kept with the application is replaced with it.
+
+### Applications that go quiet
+
+Many applications never get a reply, and their follow-up days pile up in the past. An application with no news
+(a stage change or a note) for a few weeks has **gone quiet**: 21 days at `applied`, 14 at `screening`, 10 at
+`interviewing`; one still at `applied` counts from the day you applied. Set your own in the watchlist (0 never
+counts that stage):
+
+```yaml
+quiet:
+  applied: 21
+  screening: 14
+  interviewing: 10
+  long: 45        # quiet this long, a follow-up due sorts below the fresh ones and is only counted
+```
+
+```
+jobwatch quiet                  # each one: days quiet, whether its posting is still up, and what to do next
+jobwatch snooze c1 --days 7     # push the follow-up out, keeping the stage; noted in its history
+jobwatch apps --due             # the fresh follow-ups, then "2 more due, quiet for 45+ days"
+```
+
+The suggestion is a short check-in to the recruiter or a contact (people you know there are listed, see
+[Who you know there](#who-you-know-there)), or, when the posting has closed (`jobwatch check` records that) or
+it has been quiet for `long` days, "likely closed: mark it rejected or withdrawn". jobwatch only suggests: it
+never changes a status. A snooze isn't news, so a snoozed application stays quiet until you hear something. On
+the Applications page they sit under **Gone quiet** with one-click Snooze 7 days, Mark withdrawn, Mark rejected
+and Add note; the MCP `list_applications` gives each a `quiet` field.
 
 Every company on Workday has its own careers site with its own sign-in, so after a few applications it's hard
 to remember where each one lives. For a Workday application, `jobwatch show`, `jobwatch applications` and

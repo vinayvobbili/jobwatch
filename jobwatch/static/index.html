@@ -255,6 +255,11 @@ button.btn:disabled { opacity: .55; cursor: default; }
   background: none; cursor: pointer; padding: 3px 8px; border-radius: 8px; font-family: inherit; }
 .sent-chip:hover { background: var(--chip); color: var(--text); }
 .sent-chip.empty-pkg { color: var(--accent); }
+.quiet-bar { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--chip); font-size: 13.5px; }
+.quiet-bar .why { color: var(--muted); }
+.quiet-bar .acts { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.quiet-bar input { flex: 1; min-width: 180px; }
+.section.quiet h3 { color: var(--muted); }
 
 /* what you sent: the job page's record of an application */
 .sent { margin-top: 14px; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px;
@@ -2179,7 +2184,10 @@ function daysAgo(day, today) {
   return n <= 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`;
 }
 
-// The status filter ("due" is Follow up now), the search, cards or a table, and the table's sort.
+// A follow-up due that isn't from an application quiet for so long that it only clutters the list (see quiet.py).
+const freshDue = a => a.due && !(a.quiet && a.quiet.long);
+
+// The status filter ("due" is Follow up now, "quiet" is Gone quiet), the search, cards or a table, and the table's sort.
 const appView = { stage: "", q: "", view: remembered("apps.view", "cards"), sort: "next", dir: 1, page: 1 };
 
 // A per-browser preference; storage can be blocked (private windows), so it's never required.
@@ -2232,7 +2240,8 @@ async function renderApplied() {
   const isEnded = a => ["rejected", "withdrawn"].includes(a.status);
   const talking = all.filter(a => ["screening", "interviewing", "offer"].includes(a.status)).length;
   const week = all.filter(a => !isEnded(a) && a.follow_up && a.follow_up <= addDays(d.today, 7)).length;
-  const dueCount = all.filter(a => a.due).length;
+  const dueCount = all.filter(freshDue).length;
+  const quietCount = all.filter(a => a.quiet).length;
   const addArea = h("div", {}), body = h("div", {}), showing = h("div", { class: "showing" }), pager = h("div", {});
   const filters = h("div", { class: "status-filter", role: "group", "aria-label": "Filter by status" });
   const search = h("input", { type: "search", placeholder: "Search companies, roles, notes" });
@@ -2246,6 +2255,7 @@ async function renderApplied() {
   // The same filter as a row of chips over the list: All, Follow up now, then each stage in use.
   const drawFilters = () => fill(filters,
     [["", "All", all.length, null], dueCount ? ["due", "Follow up now", dueCount, "var(--warn)"] : null,
+      quietCount ? ["quiet", "Gone quiet", quietCount, "var(--muted)"] : null,
       ...d.stages.filter(s => counts[s]).map(s => [s, STAGE_NAMES[s], counts[s], `var(--s-${s})`])].filter(Boolean)
       .map(([s, label, n, color]) => h("button", { class: "sf" + (appView.stage === s ? " on" : ""),
         style: color ? `--sc:${color}` : null, "aria-pressed": appView.stage === s ? "true" : "false",
@@ -2255,16 +2265,18 @@ async function renderApplied() {
 
   const draw = () => {
     const q = appView.q.trim().toLowerCase();
-    const apps = all.filter(a => (!appView.stage || (appView.stage === "due" ? a.due : a.status === appView.stage)) &&
+    const apps = all.filter(a => (!appView.stage || (appView.stage === "due" ? freshDue(a) : appView.stage === "quiet" ? a.quiet
+      : a.status === appView.stage)) &&
       (!q || `${a.company} ${a.title} ${a.note || ""} ${a.next_step || ""}`.toLowerCase().includes(q)));
     const table = appView.view === "table";
     // Cards come grouped (due, in progress, ended) and the table sorted; a page is a slice of that order.
-    const ordered = table ? sortApps(apps, d) : [...apps.filter(a => a.due), ...apps.filter(a => !a.due && !isEnded(a)),
-      ...apps.filter(isEnded)];
+    const inQuiet = a => a.quiet && !freshDue(a), inOpen = a => !freshDue(a) && !inQuiet(a) && !isEnded(a);
+    const ordered = table ? sortApps(apps, d) : [...apps.filter(freshDue), ...apps.filter(inQuiet),
+      ...apps.filter(inOpen), ...apps.filter(isEnded)];
     const pg = paged(ordered, appView, JSON.stringify([appView.stage, q, appView.view, appView.sort, appView.dir]), draw);
     const page = pg.items;
-    const due = page.filter(a => a.due), ended = page.filter(isEnded), open = page.filter(a => !a.due && !isEnded(a));
-    const whole = { due: apps.filter(a => a.due).length, open: apps.filter(a => !a.due && !isEnded(a)).length,
+    const due = page.filter(freshDue), quiet = page.filter(inQuiet), ended = page.filter(isEnded), open = page.filter(inOpen);
+    const whole = { due: apps.filter(freshDue).length, quiet: apps.filter(inQuiet).length, open: apps.filter(inOpen).length,
       ended: apps.filter(isEnded).length };
     let i = 0;
     const group = (title, list, cls, n) => list.length
@@ -2278,7 +2290,8 @@ async function renderApplied() {
     fill(body, all.length ? null : emptyState("No applications yet. Mark a queued job “I applied”, or add one you applied to somewhere else."),
       all.length && !apps.length ? emptyState("No applications match.", appView.q.trim() ? elsewhere(appView.q) : null) : null,
       !apps.length ? null : table ? appTable(page, d, draw)
-        : [group("Follow up now", due, "hot", whole.due), group("In progress", open, null, whole.open),
+        : [group("Follow up now", due, "hot", whole.due), group("Gone quiet", quiet, "quiet", whole.quiet),
+          group("In progress", open, null, whole.open),
           group("Ended", ended, null, whole.ended)]);
     fill(pager, pg.nav);
   };
@@ -2291,7 +2304,8 @@ async function renderApplied() {
       h("button", { class: "btn primary", onclick: () => fill(addArea, addForm(d)) }, icon("plus", 14), "Add an application")),
     layout([
       hero([[all.length, "applications", "lead"], [talking, "in conversation"],
-        [dueCount, "follow-ups due", dueCount ? "warn" : ""], [week, "follow-ups this week"]]),
+        [dueCount, "follow-ups due", dueCount ? "warn" : ""], [week, "follow-ups this week"],
+        quietCount ? [quietCount, "gone quiet"] : null].filter(Boolean)),
       all.length ? h("div", { class: "pipeline panel" }, h("h4", {}, "Pipeline"),
         h("div", { class: "bar-track" }, d.stages.filter(s => counts[s]).map((s, n) =>
           h("button", { class: "seg", style: `flex:${counts[s]};--sc:var(--s-${s});animation-delay:${n * 90}ms`,
@@ -2311,7 +2325,7 @@ const APP_COLUMNS = [
 
 // The table's order: the column picked (appView.sort), either way (appView.dir).
 function sortApps(apps, d) {
-  const byNext = a => [a.due ? 0 : isEndedStatus(a.status) ? 2 : 1, a.follow_up || "9999", a.applied_at ? -Date.parse(a.applied_at) : 0];
+  const byNext = a => [freshDue(a) ? 0 : isEndedStatus(a.status) ? 2 : 1, a.follow_up || "9999", a.applied_at ? -Date.parse(a.applied_at) : 0];
   const key = {
     company: a => [a.company.toLowerCase()], title: a => [a.title.toLowerCase()],
     status: a => [d.stages.indexOf(a.status)], applied_at: a => [a.applied_at || ""], next: byNext }[appView.sort];
@@ -2331,7 +2345,7 @@ function appTable(rows, d, redraw) {
 }
 
 function appRow(a, d) {
-  const tr = h("tr", { class: (isEndedStatus(a.status) ? "ended" : "") + (a.due ? " due" : ""), style: `--sc:var(--s-${a.status})` });
+  const tr = h("tr", { class: (isEndedStatus(a.status) ? "ended" : "") + (freshDue(a) ? " due" : ""), style: `--sc:var(--s-${a.status})` });
   const stage = stageSelect(a.status, d.stages);
   stage.className = "stage";
   stage.onchange = () => changeStage(a, d, stage);
@@ -2340,7 +2354,8 @@ function appRow(a, d) {
     h("td", { class: "role" }, a.url ? link(a.url, a.title) : a.title, a.pay ? h("div", { class: "pay small" }, a.pay) : null),
     h("td", {}, stage),
     h("td", { class: "nowrap" }, a.applied_at ? [fmtDay(a.applied_at, d.today), h("div", { class: "muted small" }, relDay(a.applied_at, d.today))] : ""),
-    h("td", { class: "next-cell" }, nextLine(a, d.today) || h("span", { class: "muted" }, "—")),
+    h("td", { class: "next-cell" }, nextLine(a, d.today) || h("span", { class: "muted" }, "—"),
+      a.quiet ? h("div", { class: "muted small" }, `quiet ${a.quiet.days} days`) : null),
     h("td", { class: "col-sent" }, sentChip(a)),
     h("td", { class: "acts nowrap" },
       h("button", { class: "btn ghost", onclick: edit, title: "Edit next step, follow-up and notes" }, icon("pencil", 13)),
@@ -2410,7 +2425,7 @@ function appCard(a, d, i = 0) {
           a.url ? link(a.url, a.title, "title") : h("span", { class: "title", style: "font-weight:700;font-size:17px" }, a.title),
           h("div", { class: "meta" }, h("b", {}, a.company), facts.map(f => [h("span", { class: "sep" }, "·"), f]))),
         stage),
-      nextLine(a, d.today), a.note ? h("div", { class: "note" }, a.note) : null,
+      nextLine(a, d.today), a.note ? h("div", { class: "note" }, a.note) : null, a.quiet ? quietBar(a, d) : null,
       h("div", { class: "app-foot" },
         h("span", { class: "when" }, a.applied_at ? `Applied ${fmtDay(a.applied_at, d.today)} · ${relDay(a.applied_at, d.today)}` : ""),
         h("div", { class: "acts" }, sentChip(a),
@@ -2428,6 +2443,47 @@ function appCard(a, d, i = 0) {
   };
   view();
   return card;
+}
+
+// Under a quiet application: how long, what to do next (never done for you), and one-click ways to do it.
+function quietBar(a, d) {
+  const q = a.quiet, bar = h("div", { class: "quiet-bar" });
+  const know = q.contacts.length ? ` You know: ${q.contacts.slice(0, 3).map(p => p.name).join(", ")}.` : "";
+  const end = status => async () => {
+    try {
+      await api("/api/track", { key: a.key, status });
+      toast(`${a.company}: marked ${status}.`, async () => { await api("/api/track", { key: a.key, status: a.status }); render(); });
+      render();
+    } catch (e) { toast(e.message); }
+  };
+  const snooze = async () => {
+    try {
+      const r = await api("/api/snooze", { key: a.key, days: 7 });
+      toast(`${a.company}: follow up ${fmtDay(r.follow_up, d.today)}.`,
+        async () => { await api("/api/track", { key: a.key, follow_up: a.follow_up || "" }); render(); });
+      render();
+    } catch (e) { toast(e.message); }
+  };
+  const view = () => fill(bar,
+    h("div", {}, h("b", {}, `Quiet ${q.days} days`), h("span", { class: "why" },
+      ` · posting ${q.posting_open ? "open" : "closed"} · ${q.advice}${know}`)),
+    h("div", { class: "acts" },
+      h("button", { class: "btn ghost", onclick: snooze, title: "Push the follow-up a week out" }, "Snooze 7 days"),
+      h("button", { class: "btn ghost", onclick: end("withdrawn") }, "Mark withdrawn"),
+      h("button", { class: "btn ghost", onclick: end("rejected") }, "Mark rejected"),
+      h("button", { class: "btn ghost", onclick: add }, "Add note")));
+  const add = () => {
+    const text = h("input", { type: "text", placeholder: "What happened? (dated for you)" });
+    const save = async () => {
+      try { await api("/api/track", { key: a.key, add_note: text.value }); render(); } catch (e) { toast(e.message); }
+    };
+    text.onkeydown = e => { if (e.key === "Enter") save(); };
+    fill(bar, h("div", { class: "acts" }, text, h("button", { class: "btn primary", onclick: save }, "Save"),
+      h("button", { class: "btn", onclick: view }, "Cancel")));
+    text.focus();
+  };
+  view();
+  return bar;
 }
 
 // "2 files · 3 answers", or a nudge to keep what was sent while it's fresh.
@@ -3012,7 +3068,7 @@ async function refreshQueueCount() {
     q.replaceChildren(n ? h("span", { class: "count" }, n) : "");
     if (n > (refreshQueueCount.last ?? n)) bump(q.firstChild);
     refreshQueueCount.last = n;
-    const due = ready ? (await api("/api/applications")).applications.filter(a => a.due).length : 0;
+    const due = ready ? (await api("/api/applications")).applications.filter(freshDue).length : 0;
     document.getElementById("duecount").replaceChildren(due ? h("span", { class: "count", title: "follow-ups due" }, due) : "");
   } catch { /* the page still works without the counts */ }
 }
