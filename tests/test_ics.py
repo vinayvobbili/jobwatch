@@ -27,7 +27,7 @@ def span(text):
 @pytest.mark.parametrize("text, expected", [
     # Thursday 10/15 is in EDT (UTC-4)
     ("Panel interview Thursday 10/15 10:00 AM ET", ("2026-10-15T14:00:00", "2026-10-15T15:00:00", True, "Interview")),
-    ("call Thu 10/15 3:45-4:30 PM ET", ("2026-10-15T19:45:00", "2026-10-15T20:30:00", True, "Call")),
+    ("call Thu 10/15 2:15-3:00 PM ET", ("2026-10-15T18:15:00", "2026-10-15T19:00:00", True, "Call")),
     ("Recruiter call Thursday, Oct 15th at 3pm PT", ("2026-10-15T22:00:00", "2026-10-15T23:00:00", True, "Call")),
     ("interview 15 October 11:30-12:30 PM UTC", ("2026-10-15T11:30:00", "2026-10-15T12:30:00", True, "Interview")),
     ("onsite 10/15 10-11am CT", ("2026-10-15T15:00:00", "2026-10-15T16:00:00", True, "Interview")),
