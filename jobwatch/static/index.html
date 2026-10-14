@@ -939,6 +939,12 @@ function fitBox(fit) {
     h("div", { class: `ring ${fitClass(s)}`, style: `--p:${s}` }, h("span", {}, s)),
     h("small", {}, `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`));
 }
+// In a job's details, where the ring would be: why there's no score yet (no posting text, still in line, ...).
+function noFitBox(job) {
+  const why = job.unscored?.code === "no_text" ? "no posting text" : "not scored yet";
+  return h("div", { class: "fitbox", title: job.unscored?.text || "Not scored yet" },
+    h("div", { class: "ring", style: "--p:0" }, h("span", {}, "–")), h("small", {}, why));
+}
 
 function gapsLine(fit) {
   if (!fit || !fit.gaps || !fit.gaps.length) return null;
@@ -1126,7 +1132,7 @@ async function openDetails(key) {
     dialog.classList.add("with-chat");
     fill(dialog,
       h("div", {},
-        h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, j.title), fitBox(j.fit),
+        h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, j.title), fitBox(j.fit) || noFitBox(j),
           h("button", { class: "btn", onclick: closeDetails }, "Close")),
         h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
         h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
