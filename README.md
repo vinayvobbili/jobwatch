@@ -446,7 +446,10 @@ Queued jobs leave the digest. The queue flags any posting that has since closed,
 applying: pay below `min_salary`, a place your filters don't want (a job queued by hand never passed them),
 and anything your `filters.flags` patterns find in the posting. Every fetch notices a watched board's
 postings closing; `jobwatch check` also checks queued jobs and open applications from boards you don't
-watch (a LinkedIn job can't be checked: LinkedIn's robots.txt doesn't allow reading its postings):
+watch (a LinkedIn job can't be checked: LinkedIn's robots.txt doesn't allow reading its postings). A req
+that's taken down often comes back under a new one: when a closed job's board lists the same title under
+another id, `check` says "reposted as <id>: <link>", keeps the new posting (read in full) for you to queue,
+and notes it on the old job, so the new one shows as a repost of what you applied to (see below):
 
 ```
 jobwatch check                             # closed (or back) since the last check; --all lists the open ones too
@@ -583,7 +586,9 @@ company whose board you don't watch, is noted with its company; so is each new H
 filters, when you watch the Who is hiring thread. `jobwatch suggest` lists those companies, the
 ones with the most jobs that pass your filters first (a job from last week counts more than one from last
 season: one `suggestions.half_life` days old, 30 unless set, counts half), `suggestions.limit` of them (10
-unless set; `--limit 0` lists all), with a few of their titles and their board:
+unless set; `--limit 0` lists all), with a few of their titles and their board. A company where you have an
+application in flight (applied, and no no yet) comes first whatever your filters say of its jobs, with "you
+applied to: ...": watching its board is what catches the job reposted under a new req.
 
 ```
 jobwatch suggest                       # companies to watch, and the board to add for each

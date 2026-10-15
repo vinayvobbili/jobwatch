@@ -272,15 +272,52 @@ def _never(title: str) -> bool:
     return False
 
 
-def _open_ids(job: Job, get, boards: dict) -> set[str]:
-    """The ids open on a job's board now: a whole board is listed once per check, a searched one is searched for
-    the job's title (nothing is read in full). An HN thread is read whole, once."""
+def _listed(job: Job, get, boards: dict) -> list[Job]:
+    """The jobs open on a job's board now, as listed: a whole board is listed once per check, a searched one is
+    searched for the job's title (nothing is read in full). An HN thread is read whole, once."""
     src = sources.SOURCES[job.source]
     searched = bool(src.search) and not src.many_companies
     k = (job.source, job.company, job.title if searched else "")
     if k not in boards:
-        boards[k] = {j.id for j in sources.fetch(job.source, job.company, get, search=[job.title], wanted=_never)}
+        boards[k] = sources.fetch(job.source, job.company, get, search=[job.title], wanted=_never)
     return boards[k]
+
+
+def _open_ids(job: Job, get, boards: dict) -> set[str]:
+    return {j.id for j in _listed(job, get, boards)}
+
+
+def find_repost(store: Store, job: Job, note: str = "", get=None, boards: dict | None = None) -> Job | None:
+    """A closed job's opening posted again on its board: an open posting there with the same title (see
+    dupes.title_key) under another id, the way a req that's taken down comes back under a new one. Found, it's
+    kept (read in full when the board lists it without its text), the old job's note says it was reposted as the
+    new id (`note`: what the note says now, so that's said once), which makes the two the same opening (see
+    dupes: "Reposted: you applied ..."), and the new job is returned. None when there's none, for a job added by
+    hand or an HN post, and when the board can't be read now."""
+    src = sources.SOURCES.get(job.source)
+    if not src or src.many_companies:
+        return None
+    try:
+        listed = _listed(job, get, {} if boards is None else boards)
+    except sources.SourceError:
+        return None
+    want = dupes.title_key(job.title)
+    if len(want[0].split()) < 2:  # just "Engineer": too common to say it's the same opening (as dupes says)
+        return None
+    new = next((j for j in listed if j.id != job.id and dupes.title_key(j.title) == want), None)
+    if new is None:
+        return None
+    if not new.description.strip():
+        try:
+            new = sources.posting(new.url, get) or new
+        except sources.SourceError:
+            pass  # kept as listed: a later fetch or check reads it
+    new.company_name = job.company_name or new.company_name  # a searched board names only its tenant
+    store.keep(new)
+    if new.id not in note:
+        store.add_note(job.key, f"Reposted as {new.id}: {new.url}")
+    dupes.record(store, [new])
+    return new
 
 
 def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> bool | None:
@@ -309,7 +346,8 @@ def check_postings(store: Store, statuses: tuple[str, ...] = ("queued", "applied
                    get=None, page=None, watched: list[Board] = ()) -> list[Check]:
     """Check that the postings of queued jobs and open applications are still up, and record the ones that
     closed (or came back). Jobs from watched boards are checked by every fetch too; this also covers jobs added
-    by hand from a link, and boards that aren't watched.
+    by hand from a link, and boards that aren't watched. For a closed one, its board is searched for the same
+    opening posted again (see find_repost): its detail then says what it was reposted as.
     A job whose board's hosted pages are offline (see HostedPages) is still open while the board's API lists it:
     its detail says where to apply, and it links to the careers site its board has in `watched`, if any."""
     boards: dict = {}
@@ -335,6 +373,8 @@ def check_postings(store: Store, statuses: tuple[str, ...] = ("queued", "applied
         else:
             out.append(Check(job, "open" if up else "closed",
                              job.link_note if up else f"since {(rec['closed'] or '')[:10]}"))
+        if out[-1].result == "closed" and (new := find_repost(store, job, rec["note"] or "", get, boards)):
+            out[-1].detail = "; ".join(d for d in (out[-1].detail, f"reposted as {new.id}: {new.url}") if d)
     return out
 
 

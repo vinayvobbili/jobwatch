@@ -10,7 +10,10 @@ looked for once: what's found, or that nothing was, is kept in the state file. j
 Indeed for it.
 
 Companies are ranked by how many of their jobs pass the watchlist's filters, a recent one counting more than an
-old one. Accepting one adds its board the way add_board does; a dismissed one isn't suggested again.
+old one. A company with an application in flight (applied to, and no no heard yet) comes first, whatever the
+filters say of its jobs: they're in the middle of something there, and a req that's taken down often comes
+back under a new one, which only watching its board catches. Accepting one adds its board the way add_board
+does; a dismissed one isn't suggested again.
 """
 
 from __future__ import annotations
@@ -23,10 +26,14 @@ from . import config, linkedin, sources
 from .config import Board, Config
 from .filters import reject_reason
 from .models import Job
-from .store import MANUAL, Store
+from .store import ENDED, MANUAL, STAGES, Store
 
 # How the ranking fades with age (suggestions.half_life) and how many are listed (suggestions.limit): see
 # config.Suggestions.
+
+# Where the person is in the middle of something: applied, and not turned down or withdrawn. (Queued isn't: a job
+# added by hand is queued unless told otherwise, filtered out or not.)
+ENGAGED = tuple(s for s in STAGES if s not in ENDED)
 
 @dataclass
 class Suggestion:
@@ -37,10 +44,11 @@ class Suggestion:
     jobs: list[Job] = field(default_factory=list)  # the ones that pass the filters, newest first
     last_seen: str = ""          # when the newest of those came in (YYYY-MM-DD)
     weight: float = 0.0          # the ranking: each job counts 1, halving every half_life days since it came in
+    engaged: list[Job] = field(default_factory=list)  # the person's applications there in flight (ENGAGED)
 
     @property
     def sample_titles(self) -> list[str]:
-        return list(dict.fromkeys(j.title for j in self.jobs))[:3]
+        return list(dict.fromkeys(j.title for j in self.jobs or self.engaged))[:3]
 
     @property
     def careers(self) -> str:
@@ -61,6 +69,7 @@ class Suggestion:
 
     def to_dict(self) -> dict:
         return {"company": self.name, "matching_jobs": len(self.jobs), "last_seen": self.last_seen,
+                "applied_to": list(dict.fromkeys(j.title for j in self.engaged)),
                 "board": self.entry or None, "board_found": self.found_by if self.entry else None,
                 "looked_up": self.entry is not None, "careers": self.careers or None,
                 "sample_titles": self.sample_titles, "command": self.command,
@@ -111,6 +120,19 @@ def record_posts(store: Store, cfg: Config, jobs: list[Job], at: dict[str, str] 
             if reject_reason(job, cfg.filters) is None and record(store, cfg.boards, job, None, at.get(job.key))}
 
 
+def record_engaged(store: Store, boards: list[Board]) -> dict[str, list[Job]]:
+    """Note the person's applications in flight (ENGAGED) whose company's board isn't watched, as record does,
+    each from when it was first seen: however they came in, and closed ones too. Returns them by company (its
+    id), watched ones aside."""
+    out: dict[str, list[Job]] = {}
+    for job, rec in store.jobs(ENGAGED, include_closed=True):
+        name = job.display_company
+        if company_id(name) and not any(watched(boards, name, e) for e in posted_on(job) or [""]):
+            record(store, boards, job, None, rec["first_seen"])
+            out.setdefault(company_id(name), []).append(job)
+    return out
+
+
 def rescan(cfg: Config, store: Store) -> int:
     """Note the companies of the posts already kept from each watched thread (HN), the ones still open, as
     record_posts does for new ones: posts fetched before they were noted, or that pass the filters only since
@@ -141,23 +163,26 @@ def _age(at: str, now: datetime) -> float:
 
 def suggestions(cfg: Config, store: Store, limit: int | None = None, look: bool = False, page=None,
                 now: datetime | None = None) -> list[Suggestion]:
-    """Unwatched companies with jobs that pass the filters, best first: `limit` of them (None: suggestions.limit;
-    0: all). look: look for the board of each one listed that hasn't been looked for yet (see look_up); one
-    found that's already watched drops it."""
+    """Unwatched companies with jobs that pass the filters, or with an application in flight (see
+    record_engaged), best first: those with one, then by weight. `limit` of them (None:
+    suggestions.limit; 0: all). look: look for the board of each one listed that hasn't been looked for yet (see
+    look_up); one found that's already watched drops it."""
     now, out = now or datetime.now(timezone.utc), []
     limit = cfg.suggest.limit if limit is None else limit
     half_life = cfg.suggest.half_life
+    engaged = record_engaged(store, cfg.boards)
     for row in store.unwatched():
         if watched(cfg.boards, row["name"], row["entry"] or ""):
             continue
         jobs = [(j, at) for j, at in row["jobs"] if reject_reason(j, cfg.filters) is None]
-        if not jobs:
+        mine = engaged.get(row["company"], [])
+        if not (jobs or mine):
             continue
         out.append(Suggestion(row["company"], row["name"], row["entry"], row["found_by"], [j for j, _ in jobs],
-                              last_seen=jobs[0][1][:10],
-                              weight=sum(0.5 ** (_age(at, now) / half_life) for _, at in jobs)))
+                              last_seen=(jobs or row["jobs"])[0][1][:10],
+                              weight=sum(0.5 ** (_age(at, now) / half_life) for _, at in jobs), engaged=mine))
     out.sort(key=lambda s: s.name.lower())
-    out.sort(key=lambda s: (s.weight, s.last_seen), reverse=True)
+    out.sort(key=lambda s: (bool(s.engaged), s.weight, s.last_seen), reverse=True)
     if not look:
         return out[:limit] if limit else out
     shown = []
@@ -208,7 +233,11 @@ def text(found: list[Suggestion]) -> str:
            "watchlist."]
     for s in found:
         n = len(s.jobs)
-        out.append(f"\n{s.name}: {n} matching job{'s' if n != 1 else ''}, the latest on {s.last_seen}")
+        out.append(f"\n{s.name}: " + (f"{n} matching job{'s' if n != 1 else ''}, the latest on {s.last_seen}" if n
+                                      else f"last seen {s.last_seen}"))
+        if s.engaged:
+            out.append(f"  you applied to: {' · '.join(dict.fromkeys(j.title for j in s.engaged))} "
+                       "(watch it to catch a repost)")
         if s.entry:
             how = "one of its jobs is there" if s.found_by == "posting" else "found under its name: check it's theirs"
             out.append(f"  board: {s.entry}  ({how})  {s.careers}")

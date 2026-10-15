@@ -157,6 +157,28 @@ def test_watched_ones_drop_out(web, watchlist):
     assert suggest.suggestions(cfg, store) == []
 
 
+def test_a_company_with_an_application_in_flight_comes_first_whatever_the_filters(web, watchlist):
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    for title in ("Platform Engineer", "Data Engineer"):
+        added(cfg, store, "Umbrella", title)
+    # Applied before suggestions noted anything, in London (the filters drop it), and its posting since came down:
+    # a repost under a new req shows only on Wayne's board.
+    job = store.add("Wayne Enterprises", "Security Manager", status="applied", location="London")
+    store.set_closed(job.key, True)
+    found = suggest.suggestions(cfg, store)
+    assert [(s.name, len(s.jobs)) for s in found] == [("Wayne Enterprises", 0), ("Umbrella", 2)]
+    assert found[0].to_dict()["applied_to"] == ["Security Manager"] and found[1].to_dict()["applied_to"] == []
+    said = suggest.text(found)
+    assert "Wayne Enterprises: last seen 20" in said and "e.g. Security Manager" in said
+    assert "  you applied to: Security Manager (watch it to catch a repost)" in said
+    store.set_status([job.key], "rejected")  # heard no: its jobs count as the filters say again
+    assert [s.name for s in suggest.suggestions(cfg, store)] == ["Umbrella"]
+    store.set_status([job.key], "interviewing")
+    store.dismiss_unwatched("wayneenterprises")  # dismissed stays dismissed
+    assert [s.name for s in suggest.suggestions(cfg, store)] == ["Umbrella"]
+
+
 # -- Looking for boards
 
 def test_each_board_is_looked_for_once(web, watchlist):
