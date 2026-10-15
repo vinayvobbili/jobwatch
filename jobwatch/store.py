@@ -226,6 +226,11 @@ class Store:
         """Whether a job with exactly this key is recorded."""
         return self.db.execute("SELECT 1 FROM jobs WHERE key=?", (key,)).fetchone() is not None
 
+    def first_seen(self, key: str) -> str | None:
+        """When the job with exactly this key was first recorded (ISO, UTC), or None when it isn't."""
+        row = self.db.execute("SELECT first_seen FROM jobs WHERE key=?", (key,)).fetchone()
+        return row[0] if row else None
+
     def set_via(self, key: str, via: str):
         """Record where a job was first found when it didn't come from a watched board ("linkedin-alert": a
         LinkedIn job-alert email). The first one recorded stays."""
