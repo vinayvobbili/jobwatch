@@ -2,6 +2,7 @@
 
 import json
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -103,14 +104,39 @@ def test_a_repost_on_a_searched_board_is_read_in_full(tmp_path):
     assert match.reposted and match.old_req == "412345" and match.other.key == applied.key
 
 
+def test_one_title_posted_for_several_openings_is_left_to_you(watchlist, web):
+    cli.main(["-c", str(watchlist), "fetch"])
+    store = Store(config.load(watchlist).state)
+    store.set_status(["lever:globex:aaaa-1111"], "applied")
+    again = [{**LEVER[0], "id": i, "hostedUrl": f"https://jobs.lever.co/globex/{i}"}
+             for i in ("cccc-3333", "dddd-4444")]
+    web.responses[LEVER_API] = [LEVER[1], *again]
+    [c] = [c for c in check_postings(store) if c.job.key == "lever:globex:aaaa-1111"]
+    assert c.result == "closed" and c.detail.startswith("same title posted again as cccc-3333: https://jobs.lever")
+    assert "dddd-4444" in c.detail and c.detail.endswith("check which, if any, is the one you applied to")
+    assert "Reposted" not in (store.find("lever:globex:aaaa-1111")[1]["note"] or "")  # no guess made
+    assert store.has("lever:globex:dddd-4444") and not dupes.check(store, "lever:globex:dddd-4444")
+
+
+def test_a_posting_open_alongside_the_closed_one_is_another_opening(watchlist, web):
+    cli.main(["-c", str(watchlist), "fetch"])
+    store = Store(config.load(watchlist).state)
+    job, _ = store.find("lever:globex:aaaa-1111")
+    web.responses[LEVER_API] = [{**LEVER[0], "id": "cccc-3333", "hostedUrl": "https://jobs.lever.co/globex/cccc-3333"}]
+    store.keep(sources.fetch("lever", "globex", web)[0])  # tracked since before aaaa-1111 closed
+    later = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+    assert find_repost(store, job, get=web, closed=later) == []
+    assert [j.id for j in find_repost(store, job, get=web)] == ["cccc-3333"]  # closed now: seen too recently to say
+
+
 def test_one_word_titles_and_unreadable_boards_find_no_repost(watchlist, web, tmp_path):
     store = Store(tmp_path / "state.db")
     job = Job(source="lever", company="globex", id="aaaa-1111", title="Engineer", url="https://jobs.lever.co/x")
     web.responses[LEVER_API] = [{**LEVER[0], "id": "dddd-4444", "text": "Engineer"}]
-    assert find_repost(store, job, get=web) is None  # one word: too common to call it the same opening
+    assert find_repost(store, job, get=web) == []  # one word: too common to call it the same opening
     web.responses[LEVER_API] = sources.SourceError("HTTP 500")
-    assert find_repost(store, replace(job, title=LEVER[0]["text"]), get=web) is None
-    assert find_repost(store, replace(job, source="manual"), get=web) is None
+    assert find_repost(store, replace(job, title=LEVER[0]["text"]), get=web) == []
+    assert find_repost(store, replace(job, source="manual"), get=web) == []
 
 
 def test_warnings_before_applying(watchlist, web, tmp_path):

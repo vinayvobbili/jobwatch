@@ -287,37 +287,45 @@ def _open_ids(job: Job, get, boards: dict) -> set[str]:
     return {j.id for j in _listed(job, get, boards)}
 
 
-def find_repost(store: Store, job: Job, note: str = "", get=None, boards: dict | None = None) -> Job | None:
-    """A closed job's opening posted again on its board: an open posting there with the same title (see
-    dupes.title_key) under another id, the way a req that's taken down comes back under a new one. Found, it's
-    kept (read in full when the board lists it without its text), the old job's note says it was reposted as the
-    new id (`note`: what the note says now, so that's said once), which makes the two the same opening (see
-    dupes: "Reposted: you applied ..."), and the new job is returned. None when there's none, for a job added by
-    hand or an HN post, and when the board can't be read now."""
+# A posting tracked this long before the job it might repost closed was open alongside it: another opening.
+_ALONGSIDE = timedelta(days=1)
+
+
+def find_repost(store: Store, job: Job, note: str = "", get=None, boards: dict | None = None,
+                closed: str | None = None) -> list[Job]:
+    """A closed job's opening posted again on its board: the open postings there with the same title (see
+    dupes.title_key) under another id, the way a req that's taken down comes back under a new one, leaving out
+    the ones tracked since before it closed (`closed`, ISO; default now): a board can post one title many times,
+    one per opening, and those were open alongside it. Each one found is kept (read in full when the board lists
+    it without its text). When just one is, it's taken as the repost: the old job's note says it was reposted as
+    the new id (`note`: what the note says now, so that's said once), which makes the two the same opening (see
+    dupes: "Reposted: you applied ..."). Several are only returned, for the person to tell which (if any) it is.
+    Empty when there's none, for a job added by hand or an HN post, and when the board can't be read now."""
     src = sources.SOURCES.get(job.source)
     if not src or src.many_companies:
-        return None
+        return []
+    want = dupes.title_key(job.title)
+    if len(want[0].split()) < 2:  # just "Engineer": too common to say it's the same opening (as dupes says)
+        return []
     try:
         listed = _listed(job, get, {} if boards is None else boards)
     except sources.SourceError:
-        return None
-    want = dupes.title_key(job.title)
-    if len(want[0].split()) < 2:  # just "Engineer": too common to say it's the same opening (as dupes says)
-        return None
-    new = next((j for j in listed if j.id != job.id and dupes.title_key(j.title) == want), None)
-    if new is None:
-        return None
-    if not new.description.strip():
-        try:
-            new = sources.posting(new.url, get) or new
-        except sources.SourceError:
-            pass  # kept as listed: a later fetch or check reads it
-    new.company_name = job.company_name or new.company_name  # a searched board names only its tenant
-    store.keep(new)
-    if new.id not in note:
-        store.add_note(job.key, f"Reposted as {new.id}: {new.url}")
-    dupes.record(store, [new])
-    return new
+        return []
+    before = (datetime.fromisoformat(closed) if closed else datetime.now(timezone.utc)) - _ALONGSIDE
+    found = [j for j in listed if j.id != job.id and dupes.title_key(j.title) == want
+             and not ((seen := store.first_seen(j.key)) and datetime.fromisoformat(seen) < before)]
+    for i, new in enumerate(found):
+        if not new.description.strip():
+            try:
+                found[i] = new = sources.posting(new.url, get) or new
+            except sources.SourceError:
+                pass  # kept as listed: a later fetch or check reads it
+        new.company_name = job.company_name or new.company_name  # a searched board names only its tenant
+        store.keep(new)
+    if len(found) == 1 and found[0].id not in note:
+        store.add_note(job.key, f"Reposted as {found[0].id}: {found[0].url}")
+    dupes.record(store, found)
+    return found
 
 
 def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> bool | None:
@@ -373,8 +381,12 @@ def check_postings(store: Store, statuses: tuple[str, ...] = ("queued", "applied
         else:
             out.append(Check(job, "open" if up else "closed",
                              job.link_note if up else f"since {(rec['closed'] or '')[:10]}"))
-        if out[-1].result == "closed" and (new := find_repost(store, job, rec["note"] or "", get, boards)):
-            out[-1].detail = "; ".join(d for d in (out[-1].detail, f"reposted as {new.id}: {new.url}") if d)
+        if out[-1].result == "closed" and (new := find_repost(store, job, rec["note"] or "", get, boards,
+                                                                rec["closed"])):
+            said = (f"reposted as {new[0].id}: {new[0].url}" if len(new) == 1 else
+                    "same title posted again as " + ", ".join(f"{j.id}: {j.url}" for j in new)
+                    + ": check which, if any, is the one you applied to")
+            out[-1].detail = "; ".join(d for d in (out[-1].detail, said) if d)
     return out
 
 

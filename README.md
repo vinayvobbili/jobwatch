@@ -449,7 +449,10 @@ postings closing; `jobwatch check` also checks queued jobs and open applications
 watch (a LinkedIn job can't be checked: LinkedIn's robots.txt doesn't allow reading its postings). A req
 that's taken down often comes back under a new one: when a closed job's board lists the same title under
 another id, `check` says "reposted as <id>: <link>", keeps the new posting (read in full) for you to queue,
-and notes it on the old job, so the new one shows as a repost of what you applied to (see below):
+and notes it on the old job, so the new one shows as a repost of what you applied to (see below). A board
+can post one title many times, one per opening: postings tracked since before yours closed don't count (they
+were open alongside it), and when several are left, `check` lists them for you to tell which, if any, it is,
+and notes nothing:
 
 ```
 jobwatch check                             # closed (or back) since the last check; --all lists the open ones too
