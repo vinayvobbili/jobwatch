@@ -1,15 +1,18 @@
 """Checking that queued jobs and applications are still posted, and what to look at before applying."""
 
 import json
+from dataclasses import replace
 
 import pytest
 
-from jobwatch import cli, config, report, sources
+from jobwatch import cli, config, dupes, report, sources
 from jobwatch.filters import Filters
+from jobwatch.models import Job
 from jobwatch.store import Store
-from jobwatch.watch import check_postings, queue
+from jobwatch.watch import check_postings, find_repost, queue
 
-from .conftest import LEVER, RESPONSES
+from .conftest import LEVER, RESPONSES, FakeWeb
+from .test_big_boards import WD, wd_detail, wd_posting
 from .test_linkedin import no_linkedin
 
 LEVER_API = "https://api.lever.co/v0/postings/globex?mode=json"
@@ -61,6 +64,53 @@ def test_check_command(watchlist, web, capsys):
     assert "c1" not in out and err.strip() == "1 closed, 1 open"
     cli.main(["-c", str(watchlist), "check", "--all", "--status", "applied"])
     assert "open      ashby:initech:c1" in capsys.readouterr().out
+
+
+def test_a_closed_posting_reposted_under_a_new_id_is_found(watchlist, web):
+    cli.main(["-c", str(watchlist), "fetch"])
+    store = Store(config.load(watchlist).state)
+    store.set_status(["lever:globex:aaaa-1111"], "applied")
+    repost = {**LEVER[0], "id": "cccc-3333", "hostedUrl": "https://jobs.lever.co/globex/cccc-3333"}
+    web.responses[LEVER_API] = [LEVER[1], repost]  # the old req came down; the same title is back under a new one
+    said = "reposted as cccc-3333: https://jobs.lever.co/globex/cccc-3333"
+    [c] = [c for c in check_postings(store) if c.job.key == "lever:globex:aaaa-1111"]
+    assert (c.result, c.detail) == ("closed", said)
+    assert store.find("lever:globex:aaaa-1111")[1]["note"].endswith(
+        "Reposted as cccc-3333: https://jobs.lever.co/globex/cccc-3333")
+    match = dupes.check(store, "lever:globex:cccc-3333")  # the new posting warns: you applied to the old one
+    assert match and match.reposted and match.other.key == "lever:globex:aaaa-1111"
+    [c] = [c for c in check_postings(store) if c.job.key == "lever:globex:aaaa-1111"]
+    assert c.detail.startswith("since 20") and c.detail.endswith("; " + said)  # still said, noted once
+    assert store.find("lever:globex:aaaa-1111")[1]["note"].count("Reposted as") == 1
+
+
+def test_a_repost_on_a_searched_board_is_read_in_full(tmp_path):
+    title = "Detection Platform Engineer - Manager"
+    old, new = wd_posting("0412345", title), wd_posting("0418765", title)
+    web = FakeWeb({f"{WD}/jobs": lambda body: {"total": 1, "jobPostings": [new] if body["searchText"] == title
+                                                and body["offset"] == 0 else []},
+                   WD + old["externalPath"]: wd_detail(old), WD + new["externalPath"]: wd_detail(new)})
+    store = Store(tmp_path / "state.db")  # applying keeps the posting next to it
+    applied = sources.posting("https://initech.wd5.myworkdayjobs.com/External" + old["externalPath"], web)
+    store.keep(applied)
+    store.set_status([applied.key], "applied")
+    del web.responses[WD + old["externalPath"]]  # taken down
+    [c] = check_postings(store, get=web)
+    assert c.result == "closed" and c.detail.startswith("reposted as R0418765: https://initech.wd5.myworkdayjobs.com/")
+    kept, rec = store.find("workday:initech.wd5/External:R0418765")
+    assert "Detection engineering" in kept.description and rec["status"] == "new"  # read in full, yours to queue
+    match = dupes.check(store, kept.key)
+    assert match.reposted and match.old_req == "412345" and match.other.key == applied.key
+
+
+def test_one_word_titles_and_unreadable_boards_find_no_repost(watchlist, web, tmp_path):
+    store = Store(tmp_path / "state.db")
+    job = Job(source="lever", company="globex", id="aaaa-1111", title="Engineer", url="https://jobs.lever.co/x")
+    web.responses[LEVER_API] = [{**LEVER[0], "id": "dddd-4444", "text": "Engineer"}]
+    assert find_repost(store, job, get=web) is None  # one word: too common to call it the same opening
+    web.responses[LEVER_API] = sources.SourceError("HTTP 500")
+    assert find_repost(store, replace(job, title=LEVER[0]["text"]), get=web) is None
+    assert find_repost(store, replace(job, source="manual"), get=web) is None
 
 
 def test_warnings_before_applying(watchlist, web, tmp_path):

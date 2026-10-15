@@ -173,11 +173,16 @@ class Signature:
         own = ids | reqs
         manual = job.source == MANUAL
         note_ids, note_reqs = _named(note, manual)
-        # What a "reposted" names, up to the end of its sentence: "Reposted 2026-03-20 as WD00207765 (...)."
-        reposted_as = {i for m in _REPOSTED.finditer(note)
-                       for i in _named(re.split(r"[.;](?:\s|$)|\n", note[m.end():], maxsplit=1)[0], manual)[0]}
-        return cls(job, companies(job), title, levels, own | note_ids, reqs | note_reqs, note_ids - own,
-                   reposted_as)
+        # What a "reposted" names, up to the end of its sentence: "Reposted 2026-03-20 as WD00207765 (...)." Its
+        # link counts whoever added the job: it's the new posting's ("Reposted as cccc-3333: jobs.lever.co/...").
+        reposted_as, reposted_reqs = set(), set()
+        for m in _REPOSTED.finditer(note):
+            named, named_reqs = _named(re.split(r"[.;](?:\s|$)|\n", note[m.end():], maxsplit=1)[0], True)
+            reposted_as |= named
+            reposted_reqs |= named_reqs
+        note_ids |= reposted_as
+        return cls(job, companies(job), title, levels, own | note_ids, reqs | note_reqs | reposted_reqs,
+                   note_ids - own, reposted_as)
 
     @property
     def own_reqs(self) -> set[str]:
