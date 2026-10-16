@@ -13,6 +13,7 @@ import gc
 import hashlib
 import importlib
 import importlib.metadata
+import importlib.util
 import json
 import re
 import sys
@@ -130,16 +131,21 @@ def turn(backend: str, background: bool = False):
 
 
 def scorer_id() -> str:
-    """Which scorer made a score: a short hash of shortlist-ai's version and its built-in prompt texts, so a
-    shortlist-ai whose own prompts or scoring changed (a new release, or a prompt edited in its source) scores
-    afresh instead of keeping scores made by the old one. Edited prompts (scoring.prompts) aren't in it: they
-    have their own part of the key (see resume_id)."""
+    """Which scorer made a score: a short hash of shortlist-ai's version, its built-in prompt texts and the code
+    that turns verdicts into a score, so a shortlist-ai whose own prompts or scoring changed (a new release, or
+    a prompt or weight edited in its source) scores afresh instead of keeping scores made by the old one.
+    Edited prompts (scoring.prompts) aren't in it: they have their own part of the key (see resume_id)."""
     try:
         version = importlib.metadata.version("shortlist-ai")
     except importlib.metadata.PackageNotFoundError:
         version = ""
     built_in = {p["name"]: p["default"] for p in prompt_info()["prompts"]}
-    return hashlib.sha256(json.dumps([version, built_in], sort_keys=True).encode()).hexdigest()[:8]
+    try:
+        spec = importlib.util.find_spec("shortlist_ai.score")
+        scoring = hashlib.sha256(Path(spec.origin).read_bytes()).hexdigest() if spec and spec.origin else ""
+    except (ImportError, ValueError, OSError):  # ValueError: a module put in sys.modules by hand has no spec
+        scoring = ""
+    return hashlib.sha256(json.dumps([version, built_in, scoring], sort_keys=True).encode()).hexdigest()[:8]
 
 
 def resume_id(resume: Path, prompts: Mapping[str, str] | None = None) -> str:
