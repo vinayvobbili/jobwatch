@@ -3194,6 +3194,7 @@ async function openCompany(q) {
           : w.entry ? `Add ${w.entry} in Settings.` : "Look for its board with Settings → Add a company."),
       c.jobs.map(j => companyJob(j, today)),
       c.more_open ? h("div", { class: "small muted" }, `and ${c.more_open} more open roles you haven't acted on: see Today`) : null,
+      c.off_title ? h("div", { class: "small muted" }, `${c.off_title} open role${c.off_title === 1 ? "" : "s"} your title filters leave out, not listed`) : null,
       c.closed_unacted ? h("div", { class: "small muted" }, `${c.closed_unacted} closed posting${c.closed_unacted === 1 ? "" : "s"} you never acted on, not listed`) : null,
       c.also.length ? h("div", { class: "small", style: "margin-top:10px" }, "Also matches: ",
         c.also.map(n => h("button", { class: "chip toggle", onclick: () => openCompany(n) }, n))) : null);
