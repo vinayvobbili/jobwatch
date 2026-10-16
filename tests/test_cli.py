@@ -36,6 +36,14 @@ def test_find(web, capsys):
         "board found" in out
 
 
+def test_find_a_board_with_no_roles_listed(capsys, monkeypatch):
+    # a link names its board even when the site lists nothing, e.g. one that sends visitors to another careers site
+    monkeypatch.setattr(cli.sources, "probe", lambda q: [("icims", "jobs-initech.icims.com", [])])
+    out = run(capsys, "find", "https://jobs-initech.icims.com/jobs/search").out
+    assert "icims:jobs-initech.icims.com  (no open roles listed)  https://jobs-initech.icims.com/jobs/search" in out
+    assert "e.g." not in out and "careers page" in out
+
+
 def test_run_then_digest_shows_only_new_jobs(web, watchlist, capsys):
     out = run(capsys, "-c", str(watchlist), "run")
     assert "Checked 3 board(s): 5 open roles, 5 new." in out.err
