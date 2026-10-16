@@ -1,5 +1,5 @@
 """Public job boards: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google, Amazon,
-Oracle Recruiting Cloud, SmartRecruiters and Avature.
+Oracle Recruiting Cloud, SmartRecruiters, Avature and iCIMS.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
@@ -12,6 +12,8 @@ searched too, from its careers site's pages (its API is closed to crawlers by ro
 page at a time, then each posting's page.
 Avature careers portals list every posting in the sitemap their robots.txt names; the ones whose titles match
 are read from their public pages, as robots.txt allows.
+iCIMS careers sites list their roles a page at a time (the page for the site's iframe, which is plain HTML); the ones
+whose titles match are read from their job pages, each carrying schema.org JobPosting markup.
 Hacker News' monthly "Ask HN: Who is hiring?" thread is a board of many companies' posts, read whole from HN's
 search API: each post is one job.
 """
@@ -69,7 +71,7 @@ def _read(url: str, timeout: float, body: dict | None, accept: str) -> bytes:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return resp.read()
         except urllib.error.HTTPError as e:
-            if e.code == 404:
+            if e.code in (404, 410):  # 410: iCIMS's answer for a job that has closed
                 raise NotFound(url) from None
             if e.code in (429, 503) and attempt < RETRIES:
                 time.sleep(_wait(e, attempt))
@@ -992,6 +994,125 @@ def _avature_read(j: Job, get) -> Job:
     return j
 
 
+# -- iCIMS: board is the company's slug in https://careers-<slug>.icims.com, or the whole host for a site on another
+# one (jobs-acme.icims.com, acme.icims.com). The site's pages show their content in an iframe; asked for with
+# in_iframe=1 they're plain HTML: the list of roles a page at a time (each names a role's title, link and place)
+# and each role's own page, which carries its details as schema.org JobPosting markup. Only new postings whose
+# titles match are read in full. robots.txt closes only the sign-in, referral and candidate pages.
+
+ICIMS_LIST = "https://{host}/jobs/search?ss=1&in_iframe=1&pr={page}"
+ICIMS_JOB = "https://{host}/jobs/{id}/job?in_iframe=1"
+ICIMS_WORKERS = 2  # postings are web pages: read a couple at a time
+_ICIMS_HOST = re.compile(r"([\w-]+)\.icims\.com")
+_ICIMS_NOT_SITES = {"www", "api", "login", "app", "admin", "static"}
+_ICIMS_CARD = re.compile(r'<li class="iCIMS_JobCardItem">(.*?)</li>', re.S)
+_ICIMS_LINK = re.compile(r'<a href="([^"]*/jobs/(\d+)/[^"]*?/job)[^"]*"[^>]*>.*?<h3[^>]*>(.*?)</h3>', re.S)
+_ICIMS_PLACE = re.compile(r'Job Locations</span>\s*<span[^>]*>(.*?)</span>', re.S)
+_ICIMS_PAGES = re.compile(r"Page \d+ of (\d+)")
+
+
+def _icims_host(board: str) -> str:
+    host = board if "." in board else f"careers-{board}.icims.com"
+    if not re.fullmatch(r"[\w-]+\.icims\.com", host):
+        raise SourceError(f"an iCIMS board is a careers site's name, like acme (careers-acme.icims.com), or its "
+                          f"whole host, like jobs-acme.icims.com, got {board!r}")
+    return host
+
+
+def _icims_board(url: str) -> str | None:
+    """The board from any link on an iCIMS careers site: the slug of a careers-<slug> host, else the whole host."""
+    host = urlparse(url if "//" in url else f"https://{url}").netloc.lower()
+    m = _ICIMS_HOST.fullmatch(host)
+    if not m or m.group(1) in _ICIMS_NOT_SITES:
+        return None
+    return m.group(1).removeprefix("careers-") if m.group(1).startswith("careers-") else host
+
+
+def _icims_company(board: str) -> str:
+    """The company a site's host names: acme for careers-acme.icims.com or jobs-acme.icims.com."""
+    name = board.partition(".")[0]
+    return re.sub(r"^(?:careers|jobs)-", "", name)
+
+
+def _icims_place(text: str) -> list[str]:
+    """Places from a page's "US-MA-Boston | US-Remote" (country-region-city) as "Boston, MA, US", "Remote, US"."""
+    places = []
+    for raw in re.split(r"\||\n", html.unescape(text)):
+        parts = raw.strip().split("-")
+        if len(parts) > 1 and re.fullmatch(r"[A-Z]{2}", parts[0]):
+            region = parts[1] if len(parts) > 2 and re.fullmatch(r"[A-Z]{2}", parts[1]) else ""
+            city = "-".join(parts[2 if region else 1:])
+            places.append(", ".join(p for p in (city, region, parts[0]) if p))
+        elif raw.strip():
+            places.append(raw.strip())
+    return split_locations(*places)
+
+
+def _icims_listed(host: str, get, cap: int) -> list[tuple[str, str, str, list[str]]]:
+    """(id, title, link, places) of every role the site lists, up to cap. Pages are asked for one at a time until
+    the last the first one names (or one with no roles, if it doesn't say how many there are)."""
+    found: dict[str, tuple[str, str, str, list[str]]] = {}
+    page, pages = 0, 1
+    while len(found) < cap and page < pages:
+        text = get(ICIMS_LIST.format(host=host, page=page)) or ""
+        if m := _ICIMS_PAGES.search(text):
+            pages = int(m.group(1))
+        else:
+            pages = page + 2  # not said: go on until a page has no roles
+        before = len(found)
+        for card in _ICIMS_CARD.findall(text):
+            if link := _ICIMS_LINK.search(card):
+                where = _ICIMS_PLACE.search(card)
+                title = html.unescape(re.sub(r"<[^>]+>", "", link.group(3))).strip()
+                found.setdefault(link.group(2), (link.group(2), title, link.group(1),
+                                                 _icims_place(re.sub(r"<[^>]+>", "", where.group(1))) if where else []))
+        if len(found) == before:
+            break
+        page += 1
+    return list(found.values())[:cap]
+
+
+def fetch_icims(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """Every role on an iCIMS careers site (up to `cap`), reading in full the ones whose titles pass `wanted` and
+    aren't `known`. The site's list has no title search of its own, so `search` isn't used."""
+    get = get or get_text
+    host = _icims_host(board)
+
+    def job(item) -> Job:
+        pid, title, link, places = item
+        key = f"icims:{board}:{pid}"
+        if known and key in known and known[key].description:
+            return known[key]
+        j = Job(source="icims", company=board, id=pid, title=title, url=link, company_name=_icims_company(board),
+                locations=places, remote=True if any(is_remote(p) for p in places) else None)
+        if wanted and not wanted(j.title):
+            return j
+        return _unread_if_refused(lambda: _icims_read(j, get), j)
+    return _details(_icims_listed(host, get, cap), job, ICIMS_WORKERS)
+
+
+def _icims_read(j: Job, get) -> Job:
+    """Fill an iCIMS job from its page's JobPosting markup. Raises NotFound when the job has closed (the site
+    answers 410, or a page saying the job couldn't be found), SourceError when the page has no posting on it."""
+    page = get(ICIMS_JOB.format(host=_icims_host(j.company), id=j.id)) or ""
+    if "requested job could not be found" in page:
+        raise NotFound(f"that iCIMS posting ({j.id}) has closed")
+    data = job_posting_data(page)
+    if not data:
+        raise SourceError(f"{j.url}: couldn't read that iCIMS posting's page (no posting found on it)")
+    j.title = _ld_text(data.get("title")) or j.title
+    j.url = data.get("url") or j.url
+    j.company_name = _ld_text((data.get("hiringOrganization") or {}).get("name")) or j.company_name
+    where = _ICIMS_PLACE.search(page)
+    j.locations = _icims_place(re.sub(r"<[^>]+>", "", where.group(1))) if where else j.locations
+    j.remote = True if any(is_remote(p) for p in j.locations) else None
+    j.department = _ld_text(data.get("occupationalCategory")) or j.department
+    j.posted = _time(data.get("datePosted")) or j.posted
+    j.description = _ld_text(data.get("description"))
+    _salary(j, j.description)
+    return j
+
+
 # -- Amazon (with AWS and its subsidiaries): board "amazon" for its roles in the US, "amazon/any" for all of them.
 # amazon.jobs answers its own search in JSON, each role with its full text, 100 a page; its robots.txt closes
 # only /internal pages. It lists tens of thousands of roles, so like a Workday board it's searched for the
@@ -1396,6 +1517,7 @@ SOURCES = {
     "smartrecruiters": Source("smartrecruiters", "", None, "https://careers.smartrecruiters.com/{board}",
                               fetch_smartrecruiters),
     "avature": Source("avature", "", None, "https://{board}/SearchJobs", fetch_avature),
+    "icims": Source("icims", "", None, "https://{host}/jobs/search", fetch_icims),
     "hn": Source("hn", "", None, "https://news.ycombinator.com/submitted?id=whoishiring", fetch_hn,
                  many_companies=True),
 }
@@ -1411,6 +1533,8 @@ def careers_url(source: str, board: str) -> str:
     if source == "oracle":
         pod, _, site = board.partition("/")
         return SOURCES[source].careers.format(pod=pod, site=site)
+    if source == "icims":
+        return SOURCES[source].careers.format(host=_icims_host(board))
     return SOURCES[source].careers.format(board=board)
 
 
@@ -1513,6 +1637,8 @@ def detect(url: str) -> tuple[str, str] | None:
         return "hn", "whoishiring"
     if m := _ORACLE_HOST.fullmatch(host):  # .../hcmUI/CandidateExperience/<lang>/sites/<site>/job/<id>
         return ("oracle", f"{m.group(1)}/{parts[parts.index('sites') + 1]}") if "sites" in parts[:-1] else None
+    if board := _icims_board(url):  # any link on careers-<slug>.icims.com (or another iCIMS host)
+        return "icims", board
     # Avature: acme.avature.net/<portal>, or a portal on the company's own domain, known by its page names
     portal = [p for p in parts if not _AVATURE_LOCALE.match(p)]
     if (host.endswith(".avature.net") and portal) or (portal[1:2] and portal[1] in ("JobDetail", "SearchJobs")):
@@ -1557,6 +1683,8 @@ def _posting_id(source: str, url: str) -> str | None:
         return after if after.isdigit() else None
     if source == "avature":
         return _avature_id(url if "//" in url else f"https://{url}")
+    if source == "icims":  # .../jobs/<id>/<title-slug>/job; /jobs/search and the like don't name a posting
+        return parts[1] if len(parts) > 1 and parts[0] == "jobs" and parts[1].isdigit() else None
     if source == "workable":
         for marker in ("j", "view"):
             if marker in parts[:-1]:
@@ -1585,6 +1713,11 @@ def posting(url: str, get=None) -> Job | None:
         if not j.description:  # a closed posting's link answers with the portal's error page, a 404 (NotFound)
             raise SourceError(f"{link}: couldn't read that Avature posting's page (no posting text found on it)")
         return j
+    if source == "icims":  # read from its own page (a web page); the site's list isn't searched for one job
+        pid = _posting_id(source, url)
+        parsed = urlparse(url if "//" in url else f"https://{url}")
+        return _icims_read(Job(source="icims", company=board, id=pid, title="", url=f"https://{parsed.netloc}/jobs/{pid}/job",
+                               company_name=_icims_company(board)), get or get_text) if pid else None
     if source == "smartrecruiters":  # read from its own page (a web page): the board's list names only the title
         pid = _posting_id(source, url)
         return _sr_read(Job(source="smartrecruiters", company=board, id=pid, title="",
@@ -1721,7 +1854,7 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
     A link to the company's own careers page is read for links to a board instead (`page` fetches it).
 
     A guessed name can belong to a different company, so check a role or two before adding a board. Roles on
-    a searched board (Workday, Eightfold, Avature) are listed, not read in full: a sample of up to PROBE_CAP."""
+    a searched board (Workday, Eightfold, Avature, iCIMS) are listed, not read in full: a sample of up to PROBE_CAP."""
     if found := detect(company):
         source, board = found
         return [(source, board, _peek(source, board, get))]

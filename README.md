@@ -39,7 +39,8 @@ Workday (some through Eightfold, Oracle Recruiting Cloud, SmartRecruiters or a J
 small companies through Rippling. Each publishes open roles as public JSON so anyone can build a careers page, with
 no API key or scraping; Google publishes its own (with YouTube's and DeepMind's) as an XML feed for job sites,
 Amazon's careers site (amazon.jobs, with AWS) answers its own search in JSON, and Avature careers portals
-(company career sites on Avature) list every posting in a sitemap for search engines. Hundreds of startups post once a month
+(company career sites on Avature) list every posting in a sitemap for search engines, and iCIMS careers sites
+(careers-<company>.icims.com) list theirs in plain pages. Hundreds of startups post once a month
 in Hacker News' "Ask HN: Who is hiring?" thread, which HN's search API serves whole.
 jobwatch reads those feeds for the companies on your watchlist:
 
@@ -63,12 +64,13 @@ jobwatch reads those feeds for the companies on your watchlist:
   US roles unless the board is `amazon/any`. A SmartRecruiters board is searched the same way, 24 titles a
   page, and each posting it reads is one page. An Avature portal's sitemap is one request a run; a posting
   whose title has your `filters.titles` words and passes your title filters is read from its page, once, two at
-  a time. HN's Who is hiring is one request to find the thread and one to read it whole.
+  a time. An iCIMS site's list is a page of 50 roles a request, and its postings are read the same way. HN's Who is hiring is one request to find the thread and one to read it whole.
 - **Within the rules:** it reads public APIs meant for this, and follows robots.txt. SmartRecruiters' own API
   host asks crawlers to stay away, so jobwatch doesn't use it: it reads the company's public careers site
   (careers.smartrecruiters.com, and each posting's page on jobs.smartrecruiters.com), which robots.txt leaves
   open. On an Avature portal it reads only the public pages its robots.txt lets robots read (never a link with
-  `qtvc=`, never anything behind a sign-in). It doesn't scrape LinkedIn or Indeed, which forbid it.
+  `qtvc=`, never anything behind a sign-in); on iCIMS, the list and job pages, never its sign-in, referral or
+  candidate pages. It doesn't scrape LinkedIn or Indeed, which forbid it.
 
 ## Install
 
@@ -185,6 +187,7 @@ companies:
   - {source: oracle, board: eeho.fa.us2/CX_45001, name: Oracle}  # pod.fa.region/site, from a job link
   - smartrecruiters:Initech                             # careers.smartrecruiters.com/Initech
   - {source: avature, board: careers.initech.example/careers, name: Initech}  # an Avature portal: host/portal
+  - icims:initech                                       # careers-initech.icims.com (jobs-initech.icims.com: the host)
   - hn:whoishiring                                      # HN's Who is hiring thread (whoishiring/3: last 3 months')
 
 filters:
@@ -487,7 +490,7 @@ Skip the one you don't need with `jobwatch mark skipped <key>`.
 
 A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
 posting on Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers, amazon.jobs, Oracle Recruiting
-Cloud, SmartRecruiters or an Avature portal, jobwatch reads the posting from there, so it
+Cloud, SmartRecruiters, iCIMS or an Avature portal, jobwatch reads the posting from there, so it
 can be fit-scored and prepped for like any other, even if you don't watch that company. jobwatch never reads
 LinkedIn (its robots.txt disallows every page), so a LinkedIn job link needs the company and title too; the
 same job is looked for on the company's own board: found, that's what is tracked, since it's where the

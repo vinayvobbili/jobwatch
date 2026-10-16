@@ -74,8 +74,8 @@ def cmd_find(args):
         results = list(pool.map(sources.probe, args.company))
     for query, hits in zip(args.company, results, strict=True):
         if not hits:
-            print(f"{query}: no Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters or Avature "
-                  "board found. Give the link to their careers page or a job on it, to look for a board linked "
+            print(f"{query}: no Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters, Avature or "
+                  "iCIMS board found. Give the link to their careers page or a job on it, to look for a board linked "
                   "there; or the company may use another system.")
         for source, board, jobs in hits:
             name = next((j.company_name for j in jobs if j.company_name), "")
@@ -550,9 +550,8 @@ def _tracking(p: argparse.ArgumentParser):
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="jobwatch", description="Watch company job boards (Greenhouse, Lever, "
                                  "Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google Careers, Amazon, "
-                                 "Oracle Recruiting Cloud, SmartRecruiters, Avature, HN's Who is hiring) and get a "
-                                 "ranked digest of new "
-                                 "matches.")
+                                 "Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, HN's Who is hiring) and "
+                                 "get a ranked digest of new matches.")
     ap.add_argument("--version", action="version", version=f"jobwatch {__version__}")
     ap.add_argument("-c", "--config", help="watchlist file (default: ./jobwatch.yaml, $JOBWATCH_CONFIG, "
                     "~/.config/jobwatch/config.yaml)")
@@ -614,7 +613,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("add", help="add a job found elsewhere (LinkedIn, a referral, a recruiter): `add <link>` "
                        "reads the posting from Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google "
-                       "Careers, amazon.jobs, Oracle Recruiting Cloud, SmartRecruiters or Avature; `add <company> "
+                       "Careers, amazon.jobs, Oracle Recruiting Cloud, SmartRecruiters, Avature or iCIMS; "
+                       "`add <company> "
                        "<title>` for anything else, a LinkedIn link included (--url; LinkedIn's robots.txt doesn't "
                        "allow reading it, so jobwatch looks for the job on the company's own board). "
                        "--status queued to consider it, else it's an application")
