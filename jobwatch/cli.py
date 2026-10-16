@@ -78,6 +78,11 @@ def cmd_find(args):
                   "iCIMS board found. Give the link to their careers page or a job on it, to look for a board linked "
                   "there; or the company may use another system.")
         for source, board, jobs in hits:
+            if not jobs:
+                print(f"{query}: {source}:{board}  (no open roles listed)  {sources.careers_url(source, board)}\n"
+                      "    The site may send visitors to the company's own careers site: give a link to that careers "
+                      "page or a job on it.")
+                continue
             name = next((j.company_name for j in jobs if j.company_name), "")
             print(f"{query}: {source}:{board}  ({sources.open_roles(jobs)} open roles{', ' + name if name else ''})  "
                   f"{sources.careers_url(source, board)}\n    e.g. {jobs[0].title}")
