@@ -193,6 +193,8 @@ companies:
 filters:
   titles: ["engineer", "architect"]       # regexes; the title must match one
   exclude_titles: ["intern", "manager"]
+  exclude_text: ["penetration test\\w*|red team"]   # regexes on the posting's text; a match rejects the job (a job
+                                          # listed without its description passes: only text that's there counts)
   exclude_departments: ["sales"]
   locations: ["remote", "Denver", "Boulder, CO"]
   remote_country: US                      # remote roles must be open in the US ("any" to allow all)

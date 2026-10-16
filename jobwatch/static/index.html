@@ -1765,6 +1765,7 @@ function filterInputs(f) {
   const area = (v, placeholder) => { const t = h("textarea", { placeholder }); t.value = lines(v); return t; };
   const inp = {
     titles: area(f.titles, "engineer\ndeveloper"), exclude: area(f.exclude_titles, "intern\nmanager"),
+    excludeText: area(f.exclude_text, "red team\nGPU kernels?"),
     locations: area(f.locations, "remote\nNew York"),
     country: h("select", {}, h("option", { value: "US" }, "Remote jobs open in the US"),
       h("option", { value: "any" }, "Remote jobs anywhere")),
@@ -1788,6 +1789,7 @@ function filterInputs(f) {
 }
 function filterValues(inp) {
   return { titles: unlines(inp.titles.value), exclude_titles: unlines(inp.exclude.value),
+    exclude_text: unlines(inp.excludeText.value),
     locations: unlines(inp.locations.value), remote_country: inp.country.value,
     home_state: inp.home.value.trim() || null,
     min_salary: inp.minPay.value ? Number(inp.minPay.value) : null, require_salary: inp.requirePay.checked || null,
@@ -1816,9 +1818,10 @@ function fitField(inp) {
 
 // What each part of the bar edits: [label, hint] and input pairs, and the filter keys it saves.
 const FILTER_GROUPS = {
-  titles: { keys: ["titles", "exclude_titles"], fields: inp => [
+  titles: { keys: ["titles", "exclude_titles", "exclude_text"], fields: inp => [
     filterLabel("Job titles", "one per line; a title must contain one"), inp.titles,
-    filterLabel("Leave out titles with", "one per line"), inp.exclude] },
+    filterLabel("Leave out titles with", "one per line"), inp.exclude,
+    filterLabel("Leave out postings that mention", "one per line; matched in the whole posting"), inp.excludeText] },
   places: { keys: ["locations", "remote_country", "home_state"], fields: inp => [
     filterLabel("Places", "“remote”, or a city or state, one per line"), inp.locations,
     h("div", { style: "margin-top:6px" }, inp.country), homeField(inp)] },
@@ -1842,7 +1845,8 @@ function some(list, most = 3) {
 // Why a job was hidden, as rejection() in filters.py names it, and which part of the bar changes that filter.
 const HIDDEN = {
   title: { label: "title", part: "titles", why: "Their titles contain none of your job titles." },
-  excluded: { label: "excluded title", part: "exclude", why: "Their titles contain something you leave out." },
+  excluded: { label: "excluded", part: "exclude",
+    why: "Their titles or postings contain something you leave out." },
   department: { label: "department", part: null,
     why: "Their department is one you leave out (exclude_departments in the watchlist file)." },
   place: { label: "place", part: "places",
@@ -1869,6 +1873,8 @@ function filterBar(hidden) {
     ["titles", "Titles", (f.titles || []).length ? some(readable(f.titles)) : "any title", (f.titles || []).join("\n")],
     (f.exclude_titles || []).length
       ? ["exclude", "Not", some(readable(f.exclude_titles), 4), f.exclude_titles.join("\n")] : null,
+    (f.exclude_text || []).length
+      ? ["exclude_text", "Not in text", some(readable(f.exclude_text), 3), f.exclude_text.join("\n")] : null,
     ["places", "Places", places.length ? some(places, 4) : "anywhere", places.join("\n")],
     ["pay", "Pay", pay],
     ["age", "Posted", f.max_age_days ? `within ${f.max_age_days} days` : "any time"],
@@ -1887,7 +1893,7 @@ function filterBar(hidden) {
     const again = pop && pop.dataset.which === which;
     close();
     if (again) return;
-    const group = which === "exclude" ? "titles" : which;
+    const group = which === "exclude" || which === "exclude_text" ? "titles" : which;
     const groups = group === "all" ? Object.keys(FILTER_GROUPS) : [group];
     const inp = filterInputs(f), msg = h("span", { class: "msg" });
     const saveBtn = h("button", { class: "btn primary" }, icon("check", 14), "Save");
@@ -1922,7 +1928,7 @@ function filterBar(hidden) {
       pop.style.left = Math.max(0, Math.min(anchor.offsetLeft, bar.clientWidth - pop.offsetWidth)) + "px";
     } else pop.style.left = Math.max(0, bar.clientWidth - pop.offsetWidth) + "px";
     document.addEventListener("pointerdown", outside, true);
-    const first = which === "exclude" ? inp.exclude : pop.querySelector("textarea, input");
+    const first = which === "exclude" ? inp.exclude : which === "exclude_text" ? inp.excludeText : pop.querySelector("textarea, input");
     if (first) first.focus();
   };
   openFilter = which => { bar.scrollIntoView({ block: "nearest" }); open(which); };
@@ -2985,6 +2991,8 @@ function renderSettings() {
     h("div", { class: "fields" },
       field("Job titles", titles, "One per line; a title must contain one."),
       field("Leave out titles with", exclude, "One per line."),
+      field("Leave out postings that mention", inp.excludeText,
+        "One per line, matched in the whole posting; jobs listed without their text still show."),
       field("Places", h("div", { class: "stack" }, locations, country), "“remote”, or a city or state, one per line."),
       field("Leave out departments", departments, "One per line, for boards that list a department."),
       field("Your state", inp.home, "Remote jobs open only in other states are left out."),

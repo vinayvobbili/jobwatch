@@ -168,12 +168,26 @@ def test_rejection_names_the_filter():
     assert {r[0] for _, _, r in cases if r} == set(KINDS)
 
 
+def test_exclude_text_rejects_by_the_description():
+    f = Filters.from_dict({"exclude_text": [r"penetration test\w*|red team", "GPU kernels?"]})
+    red = job(title="Security Engineer", description="Join Initech's red team and run exploits.")
+    assert rejection(red, f) == ("excluded", r"text matches 'penetration test\\w*|red team'")
+    assert reject_reason(job(description="We write GPU kernels at Globex."), f) == "text matches 'GPU kernels?'"
+    assert reject_reason(job(title="Red Team Lead", description=""), f) is not None  # the title counts as text
+    assert reject_reason(job(description="Build APIs at Acme."), f) is None
+
+
+def test_exclude_text_passes_a_job_without_a_description():
+    """A job listed but not read in full has no text to exclude on."""
+    assert reject_reason(job(title="Security Engineer", description=""), Filters(exclude_text=["red team"])) is None
+
+
 def test_unknown_filter_setting_is_an_error():
     with pytest.raises(ValueError, match="min_pay"):
         Filters.from_dict({"min_pay": 1})
 
 
-@pytest.mark.parametrize("key", ["titles", "exclude_titles", "exclude_departments"])
+@pytest.mark.parametrize("key", ["titles", "exclude_titles", "exclude_text", "exclude_departments"])
 def test_a_pattern_that_does_not_compile_is_an_error(key):
     with pytest.raises(ValueError, match=rf"filters\.{key}: '\(staff' isn't a valid pattern"):
         Filters.from_dict({key: ["engineer", "(staff"]})
