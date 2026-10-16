@@ -13,6 +13,7 @@ from pathlib import Path
 from . import linkedin
 from .models import Job
 from .package import Package
+from .score import resume_family
 from .sources import SOURCES, candidate_home
 from .text import parse_salary
 
@@ -485,6 +486,18 @@ class Store:
         """Every stored fit score for this resume, by job key: one query for a whole list of jobs."""
         return {r["key"]: json.loads(r["result"])
                 for r in self.db.execute(f"SELECT key, result FROM scores WHERE resume=? AND {_SCORED}", (resume,))}
+
+    def stale_scores(self, resume: str) -> dict[str, dict]:
+        """Per job key, the newest fit score made for the same resume content and prompts as `resume` by another
+        scorer (see score.resume_family), marked "stale": true. For showing something until the job is scored
+        afresh; never in place of a current score."""
+        family = resume_family(resume)
+        out = {}
+        for r in self.db.execute(f"SELECT key, resume, result FROM scores WHERE resume!=? AND resume LIKE ? "
+                                 f"AND {_SCORED} ORDER BY scored_at", (resume, ":".join(family.split(":")[:2]) + "%")):
+            if resume_family(r["resume"]) == family:
+                out[r["key"]] = {**json.loads(r["result"]), "stale": True}
+        return out
 
     def save_score(self, key: str, resume: str, result: dict):
         with self.db:

@@ -153,6 +153,12 @@ def resume_id(resume: Path, prompts: Mapping[str, str] | None = None) -> str:
     return rid
 
 
+def resume_family(rid: str) -> str:
+    """A resume id without its scorer part: the resume's content and the edited prompts, whoever scored it. Ids
+    made before the scorer part existed are their own family already."""
+    return re.sub(r":scorer-[0-9a-f]{8}", "", rid, count=1)
+
+
 # The prompts shortlist-ai had before they could be edited (0.1.1): shown read-only (see prompt_info).
 _FIXED_PROMPTS = (
     ("resume_system", "shortlist_ai.extract", "RESUME_SYSTEM", "Reads a resume into structured fields."),

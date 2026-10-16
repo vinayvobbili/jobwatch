@@ -513,7 +513,8 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
             if job.key in fits:
                 continue
             why = head
-            if job is not e.job and e.fit:  # its group's score was saved before this posting came in
+            # its group's score was saved before this posting came in
+            if job is not e.job and e.fit and not e.fit.get("stale"):
                 why = ("same_role", f"Same role as another posting here, which scored {e.fit['score']}: press "
                        "Score fit to score this one")
             if why:
@@ -524,7 +525,7 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
 def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str], current: str, stopped: str,
                   line: list[str]) -> tuple[str, str] | None:
     """Why a group's first posting (the one scored for all of them) has no fit score; None when it has one."""
-    if e.fit is not None:
+    if e.fit is not None and not e.fit.get("stale"):
         return None
     if not scorable(e.job):
         return MANY_ROLES
@@ -563,6 +564,12 @@ def _rank(e: Entry):
     return (-fit, -e.relevance, e.job.age_days() if e.job.age_days() is not None else 10_000)
 
 
+def _fits(store: Store, rid: str) -> dict[str, dict]:
+    """The fit scores to list and filter jobs by: the current one, else the last one made by another scorer
+    (marked "stale") until the job is scored afresh, so a changed scorer doesn't make every job look unscored."""
+    return {**store.stale_scores(rid), **store.scores(rid)}
+
+
 def _matching(cfg: Config, store: Store, statuses: tuple[str, ...]) -> tuple[list[Entry], dict[str, int]]:
     """Jobs with these statuses that pass the filters, with stored fit scores for the current resume, and
     how many were filtered out (reason -> count). A job that's (maybe) the same opening as one acted on stays,
@@ -570,7 +577,7 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...]) -> tuple[lis
     rejected: dict[str, int] = {}
     entries = []
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
-    fits = store.scores(rid) if rid else {}
+    fits = _fits(store, rid) if rid else {}
     index = dupes.Index(store)
     for job, record in store.jobs(statuses):
         if reason := reject_reason(job, cfg.filters, fits.get(job.key)):
@@ -608,9 +615,9 @@ def unscored(cfg: Config, store: Store, skip: set[str] = frozenset()) -> list[En
 
 
 def _scorable(e: Entry) -> bool:
-    """Unscored, scorable, and with a posting's text to score (a job from an alert email may have only its
-    title)."""
-    return e.fit is None and scorable(e.job) and bool(e.job.description.strip())
+    """Without a current fit score (a stale one doesn't count), scorable, and with a posting's text to score
+    (a job from an alert email may have only its title)."""
+    return (e.fit is None or bool(e.fit.get("stale"))) and scorable(e.job) and bool(e.job.description.strip())
 
 
 def score_entries(cfg: Config, store: Store, entries: list[Entry],
@@ -666,7 +673,7 @@ def hidden(cfg: Config, store: Store, kind: str = "", limit: int = 100) -> dict:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}")
     by: dict[str, int] = {}
     jobs = []
-    fits = store.scores(resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
+    fits = _fits(store, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
     for job, _ in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
         if r := rejection(job, cfg.filters, fits.get(job.key)):
             by[r[0]] = by.get(r[0], 0) + 1
