@@ -1,10 +1,12 @@
 """A score made by an older scorer stands in (marked stale) until the job is scored afresh: it still hides a poor
 fit and orders Today, but the job stays in the scorer's line."""
 
+from types import SimpleNamespace
+
 import pytest
 import yaml
 
-from jobwatch import config, report, watch
+from jobwatch import config, report, score, watch
 from jobwatch.score import resume_family, resume_id
 from jobwatch.store import Store
 
@@ -34,6 +36,18 @@ def test_resume_family_ignores_the_scorer_part():
     assert resume_family("cv.md:abc123def456:scorer-0a1b2c3d:prompts-ffffffffffff") == \
         resume_family("cv.md:abc123def456:prompts-ffffffffffff") == "cv.md:abc123def456:prompts-ffffffffffff"
     assert resume_family("cv.md:abc123def456") == "cv.md:abc123def456"
+
+
+def test_a_change_to_the_scoring_code_is_another_scorer(tmp_path, monkeypatch):
+    """A weight or cap edited in shortlist-ai's source, with no new version or prompt, still scores afresh."""
+    source = tmp_path / "score.py"
+    monkeypatch.setattr(score.importlib.util, "find_spec",
+                        lambda name: SimpleNamespace(origin=str(source)) if name == "shortlist_ai.score" else None)
+    source.write_text("CAP = 65\n")
+    before = score.scorer_id()
+    assert score.scorer_id() == before
+    source.write_text("CAP = 70\n")
+    assert score.scorer_id() != before
 
 
 def test_a_stale_score_hides_ranks_and_is_marked(env):
