@@ -36,6 +36,15 @@ def test_find(web, capsys):
         "board found" in out
 
 
+def test_hidden_says_what_the_filters_hide(web, watchlist, capsys):
+    run(capsys, "-c", str(watchlist), "fetch")
+    assert run(capsys, "-c", str(watchlist), "hidden").out.startswith("2 job(s) hidden: excluded 1, place 1")
+    out = run(capsys, "-c", str(watchlist), "hidden", "place").out
+    assert "  Acme: Account Executive  (location)  `greenhouse:acme:" in out
+    out = run(capsys, "-c", str(watchlist), "hidden", "excluded", "--limit", "0").out
+    assert out.endswith("...and 1 more (--limit)\n")
+
+
 def test_find_a_board_with_no_roles_listed(capsys, monkeypatch):
     # a link names its board even when the site lists nothing, e.g. one that sends visitors to another careers site
     monkeypatch.setattr(cli.sources, "probe", lambda q: [("icims", "jobs-initech.icims.com", [])])
