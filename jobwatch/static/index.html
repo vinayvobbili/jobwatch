@@ -195,6 +195,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .ring span { width: 52px; height: 52px; border-radius: 50%; background: var(--panel-solid); display: grid;
   place-items: center; font-weight: 800; font-size: 18px; letter-spacing: -.03em; color: var(--rc); }
 .ring.hi { --rc: var(--good); } .ring.mid { --rc: var(--warn); } .ring.lo { --rc: var(--bad); }
+.fitbox.stale { opacity: .6; }
 .fitbox small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 5px; white-space: nowrap; }
 .know { color: var(--good); font-size: 13.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .know a { color: var(--muted); text-decoration: none; }
@@ -935,9 +936,10 @@ function fitClass(score) { return score >= 75 ? "hi" : score >= 50 ? "mid" : "lo
 function fitBox(fit) {
   if (!fit) return null;
   const s = Math.round(fit.score);
-  return h("div", { class: "fitbox", title: `Fit ${s}/100` },
+  return h("div", { class: "fitbox" + (fit.stale ? " stale" : ""),
+                    title: `Fit ${s}/100` + (fit.stale ? " (old score, rescoring)" : "") },
     h("div", { class: `ring ${fitClass(s)}`, style: `--p:${s}` }, h("span", {}, s)),
-    h("small", {}, `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`));
+    h("small", {}, fit.stale ? "old score, rescoring" : `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`));
 }
 // In a job's details, where the ring would be: why there's no score yet (no posting text, still in line, ...).
 function noFitBox(job) {
@@ -1095,7 +1097,7 @@ function postingButton(job, done) {
 }
 
 function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
-  if (job.fit) return null;
+  if (job.fit && !job.fit.stale) return null;
   const redraw = j => document.getElementById("job-" + j.key).replaceWith(card(j));
   if (job.unscored?.code === "no_text")
     return [postingButton(job, r => {
@@ -1164,7 +1166,7 @@ async function openDetails(key) {
   } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
 }
 function detailsScore(j) {
-  if (j.fit) return null;
+  if (j.fit && !j.fit.stale) return null;
   if (j.unscored?.code === "no_text" && j.manual) return [postingButton(j, () => openDetails(j.key)), unscoredNote(j)];
   if (!j.can_score || NO_SCORE_BUTTON.includes(j.unscored?.code)) return unscoredNote(j);
   const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");

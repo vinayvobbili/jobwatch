@@ -70,7 +70,8 @@ def _line(e: Entry) -> list[str]:
                    + (f": {'; '.join(places[:4])}" if places else ""))
     if e.fit:
         f = e.fit
-        out.append(f"**Fit {f['score']:.0f}/100**, must-haves {f['must_haves_met']}/{f['must_haves_total']}. "
+        old = " (old score, rescoring)" if f.get("stale") else ""
+        out.append(f"**Fit {f['score']:.0f}/100**{old}, must-haves {f['must_haves_met']}/{f['must_haves_total']}. "
                    + (f"Gaps: {'; '.join(f['gaps'])}" if f["gaps"] else "No must-have gaps."))
     elif not scorable(j):
         out.append(f"{MANY_ROLES[1]}.")
