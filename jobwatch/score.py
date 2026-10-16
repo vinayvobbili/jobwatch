@@ -12,6 +12,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import importlib
+import importlib.metadata
 import json
 import re
 import sys
@@ -128,11 +129,25 @@ def turn(backend: str, background: bool = False):
     return LOCAL.background() if background else LOCAL.foreground()
 
 
+def scorer_id() -> str:
+    """Which scorer made a score: a short hash of shortlist-ai's version and its built-in prompt texts, so a
+    shortlist-ai whose own prompts or scoring changed (a new release, or a prompt edited in its source) scores
+    afresh instead of keeping scores made by the old one. Edited prompts (scoring.prompts) aren't in it: they
+    have their own part of the key (see resume_id)."""
+    try:
+        version = importlib.metadata.version("shortlist-ai")
+    except importlib.metadata.PackageNotFoundError:
+        version = ""
+    built_in = {p["name"]: p["default"] for p in prompt_info()["prompts"]}
+    return hashlib.sha256(json.dumps([version, built_in], sort_keys=True).encode()).hexdigest()[:8]
+
+
 def resume_id(resume: Path, prompts: Mapping[str, str] | None = None) -> str:
-    """Scores are tied to the resume's content and to any edited prompts (scoring.prompts), so an edited resume
-    or prompt is scored afresh. With no prompt edited the key is the resume's alone, as before prompts could be
-    edited: putting the prompts back brings back the scores made with them."""
-    rid = f"{resume.name}:{hashlib.sha256(resume.read_bytes()).hexdigest()[:12]}"
+    """Scores are tied to the resume's content, to the scorer that made them (scorer_id: shortlist-ai's version
+    and built-in prompts) and to any edited prompts (scoring.prompts), so an edited resume or prompt, or a
+    changed scorer, is scored afresh. With no prompt edited there's no prompts part: putting the prompts back
+    brings back the scores made with them."""
+    rid = f"{resume.name}:{hashlib.sha256(resume.read_bytes()).hexdigest()[:12]}:scorer-{scorer_id()}"
     if prompts:
         rid += ":prompts-" + hashlib.sha256(json.dumps(dict(prompts), sort_keys=True).encode()).hexdigest()[:12]
     return rid
