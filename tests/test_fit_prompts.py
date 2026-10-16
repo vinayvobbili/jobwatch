@@ -105,6 +105,20 @@ def _with_prompts(path, prompts):
     path.write_text(yaml.safe_dump({**raw, "scoring": {"backend": "local", "prompts": prompts}}))
 
 
+def test_a_changed_built_in_prompt_or_version_scores_afresh(tmp_path, monkeypatch):
+    """The key covers shortlist-ai's own prompts and version, not only the edited ones."""
+    cv = tmp_path / "cv.md"
+    cv.write_text("Python")
+    before = resume_id(cv)
+    assert resume_id(cv) == before
+    monkeypatch.setattr(score, "prompt_info", lambda edited=None: {"prompts": [{"name": "score_system",
+                                                                              "default": "A brand new prompt."}]})
+    assert resume_id(cv) != before
+    changed = resume_id(cv)
+    monkeypatch.setattr(score.importlib.metadata, "version", lambda name: "99.0")
+    assert resume_id(cv) != changed
+
+
 def test_an_edited_prompt_is_part_of_what_a_score_is_stored_under(tmp_path):
     cv = tmp_path / "cv.md"
     cv.write_text("Dana Acme")
