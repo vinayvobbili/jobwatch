@@ -195,6 +195,20 @@ def test_a_filter_change_shows_at_once(app, watchlist, web):
     assert yaml.safe_load(watchlist.read_text())["filters"]["exclude_titles"] == ["contract"]  # the rest is kept
 
 
+def test_exclude_text_is_saved_checked_and_reported_like_excluded_titles(app, web):
+    """filters.exclude_text hides a job by its description, counted and listed with the excluded titles."""
+    app.post_fetch({})
+    before = app.get_hidden({"kind": ["excluded"], "limit": ["50"]})
+    with pytest.raises(ValueError, match=r"filters\.exclude_text: '\(red' isn't a valid pattern"):
+        app.post_settings({"filters": {**app.get_settings({})["filters"], "exclude_text": ["(red"]}})
+    app.post_settings({"filters": {**app.get_settings({})["filters"], "exclude_text": ["python"]}})
+    after = app.get_hidden({"kind": ["excluded"], "limit": ["50"]})
+    assert after["total"] > before["total"]
+    assert {j["why"] for j in after["jobs"]} - {j["why"] for j in before["jobs"]} == {"text matches 'python'"}
+    assert app.get_settings({})["filters"]["exclude_text"] == ["python"]
+    assert after["total"] == sum(app.get_digest({})["rejected"].values())
+
+
 def test_an_unknown_source_breaks_only_its_board(app, watchlist, web):
     """A board from a source this version doesn't know (a newer jobwatch's) doesn't take every page down:
     Settings shows it as an error so it can be removed, and checking for jobs skips it."""

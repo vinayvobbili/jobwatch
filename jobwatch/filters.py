@@ -23,6 +23,10 @@ from .text import (
 class Filters:
     titles: list[str] = field(default_factory=list)          # regexes; the title must match one (none: any title)
     exclude_titles: list[str] = field(default_factory=list)  # regexes; a match rejects the job
+    # Regexes on the posting's text (title and description); a match rejects the job: kinds of work you never
+    # want ("penetration test\w*|red team"). Only text that's there can exclude: a job listed but not read in
+    # full has an empty description, so it passes (its title still counts).
+    exclude_text: list[str] = field(default_factory=list)
     locations: list[str] = field(default_factory=list)       # "remote", or text to find in a location (none: anywhere)
     remote_country: str = "US"                               # where a remote job must be open: "US" or "any"
     # The US state the person lives in ("CO" or "Colorado"): a remote job open only in some states is left
@@ -47,7 +51,7 @@ class Filters:
         if not isinstance(d.get("flags") or {}, dict):
             raise ValueError("filters.flags maps a pattern to why it matters, e.g. {'TS/SCI': clearance}")
         # A pattern that doesn't compile ("c++") is refused when saved, rather than breaking every digest later.
-        for key in ("titles", "exclude_titles", "exclude_departments", "flags"):
+        for key in ("titles", "exclude_titles", "exclude_text", "exclude_departments", "flags"):
             for p in d.get(key) or []:
                 try:
                     re.compile(p)
@@ -123,13 +127,16 @@ KINDS = ("title", "excluded", "department", "place", "pay", "age", "fit")
 
 def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] | None:
     """(which filter, why) for a job that fails the filters, or None if it passes. The filter is one of KINDS:
-    ("title", "title"), ("excluded", "title matches 'manager'"), ("place", "location"),
-    ("place", "remote only in CA, NV"), ("pay", "pay $120K–$160K"), ("age", "posted 45 days ago"),
+    ("title", "title"), ("excluded", "title matches 'manager'"),
+    ("excluded", "text matches 'red team'"), ("place", "location"), ("place", "remote only in CA, NV"),
+    ("pay", "pay $120K–$160K"), ("age", "posted 45 days ago"),
     ("fit", "fit 55/100"). `fit` is the job's stored fit score; a job without one passes min_fit."""
     if f.titles and not _any(f.titles, job.title):
         return "title", "title"
     if p := _any(f.exclude_titles, job.title):
         return "excluded", f"title matches {p!r}"
+    if f.exclude_text and (p := _any(f.exclude_text, f"{job.title}\n{job.description}")):
+        return "excluded", f"text matches {p!r}"
     if job.department and (p := _any(f.exclude_departments, job.department)):
         return "department", f"department matches {p!r}"
     if f.locations:
