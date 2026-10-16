@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -571,7 +572,8 @@ def get_company(
     cfg, store = _open()
     try:
         if not (v := company.view(cfg, store, name)):
-            raise ValueError(f"no tracked job is at a company matching {name!r}")
+            # a ToolError, so the model reads the message: any other exception's text stays on the server
+            raise ToolError(f"no tracked job is at a company matching {name!r}")
         return v
     finally:
         store.close()
