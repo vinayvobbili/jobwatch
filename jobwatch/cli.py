@@ -33,6 +33,7 @@ from . import (
     suggest,
 )
 from .config import ConfigError
+from .filters import KINDS
 from .score import ScoringUnavailable, prompt_info, resume_id
 from .store import STAGES, STATUSES, Store
 from .watch import (
@@ -40,6 +41,7 @@ from .watch import (
     build_digest,
     check_postings,
     fetch_all,
+    hidden,
     load_contacts,
     pace,
     queue,
@@ -281,6 +283,19 @@ def cmd_add(args, cfg, store):
 def cmd_dupes(args, cfg, store):
     """Pairs of tracked jobs that are (maybe) the same opening, where you acted on one: read-only."""
     print(dupes.pairs_text(dupes.pairs(store, strong_only=args.strong)))
+
+
+def cmd_hidden(args, cfg, store):
+    """What the filters hide from Today, by filter; with a filter's name, its jobs and why: read-only."""
+    h = hidden(cfg, store, args.kind or "", args.limit)
+    if args.format == "json":
+        print(json.dumps(h, indent=2, ensure_ascii=False))
+        return
+    print(f"{h['total']} job(s) hidden: " + (", ".join(f"{k} {n}" for k, n in h["by"].items()) or "none"))
+    for j in h["jobs"]:
+        print(f"  {j['company']}: {j['title']}  ({j['why']})  `{j['key']}`")
+    if h["more"]:
+        print(f"  ...and {h['more']} more (--limit)")
 
 
 def cmd_company(args, cfg, store):
@@ -795,6 +810,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name", nargs="+", help="the company's name, part of it, or its domain (acme.com)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_company, read_only=True)
+
+    p = sub.add_parser("hidden", help="what the filters hide from Today, by filter; name one (e.g. excluded) to "
+                       "list its jobs and why. Read-only")
+    p.add_argument("kind", nargs="?", choices=KINDS, help="the filter whose jobs to list")
+    p.add_argument("--limit", type=int, default=100, help="how many jobs to list (default 100)")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_hidden, read_only=True)
     return ap
 
 

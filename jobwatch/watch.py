@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from . import dupes, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts
-from .filters import Filters, red_flags, reject_reason, relevance, search_terms, title_ok
+from .filters import KINDS, Filters, red_flags, reject_reason, rejection, relevance, search_terms, title_ok
 from .models import Job
 from .score import brief, resume_id, score_jobs
 from .store import MANUAL, STAGES, Store
@@ -657,6 +657,26 @@ def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_to
     digest.total = len(grouped)
     digest.entries = grouped[:limit] if limit else grouped
     return digest
+
+
+def hidden(cfg: Config, store: Store, kind: str = "", limit: int = 100) -> dict:
+    """What the filters hide from Today: how many, by which filter (filters.KINDS), and with `kind`, those
+    jobs, newest first (`limit` of them)."""
+    if kind and kind not in KINDS:
+        raise ValueError(f"kind must be one of {', '.join(KINDS)}")
+    by: dict[str, int] = {}
+    jobs = []
+    fits = store.scores(resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
+    for job, _ in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
+        if r := rejection(job, cfg.filters, fits.get(job.key)):
+            by[r[0]] = by.get(r[0], 0) + 1
+            if r[0] == kind:
+                jobs.append({"key": job.key, "title": job.title, "company": job.display_company,
+                             "url": job.url, "locations": job.places, "pay": job.pay(),
+                             "age_days": job.age_days(), "why": r[1]})
+    jobs.sort(key=lambda j: j["age_days"] if j["age_days"] is not None else 10_000)
+    return {"total": sum(by.values()), "by": {k: by[k] for k in KINDS if k in by}, "kind": kind or None,
+            "jobs": jobs[:limit], "more": max(0, len(jobs) - limit)}
 
 
 def _group(entries: list[Entry]) -> list[Entry]:

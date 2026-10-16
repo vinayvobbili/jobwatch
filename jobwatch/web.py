@@ -42,7 +42,7 @@ from . import (
     suggest,
 )
 from .config import ConfigError
-from .filters import KINDS, rejection
+from .filters import KINDS
 from .package import Package
 from .score import LOCAL, ScoringUnavailable, prompt_info, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, STATUSES, Store
@@ -50,6 +50,7 @@ from .watch import (
     MANY_ROLES,
     build_digest,
     fetch_all,
+    hidden,
     load_contacts,
     pace,
     queue,
@@ -516,22 +517,7 @@ class App:
         if kind and kind not in KINDS:
             raise ApiError(f"kind must be one of {', '.join(KINDS)}")
         limit = int((q.get("limit") or ["100"])[0])
-
-        def run(cfg, store):
-            by: dict[str, int] = {}
-            jobs = []
-            fits = store.scores(resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
-            for job, _ in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
-                if r := rejection(job, cfg.filters, fits.get(job.key)):
-                    by[r[0]] = by.get(r[0], 0) + 1
-                    if r[0] == kind:
-                        jobs.append({"key": job.key, "title": job.title, "company": job.display_company,
-                                     "url": job.url, "locations": job.places, "pay": job.pay(),
-                                     "age_days": job.age_days(), "why": r[1]})
-            jobs.sort(key=lambda j: j["age_days"] if j["age_days"] is not None else 10_000)
-            return {"total": sum(by.values()), "by": {k: by[k] for k in KINDS if k in by}, "kind": kind or None,
-                    "jobs": jobs[:limit], "more": max(0, len(jobs) - limit)}
-        return self._with_store(run)
+        return self._with_store(lambda cfg, store: hidden(cfg, store, kind, limit))
 
     def get_pace(self, q) -> dict:
         """Applications sent today against the watchlist's pace (see watch.pace); null when it's off."""
