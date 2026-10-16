@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 from . import contacts as people
 from . import dupes, report, suggest
 from .config import Config
+from .filters import title_ok
 from .models import Job
 from .package import Package
 from .store import ENDED, STAGES, Store
@@ -136,8 +137,9 @@ def view(cfg: Config, store: Store, text: str) -> dict | None:
     """Everything tracked at the company a name or domain matches best (None when none matches): each job with
     its status and dates, next step, follow-up, note, whether a package was saved, and a duplicate warning;
     people you know there; and whether its board is watched. Roles that closed without being acted on are only
-    counted (closed_unacted), and open ones you haven't acted on are listed up to OPEN_SHOWN (more_open). Other
-    companies the name matched are in `also`."""
+    counted (closed_unacted), open ones you haven't acted on whose title your title filters leave out are only
+    counted too (off_title: a big board such as a hospital chain's lists nurses), and the rest are listed up to
+    OPEN_SHOWN (more_open). Other companies the name matched are in `also`."""
     found = search(store, text, limit=6)
     if not found:
         return None
@@ -147,15 +149,19 @@ def view(cfg: Config, store: Store, text: str) -> dict | None:
         if dupes.company_key(job.display_company) == key:
             mine.append((job, rec))
     mine.sort(key=lambda r: _order(r[1]))  # stable: newest first within each
-    listed = [r for r in mine if _order(r[1]) < 4 or not r[1].get("closed")]
-    shown = [r for r in listed if _order(r[1]) < 4] + [r for r in listed if _order(r[1]) == 4][:OPEN_SHOWN]
+    acted = [r for r in mine if _order(r[1]) < 4]
+    unacted = [r for r in mine if _order(r[1]) == 4 and not r[1].get("closed")]
+    open_ = [r for r in unacted if title_ok(r[0].title, cfg.filters)]
+    listed = acted + open_
+    shown = acted + open_[:OPEN_SHOWN]
     jobs = [j for j, _ in mine]
     known = load_contacts(cfg)
     names = {best["name"], *(j.company for j in jobs)}
     counts = Counter(rec["status"] for _, rec in listed)
     return {"company": best["name"], "query": text.strip(), "key": key,
             "counts": {s: counts[s] for s in counts}, "jobs": [_job(store, j, rec, index) for j, rec in shown],
-            "closed_unacted": len(mine) - len(listed), "more_open": len(listed) - len(shown),
+            "closed_unacted": len(mine) - len(acted) - len(unacted), "more_open": len(listed) - len(shown),
+            "off_title": len(unacted) - len(open_),
             "contacts": known.at(*names) if known else [],
             "find_referral": people.linkedin_search(best["name"]), "watch": _watch(cfg, store, best["name"], jobs),
             "also": [f["name"] for f in found[1:]]}
@@ -212,6 +218,9 @@ def text(v: dict | None, query: str = "") -> str:
         out += _line(j)
     if v["more_open"]:
         out.append(f"  and {v['more_open']} more open roles you haven't acted on: `jobwatch list --status new`")
+    if v["off_title"]:
+        out.append(f"  {v['off_title']} open role{'s' * (v['off_title'] != 1)} your title filters leave out "
+                   "not listed")
     if v["closed_unacted"]:
         out.append(f"  {v['closed_unacted']} closed posting{'s' * (v['closed_unacted'] != 1)} you never acted on "
                    "not listed")

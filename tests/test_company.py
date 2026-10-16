@@ -113,6 +113,20 @@ def test_open_roles_not_acted_on_are_capped(cfg, store, monkeypatch):
     assert len(v["jobs"]) == 2 and v["more_open"] == 3
 
 
+def test_open_roles_the_title_filters_leave_out_are_only_counted(watchlist, store):
+    """A big board (a pharmacy chain's) lists nurses next to engineers: only the titles you'd look at show, but a
+    role you acted on shows whatever its title."""
+    watchlist.write_text(watchlist.read_text().replace("filters:\n", "filters:\n  titles: [engineer]\n"))
+    cfg = config.load(watchlist)
+    store.sync("lever", "globex", [board_job("g1", "Staff Engineer"), board_job("g2", "Registered Nurse"),
+                                   board_job("g3", "Case Manager Nurse"), board_job("g4", "Store Manager")])
+    store.set_status(["lever:globex:g4"], "skipped")
+    v = company.view(cfg, store, "globex")
+    assert sorted(j["title"] for j in v["jobs"]) == ["Staff Engineer", "Store Manager"]
+    assert v["off_title"] == 2 and v["more_open"] == 0 and v["counts"] == {"new": 1, "skipped": 1}
+    assert "2 open roles your title filters leave out not listed" in company.text(v, "globex")
+
+
 def test_an_unwatched_board_says_what_to_add(cfg, store):
     store.sync("greenhouse", "umbrella", [board_job("u1", "Analyst", "Umbrella", source="greenhouse",
                                                     board="umbrella")])

@@ -1,4 +1,5 @@
 import json
+from datetime import date, timedelta
 
 import pytest
 import yaml
@@ -151,7 +152,8 @@ def test_api_errors_are_json(server):
 def test_track_applications(app, web):
     app.post_fetch({})
     app.post_mark({"keys": ["c1"], "status": "applied"})
-    added = app.post_add({"company": "Umbrella", "title": "Principal Engineer", "applied_at": "2026-09-01",
+    applied = (date.today() - timedelta(days=10)).isoformat()  # recent: not gone quiet yet
+    added = app.post_add({"company": "Umbrella", "title": "Principal Engineer", "applied_at": applied,
                           "next_step": "check in with the recruiter", "follow_up": "2000-01-01"})
     assert added == {"key": "manual:umbrella:principal-engineer", "company": "Umbrella",
                      "title": "Principal Engineer", "read": False}
