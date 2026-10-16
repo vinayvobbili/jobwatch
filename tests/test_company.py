@@ -205,12 +205,25 @@ def test_company_command(watchlist, tracked, capsys):
 
 def test_get_company_tool(watchlist, tracked, monkeypatch):
     mcp = pytest.importorskip("jobwatch.mcp_server")
+    ToolError = pytest.importorskip("mcp.server.mcpserver.exceptions").ToolError
     monkeypatch.setenv("JOBWATCH_CONFIG", str(watchlist))
     v = mcp.get_company("acme")
     assert v["company"] == "Acme Robotics" and v["jobs"][0]["status"] == "interviewing"
-    with pytest.raises(ValueError, match="no tracked job"):
+    with pytest.raises(ToolError, match="no tracked job"):
         mcp.get_company("nobody")
     assert "get_company" in {t.name for t in asyncio.run(mcp.server.list_tools())}
+
+
+def test_get_company_says_why_when_no_company_matches(watchlist, tracked, monkeypatch):
+    """The server hands a client the text of a ToolError only: any other exception reached it as a bare "Error
+    executing tool get_company"."""
+    mcp = pytest.importorskip("jobwatch.mcp_server")
+    errors = pytest.importorskip("mcp.server.mcpserver.exceptions")
+    monkeypatch.setenv("JOBWATCH_CONFIG", str(watchlist))
+    with pytest.raises(errors.ToolError) as e:
+        asyncio.run(mcp.server.call_tool("get_company", {"name": "Nobody"}))
+    assert str(e.value) == "Error executing tool get_company: no tracked job is at a company matching 'Nobody'"
+    assert not isinstance(e.value, errors.UnexpectedToolError)
 
 
 def test_company_endpoints(server, watchlist, tracked):
