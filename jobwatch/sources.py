@@ -1009,6 +1009,7 @@ _ICIMS_CARD = re.compile(r'<li class="iCIMS_JobCardItem">(.*?)</li>', re.S)
 _ICIMS_LINK = re.compile(r'<a href="([^"]*/jobs/(\d+)/[^"]*?/job)[^"]*"[^>]*>.*?<h3[^>]*>(.*?)</h3>', re.S)
 _ICIMS_PLACE = re.compile(r'Job Locations</span>\s*<span[^>]*>(.*?)</span>', re.S)
 _ICIMS_PAGES = re.compile(r"Page \d+ of (\d+)")
+_ICIMS_SITE = re.compile(r"<title>\s*Job Listings at (.+?)\s*</title>", re.S)
 
 
 def _icims_host(board: str) -> str:
@@ -1048,13 +1049,16 @@ def _icims_place(text: str) -> list[str]:
     return split_locations(*places)
 
 
-def _icims_listed(host: str, get, cap: int) -> list[tuple[str, str, str, list[str]]]:
-    """(id, title, link, places) of every role the site lists, up to cap. Pages are asked for one at a time until
-    the last the first one names (or one with no roles, if it doesn't say how many there are)."""
+def _icims_listed(host: str, get, cap: int) -> tuple[list[tuple[str, str, str, list[str]]], str]:
+    """(id, title, link, places) of every role the site lists, up to cap, and the company its pages are titled
+    with ("Job Listings at Initech"), "" if they aren't. Pages are asked for one at a time until the last the first
+    one names (or one with no roles, if it doesn't say how many there are)."""
     found: dict[str, tuple[str, str, str, list[str]]] = {}
-    page, pages = 0, 1
+    page, pages, name = 0, 1, ""
     while len(found) < cap and page < pages:
         text = get(ICIMS_LIST.format(host=host, page=page)) or ""
+        if not name and (site := _ICIMS_SITE.search(text)):
+            name = html.unescape(site.group(1))
         if m := _ICIMS_PAGES.search(text):
             pages = int(m.group(1))
         else:
@@ -1069,26 +1073,27 @@ def _icims_listed(host: str, get, cap: int) -> list[tuple[str, str, str, list[st
         if len(found) == before:
             break
         page += 1
-    return list(found.values())[:cap]
+    return list(found.values())[:cap], name
 
 
 def fetch_icims(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
     """Every role on an iCIMS careers site (up to `cap`), reading in full the ones whose titles pass `wanted` and
     aren't `known`. The site's list has no title search of its own, so `search` isn't used."""
     get = get or get_text
-    host = _icims_host(board)
+    listed, name = _icims_listed(_icims_host(board), get, cap)
+    name = name or _icims_company(board)
 
     def job(item) -> Job:
         pid, title, link, places = item
         key = f"icims:{board}:{pid}"
         if known and key in known and known[key].description:
             return known[key]
-        j = Job(source="icims", company=board, id=pid, title=title, url=link, company_name=_icims_company(board),
+        j = Job(source="icims", company=board, id=pid, title=title, url=link, company_name=name,
                 locations=places, remote=True if any(is_remote(p) for p in places) else None)
         if wanted and not wanted(j.title):
             return j
         return _unread_if_refused(lambda: _icims_read(j, get), j)
-    return _details(_icims_listed(host, get, cap), job, ICIMS_WORKERS)
+    return _details(listed, job, ICIMS_WORKERS)
 
 
 def _icims_read(j: Job, get) -> Job:

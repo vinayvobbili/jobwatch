@@ -40,8 +40,8 @@ def test_a_site_is_listed_page_by_page_and_wanted_roles_read():
     assert fde.posted.date().isoformat() == "2026-08-12"
     assert (fde.salary_min, fde.salary_max, fde.currency) == (150_000, 190_000, "USD")
     assert "Terraform" in fde.description and "Build and run the widget platform." in fde.description
-    ae = jobs["1002"]  # listed, not read: its place and title are the list's
-    assert ae.description == "" and ae.company_name == "initech" and ae.remote is None
+    ae = jobs["1002"]  # listed, not read: its place, title and company (the list page's title) are the list's
+    assert ae.description == "" and ae.company_name == "Initech" and ae.remote is None
     assert ae.locations == ["Boston, MA, US", "Austin, TX, US"]
     assert jobs["1003"].title == "Data Analyst & Reporting" and jobs["1003"].locations == ["Bengaluru, KA, IN"]
     assert web.calls == [f"{LIST}0", f"{LIST}1", f"{JOB}1001/job?in_iframe=1"]  # no page 2: the site said 2
@@ -105,9 +105,11 @@ def test_an_icims_link_is_read_from_its_page():
 def test_boards_are_careers_hosts_by_slug_or_by_host():
     assert sources.careers_url("icims", "initech") == f"https://{HOST}/jobs/search"
     assert sources.careers_url("icims", "jobs-globex.icims.com") == "https://jobs-globex.icims.com/jobs/search"
-    web = FakeWeb({"https://jobs-globex.icims.com/jobs/search?ss=1&in_iframe=1&pr=0": LIST_0,
+    untitled = LIST_0.replace("<title>Job Listings at Initech</title>", "")
+    web = FakeWeb({"https://jobs-globex.icims.com/jobs/search?ss=1&in_iframe=1&pr=0": untitled,
                    "https://jobs-globex.icims.com/jobs/search?ss=1&in_iframe=1&pr=1": LIST_1})
     assert len(sources.fetch("icims", "jobs-globex.icims.com", web, wanted=lambda t: False)) == 3
+    # pages with no site title: the company is the host's name
     assert sources.fetch("icims", "jobs-globex.icims.com", web, wanted=lambda t: False)[0].company_name == "globex"
     with pytest.raises(sources.SourceError):
         sources.fetch("icims", "globex.example.com", web)
