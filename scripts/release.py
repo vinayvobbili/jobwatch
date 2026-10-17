@@ -3,6 +3,7 @@
 
     scripts/release.py 0.2.3 -m "what's in it"      # commits "<name> 0.2.3 — what's in it", tags v0.2.3
     scripts/release.py 0.2.3 --dry-run              # shows the bump and stops
+    scripts/release.py 1.4.0 --root ../other-pkg    # releases another project with this copy
 
 The tag triggers the Release workflow (PyPI). The version is bumped in pyproject.toml, the package's
 ``__version__`` and, when there is one, server.json (the MCP Registry entry), whose own workflow runs after
@@ -39,37 +40,67 @@ def project_name(root: Path) -> str:
     return m.group(1)
 
 
-def current_version(root: Path) -> str:
+LITERAL = re.compile(r'^__version__ = "([^"]+)"', re.M)  # a version written out, not read from metadata
+
+
+def static_version(root: Path) -> str | None:
     m = re.search(r'^version = "([^"]+)"', (root / "pyproject.toml").read_text(), re.M)
+    return m.group(1) if m else None
+
+
+def hatch_version_file(root: Path) -> Path | None:
+    """The file a Hatch project reads its version from (`[tool.hatch.version] path = ...`), if it does."""
+    m = re.search(r'^\[tool\.hatch\.version\]\s*\npath = "([^"]+)"', (root / "pyproject.toml").read_text(), re.M)
+    return root / m.group(1) if m else None
+
+
+def current_version(root: Path) -> str:
+    """pyproject.toml's version, or, when it's dynamic, the one in the file Hatch reads it from."""
+    if v := static_version(root):
+        return v
+    path = hatch_version_file(root)
+    m = LITERAL.search(path.read_text()) if path and path.exists() else None
     if not m:
-        raise SystemExit("release: no version in pyproject.toml")
+        raise SystemExit("release: no version in pyproject.toml, nor a [tool.hatch.version] file declaring one")
     return m.group(1)
 
 
 def version_files(root: Path, name: str) -> list[Path]:
-    """pyproject.toml, the package's __init__.py (flat or src layout), and server.json if there is one."""
-    files = [root / "pyproject.toml"]
+    """Every file that writes the version out: pyproject.toml (unless it's dynamic), the file Hatch reads it
+    from, the package's __init__.py (flat or src layout), and server.json if there is one. An __init__.py that
+    reads its version from the installed metadata has nothing to bump and is left alone."""
+    files = [root / "pyproject.toml"] if static_version(root) else []
     package = name.replace("-", "_")
-    for init in (root / package / "__init__.py", root / "src" / package / "__init__.py"):
-        if init.exists():
+    for init in (hatch_version_file(root), root / package / "__init__.py", root / "src" / package / "__init__.py"):
+        if init and init.exists() and init not in files and LITERAL.search(init.read_text()):
             files.append(init)
-            break
     if (root / "server.json").exists():
         files.append(root / "server.json")
     return files
 
 
 def bump(text: str, path: Path, old: str, new: str) -> str:
-    """Replace ``old`` with ``new`` where the file declares its version; fail if nothing changed."""
+    """Replace ``old`` with ``new`` where the file declares its version; fail if nothing changed. An
+    ``__version__`` that had drifted from the release version is set to the new one too (see `drift`)."""
     if path.name == "pyproject.toml":
         pattern, repl = rf'^version = "{re.escape(old)}"', f'version = "{new}"'
     elif path.name == "server.json":
         pattern, repl = rf'"version": "{re.escape(old)}"', f'"version": "{new}"'
     else:
-        pattern, repl = rf'^__version__ = "{re.escape(old)}"', f'__version__ = "{new}"'
+        pattern, repl = LITERAL.pattern, f'__version__ = "{new}"'
     out, n = re.subn(pattern, repl, text, flags=re.M)
     if not n:
         raise SystemExit(f"release: {path.name} doesn't declare version {old}")
+    return out
+
+
+def drift(files: list[Path], old: str) -> list[str]:
+    """Files whose ``__version__`` says something other than the current release, which this release fixes."""
+    out = []
+    for f in files:
+        m = LITERAL.search(f.read_text()) if f.suffix == ".py" else None
+        if m and m.group(1) != old:
+            out.append(f"{f.name} said {m.group(1)}, not {old}")
     return out
 
 
@@ -90,8 +121,11 @@ def preflight(root: Path, tag: str) -> None:
 
 
 def run_checks(root: Path) -> None:
-    check = root / "scripts" / "check"
-    cmd = [str(check)] if check.exists() else [sys.executable, "-m", "pytest", "-q"]
+    """The project's scripts/check, or else its tests with its own virtualenv's Python (another project's
+    dependencies aren't installed in the Python running this script)."""
+    check, venv = root / "scripts" / "check", root / ".venv" / "bin" / "python"
+    python = str(venv) if venv.exists() else sys.executable
+    cmd = [str(check)] if check.exists() else [python, "-m", "pytest", "-q"]
     print("== checks:", " ".join(cmd))
     subprocess.run(cmd, cwd=root, check=True)
 
@@ -156,35 +190,40 @@ def main(argv=None) -> int:
     ap.add_argument("--body", default="", help="extra commit message paragraph(s), e.g. trailers")
     ap.add_argument("--dry-run", action="store_true", help="show the bump, change nothing")
     ap.add_argument("--no-wait", action="store_true", help="push and exit without polling PyPI")
+    ap.add_argument("--root", type=Path, default=None,
+                    help="the project to release (default: the one this script is in)")
     args = ap.parse_args(argv)
+    root = (args.root or ROOT).expanduser().resolve()
 
     if not VERSION.match(args.version):
         raise SystemExit("release: give a version like 1.2.3")
-    name, old, tag = project_name(ROOT), current_version(ROOT), f"v{args.version}"
+    name, old, tag = project_name(root), current_version(root), f"v{args.version}"
     if tuple(map(int, args.version.split("."))) <= tuple(map(int, old.split("."))):
         raise SystemExit(f"release: {args.version} isn't newer than {old}")
-    files = version_files(ROOT, name)
+    files = version_files(root, name)
     bumped = {f: bump(f.read_text(), f, old, args.version) for f in files}
-    print(f"{name} {old} -> {args.version}: " + ", ".join(str(f.relative_to(ROOT)) for f in files))
+    for line in drift(files, old):
+        print(f"note: {line}; this release sets it to {args.version}")
+    print(f"{name} {old} -> {args.version}: " + ", ".join(str(f.relative_to(root)) for f in files))
     if args.dry_run:
         return 0
 
-    preflight(ROOT, tag)
+    preflight(root, tag)
     for f, text in bumped.items():
         f.write_text(text)
-    run_checks(ROOT)
+    run_checks(root)
     title = f"{name} {args.version}" + (f" — {args.summary}" if args.summary else "")
     message = title + (f"\n\n{args.body}" if args.body else "")
-    git(ROOT, "commit", "--quiet", "-am", message)
-    git(ROOT, "tag", "-a", tag, "-m", f"{name} {args.version}")
-    subprocess.run(["git", "push", "--quiet", "origin", "main", tag], cwd=ROOT, check=True)
+    git(root, "commit", "--quiet", "-am", message)
+    git(root, "tag", "-a", tag, "-m", f"{name} {args.version}")
+    subprocess.run(["git", "push", "--quiet", "origin", "main", tag], cwd=root, check=True)
     print(f"Pushed {tag}.")
     if args.no_wait:
         return 0
 
     registry_name = None
-    if (ROOT / "server.json").exists():
-        registry_name = json.loads((ROOT / "server.json").read_text())["name"]
+    if (root / "server.json").exists():
+        registry_name = json.loads((root / "server.json").read_text())["name"]
     print("== waiting for it to publish")
     if wait_for(name, args.version, registry_name):
         print(f"{name} {args.version} is out.")

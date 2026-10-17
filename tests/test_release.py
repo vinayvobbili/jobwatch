@@ -48,6 +48,38 @@ def test_server_json_is_optional(release, tmp_path):
     assert [f.name for f in release.version_files(root, "acme-tool")] == ["pyproject.toml", "__init__.py"]
 
 
+def test_an_init_that_reads_installed_metadata_is_left_alone(release, tmp_path):
+    root = make_project(tmp_path, server=False)
+    (root / "acme_tool" / "__init__.py").write_text(
+        'from importlib.metadata import version\n\n__version__ = version("acme-tool")\n')
+    assert [f.name for f in release.version_files(root, "acme-tool")] == ["pyproject.toml"]
+
+
+def test_a_drifted_init_is_set_to_the_new_version_and_said_so(release, tmp_path):
+    root = make_project(tmp_path, server=False)
+    init = root / "acme_tool" / "__init__.py"
+    init.write_text('__version__ = "1.2.0"\n')
+    assert release.drift(release.version_files(root, "acme-tool"), "1.2.3") == ["__init__.py said 1.2.0, not 1.2.3"]
+    assert release.bump(init.read_text(), init, "1.2.3", "1.3.0") == '__version__ = "1.3.0"\n'
+
+
+def test_a_hatch_dynamic_version_is_read_and_bumped_where_hatch_reads_it(release, tmp_path):
+    # The distribution's name isn't the package's (acme-tool-cli ships `acme`), and pyproject has no version.
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "acme-tool-cli"\ndynamic = ["version"]\n\n'
+                                             '[tool.hatch.version]\npath = "src/acme/__init__.py"\n')
+    pkg = tmp_path / "src" / "acme"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text('__version__ = "0.4.0"\n')
+    assert release.current_version(tmp_path) == "0.4.0"
+    assert release.version_files(tmp_path, "acme-tool-cli") == [pkg / "__init__.py"]
+
+
+def test_no_version_anywhere_stops_the_release(release, tmp_path):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "acme-tool"\ndynamic = ["version"]\n')
+    with pytest.raises(SystemExit, match="no version"):
+        release.current_version(tmp_path)
+
+
 def test_a_file_without_the_old_version_stops_the_release(release, tmp_path):
     f = tmp_path / "pyproject.toml"
     f.write_text('version = "1.2.4"\n')
@@ -65,6 +97,22 @@ def test_dry_run_changes_nothing_and_older_versions_are_refused(release, tmp_pat
     for bad in ("1.2.3", "1.1.9", "1.3"):
         with pytest.raises(SystemExit):
             release.main([bad, "--dry-run"])
+
+
+def test_root_releases_another_project(release, tmp_path, capsys):
+    root = make_project(tmp_path, server=False)
+    assert release.main(["2.0.0", "--dry-run", "--root", str(root)]) == 0
+    assert "acme-tool 1.2.3 -> 2.0.0: pyproject.toml, acme_tool/__init__.py" in capsys.readouterr().out
+
+
+def test_checks_use_the_projects_own_virtualenv(release, tmp_path, monkeypatch):
+    venv = tmp_path / ".venv" / "bin"
+    venv.mkdir(parents=True)
+    (venv / "python").write_text("")
+    ran = []
+    monkeypatch.setattr(release.subprocess, "run", lambda cmd, **kw: ran.append(cmd))
+    release.run_checks(tmp_path)
+    assert ran == [[str(venv / "python"), "-m", "pytest", "-q"]]
 
 
 def test_published_checks_pypi_and_the_registry(release, monkeypatch):
