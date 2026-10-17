@@ -65,7 +65,8 @@ def test_digest_marks_new_jobs_seen_and_queue_flow(app, web):
     app.post_fetch({})
     first = app.get_digest({})
     assert [j["status"] for j in first["jobs"]] == ["new"] * 3
-    assert all(j["where"] in (["remote"], ["onsite"], ["remote", "onsite"], []) for j in first["jobs"])  # Today's "Where"
+    # Today's "Where" control reads this
+    assert all(j["where"] in (["remote"], ["onsite"], ["remote", "onsite"], []) for j in first["jobs"])
     assert {j["status"] for j in app.get_digest({})["jobs"]} == {"shown"}
     app.post_mark({"keys": ["c1"], "status": "queued", "note": "referral first"})
     queued = app.get_queue({})
