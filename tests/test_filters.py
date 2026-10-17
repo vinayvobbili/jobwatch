@@ -39,6 +39,17 @@ def test_places_show_the_remote_flag(locations, remote, shown):
     assert f"Location: {'; '.join(shown)}" in j.to_text()
 
 
+@pytest.mark.parametrize("locations, remote, where", [
+    (["Remote - US"], None, ["remote"]),
+    (["San Francisco, California"], True, ["remote"]),       # the board's remote flag: remote from that city
+    (["Austin, TX"], None, ["onsite"]),
+    (["Austin, TX", "Remote - US"], None, ["remote", "onsite"]),
+    ([], None, []),                                          # no location given: neither, so nothing hides it
+])
+def test_where_a_job_is_worked(locations, remote, where):
+    assert job(locations=locations, remote=remote).where == where
+
+
 @pytest.mark.parametrize("locations, remote, ok", [
     (["Remote (United States)"], None, True),
     (["Remote"], None, True),

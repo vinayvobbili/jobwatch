@@ -2009,8 +2009,19 @@ function paceLine(el, p) {
 }
 
 // all: every matching job, paged, rather than today's picks (the top display.today in the order picked).
-const todayView = { q: "", sort: "fit", company: "", kws: new Set(), page: 1, all: false };
+// where, fit, pay: the quick narrowing (see quickNarrow); "any" and 0 mean off.
+const todayView = { q: "", sort: "fit", company: "", kws: new Set(), where: "any", fit: 0, pay: 0, page: 1, all: false };
 const SORTED = { fit: "best fit first", new: "newest first", pay: "top pay first" };
+
+// Today's quick narrowing, on top of the saved filters: how the job is worked, a lowest fit score, a lowest top of
+// the posted pay. A job with no location, no score yet or no listed pay isn't hidden by that part, the same as the
+// saved filters treat them.
+function quickNarrow(j, v) {
+  const where = j.where || [];  // a server from before `where` sends none
+  return (v.where === "any" || !where.length || where.includes(v.where)) &&
+    (!v.fit || !j.fit || j.fit.score >= v.fit) &&
+    (!v.pay || j.salary_max == null || j.salary_max >= v.pay);
+}
 let todayJobs = [], drawToday = () => {};
 
 async function renderToday() {
@@ -2038,16 +2049,29 @@ async function renderToday() {
       onclick: () => { v.kws.has(k) ? v.kws.delete(k) : v.kws.add(k); drawKws(); drawToday(); } }, k)));
   drawKws();
   const companies = facetList(byCompany, () => v.company, name => { v.company = name; drawToday(); });
-  const clear = () => { v.q = ""; v.company = ""; v.kws.clear(); search.value = ""; drawKws(); companies.redraw(); drawToday(); };
+  const narrow = h("div", {});
+  const drawNarrow = () => fill(narrow,
+    h("div", { class: "hint" }, "Where"),
+    segmented([["any", "Any"], ["remote", "Remote"], ["onsite", "On-site or hybrid"]], v.where, k => { v.where = k; drawToday(); }),
+    h("div", { class: "hint", style: "margin-top:8px", title: "Jobs not scored yet still show" }, "Fit score"),
+    segmented([[0, "Any"], [60, "60+"], [70, "70+"], [80, "80+"]], v.fit, k => { v.fit = k; drawToday(); }),
+    h("div", { class: "hint", style: "margin-top:8px", title: "The top of the posted range; jobs that don't list pay still show" }, "Top of posted pay"),
+    segmented([[0, "Any"], [150000, "$150K+"], [200000, "$200K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,
+      k => { v.pay = k; drawToday(); }));
+  drawNarrow();
+  const clear = () => {
+    Object.assign(v, { q: "", company: "", where: "any", fit: 0, pay: 0 });
+    v.kws.clear(); search.value = ""; drawKws(); drawNarrow(); companies.redraw(); drawToday();
+  };
 
   drawToday = () => {
     const q = v.q.trim().toLowerCase();
     let jobs = todayJobs.filter(j => (!q || `${j.title} ${j.company}`.toLowerCase().includes(q)) &&
-      (!v.company || j.company === v.company) && [...v.kws].every(k => j.keywords.includes(k)));
+      (!v.company || j.company === v.company) && [...v.kws].every(k => j.keywords.includes(k)) && quickNarrow(j, v));
     if (v.sort === "new") jobs = [...jobs].sort((a, b) => (a.age_days ?? 1e4) - (b.age_days ?? 1e4));
     if (v.sort === "pay") jobs = [...jobs].sort((a, b) => (b.salary_max ?? -1) - (a.salary_max ?? -1));
-    const narrowed = v.q || v.company || v.kws.size;
-    // Today's picks: the top few in this order. A search, company or keyword looks through every match.
+    const narrowed = v.q || v.company || v.kws.size || v.where !== "any" || v.fit || v.pay;
+    // Today's picks: the top few in this order. A search, company, keyword or quick narrowing looks through every match.
     const top = d.picks && jobs.length > d.picks;
     if (top && !narrowed && !v.all) {
       fill(showing, `Today's ${d.picks} picks, ${SORTED[v.sort]}, of ${jobs.length} matching jobs`);
@@ -2056,7 +2080,7 @@ async function renderToday() {
         `Show all ${jobs.length} matching jobs`)));
       return;
     }
-    const pg = paged(jobs, v, JSON.stringify([v.q, v.company, [...v.kws], v.sort]), drawToday);
+    const pg = paged(jobs, v, JSON.stringify([v.q, v.company, [...v.kws], v.where, v.fit, v.pay, v.sort]), drawToday);
     const back = top && !narrowed ? h("button", { class: "btn ghost", onclick: () => {
       v.all = false; drawToday(); scrollTo({ top: 0, behavior: REDUCED ? "auto" : "smooth" }); } }, `Back to today's ${d.picks} picks`) : null;
     fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
@@ -2075,6 +2099,7 @@ async function renderToday() {
         [fresh, "new since last look"], [strong, "strong fits (75+)", strong ? "good" : ""], [out, "hidden by filters"]].filter(Boolean)),
       panel(null, search, h("div", { style: "margin-top:10px" },
         segmented([["fit", "Best fit"], ["new", "Newest"], ["pay", "Top pay"]], v.sort, k => { v.sort = k; drawToday(); }))),
+      panel("Narrow down", narrow),
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
       toWatchPanel(),
