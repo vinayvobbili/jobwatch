@@ -48,6 +48,14 @@ class Job:
             return [f"{loc} (Remote)" for loc in self.locations] or ["Remote"]
         return list(self.locations)
 
+    @property
+    def where(self) -> list[str]:
+        """How the job can be worked, for narrowing a list: "remote", "onsite" (a place to go to, hybrid
+        included), or both when it lists a city and a remote option. Empty when no location is given."""
+        places = self.places
+        kinds = [("remote", any(is_remote(p) for p in places)), ("onsite", any(not is_remote(p) for p in places))]
+        return [k for k, has in kinds if has]
+
     def pay(self) -> str:
         if self.salary_min is None:
             return ""
