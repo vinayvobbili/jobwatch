@@ -65,6 +65,22 @@ def test_jobs_in_line_say_where_they_stand(resume_watchlist, scored):
     store.close()
 
 
+def test_queued_jobs_are_scored_first(resume_watchlist, scored):
+    # The least relevant of Today's jobs, once queued, goes to the front: it's the one about to be applied to.
+    cfg, store = _fetched(resume_watchlist)
+    store.set_status(["greenhouse:acme:101"], "queued")
+    assert [e.job.key for e in watch.unscored(cfg, store)] == \
+        ["greenhouse:acme:101", "ashby:initech:c1", "lever:globex:aaaa-1111"]
+    assert watch.unscored_reasons(cfg, store)["greenhouse:acme:101"]["text"] == "In line to score · 1st of 3"
+    job, _ = store.find("greenhouse:acme:101")
+    assert watch.unscored_reason(cfg, store, job)["code"] == "queued"
+    store.set_status(["greenhouse:acme:101"], "applied")  # applied: out of the line
+    assert "greenhouse:acme:101" not in [e.job.key for e in watch.unscored(cfg, store)]
+    assert watch.unscored_reason(cfg, store, job)["text"] == \
+        "Only queued and Today's jobs are scored in the background: press Score fit"
+    store.close()
+
+
 def test_a_job_with_only_a_title_needs_its_posting(resume_watchlist, scored):
     cfg, store = _fetched(resume_watchlist)
     job = store.add("Umbrella", "Staff Python Engineer", status="new", location="Remote")
@@ -99,12 +115,28 @@ def test_a_posting_of_a_role_scored_before_it_came(resume_watchlist, scored):
     store.close()
 
 
-def test_a_queued_job_is_scored_on_request(resume_watchlist, scored):
+def test_a_queued_job_is_scored_on_request_when_background_scoring_is_off(resume_watchlist, scored):
+    raw = yaml.safe_load(resume_watchlist.read_text())
+    resume_watchlist.write_text(yaml.safe_dump({**raw, "scoring": {"auto": False}}))
     cfg, store = _fetched(resume_watchlist)
     store.set_status(["greenhouse:acme:101"], "queued")
     job, _ = store.find("greenhouse:acme:101")
-    assert watch.unscored_reason(cfg, store, job)["code"] == "manual"
+    assert watch.unscored_reason(cfg, store, job) == \
+        {"code": "manual", "text": "Background scoring is off: press Score fit"}
     store.close()
+
+
+def test_queuing_a_job_on_the_page_starts_the_scorer(resume_watchlist, scored, monkeypatch):
+    app = App(resume_watchlist, background=True)
+    kicked = []
+    monkeypatch.setattr(app.scorer, "kick", lambda: kicked.append(1))
+    _, store = _fetched(resume_watchlist)
+    store.close()
+    app.post_mark({"status": "queued", "keys": ["greenhouse:acme:101"]})
+    assert kicked
+    kicked.clear()
+    app.post_mark({"status": "skipped", "keys": ["lever:globex:aaaa-1111"]})
+    assert not kicked
 
 
 def test_the_page_shows_why_and_failures_from_its_scorer(resume_watchlist, scored):
@@ -154,7 +186,7 @@ def test_the_page_adds_a_posting(resume_watchlist, web):
     assert got["unscored"]["code"] == "no_text" and got["manual"] is True
     r = app.post_posting({"key": key, "text": "Build agents in Python. 5+ years."})
     assert r == {"key": key, "said": "text saved", "has_text": True}
-    assert app.get_job({"key": [key]})["unscored"]["code"] == "manual"  # queued: scored on request
+    assert app.get_job({"key": [key]})["unscored"]["code"] == "queued"  # queued: in the scorer's line, first
 
 
 def test_cli_and_mcp(resume_watchlist, web, capsys, monkeypatch):

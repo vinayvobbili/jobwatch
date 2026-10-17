@@ -493,7 +493,7 @@ def _ordinal(n: int) -> str:
 
 def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = None, current: str = "",
                      stopped: str = "") -> dict[str, dict]:
-    """Why each of Today's jobs has no fit score: {job key: {"code", "text"}}. Codes: no_resume, no_text (a job
+    """Why each queued and Today's job has no fit score: {job key: {"code", "text"}}. Codes: no_resume, no_text (a job
     from an alert email may have only its title), failed (with the error), scoring (now), queued (in the
     background scorer's line: "3rd of 4"), stopped (background scoring stopped, and why), manual (background
     scoring is off), same_role (another posting of the same role was scored before this one came in) and
@@ -503,9 +503,8 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
     failed = {**failed_scores(cfg, store), **(failed or {})}
     has_resume = bool(cfg.resume and cfg.resume.is_file())
     fits = store.scores(resume_id(cfg.resume, cfg.prompts)) if has_resume else {}
-    entries, _ = _matching(cfg, store, ("new", "shown"))
-    groups = _group(sorted(entries, key=_rank))  # the scorer's order: see unscored
-    line = [e.job.key for e in groups if _scorable(e) and e.job.key not in failed and e.job.key != current]
+    groups = scoring_line(cfg, store)  # the scorer's order
+    line =[e.job.key for e in groups if _scorable(e) and e.job.key not in failed and e.job.key != current]
     out: dict[str, dict] = {}
     for e in groups:
         head = _why_unscored(e, has_resume, cfg.auto_score, failed, current, stopped, line)
@@ -546,8 +545,8 @@ def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str]
 
 def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict] | None = None) -> dict | None:
     """Why this job, on Today or not, has no fit score (see unscored_reasons; pass `reasons` when you have them
-    already); None when it has one. A job that isn't on Today (queued, applied, hidden by the filters) isn't
-    scored in the background."""
+    already); None when it has one. A job that's neither queued nor on Today (applied, hidden by the filters)
+    isn't scored in the background."""
     if (why := (unscored_reasons(cfg, store) if reasons is None else reasons).get(job.key)) is not None:
         return why
     has_resume = bool(cfg.resume and cfg.resume.is_file())
@@ -555,7 +554,7 @@ def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict
         return None
     code, text = (MANY_ROLES if not scorable(job) else NO_RESUME if not has_resume
                   else NO_TEXT if not job.description.strip()
-                  else ("manual", "Only Today's jobs are scored in the background: press Score fit"))
+                  else ("manual", "Only queued and Today's jobs are scored in the background: press Score fit"))
     return {"code": code, "text": text}
 
 
@@ -604,14 +603,26 @@ def failed_scores(cfg: Config, store: Store) -> dict[str, str]:
 
 
 def unscored(cfg: Config, store: Store, skip: set[str] = frozenset()) -> list[Entry]:
-    """Today's jobs with no fit score for the current resume, most relevant first, one per company and title
-    (the same role posted per region scores the same). Keys in `skip`, and ones that failed lately (see
-    failed_scores), are left out."""
+    """Queued and Today's jobs with no fit score for the current resume, in the scorer's order (see
+    scoring_line). Keys in `skip`, and ones that failed lately (see failed_scores), are left out."""
     if not (cfg.resume and cfg.resume.is_file()):
         return []
-    entries, _ = _matching(cfg, store, ("new", "shown"))
     skip = {*skip, *failed_scores(cfg, store)}
-    return [e for e in _group(sorted(entries, key=_rank)) if _scorable(e) and e.job.key not in skip]
+    return [e for e in scoring_line(cfg, store) if _scorable(e) and e.job.key not in skip]
+
+
+def scoring_line(cfg: Config, store: Store) -> list[Entry]:
+    """The jobs the background scorer works through, in its order: the open queued ones first, oldest first,
+    since they're the ones about to be applied to (queued by hand, they never passed the filters), then
+    Today's, most relevant first, one per company and title (the same role posted per region scores the same)."""
+    rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
+    fits = _fits(store, rid) if rid else {}
+    queued = []
+    for job, rec in sorted(store.jobs(("queued",)), key=lambda r: r[1]["status_at"] or ""):
+        rel, hits = relevance(job, cfg.keywords)
+        queued.append(Entry(job, rec, rel, hits, fit=brief(fits.get(job.key))))
+    entries, _ = _matching(cfg, store, ("new", "shown"))
+    return [*queued, *_group(sorted(entries, key=_rank))]
 
 
 def _scorable(e: Entry) -> bool:

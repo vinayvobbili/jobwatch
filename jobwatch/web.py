@@ -75,7 +75,7 @@ class ApiError(Exception):
 
 
 class Scorer:
-    """Scores Today's jobs in the background, most relevant first and one at a time, so fit scores are there
+    """Scores queued and Today's jobs in the background, queued first, one at a time, so fit scores are there
     when you look. It runs when the page starts, after each check for new jobs and after a new resume, and
     saves each score as it lands. A chat reply or a Score fit click goes first (see score.ModelGate).
 
@@ -98,7 +98,8 @@ class Scorer:
         self.stopped = ""  # why background scoring stopped short, until it runs again
 
     def reasons(self, cfg, store) -> dict[str, dict]:
-        """Why each of Today's unscored jobs has no score yet, with what this scorer knows (see unscored_reasons)."""
+        """Why each queued and Today's unscored job has no score yet, with what this scorer knows (see
+        unscored_reasons)."""
         return unscored_reasons(cfg, store, self._failed, self.current_key, "" if self._thread else self.stopped)
 
     def status(self) -> dict:
@@ -754,6 +755,8 @@ class App:
             store.set_status(full, status, body.get("note"))
             # Queued all the same, with a word when it's (maybe) the same opening as one acted on.
             same = dupes.check(store, full[0]) if status == "queued" else None
+            if status == "queued":
+                self.score_in_background()  # queued jobs are scored first
             return {"keys": full, "status": status, "warning": same.line if same else None}
         return self._with_store(run)
 
