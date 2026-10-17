@@ -239,3 +239,13 @@ def test_quiet_settings(tmp_path):
         path.write_text(f"companies: []\nquiet: {bad}\n")
         with pytest.raises(config.ConfigError, match=match):
             config.load(path)
+
+
+@pytest.mark.parametrize("status, due", [
+    ("applied", True), ("interviewing", True), ("queued", True),
+    ("skipped", False), ("rejected", False), ("withdrawn", False), ("shown", False),
+])
+def test_only_open_applications_and_queued_jobs_come_due(status, due):
+    rec = {"status": status, "follow_up": "2026-01-05"}
+    assert report.due(rec, today="2026-01-06") is due
+    assert report.due(rec, today="2026-01-04") is False  # not yet

@@ -8,7 +8,7 @@ from datetime import date
 from . import levels
 from .models import Job
 from .sources import candidate_home
-from .store import ENDED
+from .store import ENDED, STAGES
 from .watch import MANY_ROLES, Digest, Entry, FetchReport, scorable
 
 
@@ -124,9 +124,10 @@ def queue_markdown(entries: list[Entry]) -> str:
 
 
 def due(rec: dict, today: str | None = None) -> bool:
-    """An open application whose follow-up day has come."""
-    return bool(rec.get("follow_up")) and rec["status"] not in ENDED and rec["follow_up"] <= (
-        today or date.today().isoformat())
+    """An open application (or a queued job) whose follow-up day has come. A skipped job's leftover follow-up
+    isn't due: skipping it ended it."""
+    return (bool(rec.get("follow_up")) and rec["status"] in ("queued", *STAGES) and rec["status"] not in ENDED
+            and rec["follow_up"] <= (today or date.today().isoformat()))
 
 
 def quiet_line(q: dict) -> str:
