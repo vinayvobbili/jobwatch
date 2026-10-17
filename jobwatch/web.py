@@ -376,8 +376,8 @@ class App:
     @staticmethod
     def _entry(e) -> dict:
         j = e.job
-        return {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url,
-                "locations": j.places, "where": j.where, "pay": j.pay(), "age_days": j.age_days(), "department": j.department,
+        return {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "where": j.where,
+                "locations": j.places, "pay": j.pay(), "age_days": j.age_days(), "department": j.department,
                 "status": e.record.get("status"), "note": e.record.get("note"), "closed": e.record.get("closed"),
                 "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
                 "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
