@@ -105,6 +105,21 @@ def test_root_releases_another_project(release, tmp_path, capsys):
     assert "acme-tool 1.2.3 -> 2.0.0: pyproject.toml, acme_tool/__init__.py" in capsys.readouterr().out
 
 
+def test_failed_checks_undo_the_bump(release, tmp_path, monkeypatch):
+    root = make_project(tmp_path, server=False)
+    before = {p: p.read_text() for p in root.rglob("*") if p.is_file()}
+    monkeypatch.setattr(release, "preflight", lambda root, tag: None)
+
+    def failing(root):
+        raise release.subprocess.CalledProcessError(1, ["pytest"])
+
+    monkeypatch.setattr(release, "run_checks", failing)
+    monkeypatch.setattr(release, "git", lambda *a: pytest.fail("nothing is committed when the checks fail"))
+    with pytest.raises(SystemExit, match="bump was undone"):
+        release.main(["1.3.0", "--root", str(root)])
+    assert {p: p.read_text() for p in root.rglob("*") if p.is_file()} == before
+
+
 def test_checks_use_the_projects_own_virtualenv(release, tmp_path, monkeypatch):
     venv = tmp_path / ".venv" / "bin"
     venv.mkdir(parents=True)

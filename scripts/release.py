@@ -209,9 +209,15 @@ def main(argv=None) -> int:
         return 0
 
     preflight(root, tag)
+    before = {f: f.read_text() for f in bumped}
     for f, text in bumped.items():
         f.write_text(text)
-    run_checks(root)
+    try:
+        run_checks(root)
+    except subprocess.CalledProcessError:
+        for f, text in before.items():  # leave the tree as it was, so a fix-and-retry starts clean
+            f.write_text(text)
+        raise SystemExit("release: the checks failed; the version bump was undone") from None
     title = f"{name} {args.version}" + (f" — {args.summary}" if args.summary else "")
     message = title + (f"\n\n{args.body}" if args.body else "")
     git(root, "commit", "--quiet", "-am", message)
