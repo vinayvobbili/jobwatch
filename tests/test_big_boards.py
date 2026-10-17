@@ -192,7 +192,7 @@ def test_eightfold_backfills_stored_jobs_without_a_work_site(monkeypatch):
      ("workday", "acme.wd1/Acme_Careers")),
     ("https://initech.wd5.myworkdayjobs.com/External", ("workday", "initech.wd5/External")),
     ("https://wd5.myworkdaysite.com/recruiting/acme/Careers/job/x", ("workday", "acme.wd5/Careers")),
-    ("https://wd1.myworkdaysite.com/en-US/recruiting/acme/Careers/job/Durham-NC/Director_123?shared_id=x",
+    ("https://wd1.myworkdaysite.com/en-US/recruiting/acme/Careers/job/CO---Denver/Director_123?shared_id=x",
      ("workday", "acme.wd1/Careers")),
     ("https://initech.wd1.myworkdayjobs.com/", None),
     ("https://globex.eightfold.ai/careers?domain=globex.com", ("eightfold", "globex")),
