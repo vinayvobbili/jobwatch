@@ -22,7 +22,7 @@ def test_the_page_script_parses(tmp_path):
 def page_function(name: str) -> str:
     """One top-level function's source from the page's script (it ends at the first closing brace in column 0)."""
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
-    m = re.search(rf"^function {name}\(.*?^}}$", page, re.S | re.M)
+    m = re.search(rf"^(?:async )?function {name}\(.*?^}}$", page, re.S | re.M)
     assert m, f"no function {name} in the page"
     return m.group(0)
 
@@ -59,4 +59,52 @@ console.log(JSON.stringify(out));
         "fit70": ["remote", "both"],                 # not scored yet still shows
         "pay250": ["remote", "both", "nowhere"],     # no listed pay still shows
         "all": ["remote", "both"],
+    }
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_slow_tab_shows_it_is_loading(tmp_path):
+    """A tab that loads quickly never flickers a spinner; a slow one spins its button and dims the page until
+    it's done; and when another tab is clicked meanwhile, the first one finishing doesn't clear the second's."""
+    js = tmp_path / "loading.js"
+    js.write_text("""
+const button = name => { const c = new Set(); return { name, classList: { add: x => c.add(x), remove: x => c.delete(x),
+  has: x => c.has(x) } }; };
+const today = button("today"), queue = button("queue"), applied = button("applied"), all = [today, queue, applied];
+const attrs = {};
+const main = { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } };
+const document = { querySelectorAll: () => all.filter(b => b.classList.has("loading")) };
+let loads = 0;
+""" + page_function("loading") + """
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const state = () => ({ spinning: all.filter(b => b.classList.has("loading")).map(b => b.name),
+  busy: !!attrs["aria-busy"] });
+(async () => {
+  const out = {};
+  await loading(today, () => wait(10), 50);
+  out.quick = state();
+  const slow = loading(queue, () => wait(150), 50);
+  await wait(90);
+  out.slow = state();
+  await slow;
+  out.slowDone = state();
+  const first = loading(queue, () => wait(120), 30);
+  await wait(60);
+  const second = loading(applied, () => wait(200), 30);
+  await first;
+  await wait(40);
+  out.firstDone = state();
+  await second;
+  out.secondDone = state();
+  console.log(JSON.stringify(out));
+})();
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {
+        "quick": {"spinning": [], "busy": False},
+        "slow": {"spinning": ["queue"], "busy": True},
+        "slowDone": {"spinning": [], "busy": False},
+        "firstDone": {"spinning": ["applied"], "busy": True},  # the tab clicked second is still loading
+        "secondDone": {"spinning": [], "busy": False},
     }
