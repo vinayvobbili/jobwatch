@@ -485,6 +485,9 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .pace { display: flex; margin: 0 0 10px; }
 .pace span { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 16px; font-size: 13.5px;
   background: var(--chip); color: var(--chip-text); }
+/* the pace, board check, scoring and "Showing" lines share one row above the cards, wrapping when it's narrow */
+.status-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; margin: 0 0 12px; }
+.status-row > .pace, .status-row > .scoring, .status-row > .showing { margin: 0; }
 .pace.met span { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); font-weight: 600; }
 /* the day's pace reached: a sparkle and a sheen across the pill */
 .pace.met span { position: relative; overflow: hidden; }
@@ -2286,7 +2289,7 @@ async function renderToday() {
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
       toWatchPanel(),
-    ], [paceLine(h("div", { class: "pace" }), d.pace), checked, scoring, showing, list, pager]));
+    ], [h("div", { class: "status-row" }, paceLine(h("div", { class: "pace" }), d.pace), checked, scoring, showing), list, pager]));
   drawToday();
   if (d.checked) watchChecked(d.checked, checked);
   if (d.scoring) watchScoring(d.scoring, scoring);
@@ -2366,8 +2369,7 @@ async function renderQueue() {
   const step = (n, title, text) => h("div", { class: "step" }, h("span", { class: "n" }, n), h("div", {}, h("b", {}, title), h("div", {}, text)));
   const addArea = h("div", {});
   put(
-    pagehead("Apply queue", "Jobs you picked to apply to, oldest first."),
-    h("div", { class: "row actions", style: "margin-bottom:12px" },
+    pagehead("Apply queue", "Jobs you picked to apply to, oldest first.",
       h("button", { class: "btn primary", onclick: () => fill(addArea, addForm(null)) }, icon("plus", 14), "Add a job")),
     addArea,
     layout([
@@ -2377,7 +2379,7 @@ async function renderQueue() {
         step(2, "Tailor your resume", "Match it to the posting, from things you've really done."),
         step(3, "Apply on their site", "Answer honestly and press Submit yourself."),
         step(4, "Press “I applied”", "It moves to Applications, where you track what comes next.")),
-    ], [pace, jobs.length ? [showing, list, pager]
+    ], [h("div", { class: "status-row" }, pace, jobs.length ? showing : null), jobs.length ? [list, pager]
       : emptyState("The queue is empty. Queue jobs from Today: your next yes could be in there.")]));
   drawQueue();
   watchPay(queueJobs);
