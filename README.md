@@ -545,7 +545,7 @@ unless you set it. The mailbox is opened read-only, and messages are read withou
 ```yaml
 alerts:
   imap:
-    host: imap.gmail.com           # Gmail needs an app password
+    host: imap.gmail.com           # Gmail needs an app password (full mail access: see below)
     user: you@gmail.com
     keychain: jobwatch-imap        # security add-generic-password -s jobwatch-imap -a you@gmail.com -w
     # password_env: JOBWATCH_IMAP_PASSWORD   # or this, instead of keychain
@@ -557,6 +557,16 @@ alerts:
 ```
 jobwatch alerts --imap
 ```
+
+With a mailbox set, every check for new jobs reads it too (the page's schedule and its "Check for new jobs"
+button, `jobwatch fetch` and `run`, and the MCP's `fetch_jobs`), so jobs from your alerts come in with the
+boards'. A mailbox it can't read (no password yet, or a login it refuses) shows as a failed check, and the boards
+are still checked.
+
+A Gmail app password isn't limited to reading: it can read, send and delete all of the account's mail. jobwatch
+only opens the folder read-only, but that's jobwatch's doing, not the password's. Keep it in the keychain (run
+the `security` command in a terminal: it asks for the password, so it never lands in your shell history), and
+delete it in your Google account if you stop using jobwatch or think it got out.
 
 ### Status updates from application emails
 

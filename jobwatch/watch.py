@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
-from . import dupes, levels, linkedin, sources, suggest
+from . import alerts, dupes, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts
 from .filters import KINDS, Filters, red_flags, reject_reason, rejection, relevance, search_terms, title_ok
@@ -25,6 +25,10 @@ class FetchReport:
     errors: dict[str, str] = field(default_factory=dict)  # "source:board" -> error
     warnings: dict[str, str] = field(default_factory=dict)  # "source:board" -> what to do about it
     duplicates: dict[str, dupes.Match] = field(default_factory=dict)  # new job's key -> the job acted on it matches
+    emails: int | None = None  # job-alert emails read from the mailbox (alerts.imap); None: no mailbox set
+
+
+MAILBOX = "alerts.imap"  # the errors key for a mailbox that couldn't be read
 
 
 HOSTED_KEEP = timedelta(days=1)  # how long an answer about a board's hosted job pages is trusted
@@ -105,8 +109,12 @@ def offline_warning(b: Board) -> str:
             f"company's careers site to the watchlist, {{board: {b.entry}, careers: https://...}}")
 
 
-def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None) -> FetchReport:
+def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, mail=None) -> FetchReport:
     """Pull every board in the watchlist and record what is new. Boards that fail are reported and skipped.
+
+    With a mailbox set (alerts.imap), the job-alert emails in it (LinkedIn's, Indeed's and the rest) are read
+    too, the same as `jobwatch alerts --imap`, so their jobs come in with every check; `mail` replaces the IMAP
+    connection. A mailbox that can't be read is reported like a failed board.
 
     For a source whose hosted job pages a company can switch off (Ashby), the board's own page is read too, once
     a day at most (see HostedPages; `page` replaces that HTTP call): when it's offline, the board's jobs link to
@@ -157,6 +165,14 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None) 
                     suggest.record_posts(store, cfg, [j for j in jobs if j.key in keys])
                 except Exception as e:  # a suggestion is a hint: it never fails a check
                     report.warnings[b.entry] = f"companies to watch not noted: {e}"
+    if cfg.imap:
+        try:
+            got = alerts.intake(cfg, store, alerts.imap_messages(cfg.imap, connect=mail))
+        except alerts.AlertError as e:
+            report.errors[MAILBOX] = str(e)
+        else:
+            report.emails = got.emails
+            report.new += [f.key for f in got.found if f.result == "new"]  # intake marks their duplicates
     # A new posting of a job already applied to (or queued, or skipped) is marked as its duplicate.
     report.duplicates = dupes.record(store, new) if new else {}
     store.record_fetch(report.boards, report.jobs, len(report.new), report.errors, report.warnings)

@@ -14,6 +14,8 @@ from .watch import MANY_ROLES, Digest, Entry, FetchReport, scorable
 
 def fetch_summary(r: FetchReport) -> str:
     out = [f"Checked {r.boards} board(s): {r.jobs} open roles, {len(r.new)} new."]
+    if r.emails is not None:
+        out[0] = out[0][:-1] + f" (with {r.emails} job-alert email(s) from the mailbox)."
     out += [f"  failed {board}: {err}" for board, err in r.errors.items()]
     out += [f"  warning {board}: {text}" for board, text in r.warnings.items()]
     return "\n".join(out)

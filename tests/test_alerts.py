@@ -3,6 +3,7 @@ company's own board, deduped against what's tracked, and into the digest. No net
 `web` fixture) and every page jobwatch reads comes from `Pages`."""
 
 import base64
+import functools
 import io
 import json
 import re
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from jobwatch import alerts, cli, config, sources
+from jobwatch import alerts, cli, config, sources, watch
 from jobwatch.filters import Filters, reject_reason
 from jobwatch.store import Store
 from jobwatch.watch import build_digest, fetch_all
@@ -472,6 +473,30 @@ def test_imap_reads_without_marking_anything(tmp_path, watchlist, web, capsys, m
     cli.main(["-c", str(path), "alerts", "--imap", "--no-follow"])
     out = capsys.readouterr()
     assert "Read 2 email(s)" in out.out and "not-a-real-password" not in out.out + out.err
+
+
+def test_every_check_reads_the_mailbox_too(tmp_path, watchlist, web, monkeypatch):
+    """With alerts.imap set, a check for new jobs (the schedule's, the page's button, `jobwatch fetch`) reads the
+    alert emails too, so LinkedIn's and Indeed's jobs come in with the boards'; a mailbox it can't read is
+    reported like a failed board, and the boards are still checked."""
+    path = tmp_path / "w.yaml"
+    path.write_text(watchlist.read_text() + IMAP_WATCHLIST + "    password_env: JOBWATCH_IMAP_PASSWORD\n")
+    monkeypatch.setenv("JOBWATCH_IMAP_PASSWORD", "not-a-real-password")
+    monkeypatch.setattr(alerts, "intake", functools.partial(alerts.intake, follow=False))  # no links read
+    cfg = config.load(path)
+    store = Store(cfg.state)
+    r = fetch_all(cfg, store, mail=FakeIMAP)
+    assert r.emails == 2 and r.boards == 3 and not r.errors
+    from_mail = [k for k in r.new if k.startswith("manual:")]
+    assert from_mail and all(store.find(k)[1]["via"] for k in from_mail)
+    from jobwatch import report
+    assert "(with 2 job-alert email(s) from the mailbox)." in report.fetch_summary(r)
+    assert store.last_fetch()["new"] == len(r.new)
+
+    monkeypatch.delenv("JOBWATCH_IMAP_PASSWORD")
+    r = fetch_all(cfg, store, mail=FakeIMAP)
+    assert r.boards == 3 and r.emails is None and "JOBWATCH_IMAP_PASSWORD" in r.errors[watch.MAILBOX]
+    assert config.load(watchlist).imap is None and fetch_all(config.load(watchlist), store).emails is None
 
 
 def test_imap_password_from_the_keychain(monkeypatch):
