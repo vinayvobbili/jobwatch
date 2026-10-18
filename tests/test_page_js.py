@@ -63,6 +63,27 @@ console.log(JSON.stringify(out));
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_the_page_stays_on_the_persons_side(tmp_path):
+    """Every stage gets its own kind word (a no is put in its place, never just "marked rejected"), and Today
+    says hello for the time of day."""
+    js = tmp_path / "words.js"
+    js.write_text("const pick = list => list[0], PASSED = [\"Their loss. Onward.\"];\n" + page_function("stageWords")
+                  + page_function("greeting") + """
+const stages = ["screening", "interviewing", "offer", "rejected", "withdrawn", "applied", "someday"];
+console.log(JSON.stringify({ words: Object.fromEntries(stages.map(s => [s, stageWords("Acme", s)])),
+  hello: [3, 9, 14, 20].map(greeting) }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    assert got["words"]["rejected"] == "🌱 Acme passed. Their loss. Onward."
+    assert got["words"]["withdrawn"] == "Withdrawn from Acme. Good call: your time is worth protecting."
+    assert got["words"]["offer"].startswith("🥂")
+    assert got["words"]["someday"] == "Acme: marked someday."  # a stage with no words of its own still says something
+    assert got["hello"] == ["Burning the midnight oil 🌙", "Good morning ☀️", "Good afternoon 🌤️", "Good evening 🌆"]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_a_slow_tab_shows_it_is_loading(tmp_path):
     """A tab that loads quickly never flickers a spinner; a slow one spins its button and dims the page until
     it's done; and when another tab is clicked meanwhile, the first one finishing doesn't clear the second's."""

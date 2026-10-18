@@ -100,7 +100,7 @@ def to_markdown(d: Digest, title: str = "jobwatch digest", more: str = "", pace:
     if d.rejected:
         out[-1] += " Filtered out: " + ", ".join(f"{n} by {k}" for k, n in sorted(d.rejected.items())) + "."
     if pace:
-        out.append(pace["line"] + ("" if pace["line"].endswith(".") else "."))
+        out.append(pace["line"] + ("" if pace["line"].endswith((".", "!")) else "."))
     if d.scored:
         out.append(f"Scored {d.scored} with shortlist-ai.")
     if d.note:

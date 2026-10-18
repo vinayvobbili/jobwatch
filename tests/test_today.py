@@ -134,10 +134,11 @@ def test_pace_counts_today_not_yesterday(watchlist):
         later = applied(store, "Sensor Lead", "2026-10-10")
         store.set_status([later.key], "screening")  # still sent today
         p = pace(cfg, store, today)
-        assert (p["applied"], p["met"], p["line"]) == (2, False, "Applied today: 2 of 3")
+        assert (p["applied"], p["met"], p["line"]) == (2, False, "Applied today: 2 of 3. Good going.")
         applied(store, "Arm Calibrator", "2026-10-10")
         p = pace(cfg, store, today)
-        assert (p["met"], p["at_max"], p["line"]) == (True, False, "Applied today: 3. That's your 3 for today.")
+        assert (p["met"], p["at_max"], p["line"]) == (True, False,
+                                                      "Applied today: 3. That's your 3 for today. Well done!")
         applied(store, "Path Planner", "2026-10-10")
         applied(store, "Fleet Operator", "2026-10-10")
         p = pace(cfg, store, today)
