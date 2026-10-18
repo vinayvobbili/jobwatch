@@ -8,7 +8,8 @@ It runs with the chat's backend and model (config.Chat):
 The model is asked for JSON, and the code then keeps only what it can stand behind, because a prep sheet is
 what you'll say on a call:
 - an answer citing a story that isn't in the bank is dropped: it was built on something you never told it;
-- a point quoting a number found in neither the stories it cites nor the resume is dropped;
+- a point quoting a number found in neither the stories it cites nor the resume is dropped, and so is one saying
+  a detail a story lists under avoid (not remembered for sure);
 - an answer left with no story is marked "no story yet", with one honest line instead (what's closest, how
   you'd ramp up);
 - everything is cut to length, and a reply that isn't the JSON asked for gives no drafts at all.
@@ -42,7 +43,8 @@ an answer outline built only from their stories and resume.
 Rules:
 - Write 6 to 10 questions specific to this role and this stage. Each probes one of the numbered asks (A1, A2...).
 - An outline uses only facts from the stories it cites and from the resume. Never invent experience, skills, \
-employers, numbers or credentials. Use a number only when it appears in a story you cite or in the resume.
+employers, numbers or credentials. Use a number only when it appears in a story you cite or in the resume. \
+Never use a detail a story lists under "Don't say".
 - Cite each story you use by its id, exactly as written in the brackets. When no story supports an answer, cite \
 none, leave the outline empty and write one honest line in angle: what's closest in their background and how \
 they'd ramp up.
@@ -150,11 +152,12 @@ def parse(reply: str) -> list | None:
 def check(raw: list, ask_lines: list[tuple[str, str]], resume: str, bank: list[Story]) -> tuple[list[dict], dict]:
     """The model's questions, kept to what can be stood behind (see the module docstring), and how many of each
     thing were taken out: {"stories": answers citing a story not in the bank, "numbers": points with a number
-    that isn't yours}. Each question: question, probes (the ask's line, or ""), kind, stories ([{id, title}]),
-    outline (points), no_story, and angle (for one with no story)."""
+    that isn't yours, "avoid": points saying a detail a story marks as not to be said}. Each question: question,
+    probes (the ask's line, or ""), kind, stories ([{id, title}]), outline (points), no_story, and angle (for
+    one with no story)."""
     by_id = {s.id: s for s in bank}
     everything = "\n".join([resume, *(s.text() for s in bank)])
-    dropped = {"stories": 0, "numbers": 0}
+    dropped = {"stories": 0, "numbers": 0, "avoid": 0}
     out, seen = [], set()
     for item in raw:
         if not isinstance(item, dict) or not isinstance(item.get("question"), str):
@@ -183,10 +186,14 @@ def check(raw: list, ask_lines: list[tuple[str, str]], resume: str, bank: list[S
         backed = _numbers("\n".join([resume, *(by_id[c].text() for c in cited)]))
         kept = [p for p in points if _numbers(p) <= backed]
         dropped["numbers"] += len(points) - len(kept)
-        kept = kept[:MAX_POINTS]
+        # A detail a story marks as not to be said (not remembered for sure) drops its point the same way.
+        unsaid = [p for p in kept if not stories.said(p, bank)]
+        dropped["avoid"] += len(kept) - len(unsaid)
+        kept = unsaid[:MAX_POINTS]
         if not cited or not kept:
             angle = item.get("angle") if isinstance(item.get("angle"), str) else ""
-            angle = _clip(angle) if angle.strip() and _numbers(angle) <= _numbers(everything) else NO_STORY
+            angle = _clip(angle) if angle.strip() and _numbers(angle) <= _numbers(everything) \
+                and not stories.said(angle, bank) else NO_STORY
             out.append({"question": question, "probes": probes, "kind": kind, "stories": [], "outline": [],
                         "no_story": True, "angle": angle})
         else:
@@ -204,7 +211,8 @@ def _note(where: dict, bank: list[Story], resume: str, dropped: dict, cached: bo
     note = f"Drafted by {where['model']} ({where['label']}) from {sources}" + (", saved earlier" if cached else "")
     removed = [f"{dropped['stories']} answer(s) citing a story you don't have" if dropped["stories"] else "",
                f"{dropped['numbers']} point(s) with a number that isn't in your stories or resume"
-               if dropped["numbers"] else ""]
+               if dropped["numbers"] else "",
+               f"{dropped['avoid']} point(s) with a detail your stories say not to use" if dropped.get("avoid") else ""]
     if removed := [r for r in removed if r]:
         note += ". Taken out: " + "; ".join(removed)
     return note + ". Check each line before you say it."

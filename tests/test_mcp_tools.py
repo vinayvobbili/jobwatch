@@ -39,6 +39,7 @@ def test_status_lists_its_values():
     ("dismiss_suggested_board", "add_board"), ("add_board", "list_suggested_boards"),
     ("read_status_emails", "mark_job"), ("import_job_alerts", "read_status_emails"),
     ("get_company", "get_job"), ("get_company", "list_applications"), ("get_company", "list_jobs"),
+    ("get_interview_prep", "save_story"), ("save_story", "get_interview_prep"),
 ])
 def test_overlapping_tools_point_to_each_other(tool, sibling):
     assert sibling in TOOLS[tool].description

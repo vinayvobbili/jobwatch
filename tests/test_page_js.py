@@ -129,3 +129,21 @@ const state = () => ({ spinning: all.filter(b => b.classList.has("loading")).map
         "firstDone": {"spinning": ["applied"], "busy": True},  # the tab clicked second is still loading
         "secondDone": {"spinning": [], "busy": False},
     }
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_found_story_reads_without_its_block_and_saves_from_the_card(tmp_path):
+    js = tmp_path / "story.js"
+    js.write_text(page_function("storyShown") + page_function("storyFromForm") + """
+const reply = "Here it is:\\n\\n```story\\n{\\"id\\": \\"x\\"}\\n```\\n\\nCheck it.";
+console.log(JSON.stringify({
+  shown: storyShown(reply), streaming: storyShown("Here it is:\\n```story\\n{\\"id\\": "),
+  form: storyFromForm({ id: " x ", title: "T", did: "D", hard: "H", result: "R", skills: "Python, , on-call ",
+    avoid: "Bind\\n\\n the old provider " }) }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    assert got["shown"] == "Here it is:\n\n\n\nCheck it." and got["streaming"] == "Here it is:"
+    assert got["form"] == {"id": "x", "title": "T", "did": "D", "hard": "H", "result": "R",
+                           "skills": ["Python", "on-call"], "avoid": ["Bind", "the old provider"]}

@@ -816,9 +816,11 @@ Each is a project you'd talk about on a call:
   hard: The teams named the same hosts three different ways.
   result: Pages per week went from 120 to 35 in two months.
   skills: [Python, Kafka]             # optional
+  avoid: [the vendor's name]          # optional: details you're not sure of, or don't want said
 ```
 
-[examples/stories.yaml](examples/stories.yaml) has a few more, made up. A mistake in the file (a missing
+[examples/stories.yaml](examples/stories.yaml) has a few more, made up. You don't have to write them by hand:
+[Find a story](#find-a-story) interviews you and adds one for you. A mistake in the file (a missing
 `result`, two stories with the same id) is reported with the story and what to fix.
 
 The model is told never to invent experience, numbers, employers or credentials, and its answer is checked
@@ -826,6 +828,7 @@ anyway before it reaches the sheet:
 - an answer citing a story you don't have is dropped;
 - a point with a number that's in neither the stories it cites nor your resume is dropped (a number is what
   you'd repeat word for word, so it isn't just flagged);
+- a point that says one of a story's `avoid` details is dropped too;
 - an answer left with no story becomes "no story yet";
 - it's cut to length, and a reply that isn't the JSON asked for gives no drafts.
 The sheet says what was taken out. With no model, an error or nothing usable, it keeps the usual questions:
@@ -850,11 +853,37 @@ Each answer gets short feedback from the chat's model: what landed, what's missi
 and a tightened version. The model is told to use only facts from your answer, your stories and your resume,
 never to invent experience, numbers, employers or tools, and to write "[add a real example of X]" where
 something is missing. The code checks the numbers too: a tightened answer with one that's in none of those isn't
-offered. Saving it is your call (`y/N`, or **Save to the prep sheet**): saved answers are kept with the job's
+offered, and neither is one that says a story's `avoid` detail you didn't say yourself. Saving it is your call (`y/N`, or **Save to the prep sheet**): saved answers are kept with the job's
 package, one per question, and show on its prep sheet under **Practised answers**, and in MCP's
 `get_interview_prep` as `practised`. It runs on the chat's backend like the rest (`local` stays on your
 computer; with `claude` the posting, your resume and your stories go to Anthropic); with none available it says
 what to install, before asking anything.
+
+### Find a story
+
+A prep sheet shows where you're thin: an ask with nothing close on your resume, a drafted question with "no story
+yet". Often there is a story; you just haven't remembered it. **Find a story** (at the top of the prep sheet, or
+beside any of those lines) has the chat's model interview you about one of them, and writes what you tell it up
+as a story for your story file. From the command line: `jobwatch ask --job c1 --story` lists the gaps to pick
+from, or name your own (`jobwatch ask --job c1 --story "running a migration"`).
+
+It asks one question at a time, starting broad: have you done anything like it, even partly, as a participant,
+long ago? When you don't remember the details, it may offer what usually happens in a case like yours, under
+**Common patterns, not your case**, for you to confirm or not. It's told never to present one as what you did,
+to keep your real role (taking part isn't leading, a prototype isn't production), and to leave out what's
+unsafe to say aloud: internal system names, people's names, the country of the people involved. With nothing
+close, it says so and suggests one honest line instead.
+
+When it has what you did, the hard part and how it ended (or you press **Write it up**), it proposes the story.
+The code checks it before you see it: one with a number you never typed isn't offered, and neither is one that
+says a detail it listed under `avoid`. You then check every line in the card, edit any of it, and press **Save
+to my stories** (`y` on the command line). Nothing is saved before that. It's added to the end of your story file
+with comments and the rest left as they were (the old file is kept as `.bak`); with no `stories:` set, it starts
+`stories.yaml` beside the watchlist and names it there. Drafted answers and mock interviews use it from then on.
+
+It runs on the chat's backend like the rest: `local` stays on your computer; with `claude` the posting, your
+resume, your stories and what you type go to Anthropic. An assistant connected over MCP can run the same
+interview itself: `get_interview_prep` returns `story_gaps`, and `save_story` keeps what you confirm.
 
 ## Who you know there
 
@@ -888,7 +917,7 @@ board are marked closed. The MCP `get_digest` returns the same top 10 by default
 - **New jobs:** `fetch_jobs`, `import_job_alerts`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
 - **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`,
   `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`), `get_company`
-- **What was sent:** `save_application_package`, `get_application_package`, `get_interview_prep`
+- **What was sent:** `save_application_package`, `get_application_package`, `get_interview_prep`, `save_story`
 
 (0.3.0 renamed them to verb_noun: `digest` is now `get_digest`, `job_details` is `get_job`, `apply_queue` is
 `list_queued_jobs`, `applications` is `list_applications`, `application_package` is `get_application_package`,

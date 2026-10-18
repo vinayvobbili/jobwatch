@@ -631,6 +631,7 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
 .prep .mock-q { font-size: 16px; font-weight: 600; margin: 10px 0 8px; }
 .prep .mock-a { width: 100%; box-sizing: border-box; min-height: 110px; }
 .prep .mock-fb { margin-top: 10px; } .prep .mock-fb p { margin: 0 0 7px; }
+.prep .story-log { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
 @media print {
   body > *:not(#overlay) { display: none !important; }
   .overlay { position: static; background: none; backdrop-filter: none; padding: 0; display: block !important; }
@@ -1261,7 +1262,10 @@ async function openPrep(key, draft = false, questions = false) {
     };
     fill(dialog, h("div", { class: "prep" },
       h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openDetails(key) }, "← Details"),
-        h("span", { style: "flex:1" }), h("button", { class: "btn", onclick: () => openMock(key),
+        h("span", { style: "flex:1" }), h("button", { class: "btn", onclick: () => openStoryFind(key),
+          title: "Answer a few questions about something this job asks for, and save the story to your story file" },
+          "Find a story"),
+        h("button", { class: "btn", onclick: () => openMock(key),
           title: "Practise the likely questions one at a time, with feedback on each answer" }, "Mock interview"),
         copy, page, h("button", { class: "btn", onclick: () => print() }, "Print"),
         h("button", { class: "btn", onclick: closeDetails }, "Close")),
@@ -1281,7 +1285,9 @@ async function openPrep(key, draft = false, questions = false) {
       p.matches.length ? [h("h3", {}, "Their asks and your closest line" + (which ? ` (${which})` : "")),
         ...p.matches.map(m => h("div", { class: "ask" }, h("div", { class: "kind" }, KIND[m.kind]), h("div", {}, m.ask),
           m.resume ? h("div", { class: "you" }, m.resume)
-            : h("div", { class: "none" }, "Nothing close on the resume: have a story, or say plainly how you'd get there.")))]
+            : h("div", { class: "none" }, "Nothing close on the resume: have a story, or say plainly how you'd get there. ",
+              m.kind === "nice" ? null : h("a", { href: "#", class: "no-print", onclick: e => { e.preventDefault(); openStoryFind(key, m.ask); } },
+                "Find a story"))))]
         : h("p", { class: "muted" }, "No requirements found in the posting text."),
       gaps.length ? [h("h3", {}, "Be ready to be honest about"),
         h("div", { class: "small muted" }, "Say what's closest and how you'd ramp up. Don't claim what you haven't done."),
@@ -1298,7 +1304,9 @@ async function openPrep(key, draft = false, questions = false) {
         h("div", { class: "small muted" }, p.draft_note),
         ...p.drafted.map(d => h("div", { class: "ask" }, d.probes ? h("div", { class: "kind" }, "Probes: " + d.probes) : null,
           h("div", {}, h("b", {}, d.question)),
-          d.no_story ? h("div", { class: "none" }, "No story yet. " + d.angle)
+          d.no_story ? h("div", { class: "none" }, "No story yet. " + d.angle + " ",
+            h("a", { href: "#", class: "no-print", onclick: e => { e.preventDefault(); openStoryFind(key, d.probes || d.question); } },
+              "Find a story"))
             : [h("div", { class: "small muted", style: "margin-top:4px" }, "From: " + d.stories.map(s => s.title).join(", ")),
               h("div", { class: "you" }, list(d.outline))]))]
         : [h("h3", {}, "They'll likely ask"), p.draft_note ? h("div", { class: "small muted" }, p.draft_note) : null,
@@ -1396,6 +1404,124 @@ async function openMock(key) {
     box.focus();
   }
   m.questions.length ? ask() : done();
+}
+// A reply as the model writes it, without the ```story block it proposes (that becomes the card to check and save).
+function storyShown(text) {
+  return text.replace(/```story[ \t]*\n[\s\S]*?(\n[ \t]*```|$)/gi, "").trim();
+}
+// The story card's fields back into a story: skills split on commas, the details to avoid one per line.
+function storyFromForm(f) {
+  const lines = (t, by) => t.split(by).map(s => s.trim()).filter(Boolean);
+  return { id: f.id.trim(), title: f.title.trim(), did: f.did.trim(), hard: f.hard.trim(), result: f.result.trim(),
+    skills: lines(f.skills, ","), avoid: lines(f.avoid, "\n") };
+}
+// Find a story for one job: pick a gap from its prep sheet (or name your own), answer the chat model's questions
+// one at a time, then check the story it writes up (every field editable) and save it to your story file. Nothing
+// is saved until you press Save.
+async function openStoryFind(key, gap = null) {
+  const dialog = document.getElementById("dialog");
+  dialog.classList.remove("with-chat");
+  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  let s;
+  try { s = await api("/api/storyfind?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
+  const top = (...more) => h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openPrep(key) }, "← Prep sheet"),
+    h("span", { style: "flex:1" }), ...more, h("button", { class: "btn", onclick: closeDetails }, "Close"));
+  const where = s.where.local ? "private, runs on this computer" : `${s.where.label} (cloud): what you type goes to Anthropic`;
+  if (!gap) {
+    const own = h("input", { type: "text", placeholder: "Or in your own words: e.g. running a migration", "aria-label": "What the story should show" });
+    const start = () => own.value.trim() ? openStoryFind(key, own.value.trim()) : toast("Type what the story should show");
+    own.onkeydown = e => { if (e.key === "Enter") start(); };
+    return fill(dialog, h("div", { class: "prep" }, top(),
+      h("h2", {}, "Find a story"),
+      h("div", { class: "small muted" }, `${s.company}: ${s.title} · ${where}`),
+      h("p", {}, "Pick something this job asks for. You'll get a few questions, one at a time, and a story written from your answers only, to check before it's saved."),
+      s.gaps.length ? h("div", {}, ...s.gaps.map(g => h("div", { class: "ask" }, h("div", { class: "kind" }, g.why),
+        h("a", { href: "#", onclick: e => { e.preventDefault(); openStoryFind(key, g.ask); } }, g.ask))))
+        : h("p", { class: "muted" }, s.nothing),
+      h("div", { class: "row", style: "margin-top:10px" }, own, h("button", { class: "btn primary", onclick: start }, "Start"))));
+  }
+  const messages = [], log = h("div", { class: "story-log" }), out = h("div", {});
+  const box = h("textarea", { class: "mock-a", placeholder: "Your answer: only what you actually remember", "aria-label": "Your answer" });
+  const send = h("button", { class: "btn primary" }, "Send");
+  const writeUp = h("button", { class: "btn", title: "Ask for the story now, from what you've said so far" }, "Write it up");
+  let busy = null;
+  const show = () => fill(log, ...messages.map(m => m.role === "user" ? h("div", { class: "msg user", style: "white-space:pre-wrap" }, m.content)
+    : h("div", { class: "msg bot" }, md(storyShown(m.content)))));
+  function card(story) {
+    const field = (name, label, value, rows = 3) => h("label", { class: "small", style: "display:block;margin-top:8px" }, h("b", {}, label),
+      rows ? h("textarea", { name, rows, style: "width:100%;box-sizing:border-box" }, value) : h("input", { name, type: "text", value, style: "width:100%;box-sizing:border-box" }));
+    const form = h("form", { class: "ask", style: "margin-top:12px" }, h("div", { class: "kind" }, "Check every line: it's what you'll say on a call"),
+      field("title", "Title", story.title, 0), field("did", "What you did", story.did), field("hard", "The hard part", story.hard),
+      field("result", "How it ended", story.result), field("skills", "Skills (commas)", (story.skills || []).join(", "), 0),
+      field("avoid", "Don't say: details you're not sure of, one per line", (story.avoid || []).join("\n"), 2),
+      field("id", "Short name", story.id, 0));
+    const save = h("button", { class: "btn primary", type: "submit" }, "Save to my stories");
+    form.append(h("div", { class: "row", style: "margin-top:8px" }, save, h("span", { class: "small muted" }, "Saved to " + s.file)));
+    form.onsubmit = async e => {
+      e.preventDefault();
+      const f = Object.fromEntries(new FormData(form));
+      try {
+        const r = await api("/api/stories/add", { story: storyFromForm(f) });
+        save.disabled = true; save.textContent = "Saved";
+        toast(`📖 Saved “${r.story.title}”: drafted answers can use it now`, null, "win");
+        confetti(save, { count: 60, power: .8 });
+      } catch (err) { toast(err.message); }
+    };
+    return form;
+  }
+  async function turn(text) {
+    if (text) messages.push({ role: "user", content: text });
+    show();
+    busy = new AbortController();
+    send.disabled = writeUp.disabled = box.disabled = true;
+    const bot = { role: "assistant", content: "" };
+    const live = h("div", { class: "msg bot" }, h("span", { class: "muted" }, `Thinking… (${s.where.label}: ${s.where.model})`));
+    log.append(live);
+    let stats = {}, failed = null;
+    try {
+      const r = await fetch("/api/storyfind", { method: "POST", signal: busy.signal,
+        body: JSON.stringify({ key, gap, messages }), headers: { "X-Jobwatch-Token": TOKEN, "Content-Type": "application/json" } });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+      const reader = r.body.getReader(), dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const msg = JSON.parse(buf.slice(0, nl));
+          buf = buf.slice(nl + 1);
+          if (msg.status && !bot.content) fill(live, h("span", { class: "muted" }, msg.status + "…"));
+          if (msg.text) { bot.content += msg.text; fill(live, md(storyShown(bot.content))); }
+          if (msg.stats) stats = msg.stats;
+          if (msg.error) failed = msg.error;
+        }
+      }
+    } catch (e) { failed = e.name === "AbortError" ? "stopped" : e.message; }
+    busy = null;
+    send.disabled = writeUp.disabled = box.disabled = false;
+    if (!bot.content) {
+      if (text) { messages.pop(); box.value = text; }
+      return fill(out, h("div", { class: "msg bot err" }, failed || "No reply. Try again."));
+    }
+    messages.push(bot);
+    show();
+    fill(out, failed ? h("p", { class: "stopped" }, `Cut off: ${failed}`) : null,
+      stats.note ? h("div", { class: "small muted", style: "margin-top:6px" }, stats.note) : null,
+      stats.story ? card(stats.story) : null);
+    box.focus();
+  }
+  send.onclick = () => { const t = box.value.trim(); if (!t) return toast("Type an answer first"); box.value = ""; turn(t); };
+  box.onkeydown = e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send.click(); };
+  writeUp.onclick = () => turn("Please write up the story now, from what I've told you so far.");
+  fill(dialog, h("div", { class: "prep" }, top(h("button", { class: "btn", onclick: () => openStoryFind(key) }, "Pick another")),
+    h("h2", {}, "Find a story"),
+    h("div", { class: "small muted" }, `${s.company}: ${s.title} · ${where} · your story file has ${s.stories}`),
+    h("div", { class: "kind", style: "margin-top:10px" }, "For: " + gap),
+    h("div", { class: "small muted" }, "Say only what you remember. Typical details it offers are common patterns, not your case: confirm one only if it's true."),
+    log, out, box, h("div", { class: "row", style: "margin-top:8px" }, send, writeUp)));
+  turn("");
 }
 // Skills this posting asks for that the resume doesn't show; solid = a must-have a fit score found missing.
 function gapChips(skills) {

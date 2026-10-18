@@ -69,6 +69,7 @@ class Mock:
     questions: list[dict]       # {question, probes}: the ask a question comes from, or ""
     evidence: str               # the stories and resume as text, for checking numbers
     where: dict = field(default_factory=dict)
+    bank: list = field(default_factory=list)  # the stories, for the details they say not to use
 
 
 def role_questions(matches: list) -> list[dict]:
@@ -108,7 +109,7 @@ def start(cfg: Config, store: Store, key: str) -> Mock:
     return Mock(key=sheet.key, backend=c.backend, model=c.model, max_tokens=c.max_tokens,
                 system=PROMPT.format(context=context),
                 questions=pick(sheet), evidence="\n".join([resume, *(s.text() for s in bank)]),
-                where=chat.where(c.backend, c.model))
+                where=chat.where(c.backend, c.model), bank=bank)
 
 
 def messages(question: str, answer: str) -> list[dict]:
@@ -130,13 +131,18 @@ def split(reply: str) -> tuple[str, str]:
     return reply[:last.start()].strip(), reply[last.end():].strip().strip('"“”').strip()
 
 
-def vet(improved: str, answer: str, evidence: str) -> tuple[str, str]:
+def vet(improved: str, answer: str, evidence: str, bank: list | None = None) -> tuple[str, str]:
     """(the tightened answer, a note): "" with a note when it uses a number that's in neither the answer nor the
-    stories and resume."""
+    stories and resume, or says a detail a story marks as not to be said (one you said yourself in the answer
+    stands: it's your call)."""
     invented = sorted(drafts._numbers(improved) - drafts._numbers(f"{answer}\n{evidence}"))
     if invented:
         return "", ("Don't use the tightened answer: it has " + ", ".join(invented) + ", which is in neither "
                     "your answer, your stories nor your resume. Not saved.")
+    unsure = [a for a in stories.said(improved, bank or []) if a not in stories.said(answer, bank or [])]
+    if unsure:
+        return "", ("Don't use the tightened answer: it says " + "; ".join(unsure) + ", which your stories say "
+                    "not to use. Not saved.")
     return improved, ""
 
 
@@ -152,7 +158,7 @@ def feedback(mock: Mock, question: str, answer: str) -> Iterator[str | dict]:
             if isinstance(piece, str):
                 reply += piece
             yield piece
-        improved, note = vet(split(reply)[1], answer, mock.evidence)
+        improved, note = vet(split(reply)[1], answer, mock.evidence, mock.bank)
         yield {"improved": improved, "note": note}
     return pieces()
 

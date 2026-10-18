@@ -12,6 +12,9 @@
 #   hard    the hard part: what made it more than routine
 #   result  what came of it, with numbers if you have them
 #   skills  optional: tools and skills it shows
+#   avoid   optional: details you're not sure of, or don't want said; drafted answers leave them out
+#
+# `jobwatch ask --job KEY --story` (Find a story on a prep sheet) interviews you and adds a story here for you.
 #
 # Everything below is made up: Jane Doe at Initech. Replace it with your own.
 
