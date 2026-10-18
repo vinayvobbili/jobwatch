@@ -30,6 +30,7 @@ from . import (
     quiet,
     report,
     sources,
+    storyfind,
     suggest,
 )
 from .config import ConfigError
@@ -453,7 +454,61 @@ def cmd_mock(args, cfg, store):
           + (f" See them with: jobwatch prep {args.job}" if kept else ""))
 
 
+def _say(prompt: str) -> str:
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return "quit"
+
+
+def cmd_story(args, cfg, store):
+    """Find a story: pick one of the prep sheet's gaps (or type your own), answer the model's questions, and save
+    the story it proposes once you've checked it. quit ends it at any prompt."""
+    gap = " ".join(args.question)
+    if not gap:
+        found = storyfind.gaps(prep.build(cfg, store, args.job))
+        print("What should the story show?" if found else storyfind.NOTHING)
+        for n, g in enumerate(found, 1):
+            print(f"  {n}. {g['ask']} ({g['why']})")
+        pick = _say("Pick a number, or type your own: " if found else "Type what it should show: ")
+        if pick.lower() in ("quit", ""):
+            return
+        gap = found[int(pick) - 1]["ask"] if pick.isdigit() and 1 <= int(pick) <= len(found) else pick
+    session = storyfind.start(cfg, store, args.job, gap)
+    print(f"({session.where['label']}: {session.where['model']})", file=sys.stderr)
+    print(f"Finding a story for: {session.gap}\nAnswer each question; quit ends it. Nothing is saved unless you "
+          "say yes.\n")
+    def kept(pieces, reply: list[str]):  # the reply's text, kept for the next turn as it's printed
+        for p in pieces:
+            if isinstance(p, str):
+                reply.append(p)
+            yield p
+    messages: list[dict] = []
+    while True:
+        reply: list[str] = []
+        got = _stream(kept(storyfind.talk(session, messages), reply))
+        messages.append({"role": "assistant", "content": "".join(reply)})
+        if got.get("note"):
+            print(f"({got['note']})")
+        if got.get("story"):
+            if _say("\nSave this story to your story file? [y/N] ").lower() == "y":
+                saved, path = storyfind.save(cfg, got["story"])
+                return print(f"Saved {saved.id} to {path}. Drafted answers use it from now on: "
+                             f"jobwatch prep {args.job} --draft")
+        answer = _say("\n> ")
+        while not answer:
+            answer = _say("> ")
+        if answer.lower() == "quit":
+            return print("Nothing saved.")
+        messages.append({"role": "user", "content": answer})
+        print()
+
+
 def cmd_ask(args, cfg, store):
+    if args.story:
+        if not args.job:
+            raise SystemExit("--story needs --job KEY: which job's prep sheet to find a story for")
+        return cmd_story(args, cfg, store)
     if args.mock:
         if not args.job:
             raise SystemExit("--mock needs --job KEY: which job to practise for")
@@ -745,6 +800,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--job", metavar="KEY", help="ask about this job (its key, or the end of it)")
     p.add_argument("--mock", action="store_true", help="with --job: a mock interview, one question at a time from "
                    "its prep sheet, with feedback and a tightened answer you can save to the sheet")
+    p.add_argument("--story", action="store_true", help="with --job: find a story for one of its prep sheet's gaps "
+                   "(or the words given): the model asks, you answer, and you save the story it writes up")
     p.set_defaults(func=cmd_ask)
 
     p = sub.add_parser("prep", help="a prep sheet for a recruiter call or interview: their asks next to your "

@@ -39,6 +39,8 @@ from . import (
     quiet,
     report,
     sources,
+    stories,
+    storyfind,
     suggest,
 )
 from .config import ConfigError
@@ -825,6 +827,36 @@ class App:
             return {"saved": store.package(key).practised()}
         return self._with_store(run)
 
+    def get_storyfind(self, q) -> dict:
+        """Find a story for one job (`key`): what a story would help with on its prep sheet, where the interview's
+        replies come from, and the story file (with how many stories it has)."""
+        key = (q.get("key") or [""])[0]
+
+        def run(cfg, store):
+            sheet = prep.build(cfg, store, key)
+            c = cfg.chat
+            return {"key": sheet.key, "title": sheet.title, "company": sheet.company, "gaps": storyfind.gaps(sheet),
+                    "nothing": storyfind.NOTHING, "where": chat.where(c.backend, c.model),
+                    "file": str(storyfind.story_file(cfg)), "stories": len(stories.load(cfg.stories))}
+        return self._with_store(run)
+
+    def storyfind_talk(self, body) -> tuple[dict, object]:
+        """({where replies come from}, the reply in pieces) in an interview about one gap (`gap`) of a job (`key`),
+        given the conversation so far (`messages`, none at the start). The last piece reports {story, note}: the
+        story proposed, checked, or None and why."""
+        def run(cfg, store):
+            session = storyfind.start(cfg, store, str(body.get("key") or ""), str(body.get("gap") or ""))
+            return session.where, storyfind.talk(session, body.get("messages") or [])
+        return self._with_store(run)
+
+    def post_story(self, body) -> dict:
+        """Add a story you've checked (`story`: id, title, did, hard, result, optional skills and avoid) to your
+        story file; returns it as saved, the file and how many stories it now has."""
+        cfg = self._cfg()
+        with self.lock:  # the watchlist may be written too, when it names no story file yet
+            saved, path = storyfind.save(cfg, body.get("story"))
+        return {"story": saved.to_dict(), "file": str(path), "stories": len(stories.load(path))}
+
     def upload(self, kind: str, filename: str, data: bytes) -> dict:
         """Save an uploaded resume or LinkedIn export next to the watchlist and point the watchlist at it."""
         suffix = Path(filename).suffix.lower()
@@ -895,6 +927,8 @@ ROUTES = {
     ("GET", "/api/prep"): App.get_prep,
     ("GET", "/api/mock"): App.get_mock,
     ("POST", "/api/mock/save"): App.post_mock_save,
+    ("GET", "/api/storyfind"): App.get_storyfind,
+    ("POST", "/api/stories/add"): App.post_story,
     ("POST", "/api/package"): App.post_package,
     ("POST", "/api/package/remove"): App.post_package_remove,
 }
@@ -1017,6 +1051,11 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
                     return self._stream(*app.mock_feedback(body))
+                elif method == "POST" and url.path == "/api/storyfind":
+                    body = json.loads(raw or b"{}")
+                    if not isinstance(body, dict):
+                        raise ApiError("send a JSON object")
+                    return self._stream(*app.storyfind_talk(body))
                 elif (route := ROUTES.get((method, url.path))) is None:
                     raise ApiError("not found", HTTPStatus.NOT_FOUND)
                 elif method == "POST":

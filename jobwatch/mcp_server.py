@@ -26,6 +26,8 @@ from . import (
     quiet,
     report,
     sources,
+    stories,
+    storyfind,
     suggest,
     watch,
 )
@@ -58,7 +60,9 @@ server = MCPServer(
         "present the proposals and call mark_job only for the ones the person confirms. "
         "list_applications shows where each stands. After the person submits, save_application_package keeps the "
         "resume, cover letter and form answers they sent; get_application_package reads them back before a call or "
-        "interview, and get_interview_prep puts the posting, the resume and what was sent on one sheet. "
+        "interview, and get_interview_prep puts the posting, the resume and what was sent on one sheet, with "
+        "story_gaps: what a story from the person's own past would help with. Interview them about one, and "
+        "save_story keeps what they confirm in their story file for drafted answers. "
         "list_skill_gaps lists what the matching jobs ask for that the resume doesn't show, with courses and "
         "certifications to close each gap. check_postings checks that queued jobs and open applications are still "
         "posted. The same opening can be tracked twice (an application added by hand, then the job again from an "
@@ -645,14 +649,50 @@ def get_interview_prep(
     drafted questions and draft_note how they were made, or why there are none. practised holds the answers the
     person kept from mock interviews (jobwatch ask --job KEY --mock): question, answer as they said it, and
     improved, the tightened version built from their own words and stories. Present a drafted answer as the
-    person's only where it cites their stories. Use it before a call; get_job and get_application_package give
-    the raw pieces."""
+    person's only where it cites their stories. story_gaps lists what a story would help with (ask, why): asks
+    with nothing close on the resume, drafted questions with no story yet, missing must-haves; to fill one,
+    interview the person and keep what they confirm with save_story. Use it before a call; get_job and
+    get_application_package give the raw pieces."""
     cfg, store = _open()
     try:
         sheet = prep.without_floor(prep.build(cfg, store, key, draft=draft_answers, questions=role_questions))
-        return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet)}
+        return {**prep.to_dict(sheet), "story_gaps": storyfind.gaps(sheet), "markdown": prep.markdown(sheet)}
     finally:
         store.close()
+
+
+Line = Field(description="Two or three sentences, in the person's first person, using only what they told you.")
+
+
+@server.tool(annotations=_hints())
+def save_story(
+    id: Annotated[str, Field(description=(
+        "A short name drafted answers cite it by: lowercase letters, digits and dashes (alert-dedupe). A taken "
+        "one gets -2, -3..."))],
+    title: Annotated[str, Field(description="A few words: what it was.")],
+    did: Annotated[str, Line],
+    hard: Annotated[str, Line],
+    result: Annotated[str, Line],
+    skills: Annotated[list[str] | None, Field(description=(
+        "Tools and skills it shows, as the person named them."))] = None,
+    avoid: Annotated[list[str] | None, Field(description=(
+        "Details that came up but the person didn't confirm, or asked to keep out (a tool they weren't sure of, "
+        "a place). Drafted answers and mock answers that say one are taken out."))] = None,
+) -> dict:
+    """Add a story to the person's story file (the watchlist's stories:, or stories.yaml beside it, which the
+    watchlist then names), for drafted interview answers and mock interviews. Use it after interviewing the
+    person about one of get_interview_prep's story_gaps: ask one question at a time; if you offer typical details
+    to jog their memory, say they're common patterns, not their case; keep their real role (took part is not
+    led); keep internal system names, people's names and countries out. Only what they confirmed goes in did,
+    hard and result; the rest goes in avoid. Show them the story and save it only after they say yes. Returns
+    the story as saved, the file and how many stories it has."""
+    cfg = config.load(os.environ.get("JOBWATCH_CONFIG"))
+    try:
+        saved, path = storyfind.save(cfg, {"id": id, "title": title, "did": did, "hard": hard, "result": result,
+                                           "skills": skills or [], "avoid": avoid or []})
+    except config.ConfigError as e:  # a ToolError, so the model reads what to fix
+        raise ToolError(str(e)) from None
+    return {"story": saved.to_dict(), "file": str(path), "stories": len(stories.load(path))}
 
 
 @server.tool(annotations=READ)
