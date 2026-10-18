@@ -200,11 +200,13 @@ def pace(cfg: Config, store: Store, today: date | None = None) -> dict | None:
         return None
     n = store.applied_on(today or date.today())
     if n >= p.max:
-        line = f"Applied today: {n}. That's plenty for one day: the rest can wait until tomorrow."
+        line = f"Applied today: {n}. That's a strong day: rest up, the rest can wait until tomorrow."
     elif n >= p.daily:
-        line = f"Applied today: {n}. That's your {p.daily} for today."
+        line = f"Applied today: {n}. That's your {p.daily} for today. Well done!"
+    elif n:
+        line = f"Applied today: {n} of {p.daily}. Good going."
     else:
-        line = f"Applied today: {n} of {p.daily}"
+        line = f"Applied today: {n} of {p.daily}"  # no nudge: a day off is fine
     return {"applied": n, "daily": p.daily, "max": p.max, "met": n >= p.daily, "at_max": n >= p.max, "line": line}
 
 

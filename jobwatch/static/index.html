@@ -52,6 +52,10 @@ nav button { background: none; border: 0; color: var(--muted); padding: 6px 14px
   transition: color .15s, background .15s; }
 nav button:hover { color: var(--text); }
 nav button.on { color: var(--text); background: var(--panel-solid); box-shadow: 0 1px 3px rgba(20, 26, 46, .12); }
+/* the open tab gets a gradient underline that sweeps in */
+nav button { position: relative; }
+nav button.on::before { content: ""; position: absolute; left: 12px; right: 12px; bottom: 1px; height: 2.5px;
+  border-radius: 2px; background: var(--grad); transform-origin: left; animation: grow .35s cubic-bezier(.2, .7, .2, 1); }
 /* a tab still loading: a small ring on its button, and the page it's replacing dims */
 nav button.loading::after { content: ""; width: 9px; height: 9px; border: 2px solid currentColor;
   border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
@@ -223,6 +227,10 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .empty { text-align: center; color: var(--muted); padding: 56px 16px; border: 1.5px dashed var(--line);
   border-radius: var(--radius); background: color-mix(in srgb, var(--panel) 50%, transparent); }
 .empty .ico { display: block; margin: 0 auto 10px; color: var(--accent); opacity: .7; }
+/* an empty page still feels alive: a soft glow, and its icon drifts */
+.empty { background: radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 70%),
+  color-mix(in srgb, var(--panel) 50%, transparent); }
+.empty .ico { color: var(--accent-2); opacity: .85; animation: float 4s ease-in-out infinite; }
 
 /* find a company: the box in the header, on every tab */
 .jump { position: relative; width: 210px; flex: none; }
@@ -373,6 +381,16 @@ table.apps td.editing { padding: 14px 18px; }
   animation: rise .3s cubic-bezier(.2, .7, .2, 1); font-weight: 550; }
 .toast button { background: none; border: 0; color: inherit; font: inherit; font-weight: 800; cursor: pointer;
   text-decoration: underline; }
+/* a colored edge says what kind of news it is: good news is green, a no gets a sunrise (it's not the end) */
+.toast { overflow: hidden; padding-left: 20px; }
+.toast::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--grad); }
+.toast[data-tone="win"]::before { background: linear-gradient(180deg, #34d399, #10b981); }
+.toast[data-tone="onward"]::before { background: linear-gradient(180deg, #fbbf24, #f472b6); }
+.toast { animation: toast-in .3s cubic-bezier(.2, .7, .2, 1); }
+.toast[data-tone="win"] { animation: toast-pop .5s cubic-bezier(.2, .7, .2, 1); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px); } }
+@keyframes toast-pop { from { opacity: 0; transform: translate(-50%, 14px) scale(.92); }
+  60% { transform: translate(-50%, -3px) scale(1.03); } }
 .overlay { position: fixed; inset: 0; background: rgba(8, 10, 20, .5); backdrop-filter: blur(4px);
   display: none; z-index: 10; align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; }
 .dialog { background: var(--panel-solid); border: 1px solid var(--line); border-radius: 20px; max-width: 780px;
@@ -468,6 +486,12 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .pace span { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 16px; font-size: 13.5px;
   background: var(--chip); color: var(--chip-text); }
 .pace.met span { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); font-weight: 600; }
+/* the day's pace reached: a sparkle and a sheen across the pill */
+.pace.met span { position: relative; overflow: hidden; }
+.pace.met span::before { content: "✨"; display: inline-block; animation: twinkle 2.4s ease-in-out infinite; }
+.pace.met span::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--good) 22%, transparent), transparent 70%);
+  animation: sheen 2.6s ease-in-out 3; }
 .more-all { display: flex; justify-content: center; margin: 18px 0 4px; }
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 14px; }
 .grid-cards > .card { margin: 0; }
@@ -821,9 +845,11 @@ async function api(path, body, raw) {
 }
 
 let toastTimer;
-function toast(text, undo) {
+// tone: "win" for good news, "onward" for a no or a skip, nothing for the rest (see .toast[data-tone]).
+function toast(text, undo, tone) {
   const t = document.getElementById("toast");
   document.getElementById("toastText").textContent = text;
+  t.dataset.tone = tone || "";
   const b = document.getElementById("toastUndo");
   b.style.display = undo ? "" : "none";
   b.onclick = async () => { t.style.display = "none"; await undo(); };
@@ -895,9 +921,32 @@ function countUp(el, n) {
 
 function bump(el) { if (!el || REDUCED) return; el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
 
+// A job search is mostly waiting and hearing no, so the page stays on the person's side: every step they take gets
+// a kind word, and every no gets put in its place. One picked at random, so it doesn't read like a form letter.
+const pick = list => list[Math.floor(Math.random() * list.length)];
 const CHEERS = ["Nice work!", "Another one out the door.", "That's momentum. Keep going!", "Shot taken. Good luck!",
   "One step closer.", "You showed up. That's the hard part."];
-const cheer = () => CHEERS[Math.floor(Math.random() * CHEERS.length)];
+const cheer = () => pick(CHEERS);
+const QUEUED = ["Good pick.", "Worth a shot.", "This one could be it.", "Nice find."];
+const SKIPPED = ["Onward.", "Not the one. Next!", "Saving room for a better fit.", "Good filter."];
+const PASSED = ["Their loss. Onward.", "Their loss: someone else will say yes.", "Not your fit, not your fault. Next!",
+  "Every no clears the way for the right yes.", "It stings, and it says nothing about what you're worth."];
+// The toast for an application moved to a stage, from its card, its table row or its gone-quiet bar.
+function stageWords(company, to) {
+  return {
+    screening: `📞 ${company} wants to talk. Nice!`, interviewing: `🎯 Interviewing at ${company}. You've got this.`,
+    offer: `🥂 An offer from ${company}! Congratulations!`, rejected: `🌱 ${company} passed. ${pick(PASSED)}`,
+    withdrawn: `Withdrawn from ${company}. Good call: your time is worth protecting.`,
+    applied: `${company}: back to applied.` }[to] || `${company}: marked ${to}.`;
+}
+const TONES = { applied: "win", queued: "win", screening: "win", interviewing: "win", offer: "win",
+  rejected: "onward", withdrawn: "onward", skipped: "onward" };
+
+// The day's hello on Today, by the local hour.
+function greeting(hour) {
+  return hour < 5 ? "Burning the midnight oil 🌙" : hour < 12 ? "Good morning ☀️" : hour < 17 ? "Good afternoon 🌤️"
+    : "Good evening 🌆";
+}
 
 function showError(where, err) {
   where.replaceChildren(h("div", { class: "card error" }, String(err.message || err)));
@@ -1058,7 +1107,7 @@ async function mark(job, status, note, label, undoStatus) {
   toast(label, undoStatus ? async () => {
     await api("/api/mark", { keys: job.keys || [job.key], status: undoStatus });
     render();
-  } : null);
+  } : null, TONES[status]);
   if (!main.querySelector(".card.job") && (tab === "today" || tab === "queue")) {
     const [title, text] = tab === "today"
       ? ["All caught up", "You've been through every match. New roles show up here when you check again."]
@@ -1122,8 +1171,10 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
 
 function todayCard(job, canScore, i) {
   return jobCard(job, [
-    h("button", { class: "btn primary", onclick: () => mark(job, "queued", null, `Queued: ${job.title}`, job.status) }, "Queue"),
-    h("button", { class: "btn", onclick: () => mark(job, "skipped", null, `Skipped: ${job.title}`, job.status) }, "Skip"),
+    h("button", { class: "btn primary",
+      onclick: () => mark(job, "queued", null, `📌 Queued: ${job.title}. ${pick(QUEUED)}`, job.status) }, "Queue"),
+    h("button", { class: "btn",
+      onclick: () => mark(job, "skipped", null, `Skipped: ${job.title}. ${pick(SKIPPED)}`, job.status) }, "Skip"),
     detailsButton(job), scoreButton(job, canScore),
   ], i);
 }
@@ -2090,13 +2141,15 @@ async function renderToday() {
     fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
       : `Showing ${jobs.length} of ${todayJobs.length}`, narrowed ? h("button", { class: "btn ghost", onclick: clear }, "Clear filters") : back);
     fill(list, jobs.length ? pg.items.map((j, i) => todayCard(j, d.can_score, i))
-      : emptyState(todayJobs.length ? "No jobs match these filters." : "Nothing to review. Press “Check for new jobs”, or widen the filters above.",
+      : emptyState(todayJobs.length ? "No jobs match these filters. Loosen one and see what turns up."
+        : "Nothing to review right now. Press “Check for new jobs”, or widen the filters above: new roles open every day.",
         v.q.trim() ? elsewhere(v.q) : null));
     fill(pager, pg.nav);
   };
 
   put(
-    pagehead("Today", `New roles at the ${settings.companies.length} companies you watch, best fit first.`),
+    pagehead("Today", `${greeting(new Date().getHours())}. New roles at the ${settings.companies.length} companies ` +
+      "you watch, best fit first."),
     filterBar(hidden),
     layout([
       hero([picks ? [picks, "picks for today", "lead wide"] : null, [d.jobs.length, picks ? "matching" : "matching jobs", picks ? "" : "lead"],
@@ -2198,7 +2251,8 @@ async function renderQueue() {
         step(2, "Tailor your resume", "Match it to the posting, from things you've really done."),
         step(3, "Apply on their site", "Answer honestly and press Submit yourself."),
         step(4, "Press “I applied”", "It moves to Applications, where you track what comes next.")),
-    ], [pace, jobs.length ? [showing, list, pager] : emptyState("The queue is empty. Queue jobs from Today.")]));
+    ], [pace, jobs.length ? [showing, list, pager]
+      : emptyState("The queue is empty. Queue jobs from Today: your next yes could be in there.")]));
   drawQueue();
   watchPay(queueJobs);
 }
@@ -2330,7 +2384,8 @@ async function renderApplied() {
         appView.stage = ""; appView.q = ""; search.value = ""; redraw(); } }, "Clear filters") : null,
       h("span", { class: "spacer" }),
       segmented([["cards", "Cards"], ["table", "Table"]], appView.view, v => { appView.view = v; remember("apps.view", v); draw(); }));
-    fill(body, all.length ? null : emptyState("No applications yet. Mark a queued job “I applied”, or add one you applied to somewhere else."),
+    fill(body, all.length ? null : emptyState("No applications yet. Mark a queued job “I applied”, or add one you " +
+        "applied to somewhere else. The first one is the hardest."),
       all.length && !apps.length ? emptyState("No applications match.", appView.q.trim() ? elsewhere(appView.q) : null) : null,
       !apps.length ? null : table ? appTable(page, d, draw)
         : [group("Follow up now", due, "hot", whole.due), group("Gone quiet", quiet, "quiet", whole.quiet),
@@ -2427,11 +2482,8 @@ async function changeStage(a, d, stage) {
     const to = stage.value;
     await api("/api/track", { key: a.key, status: to });
     const forward = d.stages.indexOf(to) > d.stages.indexOf(before) && !isEndedStatus(to);
-    const words = {
-      screening: `📞 ${a.company} wants to talk. Nice!`, interviewing: `🎯 Interviewing at ${a.company}. You've got this.`,
-      offer: `🥂 An offer from ${a.company}! Congratulations!`, rejected: `${a.company} passed. Their loss. Onward.`,
-      withdrawn: `Withdrawn from ${a.company}. One less thing to track.`, applied: `${a.company}: back to applied.` };
-    toast(words[to], async () => { await api("/api/track", { key: a.key, status: before }); render(); });
+    toast(stageWords(a.company, to), async () => { await api("/api/track", { key: a.key, status: before }); render(); },
+      TONES[to]);
     if (to === "offer") { confetti(null, { count: 220, power: 1.4 }); setTimeout(() => confetti(stage, { count: 80 }), 350); }
     else if (forward) confetti(stage, { count: 70, power: .8 });
     render();
@@ -2495,14 +2547,15 @@ function quietBar(a, d) {
   const end = status => async () => {
     try {
       await api("/api/track", { key: a.key, status });
-      toast(`${a.company}: marked ${status}.`, async () => { await api("/api/track", { key: a.key, status: a.status }); render(); });
+      toast(stageWords(a.company, status), async () => { await api("/api/track", { key: a.key, status: a.status }); render(); },
+        TONES[status]);
       render();
     } catch (e) { toast(e.message); }
   };
   const snooze = async () => {
     try {
       const r = await api("/api/snooze", { key: a.key, days: 7 });
-      toast(`${a.company}: follow up ${fmtDay(r.follow_up, d.today)}.`,
+      toast(`${a.company}: follow up ${fmtDay(r.follow_up, d.today)}. A little patience goes a long way.`,
         async () => { await api("/api/track", { key: a.key, follow_up: a.follow_up || "" }); render(); });
       render();
     } catch (e) { toast(e.message); }
@@ -2831,7 +2884,7 @@ async function renderSkills() {
   put(pagehead("Skills to build", `What your matching jobs ask for that your resume doesn't show, and where to learn it. From ${d.jobs} jobs${d.scored ? `, ${d.scored} with fit scores` : ""}.`),
     layout(side, h("div", {},
       h("div", { class: "cards grid-cards" }, shown.length ? shown.map(card)
-        : emptyState(d.jobs ? "Your resume covers what your matching jobs ask for." : "No matching jobs yet: check for new jobs first.")),
+        : emptyState(d.jobs ? "Your resume covers what your matching jobs ask for. 💪" : "No matching jobs yet: check for new jobs first.")),
       other, blockers)));
 }
 
@@ -3299,7 +3352,8 @@ document.getElementById("fetchBtn").onclick = async () => {
       (warned ? ` · ${warned} to look at` : "");
     status.title = [...Object.entries(r.errors), ...Object.entries(r.warnings || {})].map(([b, e]) => `${b}: ${e}`).join("\n");
     tab = "today"; lastTab = null; await render();
-    if (r.new) { toast(`✨ ${r.new} new job${r.new === 1 ? "" : "s"} to look at`); confetti(btn, { count: 40, power: .6 }); }
+    if (r.new) { toast(`✨ ${r.new} new job${r.new === 1 ? "" : "s"} to look at`, null, "win"); confetti(btn, { count: 40, power: .6 }); }
+    else toast("No new jobs since the last check. Fresh ones land every day.", null, "onward");
   } catch (e) { status.textContent = e.message; }
   btn.disabled = false; btn.classList.remove("spin");
 };
