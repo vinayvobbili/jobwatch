@@ -88,10 +88,14 @@ def watched(boards: list[Board], name: str, entry: str = "") -> bool:
 
 def posted_on(job: Job) -> list[str]:
     """The boards a job is on (source:board each): the one it was found on, or for a post in a thread of many
-    companies' posts (HN), the ones the post links to. None for a job added by hand, or a post that links none."""
+    companies' posts (HN), the ones the post links to, or for a job added by hand (or from an alert), the board
+    its link is on. None for a link to no supported board, or a post that links none."""
     if (src := sources.SOURCES.get(job.source)) and src.many_companies:
         return list(job.boards)
-    return [f"{job.source}:{job.company}"] if job.source != MANUAL else []
+    if job.source == MANUAL:
+        on = [sources.detect(u) for u in (job.posting_url, job.url) if u]
+        return list(dict.fromkeys(f"{b[0]}:{b[1]}" for b in on if b))
+    return [f"{job.source}:{job.company}"]
 
 
 def record(store: Store, boards: list[Board], job: Job, found: list[tuple] | None = None,
@@ -210,6 +214,10 @@ def accept(cfg: Config, store: Store, which: str, page=None) -> tuple[Config, Su
     """Add a suggested company's board to the watchlist (as add_board does: the file is rewritten, the old one
     kept as .bak), looking for it first if nobody has. Returns the new watchlist and the suggestion."""
     s = find(store, which)
+    # A job of theirs linked to its posting since (a LinkedIn alert's job, found on the company's own board)
+    if not s.entry and (linked := next((e for j in s.jobs for e in posted_on(j)), None)):
+        s.entry, s.found_by = linked, "posting"
+        store.set_unwatched_board(s.company, s.entry, s.found_by)
     if s.entry is None:
         look_up(store, s, page)
     if not s.entry:
