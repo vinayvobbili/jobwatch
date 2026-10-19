@@ -36,7 +36,7 @@ from . import (
 )
 from .config import BACKENDS, ConfigError
 from .filters import KINDS
-from .score import ScoringUnavailable, prompt_info, resume_id, scorer_label
+from .score import ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
 from .store import STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
@@ -169,15 +169,26 @@ def cmd_score(args, cfg, store):
 
 
 def _compare(args, cfg, store):
-    """score --compare N: N already-scored jobs, from the lowest score to the highest, scored again with
-    --backend/--model and shown next to the stored score. Nothing is stored."""
-    picks = compare_picks(cfg, store, args.compare)
+    """score --compare N: N already-scored jobs (--stored-by: only ones that backend scored), from the lowest score
+    to the highest, scored again with --backend/--model (and --prompts, edited prompts to try) and shown next to
+    the stored score. Nothing is stored."""
+    prompts = None
+    if args.prompts:
+        tried = yaml.safe_load(args.prompts.read_text(encoding="utf-8")) or {}
+        if not isinstance(tried, dict):
+            raise ConfigError(f"{args.prompts}: edited prompts by name (see --show-prompts), got {tried!r:.80}")
+        prompts = {**cfg.prompts, **{str(k): str(v) for k, v in tried.items()}}
+        if problem := check_prompts(prompts):
+            raise ConfigError(f"{args.prompts}: {problem}")
+    picks = compare_picks(cfg, store, args.compare, by=args.stored_by or "")
     if not picks:
-        print("No job has a fit score for this resume yet: score some first.")
+        print("No job has a fit score for this resume yet" + (f" made by {args.stored_by}" if args.stored_by else "")
+              + ": score some first.")
         return
     print(f"Scoring {len(picks)} jobs again with {cfg.backend}{f' ({cfg.score_model})' if cfg.score_model else ''}"
+          + (f" and the prompts in {args.prompts}" if prompts else "")
           + (" (paid API calls)" if cfg.backend == "claude" else "") + "; nothing is saved.", file=sys.stderr)
-    results, errors = compare_scores(cfg, picks, cfg.backend, cfg.score_model,
+    results, errors = compare_scores(cfg, picks, cfg.backend, cfg.score_model, prompts=prompts,
                                      progress=lambda m: print(f"  {m}", file=sys.stderr))
     cut, diffs, flips = cfg.filters.min_fit or 0, [], 0
     print(f"{'stored':>6} {'new':>4} {'diff':>5}  job")
@@ -197,8 +208,9 @@ def _compare(args, cfg, store):
     print(f"\nStored scores by: {', '.join(sorted(by)) or 'the scorer before scores were labelled'}; new by: "
           f"{scorer_label(next(iter(results.values()))['scored_by']) if results else cfg.backend}")
     if diffs:
-        print(f"{len(diffs)} compared: mean difference {sum(diffs) / len(diffs):+.1f}, largest "
-              f"{max(diffs, key=abs):+.0f}" + (f", {flips} on the other side of min_fit {cut}" if cut else ""))
+        print(f"{len(diffs)} compared: mean difference {sum(diffs) / len(diffs):+.1f}, mean size "
+              f"{sum(map(abs, diffs)) / len(diffs):.1f}, largest {max(diffs, key=abs):+.0f}"
+              + (f", {flips} on the other side of min_fit {cut}" if cut else ""))
 
 
 def cmd_unscored(args, cfg, store):
@@ -726,6 +738,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--compare", type=int, default=0, metavar="N",
                    help="score N already-scored jobs again (lowest to highest score) with --backend/--model and "
                    "show the old and new scores side by side; nothing is saved")
+    p.add_argument("--stored-by", choices=BACKENDS, default=None,
+                   help="with --compare: only jobs this backend scored (say, Claude's scores as the reference)")
+    p.add_argument("--prompts", type=Path, default=None, metavar="FILE",
+                   help="with --compare: edited prompts to try (YAML, name: text, as --show-prompts names them), "
+                   "for this run only; the watchlist's prompts and every stored score stay as they are")
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")

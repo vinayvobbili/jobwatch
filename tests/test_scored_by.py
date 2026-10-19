@@ -329,3 +329,35 @@ def test_rescore_scores_other_models_jobs_again_best_first_past_the_daily_limit(
     store.close()
     cli.main(["-c", str(cfg.path), "score", "--rescore", "50"])
     assert "Every scored job on Today was scored by claude" in capsys.readouterr().out
+
+
+def test_compare_against_one_backends_scores_with_prompts_to_try(scored, monkeypatch, capsys):
+    cfg, rid, jobs = scored
+    store = Store(cfg.state)
+    store.save_score(jobs[0].key, rid, {"score": 70, "must_haves_met": 1, "must_haves_total": 1,
+                                        "scored_by": "claude:claude-sonnet-5-5"})
+    assert [j.key for j, _ in watch.compare_picks(cfg, store, 10, by="claude")] == [jobs[0].key]
+    store.close()
+    sent = []
+    monkeypatch.setattr(watch, "score_jobs", lambda jobs, resume, backend, cache, **kw: (
+        sent.append(kw["prompts"]) or ({j.key: {"score": 64.0, "must_haves_met": 1, "must_haves_total": 1,
+                                                "scored_by": f"{backend}:q"} for j in jobs}, {})))
+    tried = cfg.path.parent / "tight.yaml"
+    tried.write_text("score_system: Judge strictly.\n")
+    cli.main(["-c", str(cfg.path), "score", "--compare", "5", "--stored-by", "claude", "--backend", "local",
+              "--prompts", str(tried)])
+    out = capsys.readouterr()
+    assert sent == [{"score_system": "Judge strictly."}] and "and the prompts in" in out.err
+    assert "1 compared: mean difference -6.0, mean size 6.0, largest -6" in out.out
+    assert config.load(cfg.path).prompts == {}  # tried, not kept
+    store = Store(cfg.state)
+    assert store.score(jobs[0].key, rid)["score"] == 70
+    store.close()
+
+
+def test_compare_prompts_must_be_names_and_texts(scored):
+    cfg, _, _ = scored
+    tried = cfg.path.parent / "bad.yaml"
+    tried.write_text("- just a list\n")
+    with pytest.raises(SystemExit, match="edited prompts by name"):
+        cli.main(["-c", str(cfg.path), "score", "--compare", "2", "--prompts", str(tried)])

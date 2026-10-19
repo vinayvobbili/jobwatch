@@ -377,6 +377,12 @@ tomorrow), and Claude takes them up the next day. A fallback score never hides a
 After switching backend or model, `jobwatch score --rescore 50` scores Today's and queued jobs again, best
 first, where another model made the score and it's at least 50.
 
+To tighten the prompts for the on-device model without losing paid scores (an edited prompt sets every score
+aside), try them in a comparison first: `jobwatch score --compare 20 --stored-by claude --backend local
+--prompts tight.yaml` scores 20 of the jobs Claude scored with the local model and the prompts in
+tight.yaml (name: text, as `--show-prompts` names them), next to Claude's scores, with the mean size of the
+difference to aim down. Nothing is kept, the prompts included: put them in Settings when they're ready.
+
 ### The fit score prompt
 
 Settings → **Fit score prompt** shows what the model is told: each of shortlist-ai's prompts (reading the

@@ -741,13 +741,21 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Cal
     return len(results), errors
 
 
-def compare_picks(cfg: Config, store: Store, n: int) -> list[tuple[Job, dict]]:
-    """n open jobs with a fit score for the current resume, spread evenly from the lowest score to the highest,
-    so a comparison with another model (see compare_scores) covers the whole range and filters.min_fit."""
+def compare_picks(cfg: Config, store: Store, n: int, by: str = "") -> list[tuple[Job, dict]]:
+    """n open jobs with a fit score for the current resume (by: only ones that backend made), spread evenly from
+    the lowest score to the highest, so a comparison with another model or prompts (see compare_scores) covers
+    the whole range and filters.min_fit. One per company and title: the same role posted twice scores the same."""
     rid = resume_id(cfg.resume, cfg.prompts)
     fits = store.scores(rid)
-    scored = sorted(((job, fits[job.key]) for job, _ in store.jobs() if job.key in fits
-                     and scorable(job) and job.description.strip()), key=lambda p: p[1]["score"])
+    seen, scored = set(), []
+    for job, _ in store.jobs():
+        fit = fits.get(job.key)
+        role = (job.display_company.lower(), job.title.lower())
+        if (fit and role not in seen and scorable(job) and job.description.strip()
+                and (not by or str(fit.get("scored_by") or "").startswith(f"{by}:"))):
+            seen.add(role)
+            scored.append((job, fit))
+    scored.sort(key=lambda p: p[1]["score"])
     if n <= 0 or not scored:
         return []
     if n >= len(scored):
@@ -757,11 +765,15 @@ def compare_picks(cfg: Config, store: Store, n: int) -> list[tuple[Job, dict]]:
 
 
 def compare_scores(cfg: Config, picks: list[tuple[Job, dict]], backend: str, model: str = "",
-                   progress: Callable[[str], None] | None = None) -> tuple[dict[str, dict], dict[str, str]]:
-    """These jobs scored again with another backend or model, to see how its scores line up with the stored ones
-    before trusting them side by side (filters.min_fit is one cut-off for both). Nothing is stored."""
-    return score_jobs([job for job, _ in picks], cfg.resume, backend, cfg.cache, progress=progress,
-                      prompts=cfg.prompts, model=model, keychain=cfg.api_keychain)
+                   progress: Callable[[str], None] | None = None,
+                   prompts: dict[str, str] | None = None) -> tuple[dict[str, dict], dict[str, str]]:
+    """These jobs scored again with another backend or model (or prompts to try in place of the watchlist's), to
+    see how its scores line up with the stored ones before trusting them side by side (filters.min_fit is one
+    cut-off for both). Nothing is stored."""
+    with turn(backend):
+        return score_jobs([job for job, _ in picks], cfg.resume, backend, cfg.cache, progress=progress,
+                          prompts=cfg.prompts if prompts is None else prompts, model=model,
+                          keychain=cfg.api_keychain)
 
 
 def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,
