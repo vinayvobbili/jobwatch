@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import time
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -103,8 +105,36 @@ Entry = Annotated[str, Field(description=(
 Day = Field(description="A day: YYYY-MM-DD, or +N for N days from today. An empty string clears it.")
 
 
+_STARTED = time.time()
+
+
+def _code_dirs() -> list[Path]:
+    """Where the code this server runs lives: jobwatch, and shortlist-ai's scorer when it's installed."""
+    dirs = [Path(__file__).parent]
+    if spec := importlib.util.find_spec("shortlist_ai"):
+        dirs += [Path(p) for p in spec.submodule_search_locations or ()]
+    return dirs
+
+
+def _changed_since_start() -> str | None:
+    """A module changed (updated or edited) after this server started, when one has: the server still runs the
+    old code, so its tools can fail or answer wrongly until it starts again."""
+    for d in _code_dirs():
+        for f in d.glob("*.py"):
+            if f.stat().st_mtime > _STARTED:
+                return f"{d.name}/{f.name}"
+    return None
+
+
+def _config() -> config.Config:
+    if changed := _changed_since_start():  # a ToolError, so the model reads what to do
+        raise ToolError(f"jobwatch's code changed after this MCP server started ({changed}), so it would run "
+                        "the old code: restart the server (in Claude Code: /mcp, jobwatch, Reconnect)")
+    return config.load(os.environ.get("JOBWATCH_CONFIG"))
+
+
 def _open():
-    cfg = config.load(os.environ.get("JOBWATCH_CONFIG"))
+    cfg = _config()
     return cfg, Store(cfg.state)
 
 
@@ -145,7 +175,7 @@ def list_boards() -> dict:
     """The boards on the watchlist (entry, display name, careers: the board's own page, careers_link: the
     company's own careers site when the watchlist gives one) and where the watchlist file is. Use it to see what
     fetch_jobs checks; add_board and remove_board change it."""
-    cfg = config.load(os.environ.get("JOBWATCH_CONFIG"))
+    cfg = _config()
     return {"watchlist": str(cfg.path), "boards": _boards(cfg)}
 
 
@@ -690,7 +720,7 @@ def save_story(
     led); keep internal system names, people's names and countries out. Only what they confirmed goes in did,
     hard and result; the rest goes in avoid. Show them the story and save it only after they say yes. Returns
     the story as saved, the file and how many stories it has."""
-    cfg = config.load(os.environ.get("JOBWATCH_CONFIG"))
+    cfg = _config()
     try:
         saved, path = storyfind.save(cfg, {"id": id, "title": title, "did": did, "hard": hard, "result": result,
                                            "skills": skills or [], "avoid": avoid or []})
