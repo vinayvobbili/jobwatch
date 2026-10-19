@@ -378,6 +378,18 @@ def test_accept_looks_for_the_board_when_nobody_has(web, watchlist):
         suggest.accept(cfg, store, "Nobody")
 
 
+def test_accept_takes_the_board_a_jobs_link_is_on_when_its_name_finds_none(web, watchlist):
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    job = added(cfg, store, "Vandelay Industries", "Python Developer")
+    with pytest.raises(ValueError, match="no board found"):
+        suggest.accept(cfg, store, "Vandelay Industries")
+    # Its posting found later, on a board named differently from the company
+    store.set_url(job.key, "https://vandelay.wd1.myworkdayjobs.com/vandelaycareers/job/Remote/Python-Developer_R123")
+    cfg, s = suggest.accept(cfg, store, "Vandelay Industries")
+    assert s.entry == "workday:vandelay.wd1/vandelaycareers" and s.entry in {b.entry for b in cfg.boards}
+
+
 def test_dismissed_ones_stay_dismissed(web, watchlist):
     cfg = config.load(watchlist)
     store = Store(cfg.state)
