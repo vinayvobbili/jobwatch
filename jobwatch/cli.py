@@ -135,6 +135,9 @@ def cmd_score(args, cfg, store):
         backend = args.backend or cfg.backend
         cfg = replace(cfg, backend=backend, score_fallback="" if cfg.score_fallback == backend else cfg.score_fallback,
                       score_model=args.model if args.model else "" if args.backend else cfg.score_model)
+    if args.batch_api and cfg.backend != "claude":
+        raise ConfigError(f"--batch-api is for Claude (scoring.backend: claude, or --backend claude), "
+                          f"not {cfg.backend}")
     if args.compare:
         return _compare(args, cfg, store)
     cfg = replace(cfg, score_daily=0)  # scoring.daily holds back the page's background scoring, not what's asked for
@@ -151,16 +154,32 @@ def cmd_score(args, cfg, store):
     if not todo:
         print("Every job on Today has a fit score.")
         return
-    scored, failed = 0, {}
-    for i, e in enumerate(todo, 1):
-        before = e.fit["score"] if args.rescore is not None else None
-        print(f"[{i}/{len(todo)}] {e.job.display_company}: {e.job.title}", file=sys.stderr)
-        n, errors = score_entries(cfg, store, [e], progress=lambda m: None)
+    # Groups of scoring.workers jobs scored at once (Claude), so stopping keeps every group done; --batch-api sends
+    # them all, half price, and a stopped run collects its batch next time.
+    size = len(todo) if args.batch_api else 1 if cfg.backend == "local" else cfg.score_workers
+    if args.batch_api:
+        print(f"Scoring {len(todo)} jobs through Claude's Message Batches API (half price; each batch takes minutes, "
+              "at most a day). Stopping is safe: the next run collects what was sent.", file=sys.stderr)
+    scored, failed, done = 0, {}, 0
+    for start in range(0, len(todo), size):
+        group = todo[start:start + size]
+        before = {e.job.key: e.fit["score"] for e in group} if args.rescore is not None else {}
+        for i, e in enumerate(group, start + 1):
+            if not args.batch_api:
+                print(f"[{i}/{len(todo)}] {e.job.display_company}: {e.job.title}", file=sys.stderr)
+        n, errors = score_entries(cfg, store, group, batch=args.batch_api,
+                                  progress=(lambda m: print(f"  {m}", file=sys.stderr)) if args.batch_api
+                                  else (lambda m: None))
         scored += n
         failed.update(errors)
-        if n:
+        for e in group:
+            done += 1
+            if e.job.key in errors:
+                continue
+            was = before.get(e.job.key)
             fit = e.fit
-            print(f"  {f'{before:.0f} -> ' if before is not None else ''}{fit['score']:.0f}/100, must-haves "
+            print(f"  {f'[{done}/{len(todo)}] {e.job.display_company}: {e.job.title}: ' if size > 1 else ''}"
+                  f"{f'{was:.0f} -> ' if was is not None else ''}{fit['score']:.0f}/100, must-haves "
                   f"{fit['must_haves_met']}/{fit['must_haves_total']}"
                   + (f" (by {cfg.score_fallback}: {fit['fallback']})" if fit.get("fallback") else ""), file=sys.stderr)
     print(f"Scored {scored} of {len(todo)} jobs." + (f" {len(failed)} failed:" if failed else ""))
@@ -189,7 +208,7 @@ def _compare(args, cfg, store):
           + (f" and the prompts in {args.prompts}" if prompts else "")
           + (" (paid API calls)" if cfg.backend == "claude" else "") + "; nothing is saved.", file=sys.stderr)
     results, errors = compare_scores(cfg, picks, cfg.backend, cfg.score_model, prompts=prompts,
-                                     progress=lambda m: print(f"  {m}", file=sys.stderr))
+                                     progress=lambda m: print(f"  {m}", file=sys.stderr), batch=args.batch_api)
     cut, diffs, flips = cfg.filters.min_fit or 0, [], 0
     print(f"{'stored':>6} {'new':>4} {'diff':>5}  job")
     for job, old in picks:
@@ -743,6 +762,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--prompts", type=Path, default=None, metavar="FILE",
                    help="with --compare: edited prompts to try (YAML, name: text, as --show-prompts names them), "
                    "for this run only; the watchlist's prompts and every stored score stay as they are")
+    p.add_argument("--batch-api", action="store_true",
+                   help="score with Claude through the Message Batches API: half price, results in minutes (at most "
+                   "a day); for big runs nobody is waiting on. A stopped run collects its batch next time")
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")
