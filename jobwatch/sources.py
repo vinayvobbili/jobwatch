@@ -754,6 +754,8 @@ _AVATURE_DEPARTMENT = ("career area", "business area", "career field", "departme
                        "job category", "function", "area")
 _AVATURE_POSTED = ("date", "posted", "posted date", "date posted", "posting date", "publish date")
 _AVATURE_DATES = ("%A, %B %d, %Y", "%B %d, %Y", "%d-%b-%Y", "%Y-%m-%d", "%m/%d/%Y", "%d %B %Y")
+# Most portals leave the posting's text unlabeled; some label it ("Job Description and Requirements")
+_AVATURE_TEXT = re.compile(r"\b(description|requirements|responsibilities|qualifications|about the (role|job))\b", re.I)
 
 
 def _avature_base(board: str) -> str:
@@ -989,7 +991,8 @@ def _avature_read(j: Job, get) -> Job:
     created = re.search(r"\bcreated (\d{1,2}-\w{3}-\d{4})", _meta(page, "Description"))
     j.posted = next((d for k in _AVATURE_POSTED if k in named and (d := _avature_date(named[k]))), None) \
         or (_avature_date(created.group(1)) if created else None) or _time(data.get("datePosted")) or j.posted
-    j.description = _ld_text(data.get("description")) or "\n\n".join(text for label, text in fields if not label)
+    j.description = _ld_text(data.get("description")) or "\n\n".join(
+        text for label, text in fields if not label or _AVATURE_TEXT.search(label))
     _salary(j, j.description)
     return j
 

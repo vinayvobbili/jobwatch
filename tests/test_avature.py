@@ -180,6 +180,27 @@ def test_avature_known_postings_are_not_read_again():
     assert next(j for j in jobs if j.id == "31415") is known and FDE not in web.calls
 
 
+def test_reread_reads_a_boards_stored_postings_again(tmp_path, monkeypatch):
+    from jobwatch import config
+    from jobwatch.store import Store
+    from jobwatch.watch import fetch_all
+
+    path = tmp_path / "jobwatch.yaml"
+    path.write_text(f"companies:\n  - {{source: avature, board: {BOARD}, name: Initech}}\n"
+                    "filters:\n  titles: [platform]\nstate: state.db\ncache: cache\n")
+    cfg, web = config.load(path), initech_web()
+    monkeypatch.setattr(sources, "get_text", web)
+    store = Store(cfg.state)
+    reads = lambda: sum(u == FDE for u in web.calls)  # noqa: E731
+    fetch_all(cfg, store)
+    fetch_all(cfg, store)
+    assert reads() == 1  # stored: not read again
+    fetch_all(cfg, store, reread=("initech",))
+    assert reads() == 2
+    with pytest.raises(ValueError, match="no watched board named globex"):
+        fetch_all(cfg, store, reread=("Globex",))
+
+
 def test_a_portal_without_postings_in_its_sitemap_is_read_from_its_feed():
     web = FakeWeb({f"https://{BOARD}/sitemap_index.xml": INDEX,
                    "https://careers.initech.example/en_US/careers/sitemap.xml": "", FEED_SEARCH: FEED})
@@ -227,6 +248,16 @@ def test_other_portals_name_their_fields_differently():
     assert job.url == BLOOMBERG
     assert job.locations == ["London"] and job.department == "Sales and Client Service"
     assert job.company_name == "bloomberg" and job.posted is None and job.salary_min is None
+    assert "order management solutions" in job.description and "10054428" not in job.description
+
+
+def test_a_labeled_text_field_is_the_posting_text():
+    url = "https://umbrella.avature.net/careers/JobDetail/Buyside-Pre-Sales-Engineer/777"
+    rich = 'field--rich-text">\n'
+    page = BLOOMBERG_PAGE.replace(rich, rich + '<div class="article__content__view__field__label">'
+                                               'Job Description and Requirements</div>\n')
+    assert page != BLOOMBERG_PAGE
+    job = sources.posting(url, FakeWeb({url: page}))
     assert "order management solutions" in job.description and "10054428" not in job.description
 
 
