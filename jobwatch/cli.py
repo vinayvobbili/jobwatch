@@ -302,7 +302,7 @@ def cmd_hidden(args, cfg, store):
 def cmd_company(args, cfg, store):
     """Everything tracked at one company, whatever status its jobs are in: read-only."""
     name = " ".join(args.name)
-    v = company.view(cfg, store, name)
+    v = company.view(cfg, store, name, every=True if args.all else None)
     if args.format == "json":
         print(json.dumps(v, indent=2, ensure_ascii=False))
     else:
@@ -865,6 +865,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("company", help="everything tracked at a company, whatever status: its jobs, dates, next "
                        "steps, people you know, and whether its board is watched. Read-only")
     p.add_argument("name", nargs="+", help="the company's name, part of it, or its domain (acme.com)")
+    p.add_argument("--all", action="store_true", help="also the open roles your filters leave out (display.company: "
+                   "all lists them every time)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_company, read_only=True)
 

@@ -561,6 +561,9 @@ def get_company(
     name: Annotated[str, Field(description=(
         "A company's name (\"Acme Robotics\"), part of it (\"acme\"), or its domain (\"acme.com\"); case, "
         "punctuation and suffixes such as Inc don't matter."))],
+    every_role: Annotated[bool, Field(description=(
+        "Also list the open roles the filters leave out (other cities, low pay...). Default: the watchlist's "
+        "display.company setting (matches: only the roles Today's filters pass)."))] = False,
 ) -> dict:
     """Everything tracked at one company, whatever the status of its jobs (new, queued, applied, screening,
     interviewing, offer, rejected, withdrawn, skipped) and open or closed. company, counts (jobs by status), and
@@ -568,14 +571,15 @@ def get_company(
     (what was saved: files, answers, note) and duplicate_of (see get_job); contacts: people the user knows there,
     with find_referral, a LinkedIn search for someone who could introduce them; watch: whether the company's
     board is on the watchlist and, when it isn't, add_board (the entry and name to pass add_board) and command.
-    Closed postings never acted on are only counted (closed_unacted), so are open ones not acted on whose title
-    the title filters leave out (off_title), and the other open ones not acted on are listed up to 25
-    (more_open). also names other companies the name matched. Returns an error when none matches. Use it when
-    the person names a company and you don't know which stage it's at; for one job's full text, fit and prep use
-    get_job, for every application list_applications, and for all jobs of one status list_jobs."""
+    Closed postings never acted on are only counted (closed_unacted), so are open ones not acted on that the
+    filters leave out (left_out, with left_out_by: filter -> count) unless every_role, and the other open ones
+    not acted on are listed up to 25 (more_open). also names other companies the name matched. Returns an error
+    when none matches. Use it when the person names a company and you don't know which stage it's at; for one
+    job's full text, fit and prep use get_job, for every application list_applications, and for all jobs of one
+    status list_jobs."""
     cfg, store = _open()
     try:
-        if not (v := company.view(cfg, store, name)):
+        if not (v := company.view(cfg, store, name, every=True if every_role else None)):
             # a ToolError, so the model reads the message: any other exception's text stays on the server
             raise ToolError(f"no tracked job is at a company matching {name!r}")
         return v

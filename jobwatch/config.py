@@ -370,6 +370,7 @@ class Config:
     theme: str = "system"      # the page: see THEMES and WIDTHS
     width: str = "standard"
     today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
+    company_view: str = "matches"  # display.company: which open roles a company's page lists (COMPANY_VIEWS)
     pace: Pace = field(default_factory=Pace)
     calendar: Calendar = field(default_factory=Calendar)
     quiet: Quiet = field(default_factory=Quiet)
@@ -473,6 +474,9 @@ SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "storie
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
+# A company's page lists the open roles you haven't acted on that pass every filter Today uses (matches), or all
+# of them (all). Jobs you queued, applied to or skipped are listed either way.
+COMPANY_VIEWS = ("matches", "all")
 
 
 def _near(learning: dict, filters: Filters) -> str:
@@ -587,6 +591,9 @@ def load(explicit: str | Path | None = None) -> Config:
     if width not in WIDTHS:
         raise ConfigError(f"{path}: display.width must be one of {', '.join(WIDTHS)}, got {width!r}")
     today = _whole(display.get("today", 10), "display.today", path, "0 shows every match")
+    company_view = str(display.get("company", "matches"))
+    if company_view not in COMPANY_VIEWS:
+        raise ConfigError(f"{path}: display.company must be one of {', '.join(COMPANY_VIEWS)}, got {company_view!r}")
     listed = [_board(e, path, strict=False) for e in raw.get("companies") or []]
     dupes = {b for b in listed if listed.count(b) > 1}
     if dupes:
@@ -611,7 +618,7 @@ def load(explicit: str | Path | None = None) -> Config:
         timeline=timeline, near=_near(learning, filters),
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
         suggest=_suggestions(raw.get("suggestions"), path),
-        theme=theme, width=width, today=today,
+        theme=theme, width=width, today=today, company_view=company_view,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
         quiet=_quiet(raw.get("quiet"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
@@ -627,7 +634,7 @@ def defaults() -> dict:
     return {"scoring": {"backend": "local", "top": 0},
             "chat": {k: v for k, v in asdict(Chat()).items() if k not in ("backend", "prompt")},
             "learning": {"timeline": "quarter", "jobs": Config.learn_jobs},
-            "display": {"theme": "system", "width": "standard", "today": Config.today},
+            "display": {"theme": "system", "width": "standard", "today": Config.today, "company": "matches"},
             "pace": asdict(Pace()),
             "calendar": asdict(Calendar()),
             "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "target_max", "floor")},
@@ -668,6 +675,7 @@ filters:
 # Today (and `jobwatch digest`) lead with your best few matches; the rest are a click (or --all) away.
 # display:
 #   today: 10            # how many picks a day; 0 shows every match
+#   company: matches     # a company's page lists the open roles your filters pass; all lists every one
 
 # How many applications to send a day: a few good ones beat a burst. Today and the queue say how many went
 # out today. Nothing is ever blocked. daily: 0 turns it off (when looking for work is your full-time job).
