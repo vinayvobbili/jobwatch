@@ -142,11 +142,16 @@ def why(tie: dict) -> str:
 
 
 class Contacts:
-    def __init__(self, people: list[dict], ties: dict[str, dict] | None = None):
+    def __init__(self, people: list[dict], ties: dict[str, dict] | None = None, skip: list[str] | tuple = ()):
+        """skip: people never to suggest (a name, or a linkedin.com/in/ link), however close the tie."""
         self.has_ties = bool(ties)
         ties = ties or {}
+        skip_profiles = {k for s in skip if (k := profile_key(s))}
+        skip_names = {_name_key(s) for s in skip if not profile_key(s)}
         self.by_company: dict[str, list[dict]] = {}
         for p in people:
+            if _name_key(p["name"]) in skip_names or profile_key(p.get("url", "")) in skip_profiles:
+                continue
             t = {**ties.get("name:" + _name_key(p["name"]), {}), **ties.get(profile_key(p.get("url", "")), {})}
             if t:
                 p = {**p, "strength": strength(t), "why": why(t)}
@@ -156,15 +161,15 @@ class Contacts:
             group.sort(key=lambda p: -p.get("strength", 0))
 
     @classmethod
-    def load(cls, path: Path | str) -> Contacts:
+    def load(cls, path: Path | str, skip: list[str] | tuple = ()) -> Contacts:
         """Connections.csv (with linkedin-ties.json beside it, if an archive was imported), or the archive .zip."""
         path = Path(path).expanduser()
         if path.suffix.lower() == ".zip":
-            return cls(*read_archive(path))
+            return cls(*read_archive(path), skip=skip)
         people = parse_connections(path.read_text(encoding="utf-8-sig"), str(path))
         ties_path = path.with_name(TIES_FILE)
         ties = json.loads(ties_path.read_text()) if ties_path.is_file() else None
-        return cls(people, ties)
+        return cls(people, ties, skip)
 
     def at(self, *names: str) -> list[dict]:
         """Connections whose current company is any of these names (the board's name, its slug, ...),

@@ -941,6 +941,12 @@ to a LinkedIn search of your 2nd-degree network there, to find someone who can i
 Companies are matched by name, ignoring suffixes like "Inc." and "Corporation". Your LinkedIn data is only
 read on your machine.
 
+Someone you'd never ask for a referral can be left out, by name or profile link:
+
+```yaml
+connections_skip: [Jane Doe, https://www.linkedin.com/in/example-john]
+```
+
 A digest lists each job once, the top `display.today` (10) of them, and ends with how many more match;
 those stay new for the next digest. Use `digest --all` for every match, including jobs already shown,
 `--limit N` for another number, or `--peek` to look without marking them shown. Roles that disappear from a

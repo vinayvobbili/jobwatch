@@ -354,6 +354,7 @@ class Config:
     keywords: dict[str, float] = field(default_factory=dict)
     resume: Path | None = None
     connections: Path | None = None  # LinkedIn Connections.csv, for "you know someone there"
+    connections_skip: list[str] = field(default_factory=list)  # people never to suggest: names or profile links
     stories: Path | None = None      # your projects, for drafted interview answers (see stories.py)
     backend: str = "local"
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
@@ -475,7 +476,8 @@ def locate(explicit: str | Path | None = None) -> Path:
         return DEFAULT_PATHS[1]
 
 
-SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "stories", "scoring", "chat", "prep",
+SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "connections_skip", "stories", "scoring",
+            "chat", "prep",
             "learning", "display", "pace", "calendar", "pay", "alerts", "suggestions", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
@@ -617,6 +619,7 @@ def load(explicit: str | Path | None = None) -> Config:
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
+        connections_skip=[str(s).strip() for s in raw.get("connections_skip") or [] if str(s).strip()],
         stories=_path(raw["stories"], base) if raw.get("stories") else None,
         backend=backend, score_model=str(scoring.get("model") or "").strip(),
         score_top=_whole(scoring.get("top", 0), "scoring.top", path, "0 scores none when the digest is made"),
@@ -771,6 +774,8 @@ scoring:
 
 # Optional: LinkedIn's Connections.csv, to show who you know at each company (a referral beats applying cold).
 # connections: ~/Downloads/Connections.csv
+# People never to suggest, by name or LinkedIn profile link:
+# connections_skip: [Jane Doe, https://www.linkedin.com/in/example-john]
 
 # state: ~/.local/share/jobwatch/state.db
 """
