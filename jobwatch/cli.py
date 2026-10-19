@@ -107,7 +107,7 @@ def _digest(args, cfg, store):
 
 
 def cmd_fetch(args, cfg, store):
-    print(report.fetch_summary(fetch_all(cfg, store)))
+    print(report.fetch_summary(fetch_all(cfg, store, reread=tuple(args.reread))))
 
 
 def cmd_digest(args, cfg, store):
@@ -727,6 +727,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_find, needs_config=False)
 
     p = sub.add_parser("fetch", help="check every board and record new roles")
+    p.add_argument("--reread", nargs="+", default=[], metavar="BOARD",
+                   help="read these boards' postings again, even ones already stored (by name or entry, as "
+                        "`jobwatch list` shows them): after a jobwatch update that reads their pages better")
     p.set_defaults(func=cmd_fetch)
 
     for name, func, help_ in (("digest", cmd_digest, "ranked list of new matching jobs"),

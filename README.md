@@ -65,6 +65,8 @@ jobwatch reads those feeds for the companies on your watchlist:
   page, and each posting it reads is one page. An Avature portal's sitemap is one request a run; a posting
   whose title has your `filters.titles` words and passes your title filters is read from its page, once, two at
   a time. An iCIMS site's list is a page of 50 roles a request, and its postings are read the same way. HN's Who is hiring is one request to find the thread and one to read it whole.
+  `jobwatch fetch --reread <board>` reads a searched board's stored postings again, as after an update that
+  reads its pages better.
 - **Within the rules:** it reads public APIs meant for this, and follows robots.txt. SmartRecruiters' own API
   host asks crawlers to stay away, so jobwatch doesn't use it: it reads the company's public careers site
   (careers.smartrecruiters.com, and each posting's page on jobs.smartrecruiters.com), which robots.txt leaves

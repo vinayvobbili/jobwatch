@@ -109,8 +109,12 @@ def offline_warning(b: Board) -> str:
             f"company's careers site to the watchlist, {{board: {b.entry}, careers: https://...}}")
 
 
-def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, mail=None) -> FetchReport:
+def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, mail=None,
+              reread: tuple[str, ...] = ()) -> FetchReport:
     """Pull every board in the watchlist and record what is new. Boards that fail are reported and skipped.
+
+    A searched board's postings are read in full once; the boards named in `reread` (by entry, board or name) have
+    every matching posting read again, as after a fix to how their pages are read.
 
     With a mailbox set (alerts.imap), the job-alert emails in it (LinkedIn's, Indeed's and the rest) are read
     too, the same as `jobwatch alerts --imap`, so their jobs come in with every check; `mail` replaces the IMAP
@@ -126,7 +130,11 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
         report.errors[b.entry] = UNKNOWN_SOURCE
     # Big boards are searched for the watchlist's titles, and a posting is read in full once: the store has it.
     search, wanted = search_terms(cfg.filters), (lambda title: title_ok(title, cfg.filters))
-    known = {b: store.board_jobs(b.source, b.board) for b in cfg.boards if sources.SOURCES[b.source].search}
+    again = {r.lower() for r in reread}
+    if missing := again - {n.lower() for b in cfg.boards for n in (b.entry, b.board, b.name) if n}:
+        raise ValueError(f"no watched board named {', '.join(sorted(missing))}: see `jobwatch list`")
+    known = {b: store.board_jobs(b.source, b.board) for b in cfg.boards if sources.SOURCES[b.source].search
+             and not again & {b.entry.lower(), b.board.lower(), (b.name or "").lower()}}
     hosted = HostedPages(store, page)
     due = hosted.due([(b.source, b.board) for b in cfg.boards])
 
