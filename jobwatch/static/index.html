@@ -247,6 +247,9 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .jump-list .small { display: block; }
 .jump-list .none { padding: 8px 10px; color: var(--muted); font-size: 13.5px; }
 .cjob { border-top: 1px solid var(--line); padding: 10px 0; }
+/* a company's page: nothing behind it is being read, so it spreads across the screen, its jobs in columns */
+.dialog.co-page { max-width: 2400px; }
+.cjobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 0 32px; }
 .cjob .row { align-items: center; gap: 8px; }
 .cjob .row b { flex: 1; }
 .elsewhere { margin-top: 10px; font-size: 14px; }
@@ -1185,7 +1188,7 @@ function todayCard(job, canScore, i) {
 
 async function openDetails(key) {
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
-  dialog.classList.remove("with-chat");
+  dialog.classList.remove("with-chat", "co-page");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   overlay.style.display = "flex";
   try {
@@ -1222,7 +1225,7 @@ async function openDetails(key) {
             "What are they likely to ask in interviews?", "Draft a short note to a recruiter here"],
       })));
     watchPay([j], "details");
-  } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
+  } catch (e) { dialog.classList.remove("with-chat", "co-page"); showError(dialog, e); }
 }
 function detailsScore(j) {
   if (j.fit && !j.fit.stale) return null;
@@ -1240,7 +1243,7 @@ function detailsScore(j) {
 // draft: the chat's model drafts likely questions with answers from the story file (slow the first time, then kept).
 async function openPrep(key, draft = false, questions = false) {
   const dialog = document.getElementById("dialog");
-  dialog.classList.remove("with-chat");
+  dialog.classList.remove("with-chat", "co-page");
   dialog.replaceChildren(h("div", { class: "muted" }, draft ? "Drafting questions and answers from your stories… "
     + "(the first time can take a minute or two)" : "Loading…"));
   try {
@@ -1333,7 +1336,7 @@ async function openPrep(key, draft = false, questions = false) {
 // and a tightened answer built only from what you said and your stories, which you can keep on the prep sheet.
 async function openMock(key) {
   const dialog = document.getElementById("dialog");
-  dialog.classList.remove("with-chat");
+  dialog.classList.remove("with-chat", "co-page");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   let m;
   try { m = await api("/api/mock?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
@@ -1423,7 +1426,7 @@ function storyFromForm(f) {
 // is saved until you press Save.
 async function openStoryFind(key, gap = null) {
   const dialog = document.getElementById("dialog");
-  dialog.classList.remove("with-chat");
+  dialog.classList.remove("with-chat", "co-page");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   let s;
   try { s = await api("/api/storyfind?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
@@ -2154,7 +2157,7 @@ function brokenLine() {
 async function openHidden(kind) {
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
   const info = HIDDEN[kind];
-  dialog.classList.remove("with-chat");
+  dialog.classList.remove("with-chat", "co-page");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   overlay.style.display = "flex";
   try {
@@ -3392,6 +3395,7 @@ async function openCompany(q, every = false) {
   jump.value = ""; jumpClose(); jump.blur();
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
+  dialog.classList.add("co-page");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   overlay.style.display = "flex";
   try {
@@ -3414,7 +3418,7 @@ async function openCompany(q, every = false) {
         w.suggested ? h("button", { class: "btn", onclick: e => watch(e.currentTarget),
           title: w.entry ? `Watch ${w.entry}` : "Look for its board by name and watch it" }, "Watch its board")
           : w.entry ? `Add ${w.entry} in Settings.` : "Look for its board with Settings → Add a company."),
-      c.jobs.map(j => companyJob(j, today)),
+      h("div", { class: "cjobs" }, c.jobs.map(j => companyJob(j, today))),
       c.more_open ? h("div", { class: "small muted" }, `and ${c.more_open} more open roles you haven't acted on: see Today`) : null,
       c.left_out ? h("div", { class: "small muted" },
         `${c.left_out} open role${c.left_out === 1 ? "" : "s"} your filters leave out (` +
