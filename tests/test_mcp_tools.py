@@ -50,3 +50,11 @@ VERBS = {"add", "check", "dismiss", "fetch", "find", "get", "import", "list", "m
 
 def test_tool_names_start_with_a_verb():
     assert {name for name in TOOLS if name.split("_")[0] not in VERBS} == set()
+
+
+def test_a_server_whose_code_changed_since_it_started_says_to_restart(monkeypatch):
+    monkeypatch.setattr(mcp, "_STARTED", 0)  # every module is newer than this "start"
+    with pytest.raises(mcp.ToolError, match="Reconnect"):
+        mcp.list_boards()
+    monkeypatch.setattr(mcp, "_STARTED", float("inf"))
+    assert mcp._changed_since_start() is None
