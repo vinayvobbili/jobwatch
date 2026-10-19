@@ -239,7 +239,7 @@ def load_contacts(cfg: Config) -> Contacts | None:
     if not cfg.connections:
         return None
     try:
-        return Contacts.load(cfg.connections)
+        return Contacts.load(cfg.connections, cfg.connections_skip)
     except (OSError, ValueError) as e:
         print(f"jobwatch: connections skipped: {e}", file=sys.stderr)
         return None

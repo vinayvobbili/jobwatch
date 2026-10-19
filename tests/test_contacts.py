@@ -41,6 +41,14 @@ def test_load_skips_the_notes_and_blank_rows(connections):
     assert contacts.at("Nobody") == [] and contacts.at("") == []
 
 
+def test_people_to_skip_are_never_suggested(connections, watchlist):
+    contacts = Contacts.load(connections, ["  ana LI ", "linkedin.com/in/Example-Cy/"])
+    assert [p["name"] for p in contacts.at("Initech")] == ["Bo Chen"]
+    assert contacts.at("Globex") == []
+    watchlist.write_text(watchlist.read_text() + f"connections: {connections}\nconnections_skip: [Bo Chen]\n")
+    assert [p["name"] for p in watch.load_contacts(config.load(watchlist)).at("Initech")] == ["Ana Li"]
+
+
 def test_not_a_connections_file(tmp_path):
     p = tmp_path / "x.csv"
     p.write_text("a,b\n1,2\n")
