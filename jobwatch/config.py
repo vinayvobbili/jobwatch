@@ -358,6 +358,8 @@ class Config:
     backend: str = "local"
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
     api_keychain: str = ""     # scoring.keychain: macOS keychain item with the Anthropic API key (for Claude)
+    score_fallback: str = ""   # scoring.fallback: the backend that scores when this one can't (or is at its limit)
+    score_daily: int = 0       # scoring.daily: the most jobs the backend scores a day, then the fallback (0: no cap)
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
     score_batch: int = 10      # scoring.batch: jobs the page scores in a row before it rests (0: no rests)
@@ -583,6 +585,10 @@ def load(explicit: str | Path | None = None) -> Config:
     auto_score = scoring.get("auto", backend == "local")
     if not isinstance(auto_score, bool):
         raise ConfigError(f"{path}: scoring.auto must be true or false, got {auto_score!r}")
+    fallback = str(scoring.get("fallback") or "")
+    if fallback and (fallback not in BACKENDS or fallback == backend):
+        other = " or ".join(b for b in BACKENDS if b != backend)
+        raise ConfigError(f"{path}: scoring.fallback is the other backend ({other}) or left out, got {fallback!r}")
     learning = raw.get("learning") or {}
     timeline = str(learning.get("timeline", "quarter"))
     if timeline not in TIMELINES:
@@ -617,7 +623,8 @@ def load(explicit: str | Path | None = None) -> Config:
         score_batch=_whole(scoring.get("batch", 10), "scoring.batch", path, "0 scores everything in one go"),
         score_rest=_whole(scoring.get("rest", 10), "scoring.rest", path, "0 rests not at all"),
         unload_after=_whole(scoring.get("unload_after", 5), "scoring.unload_after", path, "0 keeps the model loaded"),
-        api_keychain=str(scoring.get("keychain") or "").strip(),
+        api_keychain=str(scoring.get("keychain") or "").strip(), score_fallback=fallback,
+        score_daily=_whole(scoring.get("daily", 0), "scoring.daily", path, "0 sets no daily limit"),
         chat=_chat(raw.get("chat"), backend, path, str(scoring.get("keychain") or "").strip()),
         prep=_prep(raw.get("prep"), path),
         timeline=timeline, near=_near(learning, filters),
@@ -714,6 +721,8 @@ scoring:
   top: 0                 # score this many of the most relevant new jobs per digest
   # model: ""            # the model fit scores use; leave out for shortlist-ai's own for the backend
   # keychain: anthropic  # macOS keychain item holding the API key, when ANTHROPIC_API_KEY isn't set (chat too)
+  # fallback: local      # the other backend, when this one can't score (no key, no credit, down) or is at...
+  # daily: 40            # ...the most jobs it scores a day (0: no limit); the fallback's are scored again later
   # auto: true           # `jobwatch ui` scores every new match in the background (default: on for local)
   # batch: 10            # ...this many jobs in a row, then rests (0: no rests)
   # rest: 10             # ...for this many minutes

@@ -13,7 +13,7 @@ from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts
 from .filters import KINDS, Filters, red_flags, reject_reason, rejection, relevance, search_terms, title_ok
 from .models import Job
-from .score import brief, resume_id, score_jobs
+from .score import ScoringUnavailable, brief, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, Store
 
 
@@ -587,17 +587,20 @@ def _fits(store: Store, rid: str) -> dict[str, dict]:
     return {**store.stale_scores(rid), **store.scores(rid)}
 
 
-def _matching(cfg: Config, store: Store, statuses: tuple[str, ...]) -> tuple[list[Entry], dict[str, int]]:
+def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
+              fallback_passes: bool = False) -> tuple[list[Entry], dict[str, int]]:
     """Jobs with these statuses that pass the filters, with stored fit scores for the current resume, and
     how many were filtered out (reason -> count). A job that's (maybe) the same opening as one acted on stays,
-    flagged: its `duplicate` says which, and its first warning says so (see dupes.py)."""
+    flagged: its `duplicate` says which, and its first warning says so (see dupes.py). fallback_passes: a score
+    the fallback made doesn't count against filters.min_fit (for the scorer, which scores it again)."""
     rejected: dict[str, int] = {}
     entries = []
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
     fits = _fits(store, rid) if rid else {}
     index = dupes.Index(store)
     for job, record in store.jobs(statuses):
-        if reason := reject_reason(job, cfg.filters, fits.get(job.key)):
+        fit = fits.get(job.key)
+        if reason := reject_reason(job, cfg.filters, None if fallback_passes and fit and fit.get("fallback") else fit):
             kind = reason.split()[0]  # title, department, location, pay, posted, fit
             rejected[kind] = rejected.get(kind, 0) + 1
             continue
@@ -625,8 +628,36 @@ def unscored(cfg: Config, store: Store, skip: set[str] = frozenset()) -> list[En
     scoring_line). Keys in `skip`, and ones that failed lately (see failed_scores), are left out."""
     if not (cfg.resume and cfg.resume.is_file()):
         return []
+    limit = at_daily_limit(cfg, store)
+    if limit and not cfg.score_fallback:
+        return []  # nothing can score until tomorrow
     skip = {*skip, *failed_scores(cfg, store)}
-    return [e for e in scoring_line(cfg, store) if _scorable(e) and e.job.key not in skip]
+    return [e for e in scoring_line(cfg, store)
+            if (_scorable(e) or (not limit and _provisional(e))) and e.job.key not in skip]
+
+
+def made_elsewhere(cfg: Config, fit: dict | None) -> bool:
+    """A score not made by the backend (and scoring.model, when set) now in use: by the other backend, as a
+    fallback, or before scores said who made them."""
+    if not fit:
+        return False
+    backend, _, model = str(fit.get("scored_by") or "").partition(":")
+    return backend != cfg.backend or bool(cfg.score_model and model != cfg.score_model) or bool(fit.get("fallback"))
+
+
+def rescore_line(cfg: Config, store: Store, at_least: float = 0) -> list[Entry]:
+    """Queued and Today's jobs whose score another model made (see made_elsewhere), scoring at least `at_least`,
+    best first: `jobwatch score --rescore` scores them again with the backend in use."""
+    if not (cfg.resume and cfg.resume.is_file()):
+        return []
+    line = [e for e in scoring_line(cfg, store) if made_elsewhere(cfg, e.fit) and not e.fit.get("stale")
+            and e.fit["score"] >= at_least and scorable(e.job) and e.job.description.strip()]
+    return sorted(line, key=lambda e: -e.fit["score"])
+
+
+def at_daily_limit(cfg: Config, store: Store) -> bool:
+    """The backend has scored scoring.daily jobs today (the local day): the fallback scores the rest."""
+    return bool(cfg.score_daily) and store.score_usage(cfg.backend) >= cfg.score_daily
 
 
 def scoring_line(cfg: Config, store: Store) -> list[Entry]:
@@ -639,7 +670,7 @@ def scoring_line(cfg: Config, store: Store) -> list[Entry]:
     for job, rec in sorted(store.jobs(("queued",)), key=lambda r: r[1]["status_at"] or ""):
         rel, hits = relevance(job, cfg.keywords)
         queued.append(Entry(job, rec, rel, hits, fit=brief(fits.get(job.key))))
-    entries, _ = _matching(cfg, store, ("new", "shown"))
+    entries, _ = _matching(cfg, store, ("new", "shown"), fallback_passes=True)
     return [*queued, *_group(sorted(entries, key=_rank))]
 
 
@@ -649,20 +680,63 @@ def _scorable(e: Entry) -> bool:
     return (e.fit is None or bool(e.fit.get("stale"))) and scorable(e.job) and bool(e.job.description.strip())
 
 
-def score_entries(cfg: Config, store: Store, entries: list[Entry],
-                  progress: Callable[[str], None] | None = None) -> tuple[int, dict[str, str]]:
+def _provisional(e: Entry) -> bool:
+    """Scored by the fallback (scoring.fallback): scored again with the backend when it can."""
+    return bool(e.fit and e.fit.get("fallback")) and scorable(e.job) and bool(e.job.description.strip())
+
+
+DAILY_LIMIT = "daily limit"  # the start of a fallback score's reason when the backend was at scoring.daily
+
+
+def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Callable[[str], None] | None = None,
+                        background: bool = False) -> tuple[dict[str, dict], dict[str, str]]:
+    """Score with the backend, at most scoring.daily jobs a day, and what it can't (the limit reached, no key, no
+    credit, a failure) with scoring.fallback, each such result marked with why ("fallback"). ({key: result},
+    {key: error}). Without a fallback, ScoringUnavailable and the limit come back as they are."""
+    results, errors = {}, {}
+    room = max(cfg.score_daily - store.score_usage(cfg.backend), 0) if cfg.score_daily else len(jobs)
+    first = jobs[:room]
+    if first:
+        try:
+            results, errors = score_jobs(first, cfg.resume, cfg.backend, cfg.cache, progress=progress,
+                                         prompts=cfg.prompts, model=cfg.score_model, keychain=cfg.api_keychain)
+        except ScoringUnavailable as e:
+            if not cfg.score_fallback:
+                raise
+            errors = {j.key: str(e) for j in first}
+        store.add_score_usage(cfg.backend, len(results))
+    limited = f"{DAILY_LIMIT}: {cfg.score_daily} jobs a day with {cfg.backend} (scoring.daily)"
+    errors.update({j.key: limited for j in jobs[room:]})
+    rest = [j for j in jobs if j.key not in results]
+    if not (rest and cfg.score_fallback):
+        return results, errors
+    with turn(cfg.score_fallback, background):
+        more, more_errors = score_jobs(rest, cfg.resume, cfg.score_fallback, cfg.cache, progress=progress,
+                                       prompts=cfg.prompts, keychain=cfg.api_keychain)
+    for key, r in more.items():
+        results[key] = {**r, "fallback": errors.pop(key, f"{cfg.backend} didn't score it")}
+    errors.update({k: f"{errors[k]}; {cfg.score_fallback}: {v}" if k in errors else v for k, v in more_errors.items()})
+    return results, errors
+
+
+def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Callable[[str], None] | None = None,
+                  background: bool = False) -> tuple[int, dict[str, str]]:
     """Score these jobs against the resume and store each result, for the job and its same-title postings.
-    (how many were scored, {job key: error})."""
+    (how many were scored, {job key: error}). A fallback score for a job the backend failed on records that
+    failure too, so the backend tries it again only after SCORE_RETRY (one over the daily limit, tomorrow)."""
     rid = resume_id(cfg.resume, cfg.prompts)
-    results, errors = score_jobs([e.job for e in entries], cfg.resume, cfg.backend, cfg.cache,
-                                 progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)),
-                                 prompts=cfg.prompts, model=cfg.score_model, keychain=cfg.api_keychain)
+    results, errors = score_with_fallback(cfg, store, [e.job for e in entries],
+                                          progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)),
+                                          background=background)
     for e in entries:
         if e.job.key in results:
+            fit = results[e.job.key]
             for key in e.keys:
-                store.save_score(key, rid, results[e.job.key])
-            e.fit = brief(results[e.job.key])
-        elif e.job.key in errors:
+                store.save_score(key, rid, fit)
+            if fit.get("fallback") and not fit["fallback"].startswith(DAILY_LIMIT):
+                store.save_score_failure(e.job.key, rid, cfg.score_model, fit["fallback"])
+            e.fit = brief(fit)
+        elif e.job.key in errors and not errors[e.job.key].startswith(DAILY_LIMIT):
             store.save_score_failure(e.job.key, rid, cfg.score_model, errors[e.job.key])
     return len(results), errors
 
