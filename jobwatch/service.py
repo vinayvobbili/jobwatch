@@ -5,8 +5,9 @@ removes the file. The page is then always at http://127.0.0.1:<port>/, and its o
 ~/Library/Logs/jobwatch-ui.log.
 
 A launchd agent doesn't read your shell profile, so ANTHROPIC_API_KEY set there isn't visible to it: with
-`scoring.backend: claude`, chat and scoring from the page need the key in the agent's environment
-(`launchctl setenv ANTHROPIC_API_KEY ...` for the session) or `jobwatch ui` run from a terminal instead.
+`scoring.backend: claude`, chat and scoring from the page need the key in the macOS keychain item named by
+`scoring.keychain`, in the agent's environment (`launchctl setenv ANTHROPIC_API_KEY ...` for the session), or
+`jobwatch ui` run from a terminal instead.
 """
 
 from __future__ import annotations

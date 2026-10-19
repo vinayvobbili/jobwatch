@@ -10,6 +10,7 @@ import sys
 import tempfile
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from pathlib import Path
 
 import yaml
@@ -33,14 +34,16 @@ from . import (
     storyfind,
     suggest,
 )
-from .config import ConfigError
+from .config import BACKENDS, ConfigError
 from .filters import KINDS
-from .score import ScoringUnavailable, prompt_info, resume_id
+from .score import ScoringUnavailable, prompt_info, resume_id, scorer_label
 from .store import STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
     build_digest,
     check_postings,
+    compare_picks,
+    compare_scores,
     fetch_all,
     hidden,
     load_contacts,
@@ -127,6 +130,11 @@ def cmd_score(args, cfg, store):
         return
     if not (cfg.resume and cfg.resume.is_file()):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
+    if args.backend or args.model:  # this run only; the watchlist keeps its own
+        cfg = replace(cfg, backend=args.backend or cfg.backend,
+                      score_model=args.model if args.model else "" if args.backend else cfg.score_model)
+    if args.compare:
+        return _compare(args, cfg, store)
     todo = unscored(cfg, store)
     todo = todo[:args.limit] if args.limit else todo
     if not todo:
@@ -145,6 +153,39 @@ def cmd_score(args, cfg, store):
     print(f"Scored {scored} of {len(todo)} jobs." + (f" {len(failed)} failed:" if failed else ""))
     for key, err in failed.items():
         print(f"  {key}: {err}")
+
+
+def _compare(args, cfg, store):
+    """score --compare N: N already-scored jobs, from the lowest score to the highest, scored again with
+    --backend/--model and shown next to the stored score. Nothing is stored."""
+    picks = compare_picks(cfg, store, args.compare)
+    if not picks:
+        print("No job has a fit score for this resume yet: score some first.")
+        return
+    print(f"Scoring {len(picks)} jobs again with {cfg.backend}{f' ({cfg.score_model})' if cfg.score_model else ''}"
+          + (" (paid API calls)" if cfg.backend == "claude" else "") + "; nothing is saved.", file=sys.stderr)
+    results, errors = compare_scores(cfg, picks, cfg.backend, cfg.score_model,
+                                     progress=lambda m: print(f"  {m}", file=sys.stderr))
+    cut, diffs, flips = cfg.filters.min_fit or 0, [], 0
+    print(f"{'stored':>6} {'new':>4} {'diff':>5}  job")
+    for job, old in picks:
+        new = results.get(job.key)
+        if not new:
+            print(f"{old['score']:6.0f}  {'-':>3} {'':>5}  {job.display_company}: {job.title}  "
+                  f"({errors.get(job.key, 'failed')})")
+            continue
+        diff = new["score"] - old["score"]
+        diffs.append(diff)
+        crossed = cut and (old["score"] >= cut) != (new["score"] >= cut)
+        flips += bool(crossed)
+        print(f"{old['score']:6.0f} {new['score']:4.0f} {diff:+5.0f}  {job.display_company}: {job.title}"
+              + (f"  <- other side of min_fit {cut}" if crossed else ""))
+    by = {scorer_label(f["scored_by"]) for _, f in picks if f.get("scored_by")}
+    print(f"\nStored scores by: {', '.join(sorted(by)) or 'the scorer before scores were labelled'}; new by: "
+          f"{scorer_label(next(iter(results.values()))['scored_by']) if results else cfg.backend}")
+    if diffs:
+        print(f"{len(diffs)} compared: mean difference {sum(diffs) / len(diffs):+.1f}, largest "
+              f"{max(diffs, key=abs):+.0f}" + (f", {flips} on the other side of min_fit {cut}" if cut else ""))
 
 
 def cmd_unscored(args, cfg, store):
@@ -662,6 +703,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=None, metavar="N", help="stop after N jobs")
     p.add_argument("--show-prompts", action="store_true",
                    help="print the prompts scoring sends (edited ones from scoring.prompts) and stop")
+    p.add_argument("--backend", choices=BACKENDS, default=None,
+                   help="score with this backend this time (default: scoring.backend in the watchlist)")
+    p.add_argument("--model", default=None, help="score with this model this time (default: scoring.model, or "
+                   "shortlist-ai's own for the backend)")
+    p.add_argument("--compare", type=int, default=0, metavar="N",
+                   help="score N already-scored jobs again (lowest to highest score) with --backend/--model and "
+                   "show the old and new scores side by side; nothing is saved")
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")

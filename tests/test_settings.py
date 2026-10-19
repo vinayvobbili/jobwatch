@@ -24,7 +24,7 @@ def fake_model(monkeypatch):
     def reply(backend, system, messages, model="", max_tokens=0):
         seen.update(backend=backend, system=system, messages=messages, model=model, max_tokens=max_tokens)
         yield "Fine."
-    monkeypatch.setattr(chat, "check", lambda backend: None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
 

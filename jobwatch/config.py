@@ -182,6 +182,7 @@ class Chat:
     max_tokens: int = 1500     # the longest reply
     max_turns: int = 24        # the most recent messages of a conversation sent with each question
     prompt: str = ""           # the edited system prompt; unset: chat.SYSTEM
+    keychain: str = ""         # macOS keychain item with the Anthropic API key; unset: scoring.keychain's
 
     @property
     def model(self) -> str:
@@ -208,7 +209,7 @@ def _template(text: str, name: str, fields: tuple[str, ...], path: Path) -> str:
     return text
 
 
-def _chat(raw, backend: str, path: Path) -> Chat:
+def _chat(raw, backend: str, path: Path, keychain: str = "") -> Chat:
     raw = _section(raw, "chat", Chat, path, "{backend: local, max_tokens: 1500}")
     chosen = str(raw.get("backend") or backend)
     if chosen not in BACKENDS:
@@ -223,7 +224,8 @@ def _chat(raw, backend: str, path: Path) -> Chat:
                                     "the longest reply, in tokens"),
                 max_turns=_between(raw.get("max_turns", Chat.max_turns), "chat.max_turns", path, 1, 200,
                                    "the latest messages sent with each question"),
-                prompt=_template(prompt, "chat.prompt", CHAT_PLACEHOLDERS, path) if prompt.strip() else "")
+                prompt=_template(prompt, "chat.prompt", CHAT_PLACEHOLDERS, path) if prompt.strip() else "",
+                keychain=str(raw.get("keychain") or keychain).strip())
 
 
 PREP_PLACEHOLDERS = ("context",)  # what prep.prompt must keep: the posting, resume and stories it reads
@@ -355,6 +357,7 @@ class Config:
     stories: Path | None = None      # your projects, for drafted interview answers (see stories.py)
     backend: str = "local"
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
+    api_keychain: str = ""     # scoring.keychain: macOS keychain item with the Anthropic API key (for Claude)
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
     score_batch: int = 10      # scoring.batch: jobs the page scores in a row before it rests (0: no rests)
@@ -614,7 +617,9 @@ def load(explicit: str | Path | None = None) -> Config:
         score_batch=_whole(scoring.get("batch", 10), "scoring.batch", path, "0 scores everything in one go"),
         score_rest=_whole(scoring.get("rest", 10), "scoring.rest", path, "0 rests not at all"),
         unload_after=_whole(scoring.get("unload_after", 5), "scoring.unload_after", path, "0 keeps the model loaded"),
-        chat=_chat(raw.get("chat"), backend, path), prep=_prep(raw.get("prep"), path),
+        api_keychain=str(scoring.get("keychain") or "").strip(),
+        chat=_chat(raw.get("chat"), backend, path, str(scoring.get("keychain") or "").strip()),
+        prep=_prep(raw.get("prep"), path),
         timeline=timeline, near=_near(learning, filters),
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
         suggest=_suggestions(raw.get("suggestions"), path),
@@ -632,7 +637,7 @@ def defaults() -> dict:
     """What each setting is when the watchlist leaves it out, as Settings shows it (by section, as written)."""
     imap = Imap("", "")
     return {"scoring": {"backend": "local", "top": 0},
-            "chat": {k: v for k, v in asdict(Chat()).items() if k not in ("backend", "prompt")},
+            "chat": {k: v for k, v in asdict(Chat()).items() if k not in ("backend", "prompt", "keychain")},
             "learning": {"timeline": "quarter", "jobs": Config.learn_jobs},
             "display": {"theme": "system", "width": "standard", "today": Config.today, "company": "matches"},
             "pace": asdict(Pace()),
@@ -708,6 +713,7 @@ scoring:
   backend: claude        # claude (ANTHROPIC_API_KEY) or local (Apple Silicon, pip install 'jobwatch[local]')
   top: 0                 # score this many of the most relevant new jobs per digest
   # model: ""            # the model fit scores use; leave out for shortlist-ai's own for the backend
+  # keychain: anthropic  # macOS keychain item holding the API key, when ANTHROPIC_API_KEY isn't set (chat too)
   # auto: true           # `jobwatch ui` scores every new match in the background (default: on for local)
   # batch: 10            # ...this many jobs in a row, then rests (0: no rests)
   # rest: 10             # ...for this many minutes

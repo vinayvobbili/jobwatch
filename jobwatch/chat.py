@@ -22,7 +22,7 @@ from functools import lru_cache
 from . import learn, report
 from .config import Chat, Config
 from .resume import resume_text
-from .score import LOCAL, UNLOADERS, resume_id
+from .score import LOCAL, UNLOADERS, load_api_key, resume_id
 from .store import Store
 from .watch import MANY_ROLES, build_digest, scorable
 
@@ -56,13 +56,16 @@ def where(backend: str, model: str = "") -> dict:
     return {"backend": "local", "model": model or Chat.local_model, "label": "On this computer", "local": True}
 
 
-def check(backend: str):
-    """Fail fast, before a reply starts streaming, when the chosen backend can't run."""
+def check(backend: str, keychain: str = ""):
+    """Fail fast, before a reply starts streaming, when the chosen backend can't run. keychain: the macOS
+    keychain item with the Anthropic API key (chat.keychain, or scoring.keychain), when the environment has none."""
     if backend == "claude":
         try:
             import anthropic  # noqa: F401
         except ImportError:
             raise ChatUnavailable("chat with Claude needs: pip install 'jobwatch[score]'") from None
+        if problem := load_api_key(keychain):
+            raise ChatUnavailable(problem)
         if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
             raise ChatUnavailable("set ANTHROPIC_API_KEY before `jobwatch ui` to chat with Claude, "
                                   "or switch the chat to the local model (Settings > Chat)")
@@ -155,7 +158,7 @@ def start(cfg: Config, store: Store, messages: list[dict], key: str | None = Non
     """({where the reply comes from}, the reply in pieces), about one job or, without a key, the whole search.
     The context is read now, so the store can close while the reply streams."""
     c = cfg.chat
-    check(c.backend)
+    check(c.backend, c.keychain)
     context = job_context(cfg, store, key) if key else home_context(cfg, store)
     sent = store.package(key).resume() if key else None
     if resume := resume_text(sent):  # what the employer actually has

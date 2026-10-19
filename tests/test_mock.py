@@ -52,7 +52,7 @@ def fake_model(monkeypatch):
         for i in range(0, len(seen["reply"]), 40):
             yield seen["reply"][i:i + 40]
         yield {"input_tokens": 900, "output_tokens": 4}
-    monkeypatch.setattr(chat, "check", lambda backend: None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
 
@@ -107,11 +107,11 @@ def test_the_prompt_forbids_inventing_and_holds_the_facts(setup, fake_model):
 
 def test_an_unavailable_backend_is_reported_before_anything_is_asked(setup, monkeypatch):
     cfg, store, _, key = setup
-    monkeypatch.setattr(chat, "check", lambda backend: (_ for _ in ()).throw(chat.ChatUnavailable("no model")))
+    monkeypatch.setattr(chat, "check", lambda *a: (_ for _ in ()).throw(chat.ChatUnavailable("no model")))
     with pytest.raises(chat.ChatUnavailable, match="no model"):
         mock.start(cfg, store, key)
     with pytest.raises(KeyError):
-        monkeypatch.setattr(chat, "check", lambda backend: None)
+        monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
         mock.start(cfg, store, "nope")
 
 
@@ -210,7 +210,7 @@ def test_the_command_line_needs_a_job_and_a_backend(setup, fake_model, monkeypat
         cli.main(["-c", str(path), "ask", "--mock"])
     with pytest.raises(SystemExit, match="ask what"):
         cli.main(["-c", str(path), "ask"])
-    monkeypatch.setattr(chat, "check", lambda backend: (_ for _ in ()).throw(chat.ChatUnavailable("no model")))
+    monkeypatch.setattr(chat, "check", lambda *a: (_ for _ in ()).throw(chat.ChatUnavailable("no model")))
     with pytest.raises(SystemExit, match="no model"):
         cli.main(["-c", str(path), "ask", "--job", key, "--mock"])
 
@@ -251,7 +251,7 @@ def test_web_streams_feedback_over_http(server, fake_model, monkeypatch):
     assert request(server, "POST", "/api/mock/feedback", body)[0] == 403
     status, data = request(server, "POST", "/api/mock/save", {**body, "improved": "Detection!"}, headers=ok)
     assert status == 200 and json.loads(data)["saved"][0]["improved"] == "Detection!"
-    monkeypatch.setattr(chat, "check", lambda backend: (_ for _ in ()).throw(chat.ChatUnavailable("no model")))
+    monkeypatch.setattr(chat, "check", lambda *a: (_ for _ in ()).throw(chat.ChatUnavailable("no model")))
     status, data = request(server, "GET", "/api/mock?key=c1", headers=ok)
     assert status == 400 and "no model" in json.loads(data)["error"]
 

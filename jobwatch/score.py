@@ -15,7 +15,9 @@ import importlib
 import importlib.metadata
 import importlib.util
 import json
+import os
 import re
+import subprocess
 import sys
 import threading
 from collections.abc import Callable, Iterator, Mapping
@@ -254,11 +256,13 @@ def brief(fit: dict | None) -> dict | None:
 
 def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, workers: int = 1,
                progress: Callable[[str], None] | None = None,
-               prompts: Mapping[str, str] | None = None, model: str = "") -> tuple[dict[str, dict], dict[str, str]]:
-    """({job key: result}, {job key: error}). A result has score, must_haves_met/total, gaps, summary and
-    requirements (see requirement_rows; results saved before it have none). prompts: the edited ones
-    (scoring.prompts) in place of shortlist-ai's own; results belong under resume_id(resume, prompts).
-    model: the backend's model (scoring.model); unset, shortlist-ai's own."""
+               prompts: Mapping[str, str] | None = None, model: str = "",
+               keychain: str = "") -> tuple[dict[str, dict], dict[str, str]]:
+    """({job key: result}, {job key: error}). A result has score, must_haves_met/total, gaps, summary,
+    requirements (see requirement_rows; results saved before it have none) and scored_by ("backend:model").
+    prompts: the edited ones (scoring.prompts) in place of shortlist-ai's own; results belong under
+    resume_id(resume, prompts). model: the backend's model (scoring.model); unset, shortlist-ai's own.
+    keychain: the macOS keychain item with the Anthropic API key, for Claude (scoring.keychain)."""
     try:
         from shortlist_ai.backends import get_backend
         from shortlist_ai.extract import Cache, extract_job
@@ -272,6 +276,8 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
     if prompts and (problem := check_prompts(prompts)):
         raise ScoringUnavailable(f"scoring.prompts: {problem}")
     edits = {"prompts": dict(prompts)} if prompts else {}  # none: works with a shortlist-ai from before prompts
+    if backend == "claude" and (problem := load_api_key(keychain)):
+        raise ScoringUnavailable(problem)
 
     progress = progress or (lambda msg: None)
     model = get_backend(backend, model) if model else get_backend(backend)
@@ -300,5 +306,30 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
             "score": r.score, "must_haves_met": r.must_haves_met, "must_haves_total": r.must_haves_total,
             "gaps": m.gaps, "summary": r.summary, "flags": r.flags,
             "requirements": requirement_rows(r, specs.get(m.job_id)),
+            "scored_by": f"{getattr(model, 'name', backend)}:{getattr(model, 'model', '')}",
         }
     return results, errors
+
+
+def scorer_label(scored_by: str) -> str:
+    """Who made a score, for people: "claude-sonnet-5-5", or "Qwen3.5-9B-MLX-4bit (local)"."""
+    backend, _, model = scored_by.partition(":")
+    return f"{model.rsplit('/', 1)[-1]} (local)" if backend == "local" else model or backend
+
+
+def load_api_key(keychain: str) -> str | None:
+    """For Claude: ANTHROPIC_API_KEY from the macOS keychain item named `keychain` (scoring.keychain), when the
+    environment doesn't have a key already. Kept in this process's environment only: never stored, printed or
+    logged. None when there's a key to use (or no keychain item named), else why there isn't one."""
+    if not keychain or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        return None
+    try:
+        r = subprocess.run(["security", "find-generic-password", "-s", keychain, "-w"],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"couldn't read the keychain item {keychain!r} (scoring.keychain): {type(e).__name__}"
+    if r.returncode or not r.stdout.strip():
+        return (f"no API key in the keychain item {keychain!r} (scoring.keychain): add one with "
+                f"`security add-generic-password -s {keychain} -a \"$USER\" -w`")
+    os.environ["ANTHROPIC_API_KEY"] = r.stdout.strip()
+    return None
