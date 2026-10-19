@@ -46,7 +46,7 @@ from . import (
 from .config import ConfigError
 from .filters import KINDS
 from .package import Package
-from .score import LOCAL, ScoringUnavailable, prompt_info, resume_id, score_jobs, turn
+from .score import LOCAL, ScoringUnavailable, prompt_info, resume_id, turn
 from .store import MANUAL, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
@@ -59,6 +59,7 @@ from .watch import (
     save_job,
     scorable,
     score_entries,
+    score_with_fallback,
     set_link,
     unscored,
     unscored_reason,
@@ -167,7 +168,7 @@ class Scorer:
             e = todo[0]
             self.current, self.current_key = f"{e.job.display_company}: {e.job.title}", e.job.key
             with turn(cfg.backend, background=True):
-                scored, errors = score_entries(cfg, store, [e], progress=lambda m: None)
+                scored, errors = score_entries(cfg, store, [e], progress=lambda m: None, background=True)
         finally:
             store.close()
         self.done += scored
@@ -773,8 +774,7 @@ class App:
             if cached := store.score(job.key, rid):
                 return cached
             with turn(cfg.backend):  # ahead of background scoring
-                results, errors = score_jobs([job], cfg.resume, cfg.backend, cfg.cache, prompts=cfg.prompts,
-                                             model=cfg.score_model, keychain=cfg.api_keychain)
+                results, errors = score_with_fallback(cfg, store, [job])
             if job.key not in results:
                 raise ApiError(errors.get(job.key, "scoring failed"), HTTPStatus.BAD_GATEWAY)
             store.save_score(job.key, rid, results[job.key])

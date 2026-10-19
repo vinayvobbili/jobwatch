@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS score_failures (
     failed_at TEXT NOT NULL,
     PRIMARY KEY (key, resume)
 );
+CREATE TABLE IF NOT EXISTS score_usage (
+    day TEXT NOT NULL,
+    backend TEXT NOT NULL,
+    jobs INTEGER NOT NULL,
+    PRIMARY KEY (day, backend)
+);
 CREATE TABLE IF NOT EXISTS pay_pages (
     url TEXT PRIMARY KEY,
     body TEXT NOT NULL,
@@ -519,6 +525,20 @@ class Store:
         return {r["key"]: r["error"] for r in self.db.execute(
             "SELECT key, error FROM score_failures WHERE resume=? AND model=? AND failed_at>=?",
             (resume, model, since))}
+
+    def add_score_usage(self, backend: str, jobs: int, day: date | None = None):
+        """Count jobs scored with this backend on this local day (default today), for scoring.daily."""
+        if jobs:
+            with self.db:
+                self.db.execute("INSERT INTO score_usage (day, backend, jobs) VALUES (?, ?, ?) ON CONFLICT (day, "
+                                "backend) DO UPDATE SET jobs = jobs + excluded.jobs",
+                                ((day or date.today()).isoformat(), backend, jobs))
+
+    def score_usage(self, backend: str, day: date | None = None) -> int:
+        """Jobs scored with this backend on this local day (default today)."""
+        row = self.db.execute("SELECT jobs FROM score_usage WHERE day=? AND backend=?",
+                              ((day or date.today()).isoformat(), backend)).fetchone()
+        return row["jobs"] if row else 0
 
     # Drafted prep-sheet answers (see drafts.py): the model's reply as it came, under a hash of everything it was
     # sent, so opening a sheet again doesn't ask again. It's checked again each time it's read.

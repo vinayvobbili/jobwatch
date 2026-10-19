@@ -368,6 +368,15 @@ watchlist keeping its own; its scores sit next to the others, so check first tha
 the highest, and shows each old and new score, the mean difference and which ones land on the other side of
 `min_fit`. It saves nothing. With Claude every score is a paid API call.
 
+To score with Claude and keep the on-device model for when it can't, set `scoring.fallback: local`: without
+a key, out of credit or with the API down, the local model scores the job, and the score says so ("fallback")
+and gets scored again by Claude later (after 3 days for a failure). `scoring.daily: 40` caps the jobs the
+page scores with Claude a day; past it the fallback scores them (or, with no fallback, they wait for
+tomorrow), and Claude takes them up the next day. A fallback score never hides a job from scoring by
+`min_fit`. The cap holds back background scoring only: `jobwatch score` scores what you ask, and counts it.
+After switching backend or model, `jobwatch score --rescore 50` scores Today's and queued jobs again, best
+first, where another model made the score and it's at least 50.
+
 ### The fit score prompt
 
 Settings → **Fit score prompt** shows what the model is told: each of shortlist-ai's prompts (reading the

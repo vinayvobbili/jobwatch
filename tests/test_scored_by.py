@@ -213,3 +213,119 @@ def test_compare_with_nothing_scored_says_so(watchlist, web, capsys):
 
 def test_the_scorer_module_reads_no_keychain_on_import():
     assert score.load_api_key("") is None
+
+
+# The backend first, the fallback when it can't (or is at scoring.daily), and --rescore
+
+def _backends(monkeypatch, claude_down=False):
+    """Claude scores 60, the local model 30; with claude_down, Claude has no key."""
+    calls = []
+
+    def fake(jobs, resume, backend, cache, **kw):
+        calls.append((backend, [j.key for j in jobs]))
+        if backend == "claude" and claude_down:
+            raise ScoringUnavailable("no API key")
+        n = 60.0 if backend == "claude" else 30.0
+        return {j.key: {"score": n, "must_haves_met": 1, "must_haves_total": 1, "scored_by": f"{backend}:m"}
+                for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    return calls
+
+
+def _claude_first(cfg, **kw):
+    from dataclasses import replace
+    return replace(cfg, backend="claude", score_fallback="local", **kw)
+
+
+def test_fallback_and_daily_are_read_and_checked(watchlist):
+    cfg = _set(watchlist, scoring={"backend": "claude", "fallback": "local", "daily": 40})
+    assert (cfg.score_fallback, cfg.score_daily) == ("local", 40)
+    for bad in ("claude", "gpt"):
+        with pytest.raises(config.ConfigError, match=r"scoring\.fallback is the other backend"):
+            _set(watchlist, scoring={"backend": "claude", "fallback": bad})
+    with pytest.raises(config.ConfigError, match=r"scoring\.daily"):
+        _set(watchlist, scoring={"backend": "claude", "daily": -1})
+
+
+def test_no_key_falls_back_marks_the_score_and_waits_before_trying_claude_again(scored, monkeypatch):
+    cfg, rid, _ = scored
+    cfg = _claude_first(cfg)
+    calls = _backends(monkeypatch, claude_down=True)
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    e = watch.unscored(cfg, store)[0]
+    assert watch.score_entries(cfg, store, [e], progress=lambda m: None)[0] == 1
+    assert [b for b, _ in calls] == ["claude", "local"]
+    fit = store.score(e.job.key, rid)
+    assert fit["score"] == 30 and fit["fallback"] == "no API key" and fit["scored_by"] == "local:m"
+    assert store.score_usage("claude") == 0
+    assert e.job.key not in {x.job.key for x in watch.unscored(cfg, store)}  # Claude failed: not again at once
+    store.close()
+
+
+def test_past_the_daily_limit_the_fallback_scores_and_claude_takes_it_up_later(scored, monkeypatch):
+    cfg, rid, _ = scored
+    cfg = _claude_first(cfg, score_daily=1)
+    _backends(monkeypatch)
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    first, second = watch.unscored(cfg, store)[:2]
+    watch.score_entries(cfg, store, [first, second], progress=lambda m: None)
+    assert store.score(first.job.key, rid)["scored_by"] == "claude:m"
+    late = store.score(second.job.key, rid)
+    assert late["scored_by"] == "local:m" and late["fallback"].startswith(watch.DAILY_LIMIT)
+    assert store.score_usage("claude") == 1 and watch.at_daily_limit(cfg, store)
+    assert second.job.key not in {x.job.key for x in watch.unscored(cfg, store)}  # at the limit: it waits
+    roomier = _claude_first(cfg, score_daily=5)  # tomorrow, as far as the limit goes
+    assert second.job.key in {x.job.key for x in watch.unscored(roomier, store)}  # no failure kept for it
+    store.close()
+
+
+def test_at_the_limit_with_no_fallback_nothing_is_in_line(scored, monkeypatch):
+    cfg, _, _ = scored
+    from dataclasses import replace
+    cfg = replace(cfg, backend="claude", score_daily=2)
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    assert watch.unscored(cfg, store)
+    store.add_score_usage("claude", 2)
+    assert watch.unscored(cfg, store) == []
+    store.close()
+
+
+@pytest.mark.parametrize("fit, elsewhere", [
+    (None, False),
+    ({"score": 50}, True),                                       # before scores said who made them
+    ({"score": 50, "scored_by": "local:m"}, True),
+    ({"score": 50, "scored_by": "claude:claude-sonnet-5-5"}, False),
+    ({"score": 50, "scored_by": "claude:claude-opus-5"}, True),  # scoring.model names another
+    ({"score": 50, "scored_by": "claude:claude-sonnet-5-5", "fallback": "x"}, True),
+])
+def test_made_elsewhere(watchlist, fit, elsewhere):
+    cfg = _set(watchlist, scoring={"backend": "claude", "model": "claude-sonnet-5-5"})
+    assert watch.made_elsewhere(cfg, fit) is elsewhere
+
+
+def test_rescore_scores_other_models_jobs_again_best_first_past_the_daily_limit(scored, monkeypatch, capsys):
+    cfg, rid, jobs = scored
+    calls = _backends(monkeypatch)
+    _set(cfg.path, scoring={"backend": "claude", "fallback": "local", "daily": 1})
+    store = Store(cfg.state)
+    for i, job in enumerate(jobs):  # 45 (under min_fit: not on Today), 55, 65...
+        store.save_score(job.key, rid, {"score": 45 + 10 * i, "must_haves_met": 1, "must_haves_total": 2})
+    line = watch.rescore_line(config.load(cfg.path), store, 50)
+    store.close()
+    assert jobs[0].key not in {e.job.key for e in line}  # 45: under min_fit, so not on Today
+    assert line and [e.fit["score"] for e in line] == sorted((e.fit["score"] for e in line), reverse=True)
+    assert min(e.fit["score"] for e in line) >= 50
+    cli.main(["-c", str(cfg.path), "score", "--rescore", "50"])
+    assert {b for b, _ in calls} == {"claude"} and len(calls) == len(line)  # no limit, no fallback
+    assert " -> 60/100" in capsys.readouterr().err
+    store = Store(cfg.state)
+    assert all(store.score(e.job.key, rid)["scored_by"] == "claude:m" for e in line)
+    store.close()
+    cli.main(["-c", str(cfg.path), "score", "--rescore", "50"])
+    assert "Every scored job on Today was scored by claude" in capsys.readouterr().out

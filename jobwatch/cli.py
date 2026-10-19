@@ -49,6 +49,7 @@ from .watch import (
     load_contacts,
     pace,
     queue,
+    rescore_line,
     save_job,
     scorable,
     score_entries,
@@ -131,25 +132,37 @@ def cmd_score(args, cfg, store):
     if not (cfg.resume and cfg.resume.is_file()):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
     if args.backend or args.model:  # this run only; the watchlist keeps its own
-        cfg = replace(cfg, backend=args.backend or cfg.backend,
+        backend = args.backend or cfg.backend
+        cfg = replace(cfg, backend=backend, score_fallback="" if cfg.score_fallback == backend else cfg.score_fallback,
                       score_model=args.model if args.model else "" if args.backend else cfg.score_model)
     if args.compare:
         return _compare(args, cfg, store)
-    todo = unscored(cfg, store)
+    cfg = replace(cfg, score_daily=0)  # scoring.daily holds back the page's background scoring, not what's asked for
+    if args.rescore is not None:
+        cfg = replace(cfg, score_fallback="")  # the fallback would only put one stand-in score for another
+        todo = rescore_line(cfg, store, args.rescore)
+        if not todo:
+            model = f" ({cfg.score_model})" if cfg.score_model else ""
+            print(f"Every scored job on Today was scored by {cfg.backend}{model}.")
+            return
+    else:
+        todo = unscored(cfg, store)
     todo = todo[:args.limit] if args.limit else todo
     if not todo:
         print("Every job on Today has a fit score.")
         return
     scored, failed = 0, {}
     for i, e in enumerate(todo, 1):
+        before = e.fit["score"] if args.rescore is not None else None
         print(f"[{i}/{len(todo)}] {e.job.display_company}: {e.job.title}", file=sys.stderr)
         n, errors = score_entries(cfg, store, [e], progress=lambda m: None)
         scored += n
         failed.update(errors)
         if n:
             fit = e.fit
-            print(f"  {fit['score']:.0f}/100, must-haves {fit['must_haves_met']}/{fit['must_haves_total']}",
-                  file=sys.stderr)
+            print(f"  {f'{before:.0f} -> ' if before is not None else ''}{fit['score']:.0f}/100, must-haves "
+                  f"{fit['must_haves_met']}/{fit['must_haves_total']}"
+                  + (f" (by {cfg.score_fallback}: {fit['fallback']})" if fit.get("fallback") else ""), file=sys.stderr)
     print(f"Scored {scored} of {len(todo)} jobs." + (f" {len(failed)} failed:" if failed else ""))
     for key, err in failed.items():
         print(f"  {key}: {err}")
@@ -707,6 +720,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="score with this backend this time (default: scoring.backend in the watchlist)")
     p.add_argument("--model", default=None, help="score with this model this time (default: scoring.model, or "
                    "shortlist-ai's own for the backend)")
+    p.add_argument("--rescore", type=float, nargs="?", const=0, default=None, metavar="MIN",
+                   help="score again, best first, Today's and queued jobs whose score another model made (the other "
+                   "backend, a fallback, or before scores said who made them), scoring at least MIN; no daily limit")
     p.add_argument("--compare", type=int, default=0, metavar="N",
                    help="score N already-scored jobs again (lowest to highest score) with --backend/--model and "
                    "show the old and new scores side by side; nothing is saved")
