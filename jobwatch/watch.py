@@ -689,17 +689,19 @@ DAILY_LIMIT = "daily limit"  # the start of a fallback score's reason when the b
 
 
 def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Callable[[str], None] | None = None,
-                        background: bool = False) -> tuple[dict[str, dict], dict[str, str]]:
+                        background: bool = False, batch: bool = False) -> tuple[dict[str, dict], dict[str, str]]:
     """Score with the backend, at most scoring.daily jobs a day, and what it can't (the limit reached, no key, no
     credit, a failure) with scoring.fallback, each such result marked with why ("fallback"). ({key: result},
-    {key: error}). Without a fallback, ScoringUnavailable and the limit come back as they are."""
+    {key: error}). Without a fallback, ScoringUnavailable and the limit come back as they are. batch: the
+    backend (Claude) through the Message Batches API, at half price (see score_jobs)."""
     results, errors = {}, {}
     room = max(cfg.score_daily - store.score_usage(cfg.backend), 0) if cfg.score_daily else len(jobs)
     first = jobs[:room]
     if first:
         try:
-            results, errors = score_jobs(first, cfg.resume, cfg.backend, cfg.cache, progress=progress,
-                                         prompts=cfg.prompts, model=cfg.score_model, keychain=cfg.api_keychain)
+            results, errors = score_jobs(first, cfg.resume, cfg.backend, cfg.cache, workers=cfg.score_workers,
+                                         progress=progress, prompts=cfg.prompts, model=cfg.score_model,
+                                         keychain=cfg.api_keychain, batch=batch)
         except ScoringUnavailable as e:
             if not cfg.score_fallback:
                 raise
@@ -711,8 +713,8 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
     if not (rest and cfg.score_fallback):
         return results, errors
     with turn(cfg.score_fallback, background):
-        more, more_errors = score_jobs(rest, cfg.resume, cfg.score_fallback, cfg.cache, progress=progress,
-                                       prompts=cfg.prompts, keychain=cfg.api_keychain)
+        more, more_errors = score_jobs(rest, cfg.resume, cfg.score_fallback, cfg.cache, workers=cfg.score_workers,
+                                       progress=progress, prompts=cfg.prompts, keychain=cfg.api_keychain)
     for key, r in more.items():
         results[key] = {**r, "fallback": errors.pop(key, f"{cfg.backend} didn't score it")}
     errors.update({k: f"{errors[k]}; {cfg.score_fallback}: {v}" if k in errors else v for k, v in more_errors.items()})
@@ -720,14 +722,14 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
 
 
 def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Callable[[str], None] | None = None,
-                  background: bool = False) -> tuple[int, dict[str, str]]:
+                  background: bool = False, batch: bool = False) -> tuple[int, dict[str, str]]:
     """Score these jobs against the resume and store each result, for the job and its same-title postings.
     (how many were scored, {job key: error}). A fallback score for a job the backend failed on records that
     failure too, so the backend tries it again only after SCORE_RETRY (one over the daily limit, tomorrow)."""
     rid = resume_id(cfg.resume, cfg.prompts)
     results, errors = score_with_fallback(cfg, store, [e.job for e in entries],
                                           progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)),
-                                          background=background)
+                                          background=background, batch=batch)
     for e in entries:
         if e.job.key in results:
             fit = results[e.job.key]
@@ -766,14 +768,15 @@ def compare_picks(cfg: Config, store: Store, n: int, by: str = "") -> list[tuple
 
 def compare_scores(cfg: Config, picks: list[tuple[Job, dict]], backend: str, model: str = "",
                    progress: Callable[[str], None] | None = None,
-                   prompts: dict[str, str] | None = None) -> tuple[dict[str, dict], dict[str, str]]:
+                   prompts: dict[str, str] | None = None,
+                   batch: bool = False) -> tuple[dict[str, dict], dict[str, str]]:
     """These jobs scored again with another backend or model (or prompts to try in place of the watchlist's), to
     see how its scores line up with the stored ones before trusting them side by side (filters.min_fit is one
-    cut-off for both). Nothing is stored."""
+    cut-off for both). Nothing is stored. batch: Claude through the Message Batches API, at half price."""
     with turn(backend):
-        return score_jobs([job for job, _ in picks], cfg.resume, backend, cfg.cache, progress=progress,
-                          prompts=cfg.prompts if prompts is None else prompts, model=model,
-                          keychain=cfg.api_keychain)
+        return score_jobs([job for job, _ in picks], cfg.resume, backend, cfg.cache, workers=cfg.score_workers,
+                          progress=progress, prompts=cfg.prompts if prompts is None else prompts, model=model,
+                          keychain=cfg.api_keychain, batch=batch)
 
 
 def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,

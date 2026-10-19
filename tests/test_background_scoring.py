@@ -29,7 +29,8 @@ def scored(monkeypatch):
     """Stand in for shortlist-ai: records which jobs were scored; keys in `fail` come back as errors."""
     asked, fail = [], set()
 
-    def fake(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain=""):
+    def fake(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain="",
+             batch=False):
         asked.extend(j.key for j in jobs)
         return ({j.key: FIT for j in jobs if j.key not in fail},
                 {j.key: "model said no" for j in jobs if j.key in fail})
@@ -113,7 +114,8 @@ def test_a_kick_while_scoring_runs_again(resume_watchlist, monkeypatch):
     app = App(resume_watchlist, background=True)
     gate, calls = threading.Event(), []
 
-    def slow(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain=""):
+    def slow(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain="",
+             batch=False):
         calls.append(jobs[0].key)
         gate.wait(5)
         return {j.key: FIT for j in jobs}, {}

@@ -360,6 +360,7 @@ class Config:
     api_keychain: str = ""     # scoring.keychain: macOS keychain item with the Anthropic API key (for Claude)
     score_fallback: str = ""   # scoring.fallback: the backend that scores when this one can't (or is at its limit)
     score_daily: int = 0       # scoring.daily: the most jobs the backend scores a day, then the fallback (0: no cap)
+    score_workers: int = 4     # scoring.workers: Claude calls at once (the local model takes one at a time)
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
     score_batch: int = 10      # scoring.batch: jobs the page scores in a row before it rests (0: no rests)
@@ -625,6 +626,7 @@ def load(explicit: str | Path | None = None) -> Config:
         unload_after=_whole(scoring.get("unload_after", 5), "scoring.unload_after", path, "0 keeps the model loaded"),
         api_keychain=str(scoring.get("keychain") or "").strip(), score_fallback=fallback,
         score_daily=_whole(scoring.get("daily", 0), "scoring.daily", path, "0 sets no daily limit"),
+        score_workers=max(1, _whole(scoring.get("workers", 4), "scoring.workers", path, "1 makes one call at a time")),
         chat=_chat(raw.get("chat"), backend, path, str(scoring.get("keychain") or "").strip()),
         prep=_prep(raw.get("prep"), path),
         timeline=timeline, near=_near(learning, filters),
@@ -723,7 +725,8 @@ scoring:
   # keychain: anthropic  # macOS keychain item holding the API key, when ANTHROPIC_API_KEY isn't set (chat too)
   # fallback: local      # the other backend, when this one can't score (no key, no credit, down) or is at...
   # daily: 40            # ...the most jobs it scores a day (0: no limit); the fallback's are scored again later
-  # auto: true           # `jobwatch ui` scores every new match in the background (default: on for local)
+  # workers: 4           # Claude calls at once (the local model takes one at a time)
+  # auto: true          # `jobwatch ui` scores every new match in the background (default: on for local)
   # batch: 10            # ...this many jobs in a row, then rests (0: no rests)
   # rest: 10             # ...for this many minutes
   # unload_after: 5      # minutes idle before the local model leaves memory (0: keep it loaded)

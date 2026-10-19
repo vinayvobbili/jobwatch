@@ -21,6 +21,7 @@ import subprocess
 import sys
 import threading
 from collections.abc import Callable, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 
@@ -257,18 +258,24 @@ def brief(fit: dict | None) -> dict | None:
 def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, workers: int = 1,
                progress: Callable[[str], None] | None = None,
                prompts: Mapping[str, str] | None = None, model: str = "",
-               keychain: str = "") -> tuple[dict[str, dict], dict[str, str]]:
+               keychain: str = "", batch: bool = False) -> tuple[dict[str, dict], dict[str, str]]:
     """({job key: result}, {job key: error}). A result has score, must_haves_met/total, gaps, summary,
     requirements (see requirement_rows; results saved before it have none) and scored_by ("backend:model").
     prompts: the edited ones (scoring.prompts) in place of shortlist-ai's own; results belong under
     resume_id(resume, prompts). model: the backend's model (scoring.model); unset, shortlist-ai's own.
-    keychain: the macOS keychain item with the Anthropic API key, for Claude (scoring.keychain)."""
+    keychain: the macOS keychain item with the Anthropic API key, for Claude (scoring.keychain).
+    workers: model calls at once (scoring.workers), for Claude; the local model takes one at a time.
+    batch: Claude through the Message Batches API, half price, waiting for each batch (minutes, at most a day)."""
     try:
         from shortlist_ai.backends import get_backend
         from shortlist_ai.extract import Cache, extract_job
         from shortlist_ai.pipeline import match_jobs
     except ImportError:
         raise ScoringUnavailable(f"scoring needs shortlist-ai: {INSTALL_HINT}") from None
+    if batch and backend != "claude":
+        raise ScoringUnavailable(f"batch scoring is for Claude (scoring.backend: claude), not {backend}")
+    if batch and importlib.util.find_spec("shortlist_ai.batch") is None:
+        raise ScoringUnavailable(f"batch scoring needs a newer shortlist-ai: {UPDATE_HINT}")
     # Never score with the shipped prompts what will be stored as scored with the edited ones.
     if prompts and _editable_prompts() is None:
         raise ScoringUnavailable(f"the fit-score prompts are edited (scoring.prompts) and this shortlist-ai can't "
@@ -280,35 +287,55 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
         raise ScoringUnavailable(problem)
 
     progress = progress or (lambda msg: None)
-    model = get_backend(backend, model) if model else get_backend(backend)
+    workers = 1 if backend == "local" else max(1, workers)
+    if batch:
+        from shortlist_ai.batch import BatchBackend
+
+        model = BatchBackend(cache_dir / "batch", **({"model": model} if model else {}),
+                             notify=lambda msg: progress(msg))
+    else:
+        model = get_backend(backend, model) if model else get_backend(backend)
     cache = Cache(cache_dir / "shortlist")
     postings = cache_dir / "postings"
     postings.mkdir(parents=True, exist_ok=True)
-    specs, errors, by_name = {}, {}, {}
+    by_name = {}
     for job in jobs:
         name = _safe(job.key)
-        by_name[name] = job.key
-        path = postings / f"{name}.md"
-        path.write_text(job.to_text(), encoding="utf-8")
+        by_name[name] = job
+        (postings / f"{name}.md").write_text(job.to_text(), encoding="utf-8")
+
+    def one(name: str):
+        job = by_name[name]
         progress(f"requirements  {job.display_company}: {job.title}")
         try:
-            specs[name] = extract_job(path, model, cache, **edits)
+            return name, extract_job(postings / f"{name}.md", model, cache, **edits), None
         except Exception as e:
-            errors[job.key] = f"{type(e).__name__}: {e}"
-    if not specs:
-        return {}, errors
-    matches = match_jobs(resume, specs, model, cache=cache, workers=workers, progress=progress, **edits)
-    errors.update({by_name[k]: v for k, v in matches.errors.items()})
-    results = {}
-    for m in matches.matches:
-        r = m.result
-        results[by_name[m.job_id]] = {
-            "score": r.score, "must_haves_met": r.must_haves_met, "must_haves_total": r.must_haves_total,
-            "gaps": m.gaps, "summary": r.summary, "flags": r.flags,
-            "requirements": requirement_rows(r, specs.get(m.job_id)),
-            "scored_by": f"{getattr(model, 'name', backend)}:{getattr(model, 'model', '')}",
-        }
-    return results, errors
+            return name, None, f"{type(e).__name__}: {e}"
+
+    def run() -> tuple[dict[str, dict], dict[str, str]]:
+        specs, errors = {}, {}
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for name, spec, error in pool.map(one, by_name):
+                if error:
+                    errors[by_name[name].key] = error
+                else:
+                    specs[name] = spec
+        if not specs:
+            return {}, errors
+        matches = match_jobs(resume, specs, model, cache=cache, workers=workers, progress=progress, **edits)
+        errors.update({by_name[k].key: v for k, v in matches.errors.items()})
+        results = {}
+        for m in matches.matches:
+            r = m.result
+            results[by_name[m.job_id].key] = {
+                "score": r.score, "must_haves_met": r.must_haves_met, "must_haves_total": r.must_haves_total,
+                "gaps": m.gaps, "summary": r.summary, "flags": r.flags,
+                "requirements": requirement_rows(r, specs.get(m.job_id)),
+                "scored_by": f"{getattr(model, 'name', backend)}:{getattr(model, 'model', '')}",
+            }
+        return results, errors
+
+    return model.run(run) if batch else run()
 
 
 def scorer_label(scored_by: str) -> str:

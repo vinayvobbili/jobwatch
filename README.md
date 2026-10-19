@@ -377,6 +377,13 @@ tomorrow), and Claude takes them up the next day. A fallback score never hides a
 After switching backend or model, `jobwatch score --rescore 50` scores Today's and queued jobs again, best
 first, where another model made the score and it's at least 50.
 
+Claude scores `scoring.workers` jobs at once (4 by default; the on-device model takes one at a time), so
+`jobwatch score` goes through a backlog about that many times faster at the same cost. For a big run nobody is
+waiting on (a new resume, a backlog, a `--rescore`), `jobwatch score --batch-api` sends it all through Claude's
+Message Batches API at half the price. The scoring steps depend on each other, so it goes in rounds of one
+batch each (about three); each batch takes minutes, at most a day. Stopping is safe: the next run collects what
+was sent instead of paying for it again. The page never batches: a score you ask for there is wanted now.
+
 To tighten the prompts for the on-device model without losing paid scores (an edited prompt sets every score
 aside), try them in a comparison first: `jobwatch score --compare 20 --stored-by claude --backend local
 --prompts tight.yaml` scores 20 of the jobs Claude scored with the local model and the prompts in

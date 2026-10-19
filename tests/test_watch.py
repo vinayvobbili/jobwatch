@@ -99,7 +99,8 @@ def test_scoring_only_the_top_unscored_jobs(setup, tmp_path, monkeypatch):
     cfg.resume.write_bytes(b"resume")
     asked = []
 
-    def fake_score(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain=""):
+    def fake_score(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain="",
+                   batch=False):
         asked.extend(j.key for j in jobs)
         return {j.key: {"score": 40, "must_haves_met": 1, "must_haves_total": 3, "gaps": ["Go"], "summary": ""}
                 for j in jobs}, {}

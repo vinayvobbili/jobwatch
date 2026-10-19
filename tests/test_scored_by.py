@@ -322,7 +322,8 @@ def test_rescore_scores_other_models_jobs_again_best_first_past_the_daily_limit(
     assert line and [e.fit["score"] for e in line] == sorted((e.fit["score"] for e in line), reverse=True)
     assert min(e.fit["score"] for e in line) >= 50
     cli.main(["-c", str(cfg.path), "score", "--rescore", "50"])
-    assert {b for b, _ in calls} == {"claude"} and len(calls) == len(line)  # no limit, no fallback
+    # no limit, no fallback; Claude scores them scoring.workers (4) at a time, so here in one go
+    assert {b for b, _ in calls} == {"claude"} and [len(keys) for _, keys in calls] == [len(line)]
     assert " -> 60/100" in capsys.readouterr().err
     store = Store(cfg.state)
     assert all(store.score(e.job.key, rid)["scored_by"] == "claude:m" for e in line)
@@ -361,3 +362,83 @@ def test_compare_prompts_must_be_names_and_texts(scored):
     tried.write_text("- just a list\n")
     with pytest.raises(SystemExit, match="edited prompts by name"):
         cli.main(["-c", str(cfg.path), "score", "--compare", "2", "--prompts", str(tried)])
+
+
+# scoring.workers (Claude calls at once) and --batch-api (the Message Batches API, half price)
+
+def test_workers_is_read_and_at_least_one(watchlist):
+    assert config.load(watchlist).score_workers == 4
+    assert _set(watchlist, scoring={"backend": "claude", "workers": 8}).score_workers == 8
+    assert _set(watchlist, scoring={"backend": "claude", "workers": 0}).score_workers == 1
+
+
+def test_the_local_model_takes_one_call_at_a_time_and_batches_are_for_claude(shortlist, monkeypatch, tmp_path):
+    seen = []
+    pipeline = sys.modules["shortlist_ai.pipeline"]
+    real = pipeline.match_jobs
+    monkeypatch.setattr(pipeline, "match_jobs", lambda *a, workers=1, **kw: seen.append(workers) or real(*a, **kw))
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    score_jobs([_job()], cv, "local", tmp_path, workers=8)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    score_jobs([_job()], cv, "claude", tmp_path, workers=8)
+    assert seen == [1, 8]
+    with pytest.raises(ScoringUnavailable, match="batch scoring is for Claude"):
+        score_jobs([_job()], cv, "local", tmp_path, batch=True)
+
+
+def test_batch_scoring_runs_the_work_in_rounds_through_the_batch_backend(shortlist, monkeypatch, tmp_path):
+    rounds = []
+
+    class BatchBackend:
+        name = "claude"
+
+        def __init__(self, store, model="claude-opus-5", notify=None):
+            self.store, self.model = store, model
+
+        def run(self, work):
+            rounds.append(self.store)
+            return work()
+
+    monkeypatch.setitem(sys.modules, "shortlist_ai.batch", _module("shortlist_ai.batch", BatchBackend=BatchBackend))
+    monkeypatch.setattr(score.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    results, _ = score_jobs([_job()], cv, "claude", tmp_path, model="claude-sonnet-5-5", batch=True)
+    assert rounds == [tmp_path / "batch"]
+    assert results["greenhouse:acme:1"]["scored_by"] == "claude:claude-sonnet-5-5"
+
+
+def test_claude_scores_in_groups_of_workers_and_batch_api_sends_them_all_at_once(scored, monkeypatch, capsys):
+    cfg, rid, jobs = scored
+    calls, n_at_once = [], 2
+
+    def fake(jobs, resume, backend, cache, batch=False, **kw):
+        calls.append((len(jobs), batch))
+        return {j.key: {"score": 60.0, "must_haves_met": 1, "must_haves_total": 1, "scored_by": "claude:m"}
+                for j in jobs}, {}
+
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    store = Store(cfg.state)
+    for i, job in enumerate(jobs):  # 50, 60, 70...: on Today, by the local model
+        store.save_score(job.key, rid, {"score": 50 + 10 * i, "must_haves_met": 1, "must_haves_total": 2,
+                                        "scored_by": "local:mlx-community/Qwen"})
+    n = len(watch.rescore_line(_set(cfg.path, scoring={"backend": "claude", "workers": n_at_once}), store, 0))
+    store.close()
+    assert n > n_at_once
+    cli.main(["-c", str(cfg.path), "score", "--rescore"])
+    assert calls == [(n_at_once, False)] * (n // n_at_once) + ([(n % n_at_once, False)] if n % n_at_once else [])
+    assert f"[{n}/{n}]" in capsys.readouterr().err
+
+    calls.clear()
+    _set(cfg.path, scoring={"backend": "local"})
+    with pytest.raises(SystemExit, match="--batch-api is for Claude"):
+        cli.main(["-c", str(cfg.path), "score", "--batch-api"])
+    store = Store(cfg.state)
+    for i, job in enumerate(jobs):  # back to the local model's scores, then all of them in one batch
+        store.save_score(job.key, rid, {"score": 50 + 10 * i, "must_haves_met": 1, "must_haves_total": 2,
+                                        "scored_by": "local:mlx-community/Qwen"})
+    store.close()
+    cli.main(["-c", str(cfg.path), "score", "--backend", "claude", "--rescore", "--batch-api"])
+    assert calls == [(n, True)]
