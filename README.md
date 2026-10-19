@@ -253,6 +253,7 @@ display:                                  # the browser page
   theme: system                           # system, light or dark
   width: standard                         # standard, wide or full
   today: 10                               # Today's picks, and the digest's length; 0 shows every match
+  company: matches                        # a company's page: the open roles your filters pass, or all
 pace:                                     # applications a day: counted on Today and the queue, never enforced
   daily: 3                                # 0 turns it off, for when job hunting is your full-time job
   max: 5                                  # from this many on, the rest can wait until tomorrow
@@ -730,12 +731,16 @@ a tracked job at a matching company is elsewhere, with a link to it. On the comm
 
 ```
 jobwatch company acme                # a name, part of one, or a domain: acme.com; --format json
+jobwatch company acme --all          # also the open roles your filters leave out
 ```
 
 It finds the company under any status (new, queued, applied, interviewing, rejected, skipped...), open or
 closed postings, and shows each job with its dates, next step, follow-up and note, whether a package was
 saved, a duplicate warning, people you know there, and, when its board isn't on your watchlist, what to run
-to add it. A long note shows as its latest dated entry, cut to about 200 characters (the page folds it until
+to add it. Open roles you haven't acted on are listed only when your filters pass them (title, text, place,
+pay and fit, but not age: an older role still open is worth seeing), and the rest are counted by filter;
+"Show them" on the page, or `--all`, lists them too, and Settings → Display → Company page (`display.company:
+all`) lists every role each time. Jobs you queued, applied to or skipped are always listed. A long note shows as its latest dated entry, cut to about 200 characters (the page folds it until
 clicked); `--format json` and `jobwatch show KEY` have all of it. The MCP tool is `get_company`.
 
 ### What you sent

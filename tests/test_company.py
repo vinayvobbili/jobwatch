@@ -30,8 +30,10 @@ def store(cfg):
 
 
 def board_job(id_, title, company_="Globex", source="lever", board="globex", **kw):
+    kw.setdefault("locations", ["Denver, CO"])  # one of the test watchlist's places
+    kw.setdefault("posted", datetime(2026, 9, 1, tzinfo=timezone.utc))
     return Job(source=source, company=board, id=id_, title=title, url=f"https://jobs.example/{board}/{id_}",
-               company_name=company_, posted=datetime(2026, 9, 1, tzinfo=timezone.utc), **kw)
+               company_name=company_, **kw)
 
 
 @pytest.fixture
@@ -113,7 +115,7 @@ def test_open_roles_not_acted_on_are_capped(cfg, store, monkeypatch):
     assert len(v["jobs"]) == 2 and v["more_open"] == 3
 
 
-def test_open_roles_the_title_filters_leave_out_are_only_counted(watchlist, store):
+def test_open_roles_the_filters_leave_out_are_only_counted(watchlist, store):
     """A big board (a pharmacy chain's) lists nurses next to engineers: only the titles you'd look at show, but a
     role you acted on shows whatever its title."""
     watchlist.write_text(watchlist.read_text().replace("filters:\n", "filters:\n  titles: [engineer]\n"))
@@ -123,8 +125,49 @@ def test_open_roles_the_title_filters_leave_out_are_only_counted(watchlist, stor
     store.set_status(["lever:globex:g4"], "skipped")
     v = company.view(cfg, store, "globex")
     assert sorted(j["title"] for j in v["jobs"]) == ["Staff Engineer", "Store Manager"]
-    assert v["off_title"] == 2 and v["more_open"] == 0 and v["counts"] == {"new": 1, "skipped": 1}
-    assert "2 open roles your title filters leave out not listed" in company.text(v, "globex")
+    assert v["left_out"] == 2 and v["left_out_by"] == {"title": 2} and v["more_open"] == 0
+    assert v["counts"] == {"new": 1, "skipped": 1}
+    assert "2 open roles your filters leave out (title 2) not listed: --all lists them" in company.text(v, "globex")
+
+
+def test_roles_in_other_places_or_below_the_pay_are_left_out_but_not_old_ones(cfg, store):
+    """Roles elsewhere or under min_salary aren't listed, the way Today hides them; an old posting still open is."""
+    cfg.filters.min_salary = 150_000
+    store.sync("lever", "globex", [board_job("g1", "Staff Engineer"),
+                                   board_job("g2", "Network Engineer", locations=["Omaha, NE"]),
+                                   board_job("g3", "Data Engineer", salary_min=90_000, salary_max=120_000),
+                                   board_job("g4", "Old Engineer", posted=datetime(2025, 1, 1, tzinfo=timezone.utc))])
+    v = company.view(cfg, store, "globex")
+    assert sorted(j["title"] for j in v["jobs"]) == ["Old Engineer", "Staff Engineer"]
+    assert v["left_out_by"] == {"place": 1, "pay": 1} and v["every"] is False
+
+
+def test_a_role_with_a_note_or_follow_up_shows_though_the_filters_leave_it_out(cfg, store):
+    """A posting that dropped your city while you wait to hear from a referrer: you're still keeping an eye on it."""
+    store.sync("lever", "globex", [board_job("g1", "Staff Engineer", locations=["Omaha, NE"]),
+                                   board_job("g2", "Data Engineer", locations=["Omaha, NE"])])
+    store.track("lever:globex:g1", next_step="hear back from the referrer", follow_up="2026-10-22")
+    v = company.view(cfg, store, "globex")
+    assert [j["title"] for j in v["jobs"]] == ["Staff Engineer"] and v["left_out_by"] == {"place": 1}
+
+
+@pytest.mark.parametrize("setting, every, listed", [
+    ("matches", None, 1), ("matches", True, 2), ("all", None, 2), ("all", False, 1),
+])
+def test_display_company_or_every_lists_the_roles_left_out(cfg, store, setting, every, listed):
+    cfg.company_view = setting
+    store.sync("lever", "globex", [board_job("g1", "Staff Engineer"),
+                                   board_job("g2", "Staff Engineer II", locations=["Omaha, NE"])])
+    v = company.view(cfg, store, "globex", every)
+    assert len(v["jobs"]) == listed and v["left_out"] == 2 - listed
+
+
+def test_display_company_must_be_a_known_view(watchlist):
+    watchlist.write_text(watchlist.read_text() + "display:\n  company: everything\n")
+    with pytest.raises(config.ConfigError, match=r"display\.company must be one of matches, all"):
+        config.load(watchlist)
+    watchlist.write_text(watchlist.read_text().replace("everything", "all"))
+    assert config.load(watchlist).company_view == "all"
 
 
 def test_an_unwatched_board_says_what_to_add(cfg, store):

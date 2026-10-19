@@ -652,10 +652,10 @@ class App:
 
     def get_company(self, q) -> dict:
         """One company's page: every tracked job there whatever its status (see company.view)."""
-        text = (q.get("q") or [""])[0]
+        text, every = (q.get("q") or [""])[0], (q.get("all") or [""])[0] == "1" or None
 
         def run(cfg, store):
-            if not (v := company.view(cfg, store, text)):
+            if not (v := company.view(cfg, store, text, every)):
                 raise ApiError(f"no tracked job is at a company matching {text!r}", HTTPStatus.NOT_FOUND)
             return v
         return self._with_store(run)

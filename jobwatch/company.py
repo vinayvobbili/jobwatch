@@ -13,16 +13,18 @@ from __future__ import annotations
 import re
 import shlex
 from collections import Counter
+from dataclasses import replace
 from urllib.parse import urlparse
 
 from . import contacts as people
 from . import dupes, report, suggest
 from .config import Config
-from .filters import title_ok
+from .filters import KINDS, rejection
 from .models import Job
 from .package import Package
+from .score import resume_id
 from .store import ENDED, STAGES, Store
-from .watch import load_contacts
+from .watch import _fits, load_contacts
 
 MIN_KEY = 2     # a shorter search ("a") would match nearly everything
 OPEN_SHOWN = 25  # open roles listed that you haven't acted on: a watched board can have hundreds
@@ -133,13 +135,25 @@ def _watch(cfg: Config, store: Store, name: str, jobs: list[Job]) -> dict:
             "suggested": bool(row)}
 
 
-def view(cfg: Config, store: Store, text: str) -> dict | None:
+def _left_out(cfg: Config, store: Store, rows: list[tuple[Job, dict]]) -> dict[str, str]:
+    """The open roles not acted on that Today's filters would hide, each key -> its filter (filters.KINDS): what
+    view() leaves out under display.company: matches. Not their age: an older role still open at a company you
+    looked up is one to see. Nor one you wrote a note, next step or follow-up on: you're keeping an eye on it."""
+    fits = _fits(store, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
+    f = replace(cfg.filters, max_age_days=None)
+    return {job.key: r[0] for job, rec in rows
+            if not (rec.get("note") or rec.get("next_step") or rec.get("follow_up"))
+            and (r := rejection(job, f, fits.get(job.key)))}
+
+
+def view(cfg: Config, store: Store, text: str, every: bool | None = None) -> dict | None:
     """Everything tracked at the company a name or domain matches best (None when none matches): each job with
     its status and dates, next step, follow-up, note, whether a package was saved, and a duplicate warning;
     people you know there; and whether its board is watched. Roles that closed without being acted on are only
-    counted (closed_unacted), open ones you haven't acted on whose title your title filters leave out are only
-    counted too (off_title: a big board such as a hospital chain's lists nurses), and the rest are listed up to
-    OPEN_SHOWN (more_open). Other companies the name matched are in `also`."""
+    counted (closed_unacted). Open ones you haven't acted on that Today's filters would hide, age aside (a big
+    board lists roles in other cities, a pharmacy chain's lists nurses), are only counted too: left_out, with
+    left_out_by (filter -> count); `every` (by default display.company: all) lists them as well. The rest are
+    listed up to OPEN_SHOWN (more_open). Other companies the name matched are in `also`."""
     found = search(store, text, limit=6)
     if not found:
         return None
@@ -151,7 +165,10 @@ def view(cfg: Config, store: Store, text: str) -> dict | None:
     mine.sort(key=lambda r: _order(r[1]))  # stable: newest first within each
     acted = [r for r in mine if _order(r[1]) < 4]
     unacted = [r for r in mine if _order(r[1]) == 4 and not r[1].get("closed")]
-    open_ = [r for r in unacted if title_ok(r[0].title, cfg.filters)]
+    every = cfg.company_view == "all" if every is None else every
+    hide = {} if every else _left_out(cfg, store, unacted)
+    open_ = [r for r in unacted if r[0].key not in hide]
+    by = Counter(hide.values())
     listed = acted + open_
     shown = acted + open_[:OPEN_SHOWN]
     jobs = [j for j, _ in mine]
@@ -161,7 +178,7 @@ def view(cfg: Config, store: Store, text: str) -> dict | None:
     return {"company": best["name"], "query": text.strip(), "key": key,
             "counts": {s: counts[s] for s in counts}, "jobs": [_job(store, j, rec, index) for j, rec in shown],
             "closed_unacted": len(mine) - len(acted) - len(unacted), "more_open": len(listed) - len(shown),
-            "off_title": len(unacted) - len(open_),
+            "left_out": len(hide), "left_out_by": {k: by[k] for k in KINDS if by[k]}, "every": every,
             "contacts": known.at(*names) if known else [],
             "find_referral": people.linkedin_search(best["name"]), "watch": _watch(cfg, store, best["name"], jobs),
             "also": [f["name"] for f in found[1:]]}
@@ -218,9 +235,10 @@ def text(v: dict | None, query: str = "") -> str:
         out += _line(j)
     if v["more_open"]:
         out.append(f"  and {v['more_open']} more open roles you haven't acted on: `jobwatch list --status new`")
-    if v["off_title"]:
-        out.append(f"  {v['off_title']} open role{'s' * (v['off_title'] != 1)} your title filters leave out "
-                   "not listed")
+    if v["left_out"]:
+        why = ", ".join(f"{k} {n}" for k, n in v["left_out_by"].items())
+        out.append(f"  {v['left_out']} open role{'s' * (v['left_out'] != 1)} your filters leave out ({why}) not "
+                   "listed: --all lists them")
     if v["closed_unacted"]:
         out.append(f"  {v['closed_unacted']} closed posting{'s' * (v['closed_unacted'] != 1)} you never acted on "
                    "not listed")

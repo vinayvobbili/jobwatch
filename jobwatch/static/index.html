@@ -2829,14 +2829,14 @@ function setCard(id, title, hint, ...kids) {
 // Theme and page width: they change the page at once and are saved right away, apart from "Save settings".
 // Where the history and cache are kept is shown, not edited: a new path would start an empty history.
 function displayCard(s) {
-  const d = { theme: "system", width: "standard", ...(settings.display || {}) };
+  const d = { theme: "system", width: "standard", company: "matches", ...(settings.display || {}) };
   const msg = h("span", { class: "small muted" });
   const set = async (k, v) => {
     d[k] = v;
     applyDisplay(d);
     try {
       // display.today is saved with the rest of Settings: keep what's saved now
-      const display = { ...(settings.display || {}), theme: d.theme, width: d.width };
+      const display = { ...(settings.display || {}), theme: d.theme, width: d.width, company: d.company };
       await api("/api/settings", { display });
       settings.display = display;
       msg.textContent = "Saved."; msg.className = "small muted";
@@ -2849,6 +2849,8 @@ function displayCard(s) {
         "System follows your computer. Saved at once."),
       field("Page width", segmented([["standard", "Standard"], ["wide", "Wide"], ["full", "Full"]], d.width, v => set("width", v)),
         "Wider fits more on a big monitor."),
+      field("Company page", segmented([["matches", "Your matches"], ["all", "Every role"]], d.company, v => set("company", v)),
+        "Which open roles a company's page lists: the ones your filters pass (place, pay, title, text), or all of them."),
       field("History", path(s.state, s.defaults.state), "Jobs seen, applied to and scored (state: in the watchlist file)."),
       field("Cache", path(s.cache, s.defaults.cache), "Posting text kept for fit scores (cache: in the file).")));
   return c;
@@ -3386,14 +3388,14 @@ function companyJob(j, today) {
       link(j.url, "Posting ↗"),
       j.has_package ? h("span", { class: "sent-chip", title: "What you sent is saved with this job" }, icon("clip", 13), "package saved") : null));
 }
-async function openCompany(q) {
+async function openCompany(q, every = false) {
   jump.value = ""; jumpClose(); jump.blur();
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   overlay.style.display = "flex";
   try {
-    const c = await api("/api/company?q=" + encodeURIComponent(q)), w = c.watch, today = new Date().toISOString().slice(0, 10);
+    const c = await api("/api/company?q=" + encodeURIComponent(q) + (every ? "&all=1" : "")), w = c.watch, today = new Date().toISOString().slice(0, 10);
     const watch = async b => {
       b.disabled = true;
       try {
@@ -3414,7 +3416,11 @@ async function openCompany(q) {
           : w.entry ? `Add ${w.entry} in Settings.` : "Look for its board with Settings → Add a company."),
       c.jobs.map(j => companyJob(j, today)),
       c.more_open ? h("div", { class: "small muted" }, `and ${c.more_open} more open roles you haven't acted on: see Today`) : null,
-      c.off_title ? h("div", { class: "small muted" }, `${c.off_title} open role${c.off_title === 1 ? "" : "s"} your title filters leave out, not listed`) : null,
+      c.left_out ? h("div", { class: "small muted" },
+        `${c.left_out} open role${c.left_out === 1 ? "" : "s"} your filters leave out (` +
+        Object.entries(c.left_out_by).map(([k, n]) => `${k} ${n}`).join(", ") + "), not listed. ",
+        h("button", { class: "btn", onclick: () => openCompany(c.company, true),
+          title: "Settings → Display → Company page lists them every time" }, "Show them")) : null,
       c.closed_unacted ? h("div", { class: "small muted" }, `${c.closed_unacted} closed posting${c.closed_unacted === 1 ? "" : "s"} you never acted on, not listed`) : null,
       c.also.length ? h("div", { class: "small", style: "margin-top:10px" }, "Also matches: ",
         c.also.map(n => h("button", { class: "chip toggle", onclick: () => openCompany(n) }, n))) : null);
