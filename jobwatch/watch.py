@@ -656,7 +656,7 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry],
     rid = resume_id(cfg.resume, cfg.prompts)
     results, errors = score_jobs([e.job for e in entries], cfg.resume, cfg.backend, cfg.cache,
                                  progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)),
-                                 prompts=cfg.prompts, model=cfg.score_model)
+                                 prompts=cfg.prompts, model=cfg.score_model, keychain=cfg.api_keychain)
     for e in entries:
         if e.job.key in results:
             for key in e.keys:
@@ -665,6 +665,29 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry],
         elif e.job.key in errors:
             store.save_score_failure(e.job.key, rid, cfg.score_model, errors[e.job.key])
     return len(results), errors
+
+
+def compare_picks(cfg: Config, store: Store, n: int) -> list[tuple[Job, dict]]:
+    """n open jobs with a fit score for the current resume, spread evenly from the lowest score to the highest,
+    so a comparison with another model (see compare_scores) covers the whole range and filters.min_fit."""
+    rid = resume_id(cfg.resume, cfg.prompts)
+    fits = store.scores(rid)
+    scored = sorted(((job, fits[job.key]) for job, _ in store.jobs() if job.key in fits
+                     and scorable(job) and job.description.strip()), key=lambda p: p[1]["score"])
+    if n <= 0 or not scored:
+        return []
+    if n >= len(scored):
+        return scored
+    step = (len(scored) - 1) / max(n - 1, 1)
+    return [scored[round(i * step)] for i in range(n)]
+
+
+def compare_scores(cfg: Config, picks: list[tuple[Job, dict]], backend: str, model: str = "",
+                   progress: Callable[[str], None] | None = None) -> tuple[dict[str, dict], dict[str, str]]:
+    """These jobs scored again with another backend or model, to see how its scores line up with the stored ones
+    before trusting them side by side (filters.min_fit is one cut-off for both). Nothing is stored."""
+    return score_jobs([job for job, _ in picks], cfg.resume, backend, cfg.cache, progress=progress,
+                      prompts=cfg.prompts, model=model, keychain=cfg.api_keychain)
 
 
 def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,

@@ -774,7 +774,7 @@ class App:
                 return cached
             with turn(cfg.backend):  # ahead of background scoring
                 results, errors = score_jobs([job], cfg.resume, cfg.backend, cfg.cache, prompts=cfg.prompts,
-                                             model=cfg.score_model)
+                                             model=cfg.score_model, keychain=cfg.api_keychain)
             if job.key not in results:
                 raise ApiError(errors.get(job.key, "scoring failed"), HTTPStatus.BAD_GATEWAY)
             store.save_score(job.key, rid, results[job.key])

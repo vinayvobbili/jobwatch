@@ -993,11 +993,17 @@ function knowLine(job, most = 3) {
 
 function fitClass(score) { return score >= 75 ? "hi" : score >= 50 ? "mid" : "lo"; }
 
+// Who made a score (score.scorer_label): "claude-sonnet-5-5", or "Qwen3.5-9B-MLX-4bit (local)".
+function scorerLabel(by) {
+  const [backend, ...rest] = by.split(":"), model = rest.join(":");
+  return backend === "local" ? `${model.split("/").pop()} (local)` : model || backend;
+}
 function fitBox(fit) {
   if (!fit) return null;
   const s = Math.round(fit.score);
   return h("div", { class: "fitbox" + (fit.stale ? " stale" : ""),
-                    title: `Fit ${s}/100` + (fit.stale ? " (old score, rescoring)" : "") },
+                    title: `Fit ${s}/100` + (fit.stale ? " (old score, rescoring)" : "") +
+                      (fit.scored_by ? `, scored by ${scorerLabel(fit.scored_by)}` : "") },
     h("div", { class: `ring ${fitClass(s)}`, style: `--p:${s}` }, h("span", {}, s)),
     h("small", {}, fit.stale ? "old score, rescoring" : `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`));
 }

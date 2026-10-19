@@ -99,7 +99,7 @@ def start(cfg: Config, store: Store, key: str) -> Mock:
     """A session for one job (KeyError when it's unknown). Raises chat.ChatUnavailable when the chat's backend
     can't run, before anything is asked."""
     c = cfg.chat
-    chat.check(c.backend)
+    chat.check(c.backend, c.keychain)
     sheet = prep.build(cfg, store, key)
     bank = stories.load(cfg.stories)
     sent = store.package(sheet.key).resume()

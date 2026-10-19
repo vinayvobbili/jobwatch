@@ -21,7 +21,7 @@ def fake_model(monkeypatch):
         yield "Hello"
         yield ", there."
         yield {"input_tokens": 900, "output_tokens": 4}
-    monkeypatch.setattr(chat, "check", lambda backend: None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
 
@@ -105,7 +105,7 @@ def test_a_failed_reply_ends_with_an_error_line(server, monkeypatch):
     def broken(backend, system, messages, **kw):
         yield "Partial"
         raise RuntimeError("model fell over")
-    monkeypatch.setattr(chat, "check", lambda backend: None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
     monkeypatch.setattr(chat, "reply", broken)
     status, data = request(server, "POST", "/api/chat", {"messages": [{"role": "user", "content": "hi"}]},
                            headers={"X-Jobwatch-Token": TOKEN})
@@ -121,6 +121,6 @@ def test_ask_from_the_command_line(watchlist, web, fake_model, capsys, monkeypat
     assert out.out.endswith("Hello, there.\n") and "<posting>" in fake_model["system"]
     assert "(Waiting for a fit score to finish…)" in out.err and "4 tokens out · 900 in" in out.err
     assert fake_model["messages"] == [{"role": "user", "content": "Do I fit?"}]
-    monkeypatch.setattr(chat, "check", lambda backend: (_ for _ in ()).throw(chat.ChatUnavailable("no model")))
+    monkeypatch.setattr(chat, "check", lambda *a: (_ for _ in ()).throw(chat.ChatUnavailable("no model")))
     with pytest.raises(SystemExit, match="no model"):
         cli.main(["-c", str(watchlist), "ask", "hi"])

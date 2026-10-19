@@ -254,7 +254,7 @@ def _complete(cfg: Config, store: Store, key: str, system: str, messages: list[d
     if not generate:
         return None, inputs, False, ""
     try:
-        chat.check(c.backend)
+        chat.check(c.backend, c.keychain)
         reply = "".join(p for p in chat.reply(c.backend, system, messages, model=c.model,
                                               max_tokens=cfg.prep.max_tokens) if isinstance(p, str))
     except chat.ChatUnavailable as e:

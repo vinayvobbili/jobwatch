@@ -143,8 +143,10 @@ each board the same as pressing **Check for new jobs**, and pressing the button 
 that one rather than starting another.
 
 A login item doesn't see variables set in your shell profile, so with `scoring.backend: claude` the page's
-chat and scores need `ANTHROPIC_API_KEY` given to launchd (`launchctl setenv ANTHROPIC_API_KEY ...`), or
-run `jobwatch ui` from a terminal instead. The local backend needs nothing.
+chat and scores need the API key another way: keep it in the macOS keychain and name the item in
+`scoring.keychain` (`security add-generic-password -s anthropic -a "$USER" -w`, then `keychain: anthropic`),
+give `ANTHROPIC_API_KEY` to launchd (`launchctl setenv ANTHROPIC_API_KEY ...`), or run `jobwatch ui` from a
+terminal instead. The local backend needs nothing.
 
 ### On the command line
 
@@ -359,6 +361,13 @@ the MCP `get_job` result. Scores saved before jobwatch kept these have only the 
 hides jobs scored below it, counted as "fit" in the hidden roles. Jobs not scored yet still show, since
 scoring catches up in the background.
 
+Each score says which model made it (on the ring's tooltip, and in `jobwatch show <key>`). `jobwatch score
+--backend claude --model claude-sonnet-5-5` scores with another backend or model for that run only, the
+watchlist keeping its own; its scores sit next to the others, so check first that the two grade alike:
+`jobwatch score --compare 10 --backend claude` scores 10 already-scored jobs again, from the lowest score to
+the highest, and shows each old and new score, the mean difference and which ones land on the other side of
+`min_fit`. It saves nothing. With Claude every score is a paid API call.
+
 ### The fit score prompt
 
 Settings → **Fit score prompt** shows what the model is told: each of shortlist-ai's prompts (reading the
@@ -377,8 +386,8 @@ unless `chat.backend` says otherwise:
 
 - `local`: the same on-device model as scoring (`pip install 'jobwatch[local]'`). Nothing leaves your
   computer. The first answer waits for the model to load.
-- `claude`: Claude Sonnet via Anthropic's API (`ANTHROPIC_API_KEY`). Your question, your resume and the jobs
-  it's about are sent to Anthropic.
+- `claude`: Claude Sonnet via Anthropic's API (`ANTHROPIC_API_KEY`, or the keychain item `scoring.keychain`
+  names). Your question, your resume and the jobs it's about are sent to Anthropic.
 
 Settings → **Chat** sets the model for each (`chat.claude_model`, `chat.local_model`), the longest reply
 (`chat.max_tokens`) and how many of a conversation's latest messages go with each question

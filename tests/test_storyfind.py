@@ -61,7 +61,7 @@ def fake_model(monkeypatch):
         for i in range(0, len(seen["reply"]), 40):
             yield seen["reply"][i:i + 40]
         yield {"input_tokens": 900, "output_tokens": 4}
-    monkeypatch.setattr(chat, "check", lambda backend: None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
 
