@@ -130,6 +130,30 @@ def test_linkedin_alert_as_plain_text():
     assert alerts.parse_linkedin(cards[1]).location == "United States"
 
 
+def test_a_linkedin_alert_for_remote_jobs_only_makes_its_jobs_remote(web, watchlist):
+    raw = (FIXTURES / "linkedin.eml").read_text()
+    plain = raw.replace("United States (Remote)", "United States")  # the card says only the country
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    first = by_title(alerts.intake(cfg, store, [alerts.message(plain)], page=Pages(), follow=False))
+    field = first["Field Engineer @ Umbrella LLC"]
+    assert field.result == "new" and not field.job.remote
+    # The same job from an alert whose search is for remote jobs only (its "See all jobs" link says so)
+    remote = plain.replace("keywords=Software%20Engineer", "keywords=Software%20Engineer+Full-time+Remote")
+    later = by_title(alerts.intake(cfg, store, [alerts.message(remote)], page=Pages(), follow=False))
+    assert later["Field Engineer @ Umbrella LLC"].result == "known" and store.find(field.key)[0].remote
+    assert alerts.remote_search('<a href="https://www.linkedin.com/jobs/search/?f_WT=1%2C2&amp;geoId=1">', "")
+    assert not alerts.remote_search("", "https://www.linkedin.com/comm/jobs/search-results/?keywords=Remote+Sensing"
+                                        "+Engineer+Hybrid&geoId=1")
+
+
+@pytest.mark.parametrize("title, remote", [("Principal Engineer - Agentic Security Operations (remote)", True),
+                                           ("Staff Engineer – Remote", True), ("Remote Sensing Engineer", False),
+                                           ("Staff Engineer (Hybrid)", False)])
+def test_a_title_that_says_remote(title, remote):
+    assert bool(alerts.email_job(alerts.Alert(title, "Initech", "Santa Ana, CA")).remote) is remote
+
+
 def test_builtin_alert():
     found = alerts.parse(emails("builtin.eml")[0])
     assert [(a.title, a.company, a.location, a.pay, a.url) for a in found] == [

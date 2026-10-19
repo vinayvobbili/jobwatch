@@ -393,6 +393,7 @@ class Alert:
     url: str = ""
     site: str = ""     # the link's site: linkedin, indeed, builtin, ats (a supported board) or other
     via: str = ""      # where it was found: linkedin-alert, builtin-alert, indeed-alert, <site>-alert
+    remote: bool = False  # the alert's search was for remote jobs only, whatever each card says
 
 
 _PAY = re.compile(r"\$\s?\d")
@@ -512,6 +513,16 @@ def _parser_for(domain: str, cards: list[Card]):
     return (f"{name}-alert" if name else "email-alert"), parse_generic
 
 
+# A LinkedIn alert searching remote jobs only lists each by its country alone ("United States"); its "See all
+# jobs" link carries the search: the workplace filter (f_WT=2), or the filters' names after the keywords.
+_REMOTE_SEARCH = re.compile(r"linkedin\.com/(?:comm/)?jobs/search[^\s\"'<>]*?"
+                            r"(?:[?&]f_WT=(?:\d+(?:,|%2C))*2\b|(?:\+|%20)Remote(?=[&\s\"'<>]|$))", re.I)
+
+
+def remote_search(markup: str, text: str) -> bool:
+    return bool(_REMOTE_SEARCH.search(html.unescape(markup + "\n" + text)))
+
+
 def parse(msg: EmailMessage) -> list[Alert]:
     """The jobs in one alert email, with clean links."""
     markup, text = bodies(msg)
@@ -520,11 +531,13 @@ def parse(msg: EmailMessage) -> list[Alert]:
         cards = text_cards(text)
     domain = sender(msg).rpartition("@")[2]
     via, parse_card = _parser_for(domain, cards)
+    remote = via == "linkedin-alert" and remote_search(markup, text)
     out = []
     for card in cards:
         a = parse_card(card)
         if a and a.title and a.company and not _BUTTON.match(a.title):
             a.title, a.company, a.via = " ".join(a.title.split()), " ".join(a.company.split()), via
+            a.remote = remote
             out.append(a)
     return out
 
@@ -678,11 +691,15 @@ class Intake:
         return sum(all(getattr(f, k) == v for k, v in match.items()) for f in self.found)
 
 
+# "Principal Engineer (Remote)", "Staff Engineer - Remote": not "Remote Sensing Engineer"
+_REMOTE_TITLE = re.compile(r"\([^)]*\bremote\b[^)]*\)|[-–|,]\s*remote\s*$", re.I)
+
+
 def email_job(a: Alert) -> Job:
     """A job from what the alert says, tracked like one added by hand."""
     job = Job(source=MANUAL, company=_slug(a.company), id=_slug(a.title), title=a.title, url=a.url,
               company_name=a.company, locations=split_locations(a.location) if a.location else [])
-    if re.search(r"\bremote\b", a.location, re.I):
+    if a.remote or re.search(r"\bremote\b", a.location, re.I) or _REMOTE_TITLE.search(a.title):
         job.remote = True
     if found := parse_salary(a.pay):
         job.salary_min, job.salary_max, job.currency = *found, "USD"
@@ -834,7 +851,14 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
                 known = (f.job.key if store.has(f.job.key) else None) or (
                     f.how in ("board", "posting") and tracked.match(f.job.display_company, f.job.title, f.job.url))
             if known:
+                emailed = f.job
                 f.result, f.job = "known", tracked.jobs.get(known) or store.find(known)[0]
+                # A job tracked from an earlier email, which this one says is remote (its alert searched only
+                # remote jobs)
+                if f.job.source == MANUAL and emailed.remote and not f.job.remote:
+                    f.job.remote = True
+                    if not dry_run:
+                        store.update(f.job)
                 f.reason = reject_reason(f.job, cfg.filters)
                 continue
             f.result = "new"
