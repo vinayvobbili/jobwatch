@@ -337,6 +337,21 @@ def test_jibe_sections_already_in_the_description_are_not_repeated():
     assert j.description.count("Ship evals") == 1 and j.description.endswith("Python")
 
 
+def test_a_jibe_role_listed_under_its_country_is_remote_when_its_text_says_so():
+    def job(n, text, where="United States of America"):
+        j = jibe_job(n, "Principal Architect", where, ())
+        j["data"].update(full_location="United States", country="United States", description=f"<p>{text}</p>")
+        return j
+    jobs = [job(5, "This is a remote opportunity with Hooli based in the United States."),
+            job(6, "Build agents.</p><p>Remote"), job(7, "Ships #LI-Remote"),
+            job(8, "This is not a remote role: Durham office."), job(9, "Build agents."),
+            job(10, "A remote role.", "Durham, North Carolina")]
+    for j in jobs[5:]:
+        j["data"]["full_location"] = "Durham, North Carolina"
+    web = FakeWeb({"https://careers.hooli.test/api/jobs?page=1&limit=100": {"totalCount": len(jobs), "jobs": jobs}})
+    assert [j.remote for j in sources.fetch("jibe", "careers.hooli.test", web)] == [True, True, True, None, None, None]
+
+
 def test_a_jibe_link_is_detected_and_read(monkeypatch):
     monkeypatch.setattr(sources, "JIBE_PAGE", 2)
     assert sources.detect("https://careers.acme.com/careers-home/jobs/5710?lang=en-us") == \

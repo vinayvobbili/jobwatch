@@ -397,6 +397,17 @@ def _squash(text: str) -> str:
     return " ".join(text.split()).lower()
 
 
+# How a posting whose place is just a country ("United States") says it's remote: a "Remote" line of its own, a
+# "remote opportunity/role/position/work arrangement", or LinkedIn's #LI-Remote tag. Unless it says it isn't.
+_REMOTE_TEXT = re.compile(r"^\s*remote\s*$|\b(?:fully )?remote (?:opportunity|role|position|work arrangement)\b"
+                          r"|#LI-Remote\b", re.I | re.M)
+_NOT_REMOTE_TEXT = re.compile(r"\b(?:not|isn't|is not) (?:a |eligible for )?(?:fully )?remote\b", re.I)
+
+
+def _text_remote(text: str) -> bool:
+    return bool(_REMOTE_TEXT.search(text)) and not _NOT_REMOTE_TEXT.search(text)
+
+
 def fetch_jibe(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
     """Every role on a Jibe careers site. Small enough to read whole, so `search` and `wanted` aren't needed."""
     get = get or get_json
@@ -415,11 +426,15 @@ def fetch_jibe(board: str, get=None, search=(), wanted=None, known=None, cap=SEA
             if part and _squash(part.splitlines()[0]) not in _squash(text):
                 text += "\n\n" + part
         where = d.get("location_name") or ""
+        place = d.get("full_location") or where
+        # Some sites list a remote role under the country alone and say "remote" only in the text
+        country_only = _squash(place) in (_squash(d.get("country") or ""), "united states", "united states of america")
         j = Job(source="jibe", company=board, id=rid, title=(d.get("title") or "").strip(),
                 url=f"https://{board}/careers-home/jobs/{d.get('slug') or rid}",
                 company_name=d.get("hiring_organization") or "",
-                locations=split_locations(d.get("full_location") or where),
-                remote=True if "remote" in (where + " " + " ".join(d.get("tags6") or [])).lower() else None,
+                locations=split_locations(place),
+                remote=True if "remote" in (where + " " + " ".join(d.get("tags6") or [])).lower()
+                or (country_only and _text_remote(text)) else None,
                 department=", ".join(c.get("name", "") for c in d.get("categories") or [] if c.get("name")),
                 posted=_time(d.get("posted_date")), description=text.strip())
         _salary(j, j.description)
