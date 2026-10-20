@@ -147,3 +147,11 @@ console.log(JSON.stringify({
     assert got["shown"] == "Here it is:\n\n\n\nCheck it." and got["streaming"] == "Here it is:"
     assert got["form"] == {"id": "x", "title": "T", "did": "D", "hard": "H", "result": "R",
                            "skills": ["Python", "on-call"], "avoid": ["Bind", "the old provider"]}
+
+
+def test_an_applications_note_is_clamped_on_the_card():
+    """A note that grows a dated entry at every step would push the card's buttons off screen; Details has it all."""
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    rule = re.search(r"^\.app \.note \{([^}]*)\}", page, re.M)
+    assert rule and "-webkit-line-clamp: 3" in rule.group(1) and "overflow: hidden" in rule.group(1)
+    assert 'h("div", { class: "note", title: "Details shows the whole note" }, a.note)' in page_function("appCard")

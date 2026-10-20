@@ -210,6 +210,8 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .know a:hover { color: var(--accent); text-decoration: underline; }
 .note { font-size: 13.5px; color: var(--muted); margin-top: 6px; padding-left: 10px;
   border-left: 2px solid var(--line); }
+/* An application's note grows a dated entry at every step: three lines on the card, the whole note in Details. */
+.app .note { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .warns { font-size: 13.5px; color: var(--warn); margin: 2px 0 4px; }
 .warns b { font-weight: 600; }
 .gaps { font-size: 13.5px; color: var(--muted); margin: 2px 0 4px; display: -webkit-box; -webkit-line-clamp: 2;
@@ -2657,7 +2659,8 @@ function appCard(a, d, i = 0) {
           a.url ? link(a.url, a.title, "title") : h("span", { class: "title", style: "font-weight:700;font-size:17px" }, a.title),
           h("div", { class: "meta" }, h("b", {}, a.company), facts.map(f => [h("span", { class: "sep" }, "·"), f]))),
         stage),
-      nextLine(a, d.today), a.note ? h("div", { class: "note" }, a.note) : null, a.quiet ? quietBar(a, d) : null,
+      nextLine(a, d.today), a.note ? h("div", { class: "note", title: "Details shows the whole note" }, a.note) : null,
+      a.quiet ? quietBar(a, d) : null,
       h("div", { class: "app-foot" },
         h("span", { class: "when" }, a.applied_at ? `Applied ${fmtDay(a.applied_at, d.today)} · ${relDay(a.applied_at, d.today)}` : ""),
         h("div", { class: "acts" }, sentChip(a),
