@@ -1,5 +1,5 @@
 """Public job boards: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google, Amazon,
-Oracle Recruiting Cloud, SmartRecruiters, Avature and iCIMS.
+Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS and Jobvite.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
@@ -14,6 +14,7 @@ Avature careers portals list every posting in the sitemap their robots.txt names
 are read from their public pages, as robots.txt allows.
 iCIMS careers sites list their roles a page at a time (the page for the site's iframe, which is plain HTML); the ones
 whose titles match are read from their job pages, each carrying schema.org JobPosting markup.
+Jobvite careers sites list every role on one page; the ones whose titles match are read from their job pages.
 Hacker News' monthly "Ask HN: Who is hiring?" thread is a board of many companies' posts, read whole from HN's
 search API: each post is one job.
 """
@@ -1136,6 +1137,100 @@ def _icims_read(j: Job, get) -> Job:
     return j
 
 
+# -- Jobvite: board is the company's slug in https://jobs.jobvite.com/<slug>. The site's pages are server-rendered:
+# the list of every open role on one page (each names a role's title, link and department, and its place when it has
+# only one) and each role's own page, with its place, department and text. Only new postings whose titles match are
+# read in full. jobs.jobvite.com has no robots.txt.
+
+JOBVITE_LIST = "https://jobs.jobvite.com/{board}/jobs"
+JOBVITE_JOB = "https://jobs.jobvite.com/{board}/job/{id}"
+JOBVITE_WORKERS = 2  # postings are web pages: read a couple at a time
+_JOBVITE_NOT_BOARDS = {"search", "api", "static", "support"}
+_JOBVITE_CARD = re.compile(r'<li class="row">\s*<a href="[^"]*/job/(\w+)[^"]*">(.*?)</li>', re.S)
+_JOBVITE_NAME = re.compile(r'class="jv-job-list-name">(.*?)</div>', re.S)
+_JOBVITE_SPANS = re.compile(r'class="[^"]*jv-job-list-location">(.*?)</div>', re.S)
+_JOBVITE_TITLE = re.compile(r"<title>\s*(.+?)\s*</title>", re.S)
+_JOBVITE_HEADER = re.compile(r'<h2 class="jv-header">(.*?)</h2>', re.S)
+_JOBVITE_META = re.compile(r'<p class="jv-job-detail-meta">(.*?)</p>', re.S)
+_JOBVITE_END = ('class="jv-job-detail-bottom-actions"', 'class="jv-job-detail-apply"', '<p style="font-size:0.75rem"')
+
+
+def _jobvite_board(slug: str) -> str:
+    if not re.fullmatch(r"[\w-]+", slug):
+        raise SourceError(f"a Jobvite board is a company's name on jobs.jobvite.com, like acme, got {slug!r}")
+    return slug
+
+
+def _jobvite_company(page: str) -> str:
+    """The company a page is titled with: Acme for "Acme Careers" and "Acme Careers - Platform Engineer"."""
+    m = _JOBVITE_TITLE.search(page)
+    return html.unescape(m.group(1).partition(" Careers")[0]).strip() if m and " Careers" in m.group(1) else ""
+
+
+def _jobvite_listed(board: str, get, cap: int) -> tuple[list[tuple[str, str, str, list[str]]], str]:
+    """(id, title, department, places) of every role the site lists, up to cap, and the company its page is titled
+    with, "" if it isn't. A role with several places is listed as "3 Locations": its places are on its own page."""
+    text = get(JOBVITE_LIST.format(board=board)) or ""
+    found: dict[str, tuple[str, str, str, list[str]]] = {}
+    for pid, card in _JOBVITE_CARD.findall(text):
+        name = _JOBVITE_NAME.search(card)
+        if not name:
+            continue
+        where = _JOBVITE_SPANS.search(card)
+        spans = [" ".join(html.unescape(re.sub(r"<[^>]+>", "", s)).split())
+                 for s in re.findall(r"<span>(.*?)</span>", where.group(1), re.S)] if where else []
+        place = spans[1] if len(spans) > 1 and not re.fullmatch(r"\d+ Locations?", spans[1]) else ""
+        found.setdefault(pid, (pid, " ".join(html.unescape(re.sub(r"<[^>]+>", "", name.group(1))).split()),
+                               spans[0] if spans else "", split_locations(place)))
+    return list(found.values())[:cap], _jobvite_company(text)
+
+
+def fetch_jobvite(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """Every role on a Jobvite careers site (up to `cap`), reading in full the ones whose titles pass `wanted` and
+    aren't `known`. The site's list has no title search of its own, so `search` isn't used."""
+    get = get or get_text
+    listed, name = _jobvite_listed(_jobvite_board(board), get, cap)
+
+    def job(item) -> Job:
+        pid, title, department, places = item
+        key = f"jobvite:{board}:{pid}"
+        if known and key in known and known[key].description:
+            return known[key]
+        j = Job(source="jobvite", company=board, id=pid, title=title, url=JOBVITE_JOB.format(board=board, id=pid),
+                company_name=name or board, department=department, locations=places,
+                remote=True if any(is_remote(p) for p in places) else None)
+        if wanted and not wanted(j.title):
+            return j
+        return _unread_if_refused(lambda: _jobvite_read(j, get), j)
+    return _details(listed, job, JOBVITE_WORKERS)
+
+
+def _jobvite_read(j: Job, get) -> Job:
+    """Fill a Jobvite job from its page. Raises NotFound when the job has closed (the site sends the link on to
+    its list of roles), SourceError when the page has no text on it."""
+    page = get(JOBVITE_JOB.format(board=_jobvite_board(j.company), id=j.id)) or ""
+    header = _JOBVITE_HEADER.search(page)
+    start = page.find('class="jv-job-detail-description"')
+    if not header or start < 0:
+        raise NotFound(f"that Jobvite posting ({j.id}) has closed")
+    j.title = " ".join(html.unescape(re.sub(r"<[^>]+>", "", header.group(1))).split()) or j.title
+    j.company_name = _jobvite_company(page) or j.company_name
+    if meta := _JOBVITE_META.search(page):  # a department, then a place after each separator
+        parts = [" ".join(html.unescape(re.sub(r"<[^>]+>", "", p)).split())
+                 for p in re.split(r"<span[^>]*jv-inline-separator[^>]*></span>", meta.group(1))]
+        parts = [p for p in parts if p]
+        j.department = parts[0] if len(parts) > 1 else j.department
+        j.locations = split_locations(*parts[1:]) if len(parts) > 1 else split_locations(*parts)
+        j.remote = True if any(is_remote(p) for p in j.locations) else None
+    start = page.find(">", start) + 1
+    ends = [i for i in (page.find(m, start) for m in _JOBVITE_END) if i >= 0]
+    j.description = html_to_text(re.sub(r"<img[^>]*>", "", page[start:min(ends) if ends else len(page)]))
+    if not j.description:
+        raise SourceError(f"{j.url}: couldn't read that Jobvite posting's page (no posting text found on it)")
+    _salary(j, j.description)
+    return j
+
+
 # -- Amazon (with AWS and its subsidiaries): board "amazon" for its roles in the US, "amazon/any" for all of them.
 # amazon.jobs answers its own search in JSON, each role with its full text, 100 a page; its robots.txt closes
 # only /internal pages. It lists tens of thousands of roles, so like a Workday board it's searched for the
@@ -1541,6 +1636,7 @@ SOURCES = {
                               fetch_smartrecruiters),
     "avature": Source("avature", "", None, "https://{board}/SearchJobs", fetch_avature),
     "icims": Source("icims", "", None, "https://{host}/jobs/search", fetch_icims),
+    "jobvite": Source("jobvite", "", None, JOBVITE_LIST, fetch_jobvite),
     "hn": Source("hn", "", None, "https://news.ycombinator.com/submitted?id=whoishiring", fetch_hn,
                  many_companies=True),
 }
@@ -1660,6 +1756,9 @@ def detect(url: str) -> tuple[str, str] | None:
         return "hn", "whoishiring"
     if m := _ORACLE_HOST.fullmatch(host):  # .../hcmUI/CandidateExperience/<lang>/sites/<site>/job/<id>
         return ("oracle", f"{m.group(1)}/{parts[parts.index('sites') + 1]}") if "sites" in parts[:-1] else None
+    if host == "jobs.jobvite.com":  # /<company>/jobs, /<company>/job/<id>, or the older /careers/<company>/jobs
+        slug = parts[1:2] if parts[:1] == ["careers"] else parts[:1]
+        return ("jobvite", slug[0]) if slug and slug[0] not in _JOBVITE_NOT_BOARDS | {"careers"} else None
     if board := _icims_board(url):  # any link on careers-<slug>.icims.com (or another iCIMS host)
         return "icims", board
     # Avature: acme.avature.net/<portal>, or a portal on the company's own domain, known by its page names
@@ -1708,6 +1807,9 @@ def _posting_id(source: str, url: str) -> str | None:
         return _avature_id(url if "//" in url else f"https://{url}")
     if source == "icims":  # .../jobs/<id>/<title-slug>/job; /jobs/search and the like don't name a posting
         return parts[1] if len(parts) > 1 and parts[0] == "jobs" and parts[1].isdigit() else None
+    if source == "jobvite":  # /<company>/job/<id>, with /apply after it for the apply form
+        rest = parts[1:] if parts[:1] == ["careers"] else parts
+        return rest[2] if len(rest) > 2 and rest[1] == "job" else None
     if source == "workable":
         for marker in ("j", "view"):
             if marker in parts[:-1]:
@@ -1741,6 +1843,11 @@ def posting(url: str, get=None) -> Job | None:
         parsed = urlparse(url if "//" in url else f"https://{url}")
         return _icims_read(Job(source="icims", company=board, id=pid, title="", url=f"https://{parsed.netloc}/jobs/{pid}/job",
                                company_name=_icims_company(board)), get or get_text) if pid else None
+    if source == "jobvite":  # read from its own page (a web page); the site's list isn't searched for one job
+        pid = _posting_id(source, url)
+        return _jobvite_read(Job(source="jobvite", company=board, id=pid, title="",
+                                 url=JOBVITE_JOB.format(board=board, id=pid), company_name=board),
+                             get or get_text) if pid else None
     if source == "smartrecruiters":  # read from its own page (a web page): the board's list names only the title
         pid = _posting_id(source, url)
         return _sr_read(Job(source="smartrecruiters", company=board, id=pid, title="",
@@ -1877,7 +1984,8 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
     A link to the company's own careers page is read for links to a board instead (`page` fetches it).
 
     A guessed name can belong to a different company, so check a role or two before adding a board. Roles on
-    a searched board (Workday, Eightfold, Avature, iCIMS) are listed, not read in full: a sample of up to PROBE_CAP."""
+    a searched board (Workday, Eightfold, Avature, iCIMS, Jobvite) are listed, not read in full: a sample of up to
+    PROBE_CAP."""
     if found := detect(company):
         source, board = found
         return [(source, board, _peek(source, board, get))]
