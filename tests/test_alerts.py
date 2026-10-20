@@ -225,6 +225,19 @@ def test_a_part_without_a_charset_is_read_as_utf8():
     assert alerts.bodies(alerts.message(b"Caf\xc3\xa9 \xe2\x80\x94 jobs"))[1].strip() == "Café — jobs"
 
 
+@pytest.mark.parametrize("sent, read", [
+    ("Security Engineer II (Full-Time) â€“ United States", "Security Engineer II (Full-Time) – United States"),
+    ("Ingénieur, MontrÃ©al â€” Ã\xa0distance", "Ingénieur, Montréal — àdistance"),
+    ("Café – Montréal, « remote »", "Café – Montréal, « remote »"),  # right as it is: left alone
+    ("Pay –— TBD", "Pay –— TBD"),
+])
+def test_text_a_sender_decoded_with_the_wrong_charset_is_put_right(sent, read):
+    """Indeed sends some titles as UTF-8 read as Windows-1252 ("â€“"): they come through as the sender meant."""
+    assert alerts.unmangle(sent) == read
+    raw = f"From: alert@indeed.com\nContent-Type: text/plain; charset=utf-8\n\n{sent}\n".encode()
+    assert alerts.bodies(alerts.message(raw))[1].strip() == read
+
+
 def _wrapped(path):  # a Built In link inside Amazon SES click tracking, as their emails have it
     return f"https://x1.r.us-west-2.awstrack.me/L0/https:%2F%2Fbuiltin.com{path.replace('/', '%2F')}%3Fi=V/1/M/S=0"
 
