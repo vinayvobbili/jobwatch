@@ -32,8 +32,8 @@ def test_find(web, capsys):
     assert ("Globex: lever:globex  (2 open roles)  https://jobs.lever.co/globex\n"
             "    e.g. Machine Learning Engineer") in out
     assert "Acme: greenhouse:acme  (2 open roles, Acme)" in run(capsys, "find", "Acme").out
-    assert "Nobody: no Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters, Avature or iCIMS " \
-        "board found" in out
+    assert "Nobody: no Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters, Avature, iCIMS or " \
+        "Jobvite board found" in out
 
 
 def test_hidden_says_what_the_filters_hide(web, watchlist, capsys):
