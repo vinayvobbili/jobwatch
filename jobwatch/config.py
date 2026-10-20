@@ -431,17 +431,23 @@ _OFF = ("0", "off", "no", "never", "false")
 _EVERY = re.compile(r"(\d+(?:\.\d+)?)\s*(m|mins?|minutes?|h|hrs?|hours?|d|days?)?", re.I)
 
 
+def duration(raw) -> timedelta | None:
+    """"6h", "90m", "1d", or a number of hours, as a timedelta; None if it isn't one."""
+    if not (m := _EVERY.fullmatch(str(raw).strip())):
+        return None
+    n, unit = float(m.group(1)), (m.group(2) or "h")[0].lower()
+    return timedelta(minutes=n) if unit == "m" else timedelta(days=n) if unit == "d" else timedelta(hours=n)
+
+
 def _every(raw, path: Path) -> timedelta | None:
     """fetch_every: "6h", "90m", "1d", or a number of hours; 0 or off: never (YAML reads a bare off as false)."""
     if raw is None:
         return FETCH_EVERY
     if raw is False or str(raw).strip().lower() in _OFF:
         return None
-    m = _EVERY.fullmatch(str(raw).strip()) if not isinstance(raw, bool) else None
-    if not m:
+    every = duration(raw) if not isinstance(raw, bool) else None
+    if every is None:
         raise ConfigError(f"{path}: fetch_every looks like 6h, 90m or 1d (or off), got {raw!r}")
-    n, unit = float(m.group(1)), (m.group(2) or "h")[0].lower()
-    every = timedelta(minutes=n) if unit == "m" else timedelta(days=n) if unit == "d" else timedelta(hours=n)
     if not every:
         return None
     if every < FETCH_LEAST:

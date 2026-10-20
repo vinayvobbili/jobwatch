@@ -11,6 +11,7 @@ import tempfile
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -34,7 +35,7 @@ from . import (
     storyfind,
     suggest,
 )
-from .config import BACKENDS, ConfigError
+from .config import BACKENDS, ConfigError, duration
 from .filters import KINDS
 from .score import ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
 from .store import STAGES, STATUSES, Store
@@ -373,13 +374,19 @@ def cmd_dupes(args, cfg, store):
 
 def cmd_hidden(args, cfg, store):
     """What the filters hide from Today, by filter; with a filter's name, its jobs and why: read-only."""
-    h = hidden(cfg, store, args.kind or "", args.limit)
+    since = None
+    if args.since:
+        if not (ago := duration(args.since)):
+            raise SystemExit(f"jobwatch: --since looks like 6h, 90m or 1d, got {args.since!r}")
+        since = datetime.now(timezone.utc) - ago
+    h = hidden(cfg, store, args.kind or "", args.limit, since, args.source or "")
     if args.format == "json":
         print(json.dumps(h, indent=2, ensure_ascii=False))
         return
-    print(f"{h['total']} job(s) hidden: " + (", ".join(f"{k} {n}" for k, n in h["by"].items()) or "none"))
+    print(f"{h['total']} job(s) hidden" + (f" in the last {args.since}" if since else "") + ": "
+          + (", ".join(f"{k} {n}" for k, n in h["by"].items()) or "none"))
     for j in h["jobs"]:
-        print(f"  {j['company']}: {j['title']}  ({j['why']})  `{j['key']}`")
+        print(f"  {j['company']}: {j['title']}  ({j['kind'] + ': ' if since else ''}{j['why']})  `{j['key']}`")
     if h["more"]:
         print(f"  ...and {h['more']} more (--limit)")
 
@@ -980,6 +987,9 @@ def build_parser() -> argparse.ArgumentParser:
                        "list its jobs and why. Read-only")
     p.add_argument("kind", nargs="?", choices=KINDS, help="the filter whose jobs to list")
     p.add_argument("--limit", type=int, default=100, help="how many jobs to list (default 100)")
+    p.add_argument("--since", metavar="AGO", help="only jobs first seen in the last AGO (6h, 90m, 1d), every "
+                   "filter's listed: what a fetch or alert email just brought in")
+    p.add_argument("--source", help="only this source's jobs (manual: from alert emails and links; greenhouse, ...)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_hidden, read_only=True)
     return ap
