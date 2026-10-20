@@ -902,6 +902,11 @@ def summary(r: Intake, every: bool = False) -> str:
         out.append(f"  {j.key}  {j.display_company}: {j.title}  ({HOW[f.how]}; via {f.alert.via}){mark}")
         if f.same:
             out.append(f"    {f.same.line}")
+    # The new ones the filters leave out, named: once they're tracked, a second run can't list them
+    if left := [] if every else [f for f in new if f.reason is not None]:
+        out.append("Left out by your filters: " + "; ".join(
+            f"{f.job.display_company}: {f.job.title} ({f.reason})" for f in left[:10])
+            + (f"; and {len(left) - 10} more (--all lists them)" if len(left) > 10 else ""))
     if r.empty:
         out.append(f"No jobs found in {len(r.empty)} email(s): " + "; ".join(r.empty[:5])
                    + (" ..." if len(r.empty) > 5 else ""))

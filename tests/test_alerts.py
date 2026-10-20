@@ -404,7 +404,10 @@ def test_summary_and_json(web, watchlist):
     assert "5 pass your filters and are in the digest." in text
     assert "greenhouse:acme:101  Acme: Senior Software Engineer, Platform  (found on the company's board; via " \
            "linkedin-alert)" in text
-    assert "Vandelay" not in text and "Vandelay" in alerts.summary(r, every=True)
+    # A new job the filters leave out is only named, with why: a second run can't list it once it's tracked
+    left = next(line for line in text.splitlines() if line.startswith("Left out by your filters: "))
+    assert "Vandelay" in left and not any("Vandelay" in line and line.startswith("  ") for line in text.splitlines())
+    assert "Left out" not in alerts.summary(r, every=True) and "Vandelay" in alerts.summary(r, every=True)
     d = alerts.to_dict(r)
     assert (d["new"], d["new_passing_filters"], d["repeated"]) == (7, 5, 1)
 
