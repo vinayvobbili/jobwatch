@@ -1,10 +1,10 @@
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import yaml
 
-from jobwatch import config
+from jobwatch import config, watch
 from jobwatch.score import resume_id
 from jobwatch.store import Store
 from jobwatch.web import ApiError, App
@@ -183,6 +183,19 @@ def test_hidden_counts_what_each_filter_hides(app, web):
     assert place["more"] == 0 and app.get_hidden({"kind": ["excluded"], "limit": ["0"]})["more"] == 1
     with pytest.raises(ApiError, match="kind must be one of"):
         app.get_hidden({"kind": ["salary"]})
+
+
+def test_hidden_since_lists_what_just_came_in_from_every_filter(app, web):
+    """`hidden --since 6h`: what a fetch or an alert email just brought in that the filters keep off Today."""
+    app.post_fetch({})
+    now = datetime.now(timezone.utc)
+    got = app._with_store(lambda cfg, store: watch.hidden(cfg, store, since=now - timedelta(hours=1)))
+    assert sorted((j["kind"], j["company"]) for j in got["jobs"]) == [("excluded", "globex"), ("place", "Acme")]
+    assert app._with_store(lambda cfg, store: watch.hidden(cfg, store, since=now + timedelta(minutes=1)))["total"] == 0
+    assert app._with_store(lambda cfg, store: watch.hidden(cfg, store, "place", since=now - timedelta(hours=1)))[
+        "by"] == {"excluded": 1, "place": 1}
+    assert app._with_store(lambda cfg, store: watch.hidden(cfg, store, source="lever"))["by"] == {"excluded": 1}
+    assert app._with_store(lambda cfg, store: watch.hidden(cfg, store, source="greenhouse"))["by"] == {"place": 1}
 
 
 def test_a_filter_change_shows_at_once(app, watchlist, web):

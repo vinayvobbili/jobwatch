@@ -815,21 +815,26 @@ def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_to
     return digest
 
 
-def hidden(cfg: Config, store: Store, kind: str = "", limit: int = 100) -> dict:
+def hidden(cfg: Config, store: Store, kind: str = "", limit: int = 100, since: datetime | None = None,
+           source: str = "") -> dict:
     """What the filters hide from Today: how many, by which filter (filters.KINDS), and with `kind`, those
-    jobs, newest first (`limit` of them)."""
+    jobs, newest first (`limit` of them). With `since`, only the jobs first seen since then, and all of them
+    are listed (`kind` still narrows it): what a fetch or an alert email just brought in that you won't see.
+    `source` counts only that source's jobs (manual: the ones from alert emails and links)."""
     if kind and kind not in KINDS:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}")
     by: dict[str, int] = {}
     jobs = []
     fits = _fits(store, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
-    for job, _ in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
+    for job, rec in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
+        if (since and datetime.fromisoformat(rec["first_seen"]) < since) or (source and job.source != source):
+            continue
         if r := rejection(job, cfg.filters, fits.get(job.key)):
             by[r[0]] = by.get(r[0], 0) + 1
-            if r[0] == kind:
+            if r[0] == kind or (since and not kind):
                 jobs.append({"key": job.key, "title": job.title, "company": job.display_company,
                              "url": job.url, "locations": job.places, "pay": job.pay(),
-                             "age_days": job.age_days(), "why": r[1]})
+                             "age_days": job.age_days(), "kind": r[0], "why": r[1]})
     jobs.sort(key=lambda j: j["age_days"] if j["age_days"] is not None else 10_000)
     return {"total": sum(by.values()), "by": {k: by[k] for k in KINDS if k in by}, "kind": kind or None,
             "jobs": jobs[:limit], "more": max(0, len(jobs) - limit)}

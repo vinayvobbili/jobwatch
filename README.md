@@ -595,7 +595,8 @@ jobwatch alerts --imap
 With a mailbox set, every check for new jobs reads it too (the page's schedule and its "Check for new jobs"
 button, `jobwatch fetch` and `run`, and the MCP's `fetch_jobs`), so jobs from your alerts come in with the
 boards'. A mailbox it can't read (no password yet, or a login it refuses) shows as a failed check, and the boards
-are still checked.
+are still checked. `jobwatch hidden --since 6h --source manual` lists the alert jobs that came in but that your
+filters keep off Today, and why.
 
 A Gmail app password isn't limited to reading: it can read, send and delete all of the account's mail. jobwatch
 only opens the folder read-only, but that's jobwatch's doing, not the password's. Keep it in the keychain (run
