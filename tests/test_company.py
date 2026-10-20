@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -11,6 +11,8 @@ from jobwatch.models import Job
 from jobwatch.store import Store
 
 from .conftest import TOKEN, request
+
+FOLLOW_UP = (date.today() + timedelta(days=30)).isoformat()  # ahead of today, whenever the tests run
 
 CONNECTIONS = """First Name,Last Name,URL,Email Address,Company,Position,Connected On
 Ana,Li,https://www.linkedin.com/in/example-ana,,Acme Robotics,Staff Engineer,02 Mar 2024
@@ -41,7 +43,7 @@ def tracked(store):
     """Acme Robotics: one interview by hand, one skipped, one closed posting never acted on. Globex: two open
     roles on its watched board. Hooli: an application whose board isn't watched."""
     store.add("Acme Robotics", "Perception Engineer", status="interviewing", applied="2026-09-10",
-              note="phone screen done", next_step="onsite", follow_up="2026-10-20")
+              note="phone screen done", next_step="onsite", follow_up=FOLLOW_UP)
     skipped = store.add("Acme Robotics", "Sales Lead", status="skipped")
     store.sync("lever", "globex", [board_job("g1", "Platform Engineer"), board_job("g2", "Data Engineer")])
     store.sync("lever", "acme", [board_job("a1", "Old Role", "Acme Robotics", board="acme")])
@@ -89,7 +91,7 @@ def test_view_lists_every_status_with_dates_and_next_steps(cfg, store, tracked):
     assert [j["status"] for j in v["jobs"]] == ["interviewing", "skipped"]
     first = v["jobs"][0]
     assert (first["title"], first["applied_at"], first["next_step"], first["follow_up"], first["note"]) == (
-        "Perception Engineer", "2026-09-10", "onsite", "2026-10-20", "phone screen done")
+        "Perception Engineer", "2026-09-10", "onsite", FOLLOW_UP, "phone screen done")
     assert v["closed_unacted"] == 1 and v["more_open"] == 0  # the closed posting nobody acted on is counted only
     assert v["watch"]["watched"] is False and v["watch"]["add_board"] == {
         "entry": "lever:acme", "name": "Acme Robotics"}
@@ -196,7 +198,7 @@ def test_a_package_a_duplicate_and_contacts_show_up(cfg, store, tracked, tmp_pat
 def test_text_reads_well(cfg, store, tracked):
     out = company.text(company.view(cfg, store, "acme"), "acme")
     assert out.startswith("# Acme Robotics\n2 jobs: 1 interviewing, 1 skipped.")
-    assert "applied 2026-09-10" in out and "Next: onsite · follow up 2026-10-20" in out
+    assert "applied 2026-09-10" in out and f"Next: onsite · follow up {FOLLOW_UP}" in out
     assert "Note: phone screen done" in out and "1 closed posting you never acted on not listed" in out
     assert "Not watched" in out and "Find someone who could refer you" in out
 
@@ -207,9 +209,9 @@ def test_text_words_a_follow_up_like_the_rest(cfg, store, tracked):
     def lines(**changes):
         return company._line({**job, **changes})
 
-    assert "    Next: onsite · follow up 2026-10-20" in lines(due=False)
-    assert "    Due: onsite · follow up 2026-10-20" in lines(due=True)
-    assert "    Next: follow up 2026-10-20" in lines(next_step=None)
+    assert f"    Next: onsite · follow up {FOLLOW_UP}" in lines(due=False)
+    assert f"    Due: onsite · follow up {FOLLOW_UP}" in lines(due=True)
+    assert f"    Next: follow up {FOLLOW_UP}" in lines(next_step=None)
     assert "    Next: onsite" in lines(follow_up=None) and "    Next: onsite by" not in lines(follow_up=None)
 
 
