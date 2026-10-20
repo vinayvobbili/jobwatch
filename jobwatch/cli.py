@@ -256,6 +256,7 @@ def cmd_show(args, cfg, store):
     closed = f", closed {rec['closed'][:10]}" if rec["closed"] else ""
     via = f" (via {rec['via']})" if rec.get("via") else ""
     print(f"{job.to_text()}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{via}{closed}")
+    print(f"Source: {report.found_on(job, rec.get('via'))}")
     if job.link_note:
         print(f"Link: {job.link_note}")
     if same := dupes.check(store, job.key):
