@@ -143,3 +143,17 @@ def test_the_same_title_posted_per_region_is_one_entry(setup, web):
     [ml] = [e for e in d.entries if e.job.title == "Machine Learning Engineer"]
     assert ml.keys == ["lever:globex:aaaa-1111", "lever:globex:aaaa-2222"]
     assert "Also posted 1 more time(s): Austin, TX" in report.to_markdown(d)
+
+
+@pytest.mark.parametrize("source, via, said", [
+    ("greenhouse", None, "Acme's Greenhouse board"),
+    ("greenhouse", "linkedin-alert", "a LinkedIn job-alert email, matched to Acme's Greenhouse board"),
+    ("manual", "indeed-alert", "an Indeed job-alert email (not found on the company's board)"),
+    ("manual", "dice-alert", "a Dice job-alert email (not found on the company's board)"),
+    ("manual", None, "added by hand (a link or `jobwatch add`)"),
+    ("hn", None, "Hacker News' \"Who is hiring?\" thread"),
+])
+def test_each_entry_says_where_the_job_came_from(source, via, said):
+    from jobwatch.models import Job
+    job = Job(source=source, company="acme", id="1", title="Engineer", url="https://x", company_name="Acme")
+    assert report.found_on(job, via) == said

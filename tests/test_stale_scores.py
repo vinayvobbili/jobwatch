@@ -68,6 +68,16 @@ def test_a_stale_score_hides_ranks_and_is_marked(env):
     assert store.score(ACME, rid) is None
 
 
+def test_each_entry_says_which_model_scored_it(env):
+    """Claude or the local model: the digest and the queue name the scorer next to the score."""
+    cfg, store, rid = env
+    store.save_score(ACME, rid, {**fit(90), "scored_by": "claude:claude-sonnet-5-5"})
+    store.save_score(GLOBEX, rid, {**fit(80), "scored_by": "local:mlx-community/Qwen3.5-9B-MLX-4bit"})
+    md = report.to_markdown(watch.build_digest(cfg, store, score_top=0))
+    assert "**Fit 90/100**, must-haves 2/3 (scored by claude-sonnet-5-5)." in md
+    assert "**Fit 80/100**, must-haves 2/3 (scored by Qwen3.5-9B-MLX-4bit (local))." in md
+
+
 def test_another_resume_or_other_prompts_are_not_used(env):
     cfg, store, rid = env
     name, digest = resume_family(rid).split(":")[:2]

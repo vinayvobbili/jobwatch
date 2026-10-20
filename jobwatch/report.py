@@ -6,6 +6,7 @@ import json
 from datetime import date
 
 from . import levels
+from .alerts import LABELS
 from .models import Job
 from .score import scorer_label
 from .sources import candidate_home
@@ -75,7 +76,8 @@ def _line(e: Entry) -> list[str]:
     if e.fit:
         f = e.fit
         old = " (old score, rescoring)" if f.get("stale") else ""
-        out.append(f"**Fit {f['score']:.0f}/100**{old}, must-haves {f['must_haves_met']}/{f['must_haves_total']}. "
+        by = f" (scored by {scorer_label(f['scored_by'])})" if f.get("scored_by") else ""
+        out.append(f"**Fit {f['score']:.0f}/100**{old}, must-haves {f['must_haves_met']}/{f['must_haves_total']}{by}. "
                    + (f"Gaps: {'; '.join(f['gaps'])}" if f["gaps"] else "No must-have gaps."))
     elif not scorable(j):
         out.append(f"{MANY_ROLES[1]}.")
@@ -91,8 +93,34 @@ def _line(e: Entry) -> list[str]:
         out.append(f"**Closed** {e.record['closed'][:10]}: the posting is gone from the board.")
     if e.record.get("note"):
         out.append(f"Note: {e.record['note']}")
+    out.append(f"Source: {found_on(j, e.record.get('via'))}")
     out.append(f"`{j.key}`" + (f" (via {e.record['via']})" if e.record.get("via") else ""))
     return [*out, ""]
+
+
+BOARDS = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby", "workable": "Workable", "workday": "Workday",
+          "eightfold": "Eightfold", "jibe": "Jibe", "rippling": "Rippling", "oracle": "Oracle Recruiting Cloud",
+          "smartrecruiters": "SmartRecruiters", "avature": "Avature", "icims": "iCIMS"}
+
+
+def found_on(job: Job, via: str | None = None) -> str:
+    """Where a job came from, in words: "Acme's Greenhouse board", "a LinkedIn job-alert email, matched to Acme's
+    Lever board", "an Indeed job-alert email (not found on the company's board)", or "added by hand"."""
+    if job.source == "hn":
+        board = "Hacker News' \"Who is hiring?\" thread"
+    elif job.source == "google":
+        board = "Google Careers"
+    elif job.source == "amazon":
+        board = "amazon.jobs"
+    elif job.source != "manual":
+        board = f"{job.display_company}'s {BOARDS.get(job.source, job.source)} board"
+    else:
+        board = ""
+    if not via:
+        return board or "added by hand (a link or `jobwatch add`)"
+    sender = LABELS.get(via, via.removesuffix("-alert").replace("-", " ").title())
+    email = f"{'an' if sender[0] in 'AEIOU' else 'a'} {sender} job-alert email"
+    return f"{email}, matched to {board}" if board else f"{email} (not found on the company's board)"
 
 
 def to_markdown(d: Digest, title: str = "jobwatch digest", more: str = "", pace: dict | None = None) -> str:
