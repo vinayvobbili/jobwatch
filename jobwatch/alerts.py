@@ -217,6 +217,22 @@ def _decode(data: bytes) -> str:
         return data.decode("latin-1")
 
 
+# Two or more characters Windows-1252 shows for bytes 0x80-0xFF: how UTF-8 reads when a sender decoded it wrong
+_CP1252_HIGH = re.compile("[\x80-\xffŒœŠšŸŽžƒˆ˜–—"
+                          "‘-‚“-„†-•…‰‹›€™]{2,}")
+
+
+def unmangle(text: str) -> str:
+    """Text a sender ran through the wrong charset ("â€“" for "–", "Ã©" for "é"), put right: each run that is
+    valid UTF-8 once it's Windows-1252 bytes again. Strict UTF-8 rarely fits real text, so that's left alone."""
+    def fix(m: re.Match) -> str:
+        try:
+            return m.group().encode("cp1252").decode("utf-8")
+        except UnicodeError:
+            return m.group()
+    return _CP1252_HIGH.sub(fix, text)
+
+
 def bodies(msg: EmailMessage) -> tuple[str, str]:
     """(HTML body, plain-text body): the first of each, attachments aside. A part that names no charset is read
     as UTF-8, not ASCII, so its em dashes and accents come through."""
@@ -231,7 +247,7 @@ def bodies(msg: EmailMessage) -> tuple[str, str]:
             found[ct] = part.get_content()
         except (LookupError, ValueError, AttributeError):
             found[ct] = _decode(part.get_payload(decode=True) or b"")
-    return found["text/html"], found["text/plain"]
+    return unmangle(found["text/html"]), unmangle(found["text/plain"])
 
 
 # -- Cards: each job in an email, as its link and the lines of text that go with it.
