@@ -126,8 +126,16 @@ def test_page_has_a_skills_tab(server):
     """Skills to build, with where to learn them, is a tab of its own, and a job's gap chips link to it."""
     page = request(server, "GET", "/")[1].decode()
     assert '<button data-tab="skills">Skills</button>' in page
-    assert '"skills", "settings"]' in page and "skills: renderSkills" in page
+    assert '"skills", "activity", "settings"]' in page and "skills: renderSkills" in page
     assert 'api("/api/skills"' in page and 'go("skills")' in page
+
+
+def test_page_has_an_activity_tab(server):
+    """What jobwatch did in the background is a tab of its own, read from /api/activity."""
+    page = request(server, "GET", "/")[1].decode()
+    assert '<button data-tab="activity">Activity</button>' in page and "activity: renderActivity" in page
+    status, body = request(server, "GET", "/api/activity", headers={"X-Jobwatch-Token": TOKEN})
+    assert status == 200 and set(json.loads(body)) == {"events", "now"}
 
 
 def test_api_requires_the_token_and_a_local_host(server):

@@ -145,6 +145,11 @@ check, from the page or `jobwatch fetch`, is older than `fetch_every`) and again
 each board the same as pressing **Check for new jobs**, and pressing the button while a check runs waits for
 that one rather than starting another.
 
+The **Activity** tab shows what it has been doing, newest first: each check of the boards (what's new, what
+failed), each read of your job-alert emails, each job scored (its score and which model made it, or why it
+failed) and each lookup of expected pay, with what started it (the schedule, the button, the background
+scorer), plus what's running right now. It updates by itself while it's open, and keeps the last 1,000 entries.
+
 A login item doesn't see variables set in your shell profile, so with `scoring.backend: claude` the page's
 chat and scores need the API key another way: keep it in the macOS keychain and name the item in
 `scoring.keychain` (`security add-generic-password -s anthropic -a "$USER" -w`, then `keychain: anthropic`),

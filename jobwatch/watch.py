@@ -110,7 +110,7 @@ def offline_warning(b: Board) -> str:
 
 
 def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, mail=None,
-              reread: tuple[str, ...] = ()) -> FetchReport:
+              reread: tuple[str, ...] = (), by: str = "") -> FetchReport:
     """Pull every board in the watchlist and record what is new. Boards that fail are reported and skipped.
 
     A searched board's postings are read in full once; the boards named in `reread` (by entry, board or name) have
@@ -122,9 +122,10 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
 
     For a source whose hosted job pages a company can switch off (Ashby), the board's own page is read too, once
     a day at most (see HostedPages; `page` replaces that HTTP call): when it's offline, the board's jobs link to
-    its careers: site, or say to apply there. The check is recorded in the store (Store.last_fetch). A new post in
-    a thread of many companies' posts (HN) that passes the filters, from a company whose board isn't watched, makes
-    that company a suggestion to watch (see suggest.py)."""
+    its careers: site, or say to apply there. The check is recorded in the store (Store.last_fetch), and so is
+    what it did, for the Activity tab (Store.log, started `by` the schedule, the page...). A new post in a thread of
+    many companies' posts (HN) that passes the filters, from a company whose board isn't watched, makes that
+    company a suggestion to watch (see suggest.py)."""
     report = FetchReport()
     for b in cfg.unknown:  # a source this version can't read: say so, and check the rest
         report.errors[b.entry] = UNKNOWN_SOURCE
@@ -173,18 +174,39 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
                     suggest.record_posts(store, cfg, [j for j in jobs if j.key in keys])
                 except Exception as e:  # a suggestion is a hint: it never fails a check
                     report.warnings[b.entry] = f"companies to watch not noted: {e}"
+    checked = len(report.new)  # the boards' new jobs; the mailbox's come next
     if cfg.imap:
         try:
             got = alerts.intake(cfg, store, alerts.imap_messages(cfg.imap, connect=mail))
         except alerts.AlertError as e:
             report.errors[MAILBOX] = str(e)
+            store.log("mail", f"Couldn't read job-alert emails from {cfg.imap.host}", ok=False, detail=[str(e)], by=by)
         else:
             report.emails = got.emails
             report.new += [f.key for f in got.found if f.result == "new"]  # intake marks their duplicates
+            fresh = [f for f in got.found if f.result == "new"]
+            store.log("mail", f"Read {plural(got.emails, 'job-alert email')} from {cfg.imap.host}: "
+                      f"{plural(len(got.found), 'job')}, {len(fresh)} new",
+                      detail=[f"New: {f.job.display_company}: {f.job.title}" for f in fresh if f.job][:ACTIVITY_LINES],
+                      by=by)
     # A new posting of a job already applied to (or queued, or skipped) is marked as its duplicate.
     report.duplicates = dupes.record(store, new) if new else {}
     store.record_fetch(report.boards, report.jobs, len(report.new), report.errors, report.warnings)
+    boards = {k: v for k, v in report.errors.items() if k != MAILBOX}
+    store.log("boards", f"Checked {plural(report.boards, 'board')}: {report.jobs:,} open jobs, {checked} new"
+              + (f", {len(boards)} failed" if boards else ""),
+              ok=bool(report.boards) or not boards,
+              detail=[f"New: {j.display_company}: {j.title}" for j in new][:ACTIVITY_LINES]
+              + [f"Failed: {b}: {e}" for b, e in boards.items()]
+              + [f"Look at: {b}: {w}" for b, w in report.warnings.items()], by=by)
     return report
+
+
+ACTIVITY_LINES = 25  # at most this many jobs named in one Activity entry
+
+
+def plural(n: int, what: str) -> str:
+    return f"{n:,} {what}" + ("" if n == 1 else "s")
 
 
 @dataclass
@@ -731,10 +753,11 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
 
 
 def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Callable[[str], None] | None = None,
-                  background: bool = False, batch: bool = False) -> tuple[int, dict[str, str]]:
+                  background: bool = False, batch: bool = False, by: str = "") -> tuple[int, dict[str, str]]:
     """Score these jobs against the resume and store each result, for the job and its same-title postings.
     (how many were scored, {job key: error}). A fallback score for a job the backend failed on records that
-    failure too, so the backend tries it again only after SCORE_RETRY (one over the daily limit, tomorrow)."""
+    failure too, so the backend tries it again only after SCORE_RETRY (one over the daily limit, tomorrow).
+    What was scored, and by which model, goes in the Activity log (Store.log)."""
     rid = resume_id(cfg.resume, cfg.prompts)
     results, errors = score_with_fallback(cfg, store, [e.job for e in entries],
                                           progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)),
@@ -749,7 +772,30 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Cal
             e.fit = brief(fit)
         elif e.job.key in errors and not errors[e.job.key].startswith(DAILY_LIMIT):
             store.save_score_failure(e.job.key, rid, cfg.score_model, errors[e.job.key])
+    if entries:
+        store.log("score", *_scored_text(entries, results, errors, batch), by=by)
     return len(results), errors
+
+
+def _scored_text(entries: list[Entry], results: dict[str, dict], errors: dict[str, str], batch: bool
+                 ) -> tuple[str, bool, list[str]]:
+    """An Activity entry for a scoring run: its line, whether anything was scored, and a line per job."""
+    def model(fit: dict) -> str:
+        name = str(fit.get("scored_by") or "").partition(":")[2] or "unknown model"
+        return name.rsplit("/", 1)[-1] + (" (fallback)" if fit.get("fallback") else "")
+
+    lines = []
+    for e in entries:
+        role = f"{e.job.display_company}: {e.job.title}"
+        if fit := results.get(e.job.key):
+            lines.append(f"{round(fit['score'])}/100 {role} ({model(fit)})")
+        elif e.job.key in errors:
+            lines.append(f"Failed: {role}: {errors[e.job.key]}")
+    if len(entries) == 1:
+        return f"Scored {lines[0]}" if results else lines[0] if lines else "Scored nothing", bool(results), []
+    failed = sum(e.job.key in errors and e.job.key not in results for e in entries)
+    return (f"Scored {plural(len(results), 'job')}" + (" through the Batches API" if batch else "")
+            + (f", {failed} failed" if failed else ""), bool(results) or not failed, lines)
 
 
 def compare_picks(cfg: Config, store: Store, n: int, by: str = "") -> list[tuple[Job, dict]]:

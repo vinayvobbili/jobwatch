@@ -504,6 +504,25 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 14px; }
 .grid-cards > .card { margin: 0; }
 .grid-cards > .empty { grid-column: 1 / -1; }
+/* activity: what jobwatch did in the background, newest first, a day at a time */
+.acts-day { margin: 18px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.act { display: flex; gap: 12px; align-items: flex-start; padding: 10px 14px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 6px; }
+.act .ico { flex: none; margin-top: 2px; color: var(--accent); }
+.act.fail { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+.act.fail .ico, .act.fail .what { color: var(--bad); }
+.act .body { flex: 1; min-width: 0; }
+.act .what { font-weight: 600; overflow-wrap: anywhere; }
+.act .when { flex: none; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.act details { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.act details summary { cursor: pointer; }
+.act details ul { margin: 6px 0 0; padding-left: 18px; }
+.act details li { overflow-wrap: anywhere; }
+.now-line { display: flex; align-items: center; gap: 8px; font-size: 13.5px; margin: 4px 0; }
+.now-line .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none;
+  animation: pulse 1.6s ease-in-out infinite; }
+.now-line.idle .dot { background: var(--line); animation: none; }
+@keyframes pulse { 50% { opacity: .35; } }
 .card.skill { --stripe: color-mix(in srgb, var(--accent) 35%, transparent); }
 .card.skill.must { --stripe: var(--warn); }
 .card.skill h2 { font-size: 18px; letter-spacing: -.01em; margin: 0 0 2px; }
@@ -716,6 +735,7 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
       <button data-tab="queue">Queue<span id="qcount"></span></button>
       <button data-tab="applied">Applications<span id="duecount"></span></button>
       <button data-tab="skills">Skills</button>
+      <button data-tab="activity">Activity</button>
       <button data-tab="settings">Settings</button>
     </nav>
     <div class="jump">
@@ -798,6 +818,7 @@ const ICONS = {
   file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
   copy: "M9 9h11v11H9zM5 15H4V4h11v1",
   download: "M12 3v12M7 10l5 5 5-5M5 21h14",
+  dollar: "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
 };
 function icon(name, size = 15) {
   const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
@@ -3030,6 +3051,56 @@ async function renderSkills() {
       other, blockers)));
 }
 
+// -- activity: what jobwatch has been doing (checking the boards, reading job-alert mail, scoring, pay), newest
+// first, and what it's doing now. It asks again every 10 seconds while it's open; details left open stay open.
+const activityView = { kind: "", open: new Set(), timer: null };
+const ACT_KINDS = [["", "All"], ["boards", "Boards"], ["mail", "Email"], ["score", "Scoring"], ["pay", "Pay"]];
+const ACT_ICON = { boards: "refresh", mail: "inbox", score: "sparkle", pay: "dollar" };
+const ACT_BY = { schedule: "On schedule", page: "You pressed Check for new jobs", background: "In the background" };
+
+function activityTick() {
+  clearTimeout(activityView.timer);
+  activityView.timer = setTimeout(() => {
+    if (tab !== "activity") return;
+    if (document.hidden) activityTick(); else render();
+  }, 10000);
+}
+
+async function renderActivity() {
+  const d = await api("/api/activity" + (activityView.kind ? "?kind=" + activityView.kind : ""));
+  const s = d.now.score;
+  const now = [d.now.boards && "Checking the boards for new jobs",
+    s.running && `Scoring ${s.current || "jobs"}` + (s.left ? ` · ${s.left} left` : ""),
+    d.now.pay && "Looking up expected pay on Levels.fyi"].filter(Boolean);
+  const line = (text, idle) => h("div", { class: "now-line" + (idle ? " idle" : "") }, h("span", { class: "dot" }), text);
+  const side = h("div", {},
+    panel("Now", now.length ? now.map(t => line(t)) : line("Nothing running", true)),
+    panel("Show", segmented(ACT_KINDS, activityView.kind, k => { activityView.kind = k; render(); })));
+  const rows = [];
+  let day = "";
+  for (const e of d.events) {
+    const at = new Date(e.at);
+    const label = at.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+    if (label !== day) rows.push(h("div", { class: "acts-day" }, day = label));
+    let more = null;
+    if (e.detail.length) {
+      more = h("details", {}, h("summary", {}, `${e.detail.length} detail${e.detail.length === 1 ? "" : "s"}`),
+        h("ul", {}, e.detail.map(x => h("li", {}, x))));
+      more.open = activityView.open.has(e.at);
+      more.ontoggle = () => more.open ? activityView.open.add(e.at) : activityView.open.delete(e.at);
+    }
+    rows.push(h("div", { class: "act" + (e.ok ? "" : " fail") }, icon(ACT_ICON[e.kind] || "file", 16),
+      h("div", { class: "body" }, h("div", { class: "what" }, e.text),
+        e.by ? h("div", { class: "small muted" }, ACT_BY[e.by] || e.by) : null, more),
+      h("span", { class: "when", title: `${at.toLocaleString()} (${ago(e.at)})` },
+        at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }))));
+  }
+  put(pagehead("Activity", "What jobwatch has been doing: checking the boards, reading your job-alert emails, scoring jobs and looking up pay. It updates by itself."),
+    layout(side, h("div", {}, rows.length ? rows
+      : emptyState("Nothing yet. What jobwatch does shows up here as it happens."))));
+  activityTick();
+}
+
 function renderSettings() {
   const s = settings, f = s.filters || {};
   const companies = s.companies.map(c => ({ ...c }));
@@ -3453,7 +3524,8 @@ async function render() {
     if (tab === "settings") renderSettings();
     else if (!settings.exists || (!settings.companies.length && tab !== "applied")) renderWelcome();
     else await loading(document.querySelector(`#tabs button[data-tab="${tab}"]`),
-      { today: renderToday, queue: renderQueue, applied: renderApplied, skills: renderSkills }[tab]);
+      { today: renderToday, queue: renderQueue, applied: renderApplied, skills: renderSkills,
+        activity: renderActivity }[tab]);
   } catch (e) { showError(main, e); }
   refreshQueueCount();
 }
@@ -3482,7 +3554,7 @@ async function loading(button, work, delay = 150) {
 
 function go(name) { tab = name; history.replaceState(null, "", "#" + name); render(); }
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => go(b.dataset.tab);
-const TABS = ["today", "queue", "applied", "skills", "settings"];
+const TABS = ["today", "queue", "applied", "skills", "activity", "settings"];
 window.addEventListener("hashchange", () => {
   const want = location.hash.slice(1);
   if (TABS.includes(want) && want !== tab && settings) { tab = want; render(); }
