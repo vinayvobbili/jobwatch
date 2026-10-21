@@ -33,6 +33,8 @@ import os
 import re
 import ssl
 import subprocess
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -40,7 +42,7 @@ from email.policy import default as default_policy
 from email.utils import parseaddr
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import parse_qsl, unquote, urlencode, urlparse
+from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlparse
 
 from . import dupes, linkedin, sources, suggest
 from .filters import reject_reason
@@ -109,6 +111,39 @@ def _ats_posting(url: str) -> bool:
     return bool(sources._posting_id(found[0], url))  # the board's own reading of its links
 
 
+def indeed_redirect(url: str) -> bool:
+    """A click-tracking link in an Indeed company alert (engage.indeed.com/f/a/...): it carries no job id (jk),
+    only a redirect to the posting."""
+    p = urlparse(url)
+    return p.netloc.lower() == "engage.indeed.com" and p.path.startswith("/f/a/")
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # stop at each hop: the next link is in the reply's Location
+        return None
+
+
+def resolve_redirect(url: str, timeout: float = 10, hops: int = 5) -> str:
+    """The posting's link behind an Indeed click-tracking redirect: its hops are followed one by one, reading
+    no page body, and the walk stops at the first link that isn't another redirect, without opening it."""
+    opener = urllib.request.build_opener(_NoRedirect)
+    for _ in range(hops):
+        req = urllib.request.Request(url, headers={"User-Agent": sources.USER_AGENT})
+        try:
+            with opener.open(req, timeout=timeout):
+                return url  # an answer, not a redirect: this is as far as it goes
+        except urllib.error.HTTPError as e:
+            where = e.headers.get("Location") if 300 <= e.code < 400 else None
+            if not where:
+                raise sources.SourceError(f"{url}: HTTP {e.code}") from None
+            url = urljoin(url, where)
+        except (urllib.error.URLError, TimeoutError) as e:
+            raise sources.SourceError(f"{url}: {e}") from None
+        if not indeed_redirect(url):
+            return url
+    raise sources.SourceError(f"{url}: too many redirects")
+
+
 _JOB_PATH = re.compile(r"/(?:jobs?|careers?|positions?|openings?|vacanc\w*|job-listing|job-detail\w*)(?:/|$|[-_])",
                        re.I)
 
@@ -124,7 +159,7 @@ def job_link(url: str) -> tuple[str, str] | None:
     if linkedin.job_id(clean):
         return "linkedin", clean
     if host.endswith("indeed.com"):
-        return ("indeed", clean) if p.path == "/viewjob" else None
+        return ("indeed", clean) if p.path == "/viewjob" or indeed_redirect(clean) else None
     if host == "builtin.com":
         return ("builtin", clean) if re.fullmatch(r"/job/[^/]+/\d+", p.path) else None
     if _ats_posting(clean):
@@ -837,9 +872,11 @@ class _Resolver:
 
 
 def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True, dry_run: bool = False,
-           page=None) -> Intake:
+           page=None, redirect=None) -> Intake:
     """Track the jobs in these alert emails (see the module's docstring). follow=False reads no links: each job
-    is kept as the email has it. dry_run: nothing is recorded, the result says what would be."""
+    is kept as the email has it. dry_run: nothing is recorded, the result says what would be. An Indeed company
+    alert's links are redirects with no job id: they're resolved (redirect, default resolve_redirect) to the
+    posting's link, which keys the job; with follow=False, or when that fails, the job is skipped."""
     result = Intake(emails=len(messages), dry_run=dry_run)
     tracked = _Tracked(store)
     acted = dupes.Index(store)
@@ -852,7 +889,14 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
         for a in alerts:
             f = Found(a, email_job(a), how="email")
             result.found.append(f)
-            same = f"{linkedin._bare(a.company)}|{' '.join(sorted(linkedin._words(a.title)))}"
+            if indeed_redirect(a.url):
+                if reason := _unredirect(f, (redirect or resolve_redirect) if follow else None):
+                    if reason == NOT_A_POSTING:  # not a job after all
+                        result.found.pop()
+                    else:
+                        f.result, f.reason = "skipped", reason
+                    continue
+            same =f"{linkedin._bare(a.company)}|{' '.join(sorted(linkedin._words(a.title)))}"
             if twin := seen.get(a.url) or seen.get(same):  # a job in two alerts (LinkedIn's and Indeed's)
                 f.job, f.how, f.result, f.reason = twin.job, twin.how, "duplicate", twin.reason
                 continue
@@ -887,6 +931,24 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
     return result
 
 
+NOT_A_POSTING = "the Indeed redirect doesn't lead to a posting"  # a footer link (settings, legal), not a job
+
+
+def _unredirect(f: Found, resolve) -> str | None:
+    """Point the job at the posting its Indeed redirect leads to (the job's id is in that link, never in the
+    redirect, whose token differs in every email). Why it can't be, if it can't."""
+    if resolve is None:
+        return "an Indeed redirect link, not followed (--no-follow)"
+    try:
+        link = job_link(resolve(f.alert.url))
+    except sources.SourceError as e:
+        return f"couldn't follow the Indeed redirect: {e}"
+    if not link or link[0] != "indeed" or indeed_redirect(link[1]):
+        return NOT_A_POSTING
+    f.alert.url = f.job.url = link[1]
+    return None
+
+
 def _record(store: Store, f: Found):
     store.keep(f.job)
     store.set_via(f.job.key, f.alert.via)
@@ -909,6 +971,8 @@ def summary(r: Intake, every: bool = False) -> str:
             f"{r.count(result='known')} already tracked, {r.count(result='duplicate')} repeated, {len(new)} new.")
     hows = ", ".join(f"{sum(f.how == h for f in new)} {HOW[h]}" for h in HOW if any(f.how == h for f in new))
     out = [head]
+    if skipped := [f for f in r.found if f.result == "skipped"]:
+        out.append(f"Skipped {len(skipped)}: " + "; ".join(sorted({f.reason for f in skipped})) + ".")
     if new:
         out.append(f"New: {hows}. {len(passing)} pass your filters" + (" and are in the digest." if not r.dry_run
                                                                        else "."))
@@ -933,6 +997,7 @@ def to_dict(r: Intake) -> dict:
     return {
         "dry_run": r.dry_run, "emails": r.emails, "jobs": len(r.found),
         "known": r.count(result="known"), "repeated": r.count(result="duplicate"), "new": r.count(result="new"),
+        "skipped": r.count(result="skipped"),
         "new_passing_filters": sum(f.result == "new" and f.reason is None for f in r.found),
         "found": [{"key": f.key, "result": f.result, "how": f.how, "via": f.alert.via, "company": f.alert.company,
                    "title": f.alert.title, "location": f.alert.location, "pay": f.alert.pay, "link": f.alert.url,
