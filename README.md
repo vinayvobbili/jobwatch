@@ -788,6 +788,27 @@ calendar:
   remind: 30    # 0 (the default): no reminder
 ```
 
+### Interviews
+
+The **Interviews** tab in `jobwatch ui` lists the interviews and calls coming up: today's first (the tab shows
+how many), then the next two weeks, soonest first. It reads them from next steps the same way the calendar feed
+does, so `Interview with Sam Tue 3/10 2:00 PM ET` is on it. A next step that names a meeting with no time it can
+read ("onsite loop, recruiter to schedule") is listed as not scheduled yet while its follow-up day is ahead, once
+the application is past applied. Clicking a card opens everything about that application: the interview's time,
+the whole note, what you sent, the people you know there, the posting, and your prep sheets.
+
+Prep sheets you write yourself can be linked too. Put them in one folder and name each one for its company
+(`acme-onsite.html`, `acme-recruiter-screen.html`), then point the watchlist at the folder:
+
+```yaml
+prep:
+  sheets: prep    # next to the watchlist, or a full path
+```
+
+Every `.html` sheet whose name starts with the company's name shows as a button on its interviews and in its
+details, newest first. A sheet opens in a new tab with the stylesheets beside it written in and its scripts
+turned off.
+
 ### Looking up a company
 
 Today only shows new roles on the boards you watch, so a company you added by hand, or one you're already

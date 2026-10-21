@@ -33,6 +33,7 @@ from . import (
     contacts,
     dupes,
     ics,
+    interviews,
     learn,
     levels,
     mock,
@@ -48,7 +49,7 @@ from .config import ConfigError
 from .filters import KINDS
 from .package import Package
 from .score import LOCAL, ScoringUnavailable, brief, prompt_info, resume_id, turn
-from .store import MANUAL, STAGES, STATUSES, Store
+from .store import ENDED, MANUAL, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
     Entry,
@@ -71,6 +72,7 @@ from .watch import (
 )
 
 MAX_UPLOAD = 20 * 1024 * 1024
+IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background scorer works through
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 
 
@@ -624,6 +626,25 @@ class App:
                 for j, rec in quiet.order(rows, found)]}
         return self._with_store(run)
 
+    def get_interviews(self, q) -> dict:
+        """The Interviews tab: the interviews and calls coming up (see interviews.py)."""
+        def run(cfg, store):
+            folder = cfg.prep.sheets
+            return {"today": date.today().isoformat(), "sheets_folder": str(folder) if folder else None,
+                    "interviews": [interviews.to_dict(i, folder) for i in interviews.upcoming(store.applications())]}
+        return self._with_store(run)
+
+    def get_prep_sheet(self, q) -> dict:
+        """One prep sheet you wrote, as a page to open in its own tab (scripts off)."""
+        name = (q.get("name") or [""])[0]
+
+        def run(cfg, store):
+            try:
+                return {"name": name, "html": interviews.sheet(cfg.prep.sheets, name)}
+            except FileNotFoundError as e:
+                raise ApiError(str(e), HTTPStatus.NOT_FOUND) from None
+        return self._with_store(run)
+
     def get_calendar(self, q) -> dict:
         """Where the follow-up and interview feed is served: a path with this install's secret in it, for a
         calendar app that can't send the page's token to subscribe to (see calendar_feed)."""
@@ -700,11 +721,17 @@ class App:
                     "package": Package(store.packages, job.key).data(),
                     "skills": learn.job_gaps(cfg, store, job), "fit": fit,
                     "can_score": resume and scorable(job) and bool(job.description.strip()),
-                    "unscored": None if fit else unscored_reason(cfg, store, job, self.scorer.reasons(cfg, store)),
+                    # Only queued and Today's jobs are in the scorer's line: working it out for any other (an
+                    # application) reads every job through the filters and tells nothing more.
+                    "unscored": None if fit else unscored_reason(
+                        cfg, store, job, self.scorer.reasons(cfg, store) if rec.get("status") in IN_LINE else {}),
                     "manual": job.source == MANUAL,
                     "duplicate_of": (same := dupes.check(store, job.key)) and same.to_dict(),
+                    "sheets": interviews.sheets(cfg.prep.sheets, job.display_company, job.company),
+                    "meeting": None if rec.get("status") in ENDED else interviews.meeting_dict(rec.get("next_step")),
                     **self._pay(cfg, store, [(job, None)]).get(job.key, {}),
-                    **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
+                    **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen", "next_step",
+                                               "follow_up", "applied_at")}}
         return self._with_store(run)
 
     def get_companies(self, q) -> list[dict]:
@@ -988,6 +1015,8 @@ ROUTES = {
     ("POST", "/api/mark"): App.post_mark,
     ("GET", "/api/applications"): App.get_applications,
     ("GET", "/api/calendar"): App.get_calendar,
+    ("GET", "/api/interviews"): App.get_interviews,
+    ("GET", "/api/prep/sheet"): App.get_prep_sheet,
     ("POST", "/api/add"): App.post_add,
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/snooze"): App.post_snooze,

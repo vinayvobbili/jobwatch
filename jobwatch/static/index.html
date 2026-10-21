@@ -319,6 +319,17 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .sent .saved-posting button { border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
 .card.app.ended { opacity: .62; }
 .card.app.ended:hover { opacity: 1; }
+.card.interview { cursor: pointer; }
+.card.interview:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.iv-when { text-align: right; flex: none; display: grid; gap: 2px; }
+.iv-when b { font-size: 17px; }
+.iv-when span { font-size: 12.5px; color: var(--muted); }
+.iv-when.now b { color: var(--accent); }
+.sheets { gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+.iv-banner { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 10px; padding: 8px 12px;
+  margin: 8px 0; display: grid; gap: 4px; }
+.note-full { white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; margin: 8px 0; max-height: 320px; overflow: auto;
+  border-left: 3px solid var(--line, #ddd); padding: 2px 10px; }
 .app .side { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .app .when { color: var(--muted); font-size: 12.5px; }
 select.stage { font-weight: 650; border-radius: 999px; color: var(--sc); padding: 5px 12px;
@@ -742,6 +753,7 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
       </svg><span>job<b>watch</b></span></span>
     <nav id="tabs">
       <button data-tab="today">Today</button>
+      <button data-tab="interviews">Interviews<span id="ivcount"></span></button>
       <button data-tab="queue">Queue<span id="qcount"></span></button>
       <button data-tab="applied">Applications<span id="duecount"></span></button>
       <button data-tab="skills">Skills</button>
@@ -1271,8 +1283,13 @@ async function openDetails(key) {
         h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, j.title), fitBox(j.fit) || noFitBox(j),
           h("button", { class: "btn", onclick: closeDetails }, "Close")),
         h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
-        h("div", { class: "small muted" }, `Status: ${j.status}` + (j.note ? ` (${j.note})` : "") +
+        h("div", { class: "small muted" }, `Status: ${j.status}` + (j.applied_at ? ` · applied ${j.applied_at.slice(0, 10)}` : "") +
           (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
+        j.meeting ? h("div", { class: "iv-banner" },
+          h("b", {}, `${j.meeting.label} · ${fmtDay(j.meeting.day)} · ${meetingTime(j.meeting)} · ${relDay(j.meeting.day, todayIso())}`),
+          j.next_step) : j.next_step || j.follow_up ? nextLine(j, todayIso()) : null,
+        sheetButtons(j.sheets),
+        j.note ? h("div", { class: "note-full", title: "The whole note, oldest first" }, j.note) : null,
         linkNote(j),
         j.duplicate_of ? h("div", { class: "warns" }, dupeBadge(j.duplicate_of), " ", j.duplicate_of.text) : null,
         payLine(j),
@@ -2533,6 +2550,71 @@ function paged(items, state, filterKey, redraw) {
   };
 }
 
+// -- Interviews: the interviews and calls your open applications' next steps name, today's first, then the next two
+// weeks (see interviews.py). A card opens the job's details: the whole note, what you sent, and the prep sheets.
+function todayIso() { const t = new Date(); return new Date(t - t.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function meetingTime(m) { return m.start ? `${clock(m.start)}–${clock(m.end)}` : "time not set"; }
+
+async function renderInterviews() {
+  const d = await api("/api/interviews");
+  const timed = d.interviews.filter(i => i.scheduled);
+  const today = timed.filter(i => i.day === d.today), later = timed.filter(i => i.day !== d.today);
+  const unset = d.interviews.filter(i => !i.scheduled);
+  let n = 0;
+  const group = (title, list, cls) => list.length
+    ? [section(title, list.length, cls), h("div", { class: "grid-cards" }, list.map(iv => interviewCard(iv, d, n++)))] : null;
+  put(pagehead("Interviews", [today.length ? `${today.length} today` : "Nothing today",
+    later.length ? `${later.length} more in the next two weeks` : null].filter(Boolean).join(" · ")),
+    d.interviews.length ? null : emptyState("No interviews or calls coming up. Put one in an application's next step, " +
+      "like “Interview with Sam Tue 3/10 2:00 PM ET”, and it shows here."),
+    group("Today", today), group("Coming up", later),
+    group("Not scheduled yet", unset, "muted"),
+    d.sheets_folder ? null : h("p", { class: "small muted", style: "margin-top:16px" },
+      "To link the prep sheets you write, set prep.sheets in the watchlist to their folder: a sheet named " +
+      "acme-onsite.html shows on Acme's interviews."));
+}
+
+function interviewCard(iv, d, i = 0) {
+  const now = new Date(), done = iv.scheduled && new Date(iv.end) < now;
+  const live = iv.scheduled && new Date(iv.start) <= now && !done;
+  const card = h("div", { class: "card app interview" + (done ? " ended" : ""), tabindex: "0", role: "button",
+    style: `--sc:var(--s-${iv.status});--i:${Math.min(i, 12)}`, title: "Open everything about it" });
+  card.onclick = e => { if (!e.target.closest("button, a")) openDetails(iv.key); };
+  card.onkeydown = e => { if (e.key === "Enter" && e.target === card) openDetails(iv.key); };
+  const when = iv.day === d.today ? (live ? "now" : done ? "done" : "today") : `${fmtDay(iv.day, d.today)} · ${relDay(iv.day, d.today)}`;
+  fill(card, monogram(iv.company),
+    h("div", {},
+      h("div", { class: "app-head" },
+        h("div", {},
+          h("span", { class: "title", style: "font-weight:700;font-size:17px" }, iv.title),
+          h("div", { class: "meta" }, h("b", {}, iv.company), h("span", { class: "sep" }, "·"), STAGE_NAMES[iv.status] || iv.status,
+            iv.pay ? [h("span", { class: "sep" }, "·"), h("span", { class: "pay" }, iv.pay)] : null)),
+        h("div", { class: "iv-when" + (live ? " now" : "") }, h("b", {}, meetingTime(iv)), h("span", {}, `${iv.label} · ${when}`))),
+      h("div", { class: "next" }, h("span", { class: "what" }, iv.next_step)),
+      sheetButtons(iv.sheets)));
+  return card;
+}
+
+function sheetButtons(names) {
+  if (!names || !names.length) return null;
+  return h("div", { class: "row sheets" }, h("span", { class: "small muted" }, icon("file", 13), " Prep sheets:"),
+    names.map(name => h("button", { class: "btn", title: `Open ${name} in a new tab`,
+      onclick: e => { e.stopPropagation(); openSheet(name); } }, name.replace(/\.html?$/i, ""))));
+}
+
+// A prep sheet you wrote, in a new tab. The tab opens before the sheet is read, while the click still counts
+// (a tab opened after a wait is blocked); the server turns the sheet's scripts off.
+async function openSheet(name) {
+  const tab = window.open("", "_blank");
+  try {
+    const p = await api("/api/prep/sheet?name=" + encodeURIComponent(name));
+    const url = URL.createObjectURL(new Blob([p.html], { type: "text/html" }));
+    if (tab) tab.location = url;
+    else if (!window.open(url, "_blank")) toast("Couldn't open a new tab: your browser blocked it");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { tab?.close(); toast(e.message); }
+}
+
 async function renderApplied() {
   const d = await api("/api/applications");
   const all = d.applications;
@@ -3434,6 +3516,8 @@ async function refreshQueueCount() {
     refreshQueueCount.last = n;
     const due = ready ? (await api("/api/applications")).applications.filter(freshDue).length : 0;
     document.getElementById("duecount").replaceChildren(due ? h("span", { class: "count", title: "follow-ups due" }, due) : "");
+    const iv = ready ? (await api("/api/interviews")).interviews.filter(i => i.scheduled && i.day === todayIso()).length : 0;
+    document.getElementById("ivcount").replaceChildren(iv ? h("span", { class: "count", title: "interviews today" }, iv) : "");
   } catch { /* the page still works without the counts */ }
 }
 
@@ -3605,7 +3689,7 @@ async function render() {
     if (tab === "settings") renderSettings();
     else if (!settings.exists || (!settings.companies.length && tab !== "applied")) renderWelcome();
     else await loading(document.querySelector(`#tabs button[data-tab="${tab}"]`),
-      { today: renderToday, queue: renderQueue, applied: renderApplied, skills: renderSkills,
+      { today: renderToday, interviews: renderInterviews, queue: renderQueue, applied: renderApplied, skills: renderSkills,
         activity: renderActivity }[tab]);
   } catch (e) { showError(main, e); }
   refreshQueueCount();
@@ -3635,7 +3719,7 @@ async function loading(button, work, delay = 150) {
 
 function go(name) { tab = name; history.replaceState(null, "", "#" + name); render(); }
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => go(b.dataset.tab);
-const TABS = ["today", "queue", "applied", "skills", "activity", "settings"];
+const TABS = ["today", "interviews", "queue", "applied", "skills", "activity", "settings"];
 window.addEventListener("hashchange", () => {
   const want = location.hash.slice(1);
   if (TABS.includes(want) && want !== tab && settings) { tab = want; render(); }

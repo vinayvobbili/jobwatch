@@ -161,6 +161,11 @@ def _iso_meeting(text: str, label: str) -> Meeting | None:
     return Meeting(start, start + DURATION, start.tzinfo is not None, label)
 
 
+def names_meeting(next_step: str | None) -> bool:
+    """Whether a next step is about an interview or call at all, with a time or not."""
+    return bool(_MEETING.search(next_step or ""))
+
+
 def meeting(next_step: str | None, today: date) -> Meeting | None:
     """The interview or call a next step names, when it gives a date and a time confidently, else None.
     `today` fills in a missing year. See the module's docstring for what is understood."""
