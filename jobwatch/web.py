@@ -55,6 +55,7 @@ from .watch import (
     hidden,
     load_contacts,
     pace,
+    plural,
     queue,
     save_job,
     scorable,
@@ -143,6 +144,7 @@ class Scorer:
                 self.error = f"{type(e).__name__}: {e}" if not isinstance(e, ScoringUnavailable) else str(e)
                 self.stopped = self.error
                 print(f"jobwatch: background scoring stopped: {self.error}", file=sys.stderr)
+                self.app.log("score", "Background scoring stopped", ok=False, detail=[self.error], by="background")
             with self._lock:
                 if not self._again:
                     left = self.left
@@ -168,7 +170,8 @@ class Scorer:
             e = todo[0]
             self.current, self.current_key = f"{e.job.display_company}: {e.job.title}", e.job.key
             with turn(cfg.backend, background=True):
-                scored, errors = score_entries(cfg, store, [e], progress=lambda m: None, background=True)
+                scored, errors = score_entries(cfg, store, [e], progress=lambda m: None, background=True,
+                                               by="background")
         finally:
             store.close()
         self.done += scored
@@ -208,8 +211,9 @@ class Refresher:
     def running(self) -> bool:
         return self._current is not None
 
-    def fetch(self) -> dict:
-        """Check every board now, or wait for the check already running; its counts, errors and summary."""
+    def fetch(self, by: str = "page") -> dict:
+        """Check every board now, or wait for the check already running; its counts, errors and summary. `by`:
+        what started it, for the Activity log (page: the button; schedule)."""
         with self._lock:
             mine = self._current is None
             if mine:
@@ -219,7 +223,7 @@ class Refresher:
             return current.result()
         try:
             with self.app.lock:
-                out = self.app._with_store(self._fetch)
+                out = self.app._with_store(lambda cfg, store: self._fetch(cfg, store, by))
             current.set_result(out)
         except BaseException as e:
             current.set_exception(e)
@@ -231,8 +235,8 @@ class Refresher:
         return out
 
     @staticmethod
-    def _fetch(cfg, store) -> dict:
-        r = fetch_all(cfg, store)
+    def _fetch(cfg, store, by: str = "") -> dict:
+        r = fetch_all(cfg, store, by=by)
         return {"boards": r.boards, "jobs": r.jobs, "new": len(r.new), "errors": r.errors, "warnings": r.warnings,
                 "summary": report.fetch_summary(r)}
 
@@ -286,7 +290,7 @@ class Refresher:
             try:
                 if self.due():
                     self.tried = datetime.now(timezone.utc)
-                    out = self.fetch()
+                    out = self.fetch(by="schedule")
                     self.error = "" if out["boards"] or not out["errors"] else "every board failed"
             except Exception as e:  # never take the page down: say why, and try again later
                 self.error = f"{type(e).__name__}: {e}"
@@ -325,6 +329,7 @@ class PayLookup:
         try:
             cfg = self.app._cfg()
             store = Store(cfg.state)
+            looked, found = [], 0
             try:
                 reader = levels.Reader(store, levels.QUEUE, robots=self.robots)
                 while cfg.pay.levels and reader.budget > 0:
@@ -332,7 +337,13 @@ class PayLookup:
                         if not self._todo:
                             break
                         key = self._todo.pop(0)
-                    levels.expected(cfg, store, store.find(key)[0], reader=reader)
+                    job = store.find(key)[0]
+                    pay = levels.expected(cfg, store, job, reader=reader)
+                    looked.append(f"{job.display_company}: {job.title}")
+                    found += isinstance(pay, levels.Estimate)
+                if looked:
+                    store.log("pay", f"Looked up expected pay on Levels.fyi for {plural(len(looked), 'job')}: "
+                              f"{found} found", detail=looked, by="background")
             finally:
                 store.close()
         except Exception as e:  # never take the page down
@@ -492,6 +503,21 @@ class App:
     def post_fetch(self, body) -> dict:
         """Check every board now; while a check is running already (the scheduled one), wait for it instead."""
         return self.refresher.fetch()
+
+    def log(self, kind: str, text: str, ok: bool = True, detail: list[str] = (), by: str = ""):
+        """An Activity entry from the background work (see Store.log); never fails the work it's about."""
+        try:
+            self._with_store(lambda cfg, store: store.log(kind, text, ok, detail, by))
+        except Exception as e:
+            print(f"jobwatch: activity not logged: {type(e).__name__}: {e}", file=sys.stderr)
+
+    def get_activity(self, q) -> dict:
+        """What jobwatch has been doing, newest first (kind: only one kind), and what it's doing now."""
+        def run(cfg, store):
+            return {"events": store.activity(int(q.get("limit", 200)), q.get("kind", "")),
+                    "now": {"boards": self.refresher.running, "score": self.scorer.status(),
+                            "pay": self.pay.running}}
+        return self._with_store(run)
 
     def get_checked(self, q) -> dict:
         """When the boards were last checked, and whether a check is running: see Refresher.status."""
@@ -904,6 +930,7 @@ ROUTES = {
     ("POST", "/api/suggestions/dismiss"): App.post_suggestion_dismiss,
     ("POST", "/api/fetch"): App.post_fetch,
     ("GET", "/api/checked"): App.get_checked,
+    ("GET", "/api/activity"): App.get_activity,
     ("GET", "/api/digest"): App.get_digest,
     ("GET", "/api/hidden"): App.get_hidden,
     ("GET", "/api/queue"): App.get_queue,

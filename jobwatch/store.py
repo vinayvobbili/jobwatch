@@ -114,8 +114,17 @@ CREATE TABLE IF NOT EXISTS secrets (
     name TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS activity (
+    at TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL,
+    ok INTEGER NOT NULL,
+    detail TEXT NOT NULL,
+    by TEXT NOT NULL
+);
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
+ACTIVITY_KEPT = 1000  # the things done in the background remembered (see Store.log)
 
 
 # Columns added after the first release, and how to fill them in an older state file.
@@ -618,6 +627,24 @@ class Store:
                             (_now(), boards, jobs, new, json.dumps(errors), json.dumps(warnings)))
             self.db.execute("DELETE FROM fetches WHERE rowid NOT IN (SELECT rowid FROM fetches ORDER BY at DESC "
                             "LIMIT ?)", (FETCHES_KEPT,))
+
+    # What jobwatch did on its own or when asked (checked the boards, read job-alert mail, scored jobs, looked up
+    # pay), for the page's Activity tab: kind (boards, mail, score, pay), a line saying what happened, whether it
+    # worked, detail lines, and what started it (by: schedule, page, background; empty when not known).
+
+    def log(self, kind: str, text: str, ok: bool = True, detail: list[str] | tuple[str, ...] = (), by: str = ""):
+        with self.db:
+            self.db.execute("INSERT INTO activity (at, kind, text, ok, detail, by) VALUES (?, ?, ?, ?, ?, ?)",
+                            (_now(), kind, text, int(ok), json.dumps(list(detail)), by))
+            self.db.execute("DELETE FROM activity WHERE rowid NOT IN (SELECT rowid FROM activity ORDER BY at DESC "
+                            "LIMIT ?)", (ACTIVITY_KEPT,))
+
+    def activity(self, limit: int = 200, kind: str = "") -> list[dict]:
+        """The newest first: at (ISO), kind, text, ok, detail (lines) and by."""
+        rows = self.db.execute("SELECT * FROM activity WHERE ?='' OR kind=? ORDER BY at DESC LIMIT ?",
+                               (kind, kind, limit))
+        return [{"at": r["at"], "kind": r["kind"], "text": r["text"], "ok": bool(r["ok"]),
+                 "detail": json.loads(r["detail"]), "by": r["by"]} for r in rows]
 
     def last_fetch(self) -> dict | None:
         """The last check that read at least one board: at (a datetime), boards, jobs, new, and errors and
