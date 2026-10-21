@@ -87,6 +87,26 @@ def test_another_resume_or_other_prompts_are_not_used(env):
     assert "fit" not in rejected and all(e.fit is None for e in entries)
 
 
+def test_old_scores_can_be_kept_as_current(env):
+    """`jobwatch score --keep-old`: after a scorer change that doesn't change what scores mean, the scores of the
+    scorer in use just before stay (its day kept, marked kept_from) and those jobs leave the scorer's line. A
+    score from a scorer replaced before that stays set aside, so its job is still scored again."""
+    cfg, store, rid = env
+    family = resume_family(rid)
+    store.save_score(INITECH, family + ":scorer-00000000", fit(65))  # from a scorer replaced on purpose
+    store.save_score(ACME, family + ":scorer-00000000", fit(60))
+    store.save_score(ACME, family + ":scorer-11111111", fit(90))     # the scorer in use just before
+    store.save_score(GLOBEX, family + ":scorer-11111111", fit(80))
+    store.save_score(GLOBEX, rid, fit(70))                           # already scored afresh: left alone
+    store.save_score(INITECH, "other.md:000000000000:scorer-11111111", fit(70))  # another resume: not kept
+    assert store.keep_old_scores(rid) == (1, "11111111")
+    assert store.score(ACME, rid)["score"] == 90 and store.score(ACME, rid)["kept_from"].endswith("scorer-11111111")
+    assert store.score(GLOBEX, rid)["score"] == 70 and store.score(INITECH, rid) is None
+    assert [e.job.key for e in watch.unscored(cfg, store) if e.job.key in (ACME, INITECH)] == [INITECH]
+    assert store.keep_old_scores(rid) == (0, "11111111")             # nothing more to keep
+    assert store.keep_old_scores(rid, "00000000") == (1, "00000000")  # unless that scorer is named
+
+
 def test_a_fresh_score_wins(env):
     cfg, store, rid = env
     store.save_score(ACME, resume_family(rid) + ":scorer-00000000", fit(90))

@@ -381,6 +381,12 @@ tomorrow), and Claude takes them up the next day. A fallback score never hides a
 After switching backend or model, `jobwatch score --rescore 50` scores Today's and queued jobs again, best
 first, where another model made the score and it's at least 50.
 
+A new shortlist-ai (a release, or its prompts or scoring code changed) is another scorer: its scores start
+afresh, and until a job is scored again its old score shows as "old score, rescoring". When the change doesn't
+change what a score means (a prompt reordered for caching, say), `jobwatch score --keep-old` keeps the scores
+of the scorer in use just before as current instead (`--keep-old ID` names another), so only new jobs are
+scored by the new scorer. Scores from scorers replaced before that stay set aside and are scored again.
+
 Claude scores `scoring.workers` jobs at once (4 by default; the on-device model takes one at a time), so
 `jobwatch score` goes through a backlog about that many times faster at the same cost. For a big run nobody is
 waiting on (a new resume, a backlog, a `--rescore`), `jobwatch score --batch-api` sends it all through Claude's
