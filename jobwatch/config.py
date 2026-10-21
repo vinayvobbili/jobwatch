@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import timedelta
+from datetime import time, timedelta
 from pathlib import Path
 from string import Formatter
 
@@ -385,8 +385,10 @@ class Config:
     cache: Path = DEFAULT_CACHE
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
     pay: Pay = field(default_factory=Pay)
-    # How often `jobwatch ui` checks the boards by itself (fetch_every); None: only when asked.
+    # How often `jobwatch ui` checks the boards by itself (fetch_every); None: only when asked. Or the times of
+    # day it checks (fetch_every: 8am, 2pm, 8pm), this computer's clock; then fetch_every is None.
     fetch_every: timedelta | None = None
+    fetch_at: tuple[time, ...] = ()
     # Boards from a source this jobwatch doesn't know (a newer version's, or a typo): kept in the file and
     # shown as errors, skipped when checking for jobs, so one bad entry doesn't stop everything else.
     unknown: list[Board] = field(default_factory=list)
@@ -454,6 +456,36 @@ def _every(raw, path: Path) -> timedelta | None:
         raise ConfigError(f"{path}: fetch_every must be at least 1h (each check asks every board again), "
                           f"got {raw!r}")
     return every
+
+
+_CLOCK = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", re.I)
+
+
+def _at(raw, path: Path) -> tuple[time, ...]:
+    """fetch_every as times of day: "8am, 2pm, 8pm", "08:00, 14:00, 20:00" or a list of them; () when it's an
+    interval. A list in YAML may come as numbers: 8 is 8 o'clock, and an unquoted 14:00 reads as 840 (minutes)."""
+    if isinstance(raw, (list, tuple)):
+        items = list(raw)
+    elif isinstance(raw, str) and re.search(r"am|pm|:", raw, re.I):
+        items = [p for p in re.split(r"[,\s]+(?![ap]m)", raw.strip()) if p]
+    else:
+        return ()
+    times = []
+    for item in items:
+        if isinstance(item, int) and not isinstance(item, bool):
+            hour, minute = (item, 0) if item < 24 else divmod(item, 60)
+        elif (m := _CLOCK.fullmatch(str(item).strip())):
+            hour, minute = int(m.group(1)), int(m.group(2) or 0)
+            if m.group(3):
+                hour = hour % 12 + (12 if m.group(3).lower() == "pm" else 0) if 1 <= hour <= 12 else 99
+        else:
+            hour = minute = 99
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ConfigError(f"{path}: fetch_every's times look like 8am, 2pm, 8pm or 08:00, 14:00, got {item!r}")
+        times.append(time(hour, minute))
+    if not times:
+        raise ConfigError(f"{path}: fetch_every lists no times, got {raw!r}")
+    return tuple(sorted(set(times)))
 
 
 def _path(value, base: Path) -> Path:
@@ -647,7 +679,8 @@ def load(explicit: str | Path | None = None) -> Config:
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
-        fetch_every=_every(raw.get("fetch_every"), path),
+        fetch_every=None if (at := _at(raw.get("fetch_every"), path)) else _every(raw.get("fetch_every"), path),
+        fetch_at=at,
     )
 
 
@@ -679,7 +712,8 @@ companies:
   # - {source: greenhouse, board: stripe, name: Stripe}
   # - {board: ashby:acme, careers: https://acme.example/careers}   # its Ashby pages are offline: link here
 
-# `jobwatch ui` checks every board by itself this often (6h, 90m, 1d; off: only when you press the button).
+# `jobwatch ui` checks every board by itself this often (6h, 90m, 1d; off: only when you press the button),
+# or at set times of day: fetch_every: 8am, 2pm, 8pm
 fetch_every: 6h
 
 filters:

@@ -511,6 +511,9 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .act .ico { flex: none; margin-top: 2px; color: var(--accent); }
 .act.fail { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
 .act.fail .ico, .act.fail .what { color: var(--bad); }
+.act.notable { box-shadow: inset 3px 0 0 var(--good); }
+.act.notable.fail { box-shadow: inset 3px 0 0 var(--bad); }
+.act.unseen { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
 .act .body { flex: 1; min-width: 0; }
 .act .what { font-weight: 600; overflow-wrap: anywhere; }
 .act .when { flex: none; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -735,7 +738,7 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
       <button data-tab="queue">Queue<span id="qcount"></span></button>
       <button data-tab="applied">Applications<span id="duecount"></span></button>
       <button data-tab="skills">Skills</button>
-      <button data-tab="activity">Activity</button>
+      <button data-tab="activity">Activity<span id="actcount"></span></button>
       <button data-tab="settings">Settings</button>
     </nav>
     <div class="jump">
@@ -876,11 +879,12 @@ async function api(path, body, raw) {
 
 let toastTimer;
 // tone: "win" for good news, "onward" for a no or a skip, nothing for the rest (see .toast[data-tone]).
-function toast(text, undo, tone) {
+function toast(text, undo, tone, label = "Undo") {
   const t = document.getElementById("toast");
   document.getElementById("toastText").textContent = text;
   t.dataset.tone = tone || "";
   const b = document.getElementById("toastUndo");
+  b.textContent = label;
   b.style.display = undo ? "" : "none";
   b.onclick = async () => { t.style.display = "none"; await undo(); };
   t.style.display = "flex";
@@ -995,6 +999,14 @@ function ago(iso) {
   if (min < 48 * 60) return `${Math.round(min / 60)} h ago`;
   return `${Math.round(min / 1440)} days ago`;
 }
+
+// "8 AM", "2:30 PM": the time of day of an ISO time, on the hour without the minutes.
+function clock(iso) {
+  const t = new Date(iso);
+  return t.toLocaleTimeString(undefined, { hour: "numeric", ...(t.getMinutes() ? { minute: "2-digit" } : {}) });
+}
+// "a", "a and b", "a, b and c".
+function listed(items) { return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`; }
 
 // A job whose board's hosted job pages are offline: where to apply instead (the server's link_note).
 function linkNote(job) {
@@ -1960,6 +1972,8 @@ function watchChecked(first, el) {
     fill(el, c.running ? icon("refresh", 14) : null,
       c.at ? `Boards checked ${ago(c.at)}` : "Boards not checked yet", c.running ? " · checking now…" : null,
       c.every_hours ? h("span", { class: "hint" }, ` · every ${hours(c.every_hours)}`) : null,
+      c.times && c.times.length ? h("span", { class: "hint", title: c.next ? `Next check ${clock(c.next)}` : null },
+        ` · at ${listed(c.times.map(t => clock("2000-01-01T" + t)))}`) : null,
       failed.length ? h("span", { class: "hint", title: failed.map(b => `${b}: ${c.errors[b]}`).join("\n") },
         ` · ${failed.length} failed`) : null,
       warned.length ? h("span", { class: "hint", title: warned.map(b => `${b}: ${c.warnings[b]}`).join("\n") },
@@ -3053,7 +3067,7 @@ async function renderSkills() {
 
 // -- activity: what jobwatch has been doing (checking the boards, reading job-alert mail, scoring, pay), newest
 // first, and what it's doing now. It asks again every 10 seconds while it's open; details left open stay open.
-const activityView = { kind: "", open: new Set(), timer: null };
+const activityView = { kind: "", open: new Set(), timer: null, seen: "0" };
 const ACT_KINDS = [["", "All"], ["boards", "Boards"], ["mail", "Email"], ["score", "Scoring"], ["pay", "Pay"]];
 const ACT_ICON = { boards: "refresh", mail: "inbox", score: "sparkle", pay: "dollar" };
 const ACT_BY = { schedule: "On schedule", page: "You pressed Check for new jobs", background: "In the background" };
@@ -3068,6 +3082,12 @@ function activityTick() {
 
 async function renderActivity() {
   const d = await api("/api/activity" + (activityView.kind ? "?kind=" + activityView.kind : ""));
+  // what's worth a look and new since you last looked stands out; looking marks it seen (see watchNotices)
+  // (what was new when the tab opened stays marked while it refreshes itself)
+  if (!main.classList.contains("quiet")) activityView.seen = remembered("activity.seen", "0");
+  const seen = activityView.seen, newest = d.events.find(e => e.notable)?.at;
+  if (newest && newest > remembered("activity.seen", "0")) remember("activity.seen", newest);
+  showNoticeCount(0);
   const s = d.now.score;
   const now = [d.now.boards && "Checking the boards for new jobs",
     s.running && `Scoring ${s.current || "jobs"}` + (s.left ? ` · ${s.left} left` : ""),
@@ -3089,7 +3109,8 @@ async function renderActivity() {
       more.open = activityView.open.has(e.at);
       more.ontoggle = () => more.open ? activityView.open.add(e.at) : activityView.open.delete(e.at);
     }
-    rows.push(h("div", { class: "act" + (e.ok ? "" : " fail") }, icon(ACT_ICON[e.kind] || "file", 16),
+    rows.push(h("div", { class: "act" + (e.ok ? "" : " fail") + (e.notable ? " notable" : "") + (e.notable && e.at > seen ? " unseen" : ""),
+      title: e.notable ? "Worth a look" : null }, icon(ACT_ICON[e.kind] || "file", 16),
       h("div", { class: "body" }, h("div", { class: "what" }, e.text),
         e.by ? h("div", { class: "small muted" }, ACT_BY[e.by] || e.by) : null, more),
       h("span", { class: "when", title: `${at.toLocaleString()} (${ago(e.at)})` },
@@ -3191,7 +3212,8 @@ function renderSettings() {
   // How often the page checks the boards by itself (fetch_every). A value written by hand that isn't one of these
   // shows as itself, and is kept.
   const EVERY = [["1h", "every hour"], ["3h", "every 3 hours"], ["6h", "every 6 hours"], ["12h", "every 12 hours"],
-    ["1d", "once a day"], ["off", "only when I press “Check for new jobs”"]];
+    ["1d", "once a day"], ["8am, 2pm, 8pm", "at 8 AM, 2 PM and 8 PM"],
+    ["off", "only when I press “Check for new jobs”"]];
   const everyNow = s.fetch_every === null || s.fetch_every === undefined ? "6h"
     : ["0", "false", "no", "never"].includes(String(s.fetch_every).toLowerCase()) ? "off" : String(s.fetch_every);
   const every = h("select", {}, EVERY.some(([v]) => v === everyNow) ? null : h("option", { value: everyNow }, everyNow),
@@ -3382,6 +3404,34 @@ async function refreshQueueCount() {
     const due = ready ? (await api("/api/applications")).applications.filter(freshDue).length : 0;
     document.getElementById("duecount").replaceChildren(due ? h("span", { class: "count", title: "follow-ups due" }, due) : "");
   } catch { /* the page still works without the counts */ }
+}
+
+// -- notices: what's worth a look (a strong fit came in, the mailbox couldn't be read, no board could be read,
+// scoring stopped; the server marks them notable). The page asks every minute, on any tab: one that comes in
+// while it's open shows as a toast, and the ones not seen yet as a count on the Activity tab and in the browser
+// tab's title. Opening Activity marks them seen. "Seen" is the newest one's time, kept per browser; the first
+// time on a browser, what came before counts as seen (it's all on the tab).
+const notices = { newest: null, timer: null };
+async function watchNotices() {
+  clearTimeout(notices.timer);
+  try {
+    if (settings && settings.exists) {
+      const seen = remembered("activity.seen", "");
+      const d = await api("/api/activity?notable=1&limit=50&since=" + encodeURIComponent(seen || "0"));
+      if (!seen) remember("activity.seen", d.events[0]?.at || "0");
+      const unseen = !seen || tab === "activity" ? [] : d.events;
+      const fresh = notices.newest === null ? [] : unseen.filter(e => e.at > notices.newest);
+      notices.newest = d.events[0]?.at ?? notices.newest ?? "0";
+      showNoticeCount(unseen.length);
+      if (fresh.length) toast(fresh.length === 1 ? `Worth a look: ${fresh[0].text}` : `${fresh.length} things worth a look`,
+        () => go("activity"), "win", "Show");
+    }
+  } catch { /* the page may be restarting: try again next minute */ }
+  notices.timer = setTimeout(watchNotices, 60000);
+}
+function showNoticeCount(n) {
+  document.getElementById("actcount").replaceChildren(n ? h("span", { class: "count", title: "worth a look" }, n) : "");
+  document.title = n ? `(${n}) jobwatch` : "jobwatch";
 }
 
 // -- find a company: any status, open or closed. The box in the header suggests matches as you type; `/` focuses it.
@@ -3584,6 +3634,7 @@ document.getElementById("fetchBtn").onclick = async () => {
   const want = location.hash.slice(1);
   tab = TABS.includes(want) ? want : "today";
   render();
+  watchNotices();
 })();
 </script>
 </body>

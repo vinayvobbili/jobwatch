@@ -133,9 +133,11 @@ def test_page_has_a_skills_tab(server):
 def test_page_has_an_activity_tab(server):
     """What jobwatch did in the background is a tab of its own, read from /api/activity."""
     page = request(server, "GET", "/")[1].decode()
-    assert '<button data-tab="activity">Activity</button>' in page and "activity: renderActivity" in page
-    status, body = request(server, "GET", "/api/activity", headers={"X-Jobwatch-Token": TOKEN})
-    assert status == 200 and set(json.loads(body)) == {"events", "now"}
+    assert '<button data-tab="activity">Activity<span id="actcount"></span></button>' in page
+    assert "activity: renderActivity" in page and "watchNotices();" in page
+    status, body = request(server, "GET", "/api/activity?kind=boards&notable=1&since=0",
+                           headers={"X-Jobwatch-Token": TOKEN})
+    assert status == 200 and json.loads(body)["events"] == [] and set(json.loads(body)) == {"events", "now"}
 
 
 def test_api_requires_the_token_and_a_local_host(server):
