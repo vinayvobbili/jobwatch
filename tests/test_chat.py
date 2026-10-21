@@ -52,6 +52,35 @@ def test_backends_say_what_is_missing(monkeypatch):
     assert chat.where("claude")["local"] is False and chat.where("local")["local"] is True
 
 
+def test_claude_chat_caches_the_conversation_and_counts_cached_input(monkeypatch):
+    sent = {}
+
+    class Stream:
+        text_stream = iter(["Hi"])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def get_final_message(self):
+            return types.SimpleNamespace(usage=types.SimpleNamespace(
+                input_tokens=20, output_tokens=4, cache_creation_input_tokens=100, cache_read_input_tokens=800))
+
+    class Messages:
+        def stream(self, **kwargs):
+            sent.update(kwargs)
+            return Stream()
+
+    fake = types.ModuleType("anthropic")
+    fake.Anthropic = lambda: types.SimpleNamespace(messages=Messages())
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+    out = list(chat._claude("sys", [{"role": "user", "content": "q"}], "claude-test", 100))
+    assert sent["cache_control"] == {"type": "ephemeral"}
+    assert out == ["Hi", {"input_tokens": 920, "output_tokens": 4}]  # what was read from the cache is input too
+
+
 def test_home_chat_sees_todays_jobs_and_applications(watchlist, web, fake_model):
     app = App(watchlist)
     app.post_fetch({})
