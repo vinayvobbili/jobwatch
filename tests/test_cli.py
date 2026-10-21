@@ -78,6 +78,14 @@ def test_mark_list_show(web, watchlist, capsys):
     assert shown.startswith("# Machine Learning Engineer") and "applied (referral)" in shown
 
 
+def test_show_says_which_filter_hides_a_job(web, watchlist, capsys):
+    run(capsys, "-c", str(watchlist), "fetch")
+    assert "Hidden from Today" not in run(capsys, "-c", str(watchlist), "show", "aaaa-1111").out
+    watchlist.write_text(watchlist.read_text().replace("exclude_titles: [contract]", "exclude_titles: [machine]"))
+    shown = run(capsys, "-c", str(watchlist), "show", "aaaa-1111").out
+    assert "Hidden from Today by your excluded filter: title matches 'machine'" in shown
+
+
 def test_errors_are_one_line(web, watchlist, tmp_path):
     with pytest.raises(SystemExit, match="jobwatch: no job matches 'nope'"):
         cli.main(["-c", str(watchlist), "show", "nope"])

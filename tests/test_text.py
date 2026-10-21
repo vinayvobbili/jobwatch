@@ -68,7 +68,10 @@ def test_parse_salary_skips_a_monthly_range_and_finds_the_salary_after_it():
     ("Remote, USA", True),
     ("Colorado", True),
     ("Remote-Friendly, United States", True),
+    ("CT - Hartford", True),  # Workday: the state's code first
+    ("TX - Work from home", True),
     ("Ontario, CAN", False),
+    ("CTO - Remote", False),
     ("London, UK", False),
     ("Remote - Canada", False),
     ("Join us remotely", False),
