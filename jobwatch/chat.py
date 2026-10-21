@@ -194,11 +194,14 @@ def stats_line(stats: dict) -> str:
 def _claude(system: str, messages: list[dict], model: str, max_tokens: int) -> Iterator[str | dict]:
     import anthropic
 
+    # Each turn resends the instructions, the resume, the jobs and the conversation so far: automatic prompt
+    # caching reads all of that back from the cache when the next question comes within 5 minutes.
     with anthropic.Anthropic().messages.stream(model=model, max_tokens=max_tokens, system=system,
-                                               messages=messages) as stream:
+                                               messages=messages, cache_control={"type": "ephemeral"}) as stream:
         yield from stream.text_stream
         usage = stream.get_final_message().usage
-        yield {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens}
+        cached = (usage.cache_creation_input_tokens or 0) + (usage.cache_read_input_tokens or 0)
+        yield {"input_tokens": usage.input_tokens + cached, "output_tokens": usage.output_tokens}
 
 
 @lru_cache(maxsize=1)
