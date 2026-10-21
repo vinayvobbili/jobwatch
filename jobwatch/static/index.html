@@ -205,6 +205,13 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .ring.hi { --rc: var(--good); } .ring.mid { --rc: var(--warn); } .ring.lo { --rc: var(--bad); }
 .fitbox.stale { opacity: .6; }
 .fitbox small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 5px; white-space: nowrap; }
+.scorer { display: inline-block; margin-top: 4px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px;
+  white-space: nowrap; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.scorer.local { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.advice { font-size: 13px; margin-top: 6px; display: flex; gap: 6px; align-items: baseline; }
+.advice svg { flex: none; align-self: center; }
+.advice.queue b, .advice.queue svg { color: var(--good); } .advice.skip b, .advice.skip svg { color: var(--bad); }
+.advice b { white-space: nowrap; }
 .know { color: var(--good); font-size: 13.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .know a { color: var(--muted); text-decoration: none; }
 .know a:hover { color: var(--accent); text-decoration: underline; }
@@ -1040,7 +1047,25 @@ function fitBox(fit) {
                     title: `Fit ${s}/100` + (fit.stale ? " (old score, rescoring)" : "") +
                       (fit.scored_by ? `, scored by ${scorerLabel(fit.scored_by)}` : "") },
     h("div", { class: `ring ${fitClass(s)}`, style: `--p:${s}` }, h("span", {}, s)),
-    h("small", {}, fit.stale ? "old score, rescoring" : `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`));
+    h("small", {}, fit.stale ? "old score, rescoring" : `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`),
+    scorerTag(fit));
+}
+// Under the ring: whether Claude's API or the model on this computer made the score ("local, for now" when it
+// stands in for Claude, which scores it again).
+function scorerTag(fit) {
+  if (!fit.scored_by) return null;
+  const local = fit.scored_by.startsWith("local:");
+  return h("span", { class: "scorer" + (local ? " local" : "") },
+    local ? (fit.fallback ? "local, for now" : "local model") : "Claude API");
+}
+
+// Queue it or skip it, and why (advice.py). A queued job only shows a reason to hold off.
+function adviceLine(job) {
+  const a = job.advice;
+  if (!a || (job.status === "queued" && a.action === "queue")) return null;
+  const word = a.action === "queue" ? "Queue" : job.status === "queued" ? "Hold off" : "Skip";
+  return h("div", { class: `advice ${a.action}`, "data-advice": job.key }, icon(a.action === "queue" ? "check" : "x", 14),
+    h("b", {}, `Suggest ${word}: `), a.reasons.join("; "), a.though.length ? ` (though ${a.though[0]})` : "");
 }
 // In a job's details, where the ring would be: why there's no score yet (no posting text, still in line, ...).
 function noFitBox(job) {
@@ -1094,6 +1119,11 @@ function watchPay(jobs, scope = "page") {
           const line = payLine(j);
           line ? el.replaceWith(line) : el.remove();
         });
+        if (r.advice && j.key in r.advice) {  // the advice again, now that the pay is known
+          j.advice = r.advice[j.key];
+          document.querySelectorAll(`[data-advice="${CSS.escape(j.key)}"]`).forEach(el =>
+            el.replaceWith(adviceLine(j) || h("span", { "data-advice": j.key, hidden: true })));
+        }
       }
       if (r.running) payTimers[scope] = setTimeout(poll, 5000);
     } catch { /* the page may be restarting: the next render tries again */ }
@@ -1120,6 +1150,7 @@ function jobCard(job, actions, i = 0) {
       linkNote(job),
       job.warnings && job.warnings.length
         ? h("div", { class: "warns" }, h("b", {}, "Check: "), job.warnings.join(" · ")) : null,
+      adviceLine(job) || h("span", { "data-advice": job.key, hidden: true }),
       payLine(job),
       gapsLine(job.fit),
       job.keywords.length ? h("div", { class: "chips" }, job.keywords.map(k => h("span", { class: "chip hit" }, k))) : null,

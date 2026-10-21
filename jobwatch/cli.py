@@ -18,6 +18,7 @@ import yaml
 
 from . import (
     __version__,
+    advice,
     alerts,
     chat,
     company,
@@ -395,6 +396,12 @@ def cmd_add(args, cfg, store):
 def cmd_dupes(args, cfg, store):
     """Pairs of tracked jobs that are (maybe) the same opening, where you acted on one: read-only."""
     print(dupes.pairs_text(dupes.pairs(store, strong_only=args.strong)))
+
+
+def cmd_advice(args, cfg, store):
+    """How the queue-or-skip suggestions fall across Today's jobs, by rule: read-only."""
+    s = advice.summary(cfg, store, build_digest(cfg, store, include_seen=True, score_top=0).entries)
+    print(json.dumps(s, indent=2) if args.format == "json" else advice.summary_text(s))
 
 
 def cmd_hidden(args, cfg, store):
@@ -1010,6 +1017,11 @@ def build_parser() -> argparse.ArgumentParser:
                        "Read-only: nothing is changed")
     p.add_argument("--strong", action="store_true", help="only the same opening, not the same title alone")
     p.set_defaults(func=cmd_dupes, read_only=True)
+
+    p = sub.add_parser("advice", help="how the page's Queue/Skip suggestions fall across Today's jobs: how many "
+                       "of each, and which rule said so how often. Read-only")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_advice, read_only=True)
 
     p = sub.add_parser("company", help="everything tracked at a company, whatever status: its jobs, dates, next "
                        "steps, people you know, and whether its board is watched. Read-only")

@@ -26,6 +26,7 @@ import yaml
 
 from . import (
     __version__,
+    advice,
     chat,
     company,
     config,
@@ -46,10 +47,11 @@ from . import (
 from .config import ConfigError
 from .filters import KINDS
 from .package import Package
-from .score import LOCAL, ScoringUnavailable, prompt_info, resume_id, turn
+from .score import LOCAL, ScoringUnavailable, brief, prompt_info, resume_id, turn
 from .store import MANUAL, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
+    Entry,
     build_digest,
     fetch_all,
     hidden,
@@ -437,6 +439,12 @@ class App:
             self.pay.kick(waiting)
         return out
 
+    @staticmethod
+    def _advice(cfg, e, history, pay: dict[str, dict]) -> dict | None:
+        """Queue or skip this job, and why (advice.py), with its expected pay from `pay` (see _pay) when known."""
+        said = advice.advise(cfg, e, history, (pay.get(e.job.key) or {}).get("expected_pay"))
+        return said.to_dict() if said else None
+
     # -- endpoints
 
     def get_settings(self, q) -> dict:
@@ -553,8 +561,9 @@ class App:
             d = build_digest(cfg, store, include_seen=True, score_top=0)
             why = self.scorer.reasons(cfg, store)
             pay = self._pay(cfg, store, [(e.job, None) for e in d.entries], most=cfg.pay.today)
-            out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {})}
-                            for e in d.entries],
+            history = advice.History(store)
+            out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {}),
+                             "advice": self._advice(cfg, e, history, pay)} for e in d.entries],
                    "rejected": d.rejected,
                    "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({}),
                    "checked": self.refresher.status(cfg, store),
@@ -585,9 +594,10 @@ class App:
             # A job added by hand can be scored once it has the posting's text.
             entries = queue(cfg, store)
             pay = self._pay(cfg, store, [(e.job, e.pay) for e in entries])
+            history = advice.History(store)
             return [{**self._entry(e), "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
                      "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),
-                     **pay.get(e.job.key, {})} for e in entries]
+                     **pay.get(e.job.key, {}), "advice": self._advice(cfg, e, history, pay)} for e in entries]
         return self._with_store(run)
 
     def get_jobs(self, q) -> list[dict]:
@@ -735,19 +745,30 @@ class App:
 
     def post_pay(self, body) -> dict:
         """Expected pay for these jobs (`keys`) from what's kept, while the ones not known yet are looked up in
-        the background (`running`). The page asks again until none is pending."""
+        the background (`running`). The page asks again until none is pending. Each job found has its advice
+        again (`advice`), now that its expected pay may be known."""
         def run(cfg, store):
             if not cfg.pay.levels:
                 return {"enabled": False, "running": False, "pay": {}}
-            jobs = []
+            found = []
             for k in (body.get("keys") or [])[:cfg.pay.today]:
                 try:
-                    jobs.append(store.find(k)[0])
+                    found.append(store.find(k))
                 except KeyError:
                     continue
-            pay = self._pay(cfg, store, [(j, None) for j in jobs])
+            pay = self._pay(cfg, store, [(j, None) for j, _ in found])
+            rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
+            known, index, history = load_contacts(cfg), dupes.Index(store), advice.History(store)
+            said = {}
+            for job, rec in found:
+                if ((pay.get(job.key) or {}).get("expected_pay") or {}).get("pending"):
+                    continue
+                e = Entry(job, rec, 0, [], fit=brief(store.score(job.key, rid)) if rid else None,
+                          contacts=known.at(job.display_company, job.company) if known else [],
+                          duplicate=index.match(job, rec))
+                said[job.key] = self._advice(cfg, e, history, pay)
             return {"enabled": True, "running": self.pay.running,
-                    "pay": {k: v["expected_pay"] for k, v in pay.items()}}
+                    "pay": {k: v["expected_pay"] for k, v in pay.items()}, "advice": said}
         return self._with_store(run)
 
     def get_prep(self, q) -> dict:
