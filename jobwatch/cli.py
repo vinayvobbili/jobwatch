@@ -155,6 +155,14 @@ def cmd_score(args, cfg, store):
             model = f" ({cfg.score_model})" if cfg.score_model else ""
             print(f"Every scored job on Today was scored by {cfg.backend}{model}.")
             return
+    elif args.incomplete:
+        dropped = set(store.drop_incomplete_scores(resume_id(cfg.resume, cfg.prompts)))
+        todo = [e for e in unscored(cfg, store) if e.job.key in dropped]
+        print(f"{len(dropped)} score{'s' * (len(dropped) != 1)} left requirements unjudged; scoring "
+              f"{len(todo)} of them again (the rest aren't on Today or queued)." if dropped else
+              "No score left requirements unjudged.", file=sys.stderr)
+        if not todo:
+            return
     else:
         todo = unscored(cfg, store)
     todo = todo[:args.limit] if args.limit else todo
@@ -790,6 +798,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-api", action="store_true",
                    help="score with Claude through the Message Batches API: half price, results in minutes (at most "
                    "a day); for big runs nobody is waiting on. A stopped run collects its batch next time")
+    p.add_argument("--incomplete", action="store_true",
+                   help="score again the jobs whose score left requirements unjudged (each counted as not met), "
+                   "saved before such a result counted as a failure")
     p.add_argument("--keep-old", nargs="?", const="", default=None, metavar="SCORER",
                    help="after a scorer change that doesn't change what scores mean (say, a prompt reordered for "
                    "caching), keep one earlier scorer's scores as current instead of scoring those jobs again: by "

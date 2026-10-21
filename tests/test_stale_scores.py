@@ -107,6 +107,20 @@ def test_old_scores_can_be_kept_as_current(env):
     assert store.keep_old_scores(rid, "00000000") == (1, "00000000")  # unless that scorer is named
 
 
+def test_scores_with_requirements_left_unjudged_are_dropped_to_score_again(env):
+    """`jobwatch score --incomplete`: a score saved before such results counted as failures goes, and its job is
+    back in the scorer's line; complete scores and other resumes' scores stay."""
+    cfg, store, rid = env
+    store.save_score(ACME, rid, {**fit(5), "flags": ["no assessment returned for 'ros' (scored as not_met)"]})
+    store.save_score(GLOBEX, rid, {**fit(80), "flags": ["core requirement 'ml' partial: score capped at 69"]})
+    other = "other.md:000000000000:scorer-00000000"
+    store.save_score(ACME, other, {**fit(5), "flags": ["no assessment returned for 'ros' (scored as not_met)"]})
+    assert store.drop_incomplete_scores(rid) == [ACME]
+    assert store.score(ACME, rid) is None and store.score(GLOBEX, rid)["score"] == 80
+    assert store.score(ACME, other)["score"] == 5
+    assert ACME in [e.job.key for e in watch.unscored(cfg, store)]
+
+
 def test_a_fresh_score_wins(env):
     cfg, store, rid = env
     store.save_score(ACME, resume_family(rid) + ":scorer-00000000", fit(90))

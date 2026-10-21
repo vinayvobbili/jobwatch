@@ -29,6 +29,15 @@ from .models import Job
 
 INSTALL_HINT = "pip install 'jobwatch[score]' (or 'jobwatch[local]' for the on-device Apple Silicon model)"
 
+# shortlist-ai scores a requirement the model gave no verdict for as not met, and flags it (score.finalize).
+_UNJUDGED = re.compile(r"^no assessment returned for '([^']+)'")
+
+
+def unjudged(flags) -> list[str]:
+    """The requirements a result's model gave no verdict for, from its flags. Such a result isn't a fit score:
+    each one left out counts as not met (a 5/100 for a good fit, once), so it's a failure to try again."""
+    return [m.group(1) for f in flags or () if (m := _UNJUDGED.match(f))]
+
 
 class ScoringUnavailable(RuntimeError):
     pass
@@ -327,6 +336,10 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
         results = {}
         for m in matches.matches:
             r = m.result
+            if missing := unjudged(r.flags):
+                errors[by_name[m.job_id].key] = (f"the model judged {len(r.requirements) - len(missing)} of "
+                                                 f"{len(r.requirements)} requirements (none for {', '.join(missing)})")
+                continue
             results[by_name[m.job_id].key] = {
                 "score": r.score, "must_haves_met": r.must_haves_met, "must_haves_total": r.must_haves_total,
                 "gaps": m.gaps, "summary": r.summary, "flags": r.flags,

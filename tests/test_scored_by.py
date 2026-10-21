@@ -60,6 +60,21 @@ def test_a_score_says_which_backend_and_model_made_it(shortlist, tmp_path):
     assert results["greenhouse:acme:1"]["scored_by"] == "local:mlx-community/Other-4bit"
 
 
+def test_a_result_with_requirements_left_unjudged_is_a_failure(shortlist, tmp_path, monkeypatch):
+    """The model gave no verdict for some requirements: each would count as not met, so it isn't a score."""
+    flags = ["no assessment returned for 'python' (scored as not_met)", "missing must-have: python"]
+    result = SimpleNamespace(score=5, must_haves_met=0, must_haves_total=2, summary="", flags=flags,
+                             requirements=[object(), object()])
+    monkeypatch.setattr(sys.modules["shortlist_ai.pipeline"], "match_jobs", lambda resume, specs, model, **kw:
+                        SimpleNamespace(errors={}, matches=[SimpleNamespace(job_id=k, result=result, gaps=[])
+                                                            for k in specs]))
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    results, errors = score_jobs([_job()], cv, "claude", tmp_path)
+    assert results == {} and errors == {"greenhouse:acme:1": "the model judged 1 of 2 requirements (none for python)"}
+    assert score.unjudged(flags) == ["python"] and score.unjudged(None) == []
+
+
 @pytest.mark.parametrize("by, label", [
     ("claude:claude-sonnet-5-5", "claude-sonnet-5-5"),
     ("local:mlx-community/Qwen3.5-9B-MLX-4bit", "Qwen3.5-9B-MLX-4bit (local)"),

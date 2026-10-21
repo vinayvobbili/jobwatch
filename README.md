@@ -387,6 +387,10 @@ change what a score means (a prompt reordered for caching, say), `jobwatch score
 of the scorer in use just before as current instead (`--keep-old ID` names another), so only new jobs are
 scored by the new scorer. Scores from scorers replaced before that stay set aside and are scored again.
 
+When the model gives no verdict for some of a job's requirements, each would count as not met (a good fit
+scoring 5/100), so that run counts as a failure, like an error, and is tried again later. `jobwatch score
+--incomplete` scores again the jobs whose saved score is like that, from before.
+
 Claude scores `scoring.workers` jobs at once (4 by default; the on-device model takes one at a time), so
 `jobwatch score` goes through a backlog about that many times faster at the same cost. For a big run nobody is
 waiting on (a new resume, a backlog, a `--rescore`), `jobwatch score --batch-api` sends it all through Claude's
