@@ -13,7 +13,7 @@ from pathlib import Path
 from . import linkedin
 from .models import Job
 from .package import Package
-from .score import resume_family
+from .score import resume_family, unjudged
 from .sources import SOURCES, candidate_home
 from .text import parse_salary
 
@@ -504,6 +504,15 @@ class Store:
             if resume_family(r["resume"]) == family:
                 out[r["key"]] = {**json.loads(r["result"]), "stale": True}
         return out
+
+    def drop_incomplete_scores(self, resume: str) -> list[str]:
+        """Remove this resume's current scores whose model left requirements unjudged (see score.unjudged), saved
+        before such results counted as failures, so the jobs are scored again. Returns their keys."""
+        keys = [r["key"] for r in self.db.execute("SELECT key, result FROM scores WHERE resume=?", (resume,))
+                if unjudged(json.loads(r["result"]).get("flags"))]
+        with self.db:
+            self.db.executemany("DELETE FROM scores WHERE key=? AND resume=?", [(k, resume) for k in keys])
+        return keys
 
     def keep_old_scores(self, resume: str, scorer: str = "") -> tuple[int, str]:
         """Make the scores one earlier scorer made for this resume and prompts current scores for `resume`, for a
