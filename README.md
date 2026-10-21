@@ -385,7 +385,9 @@ A new shortlist-ai (a release, or its prompts or scoring code changed) is anothe
 afresh, and until a job is scored again its old score shows as "old score, rescoring". When the change doesn't
 change what a score means (a prompt reordered for caching, say), `jobwatch score --keep-old` keeps the scores
 of the scorer in use just before as current instead (`--keep-old ID` names another), so only new jobs are
-scored by the new scorer. Scores from scorers replaced before that stay set aside and are scored again.
+scored by the new scorer. Scores from scorers replaced before that stay set aside and are scored again. If
+the change turns out to move scores after all (`--compare` shows it), `jobwatch score --redo-kept --batch-api`
+scores the kept ones again with the new scorer, at half price.
 
 When the model gives no verdict for some of a job's requirements, each would count as not met (a good fit
 scoring 5/100), so that run counts as a failure, like an error, and is tried again later. `jobwatch score

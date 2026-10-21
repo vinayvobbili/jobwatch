@@ -105,6 +105,10 @@ def test_old_scores_can_be_kept_as_current(env):
     assert [e.job.key for e in watch.unscored(cfg, store) if e.job.key in (ACME, INITECH)] == [INITECH]
     assert store.keep_old_scores(rid) == (0, "11111111")             # nothing more to keep
     assert store.keep_old_scores(rid, "00000000") == (1, "00000000")  # unless that scorer is named
+    # --redo-kept: the kept ones go back in line (their old score shows, stale), the fresh one stays
+    assert sorted(store.drop_kept_scores(rid)) == sorted([ACME, INITECH])
+    assert store.score(GLOBEX, rid)["score"] == 70 and store.score(ACME, rid) is None
+    assert {ACME, INITECH} <= {e.job.key for e in watch.unscored(cfg, store)}
 
 
 def test_scores_with_requirements_left_unjudged_are_dropped_to_score_again(env):

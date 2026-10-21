@@ -155,12 +155,14 @@ def cmd_score(args, cfg, store):
             model = f" ({cfg.score_model})" if cfg.score_model else ""
             print(f"Every scored job on Today was scored by {cfg.backend}{model}.")
             return
-    elif args.incomplete:
-        dropped = set(store.drop_incomplete_scores(resume_id(cfg.resume, cfg.prompts)))
+    elif args.incomplete or args.redo_kept:
+        rid = resume_id(cfg.resume, cfg.prompts)
+        dropped = set(store.drop_incomplete_scores(rid) if args.incomplete else store.drop_kept_scores(rid))
+        what = "left requirements unjudged" if args.incomplete else "were kept from an earlier scorer"
         todo = [e for e in unscored(cfg, store) if e.job.key in dropped]
-        print(f"{len(dropped)} score{'s' * (len(dropped) != 1)} left requirements unjudged; scoring "
-              f"{len(todo)} of them again (the rest aren't on Today or queued)." if dropped else
-              "No score left requirements unjudged.", file=sys.stderr)
+        print(f"{len(dropped)} score{'s' * (len(dropped) != 1)} {what}; scoring {len(todo)} of them again (the "
+              f"rest aren't on Today or queued: their old score shows until they're scored)." if dropped else
+              f"No score {what}.", file=sys.stderr)
         if not todo:
             return
     else:
@@ -801,6 +803,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--incomplete", action="store_true",
                    help="score again the jobs whose score left requirements unjudged (each counted as not met), "
                    "saved before such a result counted as a failure")
+    p.add_argument("--redo-kept", action="store_true",
+                   help="score again, with the scorer in use, the jobs whose score --keep-old kept from an earlier "
+                   "one (with --batch-api: half price)")
     p.add_argument("--keep-old", nargs="?", const="", default=None, metavar="SCORER",
                    help="after a scorer change that doesn't change what scores mean (say, a prompt reordered for "
                    "caching), keep one earlier scorer's scores as current instead of scoring those jobs again: by "
