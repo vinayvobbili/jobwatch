@@ -338,7 +338,9 @@ jobs are scored with [shortlist-ai](https://github.com/vinayvobbili/shortlist-ai
 3. It lists the must-haves the resume doesn't show.
 
 Scores are stored per resume file content, so each job is scored once, and again only after you edit your
-resume. The local backend takes a minute or two per job, so keep `top` small.
+resume. The local backend takes a minute or two per job, so keep `top` small. On the page, a tag under each
+score says who made it: "Claude API", "local model", or "local, for now" when the local model stood in for
+Claude (over `scoring.daily`, or Claude failed) and Claude will score it again.
 
 While `jobwatch ui` runs, it scores every matching job in the background, one at a time: the jobs you've
 queued first (they're the ones you're about to apply to), then Today's, most relevant first. It runs when
@@ -503,6 +505,13 @@ jobwatch mark applied aaaa-1111 --note "referred by a friend"   # after you subm
 jobwatch mark skipped greenhouse:acme:102
 jobwatch list --status applied
 ```
+
+Each card on the page suggests queuing or skipping a job, and why, from a few fixed rules (no model call).
+Skip wins: the same opening already applied to, two or more applications at that company in the past
+week, pay under `pay.floor`, or fewer than half the must-haves met. Otherwise queue: posted pay (or Levels.fyi's
+ask) reaching `pay.target`, a fit score of 75 or more, or someone you know there. A rejection for one role
+there doesn't count against another. It's only a suggestion: nothing is hidden or marked for it.
+`jobwatch advice` counts how often each rule fires across Today's jobs.
 
 Queued jobs leave the digest. The queue flags any posting that has since closed, and what to check before
 applying: pay below `min_salary`, a place your filters don't want (a job queued by hand never passed them),
