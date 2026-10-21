@@ -505,6 +505,32 @@ class Store:
                 out[r["key"]] = {**json.loads(r["result"]), "stale": True}
         return out
 
+    def keep_old_scores(self, resume: str, scorer: str = "") -> tuple[int, str]:
+        """Make the scores one earlier scorer made for this resume and prompts current scores for `resume`, for a
+        scorer change that doesn't change what a score means (a prompt reordered for caching): those jobs aren't
+        scored again, and the rest are scored by the new scorer as usual. Only that one scorer's scores are kept,
+        so ones from a scorer replaced on purpose stay set aside. `scorer` is its id (the 8 characters after
+        "scorer-"); by default the one in use just before, which made the newest of the old scores. A kept score
+        keeps the day it was made and says, under "kept_from", which resume id made it. Jobs already scored are
+        left alone. Returns how many were kept, and the scorer they came from ("" when there was none)."""
+        family = resume_family(resume)
+        old = [dict(r) for r in self.db.execute(
+            f"SELECT key, resume, result, scored_at FROM scores WHERE resume!=? AND resume LIKE ? AND {_SCORED} "
+            f"ORDER BY scored_at", (resume, ":".join(family.split(":")[:2]) + "%"))
+            if resume_family(r["resume"]) == family]
+        if not scorer:
+            ids = [m.group(1) for r in old if (m := re.search(r":scorer-([0-9a-f]{8})", r["resume"]))]
+            scorer = ids[-1] if ids else ""
+        if not scorer:
+            return 0, ""
+        current = {r["key"] for r in self.db.execute("SELECT key FROM scores WHERE resume=?", (resume,))}
+        newest = {r["key"]: r for r in old if f":scorer-{scorer}" in r["resume"] and r["key"] not in current}
+        kept = [(key, resume, json.dumps({**json.loads(r["result"]), "kept_from": r["resume"]}), r["scored_at"])
+                for key, r in newest.items()]
+        with self.db:
+            self.db.executemany("INSERT INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)", kept)
+        return len(kept), scorer
+
     def save_score(self, key: str, resume: str, result: dict):
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)",

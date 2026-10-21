@@ -141,6 +141,12 @@ def cmd_score(args, cfg, store):
                           f"not {cfg.backend}")
     if args.compare:
         return _compare(args, cfg, store)
+    if args.keep_old is not None:
+        n, scorer = store.keep_old_scores(resume_id(cfg.resume, cfg.prompts), args.keep_old)
+        print(f"Kept {n} score{'s' * (n != 1)} from scorer {scorer} as current." if n else
+              f"No scores from scorer {scorer} to keep." if scorer else
+              "No scores from an earlier scorer to keep.")
+        return
     cfg = replace(cfg, score_daily=0)  # scoring.daily holds back the page's background scoring, not what's asked for
     if args.rescore is not None:
         cfg = replace(cfg, score_fallback="")  # the fallback would only put one stand-in score for another
@@ -784,6 +790,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-api", action="store_true",
                    help="score with Claude through the Message Batches API: half price, results in minutes (at most "
                    "a day); for big runs nobody is waiting on. A stopped run collects its batch next time")
+    p.add_argument("--keep-old", nargs="?", const="", default=None, metavar="SCORER",
+                   help="after a scorer change that doesn't change what scores mean (say, a prompt reordered for "
+                   "caching), keep one earlier scorer's scores as current instead of scoring those jobs again: by "
+                   "default the scorer in use just before, or the one whose id (after 'scorer-') is given. Scores "
+                   "from other, replaced scorers stay set aside. Scores nothing")
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")
