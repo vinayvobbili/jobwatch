@@ -237,6 +237,7 @@ class Prep:
     backend and model."""
     max_tokens: int = 4000     # the longest draft: eight or so questions with outlines, as JSON
     prompt: str = ""           # the edited instructions; unset: drafts.PROMPT
+    sheets: Path | None = None  # a folder of prep sheets you wrote (acme-onsite.html), linked from Interviews
 
 
 def _prep(raw, path: Path) -> Prep:
@@ -244,9 +245,12 @@ def _prep(raw, path: Path) -> Prep:
     prompt = raw.get("prompt") or ""
     if not isinstance(prompt, str):
         raise ConfigError(f"{path}: prep.prompt is the drafting instructions, as text, got {prompt!r:.80}")
+    if not isinstance(raw.get("sheets", ""), str):
+        raise ConfigError(f"{path}: prep.sheets is a folder, got {raw['sheets']!r}")
     return Prep(max_tokens=_between(raw.get("max_tokens", Prep.max_tokens), "prep.max_tokens", path, 500, 64000,
                                     "the longest draft, in tokens"),
-                prompt=_template(prompt, "prep.prompt", PREP_PLACEHOLDERS, path) if prompt.strip() else "")
+                prompt=_template(prompt, "prep.prompt", PREP_PLACEHOLDERS, path) if prompt.strip() else "",
+                sheets=_path(raw["sheets"], path.parent) if raw.get("sheets") else None)
 
 
 @dataclass(frozen=True)
@@ -790,6 +794,7 @@ scoring:
 # prep:
 #   max_tokens: 4000                                # the longest draft
 #   # prompt: |                                     # the drafting instructions; keep {context}
+#   # sheets: ~/Documents/prep                      # prep sheets you wrote (acme-onsite.html), on Interviews
 
 # Expected pay from Levels.fyi (off unless levels is true). See the README.
 # pay:
