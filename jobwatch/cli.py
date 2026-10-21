@@ -36,7 +36,7 @@ from . import (
     suggest,
 )
 from .config import BACKENDS, ConfigError, duration
-from .filters import KINDS
+from .filters import KINDS, rejection
 from .score import ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
 from .store import STAGES, STATUSES, Store
 from .watch import (
@@ -265,9 +265,17 @@ def cmd_show(args, cfg, store):
         print(f"You know: {report.people(known, most=10)}")
     if home := store.candidate_home(job):
         print(f"Your applications there (sign in): {home}")
+    fit = (store.score(job.key, resume_id(cfg.resume, cfg.prompts))
+           if scorable(job) and cfg.resume and cfg.resume.is_file() else None)
+    # Why a job that came in isn't on Today: the first filter it fails.
+    if hidden := rejection(job, cfg.filters, fit):
+        kind, why = hidden
+        why = {"title": "the title matches none of your titles",
+               "location": "the location matches none of your places"}.get(why, why)
+        print(f"Hidden from Today by your {kind} filter: {why}")
     if not scorable(job):
         print(f"{MANY_ROLES[1]}.")
-    elif cfg.resume and cfg.resume.is_file() and (fit := store.score(job.key, resume_id(cfg.resume, cfg.prompts))):
+    elif fit:
         print("\n".join(report.fit_lines(fit)))
     if (pay := levels.for_one_job(cfg, store, job)) is not None:
         print("\n".join(report.pay_lines(pay, job)))

@@ -116,7 +116,9 @@ STATES = {
 _US_NAMES = re.compile(r"\bunited states\b|\bnorth america\b|\bamericas\b|\b(?:" + "|".join(STATES.values()) + r")\b",
                        re.I)
 # Case-sensitive: "us", "or", "in" and "me" are also words.
-_US_CODES = re.compile(r"\bU\.S\.(?:A\.)?|\bUSA?\b|,\s*(?:" + "|".join(STATES) + r")\b")
+# Workday boards lead with the code: "CT - Hartford", "TX - Work from home".
+_US_CODES = re.compile(r"\bU\.S\.(?:A\.)?|\bUSA?\b|,\s*(?:" + "|".join(STATES) + r")\b"
+                       r"|^\s*(?:" + "|".join(STATES) + r")\s+-\s")
 _REMOTE_WORDS = re.compile(r"\b(?:remote|friendly|fully|first|only|anywhere|hybrid|or|and|work|from|at|home?)\b|[^\w]+",
                            re.I)
 # Workday boards say "Work At Home-Texas" and "TX - Work from home" (sometimes cut short: "Work from hom").
