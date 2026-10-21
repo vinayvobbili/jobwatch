@@ -282,7 +282,7 @@ def test_a_body_without_headers_is_read_by_its_links():
 
 
 def test_reading_files_folders_mbox_and_stdin(tmp_path):
-    assert len(alerts.read([str(FIXTURES)])) == 4
+    assert len(alerts.read([str(FIXTURES)])) == 6
     mbox = b"".join(b"From MAILER-DAEMON Thu Oct  8 00:00:00 2026\n" + (FIXTURES / n).read_bytes() + b"\n"
                     for n in ("linkedin.eml", "indeed.eml"))
     (tmp_path / "alerts.mbox").write_bytes(mbox)
@@ -408,6 +408,106 @@ def test_no_follow_reads_nothing(web, watchlist):
     assert pages.calls == [] and web.calls == []
     assert {f.how for f in r.found} == {"email"}
     assert store.find("manual:acme-inc:senior-software-engineer-platform")[0].pay() == "$180K–$240K"
+
+
+# -- Indeed company alerts: every link is a redirect with no job id
+
+class Redirects:
+    """Stands in for alerts.resolve_redirect: the posting each redirect leads to (by its first token)."""
+
+    def __init__(self, fail=()):
+        self.fail, self.calls = set(fail), []
+
+    def __call__(self, url, timeout=10):
+        self.calls.append(url)
+        token = url.split("/f/a/")[1].split("~")[0]
+        if token in self.fail:
+            raise sources.SourceError(f"{url}: timed out")
+        jk = {"TOKEN-A1": "aa11bb22cc33dd44", "TOKEN-A2": "ee55ff66aa77bb88", "TOKEN-B1": "aa11bb22cc33dd44"}[token]
+        return f"https://www.indeed.com/viewjob?jk={jk}&from=ja&tk=TOKEN"
+
+
+def test_an_indeed_redirect_is_a_job_link_whose_id_is_found_by_following_it():
+    link = "https://engage.indeed.com/f/a/TOKEN-A1~~/TOKEN-A1~/LONG-TOKEN-A1"
+    assert alerts.job_link(link) == ("indeed", link)
+    assert alerts.job_link("https://engage.indeed.com/f/unsubscribe/TOKEN") is None
+    found = alerts.parse(emails("indeed_company.eml")[0])
+    assert [(a.title, a.company, a.location, a.pay) for a in found] == [
+        ("Data Platform Engineer", "Soylent", "Denver, CO", "$130,000 - $190,000 a year"),
+        ("Machine Learning Engineer", "Soylent", "Remote", "$150,000 - $210,000 a year"),
+    ]
+    assert alerts.indeed_redirect(found[0].url)
+
+
+def test_indeed_company_alert_jobs_are_keyed_by_the_posting(web, watchlist):
+    redirect = Redirects()
+    _, store, r, _ = take(watchlist, ["indeed_company.eml"], redirect=redirect)
+    assert r.count(result="new") == 2 and r.empty == []
+    assert [f.alert.url for f in r.found] == ["https://www.indeed.com/viewjob?jk=aa11bb22cc33dd44",
+                                              "https://www.indeed.com/viewjob?jk=ee55ff66aa77bb88"]
+    assert {j.url for j, _ in store.jobs(include_closed=True)} == {f.alert.url for f in r.found}
+    assert {f.alert.via for f in r.found} == {"indeed-alert"}
+
+
+def test_the_same_job_in_a_later_indeed_company_alert_is_not_tracked_again(web, watchlist):
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    first = alerts.intake(cfg, store, emails("indeed_company.eml"), page=Pages(), redirect=Redirects())
+    again = alerts.intake(cfg, store, emails("indeed_company_again.eml"), page=Pages(), redirect=Redirects())
+    assert first.count(result="new") == 2
+    assert again.count(result="known") == 1 and again.count(result="new") == 0  # another token, the same jk
+    assert len(store.jobs(include_closed=True)) == 2
+    both = alerts.intake(cfg, Store(cfg.state), emails("indeed_company.eml", "indeed_company_again.eml"),
+                         page=Pages(), redirect=Redirects(), dry_run=True)
+    assert both.count(result="known") == 2 and both.count(result="duplicate") == 1
+
+
+def test_an_indeed_redirect_that_cant_be_followed_skips_that_job(web, watchlist):
+    redirect = Redirects(fail={"TOKEN-A1"})
+    _, store, r, _ = take(watchlist, ["indeed_company.eml"], redirect=redirect)
+    skipped, new = r.found
+    assert skipped.result == "skipped" and "couldn't follow the Indeed redirect" in skipped.reason
+    assert new.result == "new" and new.alert.url.endswith("jk=ee55ff66aa77bb88")
+    assert len(store.jobs(include_closed=True)) == 1
+    text = alerts.summary(r)
+    assert "Skipped 1: couldn't follow the Indeed redirect" in text
+    assert alerts.to_dict(r)["skipped"] == 1
+
+
+def test_an_indeed_redirect_to_something_else_is_not_a_job(web, watchlist):
+    def redirect(url, timeout=10):
+        return "https://www.indeed.com/legal" if "TOKEN-A1" in url else Redirects()(url)
+
+    _, _, r, _ = take(watchlist, ["indeed_company.eml"], redirect=redirect)
+    assert [f.alert.title for f in r.found] == ["Machine Learning Engineer"] and r.count(result="skipped") == 0
+
+
+def test_no_follow_skips_indeed_redirects_without_following_them(web, watchlist):
+    redirect = Redirects()
+    _, store, r, _ = take(watchlist, ["indeed_company.eml"], follow=False, redirect=redirect)
+    assert redirect.calls == [] and r.count(result="skipped") == 2
+    assert "--no-follow" in r.found[0].reason and store.jobs(include_closed=True) == []
+
+
+def test_resolving_a_redirect_reads_no_posting(monkeypatch):
+    """Each hop's Location is read from the 3xx reply; the walk stops at the first link that isn't a redirect."""
+    import email.message
+    import urllib.error
+    hops = {"https://engage.indeed.com/f/a/T~~/T~/L": "https://engage.indeed.com/f/a/T2~~/T2~/L2",
+            "https://engage.indeed.com/f/a/T2~~/T2~/L2": "https://www.indeed.com/viewjob?jk=aa11bb22cc33dd44&from=ja"}
+    asked = []
+
+    class Opener:
+        def open(self, req, timeout=None):
+            asked.append((req.full_url, timeout))
+            headers = email.message.Message()
+            headers["Location"] = hops[req.full_url]
+            raise urllib.error.HTTPError(req.full_url, 302, "Found", headers, None)
+
+    monkeypatch.setattr(alerts.urllib.request, "build_opener", lambda *handlers: Opener())
+    assert alerts.resolve_redirect("https://engage.indeed.com/f/a/T~~/T~/L", timeout=3) \
+        == "https://www.indeed.com/viewjob?jk=aa11bb22cc33dd44&from=ja"
+    assert [u for u, _ in asked] == list(hops) and {t for _, t in asked} == {3}
 
 
 def test_summary_and_json(web, watchlist):
@@ -565,7 +665,8 @@ def test_fixtures_hold_no_personal_data():
         addresses = set(re.findall(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", text))
         assert addresses <= {"you@example.com", "jobalerts-noreply@linkedin.com", "support@builtin.com",
                              "donotreply@jobalert.indeed.com", "digest@jobs.example.org", "alert-0001@example.com",
-                             "alert-0002@example.com", "alert-0003@example.com", "alert-0004@example.com"}, f
+                             "alert-0002@example.com", "alert-0003@example.com", "alert-0004@example.com",
+                             "alert-0005@example.com", "alert-0006@example.com"}, f
         # No real tracking tokens: long opaque runs of letters and digits
         assert not re.search(r"(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{20,}", text), f
 
