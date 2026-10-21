@@ -33,6 +33,7 @@ Issues = "https://github.com/vinayvobbili/jobwatch/issues"
 score = ["shortlist-ai>=0.1.1"]
 local = ["shortlist-ai[local]>=0.1.1"]
 mcp = ["mcp>=2.2"]
+video = ["slidecast[mlx]>=0.4"]
 dev = ["pytest>=8", "ruff>=0.14"]
 
 [project.scripts]

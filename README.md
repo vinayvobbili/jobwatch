@@ -82,6 +82,7 @@ pip install jobwatch                 # discovery, filters, digest
 pip install 'jobwatch[score]'        # + fit scores with shortlist-ai (Claude API)
 pip install 'jobwatch[local]'        # + fit scores on-device (Apple Silicon, MLX)
 pip install 'jobwatch[mcp]'          # + MCP server for Claude and other assistants
+pip install 'jobwatch[video]'        # + drill videos from prep sheets (Apple Silicon, on-device voices)
 ```
 
 ## Quick start
@@ -928,6 +929,28 @@ package, one per question, and show on its prep sheet under **Practised answers*
 `get_interview_prep` as `practised`. It runs on the chat's backend like the rest (`local` stays on your
 computer; with `claude` the posting, your resume and your stories go to Anthropic); with none available it says
 what to install, before asking anything.
+
+### Drill video
+
+`jobwatch prep c1 --drill drill.mp4` turns the prep sheet into a video to rehearse with. Each question is asked in
+one voice, then the screen says **Answer out loud** and holds for 75 seconds (`--pause 60` to change it), then
+the answer's cue words come up while a second voice gives the full answer. `--no-pause` drops the hold, for a
+quick review.
+
+The answers are only ones the sheet already has: practised answers from mock interviews, then drafted outlines
+told with the stories they cite (so run `--draft` first, or practise with `--mock`). A question with no answer is
+left out, never filled in. The key can also be a prep sheet you wrote yourself, as HTML: every table with a
+"Question" column and an "Answer" column gives one question a row, and text in `class="muted"` (sources, asides)
+isn't spoken:
+
+```
+jobwatch prep ~/prep/acme-sheet.html --drill ~/prep/acme-drill.mp4 --no-pause
+```
+
+It needs `pip install 'jobwatch[video]'`, which brings [slidecast](https://pypi.org/project/slidecast/) with
+Kokoro voices that run on your Mac (Apple Silicon), and a browser to draw the slides (Chrome, or slidecast's
+Playwright extra). Nothing is sent anywhere. The first run fetches the voice model and a small English language
+model once.
 
 ### Find a story
 

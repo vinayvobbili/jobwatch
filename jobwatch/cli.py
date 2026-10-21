@@ -23,6 +23,7 @@ from . import (
     chat,
     company,
     config,
+    drill,
     dupes,
     ics,
     inbox,
@@ -33,6 +34,7 @@ from . import (
     quiet,
     report,
     sources,
+    stories,
     storyfind,
     suggest,
 )
@@ -645,7 +647,28 @@ def cmd_ask(args, cfg, store):
     _stream(pieces)
 
 
+def cmd_drill(args, cfg, store):
+    """A drill video, from a job's prep sheet or (KEY is a file) from a prep sheet written by hand."""
+    page = Path(args.key).expanduser()
+    if page.suffix.lower() in (".html", ".htm") and page.is_file():
+        title, cards = drill.from_page(page.read_text(encoding="utf-8"))
+        title = title or page.stem
+    else:
+        sheet = prep.build(cfg, store, args.key, draft=args.draft)
+        title, cards = f"{sheet.title}, {sheet.company}", drill.from_sheet(sheet, stories.load(cfg.stories))
+    if not cards:
+        raise SystemExit("no questions with answers to drill: add --draft (answers from your stories and resume), "
+                         f"or practise some with: jobwatch ask --job {args.key} --mock")
+    pause = 0 if args.no_pause else args.pause
+    print(f"({len(cards)} questions, {'no pause' if not pause else f'{pause:g} s to answer each'}; "
+          "Kokoro speaks on this computer)", file=sys.stderr)
+    out = drill.render(drill.segments(cards, title, pause), args.drill)
+    print(f"wrote {out}", file=sys.stderr)
+
+
 def cmd_prep(args, cfg, store):
+    if args.drill:
+        return cmd_drill(args, cfg, store)
     sheet = prep.build(cfg, store, args.key, draft=args.draft, questions=args.questions)
     if args.draft:
         print(f"({sheet.draft_note})", file=sys.stderr)
@@ -972,6 +995,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--questions", action="store_true", help="also have the chat's model write questions for this "
                    "role from the posting's asks (no resume or stories are sent; kept for next time)")
     p.add_argument("-o", "--out", type=Path)
+    p.add_argument("--drill", type=Path, metavar="OUT.mp4", help="make a drill video instead: each question asked, "
+                   "a pause to answer it out loud, then the cue words while a second voice gives the sheet's answer "
+                   "(needs jobwatch[video]; KEY may be a hand-written prep sheet's .html)")
+    p.add_argument("--pause", type=float, default=drill.PAUSE, metavar="SECONDS",
+                   help=f"with --drill: seconds to answer each question (default {drill.PAUSE:g})")
+    p.add_argument("--no-pause", action="store_true", help="with --drill: no pause, for a quick review")
     p.set_defaults(func=cmd_prep)
 
     p = sub.add_parser("skills", help="skills your matching jobs ask for that your resume doesn't show, and "
