@@ -144,7 +144,8 @@ class Scorer:
                 self.error = f"{type(e).__name__}: {e}" if not isinstance(e, ScoringUnavailable) else str(e)
                 self.stopped = self.error
                 print(f"jobwatch: background scoring stopped: {self.error}", file=sys.stderr)
-                self.app.log("score", "Background scoring stopped", ok=False, detail=[self.error], by="background")
+                self.app.log("score", "Background scoring stopped", ok=False, detail=[self.error], by="background",
+                             notable=True)
             with self._lock:
                 if not self._again:
                     left = self.left
@@ -181,6 +182,15 @@ class Scorer:
             self._failed[e.job.key] = next(iter(errors.values()))
             self.error = f"{self.current}: {self._failed[e.job.key]}"
         return True
+
+
+def slot(times, now: datetime, after: bool = False) -> datetime:
+    """The latest of these times of day (this computer's clock) at or before `now`, or with `after` the first
+    one after it, as an aware datetime."""
+    local = now.astimezone()
+    days = (0, 1) if after else (0, -1)
+    near = [datetime.combine(local.date() + timedelta(days=d), t, local.tzinfo) for d in days for t in times]
+    return min(s for s in near if s > local) if after else max(s for s in near if s <= local)
 
 
 class Refresher:
@@ -242,7 +252,9 @@ class Refresher:
 
     def due(self, now: datetime | None = None) -> bool:
         """Whether a scheduled check is due: fetch_every is on, there are boards, and the last check is older
-        than fetch_every (or there's none), and no scheduled check started in the last RETRY."""
+        than fetch_every (or there's none), and no scheduled check started in the last RETRY. With times of day
+        (fetch_at), it's due once the latest of them has passed with no check since: one missed while the
+        computer slept is caught up once, and a check by hand after it counts."""
         now = now or datetime.now(timezone.utc)
         if not self.app.path.is_file():
             return False
@@ -250,23 +262,29 @@ class Refresher:
             cfg = self.app._cfg()
         except ConfigError:  # the page shows what's wrong with the watchlist; check once it's fixed
             return False
-        if not cfg.fetch_every or not cfg.boards or (self.tried and now - self.tried < self.RETRY):
+        if (not (cfg.fetch_every or cfg.fetch_at) or not cfg.boards
+                or (self.tried and now - self.tried < self.RETRY)):
             return False
         store = Store(cfg.state)
         try:
             last = store.last_fetch()
         finally:
             store.close()
+        if cfg.fetch_at:
+            return last is None or last["at"] < slot(cfg.fetch_at, now)
         return last is None or now - last["at"] >= cfg.fetch_every
 
     def status(self, cfg, store) -> dict:
         """For Today: when the boards were last checked (at, ISO), running, how often they're checked by
-        themselves (every_hours; None: off, or no schedule running), and the last check's new count, errors and
-        warnings."""
+        themselves (every_hours; None: off, at set times, or no schedule running), the set times (times, "14:00";
+        next, ISO), and the last check's new count, errors and warnings."""
         last = store.last_fetch()
         every = cfg.fetch_every if self._thread else None
+        times = cfg.fetch_at if self._thread else ()
         return {"running": self.running, "at": last["at"].isoformat() if last else None,
                 "every_hours": every.total_seconds() / 3600 if every else None,
+                "times": [t.strftime("%H:%M") for t in times],
+                "next": slot(times, datetime.now(timezone.utc), after=True).isoformat() if times else None,
                 "new": last["new"] if last else 0, "errors": last["errors"] if last else {},
                 "warnings": last["warnings"] if last else {}, "error": self.error}
 
@@ -449,7 +467,8 @@ class App:
                 "chat_prompt": {"default": chat.SYSTEM, "text": talk.get("prompt") or chat.SYSTEM,
                                 "edited": bool(talk.get("prompt")), "placeholders": list(config.CHAT_PLACEHOLDERS)},
                 # as written (YAML reads a bare off as false); unset: the default
-                "fetch_every": "off" if every is False else str(every) if every is not None else None}
+                "fetch_every": "off" if every is False else ", ".join(map(str, every)) if isinstance(every, list)
+                else str(every) if every is not None else None}
 
     def post_settings(self, body) -> dict:
         settings = {k: v for k, v in body.items() if k in config.SETTINGS}
@@ -504,17 +523,23 @@ class App:
         """Check every board now; while a check is running already (the scheduled one), wait for it instead."""
         return self.refresher.fetch()
 
-    def log(self, kind: str, text: str, ok: bool = True, detail: list[str] = (), by: str = ""):
+    def log(self, kind: str, text: str, ok: bool = True, detail: list[str] = (), by: str = "",
+            notable: bool = False):
         """An Activity entry from the background work (see Store.log); never fails the work it's about."""
         try:
-            self._with_store(lambda cfg, store: store.log(kind, text, ok, detail, by))
+            self._with_store(lambda cfg, store: store.log(kind, text, ok, detail, by, notable))
         except Exception as e:
             print(f"jobwatch: activity not logged: {type(e).__name__}: {e}", file=sys.stderr)
 
     def get_activity(self, q) -> dict:
-        """What jobwatch has been doing, newest first (kind: only one kind), and what it's doing now."""
+        """What jobwatch has been doing, newest first (kind: only one kind; since: only after that ISO time;
+        notable: only what's worth a look, which the page tells you about), and what it's doing now."""
+        def arg(name, default=""):
+            return (q.get(name) or [default])[0]
+
         def run(cfg, store):
-            return {"events": store.activity(int(q.get("limit", 200)), q.get("kind", "")),
+            return {"events": store.activity(int(arg("limit", "200")), arg("kind"), arg("since"),
+                                             arg("notable") in ("1", "true")),
                     "now": {"boards": self.refresher.running, "score": self.scorer.status(),
                             "pay": self.pay.running}}
         return self._with_store(run)

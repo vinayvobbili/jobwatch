@@ -141,7 +141,9 @@ jobwatch service uninstall
 ```
 
 Running like that, the page keeps Today fresh on its own: it checks every board when it starts (if the last
-check, from the page or `jobwatch fetch`, is older than `fetch_every`) and again every 6 hours. Each check asks
+check, from the page or `jobwatch fetch`, is older than `fetch_every`) and again every 6 hours. For checks at
+the same times every day, give times instead: `fetch_every: 8am, 2pm, 8pm` (this computer's clock). A time
+missed while the computer slept or the page was down is caught up once, as soon as it's back. Each check asks
 each board the same as pressing **Check for new jobs**, and pressing the button while a check runs waits for
 that one rather than starting another.
 
@@ -268,7 +270,8 @@ display:                                  # the browser page
 pace:                                     # applications a day: counted on Today and the queue, never enforced
   daily: 3                                # 0 turns it off, for when job hunting is your full-time job
   max: 5                                  # from this many on, the rest can wait until tomorrow
-fetch_every: 6h                           # the page checks the boards this often (90m, 1d; off to stop)
+fetch_every: 6h                           # the page checks the boards this often (90m, 1d; off to stop),
+                                          # or at set times: 8am, 2pm, 8pm
 ```
 
 Relative paths are resolved from the watchlist's folder. State (which jobs you've seen, applied to or

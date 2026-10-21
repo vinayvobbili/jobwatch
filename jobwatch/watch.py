@@ -180,7 +180,8 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
             got = alerts.intake(cfg, store, alerts.imap_messages(cfg.imap, connect=mail))
         except alerts.AlertError as e:
             report.errors[MAILBOX] = str(e)
-            store.log("mail", f"Couldn't read job-alert emails from {cfg.imap.host}", ok=False, detail=[str(e)], by=by)
+            store.log("mail", f"Couldn't read job-alert emails from {cfg.imap.host}", ok=False, detail=[str(e)], by=by,
+                      notable=True)
         else:
             report.emails = got.emails
             report.new += [f.key for f in got.found if f.result == "new"]  # intake marks their duplicates
@@ -198,7 +199,8 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
               ok=bool(report.boards) or not boards,
               detail=[f"New: {j.display_company}: {j.title}" for j in new][:ACTIVITY_LINES]
               + [f"Failed: {b}: {e}" for b, e in boards.items()]
-              + [f"Look at: {b}: {w}" for b, w in report.warnings.items()], by=by)
+              + [f"Look at: {b}: {w}" for b, w in report.warnings.items()], by=by,
+              notable=not report.boards and bool(boards))  # every board failed: no network, or worse
     return report
 
 
@@ -773,8 +775,15 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Cal
         elif e.job.key in errors and not errors[e.job.key].startswith(DAILY_LIMIT):
             store.save_score_failure(e.job.key, rid, cfg.score_model, errors[e.job.key])
     if entries:
-        store.log("score", *_scored_text(entries, results, errors, batch), by=by)
+        text, ok, lines = _scored_text(entries, results, errors, batch)
+        strong = [e for e in entries if (results.get(e.job.key) or {}).get("score", 0) >= STRONG_FIT]
+        if strong and len(entries) > 1:
+            text += f": {plural(len(strong), 'strong fit')}"
+        store.log("score", text, ok, lines, by=by, notable=bool(strong))
     return len(results), errors
+
+
+STRONG_FIT = 75  # a fit score from this on is a strong fit: the page tells you when one comes in
 
 
 def _scored_text(entries: list[Entry], results: dict[str, dict], errors: dict[str, str], batch: bool

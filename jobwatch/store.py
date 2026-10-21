@@ -120,7 +120,8 @@ CREATE TABLE IF NOT EXISTS activity (
     text TEXT NOT NULL,
     ok INTEGER NOT NULL,
     detail TEXT NOT NULL,
-    by TEXT NOT NULL
+    by TEXT NOT NULL,
+    notable INTEGER NOT NULL DEFAULT 0
 );
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
@@ -199,6 +200,12 @@ class Store:
                         self.db.execute(backfill)
             if "gone" not in {r["name"] for r in self.db.execute("PRAGMA table_info(pay_pages)")}:
                 self.db.execute("ALTER TABLE pay_pages ADD COLUMN gone INTEGER NOT NULL DEFAULT 0")
+            if "notable" not in {r["name"] for r in self.db.execute("PRAGMA table_info(activity)")}:
+                try:
+                    self.db.execute("ALTER TABLE activity ADD COLUMN notable INTEGER NOT NULL DEFAULT 0")
+                except sqlite3.OperationalError as e:  # another connection added it just now
+                    if "duplicate column" not in str(e):
+                        raise
             if older:  # a state file from before suggestions: what alerts and `add` brought in so far counts
                 self._backfill_unwatched()
 
@@ -630,21 +637,25 @@ class Store:
 
     # What jobwatch did on its own or when asked (checked the boards, read job-alert mail, scored jobs, looked up
     # pay), for the page's Activity tab: kind (boards, mail, score, pay), a line saying what happened, whether it
-    # worked, detail lines, and what started it (by: schedule, page, background; empty when not known).
+    # worked, detail lines, what started it (by: schedule, page, background; empty when not known), and whether
+    # it's worth a look (notable: a strong fit, a mailbox it couldn't read...), which the page tells you about.
 
-    def log(self, kind: str, text: str, ok: bool = True, detail: list[str] | tuple[str, ...] = (), by: str = ""):
+    def log(self, kind: str, text: str, ok: bool = True, detail: list[str] | tuple[str, ...] = (), by: str = "",
+            notable: bool = False):
         with self.db:
-            self.db.execute("INSERT INTO activity (at, kind, text, ok, detail, by) VALUES (?, ?, ?, ?, ?, ?)",
-                            (_now(), kind, text, int(ok), json.dumps(list(detail)), by))
+            self.db.execute("INSERT INTO activity (at, kind, text, ok, detail, by, notable) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (_now(), kind, text, int(ok), json.dumps(list(detail)), by, int(notable)))
             self.db.execute("DELETE FROM activity WHERE rowid NOT IN (SELECT rowid FROM activity ORDER BY at DESC "
                             "LIMIT ?)", (ACTIVITY_KEPT,))
 
-    def activity(self, limit: int = 200, kind: str = "") -> list[dict]:
-        """The newest first: at (ISO), kind, text, ok, detail (lines) and by."""
-        rows = self.db.execute("SELECT * FROM activity WHERE ?='' OR kind=? ORDER BY at DESC LIMIT ?",
-                               (kind, kind, limit))
+    def activity(self, limit: int = 200, kind: str = "", since: str = "", notable: bool = False) -> list[dict]:
+        """The newest first: at (ISO), kind, text, ok, detail (lines), by and notable. since: only ones after
+        that time (ISO); notable: only the ones worth a look."""
+        rows = self.db.execute("SELECT * FROM activity WHERE (?='' OR kind=?) AND at>? AND notable>=? "
+                               "ORDER BY at DESC LIMIT ?", (kind, kind, since, int(notable), limit))
         return [{"at": r["at"], "kind": r["kind"], "text": r["text"], "ok": bool(r["ok"]),
-                 "detail": json.loads(r["detail"]), "by": r["by"]} for r in rows]
+                 "detail": json.loads(r["detail"]), "by": r["by"], "notable": bool(r["notable"])} for r in rows]
 
     def last_fetch(self) -> dict | None:
         """The last check that read at least one board: at (a datetime), boards, jobs, new, and errors and

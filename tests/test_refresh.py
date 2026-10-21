@@ -4,6 +4,7 @@ on Today when they were last checked."""
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from datetime import time as dtime
 
 import pytest
 import yaml
@@ -203,6 +204,59 @@ def test_settings_save_fetch_every(watchlist, web):
         app.post_settings({"fetch_every": "5m"})
     app.post_settings({"fetch_every": None})
     assert config.load(watchlist).fetch_every == config.FETCH_EVERY  # back to the default
+
+
+@pytest.mark.parametrize("raw, want", [
+    ("8am, 2pm, 8pm", ["08:00", "14:00", "20:00"]), ("08:00, 14:00, 20:00", ["08:00", "14:00", "20:00"]),
+    ("12am,12pm 6:30 pm", ["00:00", "12:00", "18:30"]), (["2pm", "8am"], ["08:00", "14:00"]),
+    ([8, 840, 1200], ["08:00", "14:00", "20:00"]),  # YAML reads an unquoted 14:00 as 840
+])
+def test_fetch_every_as_times_of_day(watchlist, raw, want):
+    setting(watchlist, fetch_every=raw)
+    cfg = config.load(watchlist)
+    assert [t.strftime("%H:%M") for t in cfg.fetch_at] == want and cfg.fetch_every is None
+
+
+@pytest.mark.parametrize("raw", ["13pm, 2pm", "8am, 25:00", ["noon"], []])
+def test_times_that_arent_ones(watchlist, raw):
+    setting(watchlist, fetch_every=raw)
+    with pytest.raises(config.ConfigError, match="fetch_every"):
+        config.load(watchlist)
+
+
+def test_the_latest_time_passed_and_the_next(monkeypatch):
+    times = (dtime(8), dtime(14), dtime(20))
+    local = datetime(2026, 3, 4, 15, 30).astimezone()
+    assert ui.slot(times, local) == datetime(2026, 3, 4, 14, 0).astimezone()
+    assert ui.slot(times, local, after=True) == datetime(2026, 3, 4, 20, 0).astimezone()
+    early = datetime(2026, 3, 4, 7, 0).astimezone()
+    assert ui.slot(times, early) == datetime(2026, 3, 3, 20, 0).astimezone()  # last night's
+    assert ui.slot(times, datetime(2026, 3, 4, 21, 0).astimezone(), after=True) == \
+        datetime(2026, 3, 5, 8, 0).astimezone()
+
+
+def test_at_set_times_a_check_is_due_once_each_time_passes(watchlist, web):
+    """Due when the latest set time has passed with no check since; a check by hand after it counts, and one
+    missed while the computer slept is caught up once."""
+    setting(watchlist, fetch_every="8am, 2pm, 8pm")
+    app = App(watchlist, background=True)
+    r = app.refresher
+    assert r.due()  # never checked
+    app.post_fetch({})
+    assert not r.due()
+    store = Store(config.load(watchlist).state)
+    last_fetch_was(store, timedelta(hours=7))  # at least one of 8am, 2pm and 8pm has passed since
+    assert r.due()
+    last_fetch_was(store, timedelta(hours=30))  # slept through several: one check catches up
+    assert r.due()
+    app.post_fetch({})
+    assert not r.due()
+    r._thread = object()  # as if the schedule were running
+    got = r.status(config.load(watchlist), store)
+    assert got["times"] == ["08:00", "14:00", "20:00"] and got["every_hours"] is None
+    assert datetime.fromisoformat(got["next"]) > datetime.now(timezone.utc)
+    r._thread = None
+    store.close()
 
 
 def test_an_older_state_file_gains_the_new_tables(tmp_path):

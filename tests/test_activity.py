@@ -3,6 +3,8 @@ newest first, kept in the store, and what it's doing now."""
 
 import functools
 
+import yaml
+
 from jobwatch import alerts, config, watch
 from jobwatch import store as store_mod
 from jobwatch.store import Store
@@ -83,4 +85,47 @@ def test_the_page_shows_the_log_and_whats_running(watchlist, web):
     got = app.get_activity({})
     assert got["events"][0]["kind"] == "boards" and got["events"][0]["by"] == "page"
     assert got["now"] == {"boards": False, "score": app.scorer.status(), "pay": False}
-    assert app.get_activity({"kind": "pay"})["events"] == []
+    assert app.get_activity({"kind": ["pay"]})["events"] == []  # as the server reads a query: lists
+
+
+def test_only_what_is_worth_a_look_is_notable(tmp_path, watchlist, web, monkeypatch):
+    """A strong fit, a mailbox that can't be read and a check that read no board are notable (the page tells
+    you); a check that worked, or a so-so fit, isn't."""
+    (watchlist.parent / "cv.md").write_text("Python, LLMs, RAG")
+    path = tmp_path / "w.yaml"
+    raw = yaml.safe_load(watchlist.read_text() + IMAP_WATCHLIST + "    password_env: JOBWATCH_IMAP_PASSWORD\n")
+    path.write_text(yaml.safe_dump({**raw, "resume": "cv.md"}))
+    cfg = config.load(path)
+    store = Store(cfg.state)
+    watch.fetch_all(cfg, store, mail=FakeIMAP)  # no password: the mailbox can't be read
+    assert [(e["kind"], e["notable"]) for e in store.activity()] == [("boards", False), ("mail", True)]
+    scores = iter([80, 60, 60])
+    monkeypatch.setattr(watch, "score_jobs", lambda jobs, *a, **kw: (
+        {j.key: {"score": next(scores), "must_haves_met": 1, "must_haves_total": 1, "gaps": [], "summary": ""}
+         for j in jobs}, {}))
+    todo = watch.unscored(cfg, store)
+    watch.score_entries(cfg, store, todo[:2], progress=lambda m: None)
+    assert store.activity()[0]["text"] == "Scored 2 jobs: 1 strong fit" and store.activity()[0]["notable"]
+    watch.score_entries(cfg, store, todo[2:], progress=lambda m: None)  # 60: not one
+    assert not store.activity()[0]["notable"]
+    web.responses.clear()
+    watch.fetch_all(cfg, store)
+    assert store.activity(kind="boards")[0]["notable"]  # no board read
+    marks = [e["at"] for e in store.activity(notable=True)]
+    assert len(marks) == 4  # the mailbox failed again with the boards
+    assert store.activity(notable=True, since=marks[1]) == store.activity(notable=True)[:1]
+    store.close()
+
+
+def test_an_older_activity_table_gains_notable(tmp_path):
+    import sqlite3
+    db = sqlite3.connect(tmp_path / "s.db")
+    db.execute("CREATE TABLE activity (at TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL, ok INTEGER NOT "
+               "NULL, detail TEXT NOT NULL, by TEXT NOT NULL)")
+    db.execute("INSERT INTO activity VALUES ('2026-01-01T00:00:00+00:00', 'pay', 'old', 1, '[]', '')")
+    db.commit()
+    db.close()
+    store = Store(tmp_path / "s.db")
+    store.log("boards", "new", notable=True)
+    assert [(e["text"], e["notable"]) for e in store.activity()] == [("new", True), ("old", False)]
+    store.close()
