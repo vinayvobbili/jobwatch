@@ -2,7 +2,7 @@
 days ahead, each with the prep sheets you wrote for that company.
 
 A next step is read the way the calendar feed reads it (ics.meeting): a date and a time it can be sure of. One
-that names a meeting but no time it can read ("panel interview, Mary to schedule") is listed as not scheduled
+that names a meeting but no time it can read ("panel interview, the recruiter to schedule") is listed as not scheduled
 yet while its follow-up day is today or ahead, so it isn't lost, once the application is past applied (before
 that, "wait for a recruiter screen" is a hope, not an interview). Prep sheets are the .html files in the
 watchlist's prep.sheets folder whose name starts with the company's ("acme-onsite.html" for Acme); the page
