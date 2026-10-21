@@ -7,6 +7,7 @@ import json
 import re
 import secrets
 import sqlite3
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -508,8 +509,16 @@ class Store:
     def drop_incomplete_scores(self, resume: str) -> list[str]:
         """Remove this resume's current scores whose model left requirements unjudged (see score.unjudged), saved
         before such results counted as failures, so the jobs are scored again. Returns their keys."""
+        return self._drop_scores(resume, lambda fit: bool(unjudged(fit.get("flags"))))
+
+    def drop_kept_scores(self, resume: str) -> list[str]:
+        """Remove this resume's current scores that keep_old_scores kept from an earlier scorer, so the jobs are
+        scored by the one in use (until then their old score shows as stale). Returns their keys."""
+        return self._drop_scores(resume, lambda fit: "kept_from" in fit)
+
+    def _drop_scores(self, resume: str, drop: Callable[[dict], bool]) -> list[str]:
         keys = [r["key"] for r in self.db.execute("SELECT key, result FROM scores WHERE resume=?", (resume,))
-                if unjudged(json.loads(r["result"]).get("flags"))]
+                if drop(json.loads(r["result"]))]
         with self.db:
             self.db.executemany("DELETE FROM scores WHERE key=? AND resume=?", [(k, resume) for k in keys])
         return keys
