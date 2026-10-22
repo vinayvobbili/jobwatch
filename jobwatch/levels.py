@@ -35,6 +35,10 @@ PAUSE = 2.0                 # seconds between two requests to Levels.fyi, across
 ONE_JOB = 5                 # pages one job can need: a region's page and the US page for two company names, a level's
 QUEUE = 20                  # pages a look at the queue may ask for; the rest wait for the next look
 US = "United States"
+# When Levels.fyi refuses jobwatch (HTTP 401/403, its firewall), nothing is asked of it for a day: kept as a
+# pay_pages row under the site's own address, which is never a page.
+REFUSAL = f"{SITE}/"
+REFUSED_FOR = timedelta(days=1)
 
 _polite = threading.Lock()
 _last = [0.0]
@@ -43,7 +47,8 @@ _last = [0.0]
 class Reader:
     """Levels.fyi pages, through the store's cache. `budget`: how many pages it may ask Levels.fyi for now (0:
     only what's already kept). A stale page is still used when the budget has run out. `empty`: how old an empty
-    answer may be before it's asked for again."""
+    answer may be before it's asked for again. `refused`: Levels.fyi refused it within REFUSED_FOR, so it asks
+    nothing and uses only what's kept."""
 
     def __init__(self, store, budget: int = 0, get=None, robots=None, pause: float | None = None,
                  now: datetime | None = None, empty: timedelta = EMPTY):
@@ -54,6 +59,8 @@ class Reader:
         self.now = now or datetime.now(timezone.utc)
         self.empty = empty
         self.asked = 0
+        hit = store.pay_page(REFUSAL)
+        self.refused = bool(hit) and self.now - hit[1] < REFUSED_FOR
 
     def page(self, path: str) -> str | None:
         """The Markdown at SITE/path.md: "" when Levels.fyi has nothing there (for now), None when it isn't
@@ -64,7 +71,7 @@ class Reader:
             body, at, gone = hit
             if self.now - at < (FRESH if body else GONE if gone else self.empty):
                 return body
-        if self.budget <= 0:
+        if self.budget <= 0 or self.refused:
             # An old empty answer says nothing: not known yet, so it's asked for when there's room.
             return hit[0] if hit and (hit[0] or hit[2]) else None
         self.budget -= 1
@@ -78,6 +85,10 @@ class Reader:
                     body = self.get(url).strip()
                 except sources.NotFound:
                     body, gone = "", True
+                except sources.Refused:
+                    self.refused = True
+                    self.store.save_pay_page(REFUSAL, "", True)
+                    return hit[0] if hit and (hit[0] or hit[2]) else None
                 except sources.SourceError:  # not an answer: ask again next time
                     return hit[0] if hit and (hit[0] or hit[2]) else None
                 finally:
@@ -242,6 +253,11 @@ class Estimate:
 
 
 PENDING = "pending"  # not looked up yet: there wasn't time to ask Levels.fyi for every page needed
+REFUSED = "refused"  # not known, and Levels.fyi is refusing jobwatch for now (see REFUSAL)
+
+
+def _unknown(reader: Reader) -> str:
+    return REFUSED if reader.refused else PENDING
 
 
 def _pick(fam: Family, title: str, years: int | None) -> tuple[int, str]:
@@ -276,7 +292,8 @@ def _round_up(n: float, step: int) -> int:
 
 def estimate(job: Job, pay, home_state: str | None, reader: Reader) -> Estimate | str | None:
     """The job's level at its company on Levels.fyi and a base to ask for; PENDING when pages it needs aren't
-    known yet; None when Levels.fyi has nothing for it (then nothing is shown, never a guess)."""
+    known yet (REFUSED while Levels.fyi refuses jobwatch); None when Levels.fyi has nothing for it (then nothing
+    is shown, never a guess)."""
     family = family_for(job.title)
     if not family:
         return None
@@ -297,7 +314,7 @@ def estimate(job: Job, pay, home_state: str | None, reader: Reader) -> Estimate 
         if found:
             break
     if not found:
-        return PENDING if pending else None
+        return _unknown(reader) if pending else None
     slug, path, fam, regional = found
     i, why_level = _pick(fam, job.title, pay.years)
     level, total = fam.levels[i]
@@ -309,7 +326,7 @@ def estimate(job: Job, pay, home_state: str | None, reader: Reader) -> Estimate 
     if not regional:
         level_text = reader.page(f"companies/{slug}/salaries/{family}/levels/{_slug(level.split('|')[0])}")
         if level_text is None:
-            return PENDING  # rather than a rougher number now and a different one later
+            return _unknown(reader)  # rather than a rougher number now and a different one later
         if level_text and (base := level_base(level_text)):
             why.append(f"{level} median base ${base:,} (its level page)")
     company_base = fam.mix[0] if fam.mix else None
@@ -357,9 +374,12 @@ def for_one_job(cfg, store, job: Job) -> Estimate | str | None:
 
 
 def as_dict(result, job: Job) -> dict | None:
-    """For JSON: the estimate, {"pending": true} while it's being looked up, or None."""
+    """For JSON: the estimate, {"pending": true} while it's being looked up, {"refused": true} while Levels.fyi
+    refuses jobwatch, or None."""
     if result == PENDING:
         return {"pending": True}
+    if result == REFUSED:
+        return {"refused": True}
     return result.to_dict(job.pay()) if isinstance(result, Estimate) else None
 
 

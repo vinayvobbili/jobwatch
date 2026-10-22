@@ -356,7 +356,7 @@ class PayLookup:
             looked, found = [], 0
             try:
                 reader = levels.Reader(store, levels.QUEUE, robots=self.robots)
-                while cfg.pay.levels and reader.budget > 0:
+                while cfg.pay.levels and reader.budget > 0 and not reader.refused:
                     with self._lock:
                         if not self._todo:
                             break

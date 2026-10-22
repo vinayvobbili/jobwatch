@@ -283,6 +283,7 @@ shows where it and the cache are; change them in the file (a new state path star
 the company's public salary pages on Levels.fyi, with a link to the page. The ask it suggests is
 `pay.ask_over` percent over the level's median base, rounded up to `pay.round`, kept within a posted range. It's meant for personal use: you're
 responsible for checking Levels.fyi's terms. What's read stays in the state file and is never put in a digest.
+If Levels.fyi refuses jobwatch's requests (HTTP 403), jobwatch says so on the job and asks nothing for a day.
 Data: [Levels.fyi](https://www.levels.fyi).
 
 `fetch_every` (6 hours unless set, at least 1 hour) is how often the browser page checks the boards while it's

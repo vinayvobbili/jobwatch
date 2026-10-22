@@ -221,7 +221,7 @@ class Entry:
     same_title: list[Job] = field(default_factory=list)  # the company's other postings with this title
     contacts: list[dict] = field(default_factory=list)  # people you know there
     warnings: list[str] = field(default_factory=list)  # reasons to look twice before applying (queue)
-    pay: object = None  # expected pay from Levels.fyi (levels.Estimate, levels.PENDING or None; queue only)
+    pay: object = None  # expected pay from Levels.fyi (levels.Estimate, PENDING, REFUSED or None; queue only)
     duplicate: dupes.Match | None = None  # a job acted on that it's (maybe) the same opening as; also in warnings
 
     @property
