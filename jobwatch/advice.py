@@ -78,7 +78,7 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
     job, fit = entry.job, entry.fit
     company = job.display_company
     floor = cfg.pay.floor or cfg.filters.min_salary or 0
-    expected = expected if expected and not expected.get("pending") else {}
+    expected = expected if expected and not (expected.get("pending") or expected.get("refused")) else {}
     top = job.salary_max or job.salary_min
     skip, go, extra = [], [], []  # (code, reason): the code names the rule (REASONS)
 

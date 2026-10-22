@@ -264,6 +264,32 @@ def test_a_failed_request_is_not_kept(store):
     assert store.pay_page(SE.format("acme") + ".md") is None
 
 
+def test_a_refusal_stops_asking_for_a_day_and_says_so(store):
+    get = FakeWeb(site(**{SE.format("acme") + ".md": sources.Refused("HTTP 403")}))
+    r = levels.Reader(store, 10, get=get)
+    assert levels.estimate(job(), Pay(levels=True), None, r) == levels.REFUSED and r.refused
+    assert store.pay_page(SE.format("acme") + ".md") is None   # the page itself isn't kept
+    assert levels.as_dict(levels.REFUSED, job()) == {"refused": True}
+    asked = len(get.calls)
+    later = levels.Reader(store, 10, get=get)
+    assert levels.estimate(job(), Pay(levels=True), None, later) == levels.REFUSED and len(get.calls) == asked
+    day_on = datetime.now(timezone.utc) + timedelta(days=1, hours=1)
+    tomorrow = levels.Reader(store, 10, get=FakeWeb(site()), now=day_on)
+    assert not tomorrow.refused
+    assert isinstance(levels.estimate(job(), Pay(levels=True), None, tomorrow), levels.Estimate)
+
+
+def test_a_403_is_a_refusal(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    def refuse(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", None, None)
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    with pytest.raises(sources.Refused):
+        sources.get_text("https://example.test/x.md")
+
+
 # -- the watchlist
 
 def test_pay_settings(tmp_path):

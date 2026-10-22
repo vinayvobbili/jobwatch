@@ -50,10 +50,15 @@ def fit_lines(fit: dict) -> list[str]:
     return out
 
 
+REFUSED_LINE = "Expected pay: Levels.fyi is refusing jobwatch's requests for now; it's asked again tomorrow."
+
+
 def pay_lines(pay, job: Job) -> list[str]:
     """Expected pay from Levels.fyi and how it was worked out, with its page and credit."""
     if pay == levels.PENDING:
         return ["Expected pay: not looked up yet (Levels.fyi is asked a few pages at a time); try again shortly."]
+    if pay == levels.REFUSED:
+        return [REFUSED_LINE]
     if not isinstance(pay, levels.Estimate):
         return []
     return [f"Expected pay: {pay.line(job.pay())}", *(f"  - {w}" for w in pay.why), f"  {pay.credit}: {pay.url}"]

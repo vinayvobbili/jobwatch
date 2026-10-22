@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS activity (
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
 ACTIVITY_KEPT = 1000  # the things done in the background remembered (see Store.log)
+BUSY = 30  # seconds to wait for another thread or process writing the state file, instead of "database is locked"
 
 
 # Columns added after the first release, and how to fill them in an older state file.
@@ -182,7 +183,7 @@ class Store:
             self.db.row_factory = sqlite3.Row
             return
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
+        self.db = sqlite3.connect(path, timeout=BUSY)
         self.db.row_factory = sqlite3.Row
         older = not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='unwatched_jobs'").fetchone()
         self.db.executescript(_SCHEMA)

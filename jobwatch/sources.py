@@ -51,6 +51,10 @@ class NotFound(SourceError):
     pass
 
 
+class Refused(SourceError):
+    """The site won't answer jobwatch (HTTP 401 or 403): asking again soon won't help."""
+
+
 RETRIES = 3  # a board that says "slow down" (429) or "busy" (503) is asked again, waiting longer each time
 MAX_WAIT = 30
 
@@ -74,6 +78,8 @@ def _read(url: str, timeout: float, body: dict | None, accept: str) -> bytes:
         except urllib.error.HTTPError as e:
             if e.code in (404, 410):  # 410: iCIMS's answer for a job that has closed
                 raise NotFound(url) from None
+            if e.code in (401, 403):
+                raise Refused(f"{url}: HTTP {e.code}") from None
             if e.code in (429, 503) and attempt < RETRIES:
                 time.sleep(_wait(e, attempt))
                 continue

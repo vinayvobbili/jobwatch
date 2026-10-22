@@ -1109,6 +1109,8 @@ function payLine(job) {
   const p = job.expected_pay;
   if (!p) return null;
   if (p.pending) return h("div", { class: "small muted", "data-pay": job.key }, "Expected pay: looking it up on Levels.fyi…");
+  if (p.refused) return h("div", { class: "small muted", "data-pay": job.key },
+    "Expected pay: Levels.fyi is refusing jobwatch's requests for now; it's asked again tomorrow.");
   return h("details", { class: "whyfit", "data-pay": job.key }, h("summary", {}, "Expected pay: " + p.line),
     h("ul", {}, p.why.map(w => h("li", {}, w)), h("li", {}, link(p.url, p.credit + " ↗"))));
 }
