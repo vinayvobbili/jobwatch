@@ -105,7 +105,9 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
     if fit and fit.get("score", 0) >= STRONG_FIT:
         go.append(("strong_fit", f"a strong fit ({round(fit['score'])}/100)"))
     if entry.contacts:
-        go.append(("contact", f"you know {entry.contacts[0]['name']} there: ask for a referral first"))
+        who = entry.contacts[0]
+        go.append(("contact", f"you know {who['name']} there: ask for a referral first"
+                   + (f" ({who['note']})" if who.get("note") else "")))
     if (age := job.age_days()) is not None and age <= FRESH:
         extra.append(("fresh", f"posted {_ago((history.today - timedelta(days=age)).isoformat(), history.today)}, "
                                "so it's read early"))

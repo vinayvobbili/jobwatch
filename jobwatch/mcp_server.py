@@ -27,6 +27,7 @@ from . import (
     levels,
     prep,
     quiet,
+    referrals,
     report,
     sources,
     stories,
@@ -75,7 +76,8 @@ server = MCPServer(
         "don't apply or ask for a referral again), otherwise it's the same title only (check it's a different "
         "opening). find_duplicates lists such pairs already in the store. get_company looks one company up by name "
         "or domain across every status, closed postings too: its jobs, people the user knows there, and whether its "
-        "board is watched. "
+        "board is watched. rate_contact records whom the user wants asked for referrals first (use) or never "
+        "(skip), with a short note, when they say so about someone in a contacts list. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
     version=__version__,
@@ -617,6 +619,32 @@ def get_company(
             # a ToolError, so the model reads the message: any other exception's text stays on the server
             raise ToolError(f"no tracked job is at a company matching {name!r}")
         return v
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(destructive=True, idempotent=True))
+def rate_contact(
+    who: Annotated[str, Field(description=(
+        "The connection's full name (\"Ana Li\") or LinkedIn profile link (linkedin.com/in/...)."))],
+    verdict: Annotated[Literal["use", "skip", "clear"], Field(description=(
+        "use: ask them first; skip: never suggest them; clear: back to the usual order."))],
+    note: Annotated[str | None, Field(description=(
+        "A few words to show beside their name, e.g. \"doesn't check LinkedIn; reach on WhatsApp\"."))] = None,
+) -> dict:
+    """Record what the person says about someone they know at a company: use (a good person to ask for a
+    referral: listed first wherever contacts are), skip (never suggest them, e.g. never answers messages) or
+    clear (forget it), with an optional short note that is shown with their name. Call it when the person
+    tells you whom to ask or not to ask; it only changes how contacts are ordered and listed. Returns the
+    connection (name, company, position, verdict, note). Errors when no connection (or more than one) has
+    that name: then use their profile link."""
+    cfg, store = _open()
+    try:
+        try:
+            p = referrals.rate(cfg, store, who, verdict, note or "")
+        except ValueError as e:
+            raise ToolError(str(e)) from None
+        return {k: p[k] for k in ("name", "company", "position", "url", "verdict", "note")}
     finally:
         store.close()
 

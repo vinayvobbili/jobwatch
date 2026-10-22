@@ -22,6 +22,7 @@ from .text import parse_salary
 STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdrawn")
 ENDED = ("rejected", "withdrawn")
 STATUSES = ("new", "shown", "queued", *STAGES, "skipped")
+VERDICTS = ("use", "skip")  # what can be said of a person to ask for a referral
 MANUAL = "manual"  # the source of applications added by hand (found elsewhere, not on a watched board)
 # Posts from a thread of many companies' posts (HN's Who is hiring) aren't fit-scored (see watch.scorable): a
 # score saved for one before that is left out when scores are read (it stays in the file, unused).
@@ -120,6 +121,12 @@ CREATE TABLE IF NOT EXISTS logos (
 CREATE TABLE IF NOT EXISTS secrets (
     name TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS referral_feedback (
+    person TEXT PRIMARY KEY,
+    verdict TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    set_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS activity (
     at TEXT NOT NULL,
@@ -781,6 +788,27 @@ class Store:
         with self.db:
             return bool(self.db.execute("UPDATE unwatched SET dismissed_at=COALESCE(dismissed_at, ?) "
                                         "WHERE company=?", (_now(), company)).rowcount)
+
+    # -- referral feedback: whom to use and whom not to, per person (contacts.person_key: profile slug, else name)
+
+    def rate_contact(self, person: str, verdict: str, note: str = ""):
+        """Use or skip a person when suggesting who to ask for a referral, with a short note ("doesn't check
+        LinkedIn; reach on WhatsApp"). Setting it again replaces both."""
+        if verdict not in VERDICTS:
+            raise ValueError(f"verdict must be one of {', '.join(VERDICTS)}")
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO referral_feedback (person, verdict, note, set_at) "
+                            "VALUES (?, ?, ?, ?)", (person, verdict, note.strip(), _now()))
+
+    def clear_contact(self, person: str) -> bool:
+        """Forget what was said about a person. Returns whether there was anything."""
+        with self.db:
+            return bool(self.db.execute("DELETE FROM referral_feedback WHERE person=?", (person,)).rowcount)
+
+    def contact_feedback(self) -> dict[str, dict]:
+        """{person: {verdict, note, set_at}} for everyone rated."""
+        return {r["person"]: {"verdict": r["verdict"], "note": r["note"], "set_at": r["set_at"]}
+                for r in self.db.execute("SELECT * FROM referral_feedback")}
 
     def _backfill_unwatched(self):
         """Fill in the companies from jobs recorded before there were suggestions: those from job-alert emails

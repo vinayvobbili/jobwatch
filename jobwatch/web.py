@@ -43,6 +43,7 @@ from . import (
     mock,
     prep,
     quiet,
+    referrals,
     report,
     sources,
     stories,
@@ -578,6 +579,20 @@ class App:
             return {"dismissed": suggest.dismiss(store, body.get("company") or "").name}
         return self._with_store(run)
 
+    def get_referrals(self, q) -> dict:
+        """The people you know at companies with tracked jobs, and what you've said about each (see referrals.py)."""
+        return self._with_store(lambda cfg, store: referrals.view(cfg, store))
+
+    def post_referral_rate(self, body) -> dict:
+        """Use or don't use a person (who: their name, link or key), or clear it; the note is kept with the verdict."""
+        def run(cfg, store):
+            try:
+                p = referrals.rate(cfg, store, body.get("who") or "", body.get("verdict") or "", body.get("note") or "")
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+            return {"key": p["key"], "name": p["name"], "verdict": p["verdict"], "note": p["note"]}
+        return self._with_store(run)
+
     def post_fetch(self, body) -> dict:
         """Check every board now; while a check is running already (the scheduled one), wait for it instead."""
         return self.refresher.fetch()
@@ -1070,6 +1085,8 @@ ROUTES = {
     ("GET", "/api/suggestions"): App.get_suggestions,
     ("POST", "/api/suggestions/add"): App.post_suggestion_add,
     ("POST", "/api/suggestions/dismiss"): App.post_suggestion_dismiss,
+    ("GET", "/api/referrals"): App.get_referrals,
+    ("POST", "/api/referrals/rate"): App.post_referral_rate,
     ("POST", "/api/fetch"): App.post_fetch,
     ("GET", "/api/checked"): App.get_checked,
     ("GET", "/api/activity"): App.get_activity,
