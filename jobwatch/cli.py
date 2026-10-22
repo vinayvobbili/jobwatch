@@ -34,6 +34,7 @@ from . import (
     mock,
     prep,
     quiet,
+    referrals,
     report,
     sources,
     stories,
@@ -741,6 +742,19 @@ def cmd_queue(args, cfg, store):
     _write(report.queue_markdown(queue(cfg, store, pay_budget=levels.QUEUE)), args.out)
 
 
+def cmd_referrals(args, cfg, store):
+    for verdict, who in (("use", args.use), ("skip", args.skip), ("clear", args.clear)):
+        for name in who or []:
+            p = referrals.rate(cfg, store, name, verdict, args.note or "")
+            print({"use": f"{p['name']} sorts first when suggesting who to ask.",
+                   "skip": f"{p['name']} won't be suggested.",
+                   "clear": f"{p['name']} is back to the usual order."}[verdict])
+    if args.use or args.skip or args.clear:
+        return
+    v = referrals.view(cfg, store)
+    print(json.dumps(v, indent=2, ensure_ascii=False) if args.format == "json" else referrals.text(v))
+
+
 def cmd_check(args, cfg, store):
     checks = check_postings(store, tuple(args.status or ("queued", "applied", "screening", "interviewing")),
                             watched=cfg.boards)
@@ -1066,6 +1080,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--note", help="e.g. 'ask Ana for a referral first'")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_queue)
+
+    p = sub.add_parser("referrals", help="the people you know at companies you're tracking, and whom to ask for "
+                       "a referral: `--use NAME` puts someone first, `--skip NAME` never suggests them, "
+                       "`--clear NAME` undoes it",
+                       description="The connections (see `connections:` in the watchlist) who work at companies "
+                       "with a new, queued or open job, closest ties first. --use puts a person ahead of closer "
+                       "ties wherever 'You know...' is shown; --skip never suggests them (like connections_skip in "
+                       "the watchlist, but changeable here and in the page's Referrals tab); --clear forgets "
+                       "either. NAME is a full name or a linkedin.com/in/ link; --note keeps a few words with it.")
+    p.add_argument("--use", action="append", metavar="NAME", help="ask this person first; repeatable")
+    p.add_argument("--skip", action="append", metavar="NAME", help="never suggest this person; repeatable")
+    p.add_argument("--clear", action="append", metavar="NAME", help="forget what was said about this person; "
+                   "repeatable")
+    p.add_argument("--note", help="e.g. 'doesn't check LinkedIn; reach on WhatsApp' (with --use or --skip)")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_referrals)
 
     p = sub.add_parser("check", help="check that queued jobs and open applications are still posted, and record "
                        "the ones that closed (or came back)")

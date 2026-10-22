@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -263,8 +264,13 @@ def load_contacts(cfg: Config) -> Contacts | None:
     if not cfg.connections:
         return None
     try:
-        return Contacts.load(cfg.connections, cfg.connections_skip)
-    except (OSError, ValueError) as e:
+        store = Store(cfg.state)
+        try:
+            feedback = store.contact_feedback()  # whom to use and not to, from the page, CLI or an assistant
+        finally:
+            store.close()
+        return Contacts.load(cfg.connections, cfg.connections_skip, feedback)
+    except (OSError, ValueError, sqlite3.Error) as e:
         print(f"jobwatch: connections skipped: {e}", file=sys.stderr)
         return None
 

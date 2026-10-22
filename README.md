@@ -1060,6 +1060,22 @@ Someone you'd never ask for a referral can be left out, by name or profile link:
 connections_skip: [Jane Doe, https://www.linkedin.com/in/example-john]
 ```
 
+Or say so as you go. The **Referrals** tab lists the people you know at companies with a new, queued or open
+job, closest ties first, with the jobs they're at. **Use** puts someone ahead of closer ties; **Don't use**
+stops suggesting them (they wait in a fold, to restore); a note keeps a few words with the name ("doesn't check
+LinkedIn; reach on WhatsApp") and shows beside it on the job cards, where a small **Don't use** does the same.
+People in `connections_skip` are listed there too, read-only. The same from the terminal, and for an assistant:
+
+```
+jobwatch referrals                                  # the same rows
+jobwatch referrals --use "Ana Li" --note "answers fast"
+jobwatch referrals --skip "Bo Chen" --note "doesn't check LinkedIn"
+jobwatch referrals --clear "Bo Chen"                # NAME is a full name or a linkedin.com/in/ link
+```
+
+The MCP tool is `rate_contact` (who, verdict `use`, `skip` or `clear`, note). What you say is kept in the
+state file next to your jobs, keyed by profile link (or name when there is none).
+
 A digest lists each job once, the top `display.today` (10) of them, and ends with how many more match;
 those stay new for the next digest. Use `digest --all` for every match, including jobs already shown,
 `--limit N` for another number, or `--peek` to look without marking them shown. Roles that disappear from a
@@ -1073,7 +1089,8 @@ board are marked closed. The MCP `get_digest` returns the same top 10 by default
   `dismiss_suggested_board`
 - **New jobs:** `fetch_jobs`, `import_job_alerts`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
 - **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`,
-  `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`), `get_company`
+  `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`), `get_company`,
+  `rate_contact`
 - **What was sent:** `save_application_package`, `get_application_package`, `find_past_answers`,
   `get_interview_prep`, `save_story`
 

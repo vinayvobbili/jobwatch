@@ -43,6 +43,17 @@ def _name_key(first: str, last: str = "") -> str:
     return " ".join(f"{first} {last}".lower().split())
 
 
+def person_key(person: dict) -> str:
+    """How feedback about a person is keyed: their profile slug when they have a link, else "name:<full name>"
+    (the same keys the tie counts use)."""
+    return profile_key(person.get("url", "")) or "name:" + _name_key(person.get("name", ""))
+
+
+def key_for(who: str) -> str:
+    """person_key for what a person typed: a linkedin.com/in/ link, or a name."""
+    return profile_key(who) or "name:" + _name_key(who)
+
+
 def _rows(text: str, first_column: str) -> list[dict]:
     """CSV rows, skipping the notes LinkedIn puts above some headers."""
     lines = text.lstrip("﻿").splitlines()
@@ -141,42 +152,76 @@ def why(tie: dict) -> str:
     return "; ".join(parts)
 
 
+def _order(p: dict) -> tuple:
+    """People marked Use first, then the strongest ties."""
+    return (p.get("verdict") != "use", -p.get("strength", 0))
+
+
 class Contacts:
-    def __init__(self, people: list[dict], ties: dict[str, dict] | None = None, skip: list[str] | tuple = ()):
-        """skip: people never to suggest (a name, or a linkedin.com/in/ link), however close the tie."""
+    def __init__(self, people: list[dict], ties: dict[str, dict] | None = None, skip: list[str] | tuple = (),
+                 feedback: dict[str, dict] | None = None):
+        """skip: people never to suggest (a name, or a linkedin.com/in/ link), however close the tie.
+        feedback: {person_key: {"verdict": "use" | "skip", "note": ...}} from the referrals page: skip is the same
+        as above, use sorts a person ahead of closer ties, and the note goes with the person."""
         self.has_ties = bool(ties)
         ties = ties or {}
+        feedback = feedback or {}
         skip_profiles = {k for s in skip if (k := profile_key(s))}
         skip_names = {_name_key(s) for s in skip if not profile_key(s)}
         self.by_company: dict[str, list[dict]] = {}
+        self.everyone: list[dict] = []
+        self.hidden: dict[str, list[dict]] = {}  # the people left out, to list them where they can be put back
         for p in people:
-            if _name_key(p["name"]) in skip_names or profile_key(p.get("url", "")) in skip_profiles:
-                continue
             t = {**ties.get("name:" + _name_key(p["name"]), {}), **ties.get(profile_key(p.get("url", "")), {})}
-            if t:
-                p = {**p, "strength": strength(t), "why": why(t)}
+            fb = feedback.get(person_key(p), {})
+            in_file = _name_key(p["name"]) in skip_names or profile_key(p.get("url", "")) in skip_profiles
+            p = {**p, "key": person_key(p), "strength": strength(t), "why": why(t), "verdict": fb.get("verdict", ""),
+                 "note": fb.get("note", ""), "from_file": in_file}
+            self.everyone.append(p)
             if key := company_key(p.get("company", "")):
-                self.by_company.setdefault(key, []).append(p)
+                left_out = in_file or p["verdict"] == "skip"
+                (self.hidden if left_out else self.by_company).setdefault(key, []).append(p)
         for group in self.by_company.values():
-            group.sort(key=lambda p: -p.get("strength", 0))
+            group.sort(key=_order)
 
     @classmethod
-    def load(cls, path: Path | str, skip: list[str] | tuple = ()) -> Contacts:
+    def load(cls, path: Path | str, skip: list[str] | tuple = (), feedback: dict[str, dict] | None = None) -> Contacts:
         """Connections.csv (with linkedin-ties.json beside it, if an archive was imported), or the archive .zip."""
         path = Path(path).expanduser()
         if path.suffix.lower() == ".zip":
-            return cls(*read_archive(path), skip=skip)
+            return cls(*read_archive(path), skip=skip, feedback=feedback)
         people = parse_connections(path.read_text(encoding="utf-8-sig"), str(path))
         ties_path = path.with_name(TIES_FILE)
         ties = json.loads(ties_path.read_text()) if ties_path.is_file() else None
-        return cls(people, ties, skip)
+        return cls(people, ties, skip, feedback)
 
     def at(self, *names: str) -> list[dict]:
         """Connections whose current company is any of these names (the board's name, its slug, ...),
         people you actually talk to first."""
         keys = {company_key(n) for n in names if n}
         found = [p for k in keys if k for p in self.by_company.get(k, [])]
-        return sorted(found, key=lambda p: -p.get("strength", 0))
+        return sorted(found, key=_order)
+
+    def find(self, who: str) -> dict:
+        """The connection a name, linkedin.com/in/ link or person key means. Raises ValueError when none, or
+        several, are."""
+        if found := [p for p in self.everyone if p["key"] == who.strip().lower()]:
+            pass
+        elif slug := profile_key(who):
+            found = [p for p in self.everyone if profile_key(p.get("url", "")) == slug]
+        else:
+            found = [p for p in self.everyone if _name_key(p["name"]) == _name_key(who)]
+        if not found:
+            raise ValueError(f"no connection matches {who!r}")
+        if len(found) > 1:
+            raise ValueError(f"{len(found)} connections are called {who!r}: use a linkedin.com/in/ link")
+        return found[0]
+
+    def left_out(self, *names: str) -> list[dict]:
+        """The connections at a company that are never suggested: marked Don't use, or in connections_skip
+        (from_file)."""
+        keys = {company_key(n) for n in names if n}
+        return [p for k in keys if k for p in self.hidden.get(k, [])]
 
 
 def import_archive(data: bytes, folder: Path) -> tuple[Path, int, int]:

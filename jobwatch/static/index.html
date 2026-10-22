@@ -219,6 +219,14 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .know { color: var(--good); font-size: 13.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .know a { color: var(--muted); text-decoration: none; }
 .know a:hover { color: var(--accent); text-decoration: underline; }
+.know .dont { font-size: 12px; padding: 0 6px; margin-left: 4px; background: none; border: 1px solid var(--line);
+  border-radius: 999px; color: var(--muted); cursor: pointer; }
+.know .dont:hover { color: var(--bad); border-color: var(--bad); }
+.know .pnote { color: var(--muted); font-style: italic; }
+.card.ref { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: start; }
+.card.ref .rate { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 230px; }
+.card.ref .rate input { width: 100%; box-sizing: border-box; }
+@media (max-width: 700px) { .card.ref { grid-template-columns: 1fr; } }
 .note { font-size: 13.5px; color: var(--muted); margin-top: 6px; padding-left: 10px;
   border-left: 2px solid var(--line); }
 /* An application's note grows a dated entry at every step: three lines on the card, the whole note in Details. */
@@ -761,6 +769,7 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
       <button data-tab="interviews">Interviews<span id="ivcount"></span></button>
       <button data-tab="queue">Queue<span id="qcount"></span></button>
       <button data-tab="applied">Applications<span id="duecount"></span></button>
+      <button data-tab="referrals">Referrals</button>
       <button data-tab="skills">Skills</button>
       <button data-tab="activity">Activity<span id="actcount"></span></button>
       <button data-tab="settings">Settings</button>
@@ -1050,10 +1059,31 @@ function people(list, most = 3) {
   return names.join("; ") + (list.length > most ? ` and ${list.length - most} more` : "");
 }
 
-// Who you know there, strongest ties first, and a way to find an introduction when you know nobody.
+// Whom to ask for a referral, or not to: use/skip/clear, with a few words about the person (the Referrals tab, and
+// "Don't use" on a job card). `who` is the person's key.
+async function rateContact(who, verdict, note) {
+  return api("/api/referrals/rate", { who, verdict, note: note || "" });
+}
+
+// Who you know there, people you chose to ask first and then the strongest ties, and a way to find an introduction
+// when you know nobody.
 function knowLine(job, most = 3) {
+  const bit = p => {
+    const el = h("span", {}, (p.position ? `${p.name} (${p.position})` : p.name) + (p.why ? ` — ${p.why}` : ""),
+      p.note ? h("span", { class: "pnote" }, ` “${p.note}”`) : null,
+      h("button", { class: "dont", title: "Never suggest this person (undo in the Referrals tab)", onclick: async () => {
+        try {
+          await rateContact(p.key, "skip", p.note);
+          el.remove();
+          toast(`${p.name} won't be suggested`, async () => { await rateContact(p.key, "clear"); render(); }, "onward");
+        } catch (e) { toast(e.message); }
+      } }, "Don't use"));
+    return el;
+  };
+  const shown = job.contacts.slice(0, most), rest = job.contacts.length - shown.length;
   return h("div", { class: "know" }, icon("users", 14),
-    job.contacts.length ? h("span", {}, "You know " + people(job.contacts, most)) : null,
+    shown.length ? h("span", {}, "You know ", shown.flatMap((p, i) => i ? ["; ", bit(p)] : [bit(p)]),
+      rest > 0 ? ` and ${rest} more` : null) : null,
     link(job.find_referral, job.contacts.length ? "more on LinkedIn ↗" : "Find someone who can refer you ↗"));
 }
 
@@ -3131,6 +3161,52 @@ function alertsCard(s) {
   return el;
 }
 
+// -- referrals: the people you know at companies with jobs you're tracking, and whom to ask. Use puts someone
+// ahead of closer ties, Don't use hides them from every "You know" line (they wait in the fold to be restored);
+// people in the watchlist's connections_skip are listed there too, but only that file changes them.
+async function renderReferrals() {
+  const d = await api("/api/referrals");
+  const rate = async (p, verdict, note) => {
+    try {
+      await rateContact(p.key, verdict, note);
+      if (verdict === "skip") toast(`${p.name} won't be suggested`, async () => { await rateContact(p.key, "clear"); render(); }, "onward");
+      render();
+    } catch (e) { toast(e.message); }
+  };
+  const row = (p, restore) => {
+    const note = h("input", { type: "text", placeholder: "Note: e.g. doesn't check LinkedIn; reach on WhatsApp",
+      "aria-label": "Note about " + p.name, maxlength: 200 });
+    note.value = p.note;
+    note.onchange = () => p.verdict ? rate(p, p.verdict, note.value) : toast("Choose Use or Don't use first, then the note is kept");
+    const btn = (label, verdict, title) => h("button", { class: "btn" + (p.verdict === verdict ? " primary" : ""), title,
+      onclick: () => rate(p, verdict, note.value) }, label);
+    const controls = p.from_file ? h("div", { class: "rate small muted" }, "In your watchlist file (connections_skip): edit it there")
+      : restore ? h("div", { class: "rate" }, note, h("button", { class: "btn", onclick: () => rate(p, "clear") }, "Restore"))
+      : h("div", { class: "rate" },
+        h("div", { style: "display:flex;gap:6px" }, btn("Use", "use", "Ask this person first"),
+          btn("Don't use", "skip", "Never suggest this person"),
+          p.verdict ? h("button", { class: "btn ghost", onclick: () => rate(p, "clear") }, "Clear") : null),
+        note);
+    return h("div", { class: "card ref" },
+      h("div", {},
+        h("div", {}, p.url ? link(p.url, p.name, "title") : h("b", {}, p.name),
+          p.verdict === "use" ? h("span", { class: "chip hit", style: "margin-left:8px" }, "ask first") : null),
+        h("div", { class: "small muted" }, [p.position, p.company].filter(Boolean).join(" at ")),
+        h("div", { class: "small", style: "color:var(--good)" }, p.why || "no messages or endorsements in your data"),
+        h("div", { class: "chips" }, p.jobs.map(j => h("button", { class: "chip", style: "border:0;cursor:pointer",
+          title: j.status, onclick: () => openDetails(j.key) }, `${j.company}: ${j.title}`)))),
+      controls);
+  };
+  const folded = d.skipped.length ? h("details", { class: "fold" },
+    h("summary", {}, `Not suggested (${d.skipped.length})`), h("div", { class: "cards" }, d.skipped.map(p => row(p, true)))) : null;
+  put(pagehead("Referrals", "People you know at companies you're tracking. Say whom to ask first and whom not to: " +
+      "it changes the \"You know\" lines everywhere."),
+    d.has_connections ? h("div", {}, section("Where you know someone", d.people.length),
+      h("div", { class: "cards" }, d.people.length ? d.people.map(p => row(p, false))
+        : emptyState("Nobody you know works at a company with a tracked job.")), folded)
+      : emptyState("No LinkedIn connections yet: upload your data in Settings.", null));
+}
+
 // -- skills: what the matching jobs ask for that the resume doesn't show, and where to learn it
 const skillsView = { timeline: null, covered: false };
 const TIMELINES = [["week", "Week"], ["month", "Month"], ["quarter", "Quarter"], ["any", "Any"]];
@@ -3700,7 +3776,7 @@ async function render() {
     if (tab === "settings") renderSettings();
     else if (!settings.exists || (!settings.companies.length && tab !== "applied")) renderWelcome();
     else await loading(document.querySelector(`#tabs button[data-tab="${tab}"]`),
-      { today: renderToday, interviews: renderInterviews, queue: renderQueue, applied: renderApplied, skills: renderSkills,
+      { today: renderToday, interviews: renderInterviews, queue: renderQueue, applied: renderApplied, referrals: renderReferrals, skills: renderSkills,
         activity: renderActivity }[tab]);
   } catch (e) { showError(main, e); }
   refreshQueueCount();
@@ -3730,7 +3806,7 @@ async function loading(button, work, delay = 150) {
 
 function go(name) { tab = name; history.replaceState(null, "", "#" + name); render(); }
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => go(b.dataset.tab);
-const TABS = ["today", "interviews", "queue", "applied", "skills", "activity", "settings"];
+const TABS = ["today", "interviews", "queue", "applied", "referrals", "skills", "activity", "settings"];
 window.addEventListener("hashchange", () => {
   const want = location.hash.slice(1);
   if (TABS.includes(want) && want !== tab && settings) { tab = want; render(); }
