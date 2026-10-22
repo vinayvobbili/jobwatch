@@ -828,7 +828,12 @@ function h(tag, attrs, ...kids) {
 // replaceChildren doesn't flatten arrays of cards
 function fill(el, ...kids) { el.replaceChildren(...kids.flat(Infinity).filter(k => k !== null && k !== undefined && k !== false)); }
 function put(...kids) { fill(main, ...kids); }
-function safeUrl(u) { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : "#"; } catch { return "#"; } }
+// A link's address: http(s) anywhere, or this page's own origin (a prep sheet's path, a blob download); a bare #fragment stays.
+function safeUrl(u) {
+  try { const x = new URL(u, location.href);
+    return String(u).startsWith("#") ? u : /^https?:$/.test(x.protocol) || (x.origin !== "null" && x.origin === location.origin) ? x.href : "#";
+  } catch { return "#"; }
+}
 // No link without a URL: an empty href opens jobwatch itself in a new tab (a job added by hand with no posting link).
 function link(url, text, cls) {
   if (!url || url === "#") return h("span", { class: cls }, text);

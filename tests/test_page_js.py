@@ -155,3 +155,21 @@ def test_an_applications_note_is_clamped_on_the_card():
     rule = re.search(r"^\.app \.note \{([^}]*)\}", page, re.M)
     assert rule and "-webkit-line-clamp: 3" in rule.group(1) and "overflow: hidden" in rule.group(1)
     assert 'h("div", { class: "note", title: "Details shows the whole note" }, a.note)' in page_function("appCard")
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_links_keep_the_pages_own_paths_and_fragments_but_not_script_schemes(tmp_path):
+    """A prep sheet's link is a path on this page's own server and a jump link is a #fragment: both must survive
+    safeUrl; javascript: and data: stay blocked, and a posting's https link is unchanged."""
+    js = tmp_path / "links.js"
+    js.write_text("const location = new URL('http://127.0.0.1:8765/');\n" + page_function("safeUrl") + """
+const urls = ["/prep/s3cret/acme-onsite.html", "#settings", "#", "https://boards.example.com/jobs/1?a=b",
+  "javascript:alert(1)", "data:text/html,hi", "ftp://example.com/x", "blob:http://127.0.0.1:8765/abc",
+  "blob:http://evil.example/abc", "//evil.example/x"];
+console.log(JSON.stringify(urls.map(safeUrl)));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [
+        "http://127.0.0.1:8765/prep/s3cret/acme-onsite.html", "#settings", "#", "https://boards.example.com/jobs/1?a=b",
+        "#", "#", "#", "blob:http://127.0.0.1:8765/abc", "#", "http://evil.example/x"]
