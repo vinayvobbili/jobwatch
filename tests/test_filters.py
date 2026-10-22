@@ -16,6 +16,16 @@ def test_no_filters_pass_everything():
     assert reject_reason(job(), Filters()) is None
 
 
+def test_remembered_answers_follow_a_new_pattern_or_new_text():
+    f = Filters(exclude_text=["red team"])
+    assert reject_reason(job(description="Lead red team work"), f) == "text matches 'red team'"
+    assert reject_reason(job(description="Lead red team work"), f) == "text matches 'red team'"   # remembered
+    assert reject_reason(job(description="Lead blue team work"), f) is None                        # new text
+    assert reject_reason(job(description="Lead red team work"), Filters(exclude_text=["pen ?test"])) is None
+    assert reject_reason(job(title="Engineering Manager"), Filters(exclude_titles=["manager"])) is not None
+    assert reject_reason(job(title="Engineering Manager"), Filters(exclude_titles=["director"])) is None
+
+
 def test_titles_and_exclusions():
     f = Filters(titles=["engineer"], exclude_titles=["manager", r"\bintern"])
     assert reject_reason(job(), f) is None

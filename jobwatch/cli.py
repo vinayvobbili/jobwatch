@@ -29,6 +29,7 @@ from . import (
     inbox,
     learn,
     levels,
+    logos,
     mock,
     prep,
     quiet,
@@ -423,6 +424,21 @@ def cmd_hidden(args, cfg, store):
         print(f"  {j['company']}: {j['title']}  ({j['kind'] + ': ' if since else ''}{j['why']})  `{j['key']}`")
     if h["more"]:
         print(f"  ...and {h['more']} more (--limit)")
+
+
+def cmd_logos(args, cfg, store):
+    """Look up company logos for the page (logos.py): the companies named, or every one with an open job."""
+    jobs = [j for j, _ in store.jobs(include_closed=True)]
+    names = args.name or list(dict.fromkeys(j.display_company for j, _ in store.jobs()))
+    if args.again:
+        for n in names:
+            store.db.execute("DELETE FROM logos WHERE company=?", (logos.key(n),))
+        store.db.commit()
+    found = set(logos.look_up(store, names, jobs))
+    for n in dict.fromkeys(names):
+        kept = store.logo(logos.key(n))
+        line = f"{kept[0]} ({kept[1]}, {len(kept[2]):,} bytes)" if kept and kept[2] else "none found"
+        print(f"  {n}: {line}" + ("  (new)" if logos.key(n) in found else ""))
 
 
 def cmd_company(args, cfg, store):
@@ -1069,6 +1085,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--source", help="only this source's jobs (manual: from alert emails and links; greenhouse, ...)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_hidden, read_only=True)
+
+    p = sub.add_parser("logos", help="look up the company logos the page shows (from each company's own site), "
+                       "for the companies named or every one with an open job")
+    p.add_argument("name", nargs="*", help="a company's name as jobwatch shows it")
+    p.add_argument("--again", action="store_true", help="look again, even for logos already kept")
+    p.set_defaults(func=cmd_logos)
     return ap
 
 

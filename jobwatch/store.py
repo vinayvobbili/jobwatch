@@ -110,6 +110,13 @@ CREATE TABLE IF NOT EXISTS drafts (
     made_at TEXT NOT NULL,
     PRIMARY KEY (key, inputs)
 );
+CREATE TABLE IF NOT EXISTS logos (
+    company TEXT PRIMARY KEY,
+    site TEXT NOT NULL,
+    ctype TEXT NOT NULL,
+    body BLOB NOT NULL,
+    fetched_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS secrets (
     name TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -185,6 +192,13 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, timeout=BUSY)
         self.db.row_factory = sqlite3.Row
+        # Write-ahead logging: a long read (the page drawing Today) and a write (a score, a logo) don't wait on
+        # each other. Kept in the file, so this only changes it the first time.
+        try:
+            if self.db.execute("PRAGMA journal_mode").fetchone()[0] != "wal":
+                self.db.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:  # another connection is switching it, or using it: a later open will
+            pass
         older = not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='unwatched_jobs'").fetchone()
         self.db.executescript(_SCHEMA)
         have = {r["name"] for r in self.db.execute("PRAGMA table_info(jobs)")}
@@ -690,6 +704,21 @@ class Store:
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO pay_pages (url, body, fetched_at, gone) VALUES (?, ?, ?, ?)",
                             (url, body, _now(), int(gone)))
+
+    # Company logos (see logos.py) under logos.key of the company's name: the domain it came from, its content type
+    # and its bytes. An empty body records a look that found none.
+
+    def logo(self, company: str) -> tuple[str, str, bytes, datetime] | None:
+        row = self.db.execute("SELECT site, ctype, body, fetched_at FROM logos WHERE company=?",
+                              (company,)).fetchone()
+        if not row:
+            return None
+        return row["site"], row["ctype"], bytes(row["body"]), datetime.fromisoformat(row["fetched_at"])
+
+    def save_logo(self, company: str, site: str, ctype: str, body: bytes):
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO logos (company, site, ctype, body, fetched_at) "
+                            "VALUES (?, ?, ?, ?, ?)", (company, site, ctype, body, _now()))
 
     # Companies whose jobs came in from alerts, `add` or HN posts while their board isn't watched (see suggest.py),
     # one row each under the company's bare name ("umbrella" for "Umbrella LLC"). entry is its board, source:board,

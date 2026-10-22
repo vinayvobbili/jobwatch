@@ -1,9 +1,10 @@
 """`jobwatch ui`: the same watchlist, digest and queue in a browser page, served from this computer only.
 
 The server listens on 127.0.0.1. Every API call must carry the token embedded in the page it served, and a
-Host header naming this machine, so other websites open in the browser can't read or change anything. The two
+Host header naming this machine, so other websites open in the browser can't read or change anything. The
 exceptions are the calendar feed and the prep sheets folder, whose addresses hold a secret instead (a calendar
-app, or a sheet opened in a tab of its own, can't send the token).
+app, or a sheet opened in a tab of its own, can't send the token), and company logos, whose addresses hold the
+token (an <img> can't send it as a header).
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ from . import (
     interviews,
     learn,
     levels,
+    logos,
     mock,
     prep,
     quiet,
@@ -377,6 +379,50 @@ class PayLookup:
                 self._thread, self._todo = None, []  # what's left is asked for on the page's next look
 
 
+class LogoLookup:
+    """Looks up company logos in the background (see logos.py) for the companies the page asked for and doesn't
+    have yet, a second or so apart; the page shows them the next time it draws a company."""
+
+    def __init__(self, app: App):
+        self.app = app
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._todo: list[str] = []
+
+    def kick(self, names: list[str]):
+        with self._lock:
+            self._todo = list(dict.fromkeys(self._todo + names))
+            if not self._thread:
+                self._thread = threading.Thread(target=self._run, name="jobwatch-logos", daemon=True)
+                self._thread.start()
+
+    def wait(self, timeout: float | None = None):
+        if t := self._thread:
+            t.join(timeout)
+
+    def _run(self):
+        from .alerts import Robots
+        try:
+            store = Store(self.app._cfg().state)
+            try:
+                jobs, robots = [j for j, _ in store.jobs(include_closed=True)], Robots()
+                while True:
+                    with self._lock:
+                        names, self._todo = self._todo, []
+                    if not names:
+                        break
+                    if found := logos.look_up(store, names, jobs, robots=robots):
+                        store.log("logos", f"Found {plural(len(found), 'company logo')}", detail=found,
+                                  by="background")
+            finally:
+                store.close()
+        except Exception as e:  # never take the page down
+            print(f"jobwatch: logo lookup stopped: {type(e).__name__}: {e}", file=sys.stderr)
+        finally:
+            with self._lock:
+                self._thread, self._todo = None, []
+
+
 class App:
     """The API behind the page. Each method takes the request's query or JSON body and returns JSON data.
     With `background`, fit scores are worked out behind the scenes (see Scorer), and so is expected pay (PayLookup).
@@ -388,6 +434,7 @@ class App:
         self.looking = threading.Lock()  # one look for suggested companies' boards at a time
         self.scorer = Scorer(self)
         self.pay = PayLookup(self)
+        self.logos = LogoLookup(self)
         self.refresher = Refresher(self)
         self.background = background
 
@@ -652,6 +699,18 @@ class App:
                 return interviews.sheet_file(cfg.prep.sheets, name)
             except FileNotFoundError:
                 return None
+        return self._with_store(run)
+
+    def logo(self, name: str) -> tuple[bytes, str] | None:
+        """A company's logo (see logos.py) as (image, content type); None when none is kept, and then, unless it
+        was looked for lately, it's looked for in the background."""
+        def run(cfg, store):
+            kept = store.logo(logos.key(name))
+            if kept and kept[2]:
+                return kept[2], kept[1]
+            if self.background and logos.due(kept):
+                self.logos.kick([name])
+            return None
         return self._with_store(run)
 
     def get_calendar(self, q) -> dict:
@@ -1072,6 +1131,18 @@ def make_handler(app: App, token: str, port_ref: list[int]):
             self.end_headers()
             self.wfile.write(body)
 
+        def _send_logo(self, body: bytes, ctype: str):
+            """A logo: cached a day by the browser, and sandboxed (an SVG opened on its own can't run scripts)."""
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "private, max-age=86400")
+            self.send_header("Content-Security-Policy", "sandbox")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.end_headers()
+            self.wfile.write(body)
+
         def _send_file(self, path: Path, ctype: str):
             """A file from disk, whole or the one byte range asked for (a video player seeks with ranges).
             Sandboxed: a page served this way can't run scripts or read this page's origin."""
@@ -1174,6 +1245,15 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 if found is None:
                     return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return self._send_file(*found)
+            if method == "GET" and url.path.startswith("/logo/"):
+                # A company's logo for an <img>, which can't send the token header: the token is in the address.
+                tok, _, name = url.path[len("/logo/"):].partition("/")
+                if not secrets.compare_digest(tok, token):
+                    return self._json(HTTPStatus.FORBIDDEN, {"error": "missing or wrong token; reload the page"})
+                found = app.logo(unquote(name))
+                if found is None:
+                    return self._json(HTTPStatus.NOT_FOUND, {"error": "no logo"})
+                return self._send_logo(*found)
             if not url.path.startswith("/api/"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             if not secrets.compare_digest(self.headers.get("X-Jobwatch-Token", ""), token):

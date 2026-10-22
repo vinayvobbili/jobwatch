@@ -153,6 +153,12 @@ failed), each read of your job-alert emails, each job scored (its score and whic
 failed) and each lookup of expected pay, with what started it (the schedule, the button, the background
 scorer), plus what's running right now. It updates by itself while it's open, and keeps the last 1,000 entries.
 
+Each card shows the company's logo once it's known, else its initials. The logo is the icon on the company's own
+site (no logo service is asked), found in the background the first time a company shows up: the site is the
+domain its postings link to whose name is the company's, else its name plus .com when that home page names it.
+It's kept in the state file, and a company with none found is looked at again after two weeks. Sites that refuse
+jobwatch's requests keep their initials. `jobwatch logos` looks them all up at once (`--again` to refresh).
+
 A login item doesn't see variables set in your shell profile, so with `scoring.backend: claude` the page's
 chat and scores need the API key another way: keep it in the macOS keychain and name the item in
 `scoring.keychain` (`security add-generic-password -s anthropic -a "$USER" -w`, then `keychain: anthropic`),

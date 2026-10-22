@@ -177,6 +177,10 @@ button.btn:disabled { opacity: .55; cursor: default; }
   font-size: 16px; letter-spacing: -.02em; background: hsl(var(--h) 80% 93%); color: hsl(var(--h) 60% 36%);
   box-shadow: inset 0 0 0 1px hsl(var(--h) 60% 50% / .12); }
 :root[data-theme="dark"] .mono { background: hsl(var(--h) 45% 20%); color: hsl(var(--h) 90% 80%); }
+.mono { position: relative; overflow: hidden; flex: none; }
+.mono img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 18%;
+  box-sizing: border-box; background: #fff; opacity: 0; }
+.mono.logo img { opacity: 1; }
 .meta { color: var(--muted); font-size: 13.5px; margin: 3px 0 8px; display: flex; flex-wrap: wrap; gap: 4px 8px;
   align-items: center; }
 .meta b { color: var(--text); font-weight: 600; }
@@ -850,13 +854,20 @@ function icon(name, size = 15) {
   return svg;
 }
 
-// A company's initials on a color picked from its name: the same company always looks the same.
+// A company's logo from its own site once jobwatch has found it (see logos.py), else its initials on a color
+// picked from its name: the same company always looks the same.
 function monogram(name) {
   const words = (name || "?").replace(/[^A-Za-z0-9 ]+/g, " ").trim().split(/\s+/).filter(Boolean);
   const letters = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || "?").slice(0, 2)).toUpperCase();
   let hash = 7;
   for (const c of (name || "").toLowerCase()) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
-  return h("div", { class: "mono", style: `--h:${hash % 360}`, "aria-hidden": "true" }, letters);
+  const el = h("div", { class: "mono", style: `--h:${hash % 360}`, "aria-hidden": "true" }, letters);
+  if (name) {
+    const img = h("img", { src: `/logo/${TOKEN}/${encodeURIComponent(name)}`, alt: "", loading: "lazy", decoding: "async",
+      onload: () => el.classList.add("logo"), onerror: () => img.remove() });
+    el.append(img);
+  }
+  return el;
 }
 
 function pagehead(title, sub, ...right) {

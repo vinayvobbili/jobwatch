@@ -79,6 +79,23 @@ def _any(patterns: list[str], text: str) -> str | None:
     return next((p for p in patterns if re.search(p, text, re.I)), None)
 
 
+# Which of the patterns a job's title or text matched, under the patterns and the text's hash and length: Today
+# and the scoring line run every open job through the same title and text patterns on each look, and a job's
+# title and text rarely change. Cleared when it gets big.
+_SEEN: dict[tuple, str | None] = {}
+SEEN_MAX = 200_000
+
+
+def _any_text(patterns: list[str], text: str) -> str | None:
+    """_any, remembered (see _SEEN)."""
+    k = (tuple(patterns), hash(text), len(text))
+    if k not in _SEEN:
+        if len(_SEEN) >= SEEN_MAX:
+            _SEEN.clear()
+        _SEEN[k] = _any(patterns, text)
+    return _SEEN[k]
+
+
 def _remote_ok(job: Job, country: str) -> bool:
     anywhere = country.lower() == "any"
     others = [loc for loc in job.locations if not is_remote(loc)]
@@ -131,11 +148,11 @@ def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] 
     ("excluded", "text matches 'red team'"), ("place", "location"), ("place", "remote only in CA, NV"),
     ("pay", "pay $120K–$160K"), ("age", "posted 45 days ago"),
     ("fit", "fit 55/100"). `fit` is the job's stored fit score; a job without one passes min_fit."""
-    if f.titles and not _any(f.titles, job.title):
+    if f.titles and not _any_text(f.titles, job.title):
         return "title", "title"
-    if p := _any(f.exclude_titles, job.title):
+    if p := _any_text(f.exclude_titles, job.title):
         return "excluded", f"title matches {p!r}"
-    if f.exclude_text and (p := _any(f.exclude_text, f"{job.title}\n{job.description}")):
+    if f.exclude_text and (p := _any_text(f.exclude_text, f"{job.title}\n{job.description}")):
         return "excluded", f"text matches {p!r}"
     if job.department and (p := _any(f.exclude_departments, job.department)):
         return "department", f"department matches {p!r}"
