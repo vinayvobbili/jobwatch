@@ -310,5 +310,11 @@ def render(segs: list[Segment], out: Path, tts=None, renderer=None) -> Path:
         else:
             reel.add(s.html, "", min_duration=s.hold)
     out.parent.mkdir(parents=True, exist_ok=True)
-    reel.render(out)
+    # Written beside it, then put in its place: a render stopped part way leaves the last good video, not a broken one.
+    part = out.with_name(f".{out.stem}.part{out.suffix}")
+    try:
+        reel.render(part)
+        part.replace(out)
+    finally:
+        part.unlink(missing_ok=True)
     return out

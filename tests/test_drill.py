@@ -153,6 +153,10 @@ def fake_slidecast(monkeypatch):
                 if narration:
                     made["reel"]["tts"].synthesize(narration, "x.wav")
             made["out"] = out
+            if made.get("stop"):
+                out.write_bytes(b"half a video")
+                raise KeyboardInterrupt
+            out.write_bytes(b"video")
 
     mod = types.ModuleType("slidecast")
     mod.__spec__ = importlib.machinery.ModuleSpec("slidecast", None)
@@ -170,7 +174,17 @@ def test_render_sends_tagged_lines_and_silent_holds(fake_slidecast, tmp_path):
                                          f"[{drill.ANSWERER}] A."]
     assert slides[2][2] == {"min_duration": 70}
     assert tts.said[-2:] == [(drill.INTERVIEWER, "Q?"), (drill.ANSWERER, "A.")]
-    assert out == fake_slidecast["out"] and out.parent.is_dir()
+    assert out.read_bytes() == b"video" and list(out.parent.iterdir()) == [out]
+
+
+def test_a_render_stopped_part_way_keeps_the_last_good_video(fake_slidecast, tmp_path):
+    out = tmp_path / "drill.mp4"
+    out.write_bytes(b"last good video")
+    fake_slidecast["stop"] = True
+    segs = drill.segments([drill.Card("Q?", "A.", ("A.",))], "T", pause=0)
+    with pytest.raises(KeyboardInterrupt):
+        drill.render(segs, out, tts=FakeTTS(), renderer=object())
+    assert out.read_bytes() == b"last good video" and list(tmp_path.iterdir()) == [out]
 
 
 def test_render_without_slidecast_says_how_to_get_it(monkeypatch, tmp_path):
