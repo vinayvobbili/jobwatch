@@ -88,23 +88,42 @@ def from_sheet(sheet: Sheet, bank: list[Story]) -> list[Card]:
 
 
 class _Tables(HTMLParser):
-    """The rows of a page's tables as (header cells, body rows), with text inside class="muted" left out: on a
-    hand-written sheet that's where sources and asides go, not what you'd say."""
+    """The rows of a page's tables as (header cells, body rows), and its spoken answers: a question heading
+    (<h3 class="q">) with the "say" block under it (<div class="say">), as its paragraphs. Text inside
+    class="muted" is left out (on a hand-written sheet that's where sources and asides go, not what you'd
+    say), and so is a spoken paragraph with a class="fill" blank in it (a detail only you know, not filled in)."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.tables: list[tuple[list[str], list[list[str]]]] = []
+        self.spoken: list[tuple[str, list[str]]] = []
         self._cell: list[str] | None = None
         self._row: list[str] = []
         self._head = False
         self._stack: list[tuple[str, bool]] = []   # open elements, and whether each is muted
         self.title = ""
         self._in_title = False
+        self._q: list[str] | None = None    # a question heading's text, while it's read
+        self._asked = ""                    # the last question heading, until its say block
+        self._say: int | None = None        # how deep the say block being read sits in _stack
+        self._paras: list[str] = []
+        self._para: list[str] | None = None
+        self._blank = False                 # the paragraph being read has a fill-in blank
 
     def handle_starttag(self, tag, attrs):
         classes = (dict(attrs).get("class") or "").split()
         if tag not in _VOID:
             self._stack.append((tag, "muted" in classes))
+        if tag in ("h1", "h2", "h3", "h4", "h5", "h6") and self._say is None:
+            self._asked = ""  # a heading with no say block under it answers nothing that comes after
+            if tag in ("h3", "h4") and "q" in classes:
+                self._q = []
+        elif tag == "div" and "say" in classes and self._say is None and self._asked:
+            self._say, self._paras = len(self._stack), []
+        elif tag == "p" and self._say is not None:
+            self._para, self._blank = [], False
+        if "fill" in classes and self._para is not None:
+            self._blank = True
         if tag == "table":
             self.tables.append(([], []))
         elif tag == "tr":
@@ -122,6 +141,16 @@ class _Tables(HTMLParser):
         if any(t == tag for t, _ in self._stack):  # close it, and anything left open inside it
             while self._stack.pop()[0] != tag:
                 pass
+        if tag in ("h3", "h4") and self._q is not None:
+            self._asked, self._q = re.sub(r"\s+", " ", "".join(self._q)).strip(), None
+        elif tag == "p" and self._para is not None:
+            if not self._blank and (text := re.sub(r"\s+", " ", "".join(self._para)).strip()):
+                self._paras.append(text)
+            self._para = None
+        if self._say is not None and len(self._stack) < self._say:  # the say block is closed
+            if self._paras:
+                self.spoken.append((self._asked, self._paras))
+            self._say, self._asked = None, ""
         if tag in ("td", "th") and self._cell is not None:
             self._row.append(re.sub(r"\s+", " ", "".join(self._cell)).strip())
             self._cell = None
@@ -137,13 +166,33 @@ class _Tables(HTMLParser):
     def handle_data(self, data):
         if self._in_title:
             self.title += data
-        if self._cell is not None and not any(muted for _, muted in self._stack):
+        muted = any(m for _, m in self._stack)
+        if self._cell is not None and not muted:
             self._cell.append(data)
+        if self._q is not None:
+            self._q.append(data)
+        if self._para is not None and not muted:
+            self._para.append(data)
+
+
+_QUOTED = re.compile(r"[\"“](.+?)[\"”]")
+_NUMBERED = re.compile(r"^\d+[.)]\s*")
+# A paragraph that answers a follow-up ("If she anchors on your current pay: "…"") rather than the question.
+_FOLLOW_UP = re.compile(r"^[^\"“]{3,80}:\s*[\"“]")
+
+
+def _spoken(question: str, paras: list[str]) -> Card | None:
+    """A card from a question heading and its say block: the question as quoted in the heading (else the heading,
+    unnumbered), the paragraphs that answer it with the quote marks dropped (they're for reading, not saying)."""
+    q = m.group(1).strip() if (m := _QUOTED.search(question)) else _NUMBERED.sub("", question).strip()
+    answer = re.sub(r"\s+", " ", re.sub(r"[\"“”]", "", " ".join(p for p in paras if not _FOLLOW_UP.match(p)))).strip()
+    return Card(q, answer, cues(answer)) if q and answer else None
 
 
 def from_page(text: str) -> tuple[str, list[Card]]:
     """(title, cards) from a hand-written prep sheet's HTML: every table whose header has a "Question" column and
-    an "Answer" column gives one card a row. A question asked twice keeps its first answer."""
+    an "Answer" column gives one card a row, then every spoken answer (a question heading with a say block; see
+    _Tables) one card. A question asked twice keeps its first answer."""
     page = _Tables()
     page.feed(text)
     cards, seen = [], set()
@@ -160,6 +209,10 @@ def from_page(text: str) -> tuple[str, list[Card]]:
             if question and answer and question.lower() not in seen:
                 seen.add(question.lower())
                 cards.append(Card(question, answer, cues(answer)))
+    for question, paras in page.spoken:
+        if (card := _spoken(question, paras)) and card.question.lower() not in seen:
+            seen.add(card.question.lower())
+            cards.append(card)
     return page.title.strip(), cards
 
 

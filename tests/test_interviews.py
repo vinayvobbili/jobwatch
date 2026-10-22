@@ -8,7 +8,7 @@ import pytest
 from jobwatch import config, interviews
 from jobwatch.models import Job
 from jobwatch.store import Store
-from jobwatch.web import ApiError, App
+from jobwatch.web import App
 
 from .conftest import request
 
@@ -64,20 +64,21 @@ def test_prep_sheets_are_matched_by_the_start_of_their_name(tmp_path):
     assert interviews.sheets(tmp_path / "missing", "Acme") == []
 
 
-def test_a_sheet_opens_with_its_styles_and_no_scripts(tmp_path):
+def test_only_files_directly_in_the_sheets_folder_are_served(tmp_path):
     folder = sheet_dir(tmp_path)
-    page = interviews.sheet(folder, "acme-onsite.html")
-    assert "<style>\nbody { color: red }\n</style>" in page and "prep.css" not in page
-    assert page.index("script-src 'none'") < page.index("<style>")  # in the head, before anything else
+    assert interviews.sheet_file(folder, "acme-onsite.html") == ((folder / "acme-onsite.html").resolve(),
+                                                                "text/html; charset=utf-8")
+    assert interviews.sheet_file(folder, "prep.css")[1] == "text/css"  # what a sheet links to, next to it
     (folder / "inside").mkdir()
     (folder / "inside" / "x.html").write_text("x")
     (tmp_path / "outside.html").write_text("x")
-    for bad in ("../outside.html", "inside/x.html", "prep.css", "acme-notes.txt", "nope.html",
+    (folder / "link.html").symlink_to(tmp_path / "outside.html")
+    for bad in ("../outside.html", "inside/x.html", "acme-notes.txt", "nope.html", "link.html",
                 str(tmp_path / "outside.html")):
         with pytest.raises(FileNotFoundError):
-            interviews.sheet(folder, bad)
+            interviews.sheet_file(folder, bad)
     with pytest.raises(FileNotFoundError, match=r"prep\.sheets"):
-        interviews.sheet(None, "acme-onsite.html")
+        interviews.sheet_file(None, "acme-onsite.html")
 
 
 def test_the_sheets_folder_is_read_next_to_the_watchlist(watchlist):
@@ -106,9 +107,11 @@ def test_the_page_lists_interviews_with_their_sheets(watchlist, tmp_path, web):
     j = app.get_job({"key": [key]})
     assert j["unscored"]["code"] in ("no_text", "no_resume", "manual")
     assert j["sheets"] == iv["sheets"] and j["meeting"]["day"] == d["today"] and j["next_step"].startswith("Interview")
-    assert "script-src 'none'" in app.get_prep_sheet({"name": ["acme-onsite.html"]})["html"]
-    with pytest.raises(ApiError, match="no prep sheet"):
-        app.get_prep_sheet({"name": ["../jobwatch.yaml"]})
+    base = d["sheets_base"]
+    assert j["sheets_base"] == base and base.startswith("/prep/") and base.endswith("/")
+    secret = base.split("/")[2]
+    assert app.prep_file(secret, "acme-onsite.html")[1].startswith("text/html")
+    assert app.prep_file("wrong", "acme-onsite.html") is None and app.prep_file(secret, "../jobwatch.yaml") is None
     Store(tmp_path / "state.db").set_status([key], "rejected")
     assert app.get_interviews({})["interviews"] == [] and app.get_job({"key": [key]})["meeting"] is None
 
@@ -119,4 +122,21 @@ def test_page_has_an_interviews_tab(server):
     assert '<button data-tab="interviews">Interviews<span id="ivcount"></span></button>' in page
     assert '"today", "interviews", "queue"' in page and "interviews: renderInterviews" in page
     assert 'api("/api/interviews")' in page and "openDetails(iv.key)" in page
-    assert 'api("/api/prep/sheet?name="' in page and "sheetButtons(j.sheets)" in page
+    assert "sheetButtons(j.sheets, j.sheets_base)" in page and "sheetButtons(iv.sheets, d.sheets_base)" in page
+
+
+def test_the_sheets_folder_is_served_sandboxed_with_byte_ranges(server, watchlist, tmp_path):
+    folder = sheet_dir(tmp_path)
+    (folder / "acme-drill.mp4").write_bytes(bytes(range(100)))
+    watchlist.write_text(watchlist.read_text() + "prep:\n  sheets: prep\n")
+    base = App(watchlist).get_interviews({})["sheets_base"]
+    status, body, headers = request(server, "GET", base + "acme-onsite.html", with_headers=True)
+    assert status == 200 and b"hi" in body and headers["Content-Security-Policy"] == "sandbox"
+    assert request(server, "GET", base + "prep.css")[1] == b"body { color: red }"
+    status, body, headers = request(server, "GET", base + "acme-drill.mp4", headers={"Range": "bytes=10-19"},
+                                    with_headers=True)
+    assert (status, body, headers["Content-Range"]) == (206, bytes(range(10, 20)), "bytes 10-19/100")
+    assert request(server, "GET", base + "acme-drill.mp4", headers={"Range": "bytes=-5"})[1] == bytes(range(95, 100))
+    assert request(server, "GET", base + "acme-drill.mp4", headers={"Range": "bytes=200-"})[0] == 416
+    assert request(server, "GET", "/prep/wrong/acme-onsite.html")[0] == 404
+    assert request(server, "GET", base + "..%2Fjobwatch.yaml")[0] == 404

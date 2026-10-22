@@ -1288,7 +1288,7 @@ async function openDetails(key) {
         j.meeting ? h("div", { class: "iv-banner" },
           h("b", {}, `${j.meeting.label} · ${fmtDay(j.meeting.day)} · ${meetingTime(j.meeting)} · ${relDay(j.meeting.day, todayIso())}`),
           j.next_step) : j.next_step || j.follow_up ? nextLine(j, todayIso()) : null,
-        sheetButtons(j.sheets),
+        sheetButtons(j.sheets, j.sheets_base),
         j.note ? h("div", { class: "note-full", title: "The whole note, oldest first" }, j.note) : null,
         linkNote(j),
         j.duplicate_of ? h("div", { class: "warns" }, dupeBadge(j.duplicate_of), " ", j.duplicate_of.text) : null,
@@ -2591,28 +2591,17 @@ function interviewCard(iv, d, i = 0) {
             iv.pay ? [h("span", { class: "sep" }, "·"), h("span", { class: "pay" }, iv.pay)] : null)),
         h("div", { class: "iv-when" + (live ? " now" : "") }, h("b", {}, meetingTime(iv)), h("span", {}, `${iv.label} · ${when}`))),
       h("div", { class: "next" }, h("span", { class: "what" }, iv.next_step)),
-      sheetButtons(iv.sheets)));
+      sheetButtons(iv.sheets, d.sheets_base)));
   return card;
 }
 
-function sheetButtons(names) {
-  if (!names || !names.length) return null;
+// A prep sheet you wrote opens in a new tab from the sheets folder the server shares at `base` (a secret
+// address, sandboxed), so the stylesheet and drill video next to it load too.
+function sheetButtons(names, base) {
+  if (!names || !names.length || !base) return null;
   return h("div", { class: "row sheets" }, h("span", { class: "small muted" }, icon("file", 13), " Prep sheets:"),
-    names.map(name => h("button", { class: "btn", title: `Open ${name} in a new tab`,
-      onclick: e => { e.stopPropagation(); openSheet(name); } }, name.replace(/\.html?$/i, ""))));
-}
-
-// A prep sheet you wrote, in a new tab. The tab opens before the sheet is read, while the click still counts
-// (a tab opened after a wait is blocked); the server turns the sheet's scripts off.
-async function openSheet(name) {
-  const tab = window.open("", "_blank");
-  try {
-    const p = await api("/api/prep/sheet?name=" + encodeURIComponent(name));
-    const url = URL.createObjectURL(new Blob([p.html], { type: "text/html" }));
-    if (tab) tab.location = url;
-    else if (!window.open(url, "_blank")) toast("Couldn't open a new tab: your browser blocked it");
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  } catch (e) { tab?.close(); toast(e.message); }
+    names.map(name => h("a", { class: "btn", href: base + encodeURIComponent(name), target: "_blank", rel: "noopener",
+      title: `Open ${name} in a new tab`, onclick: e => e.stopPropagation() }, name.replace(/\.html?$/i, ""))));
 }
 
 async function renderApplied() {

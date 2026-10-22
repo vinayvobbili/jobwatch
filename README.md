@@ -806,8 +806,10 @@ prep:
 ```
 
 Every `.html` sheet whose name starts with the company's name shows as a button on its interviews and in its
-details, newest first. A sheet opens in a new tab with the stylesheets beside it written in and its scripts
-turned off.
+details, newest first. A sheet opens in a new tab from that folder, so the stylesheet, images and
+[drill video](#drill-video) beside it show as they do from disk (a video can be skipped through). The page
+serves the folder at an address with a secret in it, like the calendar feed, only to this computer, and
+sandboxed: a sheet can't run scripts.
 
 ### Looking up a company
 
@@ -961,8 +963,10 @@ quick review.
 The answers are only ones the sheet already has: practised answers from mock interviews, then drafted outlines
 told with the stories they cite (so run `--draft` first, or practise with `--mock`). A question with no answer is
 left out, never filled in. The key can also be a prep sheet you wrote yourself, as HTML: every table with a
-"Question" column and an "Answer" column gives one question a row, and text in `class="muted"` (sources, asides)
-isn't spoken:
+"Question" column and an "Answer" column gives one question a row, and so does every question heading
+(`<h3 class="q">`) with a "say" block under it (`<div class="say">`), its paragraphs read as one answer. Text in
+`class="muted"` (sources, asides) isn't spoken, nor is a paragraph with a `class="fill"` blank you haven't filled
+in, nor a follow-up line like `If they push: "…"`:
 
 ```
 jobwatch prep ~/prep/acme-sheet.html --drill ~/prep/acme-drill.mp4 --no-pause
