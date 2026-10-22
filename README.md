@@ -569,6 +569,17 @@ jobwatch dupes                             # --strong: only the ones sharing an 
 
 Skip the one you don't need with `jobwatch mark skipped <key>`.
 
+### Who is interviewing you
+
+Open someone's LinkedIn experience page (`linkedin.com/in/<name>/details/experience/`) in your own browser, copy
+the page text into a file, and list their roles. jobwatch only parses the text you give it; it never fetches
+linkedin.com, whose robots.txt disallows it.
+
+```
+jobwatch profile page.txt                  # --format json, or html for a <ul> to paste into a prep sheet
+pbpaste | jobwatch profile -
+```
+
 ### Jobs you found somewhere else
 
 A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
@@ -1090,7 +1101,8 @@ board are marked closed. The MCP `get_digest` returns the same top 10 by default
 - **New jobs:** `fetch_jobs`, `import_job_alerts`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
 - **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`,
   `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`), `get_company`,
-  `rate_contact`
+  `rate_contact`, `read_profile` (the roles on a LinkedIn experience page whose text you pasted: who the
+  interviewer is; it never fetches linkedin.com)
 - **What was sent:** `save_application_package`, `get_application_package`, `find_past_answers`,
   `get_interview_prep`, `save_story`
 
