@@ -538,7 +538,8 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .act.unseen { background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
 .act .body { flex: 1; min-width: 0; }
 .act .what { font-weight: 600; overflow-wrap: anywhere; }
-.act .when { flex: none; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.act .when { flex: none; width: 62px; margin-top: 2px; color: var(--muted); font-size: 12.5px;
+  font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
 .act details { margin-top: 4px; font-size: 13px; color: var(--muted); }
 .act details summary { cursor: pointer; }
 .act details ul { margin: 6px 0 0; padding-left: 18px; }
@@ -3231,11 +3232,13 @@ async function renderActivity() {
       more.ontoggle = () => more.open ? activityView.open.add(e.at) : activityView.open.delete(e.at);
     }
     rows.push(h("div", { class: "act" + (e.ok ? "" : " fail") + (e.notable ? " notable" : "") + (e.notable && e.at > seen ? " unseen" : ""),
-      title: e.notable ? "Worth a look" : null }, icon(ACT_ICON[e.kind] || "file", 16),
-      h("div", { class: "body" }, h("div", { class: "what" }, e.text),
-        e.by ? h("div", { class: "small muted" }, ACT_BY[e.by] || e.by) : null, more),
+      title: e.notable ? "Worth a look" : null },
+      // the time first, so a day's list reads down the clock
       h("span", { class: "when", title: `${at.toLocaleString()} (${ago(e.at)})` },
-        at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }))));
+        at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })),
+      icon(ACT_ICON[e.kind] || "file", 16),
+      h("div", { class: "body" }, h("div", { class: "what" }, e.text),
+        e.by ? h("div", { class: "small muted" }, ACT_BY[e.by] || e.by) : null, more)));
   }
   put(pagehead("Activity", "What jobwatch has been doing: checking the boards, reading your job-alert emails, scoring jobs and looking up pay. It updates by itself."),
     layout(side, h("div", {}, rows.length ? rows
