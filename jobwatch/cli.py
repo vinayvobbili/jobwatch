@@ -33,6 +33,7 @@ from . import (
     logos,
     mock,
     prep,
+    profile,
     quiet,
     referrals,
     report,
@@ -482,6 +483,14 @@ def cmd_answers(args, cfg, store):
     query = " ".join(args.query)
     found = answers.find(store, query)
     print(json.dumps(found, indent=2, ensure_ascii=False) if args.format == "json" else answers.text(found, query))
+
+
+def cmd_profile(args):
+    """The roles in a LinkedIn experience page's text that you saved: parsed, never fetched."""
+    text = sys.stdin.read() if args.file == "-" else Path(args.file).expanduser().read_text()
+    if not (found := profile.roles(text)):
+        raise ValueError("no roles found (is this the text of the /details/experience/ page?)")
+    print(profile.render(found, args.format))
 
 
 def cmd_alerts(args, cfg, store):
@@ -1152,6 +1161,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("query", nargs="*", help="words of the question, e.g. notice period")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_answers, read_only=True)
+
+    p = sub.add_parser("profile", help="the roles on a LinkedIn experience page (title, company, dates, location, "
+                       "bullets), to see who an interviewer is. Reads the page text you saved or copied "
+                       "(linkedin.com/in/<name>/details/experience/); jobwatch never fetches linkedin.com")
+    p.add_argument("file", metavar="FILE", help="the page text, saved to a file, or - for stdin")
+    p.add_argument("--format", choices=["text", "json", "html"], default="text",
+                   help="html is a <ul> to paste into a prep sheet")
+    p.set_defaults(func=cmd_profile, needs_config=False)
 
     p = sub.add_parser("hidden", help="what the filters hide from Today, by filter; name one (e.g. excluded) to "
                        "list its jobs and why. Read-only")

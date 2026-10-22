@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -26,6 +27,7 @@ from . import (
     learn,
     levels,
     prep,
+    profile,
     quiet,
     referrals,
     report,
@@ -77,7 +79,9 @@ server = MCPServer(
         "opening). find_duplicates lists such pairs already in the store. get_company looks one company up by name "
         "or domain across every status, closed postings too: its jobs, people the user knows there, and whether its "
         "board is watched. rate_contact records whom the user wants asked for referrals first (use) or never "
-        "(skip), with a short note, when they say so about someone in a contacts list. "
+        "(skip), with a short note, when they say so about someone in a contacts list. read_profile turns the text "
+        "of a LinkedIn experience page that the person pasted or copied into a list of roles (who the interviewer "
+        "is); it only parses that text, jobwatch never fetches linkedin.com. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
     ),
     version=__version__,
@@ -590,6 +594,22 @@ def find_duplicates(
         return [dupes.pair_dict(p) for p in dupes.pairs(store, strong_only=strong_only)]
     finally:
         store.close()
+
+
+@server.tool(annotations=READ)
+def read_profile(
+    text: Annotated[str, Field(description=(
+        "The page text of someone's LinkedIn experience page (linkedin.com/in/<name>/details/experience/), as "
+        "the person's own browser shows it: copied, or from a browser tool's page text. Not a link."))],
+) -> list[dict]:
+    """Who an interviewer or contact is: their roles, from the text of their LinkedIn experience page, for
+    interview prep. Each: title, company, start, end ("Present" if current), duration, location, workplace
+    (Hybrid, Remote or On-site) and bullets (the description). The page's sidebars and footer are dropped.
+    This only parses text it is given: jobwatch never reads linkedin.com (its robots.txt disallows it), so get
+    the page text through the person's own browser. Returns an error when no roles are found."""
+    if not (found := profile.roles(text)):
+        raise ToolError("no roles found: pass the text of the /details/experience/ page, not a link")
+    return [asdict(r) for r in found]
 
 
 @server.tool(annotations=READ)
