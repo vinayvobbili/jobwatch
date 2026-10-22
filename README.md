@@ -174,7 +174,11 @@ terminal instead. The local backend needs nothing.
 jobwatch init                         # writes an example jobwatch.yaml
 jobwatch find "Globex" "Scale AI"   # find each company's board
 jobwatch find https://jobs.lever.co/spotify/4f1c2a9e-...   # or paste any job link
+jobwatch find "Globex" --roles agent   # also list the board's open roles with "agent" in the title
 ```
+
+`--roles` lists each matching role with its place, pay (read from the posting's text when the board has no pay
+field) and posted day, without adding the board to your watchlist.
 
 `find` prints a line like `Globex: greenhouse:globex (627 open roles)`. For a Workday company it tries
 the usual site names; if that finds nothing, paste a job link from their careers site (it has
@@ -842,6 +846,16 @@ pay and fit, but not age: an older role still open is worth seeing), and the res
 all`) lists every role each time. Jobs you queued, applied to or skipped are always listed. A long note shows as its latest dated entry, cut to about 200 characters (the page folds it until
 clicked); `--format json` and `jobwatch show KEY` have all of it. The MCP tool is `get_company`.
 
+To find a job by something you wrote or were told rather than by company, search the notes:
+
+```
+jobwatch search anthony              # which application did recruiter Anthony call about?
+jobwatch search "$101/hr"            # --format json
+```
+
+It looks in every job's note, next step, where it was found (the recruiter or alert), title and company, at any
+status, closed postings too, and shows each the way `jobwatch company` does.
+
 ### What you sent
 
 Each application keeps what you submitted, as copies:
@@ -864,6 +878,15 @@ jobwatch package c1                                         # show it
 
 Packages live in `packages/<job>/` next to the state file. Removing a file moves it to `.removed/` there
 rather than deleting it.
+
+To reuse what you answered before, search the answers across every package:
+
+```
+jobwatch answers "notice period"     # questions with all these words, newest application first; --format json
+jobwatch answers                     # each distinct question once, with its latest answer
+```
+
+The MCP tool is `find_past_answers`.
 
 ### Prep sheets
 
@@ -1051,7 +1074,8 @@ board are marked closed. The MCP `get_digest` returns the same top 10 by default
 - **New jobs:** `fetch_jobs`, `import_job_alerts`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
 - **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`,
   `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`), `get_company`
-- **What was sent:** `save_application_package`, `get_application_package`, `get_interview_prep`, `save_story`
+- **What was sent:** `save_application_package`, `get_application_package`, `find_past_answers`,
+  `get_interview_prep`, `save_story`
 
 (0.3.0 renamed them to verb_noun: `digest` is now `get_digest`, `job_details` is `get_job`, `apply_queue` is
 `list_queued_jobs`, `applications` is `list_applications`, `application_package` is `get_application_package`,

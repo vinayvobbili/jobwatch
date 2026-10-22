@@ -20,6 +20,7 @@ from . import (
     __version__,
     advice,
     alerts,
+    answers,
     chat,
     company,
     config,
@@ -98,6 +99,22 @@ def cmd_find(args):
             name = next((j.company_name for j in jobs if j.company_name), "")
             print(f"{query}: {source}:{board}  ({sources.open_roles(jobs)} open roles{', ' + name if name else ''})  "
                   f"{sources.careers_url(source, board)}\n    e.g. {jobs[0].title}")
+            if args.roles:
+                _roles(source, board, jobs, args.roles)
+
+
+def _roles(source: str, board: str, sample: list, text: str):
+    """`find --roles`: the board's open roles with the text in the title, with place, pay and posted day."""
+    try:
+        found = sources.roles_matching(source, board, text, sample)
+    except sources.SourceError as e:
+        print(f"    roles: {e}")
+        return
+    if not found:
+        print(f"    No open role with {text!r} in its title.")
+    for j in found:
+        facts = [x for x in ("; ".join(j.places), j.pay(), f"posted {j.posted:%Y-%m-%d}" if j.posted else "") if x]
+        print(f"    {j.title}  ({' · '.join(facts)})  {j.url}" if facts else f"    {j.title}  {j.url}")
 
 
 def _digest(args, cfg, store):
@@ -451,6 +468,21 @@ def cmd_company(args, cfg, store):
         print(company.text(v, name))
 
 
+def cmd_search(args, cfg, store):
+    """Tracked jobs of any status with the text in their note, next step, source, title or company: read-only."""
+    text = " ".join(args.text)
+    found = company.mentions(store, text)
+    print(json.dumps(found, indent=2, ensure_ascii=False) if args.format == "json" else
+          company.mentions_text(found, text))
+
+
+def cmd_answers(args, cfg, store):
+    """Form answers saved in earlier applications' packages, for questions with the words given: read-only."""
+    query = " ".join(args.query)
+    found = answers.find(store, query)
+    print(json.dumps(found, indent=2, ensure_ascii=False) if args.format == "json" else answers.text(found, query))
+
+
 def cmd_alerts(args, cfg, store):
     if not (args.emails or args.imap):
         raise ValueError("give the alert emails: .eml or .mbox files, a folder of them, or - to read stdin; or "
@@ -802,6 +834,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("find", help="find a company's job board (by name, or a job/careers link)")
     p.add_argument("company", nargs="+")
+    p.add_argument("--roles", metavar="TEXT", help="also list each board's open roles with TEXT in the title, "
+                   "with place, pay and posted day")
     p.set_defaults(func=cmd_find, needs_config=False)
 
     p = sub.add_parser("fetch", help="check every board and record new roles")
@@ -1075,6 +1109,19 @@ def build_parser() -> argparse.ArgumentParser:
                    "all lists them every time)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_company, read_only=True)
+
+    p = sub.add_parser("search", help="tracked jobs, whatever status, with the text in their note, next step, "
+                       "source, title or company (any case): which application did that recruiter call about? "
+                       "Read-only")
+    p.add_argument("text", nargs="+", help="what to look for, e.g. a recruiter's name or '$101/hr'")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_search, read_only=True)
+
+    p = sub.add_parser("answers", help="what you answered before on application forms, newest first: questions "
+                       "containing every word of QUERY, or without one each question once. Read-only")
+    p.add_argument("query", nargs="*", help="words of the question, e.g. notice period")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_answers, read_only=True)
 
     p = sub.add_parser("hidden", help="what the filters hide from Today, by filter; name one (e.g. excluded) to "
                        "list its jobs and why. Read-only")
