@@ -1070,6 +1070,11 @@ claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- uvx --with
 
 It's listed in the [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.vinayvobbili/jobwatch`.
 
+[skills/jobwatch/SKILL.md](skills/jobwatch/SKILL.md) is an agent skill that tells an assistant when and how to
+use these tools (setup, the daily loop, status emails, interview prep, and what never to do for you). Copy the
+folder into `~/.claude/skills/`, or zip it for a skills marketplace: `cd skills && python -m zipfile -c
+jobwatch-skill.zip jobwatch`.
+
 With a resume tool alongside it (for example [resume-kit](https://github.com/vinayvobbili/resume-kit), whose
 `resume draft` starts a tailored version from a posting), an assistant can work through your queue: read
 the posting, tailor the resume from facts you've confirmed, check for a referral, and fill in the
