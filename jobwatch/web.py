@@ -1,13 +1,15 @@
 """`jobwatch ui`: the same watchlist, digest and queue in a browser page, served from this computer only.
 
 The server listens on 127.0.0.1. Every API call must carry the token embedded in the page it served, and a
-Host header naming this machine, so other websites open in the browser can't read or change anything. The one
-exception is the calendar feed, whose address holds a secret instead (a calendar app can't send the token).
+Host header naming this machine, so other websites open in the browser can't read or change anything. The two
+exceptions are the calendar feed and the prep sheets folder, whose addresses hold a secret instead (a calendar
+app, or a sheet opened in a tab of its own, can't send the token).
 """
 
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import socketserver
 import sys
@@ -20,7 +22,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import yaml
 
@@ -631,18 +633,25 @@ class App:
         def run(cfg, store):
             folder = cfg.prep.sheets
             return {"today": date.today().isoformat(), "sheets_folder": str(folder) if folder else None,
+                    "sheets_base": self._sheets_base(store),
                     "interviews": [interviews.to_dict(i, folder) for i in interviews.upcoming(store.applications())]}
         return self._with_store(run)
 
-    def get_prep_sheet(self, q) -> dict:
-        """One prep sheet you wrote, as a page to open in its own tab (scripts off)."""
-        name = (q.get("name") or [""])[0]
+    @staticmethod
+    def _sheets_base(store) -> str:
+        """Where the prep sheets folder is served: a path with this install's secret in it, since a sheet opens in
+        a tab of its own, which can't send the page's token (see prep_file)."""
+        return f"/prep/{store.secret('prep')}/"
 
+    def prep_file(self, secret: str, name: str) -> tuple[Path, str] | None:
+        """(path, content type) of a file in the prep sheets folder when `secret` is this install's, else None."""
         def run(cfg, store):
+            if not secrets.compare_digest(secret, store.secret("prep")):
+                return None
             try:
-                return {"name": name, "html": interviews.sheet(cfg.prep.sheets, name)}
-            except FileNotFoundError as e:
-                raise ApiError(str(e), HTTPStatus.NOT_FOUND) from None
+                return interviews.sheet_file(cfg.prep.sheets, name)
+            except FileNotFoundError:
+                return None
         return self._with_store(run)
 
     def get_calendar(self, q) -> dict:
@@ -728,6 +737,7 @@ class App:
                     "manual": job.source == MANUAL,
                     "duplicate_of": (same := dupes.check(store, job.key)) and same.to_dict(),
                     "sheets": interviews.sheets(cfg.prep.sheets, job.display_company, job.company),
+                    "sheets_base": self._sheets_base(store),
                     "meeting": None if rec.get("status") in ENDED else interviews.meeting_dict(rec.get("next_step")),
                     **self._pay(cfg, store, [(job, None)]).get(job.key, {}),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen", "next_step",
@@ -1016,7 +1026,6 @@ ROUTES = {
     ("GET", "/api/applications"): App.get_applications,
     ("GET", "/api/calendar"): App.get_calendar,
     ("GET", "/api/interviews"): App.get_interviews,
-    ("GET", "/api/prep/sheet"): App.get_prep_sheet,
     ("POST", "/api/add"): App.post_add,
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/snooze"): App.post_snooze,
@@ -1057,6 +1066,38 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                                  f"filename*=UTF-8''{quote(filename)}")
                 self.send_header("Content-Security-Policy", "sandbox")
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _send_file(self, path: Path, ctype: str):
+            """A file from disk, whole or the one byte range asked for (a video player seeks with ranges).
+            Sandboxed: a page served this way can't run scripts or read this page's origin."""
+            size, start, end = path.stat().st_size, 0, None
+            if m := re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range", "").strip()):
+                if m.group(1):
+                    start, end = int(m.group(1)), int(m.group(2)) if m.group(2) else size - 1
+                elif m.group(2):  # the last n bytes
+                    start, end = max(0, size - int(m.group(2))), size - 1
+                if start >= size or (end is not None and end < start):
+                    self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+            end = min(size - 1, end if end is not None else size - 1)
+            with path.open("rb") as f:
+                f.seek(start)
+                body = f.read(end - start + 1) if size else b""
+            self.send_response(HTTPStatus.PARTIAL_CONTENT if m and (m.group(1) or m.group(2)) else HTTPStatus.OK)
+            if m and (m.group(1) or m.group(2)):
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Security-Policy", "sandbox")
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
@@ -1125,6 +1166,14 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 if feed is None:
                     return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return self._send(HTTPStatus.OK, feed, "text/calendar; charset=utf-8")
+            if method == "GET" and url.path.startswith("/prep/"):
+                # A prep sheet opened in its own tab, or the stylesheet or video beside it: the secret in the
+                # address stands in for the token, which a tab can't send.
+                secret, _, name = url.path[len("/prep/"):].partition("/")
+                found = app.prep_file(secret, unquote(name))
+                if found is None:
+                    return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                return self._send_file(*found)
             if not url.path.startswith("/api/"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             if not secrets.compare_digest(self.headers.get("X-Jobwatch-Token", ""), token):

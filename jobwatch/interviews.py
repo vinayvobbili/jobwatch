@@ -5,8 +5,9 @@ A next step is read the way the calendar feed reads it (ics.meeting): a date and
 that names a meeting but no time it can read ("panel interview, the recruiter to schedule") is listed as not scheduled
 yet while its follow-up day is today or ahead, so it isn't lost, once the application is past applied (before
 that, "wait for a recruiter screen" is a hope, not an interview). Prep sheets are the .html files in the
-watchlist's prep.sheets folder whose name starts with the company's ("acme-onsite.html" for Acme); the page
-opens one with its scripts turned off, since it runs next to the page's token.
+watchlist's prep.sheets folder whose name starts with the company's ("acme-onsite.html" for Acme). The page
+serves that folder at an address with a secret in it, so a sheet's stylesheet, images and drill video next to
+it load as they do from disk, and sandboxed: a sheet can't run scripts or reach the page's token.
 """
 
 from __future__ import annotations
@@ -22,11 +23,11 @@ from .store import ENDED
 
 AHEAD = 14  # days ahead the tab lists
 SHEET_TYPES = (".html", ".htm")
-_STYLESHEET = re.compile(r"""<link\b[^>]*\brel=["']?stylesheet["']?[^>]*>""", re.I)
-_HREF = re.compile(r"""\bhref=["']?([^"'\s>]+)""", re.I)
-# What a sheet opened from the page may do: show itself and its own styles and images, never run a script.
-_NO_SCRIPTS = ('<meta http-equiv="Content-Security-Policy" content="script-src \'none\'; object-src \'none\'; '
-               'base-uri \'none\'">')
+# What the page serves from the sheets folder: the sheets, and what a sheet shows from next to it.
+FILE_TYPES = {".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css",
+              ".mp4": "video/mp4", ".webm": "video/webm", ".m4a": "audio/mp4", ".mp3": "audio/mpeg",
+              ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+              ".webp": "image/webp", ".svg": "image/svg+xml", ".pdf": "application/pdf"}
 
 
 @dataclass(frozen=True)
@@ -76,26 +77,16 @@ def sheets(folder: Path | None, *names: str) -> list[str]:
     return [p.name for p in sorted(found, key=lambda p: (-p.stat().st_mtime, p.name))]
 
 
-def sheet(folder: Path | None, name: str) -> str:
-    """One prep sheet's page, ready to open on its own: stylesheets next to it written in, scripts turned off.
-    Only a file directly in `folder` is read."""
+def sheet_file(folder: Path | None, name: str) -> tuple[Path, str]:
+    """(path, content type) of a file the page serves from the sheets folder: one directly in it (not in a
+    folder inside it, nor one it links to elsewhere), of a type in FILE_TYPES."""
     if not folder or not folder.is_dir():
         raise FileNotFoundError("no prep sheets folder is set (prep.sheets in the watchlist)")
     path = (folder / name).resolve()
-    if (Path(name).name != name or path.parent != folder.resolve() or path.suffix.lower() not in SHEET_TYPES
-            or not path.is_file()):
-        raise FileNotFoundError(f"no prep sheet named {name!r}")
-    text = path.read_text(encoding="utf-8", errors="replace")
-
-    def inline(m: re.Match) -> str:
-        href = _HREF.search(m.group(0))
-        css = folder / href.group(1) if href and Path(href.group(1)).name == href.group(1) else None
-        if css and css.suffix.lower() == ".css" and css.is_file():
-            return f"<style>\n{css.read_text(encoding='utf-8', errors='replace')}\n</style>"
-        return m.group(0)
-    text = _STYLESHEET.sub(inline, text)
-    head = re.search(r"<head[^>]*>", text, re.I)
-    return text[:head.end()] + _NO_SCRIPTS + text[head.end():] if head else _NO_SCRIPTS + text
+    ctype = FILE_TYPES.get(path.suffix.lower())
+    if Path(name).name != name or path.parent != folder.resolve() or not ctype or not path.is_file():
+        raise FileNotFoundError(f"no prep sheet file named {name!r}")
+    return path, ctype
 
 
 def to_dict(i: Interview, folder: Path | None) -> dict:

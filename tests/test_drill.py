@@ -23,6 +23,21 @@ the rest back. We tested it with a replay."<br><span class="muted">Source: the d
 <tr><td>No answer here?</td><td></td></tr>
 </table></body></html>"""
 
+SPOKEN = """<html><head><title>Globex: technical</title></head><body>
+<div class="keep"><h3 class="q">1. "Walk me through the queue split." (their big project)</h3>
+<div class="say"><p>"We split one queue into one per region.</p>
+<p>So a slow region can't hold the rest back."</p>
+<p class="muted">Numbers are on the last page.</p></div></div>
+<h3 class="q">"What are you looking for in pay?"</h3>
+<div class="say"><p>"Around the midpoint of the range."</p>
+<p>If they push: "I'd like the market rate for the grade."</p></div>
+<h3 class="q">"Tell me about a time you changed your mind."</h3>
+<div class="say"><p>"When <span class="fill">[the moment]</span> happened, I changed course.</p></div>
+<h3 class="q">If there's live coding</h3><ul><li>talk while you type</li></ul>
+<h2>Design question</h2><div class="say"><p>"An answer with no question heading."</p></div>
+<h3>How did you test it?</h3><div class="say"><p>Not a question heading: left for the tables.</p></div>
+</body></html>"""
+
 STORY = Story("queue-split", "Split the job queue", "Split one job queue into one per region.",
               "Two regions shared a worker pool.", "Late jobs went from 40 a day to 3", ("Python",))
 
@@ -46,6 +61,21 @@ def test_page_cards_come_from_question_and_answer_tables():
     assert "Source" not in first.answer  # muted asides are not what you'd say
     assert first.cues[0] == "Latency."
     assert cards[1].answer == "Unit tests locally, then a replay of a day's traffic."  # the first answer is kept
+
+
+def test_page_cards_come_from_question_headings_and_their_say_blocks():
+    title, cards = drill.from_page(SPOKEN)
+    assert title == "Globex: technical"
+    assert [(c.question, c.answer) for c in cards] == [
+        # the quoted question only; the paragraphs joined, quote marks and muted asides dropped
+        ("Walk me through the queue split.",
+         "We split one queue into one per region. So a slow region can't hold the rest back."),
+        ("What are you looking for in pay?", "Around the midpoint of the range.")]  # not the follow-up line
+    # a paragraph with a blank to fill in isn't said, a heading with no say block takes no later answer, and
+    # only question headings (class="q") ask
+    assert cards[0].cues == ("We split one queue into one per…", "So a slow region can't hold the…")
+    _, both = drill.from_page(PAGE.replace("</body>", SPOKEN.split("<body>")[1].split("</body>")[0] + "</body>"))
+    assert len(both) == 4  # the tables' cards first, then the spoken ones
 
 
 def test_sheet_cards_use_practised_answers_then_drafts_with_their_stories():
