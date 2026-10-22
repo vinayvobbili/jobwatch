@@ -727,6 +727,13 @@ def _provisional(e: Entry) -> bool:
 DAILY_LIMIT = "daily limit"  # the start of a fallback score's reason when the backend was at scoring.daily
 
 
+def _only_limit(reason: str) -> bool:
+    """The reason is just the daily limit: the fallback is no failure to remember, and the backend takes the job
+    up tomorrow. With "; local: ..." after it the fallback failed too (that is kept, so the job isn't tried again
+    and again with the model held in memory)."""
+    return reason.startswith(DAILY_LIMIT) and "; " not in reason
+
+
 def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Callable[[str], None] | None = None,
                         background: bool = False, batch: bool = False) -> tuple[dict[str, dict], dict[str, str]]:
     """Score with the backend, at most scoring.daily jobs a day, and what it can't (the limit reached, no key, no
@@ -775,10 +782,10 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Cal
             fit = results[e.job.key]
             for key in e.keys:
                 store.save_score(key, rid, fit)
-            if fit.get("fallback") and not fit["fallback"].startswith(DAILY_LIMIT):
+            if fit.get("fallback") and not _only_limit(fit["fallback"]):
                 store.save_score_failure(e.job.key, rid, cfg.score_model, fit["fallback"])
             e.fit = brief(fit)
-        elif e.job.key in errors and not errors[e.job.key].startswith(DAILY_LIMIT):
+        elif e.job.key in errors and not _only_limit(errors[e.job.key]):
             store.save_score_failure(e.job.key, rid, cfg.score_model, errors[e.job.key])
     if entries:
         text, ok, lines = _scored_text(entries, results, errors, batch)

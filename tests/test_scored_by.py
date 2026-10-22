@@ -457,3 +457,20 @@ def test_claude_scores_in_groups_of_workers_and_batch_api_sends_them_all_at_once
     store.close()
     cli.main(["-c", str(cfg.path), "score", "--backend", "claude", "--rescore", "--batch-api"])
     assert calls == [(n, True)]
+
+
+def test_a_job_the_fallback_failed_on_past_the_limit_is_not_tried_again_at_once(scored, monkeypatch):
+    cfg, _, _ = scored
+    cfg = _claude_first(cfg, score_daily=1)
+    _backends(monkeypatch)
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    e = watch.unscored(cfg, store)[0]
+    limit = f"{watch.DAILY_LIMIT}: 1 jobs a day with claude (scoring.daily)"
+    monkeypatch.setattr(watch, "score_with_fallback", lambda *a, **k: (
+        {}, {e.job.key: f"{limit}; local: the model judged 7 of 8 requirements"}))
+    watch.score_entries(cfg, store, [e], progress=lambda m: None)
+    assert e.job.key not in {x.job.key for x in watch.unscored(cfg, store)}  # kept, or the local model reloads for it
+    assert not watch._only_limit(f"{limit}; local: x") and watch._only_limit(limit)
+    store.close()
