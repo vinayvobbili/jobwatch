@@ -17,6 +17,18 @@ def store(tmp_path):
     s.close()
 
 
+def test_a_long_read_does_not_hold_up_a_write(store, tmp_path):
+    """Write-ahead logging: the page reading Today while a score or logo is saved."""
+    assert store.db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    store.sync("lever", "globex", [job("a"), job("b")])
+    reading = store.db.execute("SELECT key FROM jobs")
+    reading.fetchone()  # a read under way
+    other = Store(tmp_path / "sub" / "state.db")
+    other.save_logo("globex", "globex.com", "image/png", b"x")
+    other.close()
+    assert reading.fetchone() is not None
+
+
 def test_sync_reports_only_new_roles(store):
     assert store.sync("lever", "globex", [job("a"), job("b")]) == ["lever:globex:a", "lever:globex:b"]
     assert store.sync("lever", "globex", [job("a", "Renamed"), job("c")]) == ["lever:globex:c"]

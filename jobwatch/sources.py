@@ -103,6 +103,11 @@ def get_text(url: str, timeout: float = 30) -> str:
     return _read(url, timeout, None, "text/html,application/xhtml+xml,*/*").decode("utf-8", "replace")
 
 
+def get_bytes(url: str, timeout: float = 30) -> bytes:
+    """A file as it comes (a site's icon)."""
+    return _read(url, timeout, None, "image/*,*/*")
+
+
 def _time(value) -> datetime | None:
     if value in (None, ""):
         return None
