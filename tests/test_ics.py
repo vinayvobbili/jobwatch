@@ -120,6 +120,32 @@ def test_uids_are_stable_and_distinct():
     assert uids([moved], TODAY, NOW) == first[:2]
 
 
+TWO = "Pat sync Fri 10/23 9:30 AM ET (prep for Sam, comp and timing); Sam Recruiter final round Sun 10/25 5:00 PM ET"
+
+
+def test_a_next_step_naming_two_meetings_reads_as_two():
+    assert meet(TWO) is None  # as one text it has two dates
+    found = ics.meetings(TWO, TODAY)
+    assert [(m.start.isoformat(), m.label) for m in found] == [("2026-10-23T13:30:00+00:00", "Call"),
+                                                              ("2026-10-25T21:00:00+00:00", "Interview")]
+    # one meeting reads as before, a clause with no time is dropped, line breaks split too
+    assert ics.meetings("call 10/15 3pm ET", TODAY) == [meet("call 10/15 3pm ET")]
+    assert len(ics.meetings("call 10/15 3pm ET; final round, time to be set", TODAY)) == 1
+    assert len(ics.meetings("call 10/15 3pm ET\nonsite 10/16 1pm ET", TODAY)) == 2
+    assert ics.meetings("send references; wait", TODAY) == [] and ics.meetings(None, TODAY) == []
+
+
+def test_each_meeting_is_an_event_and_the_first_keeps_its_uid():
+    one = (job("Initech", "Engineer"), rec(next_step="Pat sync Fri 10/23 9:30 AM ET"))
+    two = (one[0], rec(next_step=TWO))
+
+    def uids(row):
+        return [x for x in unfold(ics.calendar([row], today=TODAY, now=NOW)) if x.startswith("UID:")]
+    before, after = uids(one), uids(two)
+    assert len(before) == 1 and len(after) == 2
+    assert after[0] == before[0] and after[1] == before[0].replace("-meeting@", "-meeting-2@")
+
+
 def test_ended_applications_are_left_out_and_unreadable_times_keep_the_follow_up():
     rows = [(job("Acme Robotics", "A", id_="1"), rec("rejected", "call 10/15 3pm ET", "2026-10-14")),
             (job("Acme Robotics", "B", id_="2"), rec("withdrawn", None, "2026-10-14")),

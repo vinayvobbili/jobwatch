@@ -1,7 +1,8 @@
 """The Interviews tab: the interviews and calls your open applications' next steps name, today's first, then the
 days ahead, each with the prep sheets you wrote for that company.
 
-A next step is read the way the calendar feed reads it (ics.meeting): a date and a time it can be sure of. One
+A next step is read the way the calendar feed reads it (ics.meetings): a date and a time it can be sure of, and
+one card for each meeting it names (a step with two calls is on the tab twice). One
 that names a meeting but no time it can read ("panel interview, the recruiter to schedule") is listed as not scheduled
 yet while its follow-up day is today or ahead, so it isn't lost, once the application is past applied (before
 that, "wait for a recruiter screen" is a hope, not an interview). Prep sheets are the .html files in the
@@ -14,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import ics
@@ -43,8 +44,8 @@ def _local_day(m: ics.Meeting) -> date:
 
 
 def upcoming(rows: list[tuple[Job, dict]], today: date | None = None, ahead: int = AHEAD) -> list[Interview]:
-    """The open applications whose next step is an interview or call from today to `ahead` days on, soonest
-    first, then those not scheduled yet (by follow-up day)."""
+    """The interviews and calls open applications' next steps name, from today to `ahead` days on, soonest first
+    (an application naming two is listed twice), then those not scheduled yet (by follow-up day)."""
     today = today or date.today()
     last = today + timedelta(days=ahead)
     timed, untimed = [], []
@@ -52,9 +53,8 @@ def upcoming(rows: list[tuple[Job, dict]], today: date | None = None, ahead: int
         if rec.get("status") in ENDED:
             continue
         step = rec.get("next_step")
-        if m := ics.meeting(step, today):
-            if today <= (on := _local_day(m)) <= last:
-                timed.append(Interview(job, rec, m, on))
+        if found := ics.meetings(step, today):
+            timed += [Interview(job, rec, m, on) for m in found if today <= (on := _local_day(m)) <= last]
         elif rec.get("status") != "applied" and ics.names_meeting(step) and (follow := rec.get("follow_up")):
             if today <= (on := date.fromisoformat(follow)) <= last:
                 untimed.append(Interview(job, rec, None, on))
@@ -100,7 +100,10 @@ def to_dict(i: Interview, folder: Path | None) -> dict:
 
 
 def meeting_dict(next_step: str | None, today: date | None = None) -> dict | None:
-    """A next step's interview time for the details view, or None."""
-    m = ics.meeting(next_step, today or date.today())
+    """A next step's interview time for the details view, or None: the next one that hasn't ended, else the last."""
+    today = today or date.today()
+    found = ics.meetings(next_step, today)
+    now = datetime.now(timezone.utc)
+    m = next((m for m in found if (m.end if m.zoned else m.end.astimezone()) >= now), found[-1] if found else None)
     return m and {"start": m.start.isoformat(), "end": m.end.isoformat(), "zoned": m.zoned, "label": m.label,
                   "day": _local_day(m).isoformat()}
