@@ -6,6 +6,7 @@
 [![vinayvobbili/jobwatch MCP server](https://glama.ai/mcp/servers/vinayvobbili/jobwatch/badges/score.svg)](https://glama.ai/mcp/servers/vinayvobbili/jobwatch)
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/vinayvobbili/jobwatch)
 [![jobwatch on AI Agents Listing](https://aiagentslisting.com/jobwatch/badge.svg?claim=7ad06551a472272d8db3d80aa39a0895)](https://aiagentslisting.com/mcp/jobwatch)
+[![jobwatch skill on Agensi](https://img.shields.io/badge/Agensi-skill-2563eb)](https://www.agensi.io/skills/jobwatch)
 
 Watch the job boards of the companies you care about and get a short, ranked digest of **new** roles that
 match you, optionally fit-scored against your resume. jobwatch finds and ranks. It never applies for you.
