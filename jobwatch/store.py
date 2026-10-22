@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS activity (
 );
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
-ACTIVITY_KEPT = 1000  # the things done in the background remembered (see Store.log)
+ACTIVITY_KEPT = 1000  # the things done in the background remembered, of each kind (see Store.log)
 BUSY = 30  # seconds to wait for another thread or process writing the state file, instead of "database is locked"
 
 
@@ -661,14 +661,17 @@ class Store:
             self.db.execute("INSERT INTO activity (at, kind, text, ok, detail, by, notable) "
                             "VALUES (?, ?, ?, ?, ?, ?, ?)",
                             (_now(), kind, text, int(ok), json.dumps(list(detail)), by, int(notable)))
-            self.db.execute("DELETE FROM activity WHERE rowid NOT IN (SELECT rowid FROM activity ORDER BY at DESC "
-                            "LIMIT ?)", (ACTIVITY_KEPT,))
+            # kept per kind, so hundreds of jobs scored don't push the board checks and emails out
+            self.db.execute("DELETE FROM activity WHERE kind=? AND rowid NOT IN (SELECT rowid FROM activity "
+                            "WHERE kind=? ORDER BY at DESC LIMIT ?)", (kind, kind, ACTIVITY_KEPT))
 
     def activity(self, limit: int = 200, kind: str = "", since: str = "", notable: bool = False) -> list[dict]:
-        """The newest first: at (ISO), kind, text, ok, detail (lines), by and notable. since: only ones after
-        that time (ISO); notable: only the ones worth a look."""
-        rows = self.db.execute("SELECT * FROM activity WHERE (?='' OR kind=?) AND at>? AND notable>=? "
-                               "ORDER BY at DESC LIMIT ?", (kind, kind, since, int(notable), limit))
+        """The newest first: at (ISO), kind, text, ok, detail (lines), by and notable. kind: only that kind, or
+        those kinds ("score,pay"); since: only ones after that time (ISO); notable: only the ones worth a look."""
+        kinds = [k for k in kind.split(",") if k]
+        among = ",".join("?" * len(kinds)) or "NULL"
+        rows = self.db.execute(f"SELECT * FROM activity WHERE (? OR kind IN ({among})) AND at>? AND notable>=? "
+                               "ORDER BY at DESC LIMIT ?", (not kinds, *kinds, since, int(notable), limit))
         return [{"at": r["at"], "kind": r["kind"], "text": r["text"], "ok": bool(r["ok"]),
                  "detail": json.loads(r["detail"]), "by": r["by"], "notable": bool(r["notable"])} for r in rows]
 

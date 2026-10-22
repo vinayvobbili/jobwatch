@@ -135,6 +135,8 @@ def test_page_has_an_activity_tab(server):
     page = request(server, "GET", "/")[1].decode()
     assert '<button data-tab="activity">Activity<span id="actcount"></span></button>' in page
     assert "activity: renderActivity" in page and "watchNotices();" in page
+    # one list at a time: the boards, the emails, then scoring (with pay and logos), which there's most of
+    assert '[["boards", "Job Boards"], ["mail", "Gmail"], ["score,pay,logos", "Scored"]]' in page
     status, body = request(server, "GET", "/api/activity?kind=boards&notable=1&since=0",
                            headers={"X-Jobwatch-Token": TOKEN})
     assert status == 200 and json.loads(body)["events"] == [] and set(json.loads(body)) == {"events", "now"}
