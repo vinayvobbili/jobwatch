@@ -54,6 +54,8 @@ a story from the user's own past would answer. Ask the user about one, and keep 
 
 - `list_applications`: where every application stands, with follow-ups due and ones gone quiet.
 - `get_company`: everything tracked at one company, closed postings too.
+- `find_past_answers`: what the user answered before to a form question ("notice period", "reason for
+  leaving"), newest first: reuse it before writing a new answer.
 - `check_postings`: whether queued jobs and open applications are still posted.
 - `list_jobs`: jobs by status. `find_duplicates`: the same opening tracked twice.
 - `add_application`: an application found elsewhere, from its link or pasted text.

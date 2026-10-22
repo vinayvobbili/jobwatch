@@ -212,7 +212,7 @@ def _line(j: dict) -> list[str]:
         facts.append(f"posting closed {j['closed']}")
     if j["has_package"]:
         facts.append("package saved")
-    out = [f"  {j['title']}", f"    {' · '.join(facts)}"]
+    out = [f"  {j['company'] + ': ' if j.get('company') else ''}{j['title']}", f"    {' · '.join(facts)}"]
     if j["next_step"] or j["follow_up"]:
         step = " · ".join(x for x in (j["next_step"], f"follow up {j['follow_up']}" if j["follow_up"] else "") if x)
         out.append(("    Due: " if j["due"] else "    Next: ") + step)
@@ -222,6 +222,29 @@ def _line(j: dict) -> list[str]:
     if j["duplicate_of"]:
         out.append(f"    Check: {j['duplicate_of']['text']}")
     return [*out, f"    `{j['key']}`"]
+
+
+def mentions(store: Store, text: str) -> list[dict]:
+    """Every tracked job, whatever its status, open or closed, whose note, next step, via, title or company
+    contains the text (see Store.search): each as view() lists a job, plus its company."""
+    index, out = dupes.Index(store), []
+    for job, rec in store.search(text):
+        j = {**_job(store, job, rec, index), "company": job.display_company}
+        # the text view shows a note's latest dated entry: show the one that matched instead (json has it all)
+        entries = re.split(r"\s(?=\d{4}-\d{2}-\d{2}\b)", " ".join((j["note"] or "").split()))
+        j["note_match"] = next((e for e in entries if text.strip().lower() in e.lower()), None)
+        out.append(j)
+    return out
+
+
+def mentions_text(found: list[dict], query: str) -> str:
+    """`jobwatch search`: the jobs to read."""
+    if not found:
+        return f"No tracked job has {query!r} in its note, next step, source, title or company."
+    out = [f"{len(found)} job{'s' * (len(found) != 1)} mention{'s' * (len(found) == 1)} {query!r}:", ""]
+    for j in found:
+        out += _line({**j, "note": j["note_match"] or j["note"]})
+    return "\n".join(out)
 
 
 def text(v: dict | None, query: str = "") -> str:

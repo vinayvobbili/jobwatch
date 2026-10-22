@@ -314,6 +314,19 @@ class Store:
         rows = self.db.execute(sql + " ORDER BY first_seen DESC", args).fetchall()
         return [(Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}) for r in rows]
 
+    def search(self, text: str) -> list[tuple[Job, dict]]:
+        """Jobs at any status, closed too, whose note, next step, via, title or company contains the text (any
+        case), newest first: "which application did the recruiter call about?". instr, not LIKE: the text is
+        taken literally ("$101/hr", "100%")."""
+        text = text.strip().lower()
+        if not text:
+            return []
+        fields = ("note", "next_step", "via", "json_extract(data, '$.title')", "company",
+                  "json_extract(data, '$.company_name')")
+        rows = self.db.execute(f"SELECT * FROM jobs WHERE {' OR '.join(f'instr(lower({f}), ?)' for f in fields)} "
+                               "ORDER BY first_seen DESC", [text] * len(fields)).fetchall()
+        return [(Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}) for r in rows]
+
     def company_counts(self) -> list[dict]:
         """How many jobs each company has, by status and whether closed, without reading any posting: source,
         company (the board), name (what its jobs call it), status, closed (bool) and n."""

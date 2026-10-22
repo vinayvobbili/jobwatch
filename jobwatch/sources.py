@@ -1913,6 +1913,19 @@ def open_roles(jobs: list[Job]) -> str:
     return f"{len(jobs)}+" if len(jobs) >= PROBE_CAP else str(len(jobs))
 
 
+def roles_matching(source: str, board: str, text: str, sample: list[Job], get=None) -> list[Job]:
+    """A board's open roles with the text in the title (any case), newest first. A board that returns every role
+    in full (`sample` is what probe saw) is just filtered; a searched one (Workday, Eightfold...) is searched for
+    the text and the matching postings read in full, so their pay is there."""
+    text = text.strip().lower()
+
+    def wanted(title: str) -> bool:
+        return text in title.lower()
+    jobs = fetch(source, board, get, search=(text,), wanted=wanted) if SOURCES[source].search else sample
+    return sorted((j for j in jobs if wanted(j.title)),
+                  key=lambda j: j.posted or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+
 def _never(title: str) -> bool:
     return False
 

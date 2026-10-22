@@ -17,6 +17,7 @@ from pydantic import Field
 from . import (
     __version__,
     alerts,
+    answers,
     company,
     config,
     contacts,
@@ -62,7 +63,8 @@ server = MCPServer(
         "present the proposals and call mark_job only for the ones the person confirms. "
         "list_applications shows where each stands. After the person submits, save_application_package keeps the "
         "resume, cover letter and form answers they sent; get_application_package reads them back before a call or "
-        "interview, and get_interview_prep puts the posting, the resume and what was sent on one sheet, with "
+        "interview, find_past_answers finds what they answered before to a form question (\"notice period\") "
+        "across all of them, and get_interview_prep puts the posting, the resume and what was sent on one sheet, with "
         "story_gaps: what a story from the person's own past would help with. Interview them about one, and "
         "save_story keeps what they confirm in their story file for drafted answers. "
         "list_skill_gaps lists what the matching jobs ask for that the resume doesn't show, with courses and "
@@ -653,6 +655,24 @@ def get_application_package(key: Key) -> dict:
     _, store = _open()
     try:
         return store.package(key).data()
+    finally:
+        store.close()
+
+
+@server.tool(annotations=READ)
+def find_past_answers(
+    query: Annotated[str, Field(description=(
+        "Words of the question to look for (\"notice period\", \"reason leaving\"): every word must be in the "
+        "question, any case. Empty lists each distinct question once, with its latest answer."))] = "",
+) -> list[dict]:
+    """Form answers the person gave on earlier applications (kept by save_application_package), newest
+    application first: key, company, title, applied, question and answer; without a query each question once,
+    with asked (how many applications had it). Use it before filling a form, to reuse what was answered to
+    \"reason for leaving\", \"notice period\" or \"salary\" instead of writing it again; for everything sent with
+    one application use get_application_package."""
+    _, store = _open()
+    try:
+        return answers.find(store, query)
     finally:
         store.close()
 
