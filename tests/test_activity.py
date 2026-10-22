@@ -14,15 +14,19 @@ from .test_alerts import IMAP_WATCHLIST, FakeIMAP
 from .test_background_scoring import resume_watchlist, scored  # noqa: F401 (fixtures)
 
 
-def test_entries_are_newest_first_by_kind_and_only_the_last_are_kept(tmp_path, monkeypatch):
+def test_entries_are_newest_first_by_kind_and_only_the_last_of_each_kind_are_kept(tmp_path, monkeypatch):
     monkeypatch.setattr(store_mod, "ACTIVITY_KEPT", 3)
     store = Store(tmp_path / "s.db")
     store.log("boards", "one")
     store.log("score", "two", ok=False, detail=["why"], by="background")
     store.log("boards", "three")
     store.log("pay", "four")
-    assert [e["text"] for e in store.activity()] == ["four", "three", "two"]
-    assert [e["text"] for e in store.activity(kind="boards")] == ["three"]
+    for i in range(4):
+        store.log("pay", f"pay {i}")
+    # each kind keeps its own last few, so many of one kind don't push another out
+    assert [e["text"] for e in store.activity()] == ["pay 3", "pay 2", "pay 1", "three", "two", "one"]
+    assert [e["text"] for e in store.activity(kind="boards")] == ["three", "one"]
+    assert [e["text"] for e in store.activity(kind="score,boards")] == ["three", "two", "one"]
     two = store.activity(kind="score")[0]
     assert (two["ok"], two["detail"], two["by"]) == (False, ["why"], "background")
     store.close()

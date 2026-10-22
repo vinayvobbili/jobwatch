@@ -3182,9 +3182,10 @@ async function renderSkills() {
 
 // -- activity: what jobwatch has been doing (checking the boards, reading job-alert mail, scoring, pay), newest
 // first, and what it's doing now. It asks again every 10 seconds while it's open; details left open stay open.
-const activityView = { kind: "", open: new Set(), timer: null, seen: "0" };
-const ACT_KINDS = [["", "All"], ["boards", "Boards"], ["mail", "Email"], ["score", "Scoring"], ["pay", "Pay"]];
-const ACT_ICON = { boards: "refresh", mail: "inbox", score: "sparkle", pay: "dollar" };
+// One list at a time (the kinds each shows), so the hundreds of jobs scored don't bury the board checks and emails.
+const ACT_KINDS = [["boards", "Job Boards"], ["mail", "Gmail"], ["score,pay,logos", "Scored"]];
+const activityView = { kind: remembered("activity.kind", "boards"), open: new Set(), timer: null, seen: "0" };
+const ACT_ICON = { boards: "refresh", mail: "inbox", score: "sparkle", pay: "dollar", logos: "cloud" };
 const ACT_BY = { schedule: "On schedule", page: "You pressed Check for new jobs", background: "In the background" };
 
 function activityTick() {
@@ -3196,7 +3197,8 @@ function activityTick() {
 }
 
 async function renderActivity() {
-  const d = await api("/api/activity" + (activityView.kind ? "?kind=" + activityView.kind : ""));
+  if (!ACT_KINDS.some(([k]) => k === activityView.kind)) activityView.kind = ACT_KINDS[0][0];
+  const d = await api("/api/activity?kind=" + activityView.kind);
   // what's worth a look and new since you last looked stands out; looking marks it seen (see watchNotices)
   // (what was new when the tab opened stays marked while it refreshes itself)
   if (!main.classList.contains("quiet")) activityView.seen = remembered("activity.seen", "0");
@@ -3210,7 +3212,11 @@ async function renderActivity() {
   const line = (text, idle) => h("div", { class: "now-line" + (idle ? " idle" : "") }, h("span", { class: "dot" }), text);
   const side = h("div", {},
     panel("Now", now.length ? now.map(t => line(t)) : line("Nothing running", true)),
-    panel("Show", segmented(ACT_KINDS, activityView.kind, k => { activityView.kind = k; render(); })));
+    panel("Show", segmented(ACT_KINDS, activityView.kind, k => {
+      activityView.kind = k;
+      remember("activity.kind", k);
+      render();
+    })));
   const rows = [];
   let day = "";
   for (const e of d.events) {

@@ -151,7 +151,9 @@ that one rather than starting another.
 The **Activity** tab shows what it has been doing, newest first: each check of the boards (what's new, what
 failed), each read of your job-alert emails, each job scored (its score and which model made it, or why it
 failed) and each lookup of expected pay, with what started it (the schedule, the button, the background
-scorer), plus what's running right now. It updates by itself while it's open, and keeps the last 1,000 entries.
+scorer), plus what's running right now. It shows one list at a time, **Job Boards**, **Gmail** or **Scored** (the
+jobs scored, with the pay and logo lookups), so the many jobs scored don't bury the rest. It updates by itself while
+it's open, and keeps the last 1,000 entries of each kind.
 
 Each card shows the company's logo once it's known, else its initials. The logo is the icon on the company's own
 site (no logo service is asked), found in the background the first time a company shows up: the site is the
