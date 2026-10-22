@@ -44,6 +44,26 @@ def test_interviews_today_first_then_the_next_two_weeks_then_the_unscheduled():
     assert interviews.to_dict(found[3], None)["scheduled"] is False
 
 
+def test_a_next_step_with_two_meetings_is_listed_twice():
+    step = "Pat sync Wed 10/14 9:30 AM ET (prep, comp and timing); final round Sun 10/25 5:00 PM ET"
+    rows = [(job("Acme", "Two", "1"), rec(next_step=step, follow_up="2026-10-14")),
+            (job("Globex", "Half", "2"), rec(next_step="sync Thu 10/15 1:00 PM ET; final round, time to be set"))]
+    found = interviews.upcoming(rows, today=TODAY, ahead=30)
+    assert [(i.job.title, i.day.isoformat()) for i in found] == [("Two", "2026-10-14"), ("Half", "2026-10-15"),
+                                                                 ("Two", "2026-10-25")]
+    assert not any(i.meeting is None for i in found)  # it has times, so not "not scheduled yet"
+    assert [interviews.to_dict(i, None)["start"][:10] for i in found if i.job.title == "Two"] == [
+        "2026-10-14", "2026-10-25"]
+    assert [i.day.isoformat() for i in interviews.upcoming(rows[:1], today=TODAY, ahead=5)] == ["2026-10-14"]  # window
+    # the details chip shows the one still to come: the first until it has ended, then the last
+    future = "sync 10/14/2099 9:30 AM ET; final round 10/25/2099 5:00 PM ET"
+    assert interviews.meeting_dict(future, TODAY)["start"].startswith("2099-10-14")
+    past = "sync 10/9/2020 9:30 AM ET; final round 10/10/2020 5:00 PM ET"
+    assert interviews.meeting_dict(past, TODAY)["start"].startswith("2020-10-10")
+    half = "sync 10/9/2020 9:30 AM ET; final round 10/10/2099 5:00 PM ET"
+    assert interviews.meeting_dict(half, TODAY)["start"].startswith("2099-10-10")
+
+
 def sheet_dir(tmp_path):
     folder = tmp_path / "prep"
     folder.mkdir()

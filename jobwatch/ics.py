@@ -2,7 +2,8 @@
 
 Each open application's follow-up day is an all-day event. When its next step names an interview or call with a
 date and a time ("Panel interview Tue 3/10 10:00 AM ET", "call Wed 3/11 2:15-3:00 PM ET", an ISO datetime), that
-is a timed event too. Text that can't be read with confidence (no time, two dates, a weekday that doesn't fit the
+is a timed event too; a step naming several, one clause each separated by ";" or a line break, gives one event
+each. Text that can't be read with confidence (no time, two dates in one clause, a weekday that doesn't fit the
 date) gives no timed event: the follow-up day is still there. jobwatch never gets access to a calendar: the
 calendar app reads the file. Nothing here uses the network.
 """
@@ -191,6 +192,15 @@ def meeting(next_step: str | None, today: date) -> Meeting | None:
     return Meeting(start, end or start + DURATION, zoned, label)
 
 
+def meetings(next_step: str | None, today: date) -> list[Meeting]:
+    """Every interview or call a next step names, in the order written. When the whole step reads as one meeting,
+    that one; else each clause (split at ";" and line breaks) that reads as a meeting on its own, so
+    "Sync Fri 10/23 9:30 AM ET; final round Sun 10/25 5:00 PM ET" is two and a clause with no time is dropped."""
+    if m := meeting(next_step, today):
+        return [m]
+    return [m for clause in re.split(r"[;\r\n]+", next_step or "") if (m := meeting(clause, today))]
+
+
 def _escape(text: str) -> str:
     return (text.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,")
             .replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n"))
@@ -234,8 +244,8 @@ def calendar(rows: list[tuple[Job, dict]], today: date | None = None, now: datet
              remind: int = 0) -> str:
     """The feed for these applications (store.applications()): CRLF lines, ready to write to a .ics file.
     Rejected and withdrawn ones are left out. remind: minutes before a timed event for a reminder (0: none; the
-    all-day follow-ups never have one). An event's UID is its application and kind, so importing the feed again
-    updates the events instead of adding more."""
+    all-day follow-ups never have one). An event's UID is its application and kind (meeting, then meeting-2, ...),
+    so importing the feed again updates the events instead of adding more."""
     today = today or date.today()
     now = now or datetime.now(timezone.utc)
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", f"PRODID:{PRODID}", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
@@ -251,9 +261,10 @@ def calendar(rows: list[tuple[Job, dict]], today: date | None = None, now: datet
             lines += _event(_uid(job.key, "followup"), now, f"Follow up: {name}", about, job.url,
                             {"DTSTART;VALUE=DATE:": on.strftime("%Y%m%d"),
                              "DTEND;VALUE=DATE:": (on + timedelta(days=1)).strftime("%Y%m%d")})
-        if m := meeting(step, today):
+        for n, m in enumerate(meetings(step, today), 1):
             fmt = "%Y%m%dT%H%M%S" + ("Z" if m.zoned else "")
-            lines += _event(_uid(job.key, "meeting"), now, f"{m.label}: {name}", about, job.url,
+            kind = "meeting" if n == 1 else f"meeting-{n}"  # the first keeps the UID it always had
+            lines += _event(_uid(job.key, kind), now, f"{m.label}: {name}", about, job.url,
                             {"DTSTART:": m.start.strftime(fmt), "DTEND:": m.end.strftime(fmt)}, remind)
     lines.append("END:VCALENDAR")
     return "".join(piece + "\r\n" for line in lines for piece in _fold(line))
