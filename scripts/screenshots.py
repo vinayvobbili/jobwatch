@@ -14,6 +14,8 @@ Opening Today marks its new jobs as seen, as in the browser: point -c at a copy 
 --demo takes the README demo video's scenes instead (see scripts/demo/README.md): one light page, 1280 px wide
 at 2x, named for the slides that use them (today.png, chat.png, prep.png, ...).
 
+--logo [SIZE] draws only the page's brand mark, as a square logo.png (512 px unless given), for a listing.
+
 The chat scenes show a canned reply (--reply FILE for your own): screenshots never call a model, and never
 check the boards.
 """
@@ -47,7 +49,7 @@ def canned_chat(text: str = CANNED):
     def reply(backend, system, messages, **settings):
         for word in text.split(" "):
             yield word + " "
-    chat.check = lambda backend: None
+    chat.check = lambda backend, keychain="": None
     chat.reply = reply
 
 
@@ -250,9 +252,26 @@ def demo(config: Path, out: Path, reply: str = CANNED):
     print(f"Wrote the demo's screenshots to {out}")
 
 
+def logo(out: Path, size: int = 512):
+    """The page's brand mark (the first <svg> in its header) as a square PNG, logo.png in out: for a listing or
+    an avatar, drawn from the page itself so it never drifts from it."""
+    out.mkdir(parents=True, exist_ok=True)
+    page_html = (Path(__file__).parent.parent / "jobwatch" / "static" / "index.html").read_text(encoding="utf-8")
+    mark = page_html[page_html.index("<svg", page_html.index('class="brand"')):]
+    mark = mark[:mark.index("</svg>") + len("</svg>")]
+    mark = mark.replace('width="28" height="28"', f'width="{size}" height="{size}"', 1)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": size, "height": size})
+        page.set_content(f'<body style="margin:0;background:transparent">{mark}</body>')
+        page.locator("svg").screenshot(path=out / "logo.png", omit_background=True)
+        browser.close()
+    print(f"Wrote {out / 'logo.png'} ({size}x{size})")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("-c", "--config", type=Path, required=True)
+    ap.add_argument("-c", "--config", type=Path)
     ap.add_argument("-o", "--out", type=Path, default=Path("shots"))
     ap.add_argument("--theme", choices=["light", "dark"], action="append")
     ap.add_argument("--size", choices=list(SIZES), action="append")
@@ -261,7 +280,13 @@ def main():
     ap.add_argument("--pages", action="store_true", help="each tab a screen at a time too (TAB-THEME-SIZE-p1.png...)")
     ap.add_argument("--demo", action="store_true", help="the README demo video's scenes (scripts/demo)")
     ap.add_argument("--reply", type=Path, metavar="FILE", help="what the chat answers, instead of a generic reply")
+    ap.add_argument("--logo", type=int, nargs="?", const=512, metavar="SIZE",
+                    help="only the brand mark, as a SIZE-pixel square logo.png (default 512); needs no watchlist")
     args = ap.parse_args()
+    if args.logo:
+        return logo(args.out, args.logo)
+    if not args.config:
+        ap.error("-c/--config is required (except with --logo)")
     reply = args.reply.read_text(encoding="utf-8").strip() if args.reply else CANNED
     if args.demo:
         return demo(args.config, args.out, reply)
