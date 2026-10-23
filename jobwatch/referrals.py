@@ -5,6 +5,7 @@ you've said about them (use, or don't use, and a note). The page's Referrals tab
 from __future__ import annotations
 
 from .config import Config
+from .filters import reject_reason
 from .store import ENDED, STAGES, Store
 from .watch import load_contacts
 
@@ -13,7 +14,8 @@ OPEN = ("new", "shown", "queued", *(s for s in STAGES if s not in ENDED))
 
 def view(cfg: Config, store: Store) -> dict:
     """{"people": [...], "skipped": [...], "has_connections": bool}: the connections at companies that have a
-    tracked job (new, shown, queued, or an open application), people marked Use first and then the closest ties.
+    tracked job (new or shown and passing the filters, queued, or an open application), people marked Use first
+    and then the closest ties.
     skipped are those left out: marked Don't use, or in the watchlist file (from_file; edit the file to restore).
     Each has key, name, url, company, position, why, strength, verdict, note, from_file and jobs: [{key, title,
     company, status}]."""
@@ -24,6 +26,8 @@ def view(cfg: Config, store: Store) -> dict:
     for job, rec in store.jobs(OPEN, include_closed=True):
         if rec["closed"] and rec["status"] in ("new", "shown", "queued"):
             continue
+        if rec["status"] in ("new", "shown") and reject_reason(job, cfg.filters):
+            continue  # a board's other openings (a chip maker's hundreds) aren't jobs you'd ask about
         names = (job.display_company, job.company)
         for p in known.at(*names) + known.left_out(*names):
             row = found.setdefault(p["key"], {**p, "jobs": []})

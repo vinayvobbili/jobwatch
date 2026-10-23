@@ -99,6 +99,12 @@ def test_view_lists_people_at_tracked_companies(web, watchlist, connections):
     assert v["has_connections"] and {p["name"] for p in v["people"]} == {"Ana Li", "Bo Chen", "Cy Diaz"}
     ana = next(p for p in v["people"] if p["name"] == "Ana Li")
     assert ana["jobs"] and ana["jobs"][0]["company"] == "Initech"  # Umbrella's Dee Park has no tracked job
+    # An opening the filters turn down isn't listed (exclude_titles: [contract]), unless you queued it anyway.
+    other, _ = watch.save_job(store, company="Initech", title="Contract Analog Designer", status="shown",
+                              location="Remote")
+    mine, _ = watch.save_job(store, company="Initech", title="Contract Platform Lead", location="Remote")
+    keys = {j["key"] for j in next(p for p in referrals.view(cfg, store)["people"] if p["name"] == "Ana Li")["jobs"]}
+    assert other.key not in keys and mine.key in keys
     referrals.rate(cfg, store, "Cy Diaz", "skip", "never replies")
     v = referrals.view(cfg, store)
     assert [p["name"] for p in v["skipped"]] == ["Cy Diaz"] and v["skipped"][0]["note"] == "never replies"
