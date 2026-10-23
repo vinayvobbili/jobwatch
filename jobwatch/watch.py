@@ -620,6 +620,33 @@ def _rank(e: Entry):
     return (-fit, -e.relevance, e.job.age_days() if e.job.age_days() is not None else 10_000)
 
 
+PER_COMPANY = 2  # Today leads with at most this many jobs from one company
+STALE_DAYS = 7  # a job shown this long ago without being acted on goes below the newer ones
+
+
+def _stale(e: Entry, now: datetime) -> bool:
+    """Shown in an earlier digest, first seen over STALE_DAYS ago, and still not queued, applied to or skipped."""
+    seen = e.record.get("first_seen")
+    return e.record.get("status") == "shown" and bool(seen) and \
+        now - datetime.fromisoformat(seen) > timedelta(days=STALE_DAYS)
+
+
+def _spread(entries: list[Entry], now: datetime | None = None) -> list[Entry]:
+    """Ranked entries reordered so one company's high scores don't fill the top: the newer jobs first, then the
+    stale ones (see _stale), each company's first PER_COMPANY of them; then every company's others, in the same
+    order. Each part keeps the rank order."""
+    now = now or datetime.now(timezone.utc)
+    stale = {id(e): _stale(e, now) for e in entries}
+    ordered = sorted(entries, key=lambda e: stale[id(e)])  # stable: the rank order within each
+    count: dict[str, int] = {}
+    over = {}
+    for e in ordered:
+        c = e.job.display_company.lower()
+        count[c] = count.get(c, 0) + 1
+        over[id(e)] = count[c] > PER_COMPANY
+    return sorted(ordered, key=lambda e: over[id(e)])
+
+
 def _fits(store: Store, rid: str) -> dict[str, dict]:
     """The fit scores to list and filter jobs by: the current one, else the last one made by another scorer
     (marked "stale") until the job is scored afresh, so a changed scorer doesn't make every job look unscored."""
@@ -858,7 +885,8 @@ def compare_scores(cfg: Config, picks: list[tuple[Job, dict]], backend: str, mod
 
 def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,
                  limit: int | None = None, progress: Callable[[str], None] | None = None) -> Digest:
-    """Open jobs that pass the filters, ranked by fit score (when scored), then keyword relevance.
+    """Open jobs that pass the filters, ranked by fit score (when scored), then keyword relevance, and spread out
+    (see _spread): at most PER_COMPANY from one company lead, and jobs seen over a week ago go below newer ones.
 
     Only jobs not yet shown are included unless include_seen. The `score_top` most relevant unscored
     jobs are scored with shortlist-ai first, when a resume is configured."""
@@ -878,7 +906,7 @@ def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_to
             if todo:
                 digest.scored, digest.score_errors = score_entries(cfg, store, todo, progress)
     entries.sort(key=_rank)
-    grouped = _group(entries)
+    grouped = _spread(_group(entries))
     digest.total = len(grouped)
     digest.entries = grouped[:limit] if limit else grouped
     return digest

@@ -216,6 +216,28 @@ def test_settings_round_trip(watchlist):
     assert "pace" not in yaml.safe_load(watchlist.read_text()) and config.load(watchlist).pace.daily == 3
 
 
+def test_one_company_and_old_jobs_dont_fill_the_top():
+    """Ranked Globex, Globex, Globex, Acme (stale), Initech: Globex's third goes after the rest, and Acme's job,
+    shown 8 days ago and not acted on, goes below Initech's newer one."""
+    from datetime import datetime, timedelta, timezone
+
+    from jobwatch.models import Job
+    from jobwatch.watch import Entry, _spread
+
+    now = datetime(2026, 10, 23, 12, tzinfo=timezone.utc)
+
+    def entry(company, n, days, status="shown"):
+        seen = (now - timedelta(days=days)).isoformat()
+        job = Job(source="greenhouse", company=company.lower(), id=str(n), title=f"Engineer {n}",
+                  url=f"https://example.com/{n}", company_name=company)
+        return Entry(job, {"status": status, "first_seen": seen}, 0.0, [])
+
+    ranked = [entry("Globex", 1, 1), entry("Globex", 2, 2), entry("Globex", 3, 1), entry("Acme", 4, 8),
+              entry("Initech", 5, 3), entry("Hooli", 6, 9, status="new")]  # never shown: not stale
+    order = [e.job.id for e in _spread(ranked, now)]
+    assert order == ["1", "2", "5", "6", "4", "3"]
+
+
 def test_page_has_todays_picks_and_the_pace(server):
     page = request(server, "GET", "/")[1].decode()
     assert "function paceLine(" in page and "picks for today" in page
