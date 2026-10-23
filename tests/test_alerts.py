@@ -285,7 +285,7 @@ def test_a_body_without_headers_is_read_by_its_links():
 
 
 def test_reading_files_folders_mbox_and_stdin(tmp_path):
-    assert len(alerts.read([str(FIXTURES)])) == 6
+    assert len(alerts.read([str(FIXTURES)])) == 7
     mbox = b"".join(b"From MAILER-DAEMON Thu Oct  8 00:00:00 2026\n" + (FIXTURES / n).read_bytes() + b"\n"
                     for n in ("linkedin.eml", "indeed.eml"))
     (tmp_path / "alerts.mbox").write_bytes(mbox)
@@ -397,6 +397,15 @@ def test_a_direct_board_link_and_a_page_that_links_to_the_board(web, watchlist):
     later = alerts.intake(cfg, store, emails("linkedin.eml", "indeed.eml"), page=pages)
     assert by_title(later)["Senior Software Engineer, Platform @ Acme Inc."].result == "known"
     assert by_title(later)["Machine Learning Engineer @ Globex"].result == "known"
+
+
+def test_a_job_the_email_names_no_place_for_is_read_from_its_board(web, watchlist):
+    """MyGreenhouse's emails give a title and a company only: kept as emailed, the job would fail the location
+    filter, so it's read from its board, which says where it is."""
+    _, store, r, _ = take(watchlist, ["mygreenhouse.eml"])
+    (found,) = r.found
+    assert (found.how, found.key, found.reason) == ("posting", "greenhouse:acme:101", None)
+    assert store.find("greenhouse:acme:101")[1]["via"] == "greenhouse-jobs-alert"
 
 
 def test_dry_run_records_nothing(web, watchlist):
@@ -669,7 +678,8 @@ def test_fixtures_hold_no_personal_data():
         assert addresses <= {"you@example.com", "jobalerts-noreply@linkedin.com", "support@builtin.com",
                              "donotreply@jobalert.indeed.com", "digest@jobs.example.org", "alert-0001@example.com",
                              "alert-0002@example.com", "alert-0003@example.com", "alert-0004@example.com",
-                             "alert-0005@example.com", "alert-0006@example.com"}, f
+                             "alert-0005@example.com", "alert-0006@example.com", "alert-0007@example.com",
+                             "no-reply@us.greenhouse-jobs.com"}, f
         # No real tracking tokens: long opaque runs of letters and digits
         assert not re.search(r"(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{20,}", text), f
 

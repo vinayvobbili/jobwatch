@@ -45,7 +45,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlparse
 
 from . import dupes, linkedin, sources, suggest
-from .filters import reject_reason
+from .filters import reject_reason, rejection
 from .models import Job
 from .store import MANUAL, Store, _slug
 from .text import annual, html_to_text, parse_salary, pay_period, split_locations
@@ -871,6 +871,13 @@ class _Resolver:
             f.how = "page"
 
 
+def _unsaid(job: Job, filters) -> bool:
+    """The job fails the filters only on its place or its pay, and the email gave neither."""
+    r = rejection(job, filters)
+    return bool(r) and ((r[0] == "place" and not job.locations and not job.remote) or
+                        (r[0] == "pay" and job.salary_min is None))
+
+
 def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True, dry_run: bool = False,
            page=None, redirect=None) -> Intake:
     """Track the jobs in these alert emails (see the module's docstring). follow=False reads no links: each job
@@ -904,7 +911,9 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
             known = tracked.match(a.company, a.title, a.url)
             if not known:
                 f.reason = reject_reason(f.job, cfg.filters)
-                if follow and f.reason is None:  # only jobs worth a look are followed; the rest stay as emailed
+                # Only jobs worth a look are followed (the rest stay as emailed), and jobs that fail only on what
+                # the email didn't say: MyGreenhouse's name no place or pay, and the posting does
+                if follow and (f.reason is None or _unsaid(f.job, cfg.filters)):
                     resolver.resolve(f)
                     f.reason = reject_reason(f.job, cfg.filters)
                 # The same job, already tracked from its board (or from another alert, under another name)

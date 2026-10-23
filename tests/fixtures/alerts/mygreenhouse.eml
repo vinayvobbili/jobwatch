@@ -1,0 +1,16 @@
+From: Greenhouse <no-reply@us.greenhouse-jobs.com>
+To: you@example.com
+Subject: Your first job recommendations are ready
+Date: Fri, 23 Oct 2026 11:11:10 +0000
+Message-ID: <alert-0007@example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<html><body>
+<p>Hi there, MyGreenhouse now matches you to open jobs. Start with these:</p>
+<table>
+<tr><td><a href="https://x1.r.us-east-1.awstrack.me/L0/https:%2F%2Fmy.greenhouse.io%2Fjobs%2Facme%2F101/1/M/S=473"><img alt="" src="logo.png"></a></td>
+<td><a href="https://x1.r.us-east-1.awstrack.me/L0/https:%2F%2Fmy.greenhouse.io%2Fjobs%2Facme%2F101/2/M/S=473"><div>Senior Software Engineer, Platform</div><div>Acme</div></a></td></tr>
+</table>
+<a href="https://x1.r.us-east-1.awstrack.me/L0/https:%2F%2Fmy.greenhouse.io%2Fdashboard/1/M/S=473">See your recommended jobs</a>
+</body></html>
