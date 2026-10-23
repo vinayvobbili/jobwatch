@@ -245,7 +245,7 @@ def test_at_set_times_a_check_is_due_once_each_time_passes(watchlist, web):
     app.post_fetch({})
     assert not r.due()
     store = Store(config.load(watchlist).state)
-    last_fetch_was(store, timedelta(hours=7))  # at least one of 8am, 2pm and 8pm has passed since
+    last_fetch_was(store, timedelta(hours=13))  # past the longest gap (8pm to 8am): one of the times has passed
     assert r.due()
     last_fetch_was(store, timedelta(hours=30))  # slept through several: one check catches up
     assert r.due()

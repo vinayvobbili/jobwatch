@@ -46,6 +46,7 @@ def test_detect_workable(url, expected):
 @pytest.mark.parametrize("url, pid", [
     ("https://job-boards.greenhouse.io/acme/jobs/101", "101"),
     ("https://boards.greenhouse.io/embed/job_app?for=acme&gh_jid=101", "101"),
+    ("https://my.greenhouse.io/jobs/acme/101", "101"),
     ("https://jobs.lever.co/globex/aaaa-1111/apply", "aaaa-1111"),
     ("https://jobs.ashbyhq.com/initech/c1", "c1"),
     ("https://apply.workable.com/initech/jobs/view/A1B2C3D4E5.md", "A1B2C3D4E5"),

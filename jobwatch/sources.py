@@ -1776,6 +1776,8 @@ def detect(url: str) -> tuple[str, str] | None:
     portal = [p for p in parts if not _AVATURE_LOCALE.match(p)]
     if (host.endswith(".avature.net") and portal) or (portal[1:2] and portal[1] in ("JobDetail", "SearchJobs")):
         return "avature", _avature_board(url)
+    if host == "my.greenhouse.io":  # MyGreenhouse, the job seekers' site (its emails link there): /jobs/<board>/<id>
+        return ("greenhouse", parts[1]) if parts[:1] == ["jobs"] and len(parts) > 1 else None
     source = _HOSTS.get(host)
     if not source:
         return None
@@ -1793,6 +1795,8 @@ def _posting_id(source: str, url: str) -> str | None:
     if source == "greenhouse":
         if jid := parse_qs(parsed.query).get("gh_jid"):
             return jid[0]
+        if parsed.netloc.lower() == "my.greenhouse.io":  # /jobs/<board>/<id>: the board comes first
+            return parts[2] if len(parts) > 2 and parts[0] == "jobs" else None
         return parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else None
     if source in ("lever", "ashby"):
         return parts[1] if len(parts) > 1 else None
