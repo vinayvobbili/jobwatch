@@ -50,6 +50,8 @@ def test_fetch_calls_the_board_api():
     ("https://jobs.ashbyhq.com/hooli/8fb1615c/application", ("ashby", "hooli")),
     ("https://api.ashbyhq.com/posting-api/job-board/hooli", ("ashby", "hooli")),
     ("https://boards-api.greenhouse.io/v1/boards/acme/jobs", ("greenhouse", "acme")),
+    ("https://my.greenhouse.io/jobs/initech/4000000001", ("greenhouse", "initech")),
+    ("https://my.greenhouse.io/dashboard", None),
     ("https://careers.example.com/jobs/1", None),
     ("https://jobs.lever.co/", None),
 ])

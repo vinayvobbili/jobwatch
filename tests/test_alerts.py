@@ -104,7 +104,10 @@ def test_which_links_are_jobs():
     assert alerts.job_link("https://jobs.lever.co/globex/aaaa-1111")[0] == "ats"
     assert alerts.job_link("https://acme.wd5.myworkdayjobs.com/External/job/Austin/Engineer_R123")[0] == "ats"
     assert alerts.job_link("https://jobs.example.net/job/12345")[0] == "other"
-    for not_a_job in ("https://jobs.lever.co/globex", "https://www.indeed.com/jobs?q=Python",
+    # MyGreenhouse's recommendation emails: an Amazon SES tracking link to my.greenhouse.io/jobs/<board>/<id>
+    assert alerts.job_link("https://x1.r.us-east-1.awstrack.me/L0/https:%2F%2Fmy.greenhouse.io%2Fjobs%2Facme%2F101"
+                           "/1/M/S=473") == ("ats", "https://my.greenhouse.io/jobs/acme/101")
+    for not_a_job in ("https://jobs.lever.co/globex", "https://my.greenhouse.io/dashboard","https://www.indeed.com/jobs?q=Python",
                       "https://www.linkedin.com/comm/jobs/search-results/?keywords=x", "mailto:you@example.com",
                       "https://www.indeed.com/pagead/clk/dl?mo=r&ad=SPONSORED", "https://jobs.example.org/preferences"):
         assert alerts.job_link(not_a_job) is None, not_a_job
