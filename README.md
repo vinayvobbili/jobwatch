@@ -16,11 +16,26 @@ only count of who uses it. If it landed you an interview, a [$1 coffee](https://
 
 ![jobwatch: watch boards, rank by fit, ask about your jobs, track applications, prep for interviews](https://raw.githubusercontent.com/vinayvobbili/jobwatch/main/docs/demo.gif)
 
-[Watch it with sound](https://github.com/vinayvobbili/jobwatch/blob/main/docs/jobwatch-demo.mp4) (1½ minutes,
-made from made-up data). Tutorials, under two minutes each:
-[getting started](https://github.com/vinayvobbili/jobwatch/blob/main/docs/tutorials/jobwatch-01-getting-started.mp4),
-[your daily routine](https://github.com/vinayvobbili/jobwatch/blob/main/docs/tutorials/jobwatch-02-daily-routine.mp4)
-and [where the AI runs](https://github.com/vinayvobbili/jobwatch/blob/main/docs/tutorials/jobwatch-03-where-the-ai-runs.mp4).
+With sound (1½ minutes, made from made-up data):
+
+https://github.com/user-attachments/assets/71b048d0-d372-42fd-a247-c4a59c3ffd71
+
+<details>
+<summary><b>Tutorials</b>, under two minutes each: getting started, your daily routine, where the AI runs</summary>
+
+**Getting started**: install, `jobwatch ui`, the four onboarding steps, Today.
+
+https://github.com/user-attachments/assets/f95f85df-406f-4ede-b84c-59569d1a586a
+
+**Your daily routine**: today's picks, a job's details, the queue, "I applied", Applications, the prep sheet.
+
+https://github.com/user-attachments/assets/8653c4ca-a79d-4135-9be1-51ba3c9fccf6
+
+**Where the AI runs**: the Claude API, Antigravity or this Mac; the fallback chain; what leaves your computer.
+
+https://github.com/user-attachments/assets/40e6f2cb-c201-4da9-ba21-77bdacc464b8
+
+</details>
 
 ```
 $ jobwatch run
