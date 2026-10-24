@@ -32,6 +32,7 @@ from . import (
     advice,
     chat,
     company,
+    comps,
     config,
     contacts,
     dupes,
@@ -54,7 +55,7 @@ from .config import ConfigError
 from .filters import KINDS
 from .package import Package
 from .score import LOCAL, ScoringUnavailable, brief, prompt_info, resume_id, turn
-from .store import ENDED, MANUAL, STAGES, STATUSES, Store
+from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
     Entry,
@@ -588,6 +589,41 @@ class App:
         """The people you know at companies with tracked jobs, and what you've said about each (see referrals.py)."""
         return self._with_store(lambda cfg, store: referrals.view(cfg, store))
 
+    def get_comps(self, q) -> dict:
+        """The Comps tab: open applications side by side (see comps.py). `stages` (comma-separated) picks which
+        stages; the default is screening, interviewing and offer. Repeated `key` (jobs) and `company` (names, even
+        ones with no job) parameters pick exactly what to compare instead."""
+        stages = tuple(s for s in (q.get("stages") or [""])[0].split(",") if s) or comps.LIVE
+
+        def run(cfg, store):
+            try:
+                return comps.view(cfg, store, stages, q.get("key"), q.get("company"))
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+        return self._with_store(run)
+
+    def post_comp(self, body) -> dict:
+        """What a recruiter said about pay for one job: any of base, bonus, equity, signon, asked, offered and
+        note; one left out stays, an empty one is cleared."""
+        def run(cfg, store):
+            store.set_comp(body.get("key") or "", **{f: body.get(f) for f in COMP_FIELDS})
+            return {"key": store.find(body.get("key") or "")[0].key}
+        return self._with_store(run)
+
+    def post_health(self, body) -> dict:
+        """What is known of one company's health (company: its name or a job's key): any of listing, stage, raised,
+        revenue, headcount, layoffs, rating, risk, sources and as_of; one left out stays, an empty one is cleared."""
+        def run(cfg, store):
+            name = comps.company_of(store, body.get("company") or "")
+            try:
+                store.set_health(name, **{f: body.get(f) for f in HEALTH_FIELDS})
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+            return {"company": name}
+        return self._with_store(run)
+
     def post_referral_rate(self, body) -> dict:
         """Use or don't use a person (who: their name, link or key), or clear it; the note is kept with the verdict."""
         def run(cfg, store):
@@ -1092,6 +1128,9 @@ ROUTES = {
     ("POST", "/api/suggestions/dismiss"): App.post_suggestion_dismiss,
     ("GET", "/api/referrals"): App.get_referrals,
     ("POST", "/api/referrals/rate"): App.post_referral_rate,
+    ("GET", "/api/comps"): App.get_comps,
+    ("POST", "/api/comp"): App.post_comp,
+    ("POST", "/api/health"): App.post_health,
     ("POST", "/api/fetch"): App.post_fetch,
     ("GET", "/api/checked"): App.get_checked,
     ("GET", "/api/activity"): App.get_activity,

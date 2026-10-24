@@ -227,6 +227,34 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .card.ref .rate { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 230px; }
 .card.ref .rate input { width: 100%; box-sizing: border-box; }
 @media (max-width: 700px) { .card.ref { grid-template-columns: 1fr; } }
+/* comps: the opportunities as columns on a wide screen, as stacked cards on a phone */
+table.comps { border-collapse: separate; border-spacing: 0; font-size: 14px; min-width: 100%; }
+table.comps th, table.comps td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left;
+  min-width: 190px; max-width: 280px; }
+table.comps th.lbl { position: sticky; left: 0; z-index: 1; min-width: 110px; max-width: 130px; background: var(--panel-solid);
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; }
+table.comps thead th { border-top: 3px solid var(--sc); padding-top: 12px; }
+table.comps thead .co-cell { display: flex; align-items: center; gap: 10px; }
+table.comps thead .co-cell .mono { width: 30px; height: 30px; border-radius: 9px; font-size: 12px; }
+table.comps thead a { color: var(--text); font-weight: 600; text-decoration: none; }
+table.comps tbody tr:last-child th, table.comps tbody tr:last-child td { border-bottom: 0; }
+.comps .best { color: var(--good); font-weight: 700; }
+.comps .best::after { content: " \2605"; font-size: 12px; }
+.comps .none { color: var(--muted); }
+.comps .stagechip { display: inline-block; margin-top: 6px; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 650;
+  text-transform: capitalize; background: color-mix(in srgb, var(--sc) 16%, transparent);
+  color: color-mix(in srgb, var(--sc) 75%, var(--text)); }
+.comps .gapline { font-size: 13px; color: var(--muted); }
+.comps .stale, .comp-cards .stale { color: var(--warn); font-weight: 650; }
+ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
+.comp-cards { display: none; flex-direction: column; gap: 14px; }
+.comp-cards .panel { border-left: 4px solid var(--sc); }
+.comp-cards dl { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; margin: 10px 0 0; font-size: 14px; }
+.comp-cards dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; padding-top: 2px; }
+.comp-cards dd { margin: 0; overflow-wrap: anywhere; }
+.comp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; margin-top: 10px; }
+.comp-form .wide { grid-column: 1 / -1; }
+@media (max-width: 760px) { .comp-table { display: none; } .comp-cards { display: flex; } }
 .note { font-size: 13.5px; color: var(--muted); margin-top: 6px; padding-left: 10px;
   border-left: 2px solid var(--line); }
 /* An application's note grows a dated entry at every step: three lines on the card, the whole note in Details. */
@@ -769,6 +797,7 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
       <button data-tab="interviews">Interviews<span id="ivcount"></span></button>
       <button data-tab="queue">Queue<span id="qcount"></span></button>
       <button data-tab="applied">Applications<span id="duecount"></span></button>
+      <button data-tab="comps">Comps</button>
       <button data-tab="referrals">Referrals</button>
       <button data-tab="skills">Skills</button>
       <button data-tab="activity">Activity<span id="actcount"></span></button>
@@ -3212,6 +3241,150 @@ async function renderReferrals() {
       : emptyState("No LinkedIn connections yet: upload your data in Settings.", null));
 }
 
+// -- comps: opportunities and companies side by side (comps.py), and a ranked suggestion above them. A best
+// value in a row is marked with a star; a company's health shows for every column, even one with no job.
+// What is compared is kept per browser: null is the default (screening, interviewing and offer).
+function pickedNow() {
+  try { const v = JSON.parse(remembered("comps.picked", "null")); return Array.isArray(v) ? v : null; } catch { return null; }
+}
+const compView = { applied: remembered("comps.applied", "") === "1", picked: pickedNow(), editing: null, health: null };
+function pickSave(list) { compView.picked = list; remember("comps.picked", JSON.stringify(list)); }
+const COMP_ROWS = [  // [label, the value (text or an element; null for none), the row of d.best to mark]
+  ["Applied", (o, d) => o.applied_at ? `${fmtDay(o.applied_at, d.today)} · ${relDay(o.applied_at, d.today)}` : null],
+  ["Next step", (o, d) => nextLine(o, d.today)],
+  ["Place", o => o.places.join("; ") || null],
+  ["Posted pay", o => o.pay || null, "pay"],
+  ["Base", o => o.comp.base, "base"],
+  ["Bonus", o => o.comp.bonus],
+  ["Equity", o => o.comp.equity],
+  ["Sign-on", o => o.comp.signon],
+  ["You asked", o => o.comp.asked],
+  ["Offered", o => o.comp.offered, "offered"],
+  ["Fit", o => o.fit ? `${Math.round(o.fit.score)}/100 · must-haves ${o.fit.met}/${o.fit.total}` + (o.fit.stale ? " (old score)" : "") : null, "fit"],
+  ["Gaps", o => o.fit?.gaps.length ? h("div", { class: "gapline" }, o.fit.gaps.join(" · ")) : null],
+  ["You know", o => o.contacts.length ? o.contacts.map(p => p.name + (p.position ? ` (${p.position})` : "")).join("; ") : null],
+  ["Note", o => o.comp.note],
+  ["Company", o => o.health && [o.health.listing, o.health.stage].filter(Boolean).join(" · ") || null],
+  ["Raised", o => o.health?.raised],
+  ["Revenue", o => o.health?.revenue],
+  ["Headcount", o => o.health?.headcount],
+  ["Layoffs", o => o.health?.layoffs],
+  ["Rating", o => o.health?.rating],
+  ["Risk", o => o.health?.risk],
+  ["Sources", o => o.health?.sources ? h("div", { class: "gapline" }, o.health.sources.split(/\s+/).map(s => /^https?:\/\//.test(s) ? [link(s, s.replace(/^https?:\/\/(www\.)?/, "").slice(0, 36)), " "] : s + " ")) : null],
+  ["Health as of", o => !o.health ? null : h("span", { class: o.health.stale ? "stale" : "", title: o.health.stale ? "Older than 90 days (or no date): look it up again" : "" },
+    (o.health.as_of ? fmtDay(o.health.as_of, todayIso()) : "no date") + (o.health.stale ? " · stale" : ""))],
+];
+function compValue(o, d, [, get, best]) {
+  const v = get(o, d);
+  if (v === null || v === undefined || v === "") return h("span", { class: "none" }, "—");
+  return best && d.best[best].includes(o.key) && typeof v === "string" ? h("span", { class: "best", title: "Highest of these" }, v) : v;
+}
+function compActions(o) {
+  return h("div", { style: "display:flex;gap:6px;margin-top:8px;flex-wrap:wrap" },
+    o.kind === "job" ? h("button", { class: "btn", onclick: () => { compView.editing = o.key; compView.health = null; render(); } }, icon("pencil", 13), " Pay details") : null,
+    h("button", { class: "btn", onclick: () => { compView.health = o.company; compView.editing = null; render(); } }, icon("pencil", 13), " Company health"),
+    o.kind === "job" ? h("button", { class: "btn ghost", onclick: () => openDetails(o.key) }, "Details") : null,
+    compView.picked ? h("button", { class: "btn ghost", title: "Take out of the comparison", "aria-label": "Take " + o.company + " out",
+      onclick: () => { pickSave(compView.picked.filter(p => p.id !== o.key && !(p.kind === "company" && o.kind === "company" && p.id === o.company))); render(); } }, "Remove") : null);
+}
+function compHead(o) {
+  return [h("div", { class: "co-cell" }, monogram(o.company), h("b", {}, o.company)),
+    o.kind === "job" ? h("div", {}, o.url ? link(o.url, o.title) : o.title) : h("div", { class: "muted small" }, "company only"),
+    o.status ? h("span", { class: "stagechip" }, o.status) : null, compActions(o)];
+}
+function compFormBox(title, hint, fields, extra, onsave) {
+  const inputs = Object.fromEntries(fields.map(([k, , ph]) => [k, textInput(extra.values[k], ph)]));
+  const note = extra.note ? areaInput([], extra.note.placeholder) : null;
+  if (note) note.value = extra.values.note || "";
+  const close = () => { compView.editing = null; compView.health = null; render(); };
+  return panel(title, h("p", { class: "small muted" }, hint),
+    h("div", { class: "comp-form" }, fields.map(([k, label]) => field(label, inputs[k])), note ? field("Note", note, null, "wide") : null),
+    h("div", { class: "row actions", style: "margin-top:12px" },
+      h("button", { class: "btn primary", onclick: async () => {
+        try {
+          await onsave({ ...Object.fromEntries(fields.map(([k]) => [k, inputs[k].value])), ...(note ? { note: note.value } : {}) });
+          close();
+        } catch (e) { toast(e.message); }
+      } }, "Save"),
+      h("button", { class: "btn", onclick: close }, "Cancel")));
+}
+function compForm(o) {
+  const fields = [["base", "Base range they gave", "170-200K"], ["bonus", "Bonus", "10% target"],
+    ["equity", "Equity", "40K RSUs over 4 years"], ["signon", "Sign-on", "15K"], ["asked", "You asked for", "215-250K"],
+    ["offered", "They offered", "190K"]];
+  return compFormBox(`Pay details: ${o.company}`,
+    "As the recruiter said them. Amounts like 170-200K are read to mark the highest; blank clears a field.",
+    fields, { values: o.comp, note: { placeholder: "e.g. 200K most likely their max" } },
+    values => api("/api/comp", { key: o.key, ...values }));
+}
+function healthForm(name, h0) {
+  const fields = [["listing", "Public or private", "private"], ["stage", "Stage and last round", "Series B, $50M, 2025"],
+    ["raised", "Total raised", "$80M"], ["revenue", "Revenue or growth", "2x year over year"],
+    ["headcount", "Headcount trend", "growing"], ["layoffs", "Recent layoffs", "none"], ["rating", "Employee rating", "4.1 Glassdoor"],
+    ["risk", "Risk note", "one big customer"], ["sources", "Source links", "https://..."], ["as_of", "As of (YYYY-MM-DD)", "today"]];
+  return compFormBox(`Company health: ${name}`,
+    "Typed in by you (jobwatch looks nothing up). Leave As of blank for today; health older than 90 days shows as stale.",
+    fields, { values: { ...(h0 || {}), as_of: "" } }, values => api("/api/health", { company: name, ...values, as_of: values.as_of || null }));
+}
+// The ranking above the table: how it was worked out is on show (weights, each part's score and input).
+function suggestionPanel(s) {
+  if (!s.ranking.length) return null;
+  const w = Object.entries(s.weights).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(" · ");
+  return panel("Suggestion",
+    h("p", { class: "small muted" }, `Rules, no model: ${w}. Pay is measured against ` + (s.target ? `your ${s.target} target` : "the best of these (set pay.target in the watchlist for yours)") + "."),
+    h("ol", { class: "suggest" }, s.ranking.map(r => h("li", {},
+      h("div", {}, h("b", {}, `${r.company}: ${r.title}`), h("span", { class: "chip hit", style: "margin-left:8px" }, `${r.total}/100`)),
+      h("div", {}, r.reason),
+      h("div", { class: "small muted" }, Object.entries(r.parts).map(([k, p]) => `${k} ${p.score} (${p.input})`).join(" · "))))));
+}
+// Choose what to compare: chips to take out, a box to add a tracked job or any company by name.
+function comparePicker(d) {
+  const selected = d.opportunities.map(o => ({ kind: o.kind, id: o.kind === "job" ? o.key : o.company, label: o.kind === "job" ? `${o.company}: ${o.title}` : o.company }));
+  const change = list => { pickSave(list.map(({ kind, id }) => ({ kind, id }))); render(); };
+  const input = h("input", { type: "text", list: "comp-choices", placeholder: "Add a job or any company…", "aria-label": "Add to the comparison" });
+  const options = h("datalist", { id: "comp-choices" }, d.choices.map(c => h("option", { value: c.label })));
+  const add = () => {
+    const text = input.value.trim();
+    if (!text) return;
+    const hit = d.choices.find(c => c.label.toLowerCase() === text.toLowerCase());
+    const item = hit ? { kind: hit.kind, id: hit.id } : { kind: "company", id: text };
+    if (!selected.some(s => s.kind === item.kind && s.id.toLowerCase() === item.id.toLowerCase())) change([...selected, item]);
+  };
+  input.onkeydown = e => { if (e.key === "Enter") add(); };
+  return panel("Compare",
+    h("div", { class: "chips" }, selected.map(s => h("span", { class: "chip" }, s.label, " ",
+      h("button", { style: "border:0;background:none;cursor:pointer;color:inherit", title: "Take out", "aria-label": "Take " + s.label + " out",
+        onclick: () => change(selected.filter(x => x !== s)) }, "×")))),
+    h("div", { style: "display:flex;gap:8px;margin-top:8px;flex-wrap:wrap" }, input, options,
+      h("button", { class: "btn", onclick: add }, "Add"),
+      compView.picked ? h("button", { class: "btn ghost", onclick: () => { pickSave(null); render(); } }, "Back to the live ones") : null));
+}
+async function renderComps() {
+  const picked = compView.picked;
+  const query = picked ? picked.map(p => `${p.kind === "job" ? "key" : "company"}=${encodeURIComponent(p.id)}`).join("&")
+    : "stages=" + (compView.applied ? "screening,interviewing,offer,applied" : "screening,interviewing,offer");
+  let d;
+  try { d = await api("/api/comps?" + query); }
+  catch (e) { if (!picked) throw e; pickSave(null); toast("Something picked is gone: back to the live ones"); return renderComps(); }
+  const rows = d.opportunities, editing = rows.find(o => o.key === compView.editing);
+  const include = checkLine(compView.applied, "Include applications still at applied");
+  include.box.onchange = () => { compView.applied = include.box.checked; remember("comps.applied", compView.applied ? "1" : ""); render(); };
+  const colour = o => o.status ? `--sc:var(--s-${o.status})` : "--sc:var(--line)";
+  const table = h("div", { class: "table-wrap comp-table" }, h("table", { class: "comps" },
+    h("thead", {}, h("tr", {}, h("th", { class: "lbl" }, ""), rows.map(o => h("th", { style: colour(o) }, compHead(o))))),
+    h("tbody", {}, COMP_ROWS.map(r => h("tr", {}, h("th", { class: "lbl" }, r[0]), rows.map(o => h("td", {}, compValue(o, d, r))))))));
+  const cards = h("div", { class: "comp-cards" }, rows.map(o => h("div", { class: "panel", style: colour(o) },
+    compHead(o), h("dl", {}, COMP_ROWS.map(r => [h("dt", {}, r[0]), h("dd", {}, compValue(o, d, r))])))));
+  const company = compView.health && rows.find(o => o.company === compView.health);
+  put(pagehead("Comps", "Opportunities and companies side by side. Pay as posted comes from the job; what recruiters told you " +
+      "and what you know of a company you add with Pay details and Company health (or `jobwatch comp` and `jobwatch health`)."),
+    suggestionPanel(d.suggestion), comparePicker(d),
+    picked ? null : h("div", { style: "margin:10px 0" }, include.el),
+    editing ? compForm(editing) : null, company ? healthForm(company.company, company.health) : null,
+    rows.length ? [table, cards] : emptyState("Nothing to compare yet: add a job or a company above."));
+}
+
 // -- skills: what the matching jobs ask for that the resume doesn't show, and where to learn it
 const skillsView = { timeline: null, covered: false };
 const TIMELINES = [["week", "Week"], ["month", "Month"], ["quarter", "Quarter"], ["any", "Any"]];
@@ -3782,7 +3955,7 @@ async function render() {
     if (tab === "settings") renderSettings();
     else if (!settings.exists || (!settings.companies.length && tab !== "applied")) renderWelcome();
     else await loading(document.querySelector(`#tabs button[data-tab="${tab}"]`),
-      { today: renderToday, interviews: renderInterviews, queue: renderQueue, applied: renderApplied, referrals: renderReferrals, skills: renderSkills,
+      { today: renderToday, interviews: renderInterviews, queue: renderQueue, applied: renderApplied, comps: renderComps, referrals: renderReferrals, skills: renderSkills,
         activity: renderActivity }[tab]);
   } catch (e) { showError(main, e); }
   refreshQueueCount();
@@ -3812,7 +3985,7 @@ async function loading(button, work, delay = 150) {
 
 function go(name) { tab = name; history.replaceState(null, "", "#" + name); render(); }
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => go(b.dataset.tab);
-const TABS = ["today", "interviews", "queue", "applied", "referrals", "skills", "activity", "settings"];
+const TABS = ["today", "interviews", "queue", "applied", "comps", "referrals", "skills", "activity", "settings"];
 window.addEventListener("hashchange", () => {
   const want = location.hash.slice(1);
   if (TABS.includes(want) && want !== tab && settings) { tab = want; render(); }

@@ -1085,6 +1085,38 @@ It runs on the chat's backend like the rest: `local` stays on your computer; wit
 resume, your stories and what you type go to Anthropic. An assistant connected over MCP can run the same
 interview itself: `get_interview_prep` returns `story_gaps`, and `save_story` keeps what you confirm.
 
+## Comparing opportunities
+
+The **Comps** tab (and `jobwatch comps`) puts your live opportunities, the applications at screening,
+interviewing or offer, side by side as columns: stage, applied day, next step, pay as posted, place, fit score
+with must-haves and top gaps, and the people you know there. Pick anything else to compare, any tracked job or
+any company by name (even one you haven't applied to), with the box on the tab or `jobwatch comps KEY
+--company NAME`; the choice is remembered in your browser. The highest value in a row (pay, base, offered, fit)
+is starred.
+
+What a recruiter tells you about pay is kept per job, and what you know of a company per company. jobwatch looks
+none of it up: you type it in, or an assistant over MCP searches the web and records it with its source links.
+
+```
+jobwatch comp acme --base 170-200K --bonus "10% target" --equity "40K RSUs over 4 years" --signon 15K \
+    --asked 215-250K --offered 190K --note "200K most likely their max"
+jobwatch health "Acme" --listing private --stage "Series B, $50M, 2025" --raised "$80M" --revenue "2x YoY" \
+    --headcount growing --layoffs none --rating "4.1 Glassdoor" --risk "one big customer" \
+    --sources "https://example.com/acme" --as-of 2026-10-20
+```
+
+A field you leave out stays; `''` clears it; `--clear` forgets all of a job's or company's. Health older than
+90 days (or with no date) is marked stale. Over MCP the tools are `set_comp`, `set_company_health` and
+`get_comps`.
+
+The suggestion at the top ranks the opportunities by plain rules, no model: pay against your `pay.target` (35%;
+at target is 80, 10% over 100, 10% under 50), fit score (25%), how far along it is (20%: offer 100, interviewing
+70, screening 40, applied 15) and company health (20%: 70 to start, public +10, layoffs -25, shrinking headcount
+-10, rating of 4.0+ +10 or under 3.3 -10, a private company with under $20M raised -15, a risk note -10; growing
+headcount +10). Pay uses what they offered, else the base they gave, else the posted range. A part with nothing
+to go on counts as 50. Each opportunity shows its score, every part with the input it came from, and a sentence
+on why.
+
 ## Who you know there
 
 A referral gets read before an application does. Download your LinkedIn data (Settings → Data privacy →

@@ -45,7 +45,8 @@ def test_overlapping_tools_point_to_each_other(tool, sibling):
     assert sibling in TOOLS[tool].description
 
 
-VERBS = {"add", "check", "dismiss", "fetch", "find", "get", "import", "list", "mark", "rate", "read", "remove", "save"}
+VERBS = {"add", "check", "dismiss", "fetch", "find", "get", "import", "list", "mark", "rate", "read", "remove", "save",
+         "set"}
 
 
 def test_tool_names_start_with_a_verb():

@@ -23,6 +23,7 @@ from . import (
     answers,
     chat,
     company,
+    comps,
     config,
     drill,
     dupes,
@@ -45,7 +46,7 @@ from . import (
 from .config import BACKENDS, ConfigError, duration
 from .filters import KINDS, rejection
 from .score import ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
-from .store import STAGES, STATUSES, Store
+from .store import COMP_FIELDS, HEALTH_FIELDS, LISTINGS, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
     build_digest,
@@ -774,6 +775,32 @@ def cmd_referrals(args, cfg, store):
     print(json.dumps(v, indent=2, ensure_ascii=False) if args.format == "json" else referrals.text(v))
 
 
+def cmd_comp(args, cfg, store):
+    key = store.find(args.key)[0].key
+    if args.clear:
+        store.set_comp(key, **{f: "" for f in COMP_FIELDS})
+    store.set_comp(key, **{f: getattr(args, f) for f in COMP_FIELDS})
+    kept = store.comp(key)
+    said = "; ".join(f"{f} {kept[f]}" for f in COMP_FIELDS if kept[f]) if kept else ""
+    print(f"{key}: {said or 'no compensation kept'}")
+
+
+def cmd_health(args, cfg, store):
+    name = comps.company_of(store, args.company)
+    if args.clear:
+        store.set_health(name, **{f: "" for f in HEALTH_FIELDS})
+    store.set_health(name, **{f: getattr(args, f) for f in HEALTH_FIELDS})
+    kept = comps.aged(store.health(name))
+    print(f"{name}: " + ("; ".join(f"{label} {value}" for label, value in comps.health_lines(kept))
+                         if kept else "no company health kept"))
+
+
+def cmd_comps(args, cfg, store):
+    stages = tuple(s for s in STAGES if s in comps.LIVE + (("applied",) if args.applied else ()))
+    v = comps.view(cfg, store, stages, args.keys, args.company)
+    print(json.dumps(v, indent=2, ensure_ascii=False) if args.format == "json" else comps.text(v))
+
+
 def cmd_check(args, cfg, store):
     checks = check_postings(store, tuple(args.status or ("queued", "applied", "screening", "interviewing")),
                             watched=cfg.boards)
@@ -1118,6 +1145,55 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--note", help="e.g. 'doesn't check LinkedIn; reach on WhatsApp' (with --use or --skip)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_referrals)
+
+    p = sub.add_parser("comp", help="keep what a recruiter told you about pay for a job (base, bonus, equity, "
+                       "sign-on, what you asked for, what they offered, a note), to compare in `comps`",
+                       description="Compensation details for one job, as you'd write them: --base 170-200K "
+                       "--bonus '10% target' --equity '40K RSUs over 4 years' --signon 15K --asked 215-250K "
+                       "--offered 190K --note '200K most likely their max'. A field you leave out stays; an empty "
+                       "one ('') clears it; --clear forgets them all. Amounts like 170-200K are read, so `comps` "
+                       "can mark the highest.")
+    p.add_argument("key", metavar="KEY", help="the job: its key, posting id or company")
+    p.add_argument("--base", help="the base salary range they gave")
+    p.add_argument("--bonus")
+    p.add_argument("--equity")
+    p.add_argument("--signon", help="sign-on bonus")
+    p.add_argument("--asked", help="what you asked for")
+    p.add_argument("--offered", help="what they offered")
+    p.add_argument("--note", help="a few words, e.g. '200K most likely their max'")
+    p.add_argument("--clear", action="store_true", help="forget everything kept for this job first")
+    p.set_defaults(func=cmd_comp)
+
+    p = sub.add_parser("health", help="keep what you know of a company's health (public or private, funding, "
+                       "layoffs, rating, risks), to weigh in `comps`; nothing is looked up for you",
+                       description="Company health, per company, as you read it: --listing private --stage 'Series "
+                       "B, $50M, 2025' --raised '$80M' --revenue '2x year over year' --headcount 'growing' "
+                       "--layoffs 'none' --rating 4.1 --risk 'one big customer' --sources 'https://... https://...' "
+                       "--as-of 2026-10-20. jobwatch never fetches these sites. A field you leave out stays; an "
+                       "empty one ('') clears it; --clear forgets them all. as-of is today unless you say. Health "
+                       "older than 90 days shows as stale.")
+    p.add_argument("company", metavar="COMPANY", help="the company's name, or a job's key")
+    p.add_argument("--listing", choices=(*LISTINGS, ""), help="public or private")
+    p.add_argument("--stage", help="stage and last round, e.g. 'Series B, $50M, 2025'")
+    p.add_argument("--raised", help="total raised, e.g. $80M")
+    p.add_argument("--revenue", help="revenue or growth, if known")
+    p.add_argument("--headcount", help="the trend: growing, flat, shrinking...")
+    p.add_argument("--layoffs", help="recent layoffs, or none")
+    p.add_argument("--rating", help="employee rating, e.g. 4.1 (Glassdoor)")
+    p.add_argument("--risk", help="a short risk note")
+    p.add_argument("--sources", help="links the above came from")
+    p.add_argument("--as-of", dest="as_of", metavar="DAY", help="when it was true: YYYY-MM-DD (default: today)")
+    p.add_argument("--clear", action="store_true", help="forget everything kept for this company first")
+    p.set_defaults(func=cmd_health)
+
+    p = sub.add_parser("comps", help="your live opportunities side by side: stage, pay posted and learned, fit, "
+                       "who you know; screening, interviewing and offer unless you name jobs or add --applied")
+    p.add_argument("keys", nargs="*", metavar="KEY", help="compare these jobs, whatever their stage")
+    p.add_argument("--company", action="append", metavar="NAME", help="add a company's health to the comparison, "
+                   "even one with no job here (see `health`); repeatable")
+    p.add_argument("--applied", action="store_true", help="include applications still at applied")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_comps)
 
     p = sub.add_parser("check", help="check that queued jobs and open applications are still posted, and record "
                        "the ones that closed (or came back)")

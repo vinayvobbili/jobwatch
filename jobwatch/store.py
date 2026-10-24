@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import linkedin
+from .contacts import company_key
 from .models import Job
 from .package import Package
 from .score import resume_family, unjudged
@@ -23,6 +24,11 @@ STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdraw
 ENDED = ("rejected", "withdrawn")
 STATUSES = ("new", "shown", "queued", *STAGES, "skipped")
 VERDICTS = ("use", "skip")  # what can be said of a person to ask for a referral
+COMP_FIELDS = ("base", "bonus", "equity", "signon", "asked", "offered", "note")  # what a recruiter said about pay
+# What is known of a company's health, per company: public or private, stage and last round, total raised, revenue
+# or growth, headcount trend, recent layoffs, employee rating, a risk note, source links, and the day it was true.
+HEALTH_FIELDS = ("listing", "stage", "raised", "revenue", "headcount", "layoffs", "rating", "risk", "sources", "as_of")
+LISTINGS = ("public", "private")
 MANUAL = "manual"  # the source of applications added by hand (found elsewhere, not on a watched board)
 # Posts from a thread of many companies' posts (HN's Who is hiring) aren't fit-scored (see watch.scorable): a
 # score saved for one before that is left out when scores are read (it stays in the file, unused).
@@ -126,6 +132,32 @@ CREATE TABLE IF NOT EXISTS referral_feedback (
     person TEXT PRIMARY KEY,
     verdict TEXT NOT NULL,
     note TEXT NOT NULL DEFAULT '',
+    set_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS comps (
+    key TEXT PRIMARY KEY,
+    base TEXT,
+    bonus TEXT,
+    equity TEXT,
+    signon TEXT,
+    asked TEXT,
+    offered TEXT,
+    note TEXT,
+    set_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS company_health (
+    company TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    listing TEXT,
+    stage TEXT,
+    raised TEXT,
+    revenue TEXT,
+    headcount TEXT,
+    layoffs TEXT,
+    rating TEXT,
+    risk TEXT,
+    sources TEXT,
+    as_of TEXT,
     set_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS activity (
@@ -788,6 +820,75 @@ class Store:
         with self.db:
             return bool(self.db.execute("UPDATE unwatched SET dismissed_at=COALESCE(dismissed_at, ?) "
                                         "WHERE company=?", (_now(), company)).rowcount)
+
+    # -- compensation details learned from recruiters, per job (see comps.py)
+
+    def set_comp(self, key: str, **fields: str | None):
+        """Keep what a recruiter said about pay for a job (base, bonus, equity, signon, asked, offered, note), as
+        written ("170-200K", "10% target"). None leaves a field as it is; an empty string clears it."""
+        if unknown := set(fields) - set(COMP_FIELDS):
+            raise ValueError(f"unknown compensation field: {', '.join(sorted(unknown))}")
+        key = self.find(key)[0].key
+        given = {k: v.strip() or None for k, v in fields.items() if v is not None}
+        have = self.comp(key) or {}
+        merged = {k: given.get(k, have.get(k)) for k in COMP_FIELDS}
+        with self.db:
+            if any(merged.values()):
+                self.db.execute(f"INSERT OR REPLACE INTO comps (key, {', '.join(COMP_FIELDS)}, set_at) "
+                                f"VALUES (?, {', '.join('?' * len(COMP_FIELDS))}, ?)",
+                                (key, *merged.values(), _now()))
+            else:  # nothing left: forget the row
+                self.db.execute("DELETE FROM comps WHERE key=?", (key,))
+
+    def comp(self, key: str) -> dict | None:
+        """The compensation details kept for a job (full key), or None."""
+        r = self.db.execute("SELECT * FROM comps WHERE key=?", (key,)).fetchone()
+        return {k: r[k] for k in (*COMP_FIELDS, "set_at")} if r else None
+
+    def comps(self) -> dict[str, dict]:
+        """{job key: details} for every job that has some."""
+        return {r["key"]: {k: r[k] for k in (*COMP_FIELDS, "set_at")} for r in self.db.execute("SELECT * FROM comps")}
+
+    # -- company health, per company (matched like contacts are: "Acme, Inc." and "acme" are one)
+
+    def set_health(self, company: str, **fields: str | None):
+        """Keep what is known of a company's health (see HEALTH_FIELDS), as written. None leaves a field as it is;
+        an empty string clears it; as_of is a day (YYYY-MM-DD, today, +N), today when other fields change and it
+        isn't given. Clearing the last field forgets the company. Nothing is looked up: the values come
+        from the person, or from Claude through the set_company_health tool."""
+        if unknown := set(fields) - set(HEALTH_FIELDS):
+            raise ValueError(f"unknown company health field: {', '.join(sorted(unknown))}")
+        if not (key := company_key(company)):
+            raise ValueError("a company's health needs a company name")
+        if fields.get("listing") and fields["listing"].strip().lower() not in LISTINGS:
+            raise ValueError(f"listing must be {' or '.join(LISTINGS)}")
+        given = {k: v.strip() or None for k, v in fields.items() if v is not None}
+        if given.get("listing"):
+            given["listing"] = given["listing"].lower()
+        if "as_of" in given:
+            given["as_of"] = day(given["as_of"])
+        elif any(given.values()):  # new facts are true as of today unless the person says when they were read
+            given["as_of"] = date.today().isoformat()
+        have = self.health(company) or {}
+        merged = {k: given.get(k, have.get(k)) for k in HEALTH_FIELDS}
+        with self.db:
+            if any(v for k, v in merged.items() if k != "as_of"):
+                self.db.execute(f"INSERT OR REPLACE INTO company_health (company, name, "
+                                f"{', '.join(HEALTH_FIELDS)}, set_at) VALUES (?, ?, "
+                                f"{', '.join('?' * len(HEALTH_FIELDS))}, ?)",
+                                (key, have.get("name") or company.strip(), *merged.values(), _now()))
+            else:
+                self.db.execute("DELETE FROM company_health WHERE company=?", (key,))
+
+    def health(self, company: str) -> dict | None:
+        """What is kept of this company's health (any spelling of its name), or None."""
+        r = self.db.execute("SELECT * FROM company_health WHERE company=?", (company_key(company),)).fetchone()
+        return {k: r[k] for k in ("name", *HEALTH_FIELDS)} if r else None
+
+    def healths(self) -> dict[str, dict]:
+        """{company key: health} for every company with some (company_key spells the key)."""
+        return {r["company"]: {k: r[k] for k in ("name", *HEALTH_FIELDS)}
+                for r in self.db.execute("SELECT * FROM company_health")}
 
     # -- referral feedback: whom to use and whom not to, per person (contacts.person_key: profile slug, else name)
 

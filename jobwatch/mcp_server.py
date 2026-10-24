@@ -20,6 +20,7 @@ from . import (
     alerts,
     answers,
     company,
+    comps,
     config,
     contacts,
     dupes,
@@ -64,8 +65,11 @@ server = MCPServer(
         "read_status_emails reads emails about the person's applications (confirmations, rejections, interview "
         "invitations, assignments, offers, recruiter replies) and proposes each one's new status and a dated note: "
         "present the proposals and call mark_job only for the ones the person confirms. "
-        "list_applications shows where each stands. After the person submits, save_application_package keeps the "
-        "resume, cover letter and form answers they sent; get_application_package reads them back before a call or "
+        "list_applications shows where each stands; get_comps puts the live ones side by side (pay, fit, stage), "
+        "and set_comp keeps what a recruiter said about pay (base, bonus, equity, what was asked and offered), "
+        "set_company_health the company's funding, layoffs and rating that you looked up. After the person submits, "
+        "save_application_package keeps the resume, cover letter and form answers they sent; "
+        "get_application_package reads them back before a call or "
         "interview, find_past_answers finds what they answered before to a form question (\"notice period\") "
         "across all of them, and get_interview_prep puts the posting, the resume and what was sent on one sheet, with "
         "story_gaps: what a story from the person's own past would help with. Interview them about one, and "
@@ -527,6 +531,103 @@ def list_applications(
                  "candidate_home": store.candidate_home(j), "due": report.due(rec), "quiet": found.get(j.key),
                  **{k: rec.get(k) for k in fields}}
                 for j, rec in quiet.order(rows, found) if report.due(rec) or not due_only]
+    finally:
+        store.close()
+
+
+@server.tool(annotations=READ)
+def get_comps(
+    stages: Annotated[list[Literal["applied", "screening", "interviewing", "offer"]] | None, Field(description=(
+        "Which stages to compare; default screening, interviewing and offer. Add applied for the ones still waiting."
+    ))] = None,
+    keys: Annotated[list[str] | None, Field(description=(
+        "Compare just these jobs (each as in get_job's key), whatever their stage. Overrides stages."))] = None,
+    companies: Annotated[list[str] | None, Field(description=(
+        "Add these companies' health as columns of their own, even ones with no job tracked (Levels.fyi-style "
+        "company comparison). Overrides stages."))] = None,
+) -> dict:
+    """Open applications side by side, to compare offers and processes: for each, its stage, applied day, next
+    step and follow-up, pay as posted, places, fit score (must-haves met, top gaps), people the person knows
+    there, and the compensation details they were told (base, bonus, equity, sign-on, asked, offered, note; set
+    them with set_comp), and the company's health (set it with set_company_health; stale when older than 90
+    days: research it again). best says which opportunity is highest in posted pay, base, offered and fit.
+    suggestion ranks them by rules (pay against the person's target, fit, how far along, company health) with
+    the weights, each part's score and input, and a reason: explain it, and say what is missing (no health kept,
+    no pay known) rather than guessing. Use it when the person asks how their opportunities compare; for one
+    application's status use list_applications."""
+    cfg, store = _open()
+    try:
+        try:
+            return comps.view(cfg, store, tuple(stages or comps.LIVE), keys, companies)
+        except (KeyError, ValueError) as e:
+            raise ToolError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(destructive=True, idempotent=True))
+def set_comp(
+    key: Key,
+    base: Annotated[str | None, Field(description=(
+        "The base salary (range) the recruiter gave, as said: \"170-200K\". An empty string clears it."))] = None,
+    bonus: Annotated[str | None, Field(description="Bonus, as said (\"10% target\"). Empty clears it.")] = None,
+    equity: Annotated[str | None, Field(description="Equity, as said (\"40K RSUs over 4 years\"). Empty clears it."
+                                        )] = None,
+    signon: Annotated[str | None, Field(description="Sign-on bonus, as said. Empty clears it.")] = None,
+    asked: Annotated[str | None, Field(description="What the person asked for (\"215-250K\"). Empty clears it."
+                                       )] = None,
+    offered: Annotated[str | None, Field(description="What they offered. Empty clears it.")] = None,
+    note: Annotated[str | None, Field(description=(
+        "A few words (\"200K most likely their max\"). Replaces the old note. Empty clears it."))] = None,
+) -> dict:
+    """Keep what a recruiter told the person about pay for a job, so get_comps can put it next to the others. Only
+    the fields given change; an empty string clears one. Write amounts the way they were said ("170-200K",
+    "$215,000"): the first amount found is read to mark the highest. Returns what is kept for the job."""
+    _, store = _open()
+    try:
+        try:
+            job, _ = store.find(key)
+            store.set_comp(job.key, base=base, bonus=bonus, equity=equity, signon=signon, asked=asked,
+                           offered=offered, note=note)
+        except (KeyError, ValueError) as e:
+            raise ToolError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
+        return {"key": job.key, "company": job.display_company, "title": job.title, "comp": store.comp(job.key)}
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(destructive=True, idempotent=True))
+def set_company_health(
+    company: Annotated[str, Field(description="The company's name, or the key of one of its jobs.")],
+    listing: Annotated[Literal["public", "private", ""] | None, Field(description=(
+        "public or private. An empty string clears it."))] = None,
+    stage: Annotated[str | None, Field(description=(
+        "Stage and last round, as found (\"Series B, $50M, 2025\")."))] = None,
+    raised: Annotated[str | None, Field(description="Total raised (\"$80M\"). Under $20M for a private company counts "
+                                        "as thin funding.")] = None,
+    revenue: Annotated[str | None, Field(description="Revenue or growth, if known.")] = None,
+    headcount: Annotated[str | None, Field(description="Headcount trend (\"growing\", \"shrinking\").")] = None,
+    layoffs: Annotated[str | None, Field(description=(
+        "Recent layoffs, with when (\"10% in March 2026\"), or \"none\" when you found none."))] = None,
+    rating: Annotated[str | None, Field(description="Employee rating (\"4.1 Glassdoor\").")] = None,
+    risk: Annotated[str | None, Field(description="A short risk note; any text counts against the company.")] = None,
+    sources: Annotated[str | None, Field(description="The links these came from, separated by spaces.")] = None,
+    as_of: Annotated[str | None, Field(description=(
+        "The day the facts were read, YYYY-MM-DD; today when left out. Older than 90 days shows as stale."))] = None,
+) -> dict:
+    """Keep what is known of a company's health, per company, for get_comps to show and weigh. Search the web
+    yourself (jobwatch fetches none of these sites) and record what you found with its source links and the day;
+    say so when you could not find something, and leave that field out rather than guessing. Only the fields
+    given change; an empty string clears one. Returns what is kept, with how old it is."""
+    _, store = _open()
+    try:
+        try:
+            name = comps.company_of(store, company)
+            store.set_health(name, listing=listing, stage=stage, raised=raised, revenue=revenue, headcount=headcount,
+                             layoffs=layoffs, rating=rating, risk=risk, sources=sources, as_of=as_of)
+        except ValueError as e:
+            raise ToolError(str(e)) from None
+        return {"company": name, "health": comps.aged(store.health(name))}
     finally:
         store.close()
 
