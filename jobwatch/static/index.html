@@ -3484,7 +3484,22 @@ function addForm(d) {
 // -- settings
 
 function lines(v) { return (v || []).join("\n"); }
-function unlines(v) { return v.split(/[\n,]/).map(s => s.trim()).filter(Boolean); }
+// One per line, or comma-separated; a comma inside brackets or after a backslash is a pattern's own (`{0,40}`, `[,;]`).
+function unlines(v) {
+  const out = [];
+  for (const line of v.split("\n")) {
+    let depth = 0, from = 0;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === "\\") i++;
+      else if ("([{".includes(c)) depth++;
+      else if (")]}".includes(c)) depth = Math.max(0, depth - 1);
+      else if (c === "," && !depth) { out.push(line.slice(from, i)); from = i + 1; }
+    }
+    out.push(line.slice(from));
+  }
+  return out.map(s => s.trim()).filter(Boolean);
+}
 
 // A setting in Settings: a short label, its input, and a line of help under it (so inputs side by side line up).
 function field(label, input, help, cls) {

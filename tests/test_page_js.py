@@ -231,6 +231,27 @@ console.log(JSON.stringify({
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_list_boxes_split_on_commas_but_not_a_patterns_own(tmp_path):
+    """Settings' titles and "not in text" boxes take one per line or a comma list; a regex's own commas
+    (`{0,40}`, `[,;]`, `\\,`) stay in it, or saving writes a broken pattern and the watchlist refuses it."""
+    js = tmp_path / "unlines.js"
+    js.write_text(page_function("unlines") + r"""
+console.log(JSON.stringify([
+  "Staff engineer, Principal engineer\n\nSecurity engineer ",
+  "citizen\\b(?![^.\\n]{0,40}\\bgreen card)\n[,;] list\nsplit\\, not",
+  "a), b",
+].map(unlines)));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [
+        ["Staff engineer", "Principal engineer", "Security engineer"],
+        [r"citizen\b(?![^.\n]{0,40}\bgreen card)", "[,;] list", r"split\, not"],
+        ["a)", "b"],  # a stray closer doesn't swallow later commas
+    ]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_settings_sub_tabs_follow_the_url_hash_and_old_anchors(tmp_path):
     js = tmp_path / "tabs.js"
     js.write_text(page_const("SET_GROUPS") + "\n" + page_function("settingsGroupOf") + "\n"
