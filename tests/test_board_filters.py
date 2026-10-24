@@ -91,6 +91,32 @@ def test_a_searched_board_is_searched_for_its_own_titles(path, monkeypatch):
     store.close()
 
 
+def test_a_track_judges_its_kind_of_job_from_any_board(path):
+    path.write_text(WATCHLIST + "tracks:\n  - name: teaching\n    titles: ['\\b(adjunct|instructor)\\b']\n"
+                    "    filters: {titles: [cyber], min_salary: 0}\n")
+    cfg = config.load(path)
+    adjunct = job("globex", "1", "Adjunct Instructor, Cybersecurity", 72_800, 72_800)  # an alert's, not watched
+    assert cfg.filters_for(adjunct).titles == ["cyber"] and cfg.filters_for(adjunct).exclude_titles == ["contract"]
+    assert cfg.filters_for(job("globex", "2", "Staff Engineer", 1, 1)) is cfg.filters
+    assert cfg.filters_for(job("durhamtech", "1", "Adjunct Instructor", 1, 1)).titles == ["adjunct", "instructor"]
+    store = Store(cfg.state)
+    store.sync("greenhouse", "globex", [adjunct, job("globex", "3", "Adjunct Instructor, Biology", 72_800, 72_800)])
+    assert {e.job.key for e in watch.build_digest(cfg, store).entries} == {"greenhouse:globex:1"}
+    store.close()
+
+
+@pytest.mark.parametrize("track, error", [
+    ("[adjunct]", r"tracks entry 1 looks like"),
+    ("{titles: ['c(']}", r"tracks entry 1: 'c\(' isn't a regex"),
+    ("{titles: [adjunct], filters: {title: [x]}}", r"tracks entry 1: filters .* unknown: title"),
+    ("{titles: [adjunct], filters: {min_fit: 200}}", r"tracks entry 1: filters.min_fit"),
+])
+def test_a_track_is_checked(path, track, error):
+    path.write_text(f"tracks:\n  - {track}\nstate: state.db\n")
+    with pytest.raises(config.ConfigError, match=error):
+        config.load(path)
+
+
 def test_rewriting_the_watchlist_keeps_a_boards_filters(path):
     teaching = {"titles": ["adjunct", "instructor"], "min_salary": 0}
     own = lambda cfg: {b.entry: b.filters for b in cfg.boards}  # noqa: E731

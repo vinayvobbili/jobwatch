@@ -401,11 +401,17 @@ class Config:
     unknown: list[Board] = field(default_factory=list)
     # (source, board) -> the filters for that board's jobs, for the entries with their own (see Board.filters)
     board_filters: dict[tuple[str, str], Filters] = field(default_factory=dict)
+    # (title regexes, filters) per tracks: entry: a kind of job judged by other rules wherever it comes from
+    tracks: list[tuple[list[str], Filters]] = field(default_factory=list)
 
     def filters_for(self, job) -> Filters:
-        """The filters a job is judged by: its board's own (a watchlist entry's filters:), else the watchlist's.
-        A job from a board that isn't watched (an alert email's, one added by link) gets the watchlist's."""
-        return self.board_filters.get((job.source, job.company), self.filters)
+        """The filters a job is judged by: its board's own (a watchlist entry's filters:), else the first track
+        whose titles its title matches (tracks:), else the watchlist's. A track is how a job from a board that
+        isn't watched (an alert email's, one added by link) gets other rules."""
+        if own := self.board_filters.get((job.source, job.company)):
+            return own
+        return next((f for titles, f in self.tracks if any(re.search(t, job.title, re.I) for t in titles)),
+                    self.filters)
 
     def filters_of(self, b: Board) -> Filters:
         """The filters for a watched board's jobs: what it's searched for and which postings are read in full."""
@@ -443,6 +449,33 @@ def _board(entry, path: Path, strict: bool = True) -> Board:
         raise ConfigError(f"{path}: {entry['source']}:{entry['board']}: unknown filter setting(s): "
                           f"{', '.join(sorted(map(str, unknown)))}")
     return Board(str(entry["source"]), str(entry["board"]), entry.get("name") or "", careers, dict(own))
+
+
+def _tracks(raw, base: dict, path: Path) -> list[tuple[list[str], Filters]]:
+    """tracks: a list of {titles: [regex, ...], filters: {...}}: a job whose title matches one of a track's titles
+    is judged by the watchlist's filters with the track's replacing them one by one, like a board's own."""
+    out = []
+    for n, t in enumerate(raw or [], 1):
+        where = f"{path}: tracks entry {n}"
+        if not isinstance(t, dict) or set(t) - {"name", "titles", "filters"} or not t.get("titles"):
+            raise ConfigError(f"{where} looks like {{titles: ['\\badjunct\\b'], filters: {{min_salary: 0}}}}, "
+                              f"got {t!r:.80}")
+        titles = [t["titles"]] if isinstance(t["titles"], str) else [str(x) for x in t["titles"]]
+        for x in titles:
+            try:
+                re.compile(x)
+            except re.error as e:
+                raise ConfigError(f"{where}: {x!r} isn't a regex: {e}") from None
+        own = t.get("filters") or {}
+        if not isinstance(own, dict) or (unknown := set(own) - set(Filters.__dataclass_fields__)):
+            raise ConfigError(f"{where}: filters are settings like the watchlist's own"
+                              + (f"; unknown: {', '.join(sorted(map(str, unknown)))}" if isinstance(own, dict)
+                                 else f", got {own!r:.80}"))
+        try:
+            out.append((titles, Filters.from_dict({**base, **own})))
+        except (TypeError, ValueError) as e:
+            raise ConfigError(f"{where}: {e}") from None
+    return out
 
 
 def _item(b: Board) -> str | dict:
@@ -688,7 +721,7 @@ def load(explicit: str | Path | None = None) -> Config:
                 raise ConfigError(f"{path}: {b.entry}: {e}") from None
     return Config(
         path=path, boards=boards, unknown=[b for b in listed if b.source not in SOURCES], filters=filters,
-        board_filters=own,
+        board_filters=own, tracks=_tracks(raw.get("tracks"), raw.get("filters") or {}, path),
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
@@ -747,6 +780,10 @@ companies:
   # - {source: greenhouse, board: stripe, name: Stripe}
   # - {board: ashby:acme, careers: https://acme.example/careers}   # its Ashby pages are offline: link here
   # - {board: greenhouse:initech, filters: {titles: [adjunct, instructor], min_salary: 0}}  # its own filters
+
+# A kind of job judged by other filters wherever it comes from (an alert email's too), by its title:
+# tracks:
+#   - {titles: [adjunct, lecturer], filters: {titles: [cyber, computer], min_salary: 0}}
 
 # `jobwatch ui` checks every board by itself this often (6h, 90m, 1d; off: only when you press the button),
 # or at set times of day: fetch_every: 8am, 2pm, 8pm
