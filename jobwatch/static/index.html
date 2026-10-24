@@ -4357,7 +4357,7 @@ function renderSettings() {
       aiS.el,
       h("div", { class: "fields" },
         field("Model", scoreModel, "Blank: shortlist-ai's own for where it runs."),
-        field("agy's model as a fallback", agyModel, "e.g. claude-sonnet-5-5-medium; `agy models` lists them."),
+        field("agy model", agyModel, "When agy scores: e.g. claude-sonnet-5-5-medium; `agy models` lists them."),
         field("Score per digest", top, "jobwatch digest scores this many new jobs; 0 none.")),
       auto.el),
     setCard("people", "People you know", "optional",
