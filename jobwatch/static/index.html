@@ -3268,7 +3268,8 @@ async function renderSkills() {
 const ACT_KINDS = [["boards", "Job Boards"], ["mail", "Gmail"], ["score,pay,logos", "Scored"]];
 const activityView = { kind: remembered("activity.kind", "boards"), open: new Set(), timer: null, seen: "0" };
 const ACT_ICON = { boards: "refresh", mail: "inbox", score: "sparkle", pay: "dollar", logos: "cloud" };
-const ACT_BY = { schedule: "On schedule", page: "You pressed Check for new jobs", background: "In the background" };
+// what started it, said only when it was you: the schedule and the background are what jobwatch always does
+const ACT_BY = { page: "You pressed Check for new jobs" };
 
 function activityTick() {
   clearTimeout(activityView.timer);
@@ -3319,7 +3320,7 @@ async function renderActivity() {
         at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })),
       icon(ACT_ICON[e.kind] || "file", 16),
       h("div", { class: "body" }, h("div", { class: "what" }, e.text),
-        e.by ? h("div", { class: "small muted" }, ACT_BY[e.by] || e.by) : null, more)));
+        ACT_BY[e.by] ? h("div", { class: "small muted" }, ACT_BY[e.by]) : null, more)));
   }
   put(pagehead("Activity", "What jobwatch has been doing: checking the boards, reading your job-alert emails, scoring jobs and looking up pay. It updates by itself."),
     layout(side, h("div", {}, rows.length ? rows

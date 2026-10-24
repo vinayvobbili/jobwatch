@@ -32,18 +32,22 @@ def test_entries_are_newest_first_by_kind_and_only_the_last_of_each_kind_are_kep
     store.close()
 
 
-def test_a_check_says_what_it_found_and_what_failed(watchlist, web):
+def test_a_check_says_what_it_found_for_you_and_what_failed(watchlist, web):
     cfg = config.load(watchlist)
     store = Store(cfg.state)
     watch.fetch_all(cfg, store, by="schedule")
     e = store.activity()[0]
-    assert (e["kind"], e["text"], e["ok"], e["by"]) == ("boards", "Checked 3 boards: 5 open jobs, 5 new", True,
+    # what Today shows leads; the new postings the filters hide are a detail
+    assert (e["kind"], e["text"], e["ok"], e["by"]) == ("boards", "Checked 3 boards: 3 new jobs for you", True,
                                                         "schedule")
-    assert len([d for d in e["detail"] if d.startswith("New: ")]) == 5
+    assert len([d for d in e["detail"] if d.startswith("New: ")]) == 3
+    assert e["detail"][-1] == "5 open jobs, 5 new, 2 hidden by your filters"
+    watch.fetch_all(cfg, store)  # the same jobs again
+    assert store.activity()[0]["text"] == "Checked 3 boards: nothing new for you"
     web.responses.clear()  # no network: every board fails
     watch.fetch_all(cfg, store)
     e = store.activity()[0]
-    assert e["text"] == "Checked 0 boards: 0 open jobs, 0 new, 3 failed" and not e["ok"]
+    assert e["text"] == "Couldn't check the boards, 3 failed" and not e["ok"]
     assert len([d for d in e["detail"] if d.startswith("Failed: ")]) == 3
     store.close()
 
@@ -57,7 +61,8 @@ def test_reading_the_mailbox_is_its_own_entry(tmp_path, watchlist, web, monkeypa
     store = Store(cfg.state)
     watch.fetch_all(cfg, store, mail=FakeIMAP)
     mail = store.activity(kind="mail")[0]
-    assert mail["ok"] and mail["text"].startswith("Read 2 job-alert emails from imap.example.com: ")
+    assert mail["ok"] and mail["text"] == "Read 2 job-alert emails: 1 new job for you"
+    assert mail["detail"][-1].startswith("From imap.example.com: ")
     monkeypatch.delenv("JOBWATCH_IMAP_PASSWORD")
     watch.fetch_all(cfg, store, mail=FakeIMAP)
     mail = store.activity(kind="mail")[0]

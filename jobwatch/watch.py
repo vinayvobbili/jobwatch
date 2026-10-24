@@ -189,25 +189,41 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
             report.emails = got.emails
             report.new += [f.key for f in got.found if f.result == "new"]  # intake marks their duplicates
             fresh = [f for f in got.found if f.result == "new"]
-            store.log("mail", f"Read {plural(got.emails, 'job-alert email')} from {cfg.imap.host}: "
-                      f"{plural(len(got.found), 'job')}, {len(fresh)} new",
-                      detail=[f"New: {f.job.display_company}: {f.job.title}" for f in fresh if f.job][:ACTIVITY_LINES],
+            yours = for_you(cfg, [f.job for f in fresh if f.job])
+            store.log("mail", f"Read {plural(got.emails, 'job-alert email')}: {found_line(len(yours))}",
+                      detail=[*[f"New: {j.display_company}: {j.title}" for j in yours][:ACTIVITY_LINES],
+                              f"From {cfg.imap.host}: {plural(len(got.found), 'job')}, {len(fresh)} new, "
+                              f"{len(fresh) - len(yours)} hidden by your filters"],
                       by=by)
     # A new posting of a job already applied to (or queued, or skipped) is marked as its duplicate.
     report.duplicates = dupes.record(store, new) if new else {}
     store.record_fetch(report.boards, report.jobs, len(report.new), report.errors, report.warnings)
     boards = {k: v for k, v in report.errors.items() if k != MAILBOX}
-    store.log("boards", f"Checked {plural(report.boards, 'board')}: {report.jobs:,} open jobs, {checked} new"
-              + (f", {len(boards)} failed" if boards else ""),
+    # What the check found that Today shows leads; the thousands of new postings the filters hide are a detail.
+    yours = for_you(cfg, new)
+    store.log("boards", (f"Checked {plural(report.boards, 'board')}: {found_line(len(yours))}" if report.boards
+                         else "Couldn't check the boards") + (f", {len(boards)} failed" if boards else ""),
               ok=bool(report.boards) or not boards,
-              detail=[f"New: {j.display_company}: {j.title}" for j in new][:ACTIVITY_LINES]
+              detail=[f"New: {j.display_company}: {j.title}" for j in yours][:ACTIVITY_LINES]
               + [f"Failed: {b}: {e}" for b, e in boards.items()]
-              + [f"Look at: {b}: {w}" for b, w in report.warnings.items()], by=by,
+              + [f"Look at: {b}: {w}" for b, w in report.warnings.items()]
+              + ([f"{report.jobs:,} open jobs, {checked} new, {checked - len(yours)} hidden by your filters"]
+                 if report.boards else []), by=by,
               notable=not report.boards and bool(boards))  # every board failed: no network, or worse
     return report
 
 
 ACTIVITY_LINES = 25  # at most this many jobs named in one Activity entry
+
+
+def for_you(cfg: Config, jobs: list[Job]) -> list[Job]:
+    """The ones of these new jobs that pass their filters: what a check brought in that Today shows."""
+    return [j for j in jobs if not rejection(j, cfg.filters_for(j))]
+
+
+def found_line(n: int) -> str:
+    """What a check found, for its Activity line: "3 new jobs for you", or "nothing new for you"."""
+    return f"{plural(n, 'new job')} for you" if n else "nothing new for you"
 
 
 def plural(n: int, what: str) -> str:
