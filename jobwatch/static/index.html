@@ -2266,7 +2266,7 @@ function filterInputs(f) {
 function filterValues(inp) {
   return { titles: unlines(inp.titles.value), exclude_titles: unlines(inp.exclude.value),
     exclude_text: unlines(inp.excludeText.value),
-    locations: unlines(inp.locations.value), remote_country: inp.country.value,
+    locations: placeLines(inp.locations.value), remote_country: inp.country.value,
     home_state: inp.home.value.trim() || null,
     min_salary: inp.minPay.value ? Number(inp.minPay.value) : null, require_salary: inp.requirePay.checked || null,
     max_age_days: inp.maxAge.value ? Number(inp.maxAge.value) : null,
@@ -2774,7 +2774,7 @@ function onboardJobs(ctx) {
       field("Pay target (per year)", target, "What you'd like to be offered: a number, or a range like 170000-200000.")),
     ideas,
     onboardActions(ctx, async () => {
-      const locations = workLocations(how, unlines(places.value));
+      const locations = workLocations(how, placeLines(places.value));
       const body = { filters: mergeFilters(f, { titles: unlines(titles.value), locations, remote_country: country.value }),
         pay: merged(s.pay, targetValues(target.value)) };
       if (keywords.size) body.keywords = { ...(s.keywords || {}), ...Object.fromEntries([...keywords].map(k => [k, 1])) };
@@ -3500,6 +3500,8 @@ function unlines(v) {
   }
   return out.map(s => s.trim()).filter(Boolean);
 }
+// Places, one per line: "Boulder, CO" is one place.
+function placeLines(v) { return v.split("\n").map(s => s.trim()).filter(Boolean); }
 
 // A setting in Settings: a short label, its input, and a line of help under it (so inputs side by side line up).
 function field(label, input, help, cls) {

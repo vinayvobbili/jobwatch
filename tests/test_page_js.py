@@ -3,6 +3,7 @@ import re
 import shutil
 import subprocess
 from importlib import resources
+from pathlib import Path
 
 import pytest
 
@@ -20,9 +21,11 @@ def test_the_page_script_parses(tmp_path):
 
 
 def page_function(name: str) -> str:
-    """One top-level function's source from the page's script (it ends at the first closing brace in column 0)."""
+    """One top-level function's source from the page's script: a one-liner, or up to the first closing brace in
+    column 0."""
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
-    m = re.search(rf"^(?:async )?function {name}\(.*?^}}$", page, re.S | re.M)
+    m = (re.search(rf"^(?:async )?function {name}\(.*\}}$", page, re.M)
+         or re.search(rf"^(?:async )?function {name}\(.*?^}}$", page, re.S | re.M))
     assert m, f"no function {name} in the page"
     return m.group(0)
 
@@ -249,6 +252,29 @@ console.log(JSON.stringify([
         [r"citizen\b(?![^.\n]{0,40}\bgreen card)", "[,;] list", r"split\, not"],
         ["a)", "b"],  # a stray closer doesn't swallow later commas
     ]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_saving_settings_gives_back_every_list_as_it_was(tmp_path):
+    """Each filter box shows its list one per line and saving reads it back: every list in the README's example
+    watchlist, and patterns with commas of their own, come back unchanged (a place keeps its ", CO")."""
+    import yaml
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    keys = {"titles": "unlines", "exclude_titles": "unlines", "exclude_text": "unlines",
+            "exclude_departments": "unlines", "locations": "placeLines"}
+    cases = [{"key": k, "list": yaml.safe_load(v)}
+             for k, v in re.findall(rf"^\s+({'|'.join(keys)}): (\[.*?\])\s*(?:#.*)?$", readme, re.M)]
+    assert {c["key"] for c in cases} >= {"exclude_text", "locations"}, "the README's example watchlist moved"
+    cases += [{"key": "exclude_text", "list": [r"citizen\b(?![^.\n]{0,40}\bgreen card)", r"\b0\s*[-–]\s*2 years\b"]},
+              {"key": "locations", "list": ["remote", "Boulder, CO", "Austin, TX"]}]
+    js = tmp_path / "roundtrip.js"
+    js.write_text("\n".join([page_function("lines"), page_function("unlines"), page_function("placeLines")]) + f"""
+const split = {{ unlines, placeLines }}, keys = {json.dumps(keys)};
+console.log(JSON.stringify({json.dumps(cases)}.map(c => split[keys[c.key]](lines(c.list)))));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [c["list"] for c in cases]
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
