@@ -749,6 +749,13 @@ details.howto .help { margin-top: 6px; }
 .snav .links { gap: 4px; }
 .snav .links a { padding: 5px 12px; border-radius: 999px; transition: background .15s, color .15s; }
 .snav .links a.on { color: #fff; background: var(--grad); }
+/* Settings sub tabs: the bar's pills are tabs; one group of cards shows at a time (all stay in the page, so Save sees every field) */
+.snav .links [role=tab] { flex: none; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 550; color: var(--muted);
+  padding: 5px 12px; border-radius: 999px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
+.snav .links [role=tab]:hover { background: var(--chip); color: var(--text); }
+.snav .links [role=tab][aria-selected=true] { color: #fff; background: var(--grad); }
+.snav .links [role=tab]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.settings-grid > .card[hidden] { display: none; }
 @media (max-width: 640px) { .settings-grid .fields, .set-panel { padding: 2px 10px 10px; } .set-orb { width: 34px; height: 34px; } }
 /* Settings: prompts, one per fold, closed until opened */
 .prompt { border-top: 1px solid var(--line); padding: 9px 0; }
@@ -3047,6 +3054,28 @@ function remember(key, value) {
   try { localStorage.setItem("jobwatch." + key, value); } catch { /* not kept: fine */ }
 }
 
+// Settings is split into sub tabs; every card stays in the page (hidden, not removed) so Save reads them all.
+const SET_GROUPS = [
+  { id: "search", label: "Your search", cards: ["goals", "companies", "filters", "keywords"] },
+  { id: "today", label: "Today & display", cards: ["today", "display"] },
+  { id: "ai", label: "AI & fit scores", cards: ["resume", "prompts", "chat"] },
+  { id: "people", label: "People & pay", cards: ["people", "pay"] },
+  { id: "alerts", label: "Alerts & skills", cards: ["alerts", "suggestions", "skills"] },
+];
+// The sub tab a name points at: a tab id ("ai"), a card id ("pay") or a card's anchor ("set-pay"); null if none.
+function settingsGroupOf(name) {
+  const key = String(name || "").replace(/^set-/, "");
+  const g = SET_GROUPS.find(g => g.id === key || g.cards.includes(key));
+  return g ? g.id : null;
+}
+// Where a URL hash goes: "#settings/ai" is Settings on its AI tab, and an old card anchor ("#set-pay") opens the tab holding it.
+function pageOfHash(hash, tabs) {
+  const [base, sub] = String(hash || "").replace(/^#/, "").split("/");
+  if (tabs.includes(base)) return { tab: base, sub: base === "settings" ? settingsGroupOf(sub) : null };
+  if (base.startsWith("set-") && settingsGroupOf(base)) return { tab: "settings", sub: settingsGroupOf(base), card: base };
+  return null;
+}
+
 // One page of a long list, and the controls to move between pages. `state.page` survives redraws; a new
 // `filterKey` (the search, filters and sort in use) starts again at page 1. How many per page is kept per browser.
 const PER_PAGE = [12, 24, 48, 96];
@@ -4383,28 +4412,36 @@ function renderSettings() {
   ].filter(Boolean);
 
   // A bar that stays on screen: a link to each card, what's unsaved, and Save.
-  const NAMES = { goals: "Goals", companies: "Companies", filters: "Filters", keywords: "Keywords", today: "Today", resume: "Resume",
-    people: "People", prompts: "Fit prompt", chat: "Chat", pay: "Pay", alerts: "Alerts", suggestions: "Suggestions",
-    skills: "Skills", display: "Display" };
-  const jump = id => h("a", { href: "#" + id, onclick: e => {
-    e.preventDefault(); document.getElementById(id).scrollIntoView({ behavior: "smooth", block: "start" });
-  } }, NAMES[id.slice(4)]);
-  const bar = h("div", { class: "snav" }, h("div", { class: "links" }, cards.map(c => jump(c.id))),
+  // Sub tabs: one group of cards at a time. Every card stays in the page (just hidden), so Save reads all of them.
+  const tabEls = SET_GROUPS.map(g => h("button", { type: "button", role: "tab", id: "set-tab-" + g.id, "data-group": g.id,
+    "aria-controls": "set-panel", onclick: () => showGroup(g.id) }, g.label));
+  const tablist = h("div", { class: "links", role: "tablist", "aria-label": "Settings" }, tabEls);
+  tablist.addEventListener("keydown", e => {
+    const i = tabEls.findIndex(t => t.tabIndex === 0);
+    const to = { ArrowRight: (i + 1) % tabEls.length, ArrowLeft: (i - 1 + tabEls.length) % tabEls.length, Home: 0,
+      End: tabEls.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault(); showGroup(SET_GROUPS[to].id); tabEls[to].focus();
+  });
+  const bar = h("div", { class: "snav" }, tablist,
     saveMsg, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings"));
-  const grid = h("div", { class: "settings-grid" }, cards);
-  // the pill of the card in view is highlighted
-  const links = [...bar.querySelectorAll(".links a")];
-  const mark = () => {
-    if (!bar.isConnected) return removeEventListener("scroll", renderSettings.mark);
-    const line = bar.getBoundingClientRect().bottom + 24;
-    let cur = cards[0].id;
-    for (const c of cards) if (c.getBoundingClientRect().top <= line) cur = c.id;
-    links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + cur));
-  };
-  if (renderSettings.mark) removeEventListener("scroll", renderSettings.mark);
-  renderSettings.mark = mark;
-  addEventListener("scroll", mark, { passive: true });
-  setTimeout(mark);
+  const grid = h("div", { class: "settings-grid", id: "set-panel", role: "tabpanel" }, cards);
+  function showGroup(id, { card = null, hash = true } = {}) {
+    const g = SET_GROUPS.find(x => x.id === id) || SET_GROUPS[0];
+    for (const c of cards) c.hidden = !g.cards.includes(c.id.slice(4));
+    for (const t of tabEls) {
+      const on = t.dataset.group === g.id;
+      t.setAttribute("aria-selected", String(on)); t.tabIndex = on ? 0 : -1;
+    }
+    grid.setAttribute("aria-labelledby", "set-tab-" + g.id);
+    remember("settings.tab", g.id);
+    if (hash) history.replaceState(null, "", "#settings/" + g.id);
+    if (card) setTimeout(() => document.getElementById(card)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+  renderSettings.show = showGroup;
+  const wanted = pageOfHash(location.hash, TABS);
+  showGroup(wanted && wanted.tab === "settings" && wanted.sub ? wanted.sub : remembered("settings.tab", SET_GROUPS[0].id),
+    { card: wanted && wanted.card });
   const dirty = e => {
     if (e.target.closest("#set-display")) return;  // theme and width save at once
     saveMsg.textContent = "Unsaved changes"; saveMsg.className = "small unsaved";
@@ -4642,8 +4679,10 @@ function go(name) { tab = name; history.replaceState(null, "", "#" + name); rend
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => go(b.dataset.tab);
 const TABS = ["today", "interviews", "queue", "applied", "comps", "referrals", "skills", "activity", "settings"];
 window.addEventListener("hashchange", () => {
-  const want = location.hash.slice(1);
-  if (TABS.includes(want) && want !== tab && settings) { tab = want; render(); }
+  const to = pageOfHash(location.hash, TABS);
+  if (!to || !settings) return;
+  if (to.tab !== tab) { tab = to.tab; render(); }
+  else if (tab === "settings" && to.sub && renderSettings.show) renderSettings.show(to.sub, { card: to.card, hash: false });
 });
 
 fill(document.getElementById("fetchBtn"), icon("refresh", 14), "Check for new jobs");
@@ -4667,8 +4706,7 @@ document.getElementById("fetchBtn").onclick = async () => {
   try { settings = await api("/api/settings"); }
   catch (e) { return showError(main, e); }
   applyDisplay(settings.display);
-  const want = location.hash.slice(1);
-  tab = TABS.includes(want) ? want : "today";
+  tab = pageOfHash(location.hash, TABS)?.tab || "today";
   render();
   watchNotices();
 })();

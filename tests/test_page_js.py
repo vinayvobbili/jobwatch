@@ -228,3 +228,31 @@ console.log(JSON.stringify({
     assert got["read"] == ["remote", "near", "either", "either"]
     assert got["write"] == [["remote"], ["Raleigh"], ["Raleigh", "remote"]]
     assert got["refused"] == "Name a city or state for hybrid or on-site jobs."
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_settings_sub_tabs_follow_the_url_hash_and_old_anchors(tmp_path):
+    js = tmp_path / "tabs.js"
+    js.write_text(page_const("SET_GROUPS") + "\n" + page_function("settingsGroupOf") + "\n"
+                  + page_function("pageOfHash") + """
+const TABS = ["today", "settings"];
+const out = {
+  groups: SET_GROUPS.map(g => g.id),
+  cards: SET_GROUPS.flatMap(g => g.cards).sort(),
+  hash: pageOfHash("#settings/ai", TABS), bare: pageOfHash("#settings", TABS), bad: pageOfHash("#settings/nope", TABS),
+  today: pageOfHash("#today", TABS), anchor: pageOfHash("#set-pay", TABS), none: pageOfHash("#whatever", TABS),
+  byCard: settingsGroupOf("prompts"),
+};
+console.log(JSON.stringify(out));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    # every settings card is in exactly one tab, so hiding the others never loses a field
+    assert out["cards"] == sorted(["goals", "companies", "filters", "keywords", "today", "display", "resume", "prompts",
+                                   "chat", "people", "pay", "alerts", "suggestions", "skills"])
+    assert out["hash"] == {"tab": "settings", "sub": "ai"}
+    assert out["bare"] == {"tab": "settings", "sub": None} and out["bad"] == {"tab": "settings", "sub": None}
+    assert out["today"] == {"tab": "today", "sub": None}
+    assert out["anchor"] == {"tab": "settings", "sub": "people", "card": "set-pay"}
+    assert out["none"] is None and out["byCard"] == "ai"
