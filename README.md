@@ -958,7 +958,8 @@ Each is a project you'd talk about on a call:
 ```
 
 [examples/stories.yaml](examples/stories.yaml) has a few more, made up. You don't have to write them by hand:
-[Find a story](#find-a-story) interviews you and adds one for you. A mistake in the file (a missing
+[Find a story](#find-a-story) interviews you and adds one for you. After editing it by hand, `jobwatch stories`
+checks it and lists what's there. A mistake in the file (a missing
 `result`, two stories with the same id) is reported with the story and what to fix.
 
 The model is told never to invent experience, numbers, employers or credentials, and its answer is checked
