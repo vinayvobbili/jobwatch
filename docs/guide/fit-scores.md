@@ -2,6 +2,11 @@
 
 [← jobwatch guide](README.md)
 
+**Tutorial: where the AI runs** (1½ minutes): the Claude API, Antigravity or this Mac; the fallback chain; what
+leaves your computer.
+
+https://github.com/user-attachments/assets/40e6f2cb-c201-4da9-ba21-77bdacc464b8
+
 Keyword relevance is fast and explainable, but it can't tell "uses Kubernetes" from "5+ years running
 Kubernetes in production". With `resume:` set and `scoring.top` (or `--score N`), the most relevant new
 jobs are scored with [shortlist-ai](https://github.com/vinayvobbili/shortlist-ai):

@@ -2,6 +2,15 @@
 
 [← jobwatch guide](README.md)
 
+**Tutorial: getting started** (1¾ minutes): install, `jobwatch ui`, the four onboarding steps, Today.
+
+https://github.com/user-attachments/assets/f95f85df-406f-4ede-b84c-59569d1a586a
+
+**Tutorial: your daily routine** (1½ minutes): today's picks, a job's details, the queue, "I applied",
+Applications, the prep sheet.
+
+https://github.com/user-attachments/assets/8653c4ca-a79d-4135-9be1-51ba3c9fccf6
+
 ## In your browser
 
 ```
