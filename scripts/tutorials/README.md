@@ -1,0 +1,19 @@
+# Rebuild the tutorial videos
+
+Three narrated videos (60 to 120 seconds each), made like the README demo from made-up data only (Acme, Globex,
+Initech...): nothing reads your own watchlist, reaches a job board or calls a model.
+
+```
+source .venv/bin/activate          # jobwatch's environment, with playwright and slidecast[mlx,yaml,playwright]
+scripts/tutorials/make-tutorials [OUT] [--music DIR]    # OUT defaults to scripts/demo/out (git ignores it)
+```
+
+| Step | Command | Writes (in OUT) |
+|---|---|---|
+| Seed and screenshot the demo | as in `scripts/demo/README.md` | `demo/`, `shots/` |
+| Screenshot first-run onboarding | `python scripts/tutorials/shots.py OUT` | `empty/`, `tut-shots/` |
+| Slides and narration | `python scripts/tutorials/build.py OUT [--music DIR]` | `tutorials/*/slides`, `reel.yaml` |
+| Render | `slidecast render OUT/tutorials/NAME/reel.yaml -o ...` | `tutorials/jobwatch-NAME.mp4` |
+
+The story of each video (slides and narration) is `tutorials()` in `build.py`. The voice and music are the demo's
+(see `scripts/demo/README.md`). Copy the finished videos to `docs/tutorials/`.

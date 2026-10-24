@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Rebuild the tutorial videos from made-up data: seed the demo, screenshot `jobwatch ui` (the demo's tabs, then
+# first-run onboarding), write the slides and narration, and render each reel with slidecast.
+# See scripts/tutorials/README.md.
+#
+#   scripts/tutorials/make-tutorials [OUT] [--music DIR]
+#
+# OUT defaults to scripts/demo/out (git ignores it). Set PYTHON or SLIDECAST to use other installs.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+out="scripts/demo/out"
+music=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --music) music=(--music "$2"); shift 2 ;;
+    -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) out="$1"; shift ;;
+  esac
+done
+python="${PYTHON:-python}"
+slidecast="${SLIDECAST:-slidecast}"
+
+"$python" scripts/demo/seed.py -o "$out/demo"
+"$python" scripts/screenshots.py --demo -c "$out/demo/jobwatch.yaml" -o "$out/shots" \
+  --reply scripts/demo/chat-reply.md
+"$python" scripts/tutorials/shots.py "$out"
+"$python" scripts/tutorials/build.py "$out" ${music[@]+"${music[@]}"}
+for reel in "$out"/tutorials/*/reel.yaml; do
+  name="$(basename "$(dirname "$reel")")"
+  "$slidecast" render "$reel" -o "$out/tutorials/jobwatch-$name.mp4"
+done
+echo "Wrote $out/tutorials/jobwatch-*.mp4 (copy them to docs/tutorials/)"
