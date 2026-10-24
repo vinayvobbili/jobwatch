@@ -261,7 +261,8 @@ def test_the_suggestion_weighs_pay_fit_progress_and_health(tracked):
     # layoffs -25, shrinking -10, thin funding -15 from 70
     assert globex["parts"]["health"] == {"score": 20, "input": "recent layoffs, shrinking headcount, "
                                                                 "thin funding ($12.0M raised)"}
-    assert globex["reason"] == ("Posted pay $200K is about at your $180K-$210K target, but its health counts against "
+    # pay is the middle of the range posted ($150K-$200K): a band's top isn't what anyone is paid
+    assert globex["reason"] == ("Posted pay $175K is 10% under your $180K-$210K target, but its health counts against "
                                 "it: recent layoffs, shrinking headcount, thin funding ($12.0M raised).")
     assert comps.suggestion_text(s).startswith("Suggestion (pay vs your $180K-$210K target; weights: pay 35%")
     store.close()
@@ -273,8 +274,21 @@ def test_pay_is_measured_against_the_best_of_them_without_a_target(tracked):
     s = comps.view(cfg, store)["suggestion"]
     assert s["target"] is None
     pay = {r["company"]: r["parts"]["pay"] for r in s["ranking"]}
-    assert pay["Acme"] == {"score": 80, "input": "$220K posted vs the best of these"}
+    assert pay["Acme"] == {"score": 80, "input": "$200K posted vs the best of these"}  # the middle of $180K-$220K
     assert pay["Initech"] == {"score": 50, "input": "no pay known"}  # nothing to go on: neutral
+    store.close()
+
+
+@pytest.mark.parametrize("headcount, reads", [("66-128 (sources disagree), likely growing", "growing headcount"),
+                                              ("1,400-1,480", None), ("down 10%", "shrinking headcount"),
+                                              ("-5% this year", "shrinking headcount"), ("+20%", "growing headcount")])
+def test_a_range_of_heads_is_no_fall(tracked, headcount, reads):
+    cfg = config.load(tracked)
+    store = Store(cfg.state)
+    store.set_health("Acme", headcount=headcount)
+    acme = next(r for r in comps.view(cfg, store)["suggestion"]["ranking"] if r["company"] == "Acme")
+    seen = acme["parts"]["health"]["input"]
+    assert (reads in seen) if reads else ("headcount" not in seen)
     store.close()
 
 

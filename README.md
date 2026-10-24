@@ -1113,7 +1113,8 @@ The suggestion at the top ranks the opportunities by plain rules, no model: pay 
 at target is 80, 10% over 100, 10% under 50), fit score (25%), how far along it is (20%: offer 100, interviewing
 70, screening 40, applied 15) and company health (20%: 70 to start, public +10, layoffs -25, shrinking headcount
 -10, rating of 4.0+ +10 or under 3.3 -10, a private company with under $20M raised -15, a risk note -10; growing
-headcount +10). Pay uses what they offered, else the base they gave, else the posted range. A part with nothing
+headcount +10). Pay uses what they offered, else the base they gave, else the posted range: the middle of the
+range, since a nationwide band's top isn't what anyone is paid. A part with nothing
 to go on counts as 50. Each opportunity shows its score, every part with the input it came from, and a sentence
 on why.
 

@@ -95,11 +95,12 @@ def _target(cfg: Config) -> tuple[float, str] | None:
 
 
 def _pay(row: dict, target: tuple[float, str] | None, top: float) -> tuple[int, str, str]:
-    """(part, input, phrase): the most pay known for the job (offered, else the base they gave, else as posted)
-    against your target; with no target, against the highest of these. At the target is 80, 10% over 100, 10% under
-    50, 30% under 0."""
-    figure, what = next(((row[f"{k}_max"], w) for k, w in (("offered", "offered"), ("base", "base told"))
-                         if row[f"{k}_max"]), (row["pay_max"], "posted"))
+    """(part, input, phrase): the pay known for the job (offered, else the base they gave, else as posted), the
+    middle of its range, against your target; with no target, against the highest of these. The middle, not the top:
+    a nationwide band ("$94K-$316K") isn't what anyone is paid. At the target is 80, 10% over 100, 10% under 50,
+    30% under 0."""
+    figure, what = next(((row[f"{k}_mid"], w) for k, w in (("offered", "offered"), ("base", "base told"))
+                         if row[f"{k}_mid"]), (row["pay_mid"], "posted"))
     if not figure:
         return NEUTRAL, "no pay known", "no pay is known yet"
     ratio = figure / target[0] if target else figure / top
@@ -141,10 +142,11 @@ def _health(row: dict) -> tuple[int, str, str]:
         bad.append("recent layoffs")
     if h["headcount"]:
         words = h["headcount"].lower()
-        if re.search(r"shrink|declin|down|fall|cut|-\d", words):
+        # a range of counts ("66-128") is no fall: only a signed number ("-5%") or a word says so
+        if re.search(r"\b(shrink|declin|down|fall|cut)|(?<![\w.])-\d", words):
             part -= 10
             bad.append("shrinking headcount")
-        elif re.search(r"grow|up|rising|hiring|\+\d", words):
+        elif re.search(r"\b(grow|up\b|rising|hiring)|(?<![\w.])\+\d", words):
             part += 10
             notes.append("growing headcount")
     if h["rating"] and (m := re.search(r"\d(?:\.\d+)?", h["rating"])):
@@ -174,8 +176,8 @@ def suggest(cfg: Config, rows: list[dict]) -> dict:
     from, and a sentence on why: the strongest reason for it, and the weakest if that is a worry. Only rules, no
     model: the same data gives the same ranking."""
     target = _target(cfg)
-    top = max((r[f"{k}_max"] for r in rows for k in ("offered", "base") if r[f"{k}_max"]), default=0) \
-        or max((r["pay_max"] or 0 for r in rows), default=0) or 1
+    top = max((r[f"{k}_mid"] for r in rows for k in ("offered", "base") if r[f"{k}_mid"]), default=0) \
+        or max((r["pay_mid"] or 0 for r in rows), default=0) or 1
     ranking = []
     for r in rows:
         parts = dict(zip(WEIGHTS, (_pay(r, target, top), _fit(r), _progress(r), _health(r)), strict=True))
@@ -201,7 +203,8 @@ def _company_row(name: str, healths: dict) -> dict:
     return {"key": f"company:{company_key(name)}", "kind": "company", "company": name, "title": "", "url": "",
             "status": "", "applied_at": None, "next_step": None, "follow_up": None, "pay": "", "pay_max": None,
             "places": [], "fit": None, "contacts": [], "comp": dict.fromkeys(COMP_FIELDS), "base_max": None,
-            "asked_max": None, "offered_max": None, "health": aged(healths.get(company_key(name)))}
+            "asked_max": None, "offered_max": None, "pay_mid": None, "base_mid": None, "asked_mid": None,
+            "offered_mid": None, "health": aged(healths.get(company_key(name)))}
 
 
 def choices(store: Store) -> list[dict]:
@@ -223,7 +226,8 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
     company, title, url, status,
     applied_at, next_step, follow_up, pay (as posted), pay_max, places, fit ({score, met, total, gaps, stale}
     or None), contacts, comp (what was kept: base, bonus, equity, signon, asked, offered, note) and base_max,
-    asked_max, offered_max: the top of each range written, in dollars, when it can be read, and health (the
+    asked_max, offered_max: the top of each range written, in dollars, when it can be read (and pay_mid, base_mid,
+    asked_mid, offered_mid: each range's middle, which the suggestion weighs), and health (the
     company's, with age_days and stale; None when none is kept). suggestion ranks them (see suggest). best says which
     opportunity (a list of keys: ties share) is highest in pay, base, offered and fit, for the page to mark."""
     bad = [s for s in stages if s not in STAGES or s in ENDED]
@@ -242,7 +246,11 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
     rows = []
     for job, rec in found:
         fit, comp = fits.get(job.key), kept.get(job.key) or {}
-        ranges = {f"{k}_max": (amount(comp.get(k)) or (None, None))[1] for k in ("base", "asked", "offered")}
+        read = {k: amount(comp.get(k)) for k in ("base", "asked", "offered")}
+        posted = [p for p in (job.salary_min, job.salary_max) if p]
+        ranges = {**{f"{k}_max": r[1] if r else None for k, r in read.items()},
+                  **{f"{k}_mid": (r[0] + r[1]) / 2 if r else None for k, r in read.items()},
+                  "pay_mid": sum(posted) / len(posted) if posted else None}
         rows.append({
             "key": job.key, "kind": "job", "company": job.display_company, "title": job.title, "url": job.url,
             "status": rec["status"], "applied_at": rec["applied_at"], "next_step": rec["next_step"],
