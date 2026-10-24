@@ -673,8 +673,10 @@ class App:
             why = self.scorer.reasons(cfg, store)
             pay = self._pay(cfg, store, [(e.job, None) for e in d.entries], most=cfg.pay.today)
             history = advice.History(store)
+            worth = comps.worth(cfg, store, [(e.job, e.fit) for e in d.entries])
             out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {}),
-                             "advice": self._advice(cfg, e, history, pay)} for e in d.entries],
+                             "worth": worth[e.job.key], "advice": self._advice(cfg, e, history, pay)}
+                            for e in d.entries],
                    "rejected": d.rejected,
                    "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({}),
                    "checked": self.refresher.status(cfg, store),
@@ -706,7 +708,9 @@ class App:
             entries = queue(cfg, store)
             pay = self._pay(cfg, store, [(e.job, e.pay) for e in entries])
             history = advice.History(store)
-            return [{**self._entry(e), "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
+            worth = comps.worth(cfg, store, [(e.job, e.fit) for e in entries])
+            return [{**self._entry(e), "worth": worth[e.job.key],
+                     "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
                      "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),
                      **pay.get(e.job.key, {}), "advice": self._advice(cfg, e, history, pay)} for e in entries]
         return self._with_store(run)

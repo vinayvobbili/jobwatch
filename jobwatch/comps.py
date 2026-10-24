@@ -219,6 +219,40 @@ def suggest(cfg: Config, rows: list[dict]) -> dict:
     return {"weights": weights, "target": target[1] if target else None, "ranking": ranking}
 
 
+def worth(cfg: Config, store: Store, jobs: list[tuple]) -> dict[str, dict]:
+    """{job key: {"score", "parts"}}: how worth it each (job, fit) pair is, for Today's and the queue's "Worth it"
+    order. The same rules as the Comps suggestion (career, pay, fit, company health; the comps.weights, scaled to
+    add up to 1 without progress, which a job not applied to yet has none of), from what is kept: the pay is the
+    middle of the posted range (or what a recruiter told you, if kept), the career and health those of its
+    company, and a part with nothing to go on is NEUTRAL. fit is the stored score as the lists carry it, or None.
+    Health and comp details are read once for all of them, so thousands of jobs are cheap."""
+    healths, kept, target = store.healths(), store.comps(), _target(cfg)
+    aged_by: dict[str, dict | None] = {}
+    rows = []
+    for job, fit in jobs:
+        company = company_key(job.display_company)
+        if company not in aged_by:
+            aged_by[company] = aged(healths.get(company))
+        comp = kept.get(job.key) or {}
+        read = {k: amount(comp.get(k)) for k in ("base", "offered")}
+        posted = [p for p in (job.salary_min, job.salary_max) if p]
+        rows.append({"key": job.key, "status": "", "health": aged_by[company], "comp": comp,
+                     "fit": {"score": fit["score"], "met": fit.get("must_haves_met"),
+                             "total": fit.get("must_haves_total")} if fit else None,
+                     **{f"{k}_mid": (r[0] + r[1]) / 2 if r else None for k, r in read.items()},
+                     "pay_mid": sum(posted) / len(posted) if posted else None})
+    top = max((r[f"{k}_mid"] for r in rows for k in ("offered", "base") if r[f"{k}_mid"]), default=0) \
+        or max((r["pay_mid"] or 0 for r in rows), default=0) or 1
+    weights = {k: w for k, w in cfg.comps.weights.items() if k != "progress"}
+    scale = sum(weights.values())
+    out = {}
+    for r in rows:
+        parts = {"career": _career(r), "pay": _pay(r, target, top), "fit": _fit(r), "health": _health(r)}
+        score = sum(weights[k] * p[0] for k, p in parts.items()) / scale if scale else NEUTRAL
+        out[r["key"]] = {"score": round(score), "parts": {k: {"score": p[0], "input": p[1]} for k, p in parts.items()}}
+    return out
+
+
 def _company_row(name: str, healths: dict) -> dict:
     """A column for a company with no job to it: only its health (kept under any spelling of its name, shown under
     the way it was first written)."""

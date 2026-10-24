@@ -1132,6 +1132,12 @@ comps:
 Each opportunity shows its score, every part with the input it came from, and a sentence
 on why.
 
+**Worth it.** Today and the apply queue can also be ordered by the same score, with the **Worth it** button (kept
+per browser). Each card then shows `worth N`, and hovering it lists the parts. A job isn't applied to yet, so the
+progress part is left out and the other weights are scaled up to add to 1; pay is the middle of the posted range
+(or what a recruiter told you, if kept), career and health come from the company's kept `kind` and health, and
+anything unknown counts as 50. Only the order changes: fit scores and `filters.min_fit` work as before.
+
 ## Who you know there
 
 A referral gets read before an application does. Download your LinkedIn data (Settings → Data privacy →

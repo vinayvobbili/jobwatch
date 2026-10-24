@@ -441,3 +441,42 @@ def test_the_weights_change_the_ranking(tracked):
     assert s["ranking"][0]["company"] == "Globex" and s["ranking"][0]["total"] == 95
     assert comps.suggestion_text(s).startswith("Suggestion (pay vs the best of these; weights: career 100%, pay 0%")
     store.close()
+
+
+def test_worth_orders_jobs_by_the_same_rules_as_the_suggestion(tracked):
+    tracked.write_text(tracked.read_text() + "pay:\n  target: 180000-210000\ncomps:\n"
+                               "  weights: {career: 25, pay: 25, fit: 20, progress: 15, health: 15}\n")
+    cfg = config.load(tracked)
+    store = Store(cfg.state)
+    store.set_health("Acme", kind="tech")
+    store.set_comp("acme", role="product")
+    jobs = {c: store.find(c)[0] for c in ("acme", "globex", "initech")}
+    fits = {"acme": {"score": 84, "must_haves_met": 5, "must_haves_total": 6}, "globex": None, "initech": None}
+    w = comps.worth(cfg, store, [(jobs[c], fits[c]) for c in jobs])
+    acme, globex = w[jobs["acme"].key], w[jobs["globex"].key]
+    # pay $200K posted middle is above the $195K target middle; career tech + product = 95; no progress part
+    assert acme["parts"]["career"] == {"score": 95, "input": "tech company, builds product"}
+    assert acme["parts"]["fit"]["score"] == 84 and "progress" not in acme["parts"]
+    assert globex["parts"]["career"]["score"] == 50 and globex["parts"]["fit"]["input"] == "not scored"
+    assert globex["parts"]["pay"]["input"] == "$175K posted vs your $180K-$210K target"
+    parts = acme["parts"]
+    assert acme["score"] == round((0.25 * parts["career"]["score"] + 0.25 * parts["pay"]["score"]
+                                   + 0.2 * parts["fit"]["score"] + 0.15 * parts["health"]["score"]) / 0.85)
+    assert acme["score"] > globex["score"] > 0
+    assert w[jobs["initech"].key]["parts"]["pay"]["input"] == "no pay known"
+    store.close()
+
+
+def test_the_page_lists_carry_a_worth_score(tracked):
+    app = App(tracked)
+    app.post_health({"company": "Initech", "kind": "tech"})
+    app.post_comp({"key": "initech", "role": "product"})
+    store = Store(config.load(tracked).state)
+    store.set_status(["manual:initech:ml-engineer"], "queued")
+    store.close()
+    jobs = app.get_queue({})
+    initech = next(j for j in jobs if j["key"] == "manual:initech:ml-engineer")
+    assert initech["worth"]["parts"]["career"]["score"] == 95 and 0 <= initech["worth"]["score"] <= 100
+    assert set(initech["worth"]["parts"]) == {"career", "pay", "fit", "health"}
+    page = (__import__("pathlib").Path(config.__file__).parent / "static" / "index.html").read_text()
+    assert '["worth", "Worth it"]' in page and 'remember("today.sort"' in page and 'remember("queue.sort"' in page

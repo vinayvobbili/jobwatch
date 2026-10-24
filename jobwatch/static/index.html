@@ -1225,7 +1225,7 @@ function watchPay(jobs, scope = "page") {
 
 function jobCard(job, actions, i = 0) {
   const places = job.locations.slice(0, 3).join("; ") + (job.locations.length > 3 ? " …" : "");
-  const facts = [places, job.pay ? h("span", { class: "pay" }, job.pay) : null, age(job.age_days),
+  const facts = [places, job.pay ? h("span", { class: "pay" }, job.pay) : null, age(job.age_days), worthChip(job),
     job.same_title ? `+${job.same_title} more posting${job.same_title > 1 ? "s" : ""}` : null].filter(Boolean);
   return h("div", { class: `card job fit-${job.fit ? fitClass(job.fit.score) : "none"}`, id: "job-" + job.key,
     style: `--i:${Math.min(i, 12)}` },
@@ -2366,8 +2366,16 @@ function paceLine(el, p) {
 
 // all: every matching job, paged, rather than today's picks (the top display.today in the order picked).
 // where, fit, pay: the quick narrowing (see quickNarrow); "any" and 0 mean off.
-const todayView = { q: "", sort: "fit", company: "", kws: new Set(), where: "any", fit: 0, pay: 0, page: 1, all: false };
-const SORTED = { fit: "best fit first", new: "newest first", pay: "top pay first" };
+const todayView = { q: "", sort: remembered("today.sort", "fit"), company: "", kws: new Set(), where: "any", fit: 0, pay: 0, page: 1, all: false };
+const SORTED = { fit: "best fit first", new: "newest first", pay: "top pay first", worth: "most worth it first" };
+// "Worth it": the Comps tab's weighted score (career, pay, fit, company health); cards show it while that order is on.
+let worthShown = false;
+const byWorth = (a, b) => (b.worth?.score ?? -1) - (a.worth?.score ?? -1);
+function worthChip(job) {
+  if (!worthShown || !job.worth) return null;
+  const parts = Object.entries(job.worth.parts).map(([k, p]) => `${k} ${p.score} (${p.input})`).join("\n");
+  return h("span", { class: "chip hit", title: "Worth it, by the Comps tab's rules:\n" + parts }, `worth ${job.worth.score}`);
+}
 
 // Today's quick narrowing, on top of the saved filters: how the job is worked, a lowest fit score, a lowest top of
 // the posted pay. A job with no location, no score yet or no listed pay isn't hidden by that part, the same as the
@@ -2426,6 +2434,8 @@ async function renderToday() {
       (!v.company || j.company === v.company) && [...v.kws].every(k => j.keywords.includes(k)) && quickNarrow(j, v));
     if (v.sort === "new") jobs = [...jobs].sort((a, b) => (a.age_days ?? 1e4) - (b.age_days ?? 1e4));
     if (v.sort === "pay") jobs = [...jobs].sort((a, b) => (b.salary_max ?? -1) - (a.salary_max ?? -1));
+    if (v.sort === "worth") jobs = [...jobs].sort(byWorth);
+    worthShown = v.sort === "worth";
     const narrowed = v.q || v.company || v.kws.size || v.where !== "any" || v.fit || v.pay;
     // Today's picks: the top few in this order. A search, company, keyword or quick narrowing looks through every match.
     const top = d.picks && jobs.length > d.picks;
@@ -2456,7 +2466,8 @@ async function renderToday() {
       hero([picks ? [picks, "picks for today", "lead wide"] : null, [d.jobs.length, picks ? "matching" : "matching jobs", picks ? "" : "lead"],
         [fresh, "new since last look"], [strong, "strong fits (75+)", strong ? "good" : ""], [out, "hidden by filters"]].filter(Boolean)),
       panel(null, search, h("div", { style: "margin-top:10px" },
-        segmented([["fit", "Best fit"], ["new", "Newest"], ["pay", "Top pay"]], v.sort, k => { v.sort = k; drawToday(); }))),
+        segmented([["fit", "Best fit"], ["new", "Newest"], ["pay", "Top pay"], ["worth", "Worth it"]], v.sort,
+          k => { v.sort = k; remember("today.sort", k); drawToday(); }))),
       panel("Narrow down", narrow),
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
@@ -2524,7 +2535,7 @@ function renderWelcome() {
     h("button", { class: "btn primary", onclick: () => go("settings") }, "Set up my watchlist", icon("arrow", 14))));
 }
 
-const queueView = { page: 1 };
+const queueView = { page: 1, sort: remembered("queue.sort", "queued") };
 let queueJobs = [], drawQueue = () => {};
 
 async function renderQueue() {
@@ -2533,7 +2544,9 @@ async function renderQueue() {
   const pace = paceLine(h("div", { class: "pace" }), p);
   const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
   drawQueue = () => {
-    const pg = paged(queueJobs, queueView, "", drawQueue);
+    worthShown = queueView.sort === "worth";
+    const ordered = worthShown ? [...queueJobs].sort(byWorth) : queueJobs;
+    const pg = paged(ordered, queueView, queueView.sort, drawQueue);
     fill(showing, pg.range ? `Showing ${pg.range}` : null);
     fill(list, pg.items.map(queueCard));
     fill(pager, pg.nav);
@@ -2541,11 +2554,13 @@ async function renderQueue() {
   const step = (n, title, text) => h("div", { class: "step" }, h("span", { class: "n" }, n), h("div", {}, h("b", {}, title), h("div", {}, text)));
   const addArea = h("div", {});
   put(
-    pagehead("Apply queue", "Jobs you picked to apply to, oldest first.",
+    pagehead("Apply queue", "Jobs you picked to apply to, " + (queueView.sort === "worth" ? "most worth it first." : "oldest first."),
       h("button", { class: "btn primary", onclick: () => fill(addArea, addForm(null)) }, icon("plus", 14), "Add a job")),
     addArea,
     layout([
       hero([[jobs.length, jobs.length === 1 ? "job queued" : "jobs queued", "lead"]]),
+      jobs.length > 1 ? panel(null, segmented([["queued", "Oldest first"], ["worth", "Worth it"]], queueView.sort,
+        k => { queueView.sort = k; remember("queue.sort", k); drawQueue(); })) : null,
       panel("For each job",
         step(1, "Ask for a referral", "Anyone you know there? A referral gets read first."),
         step(2, "Tailor your resume", "Match it to the posting, from things you've really done."),
