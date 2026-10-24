@@ -2374,9 +2374,11 @@ const SORTED = { fit: "best fit first", new: "newest first", pay: "top pay first
 // "Worth it": the Comps tab's weighted score (career, pay, fit, company health); cards show it while that order is on.
 let worthShown = false;
 const byWorth = (a, b) => (b.worth?.score ?? -1) - (a.worth?.score ?? -1);
+// A part with nothing to go on shows "?", not its neutral 50, so an unknown doesn't read as middling.
+const partText = ([k, p]) => p.known === false ? `${k} ? (${p.input}, counts as ${p.score})` : `${k} ${p.score} (${p.input})`;
 function worthChip(job) {
   if (!worthShown || !job.worth) return null;
-  const parts = Object.entries(job.worth.parts).map(([k, p]) => `${k} ${p.score} (${p.input})`).join("\n");
+  const parts = Object.entries(job.worth.parts).map(partText).join("\n");
   return h("span", { class: "chip hit", title: "Worth it, by the Comps tab's rules:\n" + parts }, `worth ${job.worth.score}`);
 }
 
@@ -3691,7 +3693,7 @@ function suggestionPanel(s) {
     h("ol", { class: "suggest" }, s.ranking.map(r => h("li", {},
       h("div", {}, h("b", {}, `${r.company}: ${r.title}`), h("span", { class: "chip hit", style: "margin-left:8px" }, `${r.total}/100`)),
       h("div", {}, r.reason),
-      h("div", { class: "small muted" }, Object.entries(r.parts).map(([k, p]) => `${k} ${p.score} (${p.input})`).join(" · "))))));
+      h("div", { class: "small muted" }, Object.entries(r.parts).map(partText).join(" · "))))));
 }
 // Choose what to compare: chips to take out, a box to add a tracked job or any company by name.
 function comparePicker(d) {

@@ -257,13 +257,16 @@ def test_the_suggestion_weighs_pay_fit_progress_and_health(tracked):
     assert [r["company"] for r in s["ranking"]] == ["Initech", "Acme", "Globex"]
     initech, acme, globex = s["ranking"]
     assert initech["parts"]["pay"]["input"] == "$200K offered vs your $180K-$210K target"
-    assert initech["parts"]["progress"] == {"score": 100, "input": "offer"}
+    assert initech["parts"]["progress"] == {"score": 100, "input": "offer", "known": True}
     assert initech["total"] == round(sum(comps.WEIGHTS[k] * p["score"] for k, p in initech["parts"].items()))
-    assert acme["parts"]["health"] == {"score": 50, "input": "no company health kept"}  # nothing known: neutral
+    # nothing known: neutral, and marked so it shows as "?", not a middling 50
+    assert acme["parts"]["health"] == {"score": 50, "input": "no company health kept", "known": False}
+    assert "health ? (no company health kept, counts as 50)" in comps.suggestion_text(s)
+    assert "health 20 (recent layoffs" in comps.suggestion_text(s)
     assert acme["parts"]["fit"]["score"] == 84 and "fit is 84/100" not in initech["reason"]
     # layoffs -25, shrinking -10, thin funding -15 from 70
     assert globex["parts"]["health"] == {"score": 20, "input": "recent layoffs, shrinking headcount, "
-                                                                "thin funding ($12.0M raised)"}
+                                                                "thin funding ($12.0M raised)", "known": True}
     # pay is the middle of the range posted ($150K-$200K): a band's top isn't what anyone is paid
     assert globex["reason"] == ("Posted pay $175K is 10% under your $180K-$210K target, but its health counts against "
                                 "it: recent layoffs, shrinking headcount, thin funding ($12.0M raised).")
@@ -278,8 +281,9 @@ def test_pay_is_measured_against_the_best_of_them_without_a_target(tracked):
     s = comps.view(cfg, store)["suggestion"]
     assert s["target"] is None
     pay = {r["company"]: r["parts"]["pay"] for r in s["ranking"]}
-    assert pay["Acme"] == {"score": 80, "input": "$200K posted vs the best of these"}  # the middle of $180K-$220K
-    assert pay["Initech"] == {"score": 50, "input": "no pay known"}  # nothing to go on: neutral
+    # the middle of $180K-$220K
+    assert pay["Acme"] == {"score": 80, "input": "$200K posted vs the best of these", "known": True}
+    assert pay["Initech"] == {"score": 50, "input": "no pay known", "known": False}  # nothing to go on: neutral
     store.close()
 
 
@@ -349,10 +353,10 @@ def test_career_follows_the_kind_of_company_and_the_role(tracked):
     store.set_comp("initech", role="customer")  # a role with no kind: from the neutral 50
     v = comps.view(cfg, store)
     parts = {r["company"]: r["parts"] for r in v["suggestion"]["ranking"]}
-    assert parts["Acme"]["career"] == {"score": 95, "input": "tech company, builds product"}
-    assert parts["Globex"]["career"] == {"score": 35, "input": "enterprise, internal tools"}
-    assert parts["Initech"]["career"] == {"score": 55, "input": "customer-facing"}
-    assert parts["Acme"]["health"] == {"score": 50, "input": "no company health kept"}
+    assert parts["Acme"]["career"] == {"score": 95, "input": "tech company, builds product", "known": True}
+    assert parts["Globex"]["career"] == {"score": 35, "input": "enterprise, internal tools", "known": True}
+    assert parts["Initech"]["career"] == {"score": 55, "input": "customer-facing", "known": True}
+    assert parts["Acme"]["health"] == {"score": 50, "input": "no company health kept", "known": False}
     acme = next(o for o in v["opportunities"] if o["company"] == "Acme")
     assert acme["comp"]["career_note"] == "agentic SOC product, principal IC" and acme["health"]["kind"] == "tech"
     assert "career note: agentic SOC product, principal IC" in comps.text(v)
@@ -456,7 +460,7 @@ def test_worth_orders_jobs_by_the_same_rules_as_the_suggestion(tracked):
     w = comps.worth(cfg, store, [(jobs[c], fits[c]) for c in jobs])
     acme, globex = w[jobs["acme"].key], w[jobs["globex"].key]
     # pay $200K posted middle is above the $195K target middle; career tech + product = 95; no progress part
-    assert acme["parts"]["career"] == {"score": 95, "input": "tech company, builds product"}
+    assert acme["parts"]["career"] == {"score": 95, "input": "tech company, builds product", "known": True}
     assert acme["parts"]["fit"]["score"] == 84 and "progress" not in acme["parts"]
     assert globex["parts"]["career"]["score"] == 50 and globex["parts"]["fit"]["input"] == "not scored"
     assert globex["parts"]["pay"]["input"] == "$175K posted vs your $180K-$210K target"

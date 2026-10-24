@@ -70,7 +70,7 @@ def test_the_suggestion_shows_the_goals_behind_the_career_part(tmp_path):
            "pay_mid": None, "base_mid": None, "asked_mid": None, "offered_mid": None}
     ranked = comps.suggest(cfg, [row])["ranking"][0]
     both = "enterprise (your 1st choice), internal tools (your 1st choice)"
-    assert ranked["parts"]["career"] == {"score": 100, "input": both}
+    assert ranked["parts"]["career"] == {"score": 100, "input": both, "known": True}
     assert "by your goals" in ranked["reason"]
 
 

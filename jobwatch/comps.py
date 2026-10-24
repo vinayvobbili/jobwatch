@@ -217,6 +217,16 @@ def _health(row: dict) -> tuple[int, str, str]:
     return part, ", ".join(notes + bad + (["stale"] if h["stale"] else [])) or "kept", phrase
 
 
+def _shown(p: tuple) -> dict:
+    """A part as the API sends it; known is False when it had nothing to go on (scored NEUTRAL, not a real 50)."""
+    return {"score": p[0], "input": p[1], "known": p[1] not in UNKNOWN}
+
+
+def part_text(k: str, p: dict) -> str:
+    """'health 80 (public)', or 'health ? (no company health kept, counts as 50)' when nothing is known."""
+    return f"{k} {p['score']} ({p['input']})" if p.get("known", True) else f"{k} ? ({p['input']}, counts as {NEUTRAL})"
+
+
 def suggest(cfg: Config, rows: list[dict]) -> dict:
     """{"weights", "target", "ranking"}: the opportunities best first, by the weighted sum of five parts (career
     value, pay against your target, fit, how far along, company health), each part 0-100 with the input it came
@@ -241,7 +251,7 @@ def suggest(cfg: Config, rows: list[dict]) -> dict:
             reason += f", but {parts[worst][2]}"
         ranking.append({"key": r["key"], "company": r["company"], "title": r["title"], "total": total,
                         "reason": reason + ".",
-                        "parts": {k: {"score": p[0], "input": p[1]} for k, p in parts.items()}})
+                        "parts": {k: _shown(p) for k, p in parts.items()}})
     ranking.sort(key=lambda x: -x["total"])
     return {"weights": weights, "target": target[1] if target else None, "ranking": ranking}
 
@@ -276,7 +286,7 @@ def worth(cfg: Config, store: Store, jobs: list[tuple]) -> dict[str, dict]:
     for r in rows:
         parts = {"career": _career(r, cfg.goals), "pay": _pay(r, target, top), "fit": _fit(r), "health": _health(r)}
         score = sum(weights[k] * p[0] for k, p in parts.items()) / scale if scale else NEUTRAL
-        out[r["key"]] = {"score": round(score), "parts": {k: {"score": p[0], "input": p[1]} for k, p in parts.items()}}
+        out[r["key"]] = {"score": round(score), "parts": {k: _shown(p) for k, p in parts.items()}}
     return out
 
 
@@ -410,7 +420,7 @@ def suggestion_text(s: dict) -> str:
     out = [f"Suggestion (pay {'vs your ' + s['target'] + ' target' if s['target'] else 'vs the best of these'}; "
            f"weights: {weights})"]
     for n, r in enumerate(s["ranking"], 1):
-        parts = ", ".join(f"{k} {p['score']} ({p['input']})" for k, p in r["parts"].items())
+        parts = ", ".join(part_text(k, p) for k, p in r["parts"].items())
         out += [f"  {n}. {r['company']}: {r['title']}  {r['total']}/100", f"     {r['reason']}", f"     {parts}"]
     return "\n".join(out)
 
