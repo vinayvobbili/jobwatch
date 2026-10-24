@@ -217,8 +217,8 @@ def test_how_you_want_to_work_reads_and_writes_the_places(tmp_path):
 let refused = "";
 try { workLocations("near", []); } catch (e) { refused = e.message; }
 console.log(JSON.stringify({
-  read: [["remote"], ["Raleigh"], ["Raleigh", "remote"], []].map(workStyle),
-  write: ["remote", "near", "either"].map(how => workLocations(how, ["Raleigh"])),
+  read: [["remote"], ["Denver"], ["Denver", "remote"], []].map(workStyle),
+  write: ["remote", "near", "either"].map(how => workLocations(how, ["Denver"])),
   refused,
 }));
 """, encoding="utf-8")
@@ -226,7 +226,7 @@ console.log(JSON.stringify({
     assert r.returncode == 0, r.stderr
     got = json.loads(r.stdout)
     assert got["read"] == ["remote", "near", "either", "either"]
-    assert got["write"] == [["remote"], ["Raleigh"], ["Raleigh", "remote"]]
+    assert got["write"] == [["remote"], ["Denver"], ["Denver", "remote"]]
     assert got["refused"] == "Name a city or state for hybrid or on-site jobs."
 
 
