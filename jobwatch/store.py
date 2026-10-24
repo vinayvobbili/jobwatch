@@ -24,11 +24,17 @@ STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdraw
 ENDED = ("rejected", "withdrawn")
 STATUSES = ("new", "shown", "queued", *STAGES, "skipped")
 VERDICTS = ("use", "skip")  # what can be said of a person to ask for a referral
-COMP_FIELDS = ("base", "bonus", "equity", "signon", "asked", "offered", "note")  # what a recruiter said about pay
+# What a recruiter said about pay, then what the job is for your career: its role (ROLES) and a few words on why.
+COMP_FIELDS = ("base", "bonus", "equity", "signon", "asked", "offered", "note", "role", "career_note")
+ROLES = ("product", "customer", "internal")  # builds the company's product; customer-facing engineering; internal tools
 # What is known of a company's health, per company: public or private, stage and last round, total raised, revenue
-# or growth, headcount trend, recent layoffs, employee rating, a risk note, source links, and the day it was true.
-HEALTH_FIELDS = ("listing", "stage", "raised", "revenue", "headcount", "layoffs", "rating", "risk", "sources", "as_of")
+# or growth, headcount trend, recent layoffs, employee rating, a risk note, source links, and the day it was true;
+# and the kind of company it is (COMPANY_KINDS), for the career part of the Comps suggestion.
+HEALTH_FIELDS = ("listing", "stage", "raised", "revenue", "headcount", "layoffs", "rating", "risk", "sources", "as_of",
+                 "kind")
 LISTINGS = ("public", "private")
+# a technology company; consulting; a non-tech business whose IT builds for itself
+COMPANY_KINDS = ("tech", "consulting", "enterprise")
 MANUAL = "manual"  # the source of applications added by hand (found elsewhere, not on a watched board)
 # Posts from a thread of many companies' posts (HN's Who is hiring) aren't fit-scored (see watch.scorable): a
 # score saved for one before that is left out when scores are read (it stays in the file, unused).
@@ -143,6 +149,8 @@ CREATE TABLE IF NOT EXISTS comps (
     asked TEXT,
     offered TEXT,
     note TEXT,
+    role TEXT,
+    career_note TEXT,
     set_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS company_health (
@@ -158,6 +166,7 @@ CREATE TABLE IF NOT EXISTS company_health (
     risk TEXT,
     sources TEXT,
     as_of TEXT,
+    kind TEXT,
     set_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS activity (
@@ -260,6 +269,13 @@ class Store:
                 except sqlite3.OperationalError as e:  # another connection added it just now
                     if "duplicate column" not in str(e):
                         raise
+            for table, column in (("comps", "role"), ("comps", "career_note"), ("company_health", "kind")):
+                if column not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
+                    try:
+                        self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+                    except sqlite3.OperationalError as e:  # another connection added it just now
+                        if "duplicate column" not in str(e):
+                            raise
             if older:  # a state file from before suggestions: what alerts and `add` brought in so far counts
                 self._backfill_unwatched()
 
@@ -825,11 +841,16 @@ class Store:
 
     def set_comp(self, key: str, **fields: str | None):
         """Keep what a recruiter said about pay for a job (base, bonus, equity, signon, asked, offered, note), as
-        written ("170-200K", "10% target"). None leaves a field as it is; an empty string clears it."""
+        written ("170-200K", "10% target"), and what the job is for your career: its role (see ROLES) and a
+        career_note. None leaves a field as it is; an empty string clears it."""
         if unknown := set(fields) - set(COMP_FIELDS):
             raise ValueError(f"unknown compensation field: {', '.join(sorted(unknown))}")
+        if fields.get("role") and fields["role"].strip().lower() not in ROLES:
+            raise ValueError(f"role must be {', '.join(ROLES[:-1])} or {ROLES[-1]}")
         key = self.find(key)[0].key
         given = {k: v.strip() or None for k, v in fields.items() if v is not None}
+        if given.get("role"):
+            given["role"] = given["role"].lower()
         have = self.comp(key) or {}
         merged = {k: given.get(k, have.get(k)) for k in COMP_FIELDS}
         with self.db:
@@ -862,12 +883,17 @@ class Store:
             raise ValueError("a company's health needs a company name")
         if fields.get("listing") and fields["listing"].strip().lower() not in LISTINGS:
             raise ValueError(f"listing must be {' or '.join(LISTINGS)}")
+        if fields.get("kind") and fields["kind"].strip().lower() not in COMPANY_KINDS:
+            raise ValueError(f"kind must be {', '.join(COMPANY_KINDS[:-1])} or {COMPANY_KINDS[-1]}")
         given = {k: v.strip() or None for k, v in fields.items() if v is not None}
         if given.get("listing"):
             given["listing"] = given["listing"].lower()
+        if given.get("kind"):
+            given["kind"] = given["kind"].lower()
         if "as_of" in given:
             given["as_of"] = day(given["as_of"])
-        elif any(given.values()):  # new facts are true as of today unless the person says when they were read
+        elif any(v for k, v in given.items() if k != "kind"):  # new facts are true as of today unless the person
+            # says when they were read (what kind of company it is doesn't age)
             given["as_of"] = date.today().isoformat()
         have = self.health(company) or {}
         merged = {k: given.get(k, have.get(k)) for k in HEALTH_FIELDS}

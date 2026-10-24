@@ -1099,8 +1099,9 @@ none of it up: you type it in, or an assistant over MCP searches the web and rec
 
 ```
 jobwatch comp acme --base 170-200K --bonus "10% target" --equity "40K RSUs over 4 years" --signon 15K \
-    --asked 215-250K --offered 190K --note "200K most likely their max"
-jobwatch health "Acme" --listing private --stage "Series B, $50M, 2025" --raised "$80M" --revenue "2x YoY" \
+    --asked 215-250K --offered 190K --note "200K most likely their max" \
+    --role product --career-note "agentic SOC product, principal IC"
+jobwatch health "Acme" --kind tech --listing private --stage "Series B, $50M, 2025" --raised "$80M" --revenue "2x YoY" \
     --headcount growing --layoffs none --rating "4.1 Glassdoor" --risk "one big customer" \
     --sources "https://example.com/acme" --as-of 2026-10-20
 ```
@@ -1109,13 +1110,26 @@ A field you leave out stays; `''` clears it; `--clear` forgets all of a job's or
 90 days (or with no date) is marked stale. Over MCP the tools are `set_comp`, `set_company_health` and
 `get_comps`.
 
-The suggestion at the top ranks the opportunities by plain rules, no model: pay against your `pay.target` (35%;
-at target is 80, 10% over 100, 10% under 50), fit score (25%), how far along it is (20%: offer 100, interviewing
-70, screening 40, applied 15) and company health (20%: 70 to start, public +10, layoffs -25, shrinking headcount
+The suggestion at the top ranks the opportunities by plain rules, no model. Its default weights are career value
+(25%), pay against your `pay.target` (30%; at target is 80, 10% over 100, 10% under 50), fit score (20%), how far
+along it is (10%: offer 100, interviewing 70, screening 40, applied 15) and company health (15%: 70 to start, public +10, layoffs -25, shrinking headcount
 -10, rating of 4.0+ +10 or under 3.3 -10, a private company with under $20M raised -15, a risk note -10; growing
 headcount +10). Pay uses what they offered, else the base they gave, else the posted range: the middle of the
-range, since a nationwide band's top isn't what anyone is paid. A part with nothing
-to go on counts as 50. Each opportunity shows its score, every part with the input it came from, and a sentence
+range, since a nationwide band's top isn't what anyone is paid. Career value
+starts from the company's `--kind` (`tech` 80, `consulting` 55, `enterprise` 40: a non-tech business whose IT
+builds for itself, like a bank or insurer) and adds the job's `--role` (`product` +15 for building the company's
+own product, `customer` +5 for forward-deployed or customer-facing engineering, `internal` -5 for internal tools),
+kept between 0 and 100; `--career-note` is a few words of your own, shown but not scored. A part with nothing
+to go on counts as 50. Change the weights in the
+watchlist; any numbers 0 or more, scaled to add up to 1 (a part you leave out keeps its default, so give all five
+to be exact):
+
+```yaml
+comps:
+  weights: {career: 40, pay: 30, fit: 15, progress: 5, health: 10}
+```
+
+Each opportunity shows its score, every part with the input it came from, and a sentence
 on why.
 
 ## Who you know there

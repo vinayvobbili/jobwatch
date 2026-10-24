@@ -605,16 +605,20 @@ class App:
         return self._with_store(run)
 
     def post_comp(self, body) -> dict:
-        """What a recruiter said about pay for one job: any of base, bonus, equity, signon, asked, offered and
-        note; one left out stays, an empty one is cleared."""
+        """What a recruiter said about pay for one job: any of base, bonus, equity, signon, asked, offered,
+        note, role (product, customer or internal) and career_note; one left out stays, an empty one is cleared."""
         def run(cfg, store):
-            store.set_comp(body.get("key") or "", **{f: body.get(f) for f in COMP_FIELDS})
+            try:
+                store.set_comp(body.get("key") or "", **{f: body.get(f) for f in COMP_FIELDS})
+            except ValueError as e:
+                raise ApiError(str(e)) from None
             return {"key": store.find(body.get("key") or "")[0].key}
         return self._with_store(run)
 
     def post_health(self, body) -> dict:
         """What is known of one company's health (company: its name or a job's key): any of listing, stage, raised,
-        revenue, headcount, layoffs, rating, risk, sources and as_of; one left out stays, an empty one is cleared."""
+        revenue, headcount, layoffs, rating, risk, sources, as_of and kind (tech, consulting or
+        enterprise); one left out stays, an empty one is cleared."""
         def run(cfg, store):
             name = comps.company_of(store, body.get("company") or "")
             try:

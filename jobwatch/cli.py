@@ -46,7 +46,7 @@ from . import (
 from .config import BACKENDS, ConfigError, duration
 from .filters import KINDS, rejection
 from .score import ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
-from .store import COMP_FIELDS, HEALTH_FIELDS, LISTINGS, STAGES, STATUSES, Store
+from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
     build_digest,
@@ -1150,8 +1150,9 @@ def build_parser() -> argparse.ArgumentParser:
                        "sign-on, what you asked for, what they offered, a note), to compare in `comps`",
                        description="Compensation details for one job, as you'd write them: --base 170-200K "
                        "--bonus '10% target' --equity '40K RSUs over 4 years' --signon 15K --asked 215-250K "
-                       "--offered 190K --note '200K most likely their max'. A field you leave out stays; an empty "
-                       "one ('') clears it; --clear forgets them all. Amounts like 170-200K are read, so `comps` "
+                       "--offered 190K --note '200K most likely their max' --role product --career-note 'agentic SOC "
+                       "product, principal IC'. A field you leave out stays; an empty one "
+                       "('') clears it; --clear forgets them all. Amounts like 170-200K are read, so `comps` "
                        "can mark the highest.")
     p.add_argument("key", metavar="KEY", help="the job: its key, posting id or company")
     p.add_argument("--base", help="the base salary range they gave")
@@ -1161,6 +1162,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--asked", help="what you asked for")
     p.add_argument("--offered", help="what they offered")
     p.add_argument("--note", help="a few words, e.g. '200K most likely their max'")
+    p.add_argument("--role", choices=(*ROLES, ""), help="what the job is: product (builds the company's own "
+                   "product), customer (forward-deployed, solutions, customer-facing engineering) or internal "
+                   "(builds internal tools for the business); the career part of the `comps` suggestion reads it")
+    p.add_argument("--career-note", dest="career_note", help="a few words on its career value, e.g. 'agentic SOC "
+                   "product, principal IC'")
     p.add_argument("--clear", action="store_true", help="forget everything kept for this job first")
     p.set_defaults(func=cmd_comp)
 
@@ -1169,11 +1175,14 @@ def build_parser() -> argparse.ArgumentParser:
                        description="Company health, per company, as you read it: --listing private --stage 'Series "
                        "B, $50M, 2025' --raised '$80M' --revenue '2x year over year' --headcount 'growing' "
                        "--layoffs 'none' --rating 4.1 --risk 'one big customer' --sources 'https://... https://...' "
-                       "--as-of 2026-10-20. jobwatch never fetches these sites. A field you leave out stays; an "
-                       "empty one ('') clears it; --clear forgets them all. as-of is today unless you say. Health "
-                       "older than 90 days shows as stale.")
+                       "--kind tech --as-of 2026-10-20. jobwatch never fetches these sites. A field you leave "
+                       "out stays; an empty one ('') clears it; --clear forgets them all. as-of is today unless you "
+                       "say. Health older than 90 days shows as stale.")
     p.add_argument("company", metavar="COMPANY", help="the company's name, or a job's key")
     p.add_argument("--listing", choices=(*LISTINGS, ""), help="public or private")
+    p.add_argument("--kind", choices=(*COMPANY_KINDS, ""), help="tech (a software, security or AI "
+                   "company), consulting, or enterprise (a non-tech business whose IT builds for itself: bank, "
+                   "insurer...); the career part of the `comps` suggestion reads it")
     p.add_argument("--stage", help="stage and last round, e.g. 'Series B, $50M, 2025'")
     p.add_argument("--raised", help="total raised, e.g. $80M")
     p.add_argument("--revenue", help="revenue or growth, if known")

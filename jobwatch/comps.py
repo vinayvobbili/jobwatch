@@ -5,16 +5,19 @@ pay (base, bonus, equity, sign-on, what you asked for, what they offered, a note
 it here.
 
 A company's health (public or private, funding, layoffs, rating, a risk note) is kept per company the same way:
-`jobwatch health`, the `set_company_health` tool or the page. Nothing is looked up from the web: the values come
+`jobwatch health`, the `set_company_health` tool or the page; so is what kind of company it is (tech, consulting or
+enterprise), and per job its role (building the product, customer-facing, internal tools) and a career note, which
+the career part of the suggestion reads. Nothing is looked up from the web: the values come
 from the person, or from Claude, who read them somewhere, with the links and the day they were true. The
-suggestion at the top ranks the opportunities by plain rules (see WEIGHTS); there is no model behind it."""
+suggestion at the top ranks the opportunities by plain rules (see WEIGHTS, which the watchlist's comps.weights
+can change); there is no model behind it."""
 
 from __future__ import annotations
 
 import re
 from datetime import date
 
-from .config import Config
+from .config import COMP_WEIGHTS, Config
 from .contacts import company_key
 from .score import resume_id
 from .store import COMP_FIELDS, ENDED, STAGES, Store
@@ -25,13 +28,19 @@ ORDER = ("offer", "interviewing", "screening", "applied")  # furthest along firs
 MOST_CONTACTS = 3
 MOST_GAPS = 3
 STALE_DAYS = 90  # health older than this is marked stale
-# What the suggestion weighs, as a share of its score: pay against your target, the fit score, how far along the
-# process is, and the company's health. Each part is 0-100 (see the _pay, _fit, _progress and _health rules).
-WEIGHTS = {"pay": 0.35, "fit": 0.25, "progress": 0.20, "health": 0.20}
+# What the suggestion weighs, as a share of its score, unless the watchlist's comps.weights say otherwise: career
+# value, pay against your target, the fit score, how far along the process is, and the company's health. Each
+# part is 0-100 (see the _career, _pay, _fit, _progress and _health rules).
+WEIGHTS = COMP_WEIGHTS
+KIND_BASE = {"tech": 80, "consulting": 55, "enterprise": 40}  # the career part by the kind of company
+KIND_WORDS = {"tech": "tech company", "consulting": "consulting", "enterprise": "enterprise"}
+ROLE_ADJUST = {"product": 15, "customer": 5, "internal": -5}  # added to it by what the job builds
+ROLE_WORDS = {"product": "builds product", "customer": "customer-facing", "internal": "internal tools"}
 PROGRESS = {"offer": 100, "interviewing": 70, "screening": 40, "applied": 15}
 THIN = 20_000_000  # a private company that raised less than this in all counts as thinly funded
 NEUTRAL = 50  # a part with nothing to go on: neither for nor against
-UNKNOWN = ("no pay known", "not scored", "no company health kept")  # the inputs of a part with nothing to go on
+# the inputs of a part with nothing to go on
+UNKNOWN = ("no pay known", "not scored", "no company health kept", "no kind or role kept")
 _NONE = re.compile(r"\s*(none|no|nil|n/a|0)\b", re.I)
 
 _N = r"\$?(\d[\d,]*(?:\.\d+)?)\s*([kKmM])?"
@@ -92,6 +101,18 @@ def _target(cfg: Config) -> tuple[float, str] | None:
     if not low:
         return None
     return (low + high) / 2, _k(low) + (f"-{_k(high)}" if high != low else "")
+
+
+def _career(row: dict) -> tuple[int, str, str]:
+    """(part, input, phrase): what the job is worth to your career by plain rules. The kind of company starts it
+    (tech 80, consulting 55, enterprise 40); the job's role adds to that (builds the product +15, customer-facing
+    +5, internal tools -5); 0-100. A role with no kind known starts from NEUTRAL; neither known is NEUTRAL."""
+    kind, role = (row["health"] or {}).get("kind"), row["comp"].get("role")
+    if kind not in KIND_BASE and role not in ROLE_ADJUST:
+        return NEUTRAL, "no kind or role kept", "neither its kind of company nor its role is kept"
+    part = max(0, min(100, KIND_BASE.get(kind, NEUTRAL) + ROLE_ADJUST.get(role, 0)))
+    words = ", ".join(w for w in (KIND_WORDS.get(kind), ROLE_WORDS.get(role)) if w)
+    return part, words, f"its career value is {part}/100 ({words})"
 
 
 def _pay(row: dict, target: tuple[float, str] | None, top: float) -> tuple[int, str, str]:
@@ -171,19 +192,21 @@ def _health(row: dict) -> tuple[int, str, str]:
 
 
 def suggest(cfg: Config, rows: list[dict]) -> dict:
-    """{"weights", "target", "ranking"}: the opportunities best first, by the weighted sum of four parts (pay
-    against your target, fit, how far along, company health; see WEIGHTS), each part 0-100 with the input it came
-    from, and a sentence on why: the strongest reason for it, and the weakest if that is a worry. Only rules, no
-    model: the same data gives the same ranking."""
+    """{"weights", "target", "ranking"}: the opportunities best first, by the weighted sum of five parts (career
+    value, pay against your target, fit, how far along, company health), each part 0-100 with the input it came
+    from, and a sentence on why: the strongest reason for it, and the weakest if that is a worry. The weights are
+    the watchlist's comps.weights (see WEIGHTS for the default). Only rules, no model: the same data gives the
+    same ranking."""
+    weights = cfg.comps.weights
     target = _target(cfg)
     top = max((r[f"{k}_mid"] for r in rows for k in ("offered", "base") if r[f"{k}_mid"]), default=0) \
         or max((r["pay_mid"] or 0 for r in rows), default=0) or 1
     ranking = []
     for r in rows:
-        parts = dict(zip(WEIGHTS, (_pay(r, target, top), _fit(r), _progress(r), _health(r)), strict=True))
-        total = round(sum(WEIGHTS[k] * p[0] for k, p in parts.items()))
+        parts = dict(zip(WEIGHTS, (_career(r), _pay(r, target, top), _fit(r), _progress(r), _health(r)), strict=True))
+        total = round(sum(weights[k] * p[0] for k, p in parts.items()))
         known = {k: p for k, p in parts.items() if p[1] not in UNKNOWN}
-        best = max(known, key=lambda k: parts[k][0] * WEIGHTS[k], default=None)
+        best = max(known, key=lambda k: parts[k][0] * weights[k], default=None)
         worst = min(parts, key=lambda k: parts[k][0])
         reason = (parts[best][2] if best else "little is known about it yet")
         reason = reason[0].upper() + reason[1:]
@@ -193,7 +216,7 @@ def suggest(cfg: Config, rows: list[dict]) -> dict:
                         "reason": reason + ".",
                         "parts": {k: {"score": p[0], "input": p[1]} for k, p in parts.items()}})
     ranking.sort(key=lambda x: -x["total"])
-    return {"weights": WEIGHTS, "target": target[1] if target else None, "ranking": ranking}
+    return {"weights": weights, "target": target[1] if target else None, "ranking": ranking}
 
 
 def _company_row(name: str, healths: dict) -> dict:
@@ -260,7 +283,7 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
                     "gaps": (fit.get("gaps") or [])[:MOST_GAPS], "stale": bool(fit.get("stale"))} if fit else None,
             "contacts": [{k: p.get(k) for k in ("name", "position", "why")}
                          for p in (known.at(job.display_company, job.company) if known else [])[:MOST_CONTACTS]],
-            "comp": {k: comp.get(k) for k in ("base", "bonus", "equity", "signon", "asked", "offered", "note")},
+            "comp": {k: comp.get(k) for k in COMP_FIELDS},
             "health": aged(healths.get(company_key(job.display_company))),
             **ranges})
     rows += [_company_row(name, healths) for name in companies or [] if company_key(name)]
@@ -296,7 +319,8 @@ def text(v: dict) -> str:
                 ("posted pay", star(r, "pay", r["pay"])), ("base", star(r, "base", c["base"])), ("bonus", c["bonus"]),
                 ("equity", c["equity"]), ("sign-on", c["signon"]), ("asked", c["asked"]),
                 ("offered", star(r, "offered", c["offered"])), ("fit", fit_line), ("know", know),
-                ("note", c["note"]), *health_lines(r["health"]), ("link", r["url"]), ("key", r["key"])]
+                ("note", c["note"]), ("role", ROLE_WORDS.get(c["role"])), ("career note", c["career_note"]),
+                *health_lines(r["health"]), ("link", r["url"]), ("key", r["key"])]
         head = (f"{r['company']}: {r['title']} [{r['status']}]" if r["kind"] == "job"
                 else f"{r['company']} [company only]")
         blocks.append("\n".join([head]
@@ -312,7 +336,8 @@ def health_lines(h: dict | None) -> list[tuple[str, str]]:
         return []
     when = f"as of {h['as_of']}" + (f" (stale, {h['age_days']} days)" if h["stale"] and h["age_days"] else "") \
         if h["as_of"] else "no date given (stale)"
-    rows = [("company", " / ".join(x for x in (h["listing"], h["stage"]) if x)), ("raised", h["raised"]),
+    rows = [("company", " / ".join(x for x in (h["listing"], h["stage"]) if x)),
+            ("kind", KIND_WORDS.get(h["kind"])), ("raised", h["raised"]),
             ("revenue", h["revenue"]), ("headcount", h["headcount"]), ("layoffs", h["layoffs"]),
             ("rating", h["rating"]), ("risk", h["risk"]), ("sources", h["sources"]), ("health", when)]
     return [(label, value) for label, value in rows if value]

@@ -272,6 +272,32 @@ def _suggestions(raw, path: Path) -> Suggestions:
                        "companies listed"))
 
 
+# What the Comps suggestion weighs (see comps.py), as a share of its score, when the watchlist doesn't say.
+COMP_WEIGHTS = {"career": 0.25, "pay": 0.30, "fit": 0.20, "progress": 0.10, "health": 0.15}
+
+
+@dataclass(frozen=True)
+class Comps:
+    """comps in the watchlist: how much each part of the Comps suggestion counts (career, pay, fit, progress,
+    health). Written as any numbers 0 or more; they are scaled to add up to 1. A part left out keeps its default."""
+    weights: dict = field(default_factory=lambda: dict(COMP_WEIGHTS))
+
+
+def _comps(raw, path: Path) -> Comps:
+    raw = _section(raw, "comps", Comps, path, "{weights: {career: 25, pay: 30}}")
+    given = raw.get("weights") or {}
+    if not isinstance(given, dict):
+        raise ConfigError(f"{path}: comps.weights looks like {{career: 25, pay: 30, fit: 20}}, got {given!r}")
+    if unknown := set(given) - set(COMP_WEIGHTS):
+        raise ConfigError(f"{path}: unknown comps.weights name(s): {', '.join(sorted(map(str, unknown)))} "
+                          f"(use {', '.join(COMP_WEIGHTS)})")
+    weights = {k: _between(given.get(k, COMP_WEIGHTS[k]), f"comps.weights.{k}", path, 0, whole=False)
+               for k in COMP_WEIGHTS}
+    if not (total := sum(weights.values())):
+        raise ConfigError(f"{path}: comps.weights can't all be 0: the suggestion would weigh nothing")
+    return Comps(weights={k: w / total for k, w in weights.items()})
+
+
 @dataclass(frozen=True)
 class Pace:
     """pace in the watchlist: how many applications to send a day (daily), and the most (max). Today and the
@@ -392,6 +418,7 @@ class Config:
     cache: Path = DEFAULT_CACHE
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
     pay: Pay = field(default_factory=Pay)
+    comps: Comps = field(default_factory=Comps)
     # How often `jobwatch ui` checks the boards by itself (fetch_every); None: only when asked. Or the times of
     # day it checks (fetch_every: 8am, 2pm, 8pm), this computer's clock; then fetch_every is None.
     fetch_every: timedelta | None = None
@@ -576,7 +603,7 @@ def locate(explicit: str | Path | None = None) -> Path:
 
 SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "connections_skip", "stories", "scoring",
             "chat", "prep",
-            "learning", "display", "pace", "calendar", "pay", "alerts", "suggestions", "fetch_every")
+            "learning", "display", "pace", "calendar", "pay", "comps", "alerts", "suggestions", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -747,6 +774,7 @@ def load(explicit: str | Path | None = None) -> Config:
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
+        comps=_comps(raw.get("comps"), path),
         fetch_every=None if (at := _at(raw.get("fetch_every"), path)) else _every(raw.get("fetch_every"), path),
         fetch_at=at,
     )
@@ -762,6 +790,7 @@ def defaults() -> dict:
             "pace": asdict(Pace()),
             "calendar": asdict(Calendar()),
             "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "target_max", "floor")},
+            "comps": {"weights": dict(COMP_WEIGHTS)},
             "suggestions": asdict(Suggestions()),
             "alerts": {"imap": {"port": imap.port, "folder": imap.folder, "days": imap.days,
                                 "senders": list(imap.senders)}},
@@ -875,6 +904,10 @@ scoring:
 #   target: 180000         # your target base: shown on prep sheets next to the posted range
 #   # target: 180000-210000  # or a range (or target_max: 210000 beside target: 180000)
 #   floor: 150000          # your private floor: on your own sheet only, never sent to Claude
+
+# How the Comps tab ranks your opportunities (any numbers, scaled to add up to 1). See the README.
+# comps:
+#   weights: {career: 25, pay: 30, fit: 20, progress: 10, health: 15}
 
 # Companies to watch (from alerts, `add` and HN posts):
 # suggestions:

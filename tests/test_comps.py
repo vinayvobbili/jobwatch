@@ -177,7 +177,8 @@ def test_set_and_get_comps_tools(tracked, monkeypatch):
     v = mcp.get_comps()
     assert [o["company"] for o in v["opportunities"]] == ["Initech", "Acme", "Globex"]
     assert v["opportunities"][2]["comp"] == {"base": "150-190K", "bonus": None, "equity": None, "signon": None,
-                                             "asked": None, "offered": None, "note": None}
+                                             "asked": None, "offered": None, "note": None, "role": None,
+                                             "career_note": None}
     assert len(mcp.get_comps(stages=["applied"])["opportunities"]) == 1
     assert [o["company"] for o in mcp.get_comps(keys=["umbrella"])["opportunities"]] == ["Umbrella"]
     with pytest.raises(ToolError, match="no job matches"):
@@ -250,7 +251,8 @@ def test_the_suggestion_weighs_pay_fit_progress_and_health(tracked):
     store.set_health("Initech", listing="public", rating="4.2")
     store.set_health("Globex", layoffs="15% in March", headcount="shrinking", listing="private", raised="$12M")
     s = comps.view(cfg, store)["suggestion"]
-    assert s["target"] == "$180K-$210K" and s["weights"] == comps.WEIGHTS and sum(s["weights"].values()) == 1
+    assert s["target"] == "$180K-$210K" and s["weights"] == comps.WEIGHTS
+    assert sum(s["weights"].values()) == pytest.approx(1)
     assert [r["company"] for r in s["ranking"]] == ["Initech", "Acme", "Globex"]
     initech, acme, globex = s["ranking"]
     assert initech["parts"]["pay"]["input"] == "$200K offered vs your $180K-$210K target"
@@ -264,7 +266,8 @@ def test_the_suggestion_weighs_pay_fit_progress_and_health(tracked):
     # pay is the middle of the range posted ($150K-$200K): a band's top isn't what anyone is paid
     assert globex["reason"] == ("Posted pay $175K is 10% under your $180K-$210K target, but its health counts against "
                                 "it: recent layoffs, shrinking headcount, thin funding ($12.0M raised).")
-    assert comps.suggestion_text(s).startswith("Suggestion (pay vs your $180K-$210K target; weights: pay 35%")
+    assert comps.suggestion_text(s).startswith("Suggestion (pay vs your $180K-$210K target; weights: career 25%, "
+                                               "pay 30%, fit 20%, progress 10%, health 15%)")
     store.close()
 
 
@@ -333,3 +336,108 @@ def test_set_company_health_tool(tracked, monkeypatch):
     with pytest.raises(ToolError, match="listing must be"):
         mcp.set_company_health("globex", listing="startup")
     assert "set_company_health" in {t.name for t in asyncio.run(mcp.server.list_tools())}
+
+
+def test_career_follows_the_kind_of_company_and_the_role(tracked):
+    cfg = config.load(tracked)
+    store = Store(cfg.state)
+    store.set_health("Acme", kind="Tech")  # a kind alone is no health: it doesn't make the health known or fresh
+    store.set_comp("acme", role="product", career_note="agentic SOC product, principal IC")
+    store.set_health("Globex", kind="enterprise")
+    store.set_comp("globex", role="internal")
+    store.set_comp("initech", role="customer")  # a role with no kind: from the neutral 50
+    v = comps.view(cfg, store)
+    parts = {r["company"]: r["parts"] for r in v["suggestion"]["ranking"]}
+    assert parts["Acme"]["career"] == {"score": 95, "input": "tech company, builds product"}
+    assert parts["Globex"]["career"] == {"score": 35, "input": "enterprise, internal tools"}
+    assert parts["Initech"]["career"] == {"score": 55, "input": "customer-facing"}
+    assert parts["Acme"]["health"] == {"score": 50, "input": "no company health kept"}
+    acme = next(o for o in v["opportunities"] if o["company"] == "Acme")
+    assert acme["comp"]["career_note"] == "agentic SOC product, principal IC" and acme["health"]["kind"] == "tech"
+    assert "career note: agentic SOC product, principal IC" in comps.text(v)
+    assert "career 95 (tech company, builds product)" in comps.suggestion_text(v["suggestion"])
+    store.close()
+
+
+def test_career_by_the_rules_clamped_and_neutral_when_unknown():
+    def career(kind, role):
+        return comps._career({"health": {"kind": kind} if kind else None, "comp": {"role": role}})[:2]
+
+    assert career(None, None) == (50, "no kind or role kept")
+    assert [career(k, "product")[0] for k in ("tech", "consulting", "enterprise")] == [95, 70, 55]
+    assert [career(k, None)[0] for k in ("tech", "consulting", "enterprise")] == [80, 55, 40]
+    assert career("consulting", "customer") == (60, "consulting, customer-facing")
+    assert career("tech", "customer")[0] == 85 and career("enterprise", "internal")[0] == 35
+
+
+def test_kind_and_role_are_checked_and_cleared(tracked, capsys):
+    c = ["-c", str(tracked)]
+    cli.main([*c, "comp", "acme", "--role", "product", "--career-note", "principal IC"])
+    assert "role product; career_note principal IC" in capsys.readouterr().out
+    cli.main([*c, "health", "Acme", "--kind", "tech"])
+    assert "kind tech company" in capsys.readouterr().out
+    cli.main([*c, "comp", "acme", "--role", "", "--career-note", ""])
+    assert "no compensation kept" in capsys.readouterr().out
+    store = Store(config.load(tracked).state)
+    with pytest.raises(ValueError, match="role must be product, customer or internal"):
+        store.set_comp("acme", role="boss")
+    with pytest.raises(ValueError, match="kind must be tech, consulting or enterprise"):
+        store.set_health("Acme", kind="startup")
+    assert store.health("Acme")["as_of"] is None  # the kind alone doesn't date the health
+    store.close()
+    app = App(tracked)
+    with pytest.raises(ApiError, match="role must be"):
+        app.post_comp({"key": "acme", "role": "boss"})
+    assert app.post_health({"company": "Acme", "kind": "consulting"}) == {"company": "Acme"}
+
+
+def test_old_state_files_get_the_new_columns(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    db = sqlite3.connect(path)
+    db.executescript("CREATE TABLE comps (key TEXT PRIMARY KEY, base TEXT, bonus TEXT, equity TEXT, signon TEXT, "
+                     "asked TEXT, offered TEXT, note TEXT, set_at TEXT NOT NULL);"
+                     "CREATE TABLE company_health (company TEXT PRIMARY KEY, name TEXT NOT NULL, listing TEXT, "
+                     "stage TEXT, raised TEXT, revenue TEXT, headcount TEXT, layoffs TEXT, rating TEXT, risk TEXT, "
+                     "sources TEXT, as_of TEXT, set_at TEXT NOT NULL);"
+                     "INSERT INTO company_health VALUES ('acme', 'Acme', 'private', NULL, NULL, NULL, NULL, NULL, "
+                     "NULL, NULL, NULL, '2026-10-01', 'x');")
+    db.commit()
+    db.close()
+    store = Store(path)
+    assert store.health("Acme")["kind"] is None and store.health("Acme")["listing"] == "private"
+    store.set_health("Acme", kind="tech")
+    assert store.health("Acme")["kind"] == "tech"
+    store.close()
+
+
+def test_the_watchlist_sets_the_weights(tracked):
+    def load(text):
+        tracked.write_text(tracked.read_text().split("comps:")[0] + text)
+        return config.load(tracked)
+
+    assert config.load(tracked).comps.weights == pytest.approx(config.COMP_WEIGHTS)
+    cfg = load("comps:\n  weights: {career: 50, pay: 50, fit: 0, progress: 0, health: 0}\n")
+    assert cfg.comps.weights == pytest.approx({"career": .5, "pay": .5, "fit": 0, "progress": 0, "health": 0})
+    cfg = load("comps:\n  weights: {career: 2}\n")  # the rest keep their defaults, then all add up to 1
+    assert sum(cfg.comps.weights.values()) == pytest.approx(1) and cfg.comps.weights["career"] > 0.6
+    for bad, message in [("{taste: 1}", "unknown comps.weights name"), ("{pay: -1}", "comps.weights.pay must be"),
+                         ("{pay: x}", "comps.weights.pay must be"), ("[1]", "comps.weights looks like"),
+                         ("{career: 0, pay: 0, fit: 0, progress: 0, health: 0}", "can't all be 0")]:
+        with pytest.raises(config.ConfigError, match=message):
+            load(f"comps:\n  weights: {bad}\n")
+    with pytest.raises(config.ConfigError, match="unknown comps setting"):
+        load("comps:\n  mood: 1\n")
+
+
+def test_the_weights_change_the_ranking(tracked):
+    cfg = config.load(tracked)
+    store = Store(cfg.state)
+    store.set_health("Globex", kind="tech")
+    store.set_comp("globex", role="product")
+    tracked.write_text(tracked.read_text() + "comps:\n  weights: {career: 1, pay: 0, fit: 0, progress: 0, health: 0}\n")
+    only_career = config.load(tracked)
+    s = comps.view(only_career, store)["suggestion"]
+    assert s["ranking"][0]["company"] == "Globex" and s["ranking"][0]["total"] == 95
+    assert comps.suggestion_text(s).startswith("Suggestion (pay vs the best of these; weights: career 100%, pay 0%")
+    store.close()

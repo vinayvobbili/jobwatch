@@ -3264,7 +3264,10 @@ const COMP_ROWS = [  // [label, the value (text or an element; null for none), t
   ["Gaps", o => o.fit?.gaps.length ? h("div", { class: "gapline" }, o.fit.gaps.join(" · ")) : null],
   ["You know", o => o.contacts.length ? o.contacts.map(p => p.name + (p.position ? ` (${p.position})` : "")).join("; ") : null],
   ["Note", o => o.comp.note],
+  ["Role", o => ({ product: "Builds the product", customer: "Customer-facing", internal: "Internal tools" })[o.comp.role] || null],
+  ["Career note", o => o.comp.career_note],
   ["Company", o => o.health && [o.health.listing, o.health.stage].filter(Boolean).join(" · ") || null],
+  ["Kind", o => ({ tech: "Tech company", consulting: "Consulting", enterprise: "Enterprise" })[o.health?.kind] || null],
   ["Raised", o => o.health?.raised],
   ["Revenue", o => o.health?.revenue],
   ["Headcount", o => o.health?.headcount],
@@ -3312,14 +3315,15 @@ function compFormBox(title, hint, fields, extra, onsave) {
 function compForm(o) {
   const fields = [["base", "Base range they gave", "170-200K"], ["bonus", "Bonus", "10% target"],
     ["equity", "Equity", "40K RSUs over 4 years"], ["signon", "Sign-on", "15K"], ["asked", "You asked for", "215-250K"],
-    ["offered", "They offered", "190K"]];
+    ["offered", "They offered", "190K"],
+    ["role", "Role: product, customer or internal", "product"], ["career_note", "Career note", "agentic SOC product, principal IC"]];
   return compFormBox(`Pay details: ${o.company}`,
-    "As the recruiter said them. Amounts like 170-200K are read to mark the highest; blank clears a field.",
+    "As the recruiter said them. Amounts like 170-200K are read to mark the highest; blank clears a field. Role and career note feed the career part of the suggestion.",
     fields, { values: o.comp, note: { placeholder: "e.g. 200K most likely their max" } },
     values => api("/api/comp", { key: o.key, ...values }));
 }
 function healthForm(name, h0) {
-  const fields = [["listing", "Public or private", "private"], ["stage", "Stage and last round", "Series B, $50M, 2025"],
+  const fields = [["listing", "Public or private", "private"], ["kind", "Kind: tech, consulting or enterprise", "tech"], ["stage", "Stage and last round", "Series B, $50M, 2025"],
     ["raised", "Total raised", "$80M"], ["revenue", "Revenue or growth", "2x year over year"],
     ["headcount", "Headcount trend", "growing"], ["layoffs", "Recent layoffs", "none"], ["rating", "Employee rating", "4.1 Glassdoor"],
     ["risk", "Risk note", "one big customer"], ["sources", "Source links", "https://..."], ["as_of", "As of (YYYY-MM-DD)", "today"]];

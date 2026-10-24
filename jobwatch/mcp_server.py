@@ -551,10 +551,11 @@ def get_comps(
     there, and the compensation details they were told (base, bonus, equity, sign-on, asked, offered, note; set
     them with set_comp), and the company's health (set it with set_company_health; stale when older than 90
     days: research it again). best says which opportunity is highest in posted pay, base, offered and fit.
-    suggestion ranks them by rules (pay against the person's target, fit, how far along, company health) with
-    the weights, each part's score and input, and a reason: explain it, and say what is missing (no health kept,
-    no pay known) rather than guessing. Use it when the person asks how their opportunities compare; for one
-    application's status use list_applications."""
+    suggestion ranks them by rules (career value from the company's kind and the job's role, pay against the
+    person's target, fit, how far along, company health) with the weights, each part's score and input, and a
+    reason: explain it, and say what is missing (no health kept, no kind or role, no pay known) rather than
+    guessing. Use it when the person asks how their opportunities compare; for one application's status use
+    list_applications."""
     cfg, store = _open()
     try:
         try:
@@ -579,16 +580,23 @@ def set_comp(
     offered: Annotated[str | None, Field(description="What they offered. Empty clears it.")] = None,
     note: Annotated[str | None, Field(description=(
         "A few words (\"200K most likely their max\"). Replaces the old note. Empty clears it."))] = None,
+    role: Annotated[Literal["product", "customer", "internal", ""] | None, Field(description=(
+        "What the job is, for its career value: product (builds the company's own product), customer "
+        "(forward-deployed, solutions, customer-facing engineering) or internal (builds internal tools or "
+        "platforms for the business). Empty clears it."))] = None,
+    career_note: Annotated[str | None, Field(description=(
+        "A few words on its career value (\"agentic SOC product, principal IC\"). Empty clears it."))] = None,
 ) -> dict:
-    """Keep what a recruiter told the person about pay for a job, so get_comps can put it next to the others. Only
-    the fields given change; an empty string clears one. Write amounts the way they were said ("170-200K",
+    """Keep what a recruiter told the person about pay for a job, so get_comps can put it next to the others, and
+    what the job is for their career (role, career_note). Only the
+    fields given change; an empty string clears one. Write amounts the way they were said ("170-200K",
     "$215,000"): the first amount found is read to mark the highest. Returns what is kept for the job."""
     _, store = _open()
     try:
         try:
             job, _ = store.find(key)
             store.set_comp(job.key, base=base, bonus=bonus, equity=equity, signon=signon, asked=asked,
-                           offered=offered, note=note)
+                           offered=offered, note=note, role=role, career_note=career_note)
         except (KeyError, ValueError) as e:
             raise ToolError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
         return {"key": job.key, "company": job.display_company, "title": job.title, "comp": store.comp(job.key)}
@@ -601,6 +609,10 @@ def set_company_health(
     company: Annotated[str, Field(description="The company's name, or the key of one of its jobs.")],
     listing: Annotated[Literal["public", "private", ""] | None, Field(description=(
         "public or private. An empty string clears it."))] = None,
+    kind: Annotated[Literal["tech", "consulting", "enterprise", ""] | None, Field(description=(
+        "What kind of company: tech (software, security or AI product company), consulting, or enterprise (a "
+        "non-tech business whose IT builds for itself: bank, insurer, real-estate finance). The career part of "
+        "get_comps reads it. Empty clears it."))] = None,
     stage: Annotated[str | None, Field(description=(
         "Stage and last round, as found (\"Series B, $50M, 2025\")."))] = None,
     raised: Annotated[str | None, Field(description="Total raised (\"$80M\"). Under $20M for a private company counts "
@@ -624,7 +636,7 @@ def set_company_health(
         try:
             name = comps.company_of(store, company)
             store.set_health(name, listing=listing, stage=stage, raised=raised, revenue=revenue, headcount=headcount,
-                             layoffs=layoffs, rating=rating, risk=risk, sources=sources, as_of=as_of)
+                             layoffs=layoffs, rating=rating, risk=risk, sources=sources, as_of=as_of, kind=kind)
         except ValueError as e:
             raise ToolError(str(e)) from None
         return {"company": name, "health": comps.aged(store.health(name))}
