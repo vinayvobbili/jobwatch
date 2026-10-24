@@ -1058,8 +1058,8 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.14" },
-    { name = "shortlist-ai", marker = "extra == 'score'", specifier = ">=0.1.1" },
-    { name = "shortlist-ai", extras = ["local"], marker = "extra == 'local'", specifier = ">=0.1.1" },
+    { name = "shortlist-ai", marker = "extra == 'score'", specifier = ">=0.2.0" },
+    { name = "shortlist-ai", extras = ["local"], marker = "extra == 'local'", specifier = ">=0.2.0" },
     { name = "slidecast", extras = ["mlx"], marker = "extra == 'video'", specifier = ">=0.4" },
 ]
 provides-extras = ["score", "local", "mcp", "video", "dev"]
@@ -3296,7 +3296,7 @@ wheels = [
 
 [[package]]
 name = "shortlist-ai"
-version = "0.1.1"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anthropic" },
@@ -3304,9 +3304,9 @@ dependencies = [
     { name = "pypdf" },
     { name = "python-docx" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/6d/ae4e5d8af8dc85557733665c7196add2a40458cac6e5cf4ce55ebc31d8c1/shortlist_ai-0.1.1.tar.gz", hash = "sha256:331426ae49e0f05cf8369b9f67a7893674d4b5d9b3380e252a70b94506b73008", size = 275740, upload-time = "2026-09-28T22:08:44.853Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/30/b06a977ce2ad581b50e36130a3e860d69674350c9e6c3cc7de16009a030e/shortlist_ai-0.2.0.tar.gz", hash = "sha256:7ea9ac6f53a3dd45d64ce472759f2096919d5bce42dcb0dbe37b457913bd3440", size = 299421, upload-time = "2026-10-24T19:15:22.002Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/25/cc/ab57b9bf1e059a49aae1593d814716f1c63307a765b2ca0764c293a7278f/shortlist_ai-0.1.1-py3-none-any.whl", hash = "sha256:76569fe3265f3a051d149dae75c1ec686f41fc2dc5d727ad2a2ac5a059885df0", size = 53892, upload-time = "2026-09-28T22:08:43.589Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/40/3b37f1edc438cb9646b6d7a3b82489482e6259d093bb623e3ba1836caf9f/shortlist_ai-0.2.0-py3-none-any.whl", hash = "sha256:42f8a5b6ed7ea2dd4cfa5dc6c63fc80957175f19797f95861c6dd521ba74c9f3", size = 67706, upload-time = "2026-10-24T19:15:20.505Z" },
 ]
 
 [package.optional-dependencies]

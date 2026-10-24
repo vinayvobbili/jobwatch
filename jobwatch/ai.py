@@ -56,7 +56,7 @@ def _installed(module: str) -> bool:
 
 
 def _agy_supported() -> bool:
-    """Whether the installed shortlist-ai can score with agy (0.1.2 and later)."""
+    """Whether the installed shortlist-ai can score with agy (0.2.0 and later)."""
     try:
         from shortlist_ai import backends
     except ImportError:
@@ -99,7 +99,7 @@ def status(keychain: str = "") -> dict:
                             _step("Create an API key on Anthropic's console and set ANTHROPIC_API_KEY before "
                                   "starting jobwatch", link=KEYS_PAGE))
     if scoring and not _agy_supported():
-        agy_steps.append(_step("Update the scoring add-on (agy needs shortlist-ai 0.1.2 or later)",
+        agy_steps.append(_step("Update the scoring add-on (agy needs shortlist-ai 0.2.0 or later)",
                                "pip install -U shortlist-ai"))
     agy = find_agy()
     if not agy:

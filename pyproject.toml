@@ -30,8 +30,8 @@ Repository = "https://github.com/vinayvobbili/jobwatch"
 Issues = "https://github.com/vinayvobbili/jobwatch/issues"
 
 [project.optional-dependencies]
-score = ["shortlist-ai>=0.1.1"]
-local = ["shortlist-ai[local]>=0.1.1"]
+score = ["shortlist-ai>=0.2.0"]
+local = ["shortlist-ai[local]>=0.2.0"]
 mcp = ["mcp>=2.2"]
 video = ["slidecast[mlx]>=0.4"]
 dev = ["pytest>=8", "ruff>=0.14"]
