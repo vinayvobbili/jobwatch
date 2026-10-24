@@ -45,7 +45,7 @@ jobwatch-mcp = "jobwatch.mcp_server:main"
 packages = ["jobwatch"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["docs/*.gif", "docs/*.mp4"]  # the README demo; GitHub serves it
+exclude = ["docs/**/*.gif", "docs/**/*.mp4"]  # the README's demo and tutorials; GitHub serves them
 
 [tool.ruff]
 line-length = 120
