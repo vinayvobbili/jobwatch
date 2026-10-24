@@ -172,7 +172,8 @@ def _pay(raw, path: Path) -> Pay:
                floor=_whole(raw.get("floor", Pay.floor), "pay.floor", path, "0 leaves it unset"))
 
 
-BACKENDS = ("claude", "local")  # Anthropic's API, or the on-device model (Apple Silicon)
+BACKENDS = ("claude", "local", "agy")  # Anthropic's API, the on-device model (Apple Silicon), or Google's agy CLI
+CHAT_BACKENDS = ("claude", "local")  # what the assistant can run on (agy only scores)
 CHAT_PLACEHOLDERS = ("today", "context")  # what chat.prompt must keep: today's date, and the data it reads
 
 
@@ -214,9 +215,9 @@ def _template(text: str, name: str, fields: tuple[str, ...], path: Path) -> str:
 
 def _chat(raw, backend: str, path: Path, keychain: str = "") -> Chat:
     raw = _section(raw, "chat", Chat, path, "{backend: local, max_tokens: 1500}")
-    chosen = str(raw.get("backend") or backend)
-    if chosen not in BACKENDS:
-        raise ConfigError(f"{path}: chat.backend must be one of {', '.join(BACKENDS)} (or left out for "
+    chosen = str(raw.get("backend") or (backend if backend in CHAT_BACKENDS else "local"))
+    if chosen not in CHAT_BACKENDS:
+        raise ConfigError(f"{path}: chat.backend must be one of {', '.join(CHAT_BACKENDS)} (or left out for "
                           f"scoring.backend's), got {chosen!r}")
     prompt = raw.get("prompt") or ""
     if not isinstance(prompt, str):
@@ -448,7 +449,8 @@ class Config:
     backend: str = "local"
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
     api_keychain: str = ""     # scoring.keychain: macOS keychain item with the Anthropic API key (for Claude)
-    score_fallback: str = ""   # scoring.fallback: the backend that scores when this one can't (or is at its limit)
+    score_fallback: tuple[str, ...] = ()  # scoring.fallback: backends tried in turn when this can't score
+    agy_model: str = ""        # scoring.agy_model: agy's model as a fallback (scoring.model as the backend)
     score_daily: int = 0       # scoring.daily: the most jobs the backend scores a day, then the fallback (0: no cap)
     score_workers: int = 4     # scoring.workers: Claude calls at once (the local model takes one at a time)
     score_top: int = 0
@@ -770,10 +772,13 @@ def load(explicit: str | Path | None = None) -> Config:
     auto_score = scoring.get("auto", backend == "local")
     if not isinstance(auto_score, bool):
         raise ConfigError(f"{path}: scoring.auto must be true or false, got {auto_score!r}")
-    fallback = str(scoring.get("fallback") or "")
-    if fallback and (fallback not in BACKENDS or fallback == backend):
-        other = " or ".join(b for b in BACKENDS if b != backend)
-        raise ConfigError(f"{path}: scoring.fallback is the other backend ({other}) or left out, got {fallback!r}")
+    fallback = scoring.get("fallback") or []
+    fallback = [fallback] if isinstance(fallback, str) else fallback
+    others = ", ".join(b for b in BACKENDS if b != backend)
+    if (not isinstance(fallback, list) or any(not isinstance(b, str) for b in fallback)
+            or any(b not in BACKENDS or b == backend for b in fallback) or len(set(fallback)) != len(fallback)):
+        raise ConfigError(f"{path}: scoring.fallback is a backend other than scoring.backend ({others}), or a list "
+                          f"of them in the order to try, or left out, got {scoring.get('fallback')!r}")
     learning = raw.get("learning") or {}
     timeline = str(learning.get("timeline", "quarter"))
     if timeline not in TIMELINES:
@@ -817,7 +822,8 @@ def load(explicit: str | Path | None = None) -> Config:
         score_batch=_whole(scoring.get("batch", 10), "scoring.batch", path, "0 scores everything in one go"),
         score_rest=_whole(scoring.get("rest", 10), "scoring.rest", path, "0 rests not at all"),
         unload_after=_whole(scoring.get("unload_after", 5), "scoring.unload_after", path, "0 keeps the model loaded"),
-        api_keychain=str(scoring.get("keychain") or "").strip(), score_fallback=fallback,
+        api_keychain=str(scoring.get("keychain") or "").strip(), score_fallback=tuple(fallback),
+        agy_model=str(scoring.get("agy_model") or "").strip(),
         score_daily=_whole(scoring.get("daily", 0), "scoring.daily", path, "0 sets no daily limit"),
         score_workers=max(1, _whole(scoring.get("workers", 4), "scoring.workers", path, "1 makes one call at a time")),
         chat=_chat(raw.get("chat"), backend, path, str(scoring.get("keychain") or "").strip()),
@@ -922,12 +928,13 @@ keywords:
 # Optional fit scoring with shortlist-ai (pip install 'jobwatch[score]').
 # resume: ~/Documents/resume.pdf
 scoring:
-  backend: claude        # claude (ANTHROPIC_API_KEY) or local (Apple Silicon, pip install 'jobwatch[local]')
+  backend: claude        # claude (ANTHROPIC_API_KEY), local (Apple Silicon: jobwatch[local]) or agy (Antigravity CLI)
   top: 0                 # score this many of the most relevant new jobs per digest
   # model: ""            # the model fit scores use; leave out for shortlist-ai's own for the backend
   # keychain: anthropic  # macOS keychain item holding the API key, when ANTHROPIC_API_KEY isn't set (chat too)
-  # fallback: local      # the other backend, when this one can't score (no key, no credit, down) or is at...
+  # fallback: [agy, local]  # other backends, tried in order, when this can't score (no key, no credit) or is at...
   # daily: 40            # ...the most jobs it scores a day (0: no limit); the fallback's are scored again later
+  # agy_model: claude-sonnet-5-5-medium  # agy's model as a fallback (`agy models`); as backend: `model`
   # workers: 4           # Claude calls at once (the local model takes one at a time)
   # auto: true          # `jobwatch ui` scores every new match in the background (default: on for local)
   # batch: 10            # ...this many jobs in a row, then rests (0: no rests)

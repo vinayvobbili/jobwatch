@@ -45,7 +45,7 @@ from . import (
 )
 from .config import BACKENDS, ConfigError, duration
 from .filters import KINDS, rejection
-from .score import ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
+from .score import AGY_WORKERS, ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
 from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
@@ -158,7 +158,7 @@ def cmd_score(args, cfg, store):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
     if args.backend or args.model:  # this run only; the watchlist keeps its own
         backend = args.backend or cfg.backend
-        cfg = replace(cfg, backend=backend, score_fallback="" if cfg.score_fallback == backend else cfg.score_fallback,
+        cfg = replace(cfg, backend=backend, score_fallback=tuple(b for b in cfg.score_fallback if b != backend),
                       score_model=args.model if args.model else "" if args.backend else cfg.score_model)
     if args.batch_api and cfg.backend != "claude":
         raise ConfigError(f"--batch-api is for Claude (scoring.backend: claude, or --backend claude), "
@@ -173,7 +173,7 @@ def cmd_score(args, cfg, store):
         return
     cfg = replace(cfg, score_daily=0)  # scoring.daily holds back the page's background scoring, not what's asked for
     if args.rescore is not None:
-        cfg = replace(cfg, score_fallback="")  # the fallback would only put one stand-in score for another
+        cfg = replace(cfg, score_fallback=())  # the fallback would only put one stand-in score for another
         todo = rescore_line(cfg, store, args.rescore)
         if not todo:
             model = f" ({cfg.score_model})" if cfg.score_model else ""
@@ -197,7 +197,8 @@ def cmd_score(args, cfg, store):
         return
     # Groups of scoring.workers jobs scored at once (Claude), so stopping keeps every group done; --batch-api sends
     # them all, half price, and a stopped run collects its batch next time.
-    size = len(todo) if args.batch_api else 1 if cfg.backend == "local" else cfg.score_workers
+    size = (len(todo) if args.batch_api else 1 if cfg.backend == "local"
+            else min(cfg.score_workers, AGY_WORKERS) if cfg.backend == "agy" else cfg.score_workers)
     if args.batch_api:
         print(f"Scoring {len(todo)} jobs through Claude's Message Batches API (half price; each batch takes minutes, "
               "at most a day). Stopping is safe: the next run collects what was sent.", file=sys.stderr)
@@ -222,7 +223,8 @@ def cmd_score(args, cfg, store):
             print(f"  {f'[{done}/{len(todo)}] {e.job.display_company}: {e.job.title}: ' if size > 1 else ''}"
                   f"{f'{was:.0f} -> ' if was is not None else ''}{fit['score']:.0f}/100, must-haves "
                   f"{fit['must_haves_met']}/{fit['must_haves_total']}"
-                  + (f" (by {cfg.score_fallback}: {fit['fallback']})" if fit.get("fallback") else ""), file=sys.stderr)
+                  + (f" (by {fit['scored_by'].partition(':')[0]}, fallback: {fit['fallback']})"
+                     if fit.get("fallback") else ""), file=sys.stderr)
     print(f"Scored {scored} of {len(todo)} jobs." + (f" {len(failed)} failed:" if failed else ""))
     for key, err in failed.items():
         print(f"  {key}: {err}")

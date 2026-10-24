@@ -783,9 +783,10 @@ def _only_limit(reason: str) -> bool:
 def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Callable[[str], None] | None = None,
                         background: bool = False, batch: bool = False) -> tuple[dict[str, dict], dict[str, str]]:
     """Score with the backend, at most scoring.daily jobs a day, and what it can't (the limit reached, no key, no
-    credit, a failure) with scoring.fallback, each such result marked with why ("fallback"). ({key: result},
-    {key: error}). Without a fallback, ScoringUnavailable and the limit come back as they are. batch: the
-    backend (Claude) through the Message Batches API, at half price (see score_jobs)."""
+    credit, a failure) with scoring.fallback (one backend, or several tried in order, each taking what the one
+    before couldn't), each such result marked with why ("fallback"; its scored_by says which backend).
+    ({key: result}, {key: error}). Without a fallback, ScoringUnavailable and the limit come back as they are.
+    batch: the backend (Claude) through the Message Batches API, at half price (see score_jobs)."""
     results, errors = {}, {}
     room = max(cfg.score_daily - store.score_usage(cfg.backend), 0) if cfg.score_daily else len(jobs)
     first = jobs[:room]
@@ -804,13 +805,26 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
     rest = [j for j in jobs if j.key not in results]
     if not (rest and cfg.score_fallback):
         return results, errors
-    with turn(cfg.score_fallback, background):
-        more, more_errors = score_jobs(rest, cfg.resume, cfg.score_fallback, cfg.cache, workers=cfg.score_workers,
-                                       progress=progress, prompts=cfg.prompts, keychain=cfg.api_keychain)
-    for key, r in more.items():
-        results[key] = {**r, "fallback": errors.pop(key, f"{cfg.backend} didn't score it")}
-    errors.update({k: f"{errors[k]}; {cfg.score_fallback}: {v}" if k in errors else v for k, v in more_errors.items()})
+    for name in cfg.score_fallback:  # in order; a backend that can't score (or fails a job) leaves it to the next
+        try:
+            with turn(name, background):
+                more, more_errors = score_jobs(rest, cfg.resume, name, cfg.cache, workers=cfg.score_workers,
+                                               progress=progress, prompts=cfg.prompts, keychain=cfg.api_keychain,
+                                               model=fallback_model(cfg, name))
+        except ScoringUnavailable as e:
+            more, more_errors = {}, {j.key: str(e) for j in rest}
+        for key, r in more.items():
+            results[key] = {**r, "fallback": errors.pop(key, f"{cfg.backend} didn't score it")}
+        errors.update({k: f"{errors[k]}; {name}: {v}" if k in errors else v for k, v in more_errors.items()})
+        rest = [j for j in rest if j.key not in results]
+        if not rest:
+            break
     return results, errors
+
+
+def fallback_model(cfg: Config, backend: str) -> str:
+    """The model a fallback backend scores with: agy's is scoring.agy_model; the others use shortlist-ai's own."""
+    return cfg.agy_model if backend == "agy" else ""
 
 
 def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Callable[[str], None] | None = None,

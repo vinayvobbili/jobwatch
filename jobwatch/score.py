@@ -135,6 +135,9 @@ def unload_local_models():
 LOCAL = ModelGate()
 
 
+AGY_WORKERS = 3  # agy starts a CLI process per call, on the subscription's quota: a few at once, no more
+
+
 def turn(backend: str, background: bool = False):
     """A turn on the model, when it's the shared local one; Claude takes calls side by side."""
     if backend != "local":
@@ -296,7 +299,7 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
         raise ScoringUnavailable(problem)
 
     progress = progress or (lambda msg: None)
-    workers = 1 if backend == "local" else max(1, workers)
+    workers = 1 if backend == "local" else min(max(1, workers), AGY_WORKERS) if backend == "agy" else max(1, workers)
     if batch:
         from shortlist_ai.batch import BatchBackend
 
@@ -354,7 +357,7 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
 def scorer_label(scored_by: str) -> str:
     """Who made a score, for people: "claude-sonnet-5-5", or "Qwen3.5-9B-MLX-4bit (local)"."""
     backend, _, model = scored_by.partition(":")
-    return f"{model.rsplit('/', 1)[-1]} (local)" if backend == "local" else model or backend
+    return f"{model.rsplit('/', 1)[-1]} ({backend})" if backend in ("local", "agy") else model or backend
 
 
 def load_api_key(keychain: str) -> str | None:

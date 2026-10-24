@@ -1145,9 +1145,10 @@ function fitBox(fit) {
 // stands in for Claude, which scores it again).
 function scorerTag(fit) {
   if (!fit.scored_by) return null;
-  const local = fit.scored_by.startsWith("local:");
-  return h("span", { class: "scorer" + (local ? " local" : "") },
-    local ? (fit.fallback ? "local, for now" : "local model") : "Claude API");
+  const local = fit.scored_by.startsWith("local:"), agy = fit.scored_by.startsWith("agy:");
+  return h("span", { class: "scorer" + (local || agy ? " local" : "") },
+    local ? (fit.fallback ? "local, for now" : "local model")
+      : agy ? (fit.fallback ? "agy, for now" : "agy") : "Claude API");
 }
 
 // Queue it or skip it, and why (advice.py). A queued job only shows a reason to hold off.

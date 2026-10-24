@@ -249,14 +249,14 @@ def _backends(monkeypatch, claude_down=False):
 
 def _claude_first(cfg, **kw):
     from dataclasses import replace
-    return replace(cfg, backend="claude", score_fallback="local", **kw)
+    return replace(cfg, backend="claude", score_fallback=("local",), **kw)
 
 
 def test_fallback_and_daily_are_read_and_checked(watchlist):
     cfg = _set(watchlist, scoring={"backend": "claude", "fallback": "local", "daily": 40})
-    assert (cfg.score_fallback, cfg.score_daily) == ("local", 40)
-    for bad in ("claude", "gpt"):
-        with pytest.raises(config.ConfigError, match=r"scoring\.fallback is the other backend"):
+    assert (cfg.score_fallback, cfg.score_daily) == (("local",), 40)
+    for bad in ("claude", "gpt", ["agy", "agy"], ["agy", "claude"], 5, [3]):
+        with pytest.raises(config.ConfigError, match=r"scoring\.fallback is a backend other than"):
             _set(watchlist, scoring={"backend": "claude", "fallback": bad})
     with pytest.raises(config.ConfigError, match=r"scoring\.daily"):
         _set(watchlist, scoring={"backend": "claude", "daily": -1})
@@ -473,4 +473,80 @@ def test_a_job_the_fallback_failed_on_past_the_limit_is_not_tried_again_at_once(
     watch.score_entries(cfg, store, [e], progress=lambda m: None)
     assert e.job.key not in {x.job.key for x in watch.unscored(cfg, store)}  # kept, or the local model reloads for it
     assert not watch._only_limit(f"{limit}; local: x") and watch._only_limit(limit)
+    store.close()
+
+
+def test_fallback_is_a_string_or_a_list_in_order_with_agy_allowed(watchlist):
+    assert _set(watchlist, scoring={"backend": "claude", "fallback": "agy"}).score_fallback == ("agy",)
+    cfg = _set(watchlist, scoring={"backend": "claude", "fallback": ["agy", "local"],
+                                   "agy_model": "gemini-3.8-flash-medium"})
+    assert (cfg.score_fallback, cfg.agy_model) == (("agy", "local"), "gemini-3.8-flash-medium")
+    assert _set(watchlist, scoring={"backend": "agy", "fallback": ["local"]}).backend == "agy"
+    assert _set(watchlist, scoring={"backend": "claude"}).score_fallback == ()
+    with pytest.raises(config.ConfigError, match=r"scoring\.backend must be one of"):
+        _set(watchlist, scoring={"backend": "gpt"})
+    assert _set(watchlist, scoring={"backend": "agy"}).chat.backend == "local"  # agy only scores
+    with pytest.raises(config.ConfigError, match=r"chat\.backend must be one of claude, local"):
+        _set(watchlist, scoring={"backend": "claude"}, chat={"backend": "agy"})
+
+
+def _chain(monkeypatch, down=(), models=None):
+    """Each backend scores its own number; the ones in `down` are unavailable (raise) or, as a dict, fail jobs."""
+    calls = []
+    nums = {"claude": 60.0, "agy": 45.0, "local": 30.0}
+
+    def fake(jobs, resume, backend, cache, **kw):
+        calls.append(backend)
+        if models is not None:
+            models[backend] = kw.get("model")
+        if backend in down:
+            raise ScoringUnavailable(f"{backend} is down")
+        return {j.key: {"score": nums[backend], "must_haves_met": 1, "must_haves_total": 1,
+                        "scored_by": f"{backend}:m"} for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    return calls
+
+
+def test_the_chain_tries_claude_then_agy_then_local(scored, monkeypatch):
+    from dataclasses import replace
+    cfg, _, _ = scored
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    jobs = [e.job for e in watch.unscored(cfg, store)[:2]]
+    models = {}
+    cfg = replace(cfg, backend="claude", score_fallback=("agy", "local"), agy_model="gemini-x")
+    calls = _chain(monkeypatch, down=("claude",), models=models)
+    results, errors = watch.score_with_fallback(cfg, store, jobs)
+    assert calls == ["claude", "agy"] and not errors and models["agy"] == "gemini-x"
+    assert {r["scored_by"] for r in results.values()} == {"agy:m"}
+    assert all(r["fallback"] == "claude is down" for r in results.values())
+    calls = _chain(monkeypatch, down=("claude", "agy"))
+    results, errors = watch.score_with_fallback(cfg, store, jobs)
+    assert calls == ["claude", "agy", "local"] and not errors
+    assert {r["scored_by"] for r in results.values()} == {"local:m"}
+    assert all(r["fallback"] == "claude is down; agy: agy is down" for r in results.values())
+    calls = _chain(monkeypatch, down=("claude", "agy", "local"))
+    results, errors = watch.score_with_fallback(cfg, store, jobs)
+    assert not results and set(errors) == {j.key for j in jobs}
+    assert all(v == "claude is down; agy: agy is down; local: local is down" for v in errors.values())
+    calls = _chain(monkeypatch)
+    watch.score_with_fallback(cfg, store, jobs)
+    assert calls == ["claude"]  # the primary scored everything: no fallback is started
+    store.close()
+
+
+def test_a_fallback_score_is_marked_and_rescore_redoes_it_with_the_primary(scored, monkeypatch):
+    from dataclasses import replace
+    cfg, rid, _ = scored
+    cfg = replace(cfg, backend="claude", score_fallback=("agy", "local"))
+    _chain(monkeypatch, down=("claude",))
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    e = watch.unscored(cfg, store)[0]
+    watch.score_entries(cfg, store, [e], progress=lambda m: None)
+    fit = store.score(e.job.key, rid)
+    assert fit["scored_by"] == "agy:m" and fit["fallback"] == "claude is down"
+    assert watch.made_elsewhere(cfg, fit) and e.job.key in {x.job.key for x in watch.rescore_line(cfg, store)}
     store.close()

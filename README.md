@@ -142,7 +142,8 @@ It ends on Today; press **Check for new jobs** to look. Everything it asks is al
 
 The page only talks to jobwatch on your own machine. The one exception is a model you choose: with
 `scoring.backend: claude`, fit scores and chat send the posting and your resume to Anthropic (and
-[drafted prep](#drafted-answers-from-your-stories), your stories too). It's the same
+[drafted prep](#drafted-answers-from-your-stories), your stories too); with `agy`, fit scores send them to
+Google through the Antigravity CLI. It's the same
 watchlist file and history as the command line, so you can switch between the two.
 
 To have the page always there, even after a restart, on a Mac:
@@ -254,7 +255,7 @@ keywords:                                 # relevance: title hits count double
 resume: ~/Documents/resume.pdf            # for fit scores
 connections: ~/Downloads/linkedin.zip     # who you know at each company (see below)
 scoring:
-  backend: claude                         # or local (the default)
+  backend: claude                         # or local (the default), or agy (Google's Antigravity CLI)
   # model: ...                            # the model fit scores use; default: shortlist-ai's for the backend
   top: 5                                  # score the 5 most relevant new jobs per digest
   auto: true                              # the page scores every new match in the background
@@ -445,9 +446,17 @@ watchlist keeping its own; its scores sit next to the others, so check first tha
 the highest, and shows each old and new score, the mean difference and which ones land on the other side of
 `min_fit`. It saves nothing. With Claude every score is a paid API call.
 
-To score with Claude and keep the on-device model for when it can't, set `scoring.fallback: local`: without
-a key, out of credit or with the API down, the local model scores the job, and the score says so ("fallback")
-and gets scored again by Claude later (after 3 days for a failure). `scoring.daily: 40` caps the jobs the
+`scoring.backend: agy` scores with Google's Antigravity CLI (`agy`) on your own subscription login: no API key,
+text only, about 35 seconds a call, so up to three run at once. `scoring.model` picks its model (an id from
+`agy models`; default `claude-sonnet-5-5-medium`). Each call runs sandboxed in an empty temporary directory, and
+it uses your subscription's quota. `agy` can't run the chat, which stays on `claude` or `local`
+(`chat.backend`).
+
+To score with Claude and keep other backends for when it can't, set `scoring.fallback: local`, or a list tried
+in order, `scoring.fallback: [agy, local]` (Claude, then agy, then the local model; `scoring.agy_model` is the
+model agy uses as a fallback). Without a key, out of credit or with the API down, the next backend scores the
+job, and a backend that fails moves it on to the one after. The score says so ("fallback", and which backend
+made it) and gets scored again by Claude later (after 3 days for a failure), or by `jobwatch score --rescore`. `scoring.daily: 40` caps the jobs the
 page scores with Claude a day; past it the fallback scores them (or, with no fallback, they wait for
 tomorrow), and Claude takes them up the next day. A fallback score never hides a job from scoring by
 `min_fit`. The cap holds back background scoring only: `jobwatch score` scores what you ask, and counts it.
