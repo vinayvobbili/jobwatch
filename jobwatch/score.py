@@ -307,6 +307,10 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
                              notify=lambda msg: progress(msg))
     else:
         model = get_backend(backend, model) if model else get_backend(backend)
+        if backend == "agy":
+            from .ai import find_agy
+
+            model.executable = find_agy() or "agy"  # `jobwatch ui` as a service has no ~/.local/bin on PATH
     cache = Cache(cache_dir / "shortlist")
     postings = cache_dir / "postings"
     postings.mkdir(parents=True, exist_ok=True)

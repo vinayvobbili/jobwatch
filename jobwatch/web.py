@@ -30,6 +30,7 @@ import yaml
 from . import (
     __version__,
     advice,
+    ai,
     chat,
     company,
     comps,
@@ -551,6 +552,35 @@ class App:
             cfg = config.save(self.path, settings)
         self.score_in_background()  # new filters, resume or scoring setting: maybe more to score
         return {"saved": str(cfg.path), "companies": len(cfg.boards)}
+
+    def _keychain(self) -> str:
+        raw = (yaml.safe_load(self.path.read_text()) or {}) if self.path.is_file() else {}
+        scoring = raw.get("scoring") if isinstance(raw.get("scoring"), dict) else {}
+        return str(scoring.get("keychain") or "").strip()
+
+    def get_ai(self, q) -> dict:
+        """Where the AI can run on this computer: each choice, ready or what it still needs (see ai.py)."""
+        return ai.status(self._keychain())
+
+    def post_ai_test(self, body) -> dict:
+        """One small call to the chosen backend, to show it answers (the local model loads first)."""
+        return ai.test(str(body.get("backend") or ""), str(body.get("model") or "").strip(), self._keychain())
+
+    def post_ai_key(self, body) -> dict:
+        """Keeps an Anthropic API key in the macOS keychain and names that item in scoring.keychain: the key is
+        never written to the watchlist."""
+        try:
+            item = ai.save_key(str(body.get("key") or ""), str(body.get("keychain") or "") or self._keychain())
+        except ValueError as e:
+            raise ApiError(str(e)) from None
+        if item != self._keychain():
+            raw = (yaml.safe_load(self.path.read_text()) or {}) if self.path.is_file() else {}
+            scoring = raw.get("scoring") if isinstance(raw.get("scoring"), dict) else {}
+            with self.lock:
+                config.save(self.path, {"scoring": {**scoring, "keychain": item}})
+        self.score_in_background()
+        return {"keychain": item}
+
     def get_onboarding(self, q) -> dict:
         """Whether first-run onboarding can offer "Suggest titles from my resume": ready, or why not, and where the
         resume would go. Looks at settings only; no model is called."""
@@ -1152,6 +1182,9 @@ class App:
 ROUTES = {
     ("GET", "/api/settings"): App.get_settings,
     ("POST", "/api/settings"): App.post_settings,
+    ("GET", "/api/ai"): App.get_ai,
+    ("POST", "/api/ai/test"): App.post_ai_test,
+    ("POST", "/api/ai/key"): App.post_ai_key,
     ("GET", "/api/onboarding"): App.get_onboarding,
     ("POST", "/api/onboarding/titles"): App.post_onboarding_titles,
     ("POST", "/api/find"): App.post_find,

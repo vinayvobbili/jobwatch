@@ -473,6 +473,58 @@ textarea { min-height: 70px; resize: vertical; }
 .list-item:last-child { border-bottom: 0; }
 .kw { display: grid; grid-template-columns: 1fr 160px auto; gap: 6px; margin: 5px 0; }
 .error { color: var(--bad); }
+.done-ok { color: var(--good); }
+/* where the AI runs: a tile per choice (pick the main one), then the fallback chain */
+.ai-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0 14px; }
+@media (max-width: 900px) { .ai-tiles { grid-template-columns: 1fr; } }
+.ai-tile { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px;
+  border: 1.5px solid var(--line); background: var(--panel-solid); cursor: pointer;
+  transition: transform .14s, box-shadow .14s, border-color .14s; }
+.ai-tile:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(84, 87, 240, .12); }
+.ai-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ai-tile.on { border-color: transparent; cursor: default; box-shadow: 0 12px 30px rgba(84, 87, 240, .2);
+  background: linear-gradient(var(--panel-solid), var(--panel-solid)) padding-box, var(--grad) border-box; }
+.ai-tile .main-tag { position: absolute; top: -10px; left: 16px; background: var(--grad); color: #fff; font-size: 10.5px;
+  font-weight: 800; letter-spacing: .07em; text-transform: uppercase; padding: 2px 9px; border-radius: 6px; }
+.ai-tile .top { display: flex; align-items: center; gap: 10px; }
+.ai-tile .orb { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); }
+.ai-tile.on .orb { background: var(--grad); color: #fff; }
+.ai-tile .name { font-weight: 700; font-size: 15px; }
+.ai-tile .state { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.ai-tile .state.ready { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); }
+.ai-tile .state.setup { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.ai-tile .state.wait { background: var(--chip); color: var(--muted); }
+.ai-tile .about { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.meters { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; align-items: center; font-size: 12px; color: var(--muted); }
+.meters .dots { display: flex; gap: 4px; }
+.meters .dots i { width: 22px; height: 7px; border-radius: 4px; background: var(--line); }
+.meters .dots i.f { background: var(--grad); }
+.ai-steps { list-style: none; margin: 0; padding: 10px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 10px;
+  counter-reset: step; font-size: 12.5px; }
+.ai-steps li { counter-increment: step; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; }
+.ai-steps li::before { content: counter(step); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); font-weight: 800; font-size: 11.5px; }
+.ai-steps a { font-weight: 600; }
+.cmd { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.cmd code { flex: 1; min-width: 0; font-size: 12px; padding: 6px 9px; border-radius: 9px; background: var(--chip); overflow-wrap: anywhere; }
+.ai-key { display: grid; gap: 6px; }
+.ai-key .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.ai-tile .foot { margin-top: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
+.ai-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 14px 16px; border-radius: 14px;
+  background: var(--accent-soft); margin: 0 0 12px; }
+.ai-chain .title { flex-basis: 100%; font-weight: 700; font-size: 13.5px; }
+.ai-chain .cap { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+.ai-chain .link { display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 999px; font: inherit;
+  font-weight: 600; font-size: 13px; border: 1.5px solid var(--accent); color: var(--accent); background: var(--panel-solid);
+  cursor: pointer; transition: transform .12s; }
+.ai-chain .link:hover { transform: translateY(-1px); }
+.ai-chain .link.main { background: var(--grad); color: #fff; border-color: transparent; cursor: default; transform: none; }
+.ai-chain .link.off { border-style: dashed; border-color: var(--muted); color: var(--muted); opacity: .7; }
+.ai-chain .link.off .ico { display: none; }
+.ai-chain .then { color: var(--accent); display: inline-flex; }
+.ai-chain .link .n { font-size: 11px; font-weight: 800; opacity: .8; }
 .onboard > .card { max-width: 760px; margin-bottom: 16px; }
 .onboard details { margin: 12px 0; }
 .onboard summary { cursor: pointer; font-weight: 600; }
@@ -2714,15 +2766,142 @@ function onboardCompanies(ctx) {
     h("div", { class: "row find" }, h("div", { style: "flex:1" }, finder.input), finder.button), finder.out, watching, also, actions);
 }
 
-// Step 4: optional extras, each closed until opened: fit scoring and job-alert emails. "Later" leaves both for Settings.
+// Where the AI runs (fit scores; the chat and title suggestions too, except on agy): each choice with what it
+// still needs on this computer (from /api/ai), a test call, and for Claude an API key kept in the macOS keychain.
+// The fallbacks are tried in AI_ORDER when the chosen one can't score. values() gives scoring's backend and fallback.
+const AI_ORDER = ["claude", "agy", "local"];
+function aiSetup(s) {
+  const scoring = s.scoring || {}, on = new Set([].concat(scoring.fallback || []));
+  // the chosen one lives in a select that isn't shown, so Settings can read and watch it like any other input
+  const backend = choice(AI_ORDER.map(b => [b, AI_LOOK[b].name]), scoring.backend || s.defaults.scoring.backend);
+  const pick = b => { if (backend.value === b) return; backend.value = b; backend.dispatchEvent(new Event("change")); };
+  const tiles = h("div", { class: "ai-tiles", role: "radiogroup", "aria-label": "Where fit scores run" });
+  const chain = h("div", { class: "ai-chain" });
+  let info = null;
+  const ready = b => !info || info[b].ready;
+
+  const drawChain = () => {
+    const rest = AI_ORDER.filter(b => b !== backend.value);
+    let n = 1;
+    const link = (b, main) => {
+      const used = main || on.has(b);
+      const el = h("button", { type: "button", class: "link" + (main ? " main" : used ? "" : " off"),
+        title: main ? "Tried first: pick another tile to change it" : used ? "Click to skip it" : "Click to try it next",
+        "aria-pressed": String(used) },
+        used ? h("span", { class: "n" }, String(n++)) : null, AI_LOOK[b].name,
+        !main && used && !ready(b) ? h("span", { class: "n" }, "· not set up") : null, used ? icon("check", 12) : null);
+      if (!main) el.onclick = () => { on.has(b) ? on.delete(b) : on.add(b); drawChain(); };
+      return el;
+    };
+    const used = rest.filter(b => on.has(b)), skipped = rest.filter(b => !on.has(b));
+    fill(chain, h("div", { class: "title" }, "If it can't score, try the next one"),
+      [backend.value, ...used].map((b, i) => [i ? h("span", { class: "then" }, icon("arrow", 14)) : null, link(b, i === 0)]),
+      skipped.length ? [h("span", { class: "muted small" }, "skipped:"), skipped.map(b => link(b, false))] : null,
+      h("div", { class: "cap" }, "When the first has no key, no credit or no quota left. Those jobs are scored again by " +
+        "the first one later. The chat and title suggestions use Claude or this Mac (Settings › Chat)."));
+  };
+
+  const keyForm = st => {
+    const key = h("input", { type: "password", placeholder: "Paste your API key (sk-ant-…)", autocomplete: "off",
+      "aria-label": "Anthropic API key" });
+    const msg = h("span", { class: "small muted", role: "status" });
+    const save = h("button", { class: "btn primary", type: "button" }, icon("lock", 13), "Save");
+    save.onclick = async () => {
+      save.disabled = true; msg.className = "small muted"; msg.textContent = "Saving to your keychain…";
+      try {
+        const r = await api("/api/ai/key", { key: key.value, keychain: st.keychain });
+        key.value = ""; scoring.keychain = r.keychain;
+        settings.scoring = { ...(settings.scoring || {}), keychain: r.keychain };
+        await refresh();
+      } catch (e) { msg.className = "small error"; msg.textContent = e.message; save.disabled = false; }
+    };
+    return h("div", { class: "ai-key" }, h("div", { class: "pair" }, key, save), msg,
+      h("div", { class: "help" }, `Kept in your macOS keychain (${st.keychain}), never in the settings file.`));
+  };
+  const steps = (b, st) => {
+    const items = st.steps.map(p => h("li", {}, h("div", {}, p.text,
+      p.link ? [" ", h("a", { href: p.link, target: "_blank", rel: "noopener" }, "Open ↗")] : null,
+      p.command ? h("div", { class: "cmd" }, h("code", {}, p.command), copyButton(() => p.command)) : null)));
+    if (b === "claude" && st.can_save_key && !st.key) items.push(h("li", {}, keyForm(st)));
+    return items.length ? h("ol", { class: "ai-steps" }, items) : null;
+  };
+  const meters = b => h("div", { class: "meters" }, AI_METERS.map(([label, k]) => [h("span", {}, label),
+    h("span", { class: "dots", title: `${AI_LOOK[b][k]} of 3` }, [1, 2, 3].map(i => h("i", { class: i <= AI_LOOK[b][k] ? "f" : "" })))]));
+
+  const tile = b => {
+    const st = info && info[b], chosen = backend.value === b;
+    const state = !st ? h("span", { class: "state wait" }, "Checking…")
+      : st.ready ? h("span", { class: "state ready" }, icon("check", 12), "Ready")
+        : h("span", { class: "state setup" }, "Set up");
+    const result = h("span", { class: "muted", role: "status" });
+    const test = h("button", { class: "btn", type: "button" }, icon("sparkle", 13), "Test");
+    test.disabled = !st || !st.ready;
+    test.onclick = async () => {
+      test.disabled = true; result.className = "muted";
+      result.textContent = b === "local" ? "Loading the model (a minute or more the first time)…" : "Asking the model…";
+      try {
+        const r = await api("/api/ai/test", { backend: b,
+          model: b === backend.value ? scoring.model || "" : b === "agy" ? scoring.agy_model || "" : "" });
+        result.className = r.ok ? "done-ok" : "error";
+        result.textContent = r.ok ? `Answered in ${r.seconds}s · ${r.model.split("/").pop()}` : r.error;
+      } catch (e) { result.className = "error"; result.textContent = e.message; }
+      test.disabled = false;
+    };
+    let key = null;
+    if (st && b === "claude" && st.key) {
+      const holder = h("div", {});
+      const replace = h("button", { class: "btn ghost", type: "button" }, "Replace");
+      replace.onclick = () => { fill(holder, keyForm(st)); replace.remove(); };
+      key = h("div", {}, h("div", { class: "foot" }, icon("lock", 13), h("span", { class: "muted" },
+        st.key === "keychain" ? `Key in your keychain (${st.keychain})` : "Key from ANTHROPIC_API_KEY"),
+        st.can_save_key ? replace : null), holder);
+    }
+    const el = h("div", { class: "ai-tile" + (chosen ? " on" : ""), role: "radio", tabindex: "0",
+      "aria-checked": String(chosen) },
+      chosen ? h("span", { class: "main-tag" }, "Scores first") : null,
+      h("div", { class: "top" }, h("span", { class: "orb" }, icon(AI_LOOK[b].icon, 20)),
+        h("div", {}, h("div", { class: "name" }, AI_LOOK[b].name), h("div", { class: "muted small" }, AI_LOOK[b].tag)), state),
+      meters(b),
+      h("div", { class: "about" }, st ? st.about : ""),
+      st ? steps(b, st) : null,
+      key,
+      h("div", { class: "foot" }, test, result));
+    // a click on the tile picks it; one on its buttons, links or the key box doesn't
+    el.onclick = e => { if (!e.target.closest("button, a, input, code")) pick(b); };
+    el.onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); pick(b); } };
+    return el;
+  };
+  const draw = () => { fill(tiles, AI_ORDER.map(tile)); drawChain(); };
+  const refresh = async () => {
+    try { info = await api("/api/ai"); }
+    catch (e) { fill(tiles, h("p", { class: "small error" }, e.message)); return; }
+    draw();
+  };
+  backend.addEventListener("change", draw);
+  draw(); refresh();
+  return { el: h("div", {}, tiles, chain), select: backend,
+    values: () => ({ backend: backend.value, keychain: scoring.keychain || null,  // a key saved here names its item
+      fallback: AI_ORDER.filter(b => b !== backend.value && on.has(b)) }) };
+}
+// How each choice looks: its tile's name, tagline and icon, and the meters (3 is best: better scores, cheaper,
+// more private, quicker).
+const AI_LOOK = {
+  claude: { name: "Claude API", tag: "Anthropic's models", icon: "sparkle", quality: 3, cost: 1, privacy: 1, speed: 3 },
+  agy: { name: "Antigravity", tag: "Your Google AI subscription", icon: "cloud", quality: 3, cost: 2, privacy: 1, speed: 2 },
+  local: { name: "On this Mac", tag: "Apple Silicon, offline", icon: "lock", quality: 2, cost: 3, privacy: 3, speed: 1 },
+};
+const AI_METERS = [["Scores", "quality"], ["Low cost", "cost"], ["Privacy", "privacy"], ["Speed", "speed"]];
+
+// Step 4: optional extras, each closed until opened: where the AI runs and job-alert emails. "Later" leaves both
+// for Settings.
 function onboardRest(ctx) {
-  const s = settings, D = s.defaults, scoring = s.scoring || {};
-  const backend = choice([["local", "On this Mac (Apple Silicon)"], ["claude", "Claude API (needs ANTHROPIC_API_KEY)"]],
-    scoring.backend || D.scoring.backend);
+  const s = settings, scoring = s.scoring || {};
+  const aiS = aiSetup(s);
   const alertsC = alertsCard(s);
-  const fit = h("details", {}, h("summary", {}, "Fit scores: how well each job matches your resume"),
-    h("p", { class: "small muted" }, "Needs the scoring add-on: pip install 'jobwatch[score]'. More in Settings."),
-    field("Score with", backend, "Where the posting and your resume are read."));
+  const fit = h("details", {}, h("summary", {}, "AI: fit scores (how well each job matches your resume) and the chat"),
+    h("p", { class: "small muted" }, "Pick where the model runs: Claude's API, your Antigravity subscription, or " +
+      "this Mac. Each one says what it still needs. More in Settings."),
+    aiS.el);
   const alerts = h("details", {}, h("summary", {}, "Job-alert emails: read LinkedIn, Built In and Indeed alerts from your mailbox"),
     alertsC);
   alertsC.classList.remove("full");
@@ -2731,7 +2910,7 @@ function onboardRest(ctx) {
     fit, alerts,
     onboardActions(ctx, async () => {
       const body = {};
-      if (fit.open) body.scoring = merged(scoring, { backend: backend.value });
+      if (fit.open) body.scoring = merged(scoring, aiS.values());
       const imap = alerts.open ? alertsC.values() : null;
       if (imap) body.alerts = imap;
       if (Object.keys(body).length) await api("/api/settings", body);
@@ -4000,19 +4179,19 @@ function renderSettings() {
   const picksN = numInput((s.display || {}).today, D.display.today), daily = numInput(pace.daily, D.pace.daily),
     most = numInput(pace.max, D.pace.max);
 
-  // Fit scores: where the model runs, which one, and when it scores by itself (on for the local model unless set).
+  // Fit scores: where the model runs and what's tried when it can't (aiSetup), which model, and when it scores by
+  // itself (on for the local model unless set).
   const scoring = s.scoring || {};
-  const backend = choice([["local", "On this Mac (Apple Silicon)"], ["claude", "Claude API (needs ANTHROPIC_API_KEY)"]],
-    scoring.backend || D.scoring.backend);
-  const scoreModel = textInput(scoring.model, "default");
+  const aiS = aiSetup(s), backend = aiS.select;
+  const scoreModel = textInput(scoring.model, "default"), agyModel = textInput(scoring.agy_model, "default");
   const autoDefault = () => backend.value === "local";
   const auto = checkLine(scoring.auto ?? autoDefault(), "Score new jobs by themselves while the page is open");
   backend.addEventListener("change", () => { if (scoring.auto === undefined) auto.box.checked = autoDefault(); });
   const top = numInput(scoring.top, D.scoring.top);
   const prompts = fitPromptsCard(s.fit_prompts);
   const scoringValues = () => {
-    const out = merged(scoring, { backend: backend.value, model: textOf(scoreModel), top: numberOf(top),
-      auto: auto.box.checked === autoDefault() ? null : auto.box.checked });
+    const out = merged(scoring, { ...aiS.values(), model: textOf(scoreModel), agy_model: textOf(agyModel),
+      top: numberOf(top), auto: auto.box.checked === autoDefault() ? null : auto.box.checked });
     if (prompts && prompts.editable) {  // otherwise the watchlist's are kept as they are
       const edited = prompts.edited();
       if (Object.keys(edited).length) out.prompts = edited; else delete out.prompts;
@@ -4099,9 +4278,10 @@ function renderSettings() {
     setCard("resume", "Your resume and fit scores", "optional",
       uploadField("resume", ".pdf,.docx,.txt,.md", s.resume, "Fit scores compare a posting's requirements with your resume. " +
         "They need the scoring add-on: pip install 'jobwatch[score]'."),
+      aiS.el,
       h("div", { class: "fields" },
-        field("Score with", backend, "This Mac keeps the posting and resume here."),
         field("Model", scoreModel, "Blank: shortlist-ai's own for where it runs."),
+        field("agy's model as a fallback", agyModel, "e.g. claude-sonnet-5-5-medium; `agy models` lists them."),
         field("Score per digest", top, "jobwatch digest scores this many new jobs; 0 none.")),
       auto.el),
     setCard("people", "People you know", "optional",
