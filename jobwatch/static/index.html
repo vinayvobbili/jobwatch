@@ -2655,7 +2655,7 @@ function onboardJobs(ctx) {
   return h("div", { class: "card" },
     h("div", { class: "fields" },
       field("Job titles you want", titles, "One per line; a title must contain one."),
-      field("How do you want to work?", h("div", { class: "stack" }, howCtl, country)),
+      field("How do you want to work?", h("div", { class: "stack" }, howCtl, country), null, "wide"),
       placesField,
       field("Pay target (per year)", target, "What you'd like to be offered: a number, or a range like 170000-200000.")),
     ideas,
