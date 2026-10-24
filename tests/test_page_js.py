@@ -173,3 +173,35 @@ console.log(JSON.stringify(urls.map(safeUrl)));
     assert json.loads(r.stdout) == [
         "http://127.0.0.1:8765/prep/s3cret/acme-onsite.html", "#settings", "#", "https://boards.example.com/jobs/1?a=b",
         "#", "#", "#", "blob:http://127.0.0.1:8765/abc", "#", "http://evil.example/x"]
+
+
+def page_const(name: str) -> str:
+    """One top-level const's source from the page's script (to the first line ending in ';' at its depth)."""
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    m = re.search(rf"^const {name} = .*?;$", page, re.S | re.M)
+    assert m, f"no const {name} in the page"
+    return m.group(0)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_what_matters_most_sets_the_comps_weights(tmp_path):
+    """Onboarding's "What matters most to you in a company?": the order picked becomes comps.weights, the parts left
+    out share what's left, "I don't mind" keeps the defaults, and saved weights read back as the same order."""
+    js = tmp_path / "matters.js"
+    js.write_text("\n".join([page_const("MATTERS"), page_const("MATTER_SHARE"), page_function("mattersWeights"),
+                             page_function("mattersOrder")]) + """
+console.log(JSON.stringify({
+  all: mattersWeights(["career", "health", "pay", "fit"]),
+  two: mattersWeights(["career", "pay"]),
+  any: mattersWeights(["any"]), none: mattersWeights([]),
+  back: mattersOrder({comps: {weights: mattersWeights(["career", "health", "pay", "fit"])}}),
+  dflt: mattersOrder({}),
+}));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    assert got["all"] == {"progress": 10, "career": 35, "health": 25, "pay": 20, "fit": 10}
+    assert got["two"] == {"progress": 10, "career": 35, "pay": 25, "health": 15, "fit": 15}  # 20 + 10 shared
+    assert got["any"] is None and got["none"] is None
+    assert got["back"] == ["career", "health", "pay", "fit"] and got["dflt"] == []

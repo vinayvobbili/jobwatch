@@ -2584,7 +2584,7 @@ function onboardActions(ctx, save) {
 
 // Step 1: Tell me about yourself: in your own words, your resume, and what you want next.
 function onboardAbout(ctx) {
-  const s = settings, form = goalsForm(s);
+  const s = settings, form = goalsForm(s), matters = mattersField(s);
   const pasted = h("textarea", { rows: 4, placeholder: "…or paste the text of your resume here" });
   const pasteMsg = h("span", { class: "small muted" });
   const paste = h("button", { class: "btn", onclick: async () => {
@@ -2602,8 +2602,11 @@ function onboardAbout(ctx) {
       uploadField("resume", ".pdf,.docx,.txt,.md", s.resume, "It stays on this computer. Fit scores and title suggestions read it " +
         "(PDF and Word files need: pip install 'jobwatch[score]')."),
       pasted, h("div", { class: "row" }, paste, pasteMsg)),
-    form.questions,
-    onboardActions(ctx, async () => { await api("/api/settings", { goals: form.values() }); }));
+    form.questions, matters.el,
+    onboardActions(ctx, async () => {
+      const weights = matters.weights();
+      await api("/api/settings", { goals: form.values(), ...(weights ? { comps: merged(s.comps, { weights }) } : {}) });
+    }));
 }
 
 // Step 2: the jobs you want: titles, places, remote, and a pay target. "Suggest titles from my resume" is offered
@@ -3299,7 +3302,7 @@ function companyFinder(has, add) {
 
 const GOAL_KINDS = [["tech", "A tech company"], ["consulting", "A consultancy"], ["enterprise", "A large enterprise"]];
 const GOAL_ROLES = [["product", "Building the product"], ["customer", "Working with customers"], ["internal", "Building internal tools"]];
-const CHOICES = ["1st", "2nd", "3rd"];
+const CHOICES = ["1st", "2nd", "3rd", "4th"];
 
 // A few choices in order of preference, best first, or "I don't mind". value() is the list as the watchlist keeps it
 // (["any"] for no preference, [] for none said).
@@ -3381,6 +3384,35 @@ function weightSliders(s) {
       const isDefault = !Object.keys(saved).length && rows.every(r => given[r.k] === Math.round(dflt[r.k] * 100));
       return isDefault ? null : given;
     },
+  };
+}
+
+// Onboarding's plain-words way to set the Comps weights: what matters most in a company, best first. 1st 35, 2nd 25,
+// 3rd 20, 4th 10, how far along 10; parts left out share what's left. "I don't mind" or nothing picked keeps the
+// defaults (null). Settings' sliders fine-tune the same weights.
+const MATTERS = [["pay", "Pay"], ["career", "What it adds to my career"], ["health", "A stable, healthy company"],
+  ["fit", "A job that fits what I've done"]];
+const MATTER_SHARE = [35, 25, 20, 10];
+function mattersWeights(order) {
+  if (!order.length || order[0] === "any") return null;
+  const left = MATTERS.map(([k]) => k).filter(k => !order.includes(k));
+  const spare = MATTER_SHARE.slice(order.length).reduce((a, b) => a + b, 0);
+  return { progress: 10, ...Object.fromEntries(order.map((k, n) => [k, MATTER_SHARE[n]])),
+    ...Object.fromEntries(left.map(k => [k, Math.round(spare / left.length)])) };
+}
+// The saved weights as that order (heaviest first), or [] while they are the defaults.
+function mattersOrder(s) {
+  const saved = (s.comps || {}).weights || {};
+  if (!Object.keys(saved).length) return [];
+  return MATTERS.map(([k]) => k).sort((a, b) => (saved[b] ?? 0) - (saved[a] ?? 0));
+}
+function mattersField(s) {
+  const pick = rankPicker(MATTERS, mattersOrder(s));
+  return {
+    el: h("div", { class: "field" }, h("label", {}, "What matters most to you in a company?"),
+      h("div", { class: "help" }, "Best first. The Comps tab weighs jobs by it; Settings fine-tunes the weights. " +
+        "Anything else (remote, mission, team size)? Say it in Tell me about yourself."), pick.el),
+    weights: () => mattersWeights(pick.value()),
   };
 }
 
