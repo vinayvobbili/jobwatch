@@ -1150,11 +1150,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("comp", help="keep what a recruiter told you about pay for a job (base, bonus, equity, "
                        "sign-on, what you asked for, what they offered, a note), to compare in `comps`",
-                       description="Compensation details for one job, as you'd write them: --base 170-200K "
-                       "--bonus '10% target' --equity '40K RSUs over 4 years' --signon 15K --asked 215-250K "
-                       "--offered 190K --note '200K most likely their max' --role product --career-note 'agentic SOC "
-                       "product, principal IC'. A field you leave out stays; an empty one "
-                       "('') clears it; --clear forgets them all. Amounts like 170-200K are read, so `comps` "
+                       description="Compensation details for one job, as you'd write them: --base 165-195K "
+                       "--bonus '10% target' --equity '40K RSUs over 4 years' --signon 15K --asked 210-230K "
+                       "--offered 180K --note '195K most likely their max' --role product --career-note "
+                       "'observability product, staff IC'. A field you leave out stays; an empty one "
+                       "('') clears it; --clear forgets them all. Amounts like 165-195K are read, so `comps` "
                        "can mark the highest.")
     p.add_argument("key", metavar="KEY", help="the job: its key, posting id or company")
     p.add_argument("--base", help="the base salary range they gave")
@@ -1163,12 +1163,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--signon", help="sign-on bonus")
     p.add_argument("--asked", help="what you asked for")
     p.add_argument("--offered", help="what they offered")
-    p.add_argument("--note", help="a few words, e.g. '200K most likely their max'")
+    p.add_argument("--note", help="a few words, e.g. '195K most likely their max'")
     p.add_argument("--role", choices=(*ROLES, ""), help="what the job is: product (builds the company's own "
                    "product), customer (forward-deployed, solutions, customer-facing engineering) or internal "
                    "(builds internal tools for the business); the career part of the `comps` suggestion reads it")
-    p.add_argument("--career-note", dest="career_note", help="a few words on its career value, e.g. 'agentic SOC "
-                   "product, principal IC'")
+    p.add_argument("--career-note", dest="career_note", help="a few words on its career value, e.g. "
+                   "'observability product, staff IC'")
     p.add_argument("--clear", action="store_true", help="forget everything kept for this job first")
     p.set_defaults(func=cmd_comp)
 

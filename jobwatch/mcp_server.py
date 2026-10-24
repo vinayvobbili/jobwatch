@@ -570,26 +570,26 @@ def get_comps(
 def set_comp(
     key: Key,
     base: Annotated[str | None, Field(description=(
-        "The base salary (range) the recruiter gave, as said: \"170-200K\". An empty string clears it."))] = None,
+        "The base salary (range) the recruiter gave, as said: \"165-195K\". An empty string clears it."))] = None,
     bonus: Annotated[str | None, Field(description="Bonus, as said (\"10% target\"). Empty clears it.")] = None,
     equity: Annotated[str | None, Field(description="Equity, as said (\"40K RSUs over 4 years\"). Empty clears it."
                                         )] = None,
     signon: Annotated[str | None, Field(description="Sign-on bonus, as said. Empty clears it.")] = None,
-    asked: Annotated[str | None, Field(description="What the person asked for (\"215-250K\"). Empty clears it."
+    asked: Annotated[str | None, Field(description="What the person asked for (\"210-230K\"). Empty clears it."
                                        )] = None,
     offered: Annotated[str | None, Field(description="What they offered. Empty clears it.")] = None,
     note: Annotated[str | None, Field(description=(
-        "A few words (\"200K most likely their max\"). Replaces the old note. Empty clears it."))] = None,
+        "A few words (\"195K most likely their max\"). Replaces the old note. Empty clears it."))] = None,
     role: Annotated[Literal["product", "customer", "internal", ""] | None, Field(description=(
         "What the job is, for its career value: product (builds the company's own product), customer "
         "(forward-deployed, solutions, customer-facing engineering) or internal (builds internal tools or "
         "platforms for the business). Empty clears it."))] = None,
     career_note: Annotated[str | None, Field(description=(
-        "A few words on its career value (\"agentic SOC product, principal IC\"). Empty clears it."))] = None,
+        "A few words on its career value (\"observability product, staff IC\"). Empty clears it."))] = None,
 ) -> dict:
     """Keep what a recruiter told the person about pay for a job, so get_comps can put it next to the others, and
     what the job is for their career (role, career_note). Only the
-    fields given change; an empty string clears one. Write amounts the way they were said ("170-200K",
+    fields given change; an empty string clears one. Write amounts the way they were said ("165-195K",
     "$215,000"): the first amount found is read to mark the highest. Returns what is kept for the job."""
     _, store = _open()
     try:

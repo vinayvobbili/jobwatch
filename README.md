@@ -1124,9 +1124,9 @@ What a recruiter tells you about pay is kept per job, and what you know of a com
 none of it up: you type it in, or an assistant over MCP searches the web and records it with its source links.
 
 ```
-jobwatch comp acme --base 170-200K --bonus "10% target" --equity "40K RSUs over 4 years" --signon 15K \
-    --asked 215-250K --offered 190K --note "200K most likely their max" \
-    --role product --career-note "agentic SOC product, principal IC"
+jobwatch comp acme --base 165-195K --bonus "10% target" --equity "40K RSUs over 4 years" --signon 15K \
+    --asked 210-230K --offered 180K --note "195K most likely their max" \
+    --role product --career-note "observability product, staff IC"
 jobwatch health "Acme" --kind tech --listing private --stage "Series B, $50M, 2025" --raised "$80M" --revenue "2x YoY" \
     --headcount growing --layoffs none --rating "4.1 Glassdoor" --risk "one big customer" \
     --sources "https://example.com/acme" --as-of 2026-10-20

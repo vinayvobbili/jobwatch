@@ -841,7 +841,7 @@ class Store:
 
     def set_comp(self, key: str, **fields: str | None):
         """Keep what a recruiter said about pay for a job (base, bonus, equity, signon, asked, offered, note), as
-        written ("170-200K", "10% target"), and what the job is for your career: its role (see ROLES) and a
+        written ("165-195K", "10% target"), and what the job is for your career: its role (see ROLES) and a
         career_note. None leaves a field as it is; an empty string clears it."""
         if unknown := set(fields) - set(COMP_FIELDS):
             raise ValueError(f"unknown compensation field: {', '.join(sorted(unknown))}")

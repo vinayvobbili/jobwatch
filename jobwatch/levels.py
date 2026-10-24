@@ -239,7 +239,7 @@ class Estimate:
     credit: str = CREDIT
 
     def line(self, posted: str = "") -> str:
-        """ "Ask ~$235K base · Levels.fyi L6 median $228K base / $260K total (US-wide) · posted $152K–$233K" """
+        """ "Ask ~$195K base · Levels.fyi L5 median $182K base / $214K total (US-wide) · posted $160K–$205K" """
         k = lambda n: f"${n / 1000:.0f}K"  # noqa: E731
         median = f"median {k(self.base)} base / {k(self.total)} total" if self.base else \
             f"median {k(self.total)} total, base not given" + (

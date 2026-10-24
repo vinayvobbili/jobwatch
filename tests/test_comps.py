@@ -40,10 +40,10 @@ def tracked(watchlist, tmp_path):
 
 
 def test_amounts_are_read_as_dollars():
-    assert comps.amount("170-200K") == (170000, 200000)
-    assert comps.amount("$170K - $215K") == (170000, 215000)
+    assert comps.amount("165-195K") == (165000, 195000)
+    assert comps.amount("$165K - $215K") == (165000, 215000)
     assert comps.amount("$150,000 to $180,000") == (150000, 180000)
-    assert comps.amount("200K most likely their max") == (200000, 200000)
+    assert comps.amount("195K most likely their max") == (195000, 195000)
     assert comps.amount("2 offers, 200K") == (200000, 200000)
     assert comps.amount("1.2M") == (1_200_000, 1_200_000)
 
@@ -56,10 +56,10 @@ def test_store_sets_keeps_the_rest_clears_and_forgets(tmp_path):
     store = Store(tmp_path / "s.db")
     job = store.add("Acme", "Engineer", status="screening")
     assert store.comp(job.key) is None
-    store.set_comp("acme", base=" 170-200K ", bonus="10%")
-    store.set_comp(job.key, note="200K likely their max")  # the rest stays
+    store.set_comp("acme", base=" 165-195K ", bonus="10%")
+    store.set_comp(job.key, note="195K likely their max")  # the rest stays
     kept = store.comp(job.key)
-    assert (kept["base"], kept["bonus"], kept["note"], kept["equity"]) == ("170-200K", "10%", "200K likely their max",
+    assert (kept["base"], kept["bonus"], kept["note"], kept["equity"]) == ("165-195K", "10%", "195K likely their max",
                                                                          None)
     store.set_comp(job.key, bonus="")  # cleared
     assert store.comp(job.key)["bonus"] is None and list(store.comps()) == [job.key]
@@ -75,14 +75,14 @@ def test_store_sets_keeps_the_rest_clears_and_forgets(tmp_path):
 def test_view_lists_live_stages_furthest_along_first(tracked):
     cfg = config.load(tracked)
     store = Store(cfg.state)
-    store.set_comp("manual:acme:platform-engineer", base="170-200K", asked="215-250K", note="max is 200K")
+    store.set_comp("manual:acme:platform-engineer", base="165-195K", asked="210-230K", note="max is 195K")
     store.set_comp("manual:globex:data-lead", base="150-190K", offered="180K")
     v = comps.view(cfg, store)
     assert v["today"] == date.today().isoformat()  # what the page counts "3 days ago" from
     assert [o["company"] for o in v["opportunities"]] == ["Initech", "Acme", "Globex"]
     acme = v["opportunities"][1]
-    assert acme["pay"] == "$180K–$220K" and acme["places"] == ["Remote"] and acme["base_max"] == 200000
-    assert acme["comp"]["asked"] == "215-250K" and acme["asked_max"] == 250000 and acme["offered_max"] is None
+    assert acme["pay"] == "$180K–$220K" and acme["places"] == ["Remote"] and acme["base_max"] == 195000
+    assert acme["comp"]["asked"] == "210-230K" and acme["asked_max"] == 230000 and acme["offered_max"] is None
     assert acme["fit"] == {"score": 84, "met": 5, "total": 6, "gaps": ["Rust", "Kafka", "Go"], "stale": False}
     assert v["opportunities"][0]["fit"]["met"] == 3 and v["opportunities"][2]["fit"] is None
     assert v["best"] == {"pay": ["manual:acme:platform-engineer"], "base": ["manual:acme:platform-engineer"],
@@ -118,11 +118,11 @@ def test_a_tie_marks_neither_and_no_pay_marks_nothing(tracked):
 def test_text_marks_the_highest_in_a_row(tracked):
     cfg = config.load(tracked)
     store = Store(cfg.state)
-    store.set_comp("acme", base="170-200K", note="max is 200K")
+    store.set_comp("acme", base="165-195K", note="max is 195K")
     store.set_comp("globex", base="150-190K")
     out = comps.text(comps.view(cfg, store))
-    assert "Acme: Platform Engineer [interviewing]" in out and "  base: 170-200K *" in out
-    assert "  base: 150-190K\n" in out and "  posted pay: $180K–$220K *" in out and "  note: max is 200K" in out
+    assert "Acme: Platform Engineer [interviewing]" in out and "  base: 165-195K *" in out
+    assert "  base: 150-190K\n" in out and "  posted pay: $180K–$220K *" in out and "  note: max is 195K" in out
     assert "gaps: Rust; Kafka; Go" in out and out.endswith("* highest in its row")
     assert comps.text({"stages": ["offer"], "opportunities": [], "best": {}}).startswith("Nothing to compare")
     store.close()
@@ -130,10 +130,10 @@ def test_text_marks_the_highest_in_a_row(tracked):
 
 def test_cli_sets_clears_and_compares(tracked, capsys):
     c = ["-c", str(tracked)]
-    cli.main([*c, "comp", "acme", "--base", "170-200K", "--bonus", "10%", "--asked", "215-250K"])
-    assert capsys.readouterr().out == "manual:acme:platform-engineer: base 170-200K; bonus 10%; asked 215-250K\n"
-    cli.main([*c, "comp", "acme", "--bonus", "", "--note", "max is 200K"])
-    assert "base 170-200K; asked 215-250K; note max is 200K" in capsys.readouterr().out
+    cli.main([*c, "comp", "acme", "--base", "165-195K", "--bonus", "10%", "--asked", "210-230K"])
+    assert capsys.readouterr().out == "manual:acme:platform-engineer: base 165-195K; bonus 10%; asked 210-230K\n"
+    cli.main([*c, "comp", "acme", "--bonus", "", "--note", "max is 195K"])
+    assert "base 165-195K; asked 210-230K; note max is 195K" in capsys.readouterr().out
     cli.main([*c, "comps"])
     out = capsys.readouterr().out
     blocks = [out.index(head) for head in ("\nInitech: ML Engineer [", "\nAcme: Platform Engineer [",
@@ -347,7 +347,7 @@ def test_career_follows_the_kind_of_company_and_the_role(tracked):
     cfg = config.load(tracked)
     store = Store(cfg.state)
     store.set_health("Acme", kind="Tech")  # a kind alone is no health: it doesn't make the health known or fresh
-    store.set_comp("acme", role="product", career_note="agentic SOC product, principal IC")
+    store.set_comp("acme", role="product", career_note="observability product, staff IC")
     store.set_health("Globex", kind="enterprise")
     store.set_comp("globex", role="internal")
     store.set_comp("initech", role="customer")  # a role with no kind: from the neutral 50
@@ -358,8 +358,8 @@ def test_career_follows_the_kind_of_company_and_the_role(tracked):
     assert parts["Initech"]["career"] == {"score": 55, "input": "customer-facing", "known": True}
     assert parts["Acme"]["health"] == {"score": 50, "input": "no company health kept", "known": False}
     acme = next(o for o in v["opportunities"] if o["company"] == "Acme")
-    assert acme["comp"]["career_note"] == "agentic SOC product, principal IC" and acme["health"]["kind"] == "tech"
-    assert "career note: agentic SOC product, principal IC" in comps.text(v)
+    assert acme["comp"]["career_note"] == "observability product, staff IC" and acme["health"]["kind"] == "tech"
+    assert "career note: observability product, staff IC" in comps.text(v)
     assert "career 95 (tech company, builds product)" in comps.suggestion_text(v["suggestion"])
     store.close()
 
