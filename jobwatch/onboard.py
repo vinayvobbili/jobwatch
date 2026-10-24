@@ -38,6 +38,7 @@ def wants(cfg: Config) -> str:
     g = cfg.goals
     lines = [("About", g.about), ("Companies preferred, best first", ", ".join(g.company_kinds)),
              ("Roles preferred, best first", ", ".join(g.roles)),
+             ("Company stages preferred, best first", ", ".join(g.stages)),
              ("Track", g.track if g.track != "either" else ""), ("Horizon", g.horizon)]
     return "\n".join(f"- {k}: {v}" for k, v in lines if v) or "- (nothing said yet)"
 

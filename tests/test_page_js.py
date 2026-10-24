@@ -205,3 +205,26 @@ console.log(JSON.stringify({
     assert got["two"] == {"progress": 10, "career": 35, "pay": 25, "health": 15, "fit": 15}  # 20 + 10 shared
     assert got["any"] is None and got["none"] is None
     assert got["back"] == ["career", "health", "pay", "fit"] and got["dflt"] == []
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_how_you_want_to_work_reads_and_writes_the_places(tmp_path):
+    """Onboarding's "How do you want to work?": remote only, hybrid or on-site near the places named, or either,
+    read from filters.locations and written back; hybrid or on-site with no place is refused (no places would let
+    every place through)."""
+    js = tmp_path / "work.js"
+    js.write_text("\n".join([page_function("workStyle"), page_function("workLocations")]) + """
+let refused = "";
+try { workLocations("near", []); } catch (e) { refused = e.message; }
+console.log(JSON.stringify({
+  read: [["remote"], ["Raleigh"], ["Raleigh", "remote"], []].map(workStyle),
+  write: ["remote", "near", "either"].map(how => workLocations(how, ["Raleigh"])),
+  refused,
+}));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    assert got["read"] == ["remote", "near", "either", "either"]
+    assert got["write"] == [["remote"], ["Raleigh"], ["Raleigh", "remote"]]
+    assert got["refused"] == "Name a city or state for hybrid or on-site jobs."

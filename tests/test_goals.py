@@ -62,6 +62,35 @@ def test_any_is_neutral_and_a_name_left_out_ranks_last(tmp_path):
     assert career(g, "tech", "internal")[0] == 90 and career(g, "enterprise", None)[0] == 40
 
 
+@pytest.mark.parametrize("health, stage", [
+    ({"listing": "public", "stage": "Series B"}, "public"),  # listed: whatever round it once raised
+    ({"listing": "private", "stage": "Series B, $50M, July 2025"}, "startup"),
+    ({"stage": "Seed, $4M"}, "startup"),
+    ({"stage": "Series D, $250M ARR"}, "growth"),
+    ({"stage": "late-stage, pre-IPO"}, "growth"),
+    ({"listing": "private", "stage": ""}, None),  # private, but how far along isn't kept
+    (None, None),
+])
+def test_a_companys_stage_is_read_from_its_health(health, stage):
+    assert comps.stage_of(health) == stage
+
+
+def test_the_stage_you_prefer_lifts_the_career_part_only_where_it_is_known(tmp_path):
+    g = load(tmp_path, "goals: {company_kinds: [tech, consulting, enterprise], stages: [growth, startup]}\n").goals
+    assert g.stages == ("growth", "startup") and g.scores
+    tech = lambda stage, listing="private": comps._career(  # noqa: E731
+        {"health": {"kind": "tech", "listing": listing, "stage": stage}, "comp": {"role": None}}, g)
+    assert tech("Series D")[:2] == (100, "tech company (your 1st choice), growth stage (your 1st choice)")
+    assert tech("Series B")[0] == 90  # 2nd choice: +0
+    assert tech("", "public")[:2] == (80, "tech company (your 1st choice), public company (not on your list)")
+    assert tech("")[:2] == (90, "tech company (your 1st choice)")  # stage not kept: no lift either way
+    # no stage preference: a stage changes nothing, and alone it isn't a career value
+    g = load(tmp_path, "goals: {company_kinds: [tech]}\n").goals
+    assert comps._career({"health": {"kind": "tech", "stage": "Seed"}, "comp": {"role": None}}, g)[0] == 90
+    assert comps._career({"health": {"stage": "Seed"}, "comp": {"role": None}}, config.Goals())[1] == \
+        "no kind or role kept"
+
+
 def test_the_suggestion_shows_the_goals_behind_the_career_part(tmp_path):
     cfg = load(tmp_path, "goals: {company_kinds: [enterprise, tech], roles: [internal]}\n")
     health = dict.fromkeys(("listing", "stage", "raised", "layoffs", "rating", "risk", "headcount"))
@@ -79,6 +108,7 @@ def test_the_suggestion_shows_the_goals_behind_the_career_part(tmp_path):
     ("goals: {company_kinds: [startup]}", "goals.company_kinds can only name tech, consulting, enterprise or any"),
     ("goals: {roles: [product, product]}", "names product twice"),
     ("goals: {roles: [any, product]}", "any means no preference"),
+    ("goals: {stages: [unicorn]}", "goals.stages can only name startup, growth, public or any"),
     ("goals: {track: boss}", "goals.track must be one of ic, manager, either"),
     ("goals: {about: 3}", "goals.about is text"),
     ("goals: {salary: 3}", "unknown goals setting(s): salary"),

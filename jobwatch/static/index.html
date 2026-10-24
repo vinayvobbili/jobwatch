@@ -2616,9 +2616,17 @@ function onboardJobs(ctx) {
   const s = settings, f = s.filters || {}, places0 = f.locations || [];
   const titles = areaInput(f.titles, "Product Manager\nData Engineer");
   const places = areaInput(places0.filter(l => l.toLowerCase() !== "remote"), "New York\nDenver");
-  const remote = checkLine(places0.some(l => l.toLowerCase() === "remote"), "Include remote jobs");
   const country = choice([["US", "Remote jobs open in the US"], ["any", "Remote jobs anywhere"]],
     (f.remote_country || "US").toLowerCase() === "any" ? "any" : "US");
+  let how = workStyle(places0);
+  const placesField = field("Where", places, "A city or state, one per line. Hybrid jobs count as jobs in their city: " +
+    "most boards don't say which are hybrid.");
+  const sync = () => {
+    placesField.style.display = how === "remote" ? "none" : "";
+    country.style.display = how === "near" ? "none" : "";
+  };
+  const howCtl = segmented(WORK_STYLES, how, v => { how = v; sync(); });
+  sync();
   const target = textInput(targetText(s.pay || {}), "e.g. 180000, or 170000-200000");
   const keywords = new Set();
   const ideas = h("div", {});
@@ -2647,16 +2655,29 @@ function onboardJobs(ctx) {
   return h("div", { class: "card" },
     h("div", { class: "fields" },
       field("Job titles you want", titles, "One per line; a title must contain one."),
-      field("Places", h("div", { class: "stack" }, places, remote.el, country), "A city or state, one per line."),
+      field("How do you want to work?", h("div", { class: "stack" }, howCtl, country)),
+      placesField,
       field("Pay target (per year)", target, "What you'd like to be offered: a number, or a range like 170000-200000.")),
     ideas,
     onboardActions(ctx, async () => {
-      const locations = [...unlines(places.value), ...(remote.box.checked ? ["remote"] : [])];
+      const locations = workLocations(how, unlines(places.value));
       const body = { filters: mergeFilters(f, { titles: unlines(titles.value), locations, remote_country: country.value }),
         pay: merged(s.pay, targetValues(target.value)) };
       if (keywords.size) body.keywords = { ...(s.keywords || {}), ...Object.fromEntries([...keywords].map(k => [k, 1])) };
       await api("/api/settings", body);
     }));
+}
+
+// "How do you want to work?" and filters.locations, both ways: remote only is ["remote"]; hybrid or on-site is the
+// places alone (it needs one: no places would let every place through); either is the places and remote.
+const WORK_STYLES = [["remote", "Remote only"], ["near", "Hybrid or on-site near me"], ["either", "Either"]];
+function workStyle(locations) {
+  const remote = locations.some(l => l.toLowerCase() === "remote"), places = locations.length - (remote ? 1 : 0);
+  return remote && !places ? "remote" : !remote && places ? "near" : "either";
+}
+function workLocations(how, places) {
+  if (how === "near" && !places.length) throw new Error("Name a city or state for hybrid or on-site jobs.");
+  return [...(how === "remote" ? [] : places), ...(how === "near" ? [] : ["remote"])];
 }
 
 // Step 3: the companies to watch: the same find-and-add as Settings, each added at once, plus any companies
@@ -3303,6 +3324,7 @@ function companyFinder(has, add) {
 
 const GOAL_KINDS = [["tech", "A tech company"], ["consulting", "A consultancy"], ["enterprise", "A large enterprise"]];
 const GOAL_ROLES = [["product", "Building the product"], ["customer", "Working with customers"], ["internal", "Building internal tools"]];
+const GOAL_STAGES = [["startup", "A startup (seed to Series B)"], ["growth", "Growth stage (Series C and later)"], ["public", "A large or public company"]];
 const CHOICES = ["1st", "2nd", "3rd", "4th"];
 
 // A few choices in order of preference, best first, or "I don't mind". value() is the list as the watchlist keeps it
@@ -3334,6 +3356,7 @@ function goalsForm(s) {
     "and I'd rather join a company that sells software than one that uses it." });
   about.value = g.about || "";
   const kinds = rankPicker(GOAL_KINDS, g.company_kinds || []), roles = rankPicker(GOAL_ROLES, g.roles || []);
+  const stages = rankPicker(GOAL_STAGES, g.stages || []);
   let track = g.track || "either";
   const trackCtl = segmented([["ic", "Individual contributor"], ["manager", "Manager"], ["either", "Either"]], track, v => {
     track = v;
@@ -3349,9 +3372,12 @@ function goalsForm(s) {
         h("div", { class: "help" }, "Best first. The Comps tab scores a job's career value from this."), kinds.el),
       h("div", { class: "field" }, h("label", {}, "What would you rather be doing?"),
         h("div", { class: "help" }, "What the job builds, best first."), roles.el),
+      h("div", { class: "field" }, h("label", {}, "A startup or an established company?"),
+        h("div", { class: "help" }, "Best first. Comps counts it for a company whose stage it knows (from its Company health)."),
+        stages.el),
       field("Which track?", trackCtl, "Individual contributor, people manager, or either."),
       field("How far ahead are you thinking?", horizon, "In your own words: how much risk you will take, and for how long.")],
-    values: () => merged(g, { about: textOf(about), company_kinds: kinds.value(), roles: roles.value(),
+    values: () => merged(g, { about: textOf(about), company_kinds: kinds.value(), roles: roles.value(), stages: stages.value(),
       track: track === "either" ? null : track, horizon: textOf(horizon) }),
   };
 }

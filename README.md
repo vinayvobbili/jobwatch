@@ -1164,13 +1164,17 @@ goals:
   about: "Staff engineer, ten years in security tooling, ready to build product again."
   company_kinds: [tech, consulting, enterprise]   # best first; or: any
   roles: [product, customer, internal]            # what the job builds, best first; or: any
+  stages: [growth, startup, public]               # seed to Series B, Series C+, listed; or: any
   track: ic                                       # ic, manager or either
   horizon: "take risks for the next 3-5 years"
 ```
 
 `company_kinds` and `roles` are in order of preference: a kind scores 90, 65 or 40 (first choice best) and a role
 adds +10, 0 or -10; one you leave off the list ranks last, and `any` is neutral (65 and 0). Name only one of the
-two and the other keeps its fixed rule. Without either, nothing changes from the numbers above. The suggestion's
+two and the other keeps its fixed rule. Without either, nothing changes from the numbers above. `stages` adds +10,
+0 or -10 the same way, for a company whose Company health says how far along it is: public when it's listed, a
+startup through Series B, growth stage from Series C on. A company with no stage kept gets nothing either way, and
+without `stages` its stage counts for nothing. The suggestion's
 input says which choice of yours a job is ("tech company (your 1st choice)"). `about`, `track` and `horizon` are in
 your own words and change no score; `about` and the rest are read only if you ask for title suggestions when
 setting up. Settings → Your goals also has `pay.target`, a private `pay.floor` (never shown elsewhere) and the

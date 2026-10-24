@@ -38,6 +38,10 @@ ROLE_ADJUST = {"product": 15, "customer": 5, "internal": -5}  # added to it by w
 GOAL_KIND_SCORES = (90, 65, 40)  # the career part by the kind of company, from your goals: best choice first
 GOAL_ROLE_SCORES = (10, 0, -10)  # added to it by what the job builds, best choice first
 ROLE_WORDS = {"product": "builds product", "customer": "customer-facing", "internal": "internal tools"}
+GOAL_STAGE_SCORES = (10, 0, -10)  # added by the company's stage (from its health), best choice first; goals only
+STAGE_WORDS = {"startup": "startup", "growth": "growth stage", "public": "public company"}
+_EARLY = re.compile(r"\b(?:pre-?seed|seed|angel|series\s*[ab])\b", re.I)
+_LATER = re.compile(r"\b(?:series\s*[c-z]|late[- ]stage|pre-?ipo)\b", re.I)
 PROGRESS = {"offer": 100, "interviewing": 70, "screening": 40, "applied": 15}
 THIN = 20_000_000  # a private company that raised less than this in all counts as thinly funded
 NEUTRAL = 50  # a part with nothing to go on: neither for nor against
@@ -121,23 +125,37 @@ def _choice(prefs: tuple, value: str | None, scores: tuple, fixed: dict) -> tupl
     return scores[n], f"your {('1st', '2nd', '3rd')[n]} choice"
 
 
+def stage_of(health: dict | None) -> str | None:
+    """startup, growth or public, from a company's health: public when it's listed, else from its stage ("Series
+    B, $50M, 2025" is a startup, "Series D" growth stage); None when its health doesn't say."""
+    h = health or {}
+    if h.get("listing") == "public":
+        return "public"
+    stage = h.get("stage") or ""
+    return "growth" if _LATER.search(stage) else "startup" if _EARLY.search(stage) else None
+
+
 def _career(row: dict, goals: Goals | None = None) -> tuple[int, str, str]:
     """(part, input, phrase): what the job is worth to your career by plain rules. The kind of company starts it
     (tech 80, consulting 55, enterprise 40); the job's role adds to that (builds the product +15, customer-facing
     +5, internal tools -5); 0-100. A role with no kind known starts from NEUTRAL; neither known is NEUTRAL.
-    With the watchlist's goals (a company_kinds or roles preference), the same two steps follow your order instead:
-    kinds score 90, 65, 40 and roles add +10, 0, -10, best first, and the input says which choice of yours it is."""
+    With the watchlist's goals (a company_kinds, roles or stages preference), the steps follow your order instead:
+    kinds score 90, 65, 40, roles add +10, 0, -10, and so does the company's stage (stage_of, only when its health
+    says it), best first; the input says which choice of yours each is."""
     kind, role = (row["health"] or {}).get("kind"), row["comp"].get("role")
     kind = kind if kind in KIND_BASE else None
     role = role if role in ROLE_ADJUST else None
-    if kind is None and role is None:
-        return NEUTRAL, "no kind or role kept", "neither its kind of company nor its role is kept"
     g = goals if goals is not None and goals.scores else Goals()
+    stage = stage_of(row["health"]) if g.stages else None  # no fixed rule: a stage counts only by your goals
+    if kind is None and role is None and stage is None:
+        return NEUTRAL, "no kind or role kept", "neither its kind of company nor its role is kept"
     base, kind_note = _choice(g.company_kinds, kind, GOAL_KIND_SCORES, KIND_BASE)
     adjust, role_note = _choice(g.roles, role, GOAL_ROLE_SCORES, ROLE_ADJUST)
-    part = max(0, min(100, (NEUTRAL if base is None else base) + (adjust or 0)))
+    lift, stage_note = _choice(g.stages, stage, GOAL_STAGE_SCORES, {})
+    part = max(0, min(100, (NEUTRAL if base is None else base) + (adjust or 0) + (lift or 0)))
     words = ", ".join(w + (f" ({n})" if n else "") for w, n in
-                      ((KIND_WORDS.get(kind), kind_note), (ROLE_WORDS.get(role), role_note)) if w)
+                      ((KIND_WORDS.get(kind), kind_note), (ROLE_WORDS.get(role), role_note),
+                       (STAGE_WORDS.get(stage), stage_note)) if w)
     return part, words, f"its career value is {part}/100 ({words})" + (", by your goals" if g.scores else "")
 
 

@@ -384,24 +384,27 @@ def _prompts(raw, path: Path) -> dict[str, str]:
 GOAL_KINDS = ("tech", "consulting", "enterprise")  # kinds of company, as Comps keeps them
 GOAL_ROLES = ("product", "customer", "internal")   # what the job builds, as Comps keeps it
 GOAL_TRACKS = ("ic", "manager", "either")          # an individual contributor, a people manager, or both
+GOAL_STAGES = ("startup", "growth", "public")      # seed to Series B, Series C and later, listed (Comps reads health)
 
 
 @dataclass(frozen=True)
 class Goals:
-    """goals in the watchlist: who you are and what you want next. company_kinds and roles are in order of
-    preference (first is best; ("any",) cares about none); the career part of the Comps suggestion scores from them.
-    about, track and horizon are in your own words: shown beside the suggestion and read by "Suggest titles from my
-    resume", they change no score."""
+    """goals in the watchlist: who you are and what you want next. company_kinds, roles and stages are in order of
+    preference (first is best; ("any",) cares about none); the career part of the Comps suggestion scores from them
+    (a stage only for a company whose health says its stage). about, track and horizon are in your own words: shown
+    beside the suggestion and read by "Suggest titles from my resume", they change no score."""
     about: str = ""
     company_kinds: tuple = ()
     roles: tuple = ()
+    stages: tuple = ()
     track: str = "either"
     horizon: str = ""
 
     @property
     def scores(self) -> bool:
-        """Whether the career part follows these goals (a kind or role preference is set) or the fixed rules."""
-        return bool(self.company_kinds or self.roles)
+        """Whether the career part follows these goals (a kind, role or stage preference is set) or the fixed
+        rules."""
+        return bool(self.company_kinds or self.roles or self.stages)
 
 
 def _preferences(raw, name: str, allowed: tuple, path: Path) -> tuple:
@@ -433,7 +436,8 @@ def _goals(raw, path: Path) -> Goals:
             raise ConfigError(f"{path}: goals.{k} is text in your own words, got {raw[k]!r}")
         text[k] = raw.get(k, "").strip()
     return Goals(company_kinds=_preferences(raw.get("company_kinds", []), "company_kinds", GOAL_KINDS, path),
-                 roles=_preferences(raw.get("roles", []), "roles", GOAL_ROLES, path), track=track, **text)
+                 roles=_preferences(raw.get("roles", []), "roles", GOAL_ROLES, path),
+                 stages=_preferences(raw.get("stages", []), "stages", GOAL_STAGES, path), track=track, **text)
 
 
 @dataclass
@@ -977,6 +981,8 @@ scoring:
 #   about: "Staff engineer, ten years in security tooling, ready to build product again."
 #   company_kinds: [tech, consulting, enterprise]   # or: any
 #   roles: [product, customer, internal]            # what the job builds; or: any
+#   stages: [growth, startup, public]               # seed-Series B, Series C+, listed; for companies whose
+#                                                   # Company health says it; or: any
 #   track: ic                                       # ic, manager or either
 #   horizon: "take risks for the next 3-5 years"
 
