@@ -324,8 +324,8 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
     best = {"pay": _best(rows, lambda r: r["pay_max"]), "base": _best(rows, lambda r: r["base_max"]),
             "offered": _best(rows, lambda r: r["offered_max"]),
             "fit": _best(rows, lambda r: r["fit"] and round(r["fit"]["score"]))}
-    return {"stages": list(stages), "opportunities": rows, "best": best, "choices": choices(store),
-            "suggestion": suggest(cfg, [r for r in rows if r["kind"] == "job"])}
+    return {"stages": list(stages), "today": date.today().isoformat(), "opportunities": rows, "best": best,
+            "choices": choices(store), "suggestion": suggest(cfg, [r for r in rows if r["kind"] == "job"])}
 
 
 def text(v: dict) -> str:

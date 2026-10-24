@@ -78,6 +78,7 @@ def test_view_lists_live_stages_furthest_along_first(tracked):
     store.set_comp("manual:acme:platform-engineer", base="170-200K", asked="215-250K", note="max is 200K")
     store.set_comp("manual:globex:data-lead", base="150-190K", offered="180K")
     v = comps.view(cfg, store)
+    assert v["today"] == date.today().isoformat()  # what the page counts "3 days ago" from
     assert [o["company"] for o in v["opportunities"]] == ["Initech", "Acme", "Globex"]
     acme = v["opportunities"][1]
     assert acme["pay"] == "$180K–$220K" and acme["places"] == ["Remote"] and acme["base_max"] == 200000

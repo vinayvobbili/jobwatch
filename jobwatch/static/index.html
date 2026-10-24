@@ -3264,10 +3264,13 @@ function pickedNow() {
 }
 const compView = { applied: remembered("comps.applied", "") === "1", picked: pickedNow(), editing: null, health: null };
 function pickSave(list) { compView.picked = list; remember("comps.picked", JSON.stringify(list)); }
+const MOST_PLACES = 3;
 const COMP_ROWS = [  // [label, the value (text or an element; null for none), the row of d.best to mark]
   ["Applied", (o, d) => o.applied_at ? `${fmtDay(o.applied_at, d.today)} · ${relDay(o.applied_at, d.today)}` : null],
   ["Next step", (o, d) => nextLine(o, d.today)],
-  ["Place", o => o.places.join("; ") || null],
+  // a job posted in forty offices names the first few; the rest are a count, with all of them on hover
+  ["Place", o => !o.places.length ? null : o.places.length <= MOST_PLACES ? o.places.join("; ")
+    : h("span", { title: o.places.join("; ") }, `${o.places.slice(0, MOST_PLACES).join("; ")} and ${o.places.length - MOST_PLACES} more`)],
   ["Posted pay", o => o.pay || null, "pay"],
   ["Base", o => o.comp.base, "base"],
   ["Bonus", o => o.comp.bonus],
