@@ -256,15 +256,15 @@ console.log(JSON.stringify([
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_saving_settings_gives_back_every_list_as_it_was(tmp_path):
-    """Each filter box shows its list one per line and saving reads it back: every list in the README's example
+    """Each filter box shows its list one per line and saving reads it back: every list in the guide's example
     watchlist, and patterns with commas of their own, come back unchanged (a place keeps its ", CO")."""
     import yaml
-    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    readme = (Path(__file__).resolve().parent.parent / "docs" / "guide" / "watchlist.md").read_text(encoding="utf-8")
     keys = {"titles": "unlines", "exclude_titles": "unlines", "exclude_text": "unlines",
             "exclude_departments": "unlines", "locations": "placeLines"}
     cases = [{"key": k, "list": yaml.safe_load(v)}
              for k, v in re.findall(rf"^\s+({'|'.join(keys)}): (\[.*?\])\s*(?:#.*)?$", readme, re.M)]
-    assert {c["key"] for c in cases} >= {"exclude_text", "locations"}, "the README's example watchlist moved"
+    assert {c["key"] for c in cases} >= {"exclude_text", "locations"}, "the guide's example watchlist moved"
     cases += [{"key": "exclude_text", "list": [r"citizen\b(?![^.\n]{0,40}\bgreen card)", r"\b0\s*[-–]\s*2 years\b"]},
               {"key": "locations", "list": ["remote", "Boulder, CO", "Austin, TX"]}]
     js = tmp_path / "roundtrip.js"

@@ -11,6 +11,7 @@ from string import Formatter
 
 import yaml
 
+from . import GUIDE
 from .filters import Filters
 from .score import check_prompts
 from .sources import SOURCES
@@ -803,7 +804,7 @@ def load(explicit: str | Path | None = None) -> Config:
         raise ConfigError(f"{path}: listed twice: {', '.join(f'{b.source}:{b.board}' for b in dupes)}")
     alerts = raw.get("alerts") or {}
     if not isinstance(alerts, dict) or set(alerts) - {"imap"}:
-        raise ConfigError(f"{path}: alerts has one setting, imap (see the README's job-alert emails section)")
+        raise ConfigError(f"{path}: alerts has one setting, imap (see {GUIDE}/applying.md#job-alert-emails)")
     boards = [b for b in listed if b.source in SOURCES]
     own: dict[tuple[str, str], Filters] = {}
     for b in boards:
@@ -963,7 +964,7 @@ scoring:
 #   # prompt: |                                     # the drafting instructions; keep {context}
 #   # sheets: ~/Documents/prep                      # prep sheets you wrote (acme-onsite.html), on Interviews
 
-# Expected pay from Levels.fyi (off unless levels is true). See the README.
+# Expected pay from Levels.fyi (off unless levels is true). See docs/guide/watchlist.md in jobwatch's repo.
 # pay:
 #   levels: true
 #   years: 10              # your years of experience
@@ -986,7 +987,7 @@ scoring:
 #   track: ic                                       # ic, manager or either
 #   horizon: "take risks for the next 3-5 years"
 
-# How the Comps tab ranks your opportunities (any numbers, scaled to add up to 1). See the README.
+# How the Comps tab ranks your opportunities (any numbers, scaled to add up to 1). See docs/guide/comps.md.
 # comps:
 #   weights: {career: 25, pay: 30, fit: 20, progress: 10, health: 15}
 

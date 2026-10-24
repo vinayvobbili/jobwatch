@@ -61,9 +61,9 @@ def test_the_example_watchlist_shows_the_new_settings_and_loads(tmp_path):
     assert config.load(path).chat.backend == "claude"  # left out: the fit scores' backend
 
 
-def test_the_readme_watchlist_loads(tmp_path):
-    readme = (Path(__file__).parent.parent / "README.md").read_text()
-    block = readme.split("## The watchlist", 1)[1].split("```yaml\n", 1)[1].split("```", 1)[0]
+def test_the_guides_example_watchlist_loads(tmp_path):
+    guide = (Path(__file__).parent.parent / "docs" / "guide" / "watchlist.md").read_text()
+    block = guide.split("# The watchlist", 1)[1].split("```yaml\n", 1)[1].split("```", 1)[0]
     path = tmp_path / "jobwatch.yaml"
     path.write_text(block)
     cfg = config.load(path)

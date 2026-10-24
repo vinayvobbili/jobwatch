@@ -4,6 +4,7 @@ you've said about them (use, or don't use, and a note). The page's Referrals tab
 
 from __future__ import annotations
 
+from . import GUIDE
 from .config import Config
 from .filters import reject_reason
 from .store import ENDED, STAGES, Store
@@ -63,7 +64,7 @@ def rate(cfg: Config, store: Store, who: str, verdict: str, note: str = "") -> d
 def text(v: dict) -> str:
     """The same rows as a list for the terminal."""
     if not v["has_connections"]:
-        return "No connections file: set `connections:` in the watchlist (see the README)."
+        return f"No connections file: set `connections:` in the watchlist (see {GUIDE}/contacts.md)."
 
     def line(p: dict) -> str:
         mark = {"use": "[use] ", "skip": "[don't use] "}.get(p["verdict"], "")

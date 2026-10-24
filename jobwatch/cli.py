@@ -17,6 +17,7 @@ from pathlib import Path
 import yaml
 
 from . import (
+    GUIDE,
     __version__,
     advice,
     alerts,
@@ -504,7 +505,7 @@ def cmd_alerts(args, cfg, store):
     if args.imap:
         if not cfg.imap:
             raise ConfigError("--imap reads the mailbox set in alerts.imap in the watchlist, and there's none: "
-                              "see the README's job-alert emails section")
+                              f"see {GUIDE}/applying.md#job-alert-emails")
         msgs += alerts.imap_messages(cfg.imap)
     r = alerts.intake(cfg, store, msgs, follow=not args.no_follow, dry_run=args.dry_run)
     if args.format == "json":
