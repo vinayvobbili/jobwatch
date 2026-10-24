@@ -102,6 +102,16 @@ def test_story_file_errors_say_what_to_fix(text, error):
     assert str(e.value).startswith("stories.yaml")
 
 
+def test_the_stories_command_checks_the_file(setup, capsys):
+    _, _, _, path = setup
+    cli.main(["--config", str(path), "stories"])
+    out = capsys.readouterr().out
+    assert "stories, all fine" in out and "  alert-dedupe: " in out
+    (path.parent / "stories.yaml").write_text("- id: Bad Id\n  title: x\n")
+    with pytest.raises(SystemExit, match="story 1"):
+        cli.main(["--config", str(path), "stories"])
+
+
 def test_the_watchlist_names_the_story_file(setup, tmp_path):
     cfg, *_ = setup
     assert cfg.stories == tmp_path / "stories.yaml" and cfg.prep == config.Prep()

@@ -688,6 +688,16 @@ def cmd_story(args, cfg, store):
         print()
 
 
+def cmd_stories(args, cfg, store):
+    """Check the story file the way drafting reads it (after editing it by hand), and list its stories."""
+    if not cfg.stories:
+        raise ConfigError("no story file: set `stories:` in the watchlist")
+    bank = stories.load(cfg.stories)
+    print(f"{cfg.stories}: {len(bank)} stories, all fine")
+    for s in bank:
+        print(f"  {s.id}: {s.title}")
+
+
 def cmd_ask(args, cfg, store):
     if args.story:
         if not args.job:
@@ -1083,6 +1093,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true", help="also skills your resume already shows")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_skills)
+
+    p = sub.add_parser("stories", help="check your story file (after editing it by hand) and list its stories")
+    p.set_defaults(func=cmd_stories, read_only=True)
 
     p = sub.add_parser("queue", help="jobs to apply to next: `queue <key>...` adds, `queue` lists")
     p.add_argument("keys", nargs="*")
