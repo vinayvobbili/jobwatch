@@ -344,10 +344,10 @@ def test_a_jibe_role_listed_under_its_country_is_remote_when_its_text_says_so():
         return j
     jobs = [job(5, "This is a remote opportunity with Hooli based in the United States."),
             job(6, "Build agents.</p><p>Remote"), job(7, "Ships #LI-Remote"),
-            job(8, "This is not a remote role: Durham office."), job(9, "Build agents."),
-            job(10, "A remote role.", "Durham, North Carolina")]
+            job(8, "This is not a remote role: Fernhollow office."), job(9, "Build agents."),
+            job(10, "A remote role.", "Fernhollow, Oregon")]
     for j in jobs[5:]:
-        j["data"]["full_location"] = "Durham, North Carolina"
+        j["data"]["full_location"] = "Fernhollow, Oregon"
     web = FakeWeb({"https://careers.hooli.test/api/jobs?page=1&limit=100": {"totalCount": len(jobs), "jobs": jobs}})
     assert [j.remote for j in sources.fetch("jibe", "careers.hooli.test", web)] == [True, True, True, None, None, None]
 
