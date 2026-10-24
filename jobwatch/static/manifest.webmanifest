@@ -1,0 +1,17 @@
+{
+  "name": "jobwatch",
+  "short_name": "jobwatch",
+  "description": "New jobs from the boards you watch, your applications and what to do next.",
+  "id": "/",
+  "start_url": "/#today",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f4fa",
+  "theme_color": "#5a5cf2",
+  "icons": [
+    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+    {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}
+  ]
+}

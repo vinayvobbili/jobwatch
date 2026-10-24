@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- For systems that cut the icon to their own shape (a circle, a squircle): full bleed, the mark inside the
+       middle 80%. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5a5cf2"/><stop offset="1" stop-color="#a24af0"/></linearGradient>
+    <radialGradient id="sweep" cx="512" cy="512" r="234" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".0"/><stop offset="1" stop-color="#fff" stop-opacity=".18"/></radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <path d="M512 512 L689 359 A234 234 0 0 0 512 278 Z" fill="url(#sweep)"/>
+  <circle cx="512" cy="512" r="234" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="44"/>
+  <circle cx="512" cy="512" r="110" fill="none" stroke="#fff" stroke-opacity=".8" stroke-width="44"/>
+  <path d="M512 512 L719 333" stroke="#fff" stroke-width="55" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="50" fill="#fff"/>
+  <circle cx="660" cy="640" r="26" fill="#fff" fill-opacity=".9"/>
+</svg>

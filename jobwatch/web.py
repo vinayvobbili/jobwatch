@@ -1231,6 +1231,14 @@ ROUTES = {
 }
 
 
+# Served from jobwatch/static as they are; the PNGs come from the SVGs (scripts/make_icons.py).
+APP_FILES = {
+    "icon.svg": "image/svg+xml", "icon-192.png": "image/png", "icon-512.png": "image/png",
+    "icon-maskable-512.png": "image/png", "apple-touch-icon.png": "image/png",
+    "manifest.webmanifest": "application/manifest+json",
+}
+
+
 def page(token: str) -> bytes:
     html = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     return html.replace("__JOBWATCH_TOKEN__", token).encode()
@@ -1259,7 +1267,8 @@ def make_handler(app: App, token: str, port_ref: list[int]):
             self.wfile.write(body)
 
         def _send_logo(self, body: bytes, ctype: str):
-            """A logo: cached a day by the browser, and sandboxed (an SVG opened on its own can't run scripts)."""
+            """A logo or the app's icon: cached a day by the browser, and sandboxed (an SVG opened on its own can't
+            run scripts)."""
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
@@ -1373,6 +1382,11 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 if found is None:
                     return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return self._send_file(*found)
+            if method == "GET" and (ctype := APP_FILES.get(url.path.lstrip("/"))):
+                # The page's own icons and manifest, for the tab and for installing it as an app: no token (the
+                # browser fetches them on its own), nothing personal in them.
+                return self._send_logo(resources.files("jobwatch").joinpath("static", url.path[1:]).read_bytes(),
+                                       ctype)
             if method == "GET" and url.path.startswith("/logo/"):
                 # A company's logo for an <img>, which can't send the token header: the token is in the address.
                 tok, _, name = url.path[len("/logo/"):].partition("/")

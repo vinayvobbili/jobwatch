@@ -113,7 +113,9 @@ four short steps, each saved as you go and each skippable:
 3. **Companies:** type a name or paste a link to one of their jobs; each board found is added with a click.
 4. **The rest:** fit scoring and job-alert emails, both optional ("Later" leaves them for Settings).
 
-It ends on Today; press **Check for new jobs** to look. Everything it asks is also in Settings. From there:
+It ends on Today; press **Check for new jobs** to look. Everything it asks is also in Settings. To keep it in
+its own window with its own icon in the dock or taskbar, install it as an app: in Chrome or Edge, the install
+icon at the end of the address bar (or ⋮ → Cast, save and share → Install page as app). From there:
 
 - **Today:** new matching jobs, with pay, how long ago they were posted, keywords, and who you know there.
   It leads with **today's picks**: the top 10 in the order you sort by (best fit, newest or top pay), since

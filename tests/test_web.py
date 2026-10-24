@@ -142,6 +142,33 @@ def test_page_has_an_activity_tab(server):
     assert status == 200 and json.loads(body)["events"] == [] and set(json.loads(body)) == {"events", "now"}
 
 
+def test_the_app_icons_and_manifest_are_served_for_installing_the_page(server):
+    """The tab's icon and the manifest Chrome installs the page from (its dock or taskbar icon): served without the
+    token, each PNG the size the manifest says, and every icon the page or the manifest names is one of them."""
+    import re
+    import struct
+
+    from jobwatch.web import APP_FILES
+
+    for name, ctype in APP_FILES.items():
+        status, body, headers = request(server, "GET", f"/{name}", with_headers=True)
+        assert status == 200 and headers["Content-Type"] == ctype and body, name
+        if ctype == "image/png":
+            assert body[:8] == b"\x89PNG\r\n\x1a\n", name
+    manifest = json.loads(request(server, "GET", "/manifest.webmanifest")[1])
+    assert manifest["display"] == "standalone" and manifest["start_url"].startswith("/")
+    assert {"any", "maskable"} <= {i["purpose"] for i in manifest["icons"]}
+    for icon in manifest["icons"]:
+        assert icon["src"].lstrip("/") in APP_FILES
+        if icon["type"] == "image/png":
+            png = request(server, "GET", icon["src"])[1]
+            assert "{}x{}".format(*struct.unpack(">II", png[16:24])) == icon["sizes"], icon["src"]
+    page = request(server, "GET", "/")[1].decode()
+    linked = re.findall(r'<link rel="(?:icon|apple-touch-icon|manifest)" href="/([^"]+)"', page)
+    assert len(linked) == 4 and set(linked) <= set(APP_FILES)
+    assert request(server, "GET", "/icon-1024.png")[0] == 404  # only the files listed
+
+
 def test_api_requires_the_token_and_a_local_host(server):
     ok = {"X-Jobwatch-Token": TOKEN}
     assert request(server, "GET", "/api/settings")[0] == 403
