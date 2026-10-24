@@ -331,8 +331,22 @@ companies:
 
 They count wherever a job is judged: what a searched board is searched for and which postings are read in full,
 Today, the digest, the queue's warnings, a company's page, Referrals and job-alert emails (a job an email links
-to on one of these boards). A job from a board that isn't watched is judged by the watchlist's filters. The
-page's Settings keeps them as written; they're changed in the file.
+to on one of these boards). A job from a board that isn't watched is judged by the watchlist's filters, or a
+track's. The page's Settings keeps them as written; they're changed in the file.
+
+A **track** does the same for a kind of job, by its title, wherever it comes from: a job-alert email's, one added
+by link, a watched board's. A job whose title matches one of a track's `titles` (regexes) is judged by the
+watchlist's filters with the track's `filters:` replacing them one by one; the first track that matches counts,
+and a board's own filters come before any track.
+
+```yaml
+tracks:
+  - name: teaching                        # optional, for you
+    titles: ['\b(adjunct|instructor|lecturer)\b']
+    filters:
+      titles: [cyber, security, computer, information technology]
+      min_salary: 0
+```
 
 ### Hacker News' Who is hiring
 
