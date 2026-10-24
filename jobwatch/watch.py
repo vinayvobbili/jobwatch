@@ -130,8 +130,8 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
     report = FetchReport()
     for b in cfg.unknown:  # a source this version can't read: say so, and check the rest
         report.errors[b.entry] = UNKNOWN_SOURCE
-    # Big boards are searched for the watchlist's titles, and a posting is read in full once: the store has it.
-    search, wanted = search_terms(cfg.filters), (lambda title: title_ok(title, cfg.filters))
+    # Big boards are searched for the watchlist's titles (a board's own, when its entry has filters), and a
+    # posting is read in full once: the store has it.
     again = {r.lower() for r in reread}
     if missing := again - {n.lower() for b in cfg.boards for n in (b.entry, b.board, b.name) if n}:
         raise ValueError(f"no watched board named {', '.join(sorted(missing))}: see `jobwatch list`")
@@ -141,8 +141,10 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
     due = hosted.due([(b.source, b.board) for b in cfg.boards])
 
     def one(b: Board):
+        f = cfg.filters_of(b)
         try:
-            jobs = sources.fetch(b.source, b.board, get, search=search, wanted=wanted, known=known.get(b))
+            jobs = sources.fetch(b.source, b.board, get, search=search_terms(f), wanted=lambda t: title_ok(t, f),
+                                 known=known.get(b))
         except sources.SourceError as e:
             return b, None, str(e), None
         return b, jobs, None, hosted.ask(b.source, b.board) if (b.source, b.board) in due else None
@@ -289,13 +291,13 @@ def queue(cfg: Config, store: Store, pay_budget: int = 0) -> list[Entry]:
         rel, hits = relevance(job, cfg.keywords)
         e = Entry(job, rec, rel, hits, fit=brief(store.score(job.key, rid)) if rid else None)
         e.contacts = contacts.at(job.display_company, job.company) if contacts else []
-        e.warnings = warnings(job, cfg.filters)
+        e.warnings = warnings(job, cfg.filters_for(job))
         e.duplicate = index.match(job, rec)
         if e.duplicate:  # first: applying twice is the costliest mistake here
             e.warnings.insert(0, e.duplicate.line)
         if reader:
             e.pay = levels.expected(cfg, store, job, reader=reader)
-            if warn := levels.below(e.pay, cfg.filters.min_salary):
+            if warn := levels.below(e.pay, cfg.filters_for(job).min_salary):
                 e.warnings.append(warn)
         out.append(e)
     return out
@@ -666,7 +668,8 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
     index = dupes.Index(store)
     for job, record in store.jobs(statuses):
         fit = fits.get(job.key)
-        if reason := reject_reason(job, cfg.filters, None if fallback_passes and fit and fit.get("fallback") else fit):
+        if reason := reject_reason(job, cfg.filters_for(job),
+                                   None if fallback_passes and fit and fit.get("fallback") else fit):
             kind = reason.split()[0]  # title, department, location, pay, posted, fit
             rejected[kind] = rejected.get(kind, 0) + 1
             continue
@@ -926,7 +929,7 @@ def hidden(cfg: Config, store: Store, kind: str = "", limit: int = 100, since: d
     for job, rec in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
         if (since and datetime.fromisoformat(rec["first_seen"]) < since) or (source and job.source != source):
             continue
-        if r := rejection(job, cfg.filters, fits.get(job.key)):
+        if r := rejection(job, cfg.filters_for(job), fits.get(job.key)):
             by[r[0]] = by.get(r[0], 0) + 1
             if r[0] == kind or (since and not kind):
                 jobs.append({"key": job.key, "title": job.title, "company": job.display_company,

@@ -910,12 +910,12 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
             seen[a.url] = seen[same] = f
             known = tracked.match(a.company, a.title, a.url)
             if not known:
-                f.reason = reject_reason(f.job, cfg.filters)
+                f.reason = reject_reason(f.job, cfg.filters_for(f.job))
                 # Only jobs worth a look are followed (the rest stay as emailed), and jobs that fail only on what
                 # the email didn't say: MyGreenhouse's name no place or pay, and the posting does
-                if follow and (f.reason is None or _unsaid(f.job, cfg.filters)):
-                    resolver.resolve(f)
-                    f.reason = reject_reason(f.job, cfg.filters)
+                if follow and (f.reason is None or _unsaid(f.job, cfg.filters_for(f.job))):
+                    resolver.resolve(f)  # can find it on a watched board, with filters of its own
+                    f.reason = reject_reason(f.job, cfg.filters_for(f.job))
                 # The same job, already tracked from its board (or from another alert, under another name)
                 known = (f.job.key if store.has(f.job.key) else None) or (
                     f.how in ("board", "posting") and tracked.match(f.job.display_company, f.job.title, f.job.url))
@@ -928,7 +928,7 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
                     f.job.remote = True
                     if not dry_run:
                         store.update(f.job)
-                f.reason = reject_reason(f.job, cfg.filters)
+                f.reason = reject_reason(f.job, cfg.filters_for(f.job))
                 continue
             f.result = "new"
             f.same = acted.match(f.job)

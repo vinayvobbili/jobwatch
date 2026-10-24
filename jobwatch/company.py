@@ -140,10 +140,9 @@ def _left_out(cfg: Config, store: Store, rows: list[tuple[Job, dict]]) -> dict[s
     view() leaves out under display.company: matches. Not their age: an older role still open at a company you
     looked up is one to see. Nor one you wrote a note, next step or follow-up on: you're keeping an eye on it."""
     fits = _fits(store, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
-    f = replace(cfg.filters, max_age_days=None)
     return {job.key: r[0] for job, rec in rows
             if not (rec.get("note") or rec.get("next_step") or rec.get("follow_up"))
-            and (r := rejection(job, f, fits.get(job.key)))}
+            and (r := rejection(job, replace(cfg.filters_for(job), max_age_days=None), fits.get(job.key)))}
 
 
 def view(cfg: Config, store: Store, text: str, every: bool | None = None) -> dict | None:

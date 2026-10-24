@@ -507,6 +507,7 @@ class App:
             b = config._board(c, self.path, strict=False)
             companies.append({"source": b.source, "board": b.board, "name": b.name,
                               **({"careers": b.careers} if b.careers else {}),
+                              **({"filters": b.filters} if b.filters else {}),
                               **({} if b.source in sources.SOURCES else {"error": config.UNKNOWN_SOURCE})})
         every = raw.get("fetch_every")
         scoring = raw.get("scoring") or {}
@@ -532,10 +533,14 @@ class App:
 
     def post_settings(self, body) -> dict:
         settings = {k: v for k, v in body.items() if k in config.SETTINGS}
-        if "companies" in settings:  # each board's name and careers link are kept (see config._item)
-            settings["companies"] = [config._item(config.Board(c["source"], c["board"], c.get("name") or "",
-                                                               (c.get("careers") or "").strip()))
-                                     for c in settings["companies"]]
+        if "companies" in settings:  # each board's name, careers link and filters are kept (see config._item)
+            # filters are written in the file only: a board the page sends without them keeps the file's
+            old = {(b.source, b.board): b.filters for c in config._companies(self.path)
+                   for b in [config._board(c, self.path, strict=False)]}
+            settings["companies"] = [config._item(config.Board(
+                c["source"], c["board"], c.get("name") or "", (c.get("careers") or "").strip(),
+                c["filters"] if isinstance(c.get("filters"), dict) else old.get((c["source"], c["board"]), {})))
+                for c in settings["companies"]]
         talk = settings.get("chat")
         if isinstance(talk, dict) and str(talk.get("prompt") or "").strip() == chat.SYSTEM.strip():
             settings["chat"] = {k: v for k, v in talk.items() if k != "prompt"}  # only an edited one is kept

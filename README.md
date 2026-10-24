@@ -311,6 +311,29 @@ through the company's own careers site (on Today, in a job's details, in `jobwat
 assistant). Add the company's careers site to the board, `{board: ashby:acme, careers:
 https://acme.example/careers}`, and its jobs link there instead. If the page can't be read, nothing changes.
 
+### Filters for one board
+
+A board can have filters of its own, for jobs your usual ones would hide: a college's adjunct openings, say,
+with other titles and hourly pay (which counts as $35 × 2,080 a year against `min_salary`). Each setting under
+the board's `filters:` replaces the watchlist's for that board's jobs only; the ones it leaves out stay the
+watchlist's. A YAML anchor lets several boards share them:
+
+```yaml
+teaching: &teaching                       # any name; only the boards that use it count
+  titles: [adjunct, instructor, lecturer, faculty]
+  min_salary: 0
+companies:
+  - greenhouse:globex                     # the watchlist's filters
+  - {board: workday:initech.wd1/Careers, name: Initech College, filters: *teaching}
+  - board: icims:globexu
+    filters: *teaching
+```
+
+They count wherever a job is judged: what a searched board is searched for and which postings are read in full,
+Today, the digest, the queue's warnings, a company's page, Referrals and job-alert emails (a job an email links
+to on one of these boards). A job from a board that isn't watched is judged by the watchlist's filters. The
+page's Settings keeps them as written; they're changed in the file.
+
 ### Hacker News' Who is hiring
 
 `hn:whoishiring` watches the latest monthly "Ask HN: Who is hiring?" thread; `hn:whoishiring/3` the last three
