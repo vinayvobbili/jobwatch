@@ -28,14 +28,14 @@ def launchd(tmp_path, monkeypatch):
 
 def test_install_writes_a_login_item_for_this_watchlist(launchd, watchlist, capsys):
     cli.main(["-c", str(watchlist), "service", "install", "--port", "8800"])
-    assert "http://127.0.0.1:8800/" in capsys.readouterr().out
+    assert "http://jobwatch.localhost:8800/" in capsys.readouterr().out
     job = plistlib.loads(service.plist_path().read_bytes())
     assert job["Label"] == service.LABEL and job["RunAtLoad"] and job["KeepAlive"]
     assert job["ProgramArguments"] == [sys.executable, "-m", "jobwatch.cli", "-c", str(watchlist.resolve()), "ui",
                                        "--no-browser", "--port", "8800"]
     assert [c[0] for c in launchd] == ["bootout", "print", "bootstrap"]
     assert service.status() == {"installed": True, "running": True, "pid": 4242, "log": str(service.log_path()),
-                                "url": "http://127.0.0.1:8800/"}
+                                "url": "http://jobwatch.localhost:8800/"}
     cli.main(["service", "uninstall"])
     assert not service.plist_path().exists() and "Removed" in capsys.readouterr().out
     cli.main(["service", "status"])

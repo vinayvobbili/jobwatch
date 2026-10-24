@@ -149,6 +149,9 @@ def test_api_requires_the_token_and_a_local_host(server):
     # DNS rebinding: right port, someone else's name.
     assert request(server, "GET", "/api/settings", headers=ok, host=f"evil.example:{server}")[0] == 403
     assert request(server, "GET", "/", host=f"evil.example:{server}")[0] == 403
+    # The page's own name works; another *.localhost name doesn't.
+    assert request(server, "GET", "/api/settings", headers=ok, host=f"jobwatch.localhost:{server}")[0] == 200
+    assert request(server, "GET", "/api/settings", headers=ok, host=f"other.localhost:{server}")[0] == 403
     status, data = request(server, "GET", "/api/settings", headers=ok)
     assert status == 200 and len(json.loads(data)["companies"]) == 3
     status, data = request(server, "POST", "/api/fetch", {}, headers=ok, host=f"localhost:{server}")

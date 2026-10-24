@@ -1,7 +1,7 @@
 """Keep `jobwatch ui` running: start it when you log in and restart it if it stops (a macOS launchd agent).
 
 `jobwatch service install` writes ~/Library/LaunchAgents/<LABEL>.plist and loads it; `uninstall` stops it and
-removes the file. The page is then always at http://127.0.0.1:<port>/, and its output goes to
+removes the file. The page is then always at http://jobwatch.localhost:<port>/, and its output goes to
 ~/Library/Logs/jobwatch-ui.log.
 
 A launchd agent doesn't read your shell profile, so ANTHROPIC_API_KEY set there isn't visible to it: with
@@ -19,6 +19,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+from . import APP_HOST
 
 LABEL = "io.github.jobwatch.ui"
 GONE_WAIT = 15  # seconds to wait for a replaced job to stop before loading the new one
@@ -92,7 +94,7 @@ def install(config: Path, port: int = 8765) -> str:
     with path.open("wb") as f:
         plistlib.dump(definition(config, port), f)
     _launchctl("bootstrap", _domain(), str(path))
-    return f"http://127.0.0.1:{port}/"
+    return f"http://{APP_HOST}:{port}/"
 
 
 def uninstall() -> bool:
@@ -113,7 +115,7 @@ def status() -> dict:
     if info["installed"]:
         args = plistlib.loads(path.read_bytes()).get("ProgramArguments", [])
         if "--port" in args:
-            info["url"] = f"http://127.0.0.1:{args[args.index('--port') + 1]}/"
+            info["url"] = f"http://{APP_HOST}:{args[args.index('--port') + 1]}/"
     r = _launchctl("print", f"{_domain()}/{LABEL}", check=False)
     # The job's own lines come first; nested sections (sockets, endpoints) have "state = active" of their own.
     state = re.search(r"^\s*state = (\w+)", r.stdout, re.M)

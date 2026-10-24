@@ -28,6 +28,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 import yaml
 
 from . import (
+    APP_HOST,
     __version__,
     advice,
     ai,
@@ -1349,7 +1350,8 @@ def make_handler(app: App, token: str, port_ref: list[int]):
 
         def _host_ok(self) -> bool:
             # Blocks DNS rebinding: a page on evil.example resolving to 127.0.0.1 still sends its own Host.
-            return self.headers.get("Host", "") in {f"127.0.0.1:{port_ref[0]}", f"localhost:{port_ref[0]}"}
+            # APP_HOST is as safe: browsers and macOS send every *.localhost name to this machine, never the web.
+            return self.headers.get("Host", "") in {f"{h}:{port_ref[0]}" for h in ("127.0.0.1", "localhost", APP_HOST)}
 
         def _handle(self, method: str):
             if not self._host_ok():
@@ -1461,7 +1463,7 @@ def serve(config_path: Path, port: int = 8765, open_browser: bool = True, token:
     server = _Server(("127.0.0.1", port), make_handler(app, token, port_ref))
     server.app = app
     port_ref[0] = server.server_address[1]
-    url = f"http://127.0.0.1:{port_ref[0]}/"
+    url = f"http://{APP_HOST}:{port_ref[0]}/"
     print(f"jobwatch is running at {url}  (watchlist: {config_path}). Press Ctrl+C to stop.", file=sys.stderr)
     if open_browser:
         threading.Timer(0.3, webbrowser.open, (url,)).start()
