@@ -379,6 +379,62 @@ def _prompts(raw, path: Path) -> dict[str, str]:
     return dict(raw)
 
 
+# What you want next, which the Comps suggestion's career part scores jobs against (see comps._career).
+GOAL_KINDS = ("tech", "consulting", "enterprise")  # kinds of company, as Comps keeps them
+GOAL_ROLES = ("product", "customer", "internal")   # what the job builds, as Comps keeps it
+GOAL_TRACKS = ("ic", "manager", "either")          # an individual contributor, a people manager, or both
+
+
+@dataclass(frozen=True)
+class Goals:
+    """goals in the watchlist: who you are and what you want next. company_kinds and roles are in order of
+    preference (first is best; ("any",) cares about none); the career part of the Comps suggestion scores from them.
+    about, track and horizon are in your own words: shown beside the suggestion and read by "Suggest titles from my
+    resume", they change no score."""
+    about: str = ""
+    company_kinds: tuple = ()
+    roles: tuple = ()
+    track: str = "either"
+    horizon: str = ""
+
+    @property
+    def scores(self) -> bool:
+        """Whether the career part follows these goals (a kind or role preference is set) or the fixed rules."""
+        return bool(self.company_kinds or self.roles)
+
+
+def _preferences(raw, name: str, allowed: tuple, path: Path) -> tuple:
+    """goals.company_kinds or goals.roles: a list (or text with commas) of `allowed` names, best first, or "any"
+    alone. A name left out ranks after the ones listed."""
+    if isinstance(raw, str):
+        raw = [p for p in re.split(r"[,\s]+", raw) if p]
+    if not isinstance(raw, list) or not all(isinstance(x, str) for x in raw):
+        raise ConfigError(f"{path}: goals.{name} looks like [{', '.join(allowed[:2])}] (best first), got {raw!r}")
+    names = tuple(x.strip().lower() for x in raw)
+    bad = [x for x in names if x not in (*allowed, "any")]
+    if bad:
+        raise ConfigError(f"{path}: goals.{name} can only name {', '.join(allowed)} or any, got {', '.join(bad)}")
+    if len(set(names)) != len(names):
+        raise ConfigError(f"{path}: goals.{name} names {next(x for x in names if names.count(x) > 1)} twice")
+    if "any" in names and len(names) > 1:
+        raise ConfigError(f"{path}: goals.{name}: any means no preference, so it stands alone")
+    return names
+
+
+def _goals(raw, path: Path) -> Goals:
+    raw = _section(raw, "goals", Goals, path, "{company_kinds: [tech, consulting], roles: [product], track: ic}")
+    track = str(raw.get("track", Goals.track)).strip().lower()
+    if track not in GOAL_TRACKS:
+        raise ConfigError(f"{path}: goals.track must be one of {', '.join(GOAL_TRACKS)}, got {raw['track']!r}")
+    text = {}
+    for k in ("about", "horizon"):
+        if not isinstance(raw.get(k, ""), str):
+            raise ConfigError(f"{path}: goals.{k} is text in your own words, got {raw[k]!r}")
+        text[k] = raw.get(k, "").strip()
+    return Goals(company_kinds=_preferences(raw.get("company_kinds", []), "company_kinds", GOAL_KINDS, path),
+                 roles=_preferences(raw.get("roles", []), "roles", GOAL_ROLES, path), track=track, **text)
+
+
 @dataclass
 class Config:
     path: Path
@@ -419,6 +475,7 @@ class Config:
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
     pay: Pay = field(default_factory=Pay)
     comps: Comps = field(default_factory=Comps)
+    goals: Goals = field(default_factory=Goals)
     # How often `jobwatch ui` checks the boards by itself (fetch_every); None: only when asked. Or the times of
     # day it checks (fetch_every: 8am, 2pm, 8pm), this computer's clock; then fetch_every is None.
     fetch_every: timedelta | None = None
@@ -603,7 +660,7 @@ def locate(explicit: str | Path | None = None) -> Path:
 
 SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "connections_skip", "stories", "scoring",
             "chat", "prep",
-            "learning", "display", "pace", "calendar", "pay", "comps", "alerts", "suggestions", "fetch_every")
+            "learning", "display", "pace", "calendar", "pay", "comps", "goals", "alerts", "suggestions", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -774,7 +831,7 @@ def load(explicit: str | Path | None = None) -> Config:
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
-        comps=_comps(raw.get("comps"), path),
+        comps=_comps(raw.get("comps"), path), goals=_goals(raw.get("goals"), path),
         fetch_every=None if (at := _at(raw.get("fetch_every"), path)) else _every(raw.get("fetch_every"), path),
         fetch_at=at,
     )
@@ -791,6 +848,7 @@ def defaults() -> dict:
             "calendar": asdict(Calendar()),
             "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "target_max", "floor")},
             "comps": {"weights": dict(COMP_WEIGHTS)},
+            "goals": {"track": Goals.track},
             "suggestions": asdict(Suggestions()),
             "alerts": {"imap": {"port": imap.port, "folder": imap.folder, "days": imap.days,
                                 "senders": list(imap.senders)}},
@@ -904,6 +962,16 @@ scoring:
 #   target: 180000         # your target base: shown on prep sheets next to the posted range
 #   # target: 180000-210000  # or a range (or target_max: 210000 beside target: 180000)
 #   floor: 150000          # your private floor: on your own sheet only, never sent to Claude
+
+# What you want next: the Comps tab's career part scores jobs against it. Best first; "any" cares about none.
+# Leave company_kinds and roles out and the career part keeps its fixed rules (tech 80, consulting 55,
+# enterprise 40; product +15, customer +5, internal -5).
+# goals:
+#   about: "Staff engineer, ten years in security tooling, ready to build product again."
+#   company_kinds: [tech, consulting, enterprise]   # or: any
+#   roles: [product, customer, internal]            # what the job builds; or: any
+#   track: ic                                       # ic, manager or either
+#   horizon: "take risks for the next 3-5 years"
 
 # How the Comps tab ranks your opportunities (any numbers, scaled to add up to 1). See the README.
 # comps:

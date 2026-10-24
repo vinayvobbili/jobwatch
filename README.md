@@ -95,8 +95,19 @@ pipx install jobwatch      # or: pip install jobwatch
 jobwatch ui
 ```
 
-A page opens on your computer. Add the companies you want to watch (type a name or paste a link to one of
-their jobs), say what you're looking for, and press **Check for new jobs**. From there:
+A page opens on your computer. The first time, it starts with **Tell me about yourself** and walks you through
+four short steps, each saved as you go and each skippable:
+
+1. **About you:** a box for who you are and what you want next, your resume (upload or paste), and plain
+   questions about the kind of company, the kind of work, the track and how far ahead you're thinking. These
+   become `goals:` in the watchlist.
+2. **Jobs you want:** titles, places, remote, and a pay target. If a model is set up and you added a resume,
+   **Suggest titles from my resume** offers titles and keywords, marked as suggestions; nothing is sent
+   anywhere unless you press it, and nothing is added until you click it.
+3. **Companies:** type a name or paste a link to one of their jobs; each board found is added with a click.
+4. **The rest:** fit scoring and job-alert emails, both optional ("Later" leaves them for Settings).
+
+It ends on Today; press **Check for new jobs** to look. Everything it asks is also in Settings. From there:
 
 - **Today:** new matching jobs, with pay, how long ago they were posted, keywords, and who you know there.
   It leads with **today's picks**: the top 10 in the order you sort by (best fit, newest or top pay), since
@@ -1120,7 +1131,8 @@ starts from the company's `--kind` (`tech` 80, `consulting` 55, `enterprise` 40:
 builds for itself, like a bank or insurer) and adds the job's `--role` (`product` +15 for building the company's
 own product, `customer` +5 for forward-deployed or customer-facing engineering, `internal` -5 for internal tools),
 kept between 0 and 100; `--career-note` is a few words of your own, shown but not scored. A part with nothing
-to go on counts as 50. Change the weights in the
+to go on counts as 50. Those numbers are one person's goals; say yours with `goals:` (below) and the career part
+follows them. Change the weights in the
 watchlist; any numbers 0 or more, scaled to add up to 1 (a part you leave out keeps its default, so give all five
 to be exact):
 
@@ -1131,6 +1143,26 @@ comps:
 
 Each opportunity shows its score, every part with the input it came from, and a sentence
 on why.
+
+**Your goals.** Say what you want next, and the career part scores against it instead of the fixed numbers
+above (Settings → Your goals, or the watchlist):
+
+```yaml
+goals:
+  about: "Staff engineer, ten years in security tooling, ready to build product again."
+  company_kinds: [tech, consulting, enterprise]   # best first; or: any
+  roles: [product, customer, internal]            # what the job builds, best first; or: any
+  track: ic                                       # ic, manager or either
+  horizon: "take risks for the next 3-5 years"
+```
+
+`company_kinds` and `roles` are in order of preference: a kind scores 90, 65 or 40 (first choice best) and a role
+adds +10, 0 or -10; one you leave off the list ranks last, and `any` is neutral (65 and 0). Name only one of the
+two and the other keeps its fixed rule. Without either, nothing changes from the numbers above. The suggestion's
+input says which choice of yours a job is ("tech company (your 1st choice)"). `about`, `track` and `horizon` are in
+your own words and change no score; `about` and the rest are read only if you ask for title suggestions when
+setting up. Settings → Your goals also has `pay.target`, a private `pay.floor` (never shown elsewhere) and the
+five weights as sliders.
 
 **Worth it.** Today and the apply queue can also be ordered by the same score, with the **Worth it** button (kept
 per browser). Each card then shows `worth N`, and hovering it lists the parts. A job isn't applied to yet, so the

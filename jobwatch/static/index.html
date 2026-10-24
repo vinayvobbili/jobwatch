@@ -473,6 +473,9 @@ textarea { min-height: 70px; resize: vertical; }
 .list-item:last-child { border-bottom: 0; }
 .kw { display: grid; grid-template-columns: 1fr 160px auto; gap: 6px; margin: 5px 0; }
 .error { color: var(--bad); }
+.onboard > .card { max-width: 760px; margin-bottom: 16px; }
+.onboard details { margin: 12px 0; }
+.onboard summary { cursor: pointer; font-weight: 600; }
 .welcome { padding: 32px; border: 0; color: #fff; background: var(--grad); }
 .welcome h2 { font-size: 26px; }
 .welcome button.primary { background: #fff; color: #5a5cf2; }
@@ -2526,13 +2529,186 @@ function toWatchPanel() {
   return el;
 }
 
+// -- first run: "Tell me about yourself", then the jobs you want, the companies to watch and the optional rest.
+// Each step saves as you go and can be skipped; the last one ends on Today. A watchlist with no companies opens
+// here (renderWelcome); once finished or skipped, Today only offers a way back to the companies step.
+
+const ONBOARD_STEPS = ["About you", "Jobs you want", "Companies", "The rest"];
+const onboarding = { step: 0 };
+
 function renderWelcome() {
-  put(h("div", { class: "card welcome" },
-    h("h2", {}, "Welcome to jobwatch"),
-    h("p", {}, "jobwatch checks the careers pages of companies you choose and shows you the new jobs that match " +
-      "what you're looking for. It runs on your computer, and it never applies for you."),
-    h("p", {}, "Start by adding a few companies and saying what jobs you want."),
-    h("button", { class: "btn primary", onclick: () => go("settings") }, "Set up my watchlist", icon("arrow", 14))));
+  if (remembered("onboarded", "")) {
+    return put(h("div", { class: "card welcome" },
+      h("h2", {}, "Nothing to watch yet"),
+      h("p", {}, "jobwatch looks at the careers pages of companies you choose. Add a few and it starts looking."),
+      h("div", { class: "row" },
+        h("button", { class: "btn primary", onclick: () => { onboarding.step = 2; renderOnboarding(); } }, "Add companies", icon("arrow", 14)),
+        h("button", { class: "btn", onclick: () => go("settings") }, "Open Settings"))));
+  }
+  renderOnboarding();
+}
+
+function renderOnboarding() {
+  const steps = [onboardAbout, onboardJobs, onboardCompanies, onboardRest], n = onboarding.step, last = steps.length - 1;
+  const move = to => { onboarding.step = Math.max(0, Math.min(last, to)); renderOnboarding(); };
+  const finish = async () => {
+    remember("onboarded", "1");
+    try { settings = await api("/api/settings"); } catch { /* the tabs read it again */ }
+    go("today");
+  };
+  const ctx = { step: n, last: n === last, back: () => move(n - 1), next: () => n === last ? finish() : move(n + 1) };
+  put(h("div", { class: "onboard" },
+    h("div", { class: "card welcome" },
+      h("h2", {}, n === 0 ? "Welcome to jobwatch" : ONBOARD_STEPS[n]),
+      h("p", {}, n === 0 ? "jobwatch checks the careers pages of companies you choose and shows you the new jobs that match " +
+        "what you're looking for. It runs on your computer, and it never applies for you. A few questions first; " +
+        "every one can wait." : `Step ${n + 1} of ${steps.length}. Everything is saved as you go, and you can change it later in Settings.`)),
+    steps[n](ctx)));
+}
+
+// Back, Save and continue, and Skip for now under a step. save() writes what the step asked; a failure shows
+// beside the buttons and stays on the step.
+function onboardActions(ctx, save) {
+  const msg = h("span", { class: "small muted", role: "status" });
+  const next = h("button", { class: "btn primary" }, ctx.last ? "Save and go to Today" : "Save and continue", icon("arrow", 14));
+  next.onclick = async () => {
+    next.disabled = true; msg.textContent = "Saving…"; msg.className = "small muted";
+    try { await save(); settings = await api("/api/settings"); ctx.next(); }
+    catch (e) { msg.textContent = e.message; msg.className = "small error"; next.disabled = false; }
+  };
+  return h("div", { class: "row actions" }, ctx.step ? h("button", { class: "btn", onclick: ctx.back }, "Back") : null, next,
+    h("button", { class: "btn", onclick: ctx.next }, ctx.last ? "Later" : "Skip for now"), msg);
+}
+
+// Step 1: Tell me about yourself: in your own words, your resume, and what you want next.
+function onboardAbout(ctx) {
+  const s = settings, form = goalsForm(s);
+  const pasted = h("textarea", { rows: 4, placeholder: "…or paste the text of your resume here" });
+  const pasteMsg = h("span", { class: "small muted" });
+  const paste = h("button", { class: "btn", onclick: async () => {
+    if (!pasted.value.trim()) return;
+    pasteMsg.textContent = "Saving…"; pasteMsg.className = "small muted";
+    try {
+      const r = await api("/api/upload?kind=resume&name=resume.txt", undefined, new Blob([pasted.value], { type: "text/plain" }));
+      settings.resume = r.resume; settings.exists = true;
+      pasteMsg.textContent = `Saved as ${r.resume}`;
+    } catch (e) { pasteMsg.textContent = e.message; pasteMsg.className = "small error"; }
+  } }, "Use this text");
+  return h("div", { class: "card" },
+    form.aboutField,
+    h("div", { class: "field" }, h("label", {}, "Your resume ", h("span", { class: "hint" }, "optional")),
+      uploadField("resume", ".pdf,.docx,.txt,.md", s.resume, "It stays on this computer. Fit scores and title suggestions read it " +
+        "(PDF and Word files need: pip install 'jobwatch[score]')."),
+      pasted, h("div", { class: "row" }, paste, pasteMsg)),
+    form.questions,
+    onboardActions(ctx, async () => { await api("/api/settings", { goals: form.values() }); }));
+}
+
+// Step 2: the jobs you want: titles, places, remote, and a pay target. "Suggest titles from my resume" is offered
+// only when a model can run (/api/onboarding); the suggestions are clearly marked and nothing is added until clicked.
+function onboardJobs(ctx) {
+  const s = settings, f = s.filters || {}, places0 = f.locations || [];
+  const titles = areaInput(f.titles, "Product Manager\nData Engineer");
+  const places = areaInput(places0.filter(l => l.toLowerCase() !== "remote"), "New York\nDenver");
+  const remote = checkLine(places0.some(l => l.toLowerCase() === "remote"), "Include remote jobs");
+  const country = choice([["US", "Remote jobs open in the US"], ["any", "Remote jobs anywhere"]],
+    (f.remote_country || "US").toLowerCase() === "any" ? "any" : "US");
+  const target = textInput(targetText(s.pay || {}), "e.g. 180000, or 170000-200000");
+  const keywords = new Set();
+  const ideas = h("div", {});
+  const chips = (title, list, add) => h("div", { class: "small", style: "margin-top:8px" }, title, " ",
+    list.map(t => h("button", { class: "chip toggle", onclick: e => { add(t); e.currentTarget.classList.add("on"); } }, t)));
+  const addTitle = t => { if (!unlines(titles.value).includes(t)) titles.value = lines([...unlines(titles.value), t]); };
+  const draw = o => {
+    if (!o.ready) return fill(ideas, h("div", { class: "help" }, o.why ? `Title suggestions need a model: ${o.why}` : ""));
+    const ask = h("button", { class: "btn" }, "Suggest titles from my resume");
+    const note = h("div", { class: "help" }, `Optional. Your resume and what you told me go to ${o.where.label}` +
+      `${o.where.local ? "" : " (not this computer)"} only when you press this.`);
+    const out = h("div", {});
+    ask.onclick = async () => {
+      ask.disabled = true; fill(out, h("div", { class: "muted small" }, "Thinking…"));
+      try {
+        const r = await api("/api/onboarding/titles", {});
+        fill(out, h("div", { class: "help" }, `Suggestions from ${r.where.label}, not facts about you. Click the ones you want.`),
+          chips("Titles:", r.titles, addTitle),
+          r.keywords.length ? chips("Keywords:", r.keywords, k => keywords.add(k)) : null);
+      } catch (e) { fill(out, h("div", { class: "error small" }, e.message)); }
+      ask.disabled = false;
+    };
+    fill(ideas, ask, note, out);
+  };
+  api("/api/onboarding").then(draw).catch(() => fill(ideas));
+  return h("div", { class: "card" },
+    h("div", { class: "fields" },
+      field("Job titles you want", titles, "One per line; a title must contain one."),
+      field("Places", h("div", { class: "stack" }, places, remote.el, country), "A city or state, one per line."),
+      field("Pay target (per year)", target, "What you'd like to be offered: a number, or a range like 170000-200000.")),
+    ideas,
+    onboardActions(ctx, async () => {
+      const locations = [...unlines(places.value), ...(remote.box.checked ? ["remote"] : [])];
+      const body = { filters: mergeFilters(f, { titles: unlines(titles.value), locations, remote_country: country.value }),
+        pay: merged(s.pay, targetValues(target.value)) };
+      if (keywords.size) body.keywords = { ...(s.keywords || {}), ...Object.fromEntries([...keywords].map(k => [k, 1])) };
+      await api("/api/settings", body);
+    }));
+}
+
+// Step 3: the companies to watch: the same find-and-add as Settings, each added at once, plus any companies
+// jobwatch already suggests.
+function onboardCompanies(ctx) {
+  const watching = h("div", { class: "small muted" }), also = h("div", {});
+  const drawWatching = () => fill(watching, settings.companies.length
+    ? `Watching ${settings.companies.length}: ${settings.companies.map(c => c.name || c.board).join(", ")}` : "Not watching any company yet.");
+  drawWatching();
+  const finder = companyFinder(hit => settings.companies.some(c => c.source === hit.source && c.board === hit.board),
+    async (hit, typed) => {
+      await api("/api/settings", { companies: [...settings.companies.map(c => ({ ...c })),
+        { source: hit.source, board: hit.board, name: hit.name || typed }] });
+      settings = await api("/api/settings");
+      drawWatching();
+    });
+  (async () => {
+    try {
+      const list = (await api("/api/suggestions")).companies.filter(c => c.entry);
+      if (!list.length) return;
+      fill(also, h("div", { class: "help" }, "Companies jobwatch has seen in your job alerts:"), list.slice(0, 5).map(c =>
+        h("div", { class: "list-item" }, h("div", { style: "flex:1" }, h("b", {}, c.name)),
+          h("button", { class: "btn", onclick: async e => {
+            e.target.disabled = true;
+            try { await api("/api/suggestions/add", { company: c.company }); settings = await api("/api/settings");
+              drawWatching(); e.target.replaceWith(h("span", { class: "muted small" }, "added")); }
+            catch (err) { e.target.disabled = false; toast(err.message); }
+          } }, "Add"))));
+    } catch { /* a suggestion, not the step */ }
+  })();
+  const actions = onboardActions(ctx, async () => {});  // nothing left to save: each company was saved when added
+  return h("div", { class: "card" },
+    h("p", { class: "small muted lead" }, "Type a company's name, or paste a link to one of their jobs. Add as many as you like."),
+    h("div", { class: "row find" }, h("div", { style: "flex:1" }, finder.input), finder.button), finder.out, watching, also, actions);
+}
+
+// Step 4: optional extras, each closed until opened: fit scoring and job-alert emails. "Later" leaves both for Settings.
+function onboardRest(ctx) {
+  const s = settings, D = s.defaults, scoring = s.scoring || {};
+  const backend = choice([["local", "On this Mac (Apple Silicon)"], ["claude", "Claude API (needs ANTHROPIC_API_KEY)"]],
+    scoring.backend || D.scoring.backend);
+  const alertsC = alertsCard(s);
+  const fit = h("details", {}, h("summary", {}, "Fit scores: how well each job matches your resume"),
+    h("p", { class: "small muted" }, "Needs the scoring add-on: pip install 'jobwatch[score]'. More in Settings."),
+    field("Score with", backend, "Where the posting and your resume are read."));
+  const alerts = h("details", {}, h("summary", {}, "Job-alert emails: read LinkedIn, Built In and Indeed alerts from your mailbox"),
+    alertsC);
+  alertsC.classList.remove("full");
+  return h("div", { class: "card" },
+    h("p", { class: "small muted lead" }, "Both are optional. Open one to set it up, or press Later."),
+    fit, alerts,
+    onboardActions(ctx, async () => {
+      const body = {};
+      if (fit.open) body.scoring = merged(scoring, { backend: backend.value });
+      const imap = alerts.open ? alertsC.values() : null;
+      if (imap) body.alerts = imap;
+      if (Object.keys(body).length) await api("/api/settings", body);
+    }));
 }
 
 const queueView = { page: 1, sort: remembered("queue.sort", "queued") };
@@ -3068,6 +3244,163 @@ function setCard(id, title, hint, ...kids) {
   return h("div", { class: "card", id: "set-" + id }, h("h3", {}, title, hint ? [" ", h("span", { class: "hint" }, hint)] : null), kids);
 }
 
+function uploadField(kind, accept, current, help) {
+  const input = h("input", { type: "file", accept });
+  const status = h("span", { class: "muted small" }, current ? `Using ${current}` : "Not set");
+  input.onchange = async () => {
+    const file = input.files[0]; if (!file) return;
+    status.textContent = "Uploading…";
+    try {
+      const r = await api(`/api/upload?kind=${kind}&name=${encodeURIComponent(file.name)}`, undefined, file);
+      settings[kind] = r[kind];
+      status.textContent = `Saved as ${r[kind]}` + (r.people !== undefined ? ` (${r.people} people` +
+        (r.known !== undefined ? `, ${r.known} you've been in touch with` : "") + ")" : "");
+    } catch (e) { status.textContent = e.message; status.className = "error small"; }
+  };
+  return h("div", {}, h("div", { class: "row upload" }, input, status), h("div", { class: "help" }, help));
+}
+
+// Looking up a company's board by name or job link (/api/find), with an Add button on each board found. has(hit):
+// already added; add(hit, typed): add it (may be async; if it throws, the error shows in place of the button).
+// {input, button, out} for the caller to lay out.
+function companyFinder(has, add) {
+  const input = h("input", { type: "text", placeholder: "Company name, or paste a link to one of their jobs" });
+  const out = h("div", {});
+  const button = h("button", { class: "btn" }, "Find");
+  const find = async () => {
+    button.disabled = true; out.replaceChildren(h("div", { class: "muted small" }, "Looking…"));
+    try {
+      const hits = await api("/api/find", { company: input.value });
+      out.replaceChildren(...(hits.length ? hits.map(hit => h("div", { class: "list-item" },
+        h("div", { style: "flex:1" },
+          h("div", {}, h("b", {}, hit.name || hit.board), ` · ${hit.open_roles} open jobs · `, link(hit.careers, "careers page")),
+          h("div", { class: "muted small" }, "e.g. " + hit.sample_titles.slice(0, 3).join(" · "))),
+        has(hit) ? h("span", { class: "muted small" }, "added")
+          : h("button", { class: "btn primary", onclick: async e => {
+              const b = e.target;
+              b.disabled = true;
+              try { await add(hit, input.value.trim()); b.replaceWith(h("span", { class: "muted small" }, "added")); }
+              catch (err) { b.disabled = false; b.replaceWith(h("span", { class: "error small" }, err.message)); }
+            } }, "Add")))
+        : [h("div", { class: "muted small" }, "No Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters, Avature, iCIMS or Jobvite board found. Try a link to their " +
+            "careers page or one of their job postings. Some companies use other systems that jobwatch can't read yet.")]));
+    } catch (e) { out.replaceChildren(h("div", { class: "error small" }, e.message)); }
+    button.disabled = false;
+  };
+  button.onclick = find;
+  input.addEventListener("keydown", e => { if (e.key === "Enter") find(); });
+  return { input, button, out };
+}
+
+// -- goals: what you want next (goals), your pay target and the Comps weights. Settings' first card and the first
+// steps of onboarding share these.
+
+const GOAL_KINDS = [["tech", "A tech company"], ["consulting", "A consultancy"], ["enterprise", "A large enterprise"]];
+const GOAL_ROLES = [["product", "Building the product"], ["customer", "Working with customers"], ["internal", "Building internal tools"]];
+const CHOICES = ["1st", "2nd", "3rd"];
+
+// A few choices in order of preference, best first, or "I don't mind". value() is the list as the watchlist keeps it
+// (["any"] for no preference, [] for none said).
+function rankPicker(options, saved) {
+  const any = checkLine(saved.length === 1 && saved[0] === "any", "I don't mind");
+  const picks = options.map((_, n) => choice([["", "—"], ...options], saved[n] && saved[n] !== "any" ? saved[n] : ""));
+  const sync = () => picks.forEach(p => { p.disabled = any.box.checked; });
+  any.box.addEventListener("change", sync);
+  sync();
+  return {
+    el: h("div", {}, h("div", { class: "fields" }, picks.map((p, n) => field(`${CHOICES[n]} choice`, p))), any.el),
+    value: () => any.box.checked ? ["any"] : [...new Set(picks.map(p => p.value).filter(Boolean))],
+  };
+}
+
+// The pay target as written ("180000" or "170000-200000"), and back: {target, target_max} for the watchlist.
+function targetText(p) { return p.target_max ? `${p.target}-${p.target_max}` : String(p.target ?? ""); }
+function targetValues(text) {
+  const t = text.trim();
+  return { target: t === "" ? null : /^\d+$/.test(t) ? Number(t) : t, target_max: null };
+}
+
+// "Tell me about yourself" and the questions after it. values() is `goals` as the watchlist keeps it (null when
+// nothing is said); what the page doesn't edit is kept.
+function goalsForm(s) {
+  const g = s.goals || {};
+  const about = h("textarea", { rows: 5, placeholder: "e.g. Staff engineer, ten years in security tooling. I want to build a product again, " +
+    "and I'd rather join a company that sells software than one that uses it." });
+  about.value = g.about || "";
+  const kinds = rankPicker(GOAL_KINDS, g.company_kinds || []), roles = rankPicker(GOAL_ROLES, g.roles || []);
+  let track = g.track || "either";
+  const trackCtl = segmented([["ic", "Individual contributor"], ["manager", "Manager"], ["either", "Either"]], track, v => {
+    track = v;
+    trackCtl.dispatchEvent(new Event("change", { bubbles: true }));  // Settings marks it unsaved
+  });
+  const horizon = textInput(g.horizon, "e.g. take risks for the next 3-5 years");
+  return {
+    // the free-text box, and the questions after it (onboarding puts the resume between them)
+    aboutField: field("Tell me about yourself", about, "Who you are and what you want next, in your own words. It stays on this computer; " +
+      "it goes to a model only if you ask for title suggestions."),
+    questions: [
+      h("div", { class: "field" }, h("label", {}, "What kind of company do you want to work for?"),
+        h("div", { class: "help" }, "Best first. The Comps tab scores a job's career value from this."), kinds.el),
+      h("div", { class: "field" }, h("label", {}, "What would you rather be doing?"),
+        h("div", { class: "help" }, "What the job builds, best first."), roles.el),
+      field("Which track?", trackCtl, "Individual contributor, people manager, or either."),
+      field("How far ahead are you thinking?", horizon, "In your own words: how much risk you will take, and for how long.")],
+    values: () => merged(g, { about: textOf(about), company_kinds: kinds.value(), roles: roles.value(),
+      track: track === "either" ? null : track, horizon: textOf(horizon) }),
+  };
+}
+
+// The five parts of the Comps suggestion as sliders, each showing its share of the whole. values() is
+// comps.weights (null while they are all the defaults).
+const COMP_PARTS = { career: ["Career value", "What the company and role are worth to you (from your goals)."],
+  pay: ["Pay", "Against your target."], fit: ["Fit score", "How well your resume matches."],
+  progress: ["How far along", "Further along the process counts more."], health: ["Company health", "Funding, layoffs, ratings."] };
+function weightSliders(s) {
+  const dflt = s.defaults.comps.weights, saved = (s.comps || {}).weights || {};
+  const raw = Object.fromEntries(Object.keys(dflt).map(k => [k, saved[k] ?? dflt[k]]));
+  const sum = Object.values(raw).reduce((a, b) => a + b, 0) || 1;
+  const rows = Object.keys(dflt).map(k => {
+    const input = h("input", { type: "range", min: 0, max: 100, step: 1, "aria-label": COMP_PARTS[k][0] });
+    input.value = Math.round(raw[k] / sum * 100);
+    return { k, input, out: h("output", {}) };
+  });
+  const show = () => {
+    const total = rows.reduce((a, r) => a + Number(r.input.value), 0);
+    for (const r of rows) r.out.textContent = total ? `${Math.round(Number(r.input.value) / total * 100)}%` : "0%";
+  };
+  for (const r of rows) r.input.addEventListener("input", show);
+  show();
+  return {
+    el: h("div", { class: "fields" }, rows.map(r => field(COMP_PARTS[r.k][0], h("div", { class: "fitrange" }, r.input, r.out),
+      COMP_PARTS[r.k][1]))),
+    values: () => {
+      const given = Object.fromEntries(rows.map(r => [r.k, Number(r.input.value)]));
+      if (!Object.values(given).some(Boolean)) throw new Error("The Comps weights can't all be 0: the suggestion would weigh nothing.");
+      const isDefault = !Object.keys(saved).length && rows.every(r => given[r.k] === Math.round(dflt[r.k] * 100));
+      return isDefault ? null : given;
+    },
+  };
+}
+
+// Settings' first card: goals, pay target and floor, and the Comps weights.
+function goalsCard(s) {
+  const p = s.pay || {}, form = goalsForm(s), weights = weightSliders(s);
+  const target = textInput(targetText(p), "e.g. 180000, or 170000-200000"), floor = numInput(p.floor, "e.g. 150000", { step: 5000 });
+  const el = setCard("goals", "Your goals", "what you want next: it shapes how Comps scores a job's career value",
+    form.aboutField, form.questions,
+    h("div", { class: "fields" },
+      field("Pay target (per year)", target, "What you'd like to be offered: a number, or a range like 170000-200000. Comps scores pay against it."),
+      field("Lowest you'd accept (private)", floor, "Private: kept in your watchlist file, never shown anywhere else on the page " +
+        "and never sent to Claude.")),
+    h("h3", { style: "margin-top:18px" }, "How Comps weighs a job", " ", h("span", { class: "hint" }, "each share of the whole")),
+    weights.el);
+  el.classList.add("full");
+  el.goals = () => form.values();
+  el.weights = () => merged(s.comps, { weights: weights.values() });
+  el.payValues = () => ({ ...targetValues(target.value), floor: numberOf(floor) });
+  return el;
+}
+
 // Theme and page width: they change the page at once and are saved right away, apart from "Save settings".
 // Where the history and cache are kept is shown, not edited: a new path would start an empty history.
 function displayCard(s) {
@@ -3554,29 +3887,8 @@ function renderSettings() {
     : [h("div", { class: "muted small" }, "No companies yet.")])));
   drawCompanies();
 
-  const findInput = h("input", { type: "text", placeholder: "Company name, or paste a link to one of their jobs" });
-  const findOut = h("div", {});
-  const findBtn = h("button", { class: "btn" }, "Find");
-  const find = async () => {
-    findBtn.disabled = true; findOut.replaceChildren(h("div", { class: "muted small" }, "Looking…"));
-    try {
-      const hits = await api("/api/find", { company: findInput.value });
-      findOut.replaceChildren(...(hits.length ? hits.map(hit => h("div", { class: "list-item" },
-        h("div", { style: "flex:1" },
-          h("div", {}, h("b", {}, hit.name || hit.board), ` · ${hit.open_roles} open jobs · `, link(hit.careers, "careers page")),
-          h("div", { class: "muted small" }, "e.g. " + hit.sample_titles.slice(0, 3).join(" · "))),
-        companies.some(c => c.source === hit.source && c.board === hit.board) ? h("span", { class: "muted small" }, "added")
-          : h("button", { class: "btn primary", onclick: e => {
-              companies.push({ source: hit.source, board: hit.board, name: hit.name || findInput.value.trim() });
-              drawCompanies(); e.target.replaceWith(h("span", { class: "muted small" }, "added"));
-            } }, "Add")))
-        : [h("div", { class: "muted small" }, "No Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters, Avature, iCIMS or Jobvite board found. Try a link to their " +
-            "careers page or one of their job postings. Some companies use other systems that jobwatch can't read yet.")]));
-    } catch (e) { findOut.replaceChildren(h("div", { class: "error small" }, e.message)); }
-    findBtn.disabled = false;
-  };
-  findBtn.onclick = find;
-  findInput.addEventListener("keydown", e => { if (e.key === "Enter") find(); });
+  const finder = companyFinder(hit => companies.some(c => c.source === hit.source && c.board === hit.board),
+    (hit, typed) => { companies.push({ source: hit.source, board: hit.board, name: hit.name || typed }); drawCompanies(); });
 
   const inp = filterInputs(f);
   const { titles, exclude, locations, country, minPay, requirePay, maxAge } = inp;
@@ -3645,7 +3957,7 @@ function renderSettings() {
     }
     return out;
   };
-  const chatC = chatCard(s), payC = payCard(s), alertsC = alertsCard(s);
+  const chatC = chatCard(s), payC = payCard(s), alertsC = alertsCard(s), goalsC = goalsCard(s);
 
   // Companies to watch (suggestions) and Skills to build (learning)
   const sug = s.suggestions || {}, learning = s.learning || {};
@@ -3655,22 +3967,6 @@ function renderSettings() {
     learning.timeline || D.learning.timeline);
   const near = textInput(learning.near, "e.g. Boulder, CO");
   const exampleJobs = numInput(learning.jobs, D.learning.jobs);
-
-  const upload = (kind, accept, current, help) => {
-    const input = h("input", { type: "file", accept });
-    const status = h("span", { class: "muted small" }, current ? `Using ${current}` : "Not set");
-    input.onchange = async () => {
-      const file = input.files[0]; if (!file) return;
-      status.textContent = "Uploading…";
-      try {
-        const r = await api(`/api/upload?kind=${kind}&name=${encodeURIComponent(file.name)}`, undefined, file);
-        settings[kind] = r[kind];
-        status.textContent = `Saved as ${r[kind]}` + (r.people !== undefined ? ` (${r.people} people` +
-          (r.known !== undefined ? `, ${r.known} you've been in touch with` : "") + ")" : "");
-      } catch (e) { status.textContent = e.message; status.className = "error small"; }
-    };
-    return h("div", {}, h("div", { class: "row upload" }, input, status), h("div", { class: "help" }, help));
-  };
 
   const saveMsg = h("span", { class: "small muted", role: "status" });
   const save = async () => {
@@ -3690,7 +3986,8 @@ function renderSettings() {
         learning: merged(learning, { timeline: timeline.value === D.learning.timeline && !learning.timeline ? null
           : timeline.value, near: textOf(near), jobs: numberOf(exampleJobs) }),
         display, pace: merged(pace, { daily: numberOf(daily), max: numberOf(most) }),
-        pay: payC.values(), alerts: alertsC.values(),
+        pay: merged(payC.values(), goalsC.payValues()), alerts: alertsC.values(),
+        goals: goalsC.goals(), comps: goalsC.weights(),
         suggestions: merged(sug, { half_life: numberOf(halfLife), limit: numberOf(sugLimit) }),
         fetch_every: every.value === everyNow && (s.fetch_every === null || s.fetch_every === undefined) ? null : every.value });
       settings = await api("/api/settings");
@@ -3700,8 +3997,8 @@ function renderSettings() {
   };
 
   const companiesCard = setCard("companies", "Companies you watch", null,
-    h("div", { class: "row find" }, h("div", { style: "flex:1" }, findInput), findBtn),
-    findOut,
+    h("div", { class: "row find" }, h("div", { style: "flex:1" }, finder.input), finder.button),
+    finder.out,
     h("div", { class: "row between" }, watching,
       h("div", { class: "row every" }, h("span", { class: "small muted" }, "Check for new jobs"), every)),
     companyList);
@@ -3727,6 +4024,7 @@ function renderSettings() {
   filtersCard.classList.add("full");
 
   const cards = [
+    goalsC,
     companiesCard,
     filtersCard,
     setCard("keywords", "Keywords", "jobs mentioning these rank higher; a title match counts double",
@@ -3737,7 +4035,7 @@ function renderSettings() {
         field("Applications a day", daily, "Today and the queue count them; 0 turns this off."),
         field("At most", most, "Past this, a note says the rest can wait. Nothing is ever blocked."))),
     setCard("resume", "Your resume and fit scores", "optional",
-      upload("resume", ".pdf,.docx,.txt,.md", s.resume, "Fit scores compare a posting's requirements with your resume. " +
+      uploadField("resume", ".pdf,.docx,.txt,.md", s.resume, "Fit scores compare a posting's requirements with your resume. " +
         "They need the scoring add-on: pip install 'jobwatch[score]'."),
       h("div", { class: "fields" },
         field("Score with", backend, "This Mac keeps the posting and resume here."),
@@ -3745,7 +4043,7 @@ function renderSettings() {
         field("Score per digest", top, "jobwatch digest scores this many new jobs; 0 none.")),
       auto.el),
     setCard("people", "People you know", "optional",
-      upload("connections", ".zip,.csv", s.connections, "On LinkedIn: Settings → Data privacy → Get a copy of your " +
+      uploadField("connections", ".zip,.csv", s.connections, "On LinkedIn: Settings → Data privacy → Get a copy of your " +
         "data. Upload the archive (.zip) LinkedIn emails you, and each job shows who you know there, the people you " +
         "actually talk to first (from how often you've messaged, recommended or endorsed each other). Only those " +
         "counts are kept, never your messages. Connections.csv on its own works too. Everything stays on this " +
@@ -3767,7 +4065,7 @@ function renderSettings() {
   ].filter(Boolean);
 
   // A bar that stays on screen: a link to each card, what's unsaved, and Save.
-  const NAMES = { companies: "Companies", filters: "Filters", keywords: "Keywords", today: "Today", resume: "Resume",
+  const NAMES = { goals: "Goals", companies: "Companies", filters: "Filters", keywords: "Keywords", today: "Today", resume: "Resume",
     people: "People", prompts: "Fit prompt", chat: "Chat", pay: "Pay", alerts: "Alerts", suggestions: "Suggestions",
     skills: "Skills", display: "Display" };
   const jump = id => h("a", { href: "#" + id, onclick: e => {

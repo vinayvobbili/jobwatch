@@ -42,6 +42,7 @@ from . import (
     levels,
     logos,
     mock,
+    onboard,
     prep,
     quiet,
     referrals,
@@ -518,7 +519,8 @@ class App:
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
                 "scoring": scoring, "chat": talk, "learning": raw.get("learning") or {},
                 "display": raw.get("display") or {}, "pace": raw.get("pace") or {}, "pay": raw.get("pay") or {},
-                "alerts": raw.get("alerts") or {}, "suggestions": raw.get("suggestions") or {},
+                "alerts": raw.get("alerts") or {}, "goals": raw.get("goals") or {},
+                "suggestions": raw.get("suggestions") or {}, "comps": raw.get("comps") or {},
                 # where the history is kept: shown, changed only in the file (a new path starts an empty history)
                 "state": raw.get("state"), "cache": raw.get("cache"),
                 # what each setting left out is, for the page to show
@@ -549,6 +551,26 @@ class App:
             cfg = config.save(self.path, settings)
         self.score_in_background()  # new filters, resume or scoring setting: maybe more to score
         return {"saved": str(cfg.path), "companies": len(cfg.boards)}
+    def get_onboarding(self, q) -> dict:
+        """Whether first-run onboarding can offer "Suggest titles from my resume": ready, or why not, and where the
+        resume would go. Looks at settings only; no model is called."""
+        if not self.path.is_file():
+            return {"ready": False, "why": "Add your resume first.", "where": None}
+        try:
+            cfg = config.load(self.path)
+        except ConfigError as e:
+            return {"ready": False, "why": str(e), "where": None}
+        why = onboard.ready(cfg)
+        return {"ready": not why, "why": why, "where": chat.where(cfg.chat.backend, cfg.chat.model)}
+
+    def post_onboarding_titles(self, body) -> dict:
+        """Job titles and keywords the chat's model proposes from the resume and goals saved so far: suggestions
+        only, nothing is saved (see onboard.py)."""
+        try:
+            return onboard.suggest(self._cfg())
+        except ValueError as e:
+            raise ApiError(str(e)) from None
+
     def post_find(self, body) -> list[dict]:
         query = (body.get("company") or "").strip()
         if not query:
@@ -1130,6 +1152,8 @@ class App:
 ROUTES = {
     ("GET", "/api/settings"): App.get_settings,
     ("POST", "/api/settings"): App.post_settings,
+    ("GET", "/api/onboarding"): App.get_onboarding,
+    ("POST", "/api/onboarding/titles"): App.post_onboarding_titles,
     ("POST", "/api/find"): App.post_find,
     ("GET", "/api/suggestions"): App.get_suggestions,
     ("POST", "/api/suggestions/add"): App.post_suggestion_add,

@@ -10,14 +10,14 @@ enterprise), and per job its role (building the product, customer-facing, intern
 the career part of the suggestion reads. Nothing is looked up from the web: the values come
 from the person, or from Claude, who read them somewhere, with the links and the day they were true. The
 suggestion at the top ranks the opportunities by plain rules (see WEIGHTS, which the watchlist's comps.weights
-can change); there is no model behind it."""
+can change; the career part follows the watchlist's goals, when it has them); there is no model behind it."""
 
 from __future__ import annotations
 
 import re
 from datetime import date
 
-from .config import COMP_WEIGHTS, Config
+from .config import COMP_WEIGHTS, Config, Goals
 from .contacts import company_key
 from .score import resume_id
 from .store import COMP_FIELDS, ENDED, STAGES, Store
@@ -35,6 +35,8 @@ WEIGHTS = COMP_WEIGHTS
 KIND_BASE = {"tech": 80, "consulting": 55, "enterprise": 40}  # the career part by the kind of company
 KIND_WORDS = {"tech": "tech company", "consulting": "consulting", "enterprise": "enterprise"}
 ROLE_ADJUST = {"product": 15, "customer": 5, "internal": -5}  # added to it by what the job builds
+GOAL_KIND_SCORES = (90, 65, 40)  # the career part by the kind of company, from your goals: best choice first
+GOAL_ROLE_SCORES = (10, 0, -10)  # added to it by what the job builds, best choice first
 ROLE_WORDS = {"product": "builds product", "customer": "customer-facing", "internal": "internal tools"}
 PROGRESS = {"offer": 100, "interviewing": 70, "screening": 40, "applied": 15}
 THIN = 20_000_000  # a private company that raised less than this in all counts as thinly funded
@@ -103,16 +105,40 @@ def _target(cfg: Config) -> tuple[float, str] | None:
     return (low + high) / 2, _k(low) + (f"-{_k(high)}" if high != low else "")
 
 
-def _career(row: dict) -> tuple[int, str, str]:
+def _choice(prefs: tuple, value: str | None, scores: tuple, fixed: dict) -> tuple[int | None, str]:
+    """(score, note) for a kind or role by the person's preferences: the first one listed scores scores[0], the
+    next scores[1], and so on; one not listed ranks last; "any" scores the middle. With no preferences, or no
+    value known, the fixed rule applies (no note). A value of None is not known: (None, "")."""
+    if value is None:
+        return None, ""
+    if not prefs:
+        return fixed.get(value), ""
+    if prefs == ("any",):
+        return scores[1], ""
+    if value not in prefs:
+        return scores[-1], "not on your list"
+    n = prefs.index(value)
+    return scores[n], f"your {('1st', '2nd', '3rd')[n]} choice"
+
+
+def _career(row: dict, goals: Goals | None = None) -> tuple[int, str, str]:
     """(part, input, phrase): what the job is worth to your career by plain rules. The kind of company starts it
     (tech 80, consulting 55, enterprise 40); the job's role adds to that (builds the product +15, customer-facing
-    +5, internal tools -5); 0-100. A role with no kind known starts from NEUTRAL; neither known is NEUTRAL."""
+    +5, internal tools -5); 0-100. A role with no kind known starts from NEUTRAL; neither known is NEUTRAL.
+    With the watchlist's goals (a company_kinds or roles preference), the same two steps follow your order instead:
+    kinds score 90, 65, 40 and roles add +10, 0, -10, best first, and the input says which choice of yours it is."""
     kind, role = (row["health"] or {}).get("kind"), row["comp"].get("role")
-    if kind not in KIND_BASE and role not in ROLE_ADJUST:
+    kind = kind if kind in KIND_BASE else None
+    role = role if role in ROLE_ADJUST else None
+    if kind is None and role is None:
         return NEUTRAL, "no kind or role kept", "neither its kind of company nor its role is kept"
-    part = max(0, min(100, KIND_BASE.get(kind, NEUTRAL) + ROLE_ADJUST.get(role, 0)))
-    words = ", ".join(w for w in (KIND_WORDS.get(kind), ROLE_WORDS.get(role)) if w)
-    return part, words, f"its career value is {part}/100 ({words})"
+    g = goals if goals is not None and goals.scores else Goals()
+    base, kind_note = _choice(g.company_kinds, kind, GOAL_KIND_SCORES, KIND_BASE)
+    adjust, role_note = _choice(g.roles, role, GOAL_ROLE_SCORES, ROLE_ADJUST)
+    part = max(0, min(100, (NEUTRAL if base is None else base) + (adjust or 0)))
+    words = ", ".join(w + (f" ({n})" if n else "") for w, n in
+                      ((KIND_WORDS.get(kind), kind_note), (ROLE_WORDS.get(role), role_note)) if w)
+    return part, words, f"its career value is {part}/100 ({words})" + (", by your goals" if g.scores else "")
 
 
 def _pay(row: dict, target: tuple[float, str] | None, top: float) -> tuple[int, str, str]:
@@ -203,7 +229,8 @@ def suggest(cfg: Config, rows: list[dict]) -> dict:
         or max((r["pay_mid"] or 0 for r in rows), default=0) or 1
     ranking = []
     for r in rows:
-        parts = dict(zip(WEIGHTS, (_career(r), _pay(r, target, top), _fit(r), _progress(r), _health(r)), strict=True))
+        parts = dict(zip(WEIGHTS, (_career(r, cfg.goals), _pay(r, target, top), _fit(r), _progress(r), _health(r)),
+                         strict=True))
         total = round(sum(weights[k] * p[0] for k, p in parts.items()))
         known = {k: p for k, p in parts.items() if p[1] not in UNKNOWN}
         best = max(known, key=lambda k: parts[k][0] * weights[k], default=None)
@@ -247,7 +274,7 @@ def worth(cfg: Config, store: Store, jobs: list[tuple]) -> dict[str, dict]:
     scale = sum(weights.values())
     out = {}
     for r in rows:
-        parts = {"career": _career(r), "pay": _pay(r, target, top), "fit": _fit(r), "health": _health(r)}
+        parts = {"career": _career(r, cfg.goals), "pay": _pay(r, target, top), "fit": _fit(r), "health": _health(r)}
         score = sum(weights[k] * p[0] for k, p in parts.items()) / scale if scale else NEUTRAL
         out[r["key"]] = {"score": round(score), "parts": {k: {"score": p[0], "input": p[1]} for k, p in parts.items()}}
     return out

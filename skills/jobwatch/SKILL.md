@@ -58,7 +58,8 @@ a story from the user's own past would answer. Ask the user about one, and keep 
   suggestion; explain its reasons and say what is missing. `set_comp` keeps what a recruiter said about pay
   (base, bonus, equity, asked, offered) as the user tells you, and the job's `role` (`product` builds the company's
   own product, `customer` is forward-deployed or customer-facing, `internal` builds internal tools) with a
-  career note (with the company's kind, they set the suggestion's career part). `set_company_health` keeps a
+  career note (with the company's kind, they set the suggestion's career part, scored against the user's
+  `goals:` preferences when the watchlist has them, else the fixed rules). `set_company_health` keeps a
   company's funding, layoffs and rating that you looked up on the web (jobwatch fetches none of it): record the
   source links and the day, and leave out what you couldn't find. It also takes the company's `kind` (`tech`,
   `consulting`, or `enterprise`: a non-tech business whose IT builds for itself). Health older than 90 days is stale: look it up again.
