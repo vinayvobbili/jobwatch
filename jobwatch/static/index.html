@@ -695,6 +695,61 @@ label.check input { flex: none; width: auto; margin: 0; }
 .snav .links a:hover { background: var(--chip); color: var(--text); }
 .snav .btn { flex: none; }
 .snav > span { flex: none; max-width: 40%; }
+/* Settings flair. Generic, reusable on any card: .set-orb (icon tile), .set-head/.set-sub (header), .qm (a "?" that
+   opens a field's help), .switch (a toggle on a checkbox), .set-panel (grouped fields on a soft panel). */
+.set-head { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+.set-orb { flex: none; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: #fff;
+  background: var(--grad); filter: hue-rotate(var(--hue, 0deg)); box-shadow: 0 8px 18px -8px rgba(90, 92, 242, .75); }
+.set-orb .ico { width: 19px; height: 19px; }
+.set-head .t { min-width: 0; flex: 1; }
+.set-head h3 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.set-sub { margin: 1px 0 0; font-size: 13px; color: var(--muted); line-height: 1.35; }
+.settings-grid > .card::after { content: ""; position: absolute; right: -40px; top: -40px; width: 130px; height: 130px;
+  border-radius: 50%; background: var(--accent-soft); filter: blur(30px); opacity: .7; pointer-events: none; }
+.settings-grid > .card > * { position: relative; z-index: 1; }
+.settings-grid .fields, .set-panel { background: color-mix(in srgb, var(--accent-soft) 45%, transparent);
+  border: 1px solid var(--line); border-radius: 14px; padding: 2px 14px 12px; margin-top: 4px; }
+.settings-grid .companies, .settings-grid .fields .fields { background: none; border: 0; padding: 0; }
+.qm { display: none; }
+.settings-grid .qm { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 50%;
+  font-size: 10.5px; font-weight: 800; line-height: 1; cursor: pointer; color: var(--accent); background: var(--accent-soft);
+  vertical-align: 1px; user-select: none; }
+.settings-grid .qm:hover, .settings-grid .qm.on { color: #fff; background: var(--accent); }
+.settings-grid .field .help, .settings-grid .field.has-help .help { display: none; }
+.settings-grid .field.open .help { display: block; padding: 6px 9px; border-radius: 9px; background: var(--panel-solid);
+  border: 1px solid var(--line); }
+.settings-grid .lead { padding: 9px 12px; border-radius: 12px; background: var(--accent-soft); color: var(--text); }
+.switch, .settings-grid label.check input[type=checkbox] { appearance: none; -webkit-appearance: none; position: relative;
+  flex: none; width: 38px; height: 22px; margin: 0; border-radius: 999px; cursor: pointer; transition: background .2s;
+  background: color-mix(in srgb, var(--muted) 38%, transparent); }
+.switch::after, .settings-grid label.check input[type=checkbox]::after { content: ""; position: absolute; left: 3px; top: 3px;
+  width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+  transition: transform .2s cubic-bezier(.3, 1.4, .5, 1); }
+.switch:checked, .settings-grid label.check input[type=checkbox]:checked { background: var(--grad); }
+.switch:checked::after, .settings-grid label.check input[type=checkbox]:checked::after { transform: translateX(16px); }
+.switch:focus-visible, .settings-grid label.check input[type=checkbox]:focus-visible { outline: 2px solid var(--accent);
+  outline-offset: 2px; }
+.settings-grid label.check { gap: 10px; }
+.settings-grid input[type=file] { max-width: 100%; font-size: 13px; color: var(--muted); }
+.settings-grid input[type=file]::file-selector-button { font: inherit; font-weight: 650; font-size: 13px; margin-right: 10px;
+  padding: 7px 14px; border: 1px dashed var(--accent); border-radius: 10px; cursor: pointer; color: var(--accent);
+  background: var(--accent-soft); transition: background .15s, color .15s; }
+.settings-grid input[type=file]::file-selector-button:hover { background: var(--accent); color: #fff; border-style: solid; }
+details.howto { margin-top: 8px; } details.howto > summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--accent); }
+details.howto .help { margin-top: 6px; }
+.settings-grid .prompt { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-top: 8px;
+  background: var(--panel-solid); }
+.settings-grid .prompt:last-child { padding-bottom: 10px; }
+.settings-grid .prompt > summary { list-style: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.settings-grid .prompt > summary::-webkit-details-marker { display: none; }
+.settings-grid .prompt > summary::before { content: ""; flex: none; width: 7px; height: 7px; border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .2s; margin: 0 4px 0 2px; }
+.settings-grid .prompt[open] > summary::before { transform: rotate(45deg); }
+.settings-grid .prompt[open] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.snav .links { gap: 4px; }
+.snav .links a { padding: 5px 12px; border-radius: 999px; transition: background .15s, color .15s; }
+.snav .links a.on { color: #fff; background: var(--grad); }
+@media (max-width: 640px) { .settings-grid .fields, .set-panel { padding: 2px 10px 10px; } .set-orb { width: 34px; height: 34px; } }
 /* Settings: prompts, one per fold, closed until opened */
 .prompt { border-top: 1px solid var(--line); padding: 9px 0; }
 .prompt:last-child { padding-bottom: 0; }
@@ -3404,8 +3459,12 @@ function unlines(v) { return v.split(/[\n,]/).map(s => s.trim()).filter(Boolean)
 
 // A setting in Settings: a short label, its input, and a line of help under it (so inputs side by side line up).
 function field(label, input, help, cls) {
-  return h("div", { class: "field" + (cls ? " " + cls : "") }, h("label", {}, label), input,
-    help ? h("div", { class: "help" }, help) : null);
+  const f = h("div", { class: "field" + (cls ? " " + cls : "") + (help ? " has-help" : "") }, h("label", {}, label,
+    help ? h("span", { class: "qm", role: "button", tabindex: "0", title: help, "aria-label": "Help",
+      onclick: e => { e.preventDefault(); f.classList.toggle("open"); e.currentTarget.classList.toggle("on"); },
+      onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } } }, "?") : null),
+    input, help ? h("div", { class: "help" }, help) : null);
+  return f;
 }
 // Inputs for settings that may be left blank: blank is the default, shown as the placeholder.
 function numInput(value, placeholder, { min = 0, max, step = 1 } = {}) {
@@ -3446,8 +3505,24 @@ function merged(base, values) {
   return Object.keys(out).length ? out : null;
 }
 // A Settings card, with an id for the bar's links to it
+// Each card has an icon, a hue shift for its tile, and a one-line subtitle (used when the card gives no hint).
+const SET_LOOK = {
+  goals: ["sparkle", 0, "What you want next"], companies: ["cloud", -30, "The job boards jobwatch checks"],
+  filters: ["check", 25, "A job must pass these to show"], keywords: ["pencil", 50, "Words that rank a job higher"],
+  today: ["calendar", -50, "How much Today shows and your pace"], resume: ["file", 15, "Your resume and fit scores"],
+  people: ["users", 40, "Who you know at companies"], prompts: ["pencil", -20, "What the model is told"],
+  chat: ["send", 30, "Ask jobwatch"], pay: ["dollar", -60, "Expected pay"], alerts: ["inbox", 10, "Job-alert emails"],
+  suggestions: ["plus", -10, "Companies worth watching"], skills: ["arrow", 55, "What to learn next"],
+  display: ["refresh", -40, "Theme, width and files"],
+};
+// A card's header: an icon orb, the title (plus anything in extra), and a one-line subtitle.
+function setHead(id, title, hint, extra) {
+  const [ic, hue, dflt] = SET_LOOK[id] || ["sparkle", 0, ""];
+  return h("div", { class: "set-head" }, h("div", { class: "set-orb", style: `--hue:${hue}deg` }, icon(ic, 19)),
+    h("div", { class: "t" }, h("h3", {}, title, extra || null), h("p", { class: "set-sub" }, hint || dflt)));
+}
 function setCard(id, title, hint, ...kids) {
-  return h("div", { class: "card", id: "set-" + id }, h("h3", {}, title, hint ? [" ", h("span", { class: "hint" }, hint)] : null), kids);
+  return h("div", { class: "card", id: "set-" + id }, setHead(id, title, hint), kids);
 }
 
 function uploadField(kind, accept, current, help) {
@@ -3463,7 +3538,8 @@ function uploadField(kind, accept, current, help) {
         (r.known !== undefined ? `, ${r.known} you've been in touch with` : "") + ")" : "");
     } catch (e) { status.textContent = e.message; status.className = "error small"; }
   };
-  return h("div", {}, h("div", { class: "row upload" }, input, status), h("div", { class: "help" }, help));
+  return h("div", {}, h("div", { class: "row upload" }, input, status),
+    h("details", { class: "howto" }, h("summary", {}, "How does this work?"), h("div", { class: "help" }, help)));
 }
 
 // Looking up a company's board by name or job link (/api/find), with an Add button on each board found. has(hit):
@@ -3658,7 +3734,7 @@ function displayCard(s) {
     } catch (e) { msg.textContent = e.message; msg.className = "small error"; }
   };
   const path = (v, dflt) => h("code", { class: "path" }, v || dflt);
-  const c = h("div", { class: "card full", id: "set-display" }, h("h3", {}, "Display and files ", msg),
+  const c = h("div", { class: "card full", id: "set-display" }, setHead("display", "Display and files", null, msg),
     h("div", { class: "fields" },
       field("Theme", segmented([["system", "System"], ["light", "Light"], ["dark", "Dark"]], d.theme, v => set("theme", v)),
         "System follows your computer. Saved at once."),
@@ -4316,6 +4392,19 @@ function renderSettings() {
   const bar = h("div", { class: "snav" }, h("div", { class: "links" }, cards.map(c => jump(c.id))),
     saveMsg, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings"));
   const grid = h("div", { class: "settings-grid" }, cards);
+  // the pill of the card in view is highlighted
+  const links = [...bar.querySelectorAll(".links a")];
+  const mark = () => {
+    if (!bar.isConnected) return removeEventListener("scroll", renderSettings.mark);
+    const line = bar.getBoundingClientRect().bottom + 24;
+    let cur = cards[0].id;
+    for (const c of cards) if (c.getBoundingClientRect().top <= line) cur = c.id;
+    links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + cur));
+  };
+  if (renderSettings.mark) removeEventListener("scroll", renderSettings.mark);
+  renderSettings.mark = mark;
+  addEventListener("scroll", mark, { passive: true });
+  setTimeout(mark);
   const dirty = e => {
     if (e.target.closest("#set-display")) return;  // theme and width save at once
     saveMsg.textContent = "Unsaved changes"; saveMsg.className = "small unsaved";
