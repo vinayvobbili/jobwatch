@@ -3,7 +3,8 @@
     python scripts/tutorials/shots.py OUT        # writes OUT/tut-shots/
 
 The daily routine's screenshots come from scripts/demo (`screenshots.py --demo`); this makes first-run onboarding's
-from an empty watchlist (made here, in OUT/empty). Typed answers are made-up too. Nothing calls a
+from an empty watchlist (made here, in OUT/empty), and Settings' AI tab from the demo's watchlist (OUT/demo, seeded
+first by make-tutorials). Typed answers are made-up too. Nothing calls a
 model or a job board: onboarding's "Suggest titles" is never pressed, and the chat shows a canned reply.
 """
 
@@ -63,7 +64,36 @@ def onboarding(config: Path, out: Path):
         click(page, "Skip for now")
         page.locator("summary", has_text="AI: fit scores").click(timeout=5000)
         page.wait_for_timeout(900)
+        top_of(page, ".ai-tiles")
         page.screenshot(path=out / "ai.png")
+        browser.close()
+
+
+def top_of(page, selector: str, margin: int = 16):
+    """Scroll so the element starts just under whatever stays stuck at the top (the header, a tab bar): the slides
+    show the shot from its top."""
+    page.evaluate("""([s, m]) => {
+        const el = document.querySelector(s);
+        window.scrollBy(0, el.getBoundingClientRect().top);
+        const stuck = [...document.querySelectorAll("body *")].filter(e => {
+            const p = getComputedStyle(e).position, r = e.getBoundingClientRect();
+            return (p === "sticky" || p === "fixed") && r.height > 0 && r.top < innerHeight / 3 &&
+                r.height < innerHeight / 3;  // a bar stuck under the header counts too
+        });
+        window.scrollBy(0, -(Math.max(0, ...stuck.map(e => e.getBoundingClientRect().bottom)) + m));
+    }""", [selector, margin])
+    page.wait_for_timeout(400)
+
+
+def settings_ai(config: Path, out: Path):
+    """ai-settings.png: Settings' AI tab with the demo's watchlist, the three tiles in a row and the fallback chain."""
+    with serving(config) as url, sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport=DEMO_VIEW, color_scheme="light", device_scale_factor=2)
+        open_tab(page, url, "settings/ai")
+        page.wait_for_selector(".ai-tile .state.ready, .ai-tile .state.setup", timeout=10000)
+        top_of(page, ".ai-tiles")
+        page.screenshot(path=out / "ai-settings.png")
         browser.close()
 
 
@@ -75,6 +105,7 @@ def main():
     shots = out / "tut-shots"
     shots.mkdir(parents=True, exist_ok=True)
     onboarding(seed_empty(out / "empty"), shots)
+    settings_ai(out / "demo" / "jobwatch.yaml", shots)  # the demo's, seeded by make-tutorials
     print(f"Wrote the tutorials' screenshots to {shots}")
 
 

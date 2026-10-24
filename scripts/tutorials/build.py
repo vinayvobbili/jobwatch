@@ -95,7 +95,7 @@ def tutorials(tut: Path, shots: Path) -> dict[str, list[tuple[str, str, str]]]:
              "Then the companies. Type a name, or paste a link to one of their jobs, and jobwatch finds the "
              "company's own board on Greenhouse, Lever, Ashby, Workday and others. Add as many as you like."),
             ("06", shot_slide(5, "The rest", "Where the AI runs, and job alerts", "Both optional. Later leaves them "
-                              "for Settings.", tut / "ai.png", y=400),
+                              "for Settings.", tut / "ai.png"),
              "The last step is optional too: where the AI that scores your fit should run. Each choice says what it "
              "still needs. There is a separate tutorial on that."),
             ("07", shot_slide(6, "Today", "Check for new jobs", "Matching roles, ranked, with fit scores.",
@@ -151,7 +151,7 @@ def tutorials(tut: Path, shots: Path) -> dict[str, list[tuple[str, str, str]]]:
              "cents each. Antigravity uses your own Google A I subscription, with no key and no per-use bill. "
              "And your own Mac runs a smaller model, free and private."),
             ("03", shot_slide(2, "The tiles", "Each one says what it still needs", "Ready, or the steps to set it "
-                              "up.", tut / "ai.png", y=400),
+                              "up.", tut / "ai-settings.png"),
              "In Settings, and in the last onboarding step, each choice is a tile with a status. Ready means "
              "it works now. Otherwise it lists the steps left, such as pasting an API key, which is kept in your "
              "macOS keychain, never in the settings file."),

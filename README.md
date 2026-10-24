@@ -12,12 +12,15 @@ Watch the job boards of the companies you care about and get a short, ranked dig
 match you, optionally fit-scored against your resume. jobwatch finds and ranks. It never applies for you.
 
 If jobwatch helps your search, a ⭐ on GitHub is how I know: jobwatch sends nothing home, so stars are the
-only count of who uses it.
+only count of who uses it. If it landed you an interview, a [$1 coffee](https://ko-fi.com/vinayvobbili) says so too.
 
 ![jobwatch: watch boards, rank by fit, ask about your jobs, track applications, prep for interviews](https://raw.githubusercontent.com/vinayvobbili/jobwatch/main/docs/demo.gif)
 
 [Watch it with sound](https://github.com/vinayvobbili/jobwatch/blob/main/docs/jobwatch-demo.mp4) (1½ minutes,
-made from made-up data).
+made from made-up data). Tutorials, under two minutes each:
+[getting started](https://github.com/vinayvobbili/jobwatch/blob/main/docs/tutorials/jobwatch-01-getting-started.mp4),
+[your daily routine](https://github.com/vinayvobbili/jobwatch/blob/main/docs/tutorials/jobwatch-02-daily-routine.mp4)
+and [where the AI runs](https://github.com/vinayvobbili/jobwatch/blob/main/docs/tutorials/jobwatch-03-where-the-ai-runs.mp4).
 
 ```
 $ jobwatch run

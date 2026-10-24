@@ -475,8 +475,8 @@ textarea { min-height: 70px; resize: vertical; }
 .error { color: var(--bad); }
 .done-ok { color: var(--good); }
 /* where the AI runs: a tile per choice (pick the main one), then the fallback chain */
-.ai-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0 14px; }
-@media (max-width: 900px) { .ai-tiles { grid-template-columns: 1fr; } }
+/* three across where there's room (Settings), stacked in a narrow card (onboarding) */
+.ai-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 18px 0 14px; }
 .ai-tile { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px;
   border: 1.5px solid var(--line); background: var(--panel-solid); cursor: pointer;
   transition: transform .14s, box-shadow .14s, border-color .14s; }
@@ -498,9 +498,9 @@ textarea { min-height: 70px; resize: vertical; }
 .ai-tile .state.wait { background: var(--chip); color: var(--muted); }
 .ai-tile .about { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
 .meters { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; align-items: center; font-size: 12px; color: var(--muted); }
-.meters .dots { display: flex; gap: 4px; }
-.meters .dots i { width: 22px; height: 7px; border-radius: 4px; background: var(--line); }
-.meters .dots i.f { background: var(--grad); }
+.meters .bars { display: flex; gap: 4px; }
+.meters .bars i { width: 22px; height: 7px; border-radius: 4px; background: var(--line); }
+.meters .bars i.f { background: var(--grad); }
 .ai-steps { list-style: none; margin: 0; padding: 10px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 10px;
   counter-reset: step; font-size: 12.5px; }
 .ai-steps li { counter-increment: step; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; }
@@ -656,7 +656,7 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 /* Settings: two columns of cards (the long ones span both), each a grid of fields that fills its width */
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
 .settings-grid > .card { margin: 0; scroll-margin-top: calc(var(--head, 64px) + 64px); }
-.settings-grid > .card.full { grid-column: 1 / -1; }
+.settings-grid > .card.full, .settings-grid > #set-resume { grid-column: 1 / -1; }  /* the AI tiles want the width */
 .settings-grid h3 { margin: 0 0 4px; }
 .settings-grid .lead { margin: 2px 0 8px; }
 .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 2px 16px; align-items: start; }
@@ -2888,7 +2888,7 @@ function aiSetup(s) {
     return items.length ? h("ol", { class: "ai-steps" }, items) : null;
   };
   const meters = b => h("div", { class: "meters" }, AI_METERS.map(([label, k]) => [h("span", {}, label),
-    h("span", { class: "dots", title: `${AI_LOOK[b][k]} of 3` }, [1, 2, 3].map(i => h("i", { class: i <= AI_LOOK[b][k] ? "f" : "" })))]));
+    h("span", { class: "bars", title: `${AI_LOOK[b][k]} of 3` }, [1, 2, 3].map(i => h("i", { class: i <= AI_LOOK[b][k] ? "f" : "" })))]));
 
   const tile = b => {
     const st = info && info[b], chosen = backend.value === b;
@@ -4201,7 +4201,7 @@ async function renderActivity() {
   activityTick();
 }
 
-const STAR_URL = "https://github.com/vinayvobbili/jobwatch";
+const STAR_URL = "https://github.com/vinayvobbili/jobwatch", TIP_URL = "https://ko-fi.com/vinayvobbili";
 function renderSettings() {
   const s = settings, f = s.filters || {};
   const companies = s.companies.map(c => ({ ...c }));
@@ -4459,7 +4459,8 @@ function renderSettings() {
     // jobwatch sends nothing home, so a star is the only way its author learns anyone uses it
     h("p", { class: "small muted", style: "text-align:center;margin-top:24px" }, "Does jobwatch help your search? ",
       h("a", { href: STAR_URL, target: "_blank", rel: "noopener" }, "Star it on GitHub"),
-      ": jobwatch sends nothing home, so a star is the only way I know it helps."));
+      ": jobwatch sends nothing home, so a star is the only way I know it helps. Landed an interview? ",
+      h("a", { href: TIP_URL, target: "_blank", rel: "noopener" }, "Buy me a $1 coffee"), "."));
 }
 
 // -- shell
