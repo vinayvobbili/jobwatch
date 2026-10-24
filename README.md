@@ -11,6 +11,9 @@
 Watch the job boards of the companies you care about and get a short, ranked digest of **new** roles that
 match you, optionally fit-scored against your resume. jobwatch finds and ranks. It never applies for you.
 
+If jobwatch helps your search, a ⭐ on GitHub is how I know: jobwatch sends nothing home, so stars are the
+only count of who uses it.
+
 ![jobwatch: watch boards, rank by fit, ask about your jobs, track applications, prep for interviews](https://raw.githubusercontent.com/vinayvobbili/jobwatch/main/docs/demo.gif)
 
 [Watch it with sound](https://github.com/vinayvobbili/jobwatch/blob/main/docs/jobwatch-demo.mp4) (1½ minutes,

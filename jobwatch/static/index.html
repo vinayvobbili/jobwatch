@@ -3891,6 +3891,7 @@ async function renderActivity() {
   activityTick();
 }
 
+const STAR_URL = "https://github.com/vinayvobbili/jobwatch";
 function renderSettings() {
   const s = settings, f = s.filters || {};
   const companies = s.companies.map(c => ({ ...c }));
@@ -4122,7 +4123,11 @@ function renderSettings() {
   if (!renderSettings.sized) { addEventListener("resize", sizeBar); renderSettings.sized = true; }
 
   put(pagehead("Settings", h("span", {}, "Your watchlist, saved to ", h("code", {}, s.path))), bar, grid,
-    h("div", { class: "row end" }, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings")));
+    h("div", { class: "row end" }, h("button", { class: "btn primary", onclick: save }, icon("check", 14), "Save settings")),
+    // jobwatch sends nothing home, so a star is the only way its author learns anyone uses it
+    h("p", { class: "small muted", style: "text-align:center;margin-top:24px" }, "Does jobwatch help your search? ",
+      h("a", { href: STAR_URL, target: "_blank", rel: "noopener" }, "Star it on GitHub"),
+      ": jobwatch sends nothing home, so a star is the only way I know it helps."));
 }
 
 // -- shell
