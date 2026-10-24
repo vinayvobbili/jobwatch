@@ -26,7 +26,7 @@ def view(cfg: Config, store: Store) -> dict:
     for job, rec in store.jobs(OPEN, include_closed=True):
         if rec["closed"] and rec["status"] in ("new", "shown", "queued"):
             continue
-        if rec["status"] in ("new", "shown") and reject_reason(job, cfg.filters):
+        if rec["status"] in ("new", "shown") and reject_reason(job, cfg.filters_for(job)):
             continue  # a board's other openings (a chip maker's hundreds) aren't jobs you'd ask about
         names = (job.display_company, job.company)
         for p in known.at(*names) + known.left_out(*names):

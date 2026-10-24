@@ -32,6 +32,9 @@ class Board:
     # The company's own careers site, for a board whose hosted job pages may be offline (see sources.Hosted): its
     # jobs link there then. Not part of what makes two entries the same board.
     careers: str = field(default="", compare=False)
+    # Filter settings for this board's jobs only, as written under the entry's filters: (a college's adjunct
+    # openings: other titles, hourly pay); each replaces the watchlist's own. Config.filters_for has them merged.
+    filters: dict = field(default_factory=dict, compare=False)
 
     @property
     def label(self) -> str:
@@ -396,6 +399,17 @@ class Config:
     # Boards from a source this jobwatch doesn't know (a newer version's, or a typo): kept in the file and
     # shown as errors, skipped when checking for jobs, so one bad entry doesn't stop everything else.
     unknown: list[Board] = field(default_factory=list)
+    # (source, board) -> the filters for that board's jobs, for the entries with their own (see Board.filters)
+    board_filters: dict[tuple[str, str], Filters] = field(default_factory=dict)
+
+    def filters_for(self, job) -> Filters:
+        """The filters a job is judged by: its board's own (a watchlist entry's filters:), else the watchlist's.
+        A job from a board that isn't watched (an alert email's, one added by link) gets the watchlist's."""
+        return self.board_filters.get((job.source, job.company), self.filters)
+
+    def filters_of(self, b: Board) -> Filters:
+        """The filters for a watched board's jobs: what it's searched for and which postings are read in full."""
+        return self.board_filters.get((b.source, b.board), self.filters)
 
 
 UNKNOWN_SOURCE = "unknown source: update jobwatch or remove this board"
@@ -405,7 +419,8 @@ _LINK = re.compile(r"https?://[\w-]+(?:\.[\w-]+)+(?:[/?#]\S*)?", re.I)
 def _board(entry, path: Path, strict: bool = True) -> Board:
     """ "greenhouse:globex", or {source: greenhouse, board: globex, name: Globex}, or the board as
     source:board in a mapping: {board: "ashby:acme", careers: https://acme.example/careers}. careers is the
-    company's own careers site, for when the board's hosted job pages are offline.
+    company's own careers site, for when the board's hosted job pages are offline; filters, settings that
+    replace the watchlist's filters for this board's jobs ({titles: [adjunct], min_salary: 0}).
     Not strict: a source this version doesn't know is let through (see Config.unknown)."""
     if isinstance(entry, str):
         entry = {"board": entry}
@@ -420,15 +435,23 @@ def _board(entry, path: Path, strict: bool = True) -> Board:
     if careers and not _LINK.fullmatch(careers):
         raise ConfigError(f"{path}: {entry['source']}:{entry['board']}: careers is a link to the company's own "
                           f"careers site (https://...), got {careers!r}")
-    return Board(str(entry["source"]), str(entry["board"]), entry.get("name") or "", careers)
+    own = entry.get("filters") or {}
+    if not isinstance(own, dict):
+        raise ConfigError(f"{path}: {entry['source']}:{entry['board']}: filters are settings like the watchlist's "
+                          f"own, e.g. {{titles: [adjunct, instructor], min_salary: 0}}, got {own!r}")
+    if unknown := set(own) - set(Filters.__dataclass_fields__):
+        raise ConfigError(f"{path}: {entry['source']}:{entry['board']}: unknown filter setting(s): "
+                          f"{', '.join(sorted(map(str, unknown)))}")
+    return Board(str(entry["source"]), str(entry["board"]), entry.get("name") or "", careers, dict(own))
 
 
 def _item(b: Board) -> str | dict:
-    """A board as the watchlist writes it: "greenhouse:stripe", or a mapping when it has a name or careers link."""
-    if not (b.name or b.careers):
+    """A board as the watchlist writes it: "greenhouse:stripe", or a mapping when it has a name, careers link or
+    filters of its own."""
+    if not (b.name or b.careers or b.filters):
         return b.entry
     return {"source": b.source, "board": b.board, **({"name": b.name} if b.name else {}),
-            **({"careers": b.careers} if b.careers else {})}
+            **({"careers": b.careers} if b.careers else {}), **({"filters": b.filters} if b.filters else {})}
 
 
 FETCH_EVERY = timedelta(hours=6)  # fetch_every's default
@@ -599,7 +622,7 @@ def add_board(path: Path, entry: str, name: str = "", careers: str = "") -> Conf
         companies.append(_item(Board(new.source, new.board, name, new.careers)))
     elif name or new.careers:
         old = _board(companies[at], path, strict=False)
-        companies[at] = _item(Board(new.source, new.board, name or old.name, new.careers or old.careers))
+        companies[at] = _item(Board(new.source, new.board, name or old.name, new.careers or old.careers, old.filters))
     return save(path, {"companies": companies})
 
 
@@ -656,8 +679,16 @@ def load(explicit: str | Path | None = None) -> Config:
     if not isinstance(alerts, dict) or set(alerts) - {"imap"}:
         raise ConfigError(f"{path}: alerts has one setting, imap (see the README's job-alert emails section)")
     boards = [b for b in listed if b.source in SOURCES]
+    own: dict[tuple[str, str], Filters] = {}
+    for b in boards:
+        if b.filters:  # the board's settings replace the watchlist's, one by one
+            try:
+                own[(b.source, b.board)] = Filters.from_dict({**(raw.get("filters") or {}), **b.filters})
+            except (TypeError, ValueError) as e:
+                raise ConfigError(f"{path}: {b.entry}: {e}") from None
     return Config(
         path=path, boards=boards, unknown=[b for b in listed if b.source not in SOURCES], filters=filters,
+        board_filters=own,
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
@@ -715,6 +746,7 @@ companies:
   - ashby:initech
   # - {source: greenhouse, board: stripe, name: Stripe}
   # - {board: ashby:acme, careers: https://acme.example/careers}   # its Ashby pages are offline: link here
+  # - {board: greenhouse:initech, filters: {titles: [adjunct, instructor], min_salary: 0}}  # its own filters
 
 # `jobwatch ui` checks every board by itself this often (6h, 90m, 1d; off: only when you press the button),
 # or at set times of day: fetch_every: 8am, 2pm, 8pm

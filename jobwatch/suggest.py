@@ -121,7 +121,8 @@ def record_posts(store: Store, cfg: Config, jobs: list[Job], at: dict[str, str] 
     when each came in, by key (default now). Returns the companies (their ids) with a post newly noted."""
     at = at or {}
     return {company_id(job.display_company) for job in jobs
-            if reject_reason(job, cfg.filters) is None and record(store, cfg.boards, job, None, at.get(job.key))}
+            if reject_reason(job, cfg.filters_for(job)) is None
+            and record(store, cfg.boards, job, None, at.get(job.key))}
 
 
 def record_engaged(store: Store, boards: list[Board]) -> dict[str, list[Job]]:
@@ -178,7 +179,7 @@ def suggestions(cfg: Config, store: Store, limit: int | None = None, look: bool 
     for row in store.unwatched():
         if watched(cfg.boards, row["name"], row["entry"] or ""):
             continue
-        jobs = [(j, at) for j, at in row["jobs"] if reject_reason(j, cfg.filters) is None]
+        jobs = [(j, at) for j, at in row["jobs"] if reject_reason(j, cfg.filters_for(j)) is None]
         mine = engaged.get(row["company"], [])
         if not (jobs or mine):
             continue

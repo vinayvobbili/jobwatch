@@ -307,7 +307,7 @@ def cmd_show(args, cfg, store):
     fit = (store.score(job.key, resume_id(cfg.resume, cfg.prompts))
            if scorable(job) and cfg.resume and cfg.resume.is_file() else None)
     # Why a job that came in isn't on Today: the first filter it fails.
-    if hidden := rejection(job, cfg.filters, fit):
+    if hidden := rejection(job, cfg.filters_for(job), fit):
         kind, why = hidden
         why = {"title": "the title matches none of your titles",
                "location": "the location matches none of your places"}.get(why, why)
