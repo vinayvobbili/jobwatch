@@ -820,6 +820,7 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Cal
     failure too, so the backend tries it again only after SCORE_RETRY (one over the daily limit, tomorrow).
     What was scored, and by which model, goes in the Activity log (Store.log)."""
     rid = resume_id(cfg.resume, cfg.prompts)
+    before = {e.job.key: store.score(e.job.key, rid) for e in entries}  # a re-score's old result, for news()
     results, errors = score_with_fallback(cfg, store, [e.job for e in entries],
                                           progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)),
                                           background=background, batch=batch)
@@ -838,11 +839,20 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Cal
         strong = [e for e in entries if (results.get(e.job.key) or {}).get("score", 0) >= STRONG_FIT]
         if strong and len(entries) > 1:
             text += f": {plural(len(strong), 'strong fit')}"
-        store.log("score", text, ok, lines, by=by, notable=bool(strong))
+        store.log("score", text, ok, lines, by=by,
+                  notable=any(news(cfg, e, results[e.job.key], before[e.job.key]) for e in strong))
     return len(results), errors
 
 
 STRONG_FIT = 75  # a fit score from this on is a strong fit: the page tells you when one comes in
+
+
+def news(cfg: Config, e: Entry, fit: dict, before: dict | None) -> bool:
+    """A strong fit worth telling you about: a job Today shows (it passes your filters, its new fit too) that you
+    haven't queued, applied to or skipped, strong for the first time. A re-score of a job that was already strong
+    (the fallback's score done again by the backend, say) isn't news, and nor is a job your filters hide."""
+    return (fit.get("score", 0) >= STRONG_FIT and (before or {}).get("score", 0) < STRONG_FIT
+            and e.record.get("status", "new") in ("new", "shown") and not rejection(e.job, cfg.filters_for(e.job), fit))
 
 
 def _scored_text(entries: list[Entry], results: dict[str, dict], errors: dict[str, str], batch: bool

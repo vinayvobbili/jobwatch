@@ -4141,8 +4141,8 @@ async function refreshQueueCount() {
   } catch { /* the page still works without the counts */ }
 }
 
-// -- notices: what's worth a look (a strong fit came in, the mailbox couldn't be read, no board could be read,
-// scoring stopped; the server marks them notable). The page asks every minute, on any tab: one that comes in
+// -- notices: what's worth a look (a new strong fit for a job Today shows, the mailbox couldn't be read, no board
+// could be read, scoring stopped; the server marks them notable: see watch.news). The page asks every minute, on any tab: one that comes in
 // while it's open shows as a toast, and the ones not seen yet as a count on the Activity tab and in the browser
 // tab's title. Opening Activity marks them seen. "Seen" is the newest one's time, kept per browser; the first
 // time on a browser, what came before counts as seen (it's all on the tab).

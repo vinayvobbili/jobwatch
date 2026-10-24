@@ -126,6 +126,35 @@ def test_only_what_is_worth_a_look_is_notable(tmp_path, watchlist, web, monkeypa
     store.close()
 
 
+def test_a_strong_fit_is_news_only_once_and_only_for_a_job_you_would_see(tmp_path, watchlist, web, monkeypatch):
+    """A re-score of a job that was already strong, a strong fit for a job your filters hide, and one you've
+    acted on aren't news: they don't count on the Activity tab."""
+    (watchlist.parent / "cv.md").write_text("Python, LLMs, RAG")
+    path = tmp_path / "w.yaml"
+    path.write_text(yaml.safe_dump({**yaml.safe_load(watchlist.read_text()), "resume": "cv.md"}))
+    cfg = config.load(path)
+    store = Store(cfg.state)
+    watch.fetch_all(cfg, store)
+    scores = iter([80, 85, 90, 90])
+    monkeypatch.setattr(watch, "score_jobs", lambda jobs, *a, **kw: (
+        {j.key: {"score": next(scores), "must_haves_met": 1, "must_haves_total": 1, "gaps": [], "summary": ""}
+         for j in jobs}, {}))
+    first, other, *_ = watch.unscored(cfg, store)
+    watch.score_entries(cfg, store, [first], progress=lambda m: None)
+    assert store.activity()[0]["notable"]  # 80, first time strong
+    watch.score_entries(cfg, store, [first], progress=lambda m: None)
+    assert not store.activity()[0]["notable"]  # 85: it was strong already
+    with monkeypatch.context() as m:
+        m.setattr(watch, "rejection", lambda job, f, fit=None: ("place", "location"))
+        watch.score_entries(cfg, store, [other], progress=lambda m: None)
+    assert not store.activity()[0]["notable"]  # 90, but Today doesn't show it
+    store.save_score(other.job.key, watch.resume_id(cfg.resume, cfg.prompts), {"score": 10})
+    other.record["status"] = "applied"
+    watch.score_entries(cfg, store, [other], progress=lambda m: None)
+    assert not store.activity()[0]["notable"]  # 90 after 10, but applied to already
+    store.close()
+
+
 def test_an_older_activity_table_gains_notable(tmp_path):
     import sqlite3
     db = sqlite3.connect(tmp_path / "s.db")
