@@ -136,6 +136,33 @@ def test_voices_switch_on_each_lines_tag():
     assert tts.said == [("am_michael", "Why queues?"), ("af_heart", "Latency.")]
 
 
+@pytest.mark.parametrize("line, said", [
+    ("We went live in production.", "We went [live](/lˈIv/) in production."),
+    ("Going live is a toggle.", "Going [live](/lˈIv/) is a toggle."),
+    ("I ran it live on a copy.", "I ran it [live](/lˈIv/) on a copy."),
+    ("The live runs used 2 min.", "The [live](/lˈIv/) runs used 2 min."),
+    ("Is it live now?", "Is it live now?"),                # "it live" alone isn't a pattern: left to the tagger
+    ("I live in North Carolina.", "I live in North Carolina."),
+    ("An assistant that lives in Webex.", "An assistant that lives in Webex."),
+    ("I ran the SOC and its SOCs.", "I ran the sock and its socks."),
+    ("SOCKS proxies and SOC2.", "SOCKS proxies and SOC2."),
+])
+def test_lines_are_rewritten_where_kokoro_says_them_wrong(line, said):
+    assert drill.spoken(line) == said
+
+
+def test_the_voice_says_the_rewritten_line():
+    tts = FakeTTS()
+    drill.Voices(tts).synthesize("[af_heart] We went live.", "a.wav")
+    assert tts.said == [("af_heart", "We went [live](/lˈIv/).")]
+
+
+def test_misaki_takes_the_adjective_sound():
+    en = pytest.importorskip("misaki.en")
+    phonemes, _ = en.G2P(trf=False, british=False)(drill.spoken("We went live in production."))
+    assert "lˈIv" in phonemes and "lˈɪv" not in phonemes
+
+
 @pytest.fixture
 def fake_slidecast(monkeypatch):
     """A stand-in slidecast that records what the reel is given instead of making a video."""

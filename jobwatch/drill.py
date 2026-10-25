@@ -32,6 +32,24 @@ WIDTH, HEIGHT = 1280, 720
 MOST_CUES = 5
 CUE_WORDS = 7
 _TAG = re.compile(r"^\[(\w+)\] ")
+# What Kokoro says wrong, rewritten for the voice only (the slides keep the text). "[word](/phonemes/)" is misaki's
+# own override: its tagger reads "went live" as the verb ("liv"), so live after these words, or before a noun it
+# describes, is given the adjective's sound ("lyve"). SOC is a word, "sock", not "sosh".
+_LYVE = r"[\g<w>](/lˈIv/)"
+SAY = {
+    r"\bSOC(s?)\b": r"sock\1",
+    r"(?i)\b(?P<pre>(?:go|goes|going|went|gone|is|are|was|were|be|been|it's|that's|what's|ran it|run it|"
+    r"running it)\s+)(?P<w>live)\b": r"\g<pre>" + _LYVE,
+    r"(?i)(?<!\[)\b(?P<w>live)(?=\s+(?:runs?|tests?|systems?|data|demos?|traffic|calls?|customers?|users?|"
+    r"environments?|incidents?|alerts?|feeds?|sites?|versions?|coding)\b)": _LYVE,
+}
+
+
+def spoken(line: str) -> str:
+    """The line as the voice should say it."""
+    for pattern, repl in SAY.items():
+        line = re.sub(pattern, repl, line)
+    return line
 _VOID = ("br", "img", "hr", "meta", "link", "input", "col", "source", "wbr")
 _CHROME = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
            "/Applications/Chromium.app/Contents/MacOS/Chromium")
@@ -282,7 +300,7 @@ class Voices:
         m = _TAG.match(text)
         if m:
             self.tts.voice, text = m.group(1), text[m.end():]
-        return self.tts.synthesize(text, out_path)
+        return self.tts.synthesize(spoken(text), out_path)
 
 
 def _renderer():
