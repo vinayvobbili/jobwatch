@@ -23,6 +23,9 @@ from .prep import Sheet
 from .stories import Story
 
 PAUSE = 75.0                 # seconds to answer out loud; --pause changes it, --no-pause drops it
+# Silence after each spoken line before the next slide. Kokoro's trailing breath counts as speech, so 0.8 left
+# only about half a second of quiet before the cut; 1.6 gives a clear beat after the last word.
+TAIL = 1.6
 INTERVIEWER = "am_michael"   # Kokoro voices: one asks, the other answers
 ANSWERER = "af_heart"
 WIDTH, HEIGHT = 1280, 720
@@ -306,7 +309,7 @@ def render(segs: list[Segment], out: Path, tts=None, renderer=None) -> Path:
                 music="compose", intro="compose", outro="compose", loudness=-16)
     for s in segs:
         if s.voice:
-            reel.add(s.html, f"[{s.voice}] {s.line}", tail_pad=0.8)
+            reel.add(s.html, f"[{s.voice}] {s.line}", tail_pad=TAIL)
         else:
             reel.add(s.html, "", min_duration=s.hold)
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -173,6 +173,8 @@ def test_render_sends_tagged_lines_and_silent_holds(fake_slidecast, tmp_path):
     assert [n for _, n, _ in slides] == [f"[{drill.INTERVIEWER}] {segs[0].line}", f"[{drill.INTERVIEWER}] Q?", "",
                                          f"[{drill.ANSWERER}] A."]
     assert slides[2][2] == {"min_duration": 70}
+    # A clear beat after each spoken line before the slide changes, not the cut right on the last word.
+    assert all(kw == {"tail_pad": drill.TAIL} for _, n, kw in slides if n) and drill.TAIL >= 1.5
     assert tts.said[-2:] == [(drill.INTERVIEWER, "Q?"), (drill.ANSWERER, "A.")]
     assert out.read_bytes() == b"video" and list(out.parent.iterdir()) == [out]
 
