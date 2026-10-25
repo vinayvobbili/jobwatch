@@ -191,7 +191,10 @@ def test_calendar_command(tracked, capsys, tmp_path):
     assert out.startswith("BEGIN:VCALENDAR\r\n") and "Follow up: Acme Robotics" in out and "Globex" not in out
     target = tmp_path / "jobwatch.ics"
     cli.main(["-c", str(tracked), "calendar", "-o", str(target)])
-    assert target.read_bytes().decode() == out and "Wrote" in capsys.readouterr().err
+
+    def unstamped(text):  # DTSTAMP is when the file was made: a second can tick between the two runs
+        return [line for line in text.split("\r\n") if not line.startswith("DTSTAMP:")]
+    assert unstamped(target.read_bytes().decode()) == unstamped(out) and "Wrote" in capsys.readouterr().err
 
 
 def test_calendar_command_uses_the_reminder_setting(tracked, capsys):
