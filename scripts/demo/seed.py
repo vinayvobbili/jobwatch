@@ -2,6 +2,7 @@
 Hooli), made-up jobs and a made-up resume, for the README's demo video.
 
     python scripts/demo/seed.py -o scripts/demo/out/demo
+    python scripts/demo/seed.py -o scripts/demo/out/demo-more --more    # + the tutorials' records
 
 Everything lives in that folder (watchlist, resume, state, cache). Nothing reads or writes your own watchlist or
 ~/.local/share/jobwatch, and nothing reaches the network: the jobs are written straight into the state file.
@@ -10,13 +11,18 @@ Everything lives in that folder (watchlist, resume, state, cache). Nothing reads
 from __future__ import annotations
 
 import argparse
+import csv
+import json
 import shutil
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from jobwatch import logos
+from jobwatch.contacts import TIES_FILE
 from jobwatch.models import Job
 from jobwatch.score import resume_id
 from jobwatch.store import Store
+from jobwatch.suggest import company_id
 
 OUT = Path(__file__).resolve().parent / "out" / "demo"
 MARK = ".jobwatch-demo"  # written into the folder, so seeding again only ever clears a demo folder
@@ -48,6 +54,7 @@ scoring:
   auto: false
 display:
   theme: light
+fetch_every: off   # the page checks no board by itself: nothing here reaches the web
 state: state/state.db
 cache: cache
 """
@@ -171,8 +178,151 @@ TRACK = {
 }
 
 
-def seed(out: Path) -> Path:
-    """Write the demo into `out`, replacing an earlier demo there; returns its watchlist."""
+# -- the tutorials' extras (seed(..., more=True)): comps, contacts, interviews, a package, prep sheets and stories,
+# all made up, in a separate folder so the README demo's scenes stay as they are.
+
+MORE_WATCHLIST = """\
+pay:
+  target: 200000-230000
+  floor: 175000
+connections: connections/Connections.csv
+stories: stories.yaml
+prep:
+  sheets: prep
+calendar:
+  remind: 30
+"""
+
+CONNECTIONS = [  # name, company, position, how well the made-up candidate knows them: (messages, last message)
+    ("Maya Okafor", "Initech", "Staff Engineer", (14, "2026-09-02")),
+    ("Theo Brandt", "Initech", "Recruiter", (3, "2026-07-18")),
+    ("Priya Raman", "Acme", "Engineering Manager", (9, "2026-08-11")),
+    ("Lucas Ferreira", "Globex", "Senior Engineer", (1, "2026-02-05")),
+    ("Nora Kim", "Umbrella", "Director of Data", (6, "2026-06-30")),
+    ("Sam Whitfield", "Hooli", "Principal Engineer", (2, "2026-04-21")),
+    ("Elena Petrova", "Vandelay Industries", "Engineering Manager", (11, "2026-10-01")),
+    ("Jonas Albrecht", "Acme", "Recruiter", (0, "")),
+]
+STORIES = """\
+# Made-up stories for the demo candidate.
+- id: eval-harness
+  title: Built an evaluation harness for prompts and models
+  did: Wrote a Python harness that replays saved questions against each prompt or model change and scores the answers.
+  hard: The team disagreed on what a good answer was, so I wrote the rubric with the support leads first.
+  result: Regressions caught before release went from none to about one a week.
+  skills: [Python, LLM, evaluation]
+- id: support-agent
+  title: Shipped a support agent with retrieval
+  did: Built an agent that answers support questions from the help center with RAG and vector search.
+  hard: Old articles contradicted new ones, so I added a freshness rule to the retrieval step.
+  result: The agent answered 40% of tickets without a person, with a thumbs-up rate of 82%.
+  skills: [Python, RAG, agents]
+"""
+SHEET = """<!doctype html><meta charset="utf-8"><title>Initech onsite</title>
+<style>body{font:16px/1.5 -apple-system,sans-serif;max-width:640px;margin:40px auto}</style>
+<h1>Initech: panel interview</h1>
+<p>Made-up prep sheet for the demo.</p>
+"""
+
+
+def at(days: int, hour: str) -> str:
+    """A next step's meeting time, `days` from today: "Tue 10/27 10:00 AM"."""
+    d = date.today() + timedelta(days=days)
+    return f"{d:%a} {d.month}/{d.day} {hour}"
+
+
+def extras(out: Path, store: Store):
+    """Add the tutorials' records to the seeded demo: more applications (one gone quiet, one with an offer),
+    interviews with times, pay and company details, a saved package, connections, stories and a prep sheet."""
+    with (out / "jobwatch.yaml").open("a") as f:
+        f.write(MORE_WATCHLIST)
+    (out / "stories.yaml").write_text(STORIES)
+    (out / "prep").mkdir()
+    (out / "prep" / "initech-panel.html").write_text(SHEET)
+    (out / "connections").mkdir()
+    with (out / "connections" / "Connections.csv").open("w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["First Name", "Last Name", "URL", "Email Address", "Company", "Position", "Connected On"])
+        for name, company, position, _ in CONNECTIONS:
+            first, _, last = name.partition(" ")
+            w.writerow([first, last, f"https://www.linkedin.com/in/{first.lower()}-{last.lower()}-demo", "",
+                        company, position, ""])
+    ties = {f"{n.split()[0].lower()}-{n.split()[1].lower()}-demo": {"messages": m, "last_message": last}
+            for n, _, _, (m, last) in CONNECTIONS if m}
+    (out / "connections" / TIES_FILE).write_text(json.dumps(ties, indent=1))
+
+    store.track("ashby:initech:c0", next_step=f"Panel interview {at(3, '10:00 AM')}")
+    store.track("workable:umbrella:U0Z9Y8", next_step=f"Recruiter call {at(2, '2:15-3:00 PM')}")
+    quiet = store.add("Soylent", "Principal Engineer", "https://jobs.example.com/soylent/p1", "applied",
+                      applied=(date.today() - timedelta(days=30)).isoformat(), note="Via a recruiter",
+                      follow_up=(date.today() - timedelta(days=16)).isoformat())
+    offer = store.add("Vandelay Industries", "Staff Platform Engineer", "https://jobs.example.com/vandelay/s1",
+                      "offer", applied=(date.today() - timedelta(days=26)).isoformat(),
+                      note="Offer call went well", next_step="Decide on the offer", follow_up="+3")
+    unwatched = [(quiet.display_company, quiet.key), (offer.display_company, offer.key)]
+    for name, title in (("Pied Piper", "Senior Platform Engineer"), ("Cyberdyne", "AI Engineer")):
+        alert = store.add(name, title, f"https://jobs.example.com/{name.lower().replace(' ', '')}/a1", "new",
+                          location="Remote, United States",
+                          description=posting(f"{name} is hiring.", ["Build Python services and LLM features"],
+                                              ["Python", "AWS"], ["Kubernetes"]) + "\n\nPay: $180,000 - $220,000")
+        store.set_via(alert.key, "linkedin-alert")
+        unwatched.append((name, alert.key))
+    for name, key in unwatched:  # a board given for each company, so the page looks none up on the web
+        store.note_unwatched(company_id(name), name, key, entry=f"greenhouse:{company_id(name)}",
+                             found_by="posting")
+    for job_, _ in store.jobs(include_closed=True):  # no logo to look for on the web: the page draws initials
+        store.save_logo(logos.key(job_.display_company), "", "", b"")
+
+    store.set_comp("ashby:initech:c0", base="190-220K", bonus="10% target", equity="40K RSUs over 4 years",
+                   asked="220-240K", role="product", career_note="LLM apps, staff IC",
+                   note="Recruiter said 220K is the top of the band")
+    store.set_comp("workable:umbrella:U0Z9Y8", base="165-185K", bonus="8% target", role="internal",
+                   career_note="Internal analyst tools")
+    store.set_comp(offer.key, base="205K", bonus="10% target", equity="60K RSUs over 4 years", signon="15K",
+                   asked="215K", offered="205K", role="customer", career_note="Forward-deployed, travel 20%")
+    store.set_health("Initech", kind="tech", listing="private", stage="Series C, $90M, 2025", raised="$180M",
+                     revenue="1.8x YoY", headcount="growing", layoffs="none", rating="4.2 Glassdoor",
+                     sources="https://example.com/initech")
+    store.set_health("Umbrella", kind="enterprise", listing="public", headcount="shrinking",
+                     layoffs="8% in 2026", rating="3.2 Glassdoor", risk="reorganizing the data group",
+                     sources="https://example.com/umbrella")
+    store.set_health("Vandelay Industries", kind="consulting", listing="private", stage="Series A, $20M, 2025",
+                     raised="$25M", headcount="growing", layoffs="none", rating="3.9 Glassdoor",
+                     sources="https://example.com/vandelay")
+    store.rate_contact("maya-okafor-demo", "use", "answers fast")
+    store.rate_contact("jonas-albrecht-demo", "skip", "doesn't check LinkedIn")
+
+    package = store.package("ashby:initech:c0")
+    package.attach("Resume_Initech.pdf", b"%PDF-1.4 demo resume")
+    package.attach("Cover_Letter_Initech.pdf", b"%PDF-1.4 demo cover letter")
+    package.write(answers=[{"question": "Salary expectation", "answer": "Open, based on the full package"},
+                           {"question": "Notice period", "answer": "Two weeks"},
+                           {"question": "Why Initech?", "answer": "The ML platform serves every product team."}])
+    package.practise("Tell me about an LLM feature you shipped.",
+                     "I built a support agent with retrieval.",
+                     "I built a support agent that answers from the help center with RAG, and added a freshness "
+                     "rule so old articles don't win. It answered 40% of tickets without a person.")
+
+
+def settle_dates(store: Store):
+    """Dates a person would see: a job applied to was first seen the day before at the latest (local days, so no
+    UTC day ahead of today), and the boards were last checked three hours ago, with nothing failed."""
+    local = datetime.now().astimezone()
+    for job_, rec in store.applications():
+        if rec["applied_at"]:
+            applied = datetime.fromisoformat(rec["applied_at"]).replace(hour=12, tzinfo=local.tzinfo)
+            seen = min(datetime.fromisoformat(rec["first_seen"]), applied - timedelta(days=1))
+            with store.db:
+                store.db.execute("UPDATE jobs SET first_seen=? WHERE key=?", (seen.isoformat(), job_.key))
+    store.record_fetch(len(BOARDS), sum(map(len, BOARDS.values())), 6, {}, {})
+    with store.db:
+        three_hours_ago = (local - timedelta(hours=3)).astimezone(timezone.utc)
+        store.db.execute("UPDATE fetches SET at=?", (three_hours_ago.isoformat(),))
+
+
+def seed(out: Path, more: bool = False) -> Path:
+    """Write the demo into `out`, replacing an earlier demo there; returns its watchlist. more: the tutorials'
+    extra records on top (see extras)."""
     out = out.expanduser().resolve()
     if out.exists() and any(out.iterdir()):
         if not (out / MARK).is_file():
@@ -193,6 +343,9 @@ def seed(out: Path) -> Path:
         on = (date.today() - timedelta(days=ago)).isoformat() if ago else None
         store.set_status([key], status, note, on=on)
         store.track(key, next_step=next_step, follow_up=follow)
+    if more:
+        extras(out, store)
+    settle_dates(store)
     store.close()
     return out / "jobwatch.yaml"
 
@@ -200,7 +353,9 @@ def seed(out: Path) -> Path:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-o", "--out", type=Path, default=OUT, help=f"the demo's folder (default: {OUT})")
-    print(f"Demo watchlist: {seed(ap.parse_args().out)}")
+    ap.add_argument("--more", action="store_true", help="add the tutorials' records: comps, contacts, interviews...")
+    args = ap.parse_args()
+    print(f"Demo watchlist: {seed(args.out, args.more)}")
 
 
 if __name__ == "__main__":

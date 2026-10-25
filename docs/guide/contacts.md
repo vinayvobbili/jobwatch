@@ -2,6 +2,11 @@
 
 [← jobwatch guide](README.md)
 
+**Tutorial: Comps and who you know** (2 minutes): pay, career value and company health side by side, the
+weights, and the people you know at each company.
+
+https://github.com/user-attachments/assets/42eb0edb-945e-4caf-95c0-3eeae6fdada6
+
 A referral gets read before an application does. Download your LinkedIn data (Settings → Data privacy →
 Get a copy of your data) and upload the archive in `jobwatch ui`, or point `connections:` at the .zip or
 at its Connections.csv. Each digest and queue entry then lists your connections who work there:

@@ -1173,6 +1173,8 @@ const TONES = { applied: "win", queued: "win", screening: "win", interviewing: "
   rejected: "onward", withdrawn: "onward", skipped: "onward" };
 
 // The day's hello on Today, by the local hour.
+// The greeting ends in an emoji, so a dash joins it to the line, not a full stop.
+function todayLine(hello, companies) { return `${hello} — new roles at the ${companies} companies you watch, best fit first.`; }
 function greeting(hour) {
   return hour < 5 ? "Burning the midnight oil 🌙" : hour < 12 ? "Good morning ☀️" : hour < 17 ? "Good afternoon 🌤️"
     : "Good evening 🌆";
@@ -2584,8 +2586,7 @@ async function renderToday() {
   };
 
   put(
-    pagehead("Today", `${greeting(new Date().getHours())}. New roles at the ${settings.companies.length} companies ` +
-      "you watch, best fit first."),
+    pagehead("Today", todayLine(greeting(new Date().getHours()), settings.companies.length)),
     filterBar(hidden),
     layout([
       hero([picks ? [picks, "picks for today", "lead wide"] : null, [d.jobs.length, picks ? "matching" : "matching jobs", picks ? "" : "lead"],

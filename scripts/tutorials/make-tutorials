@@ -22,6 +22,7 @@ python="${PYTHON:-python}"
 slidecast="${SLIDECAST:-slidecast}"
 
 "$python" scripts/demo/seed.py -o "$out/demo"
+"$python" scripts/demo/seed.py -o "$out/demo-more" --more   # + comps, contacts, interviews: the guide videos'
 "$python" scripts/screenshots.py --demo -c "$out/demo/jobwatch.yaml" -o "$out/shots" \
   --reply scripts/demo/chat-reply.md
 "$python" scripts/tutorials/shots.py "$out"

@@ -1,6 +1,7 @@
 # Rebuild the tutorial videos
 
-Three narrated videos (60 to 120 seconds each), made like the README demo from made-up data only (Acme, Globex,
+Seven narrated videos (60 to 120 seconds each: getting started, the daily routine, where the AI runs, applying,
+tracking, interview prep, comps and contacts), made like the README demo from made-up data only (Acme, Globex,
 Initech...): nothing reads your own watchlist, reaches a job board or calls a model.
 
 ```
@@ -11,7 +12,8 @@ scripts/tutorials/make-tutorials [OUT] [--music DIR]    # OUT defaults to script
 | Step | Command | Writes (in OUT) |
 |---|---|---|
 | Seed and screenshot the demo | as in `scripts/demo/README.md` | `demo/`, `shots/` |
-| Screenshot first-run onboarding | `python scripts/tutorials/shots.py OUT` | `empty/`, `tut-shots/` |
+| Seed the demo with the guide videos' extras (comps, contacts, interviews, a package) | `python scripts/demo/seed.py -o OUT/demo-more --more` | `demo-more/` |
+| Screenshot onboarding, Settings and the guide pages | `python scripts/tutorials/shots.py OUT` | `empty/`, `tut-shots/` |
 | Slides and narration | `python scripts/tutorials/build.py OUT [--music DIR]` | `tutorials/*/slides`, `reel.yaml` |
 | Render | `slidecast render OUT/tutorials/NAME/reel.yaml -o ...` | `tutorials/jobwatch-NAME.mp4` |
 

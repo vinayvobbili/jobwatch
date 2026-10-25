@@ -2,6 +2,11 @@
 
 [← jobwatch guide](README.md)
 
+**Tutorial: interview prep** (2 minutes): prep sheets, answers drafted from your stories, a mock interview, a
+drill video, finding a story.
+
+https://github.com/user-attachments/assets/c8ac1030-700f-4cdd-823d-4b92cd411bf3
+
 Before a recruiter call or an interview, open the application's **Details** and press **Prep sheet** (or run
 `jobwatch prep c1`). One page, ready to print, with:
 - the stage, next step and your notes;

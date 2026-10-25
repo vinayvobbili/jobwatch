@@ -71,10 +71,10 @@ def test_the_page_stays_on_the_persons_side(tmp_path):
     says hello for the time of day."""
     js = tmp_path / "words.js"
     js.write_text("const pick = list => list[0], PASSED = [\"Their loss. Onward.\"];\n" + page_function("stageWords")
-                  + page_function("greeting") + """
+                  + page_function("greeting") + page_function("todayLine") + """
 const stages = ["screening", "interviewing", "offer", "rejected", "withdrawn", "applied", "someday"];
 console.log(JSON.stringify({ words: Object.fromEntries(stages.map(s => [s, stageWords("Acme", s)])),
-  hello: [3, 9, 14, 20].map(greeting) }));
+  hello: [3, 9, 14, 20].map(greeting), line: todayLine(greeting(20), 5) }));
 """, encoding="utf-8")
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
@@ -84,6 +84,8 @@ console.log(JSON.stringify({ words: Object.fromEntries(stages.map(s => [s, stage
     assert got["words"]["offer"].startswith("🥂")
     assert got["words"]["someday"] == "Acme: marked someday."  # a stage with no words of its own still says something
     assert got["hello"] == ["Burning the midnight oil 🌙", "Good morning ☀️", "Good afternoon 🌤️", "Good evening 🌆"]
+    # a dash after the emoji, not a stray ". "
+    assert got["line"] == "Good evening 🌆 — new roles at the 5 companies you watch, best fit first."
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")

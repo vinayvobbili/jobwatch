@@ -2,6 +2,11 @@
 
 [← jobwatch guide](README.md)
 
+**Tutorial: tracking applications** (2 minutes): stages and follow-ups, applications that go quiet, the
+calendar feed, Interviews, looking up a company, what you sent.
+
+https://github.com/user-attachments/assets/e2e43a54-83d2-4154-9229-a063fafefe44
+
 An application moves through stages: `applied`, `screening`, `interviewing`, `offer`, and then `rejected`
 or `withdrawn`. Each can have a next step and a day to follow up. Jobs you found somewhere jobwatch doesn't
 watch (a referral, a recruiter, LinkedIn) go in with `add`, so every application is in one list:

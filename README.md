@@ -21,7 +21,8 @@ With sound (1½ minutes, made from made-up data):
 https://github.com/user-attachments/assets/71b048d0-d372-42fd-a247-c4a59c3ffd71
 
 <details>
-<summary><b>Tutorials</b>, under two minutes each: getting started, your daily routine, where the AI runs</summary>
+<summary><b>Seven tutorials</b>, two minutes or less each: getting started, your daily routine, where the AI runs,
+applying, tracking, interview prep, Comps and who you know</summary>
 
 **Getting started**: install, `jobwatch ui`, the four onboarding steps, Today.
 
@@ -34,6 +35,22 @@ https://github.com/user-attachments/assets/8653c4ca-a79d-4135-9be1-51ba3c9fccf6
 **Where the AI runs**: the Claude API, Antigravity or this Mac; the fallback chain; what leaves your computer.
 
 https://github.com/user-attachments/assets/40e6f2cb-c201-4da9-ba21-77bdacc464b8
+
+**Applying**: the queue, jobs found elsewhere, job-alert emails, status emails, companies to watch.
+
+https://github.com/user-attachments/assets/9d021676-85da-4ce1-8d42-f3808b4ae03b
+
+**Tracking applications**: stages and follow-ups, applications that go quiet, the calendar feed, Interviews.
+
+https://github.com/user-attachments/assets/e2e43a54-83d2-4154-9229-a063fafefe44
+
+**Interview prep**: prep sheets, answers drafted from your stories, a mock interview, a drill video.
+
+https://github.com/user-attachments/assets/c8ac1030-700f-4cdd-823d-4b92cd411bf3
+
+**Comps and who you know**: pay, career value and company health side by side; the people you know there.
+
+https://github.com/user-attachments/assets/42eb0edb-945e-4caf-95c0-3eeae6fdada6
 
 </details>
 

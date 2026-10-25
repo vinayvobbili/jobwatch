@@ -2,6 +2,11 @@
 
 [← jobwatch guide](README.md)
 
+**Tutorial: applying** (2 minutes): the queue, jobs found elsewhere, job-alert emails, status emails, companies
+to watch.
+
+https://github.com/user-attachments/assets/9d021676-85da-4ce1-8d42-f3808b4ae03b
+
 Pick the roles worth a tailored application from the digest and queue them. Work through the queue when
 you have time:
 

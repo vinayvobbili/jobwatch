@@ -49,6 +49,56 @@ def test_seed_keeps_made_up_jobs_in_its_own_folder(out):
         store.close()
 
 
+def test_seed_more_adds_the_tutorials_records_and_leaves_the_plain_demo_alone(tmp_path):
+    seed = load("seed").seed
+    seed(tmp_path / "plain")
+    cfg = config.load(seed(tmp_path / "more", more=True))
+    assert cfg.connections and cfg.connections.is_file() and cfg.stories.is_file() and cfg.prep.sheets.is_dir()
+    assert config.load(tmp_path / "plain" / "jobwatch.yaml").connections is None
+    store = Store(cfg.state)
+    try:
+        assert {rec["status"] for _, rec in store.applications()} >= {"offer", "interviewing", "screening"}
+        assert store.comps() and store.healths() and store.contact_feedback()
+        assert all(rec["first_seen"][:10] < rec["applied_at"] for _, rec in store.applications())
+        assert cfg.fetch_every is None and store.last_fetch()["errors"] == {}  # checked earlier; no board is asked
+        initech = store.package("ashby:initech:c0")
+        assert len(initech.data()["files"]) == 2 and initech.practised()
+        assert {u["name"]: u["entry"] for u in store.unwatched()} == {  # boards given: none is looked up on the web
+            "Pied Piper": "greenhouse:piedpiper", "Cyberdyne": "greenhouse:cyberdyne",
+            "Soylent": "greenhouse:soylent", "Vandelay Industries": "greenhouse:vandelayindustries"}
+        assert all(store.logo(k) for k in ("acme", "initech", "soylent"))  # no logo is looked up on the web
+    finally:
+        store.close()
+    plain = Store(tmp_path / "plain" / "state" / "state.db")
+    try:
+        assert not plain.comps() and len(plain.jobs(include_closed=True)) == 12
+    finally:
+        plain.close()
+
+
+def test_the_guide_tutorials_are_built_from_seeded_screenshots(tmp_path):
+    out = tmp_path / "out"
+    tutorials = Path(__file__).resolve().parents[1] / "scripts" / "tutorials"
+    spec = importlib.util.spec_from_file_location("tutorials_build", tutorials / "build.py")
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    shots = out / "tut-shots"
+    shots.mkdir(parents=True)
+    for name in ("first-run", "jobs", "companies", "ai", "ai-settings", "queue", "queue-add", "suggest", "applied",
+                 "applied-table", "applied-quiet", "interviews", "company", "sent", "prep", "prep-practised",
+                 "comps", "comps-table", "referrals"):
+        (shots / f"{name}.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (out / "shots").mkdir()
+    for name in ("today", "details", "queue", "applied", "prep"):
+        (out / "shots" / f"{name}.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    reels = build.tutorials(shots, out / "shots")
+    guide = {name: slides for name, slides in reels.items() if name[:2] in ("04", "05", "06", "07")}
+    assert list(guide) == ["04-applying", "05-tracking", "06-interview-prep", "07-comps-and-contacts"]
+    for slides in guide.values():
+        assert 6 <= len(slides) <= 9 and all(narration for _, _, narration in slides)
+        assert "localhost" not in "".join(html for _, html, _ in slides)
+
+
 def test_seeding_again_only_replaces_a_demo_folder(tmp_path):
     seed = load("seed").seed
     seed(tmp_path / "demo")
