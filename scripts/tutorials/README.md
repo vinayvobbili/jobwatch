@@ -19,3 +19,8 @@ scripts/tutorials/make-tutorials [OUT] [--music DIR]    # OUT defaults to script
 
 The story of each video (slides and narration) is `tutorials()` in `build.py`. The voice and music are the demo's
 (see `scripts/demo/README.md`). Copy the finished videos to `docs/tutorials/`.
+
+After uploading them to GitHub and linking them in the README, `python scripts/check_videos.py` downloads every
+video the repo page shows and checks each plays to the end and is one of the files in `docs/tutorials/`. The page's
+video links expire five minutes after it loads, so a player started later stops after the part it preloaded; that
+is GitHub, not the video.

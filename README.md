@@ -22,7 +22,8 @@ https://github.com/user-attachments/assets/71b048d0-d372-42fd-a247-c4a59c3ffd71
 
 ## Tutorials
 
-Seven short videos, two minutes or less each, made from made-up data.
+Seven short videos, two minutes or less each, made from made-up data. GitHub's video links last five minutes,
+so if one stops after a second or two, reload the page and play it again.
 
 **Getting started**: install, `jobwatch ui`, the four onboarding steps, Today.
 
