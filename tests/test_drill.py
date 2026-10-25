@@ -1,6 +1,7 @@
 """Drill videos: the cards a prep sheet gives, and the slides and lines that would go to slidecast."""
 
 import importlib.machinery
+import re
 import sys
 import types
 
@@ -120,8 +121,8 @@ def test_no_pause_is_a_quick_review():
 
 
 class FakeTTS:
-    def __init__(self):
-        self.voice, self.said = "", []
+    def __init__(self, **kw):
+        self.voice, self.said, self.kw = "", [], kw
 
     def synthesize(self, text, out_path):
         self.said.append((self.voice, text))
@@ -136,31 +137,25 @@ def test_voices_switch_on_each_lines_tag():
     assert tts.said == [("am_michael", "Why queues?"), ("af_heart", "Latency.")]
 
 
+def say(line):
+    for pattern, repl in drill.SAY.items():
+        line = re.sub(pattern, repl, line)
+    return line
+
+
 @pytest.mark.parametrize("line, said", [
-    ("We went live in production.", "We went [live](/lˈIv/) in production."),
-    ("Going live is a toggle.", "Going [live](/lˈIv/) is a toggle."),
-    ("I ran it live on a copy.", "I ran it [live](/lˈIv/) on a copy."),
-    ("The live runs used 2 min.", "The [live](/lˈIv/) runs used 2 min."),
-    ("Is it live now?", "Is it live now?"),                # "it live" alone isn't a pattern: left to the tagger
-    ("I live in North Carolina.", "I live in North Carolina."),
-    ("An assistant that lives in Webex.", "An assistant that lives in Webex."),
     ("I ran the SOC and its SOCs.", "I ran the sock and its socks."),
     ("SOCKS proxies and SOC2.", "SOCKS proxies and SOC2."),
+    ("The CISO and two CISOs.", "The [CISO](/sˈisO/) and two [CISOs](/sˈisOz/)."),
 ])
-def test_lines_are_rewritten_where_kokoro_says_them_wrong(line, said):
-    assert drill.spoken(line) == said
+def test_security_words_are_rewritten_for_the_voice(line, said):
+    assert say(line) == said
 
 
-def test_the_voice_says_the_rewritten_line():
-    tts = FakeTTS()
-    drill.Voices(tts).synthesize("[af_heart] We went live.", "a.wav")
-    assert tts.said == [("af_heart", "We went [live](/lˈIv/).")]
-
-
-def test_misaki_takes_the_adjective_sound():
+def test_misaki_says_the_security_words_as_written_here():
     en = pytest.importorskip("misaki.en")
-    phonemes, _ = en.G2P(trf=False, british=False)(drill.spoken("We went live in production."))
-    assert "lˈIv" in phonemes and "lˈɪv" not in phonemes
+    phonemes, _ = en.G2P(trf=False, british=False)(say("The SOC reports to the CISO."))
+    assert "sˈɑk" in phonemes and "sˈisO" in phonemes
 
 
 @pytest.fixture
@@ -204,6 +199,12 @@ def test_render_sends_tagged_lines_and_silent_holds(fake_slidecast, tmp_path):
     assert all(kw == {"tail_pad": drill.TAIL} for _, n, kw in slides if n) and drill.TAIL >= 1.5
     assert tts.said[-2:] == [(drill.INTERVIEWER, "Q?"), (drill.ANSWERER, "A.")]
     assert out.read_bytes() == b"video" and list(out.parent.iterdir()) == [out]
+
+
+def test_kokoro_gets_the_security_words(fake_slidecast, tmp_path):
+    drill.render(drill.segments([drill.Card("Q?", "A.", ("A.",))], "T", pause=0), tmp_path / "d.mp4",
+                 renderer=object())
+    assert fake_slidecast["reel"]["tts"].tts.kw == {"phonetic": drill.SAY}
 
 
 def test_a_render_stopped_part_way_keeps_the_last_good_video(fake_slidecast, tmp_path):
