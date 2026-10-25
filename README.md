@@ -20,9 +20,9 @@ With sound (1½ minutes, made from made-up data):
 
 https://github.com/user-attachments/assets/71b048d0-d372-42fd-a247-c4a59c3ffd71
 
-<details>
-<summary><b>Seven tutorials</b>, two minutes or less each: getting started, your daily routine, where the AI runs,
-applying, tracking, interview prep, Comps and who you know</summary>
+## Tutorials
+
+Seven short videos, two minutes or less each, made from made-up data.
 
 **Getting started**: install, `jobwatch ui`, the four onboarding steps, Today.
 
@@ -51,8 +51,6 @@ https://github.com/user-attachments/assets/c8ac1030-700f-4cdd-823d-4b92cd411bf3
 **Comps and who you know**: pay, career value and company health side by side; the people you know there.
 
 https://github.com/user-attachments/assets/42eb0edb-945e-4caf-95c0-3eeae6fdada6
-
-</details>
 
 ## Get started
 
