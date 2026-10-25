@@ -167,7 +167,7 @@ def fake_model(monkeypatch):
         seen.update(calls=seen["calls"] + 1, system=system)
         yield seen["reply"]
         yield {"input_tokens": 10}
-    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="", key_command="": None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
 
@@ -196,7 +196,7 @@ def test_no_titles_without_a_resume_or_a_model_and_no_call_is_made(watchlist, fa
     (watchlist.parent / "resume.md").write_text("Jane Doe, engineer")
     watchlist.write_text(watchlist.read_text() + "resume: resume.md\n")
 
-    def unavailable(backend, keychain=""):
+    def unavailable(backend, keychain="", key_command=""):
         raise chat.ChatUnavailable("chat on this computer needs Apple Silicon")
     monkeypatch.setattr(chat, "check", unavailable)
     assert App(watchlist).get_onboarding({})["why"] == "chat on this computer needs Apple Silicon"

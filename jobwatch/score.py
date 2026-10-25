@@ -17,6 +17,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -270,12 +271,14 @@ def brief(fit: dict | None) -> dict | None:
 def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, workers: int = 1,
                progress: Callable[[str], None] | None = None,
                prompts: Mapping[str, str] | None = None, model: str = "",
-               keychain: str = "", batch: bool = False) -> tuple[dict[str, dict], dict[str, str]]:
+               keychain: str = "", batch: bool = False,
+               key_command: str = "") -> tuple[dict[str, dict], dict[str, str]]:
     """({job key: result}, {job key: error}). A result has score, must_haves_met/total, gaps, summary,
     requirements (see requirement_rows; results saved before it have none) and scored_by ("backend:model").
     prompts: the edited ones (scoring.prompts) in place of shortlist-ai's own; results belong under
     resume_id(resume, prompts). model: the backend's model (scoring.model); unset, shortlist-ai's own.
-    keychain: the macOS keychain item with the Anthropic API key, for Claude (scoring.keychain).
+    keychain: the macOS keychain item with the Anthropic API key, for Claude (scoring.keychain); key_command: a
+    command that prints it instead (scoring.key_command).
     workers: model calls at once (scoring.workers), for Claude; the local model takes one at a time.
     batch: Claude through the Message Batches API, half price, waiting for each batch (minutes, at most a day)."""
     try:
@@ -295,7 +298,7 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
     if prompts and (problem := check_prompts(prompts)):
         raise ScoringUnavailable(f"scoring.prompts: {problem}")
     edits = {"prompts": dict(prompts)} if prompts else {}  # none: works with a shortlist-ai from before prompts
-    if backend == "claude" and (problem := load_api_key(keychain)):
+    if backend == "claude" and (problem := load_api_key(keychain, key_command)):
         raise ScoringUnavailable(problem)
 
     progress = progress or (lambda msg: None)
@@ -364,11 +367,20 @@ def scorer_label(scored_by: str) -> str:
     return f"{model.rsplit('/', 1)[-1]} ({backend})" if backend in ("local", "agy") else model or backend
 
 
-def load_api_key(keychain: str) -> str | None:
+def load_api_key(keychain: str, command: str = "") -> str | None:
     """For Claude: ANTHROPIC_API_KEY from the macOS keychain item named `keychain` (scoring.keychain), when the
     environment doesn't have a key already. Kept in this process's environment only: never stored, printed or
-    logged. None when there's a key to use (or no keychain item named), else why there isn't one."""
-    if not keychain or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+    logged. None when there's a key to use (or no keychain item named), else why there isn't one.
+    command: scoring.key_command, a command that prints the key (a password manager's CLI, or a helper that asks
+    for Touch ID), run in place of the keychain read; it may wait for the person to approve."""
+    if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        return None
+    if command:
+        with _KEY_LOCK:  # the page's chat and scoring can ask at once: one approval serves both
+            if os.environ.get("ANTHROPIC_API_KEY"):
+                return None
+            return _key_from_command(command)
+    if not keychain:
         return None
     try:
         r = subprocess.run(["security", "find-generic-password", "-s", keychain, "-w"],
@@ -378,5 +390,29 @@ def load_api_key(keychain: str) -> str | None:
     if r.returncode or not r.stdout.strip():
         return (f"no API key in the keychain item {keychain!r} (scoring.keychain): add one with "
                 f"`security add-generic-password -s {keychain} -a \"$USER\" -w`")
+    os.environ["ANTHROPIC_API_KEY"] = r.stdout.strip()
+    return None
+
+
+KEY_COMMAND_WAIT = 120  # seconds: the command may be waiting for the person's approval
+_KEY_LOCK = threading.Lock()
+
+
+def _key_from_command(command: str) -> str | None:
+    """The key from scoring.key_command's output. What it prints is never repeated in a message; what it says on
+    stderr is, briefly, so a refused approval or a missing item explains itself."""
+    try:
+        argv = [os.path.expanduser(part) for part in shlex.split(command)]
+    except ValueError as e:
+        return f"scoring.key_command isn't a command line: {e}"
+    if not argv:
+        return None
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=KEY_COMMAND_WAIT)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"couldn't run scoring.key_command ({argv[0]}): {type(e).__name__}"
+    if r.returncode or not r.stdout.strip():
+        said = " ".join((r.stderr or "").split())[:200]
+        return f"scoring.key_command gave no API key (exit {r.returncode})" + (f": {said}" if said else "")
     os.environ["ANTHROPIC_API_KEY"] = r.stdout.strip()
     return None

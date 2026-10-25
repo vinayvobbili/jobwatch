@@ -57,7 +57,7 @@ def fake_model(monkeypatch):
         yield text[:20]
         yield text[20:]
         yield {"input_tokens": 3000, "output_tokens": 400}
-    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="", key_command="": None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
 
@@ -233,7 +233,7 @@ def test_without_a_model_the_sheet_still_comes(setup, fake_model, monkeypatch):
     cfg, store, key, _ = setup
     assert prep.build(cfg, store, key).drafted == [] and fake_model["calls"] == 0  # not asked for: never called
 
-    def unavailable(backend, keychain=""):
+    def unavailable(backend, keychain="", key_command=""):
         raise chat.ChatUnavailable("chat on this computer needs Apple Silicon and: pip install 'jobwatch[local]'")
     monkeypatch.setattr(chat, "check", unavailable)
     s = prep.build(cfg, store, key, draft=True)
@@ -243,7 +243,7 @@ def test_without_a_model_the_sheet_still_comes(setup, fake_model, monkeypatch):
     def broken(backend, system, messages, **kw):
         yield "{"
         raise RuntimeError("model fell over")
-    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="", key_command="": None)
     monkeypatch.setattr(chat, "reply", broken)
     assert prep.build(cfg, store, key, draft=True).draft_note == "Not drafted: RuntimeError: model fell over."
 

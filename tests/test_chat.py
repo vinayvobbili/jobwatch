@@ -21,7 +21,7 @@ def fake_model(monkeypatch):
         yield "Hello"
         yield ", there."
         yield {"input_tokens": 900, "output_tokens": 4}
-    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="", key_command="": None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
 
@@ -134,7 +134,7 @@ def test_a_failed_reply_ends_with_an_error_line(server, monkeypatch):
     def broken(backend, system, messages, **kw):
         yield "Partial"
         raise RuntimeError("model fell over")
-    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="", key_command="": None)
     monkeypatch.setattr(chat, "reply", broken)
     status, data = request(server, "POST", "/api/chat", {"messages": [{"role": "user", "content": "hi"}]},
                            headers={"X-Jobwatch-Token": TOKEN})

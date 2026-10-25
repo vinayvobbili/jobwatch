@@ -52,7 +52,7 @@ def fake_model(monkeypatch):
         for i in range(0, len(seen["reply"]), 40):
             yield seen["reply"][i:i + 40]
         yield {"input_tokens": 900, "output_tokens": 4}
-    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="", key_command="": None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
 
@@ -111,7 +111,7 @@ def test_an_unavailable_backend_is_reported_before_anything_is_asked(setup, monk
     with pytest.raises(chat.ChatUnavailable, match="no model"):
         mock.start(cfg, store, key)
     with pytest.raises(KeyError):
-        monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
+        monkeypatch.setattr(chat, "check", lambda backend, keychain="", key_command="": None)
         mock.start(cfg, store, "nope")
 
 

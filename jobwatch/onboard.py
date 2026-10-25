@@ -48,7 +48,7 @@ def ready(cfg: Config) -> str:
     if not resume_text(cfg.resume):
         return "Add your resume first."
     try:
-        chat.check(cfg.chat.backend, cfg.chat.keychain)
+        chat.check(cfg.chat.backend, cfg.chat.keychain, cfg.chat.key_command)
     except chat.ChatUnavailable as e:
         return str(e)
     return ""

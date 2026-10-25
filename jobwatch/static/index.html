@@ -2921,7 +2921,8 @@ function aiSetup(s) {
       const replace = h("button", { class: "btn ghost", type: "button" }, "Replace");
       replace.onclick = () => { fill(holder, keyForm(st)); replace.remove(); };
       key = h("div", {}, h("div", { class: "foot" }, icon("lock", 13), h("span", { class: "muted" },
-        st.key === "keychain" ? `Key in your keychain (${st.keychain})` : "Key from ANTHROPIC_API_KEY"),
+        st.key === "keychain" ? `Key in your keychain (${st.keychain})`
+          : st.key === "command" ? "Key from scoring.key_command" : "Key from ANTHROPIC_API_KEY"),
         st.can_save_key ? replace : null), holder);
     }
     const el = h("div", { class: "ai-tile" + (chosen ? " on" : ""), role: "radio", tabindex: "0",

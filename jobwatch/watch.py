@@ -794,7 +794,7 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
         try:
             results, errors = score_jobs(first, cfg.resume, cfg.backend, cfg.cache, workers=cfg.score_workers,
                                          progress=progress, prompts=cfg.prompts, model=cfg.score_model,
-                                         keychain=cfg.api_keychain, batch=batch)
+                                         keychain=cfg.api_keychain, batch=batch, key_command=cfg.api_key_command)
         except ScoringUnavailable as e:
             if not cfg.score_fallback:
                 raise
@@ -810,7 +810,7 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
             with turn(name, background):
                 more, more_errors = score_jobs(rest, cfg.resume, name, cfg.cache, workers=cfg.score_workers,
                                                progress=progress, prompts=cfg.prompts, keychain=cfg.api_keychain,
-                                               model=fallback_model(cfg, name))
+                                               model=fallback_model(cfg, name), key_command=cfg.api_key_command)
         except ScoringUnavailable as e:
             more, more_errors = {}, {j.key: str(e) for j in rest}
         for key, r in more.items():
@@ -923,7 +923,7 @@ def compare_scores(cfg: Config, picks: list[tuple[Job, dict]], backend: str, mod
     with turn(backend):
         return score_jobs([job for job, _ in picks], cfg.resume, backend, cfg.cache, workers=cfg.score_workers,
                           progress=progress, prompts=cfg.prompts if prompts is None else prompts, model=model,
-                          keychain=cfg.api_keychain, batch=batch)
+                          keychain=cfg.api_keychain, batch=batch, key_command=cfg.api_key_command)
 
 
 def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,

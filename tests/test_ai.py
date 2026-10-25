@@ -4,6 +4,8 @@ import subprocess
 import sys
 import types
 
+import pytest
+
 from jobwatch import ai
 
 KEY = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"
@@ -70,6 +72,15 @@ def test_the_key_source_is_the_keychain_when_the_item_exists_and_the_secret_is_n
     assert "-w" not in calls[0]
 
 
+def test_a_key_command_is_the_key_source_without_being_run(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setattr(ai.subprocess, "run", lambda *a, **k: pytest.fail("it may ask for Touch ID: not now"))
+    assert ai.key_source("item", "keyhelper read item") == "command"
+    claude = ai.status("item", "keyhelper read item")["claude"]
+    assert claude["key"] == "command" and not claude["can_save_key"]  # saving would go where it isn't read
+
+
 def test_there_is_no_key_source_when_the_keychain_has_no_item_or_is_not_a_mac(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
@@ -85,7 +96,7 @@ def test_there_is_no_key_source_when_the_keychain_has_no_item_or_is_not_a_mac(mo
 def ready_here(monkeypatch, **over):
     """Everything present, unless overridden."""
     things = {"_installed": lambda m: True, "_agy_supported": lambda: True, "find_agy": lambda: "/bin/agy",
-              "apple_silicon": lambda: True, "key_source": lambda k: "environment"}
+              "apple_silicon": lambda: True, "key_source": lambda *a: "environment"}
     things.update(over)
     for name, fn in things.items():
         monkeypatch.setattr(ai, name, fn)
@@ -102,7 +113,7 @@ def test_status_has_every_choice_ready_when_everything_is_present(monkeypatch):
 
 
 def test_claude_needs_a_key_step_when_there_is_no_key(monkeypatch):
-    ready_here(monkeypatch, key_source=lambda k: "")
+    ready_here(monkeypatch, key_source=lambda *a: "")
     monkeypatch.setattr(ai.sys, "platform", "darwin")
     s = ai.status("mine")
     assert not s["claude"]["ready"]
@@ -113,7 +124,7 @@ def test_claude_needs_a_key_step_when_there_is_no_key(monkeypatch):
 
 
 def test_off_a_mac_the_key_step_says_to_set_the_environment_variable(monkeypatch):
-    ready_here(monkeypatch, key_source=lambda k: "")
+    ready_here(monkeypatch, key_source=lambda *a: "")
     monkeypatch.setattr(ai.sys, "platform", "linux")
     s = ai.status()
     assert "ANTHROPIC_API_KEY" in s["claude"]["steps"][0]["text"]

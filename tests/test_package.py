@@ -117,7 +117,7 @@ def test_the_page_attaches_shows_and_serves_files(server):
 
 def test_chat_about_a_job_reads_what_was_sent(watchlist, web, monkeypatch):
     seen = {}
-    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="", key_command="": None)
     monkeypatch.setattr(chat, "reply",
                         lambda backend, system, messages, **_: seen.update(system=system) or iter(["ok"]))
     app = App(watchlist)

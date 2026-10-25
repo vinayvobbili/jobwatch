@@ -188,6 +188,7 @@ class Chat:
     max_turns: int = 24        # the most recent messages of a conversation sent with each question
     prompt: str = ""           # the edited system prompt; unset: chat.SYSTEM
     keychain: str = ""         # macOS keychain item with the Anthropic API key; unset: scoring.keychain's
+    key_command: str = ""      # a command that prints the key, in place of the keychain; unset: scoring.key_command's
 
     @property
     def model(self) -> str:
@@ -214,7 +215,7 @@ def _template(text: str, name: str, fields: tuple[str, ...], path: Path) -> str:
     return text
 
 
-def _chat(raw, backend: str, path: Path, keychain: str = "") -> Chat:
+def _chat(raw, backend: str, path: Path, keychain: str = "", key_command: str = "") -> Chat:
     raw = _section(raw, "chat", Chat, path, "{backend: local, max_tokens: 1500}")
     chosen = str(raw.get("backend") or (backend if backend in CHAT_BACKENDS else "local"))
     if chosen not in CHAT_BACKENDS:
@@ -230,7 +231,8 @@ def _chat(raw, backend: str, path: Path, keychain: str = "") -> Chat:
                 max_turns=_between(raw.get("max_turns", Chat.max_turns), "chat.max_turns", path, 1, 200,
                                    "the latest messages sent with each question"),
                 prompt=_template(prompt, "chat.prompt", CHAT_PLACEHOLDERS, path) if prompt.strip() else "",
-                keychain=str(raw.get("keychain") or keychain).strip())
+                keychain=str(raw.get("keychain") or keychain).strip(),
+                key_command=str(raw.get("key_command") or key_command).strip())
 
 
 PREP_PLACEHOLDERS = ("context",)  # what prep.prompt must keep: the posting, resume and stories it reads
@@ -454,6 +456,7 @@ class Config:
     backend: str = "local"
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
     api_keychain: str = ""     # scoring.keychain: macOS keychain item with the Anthropic API key (for Claude)
+    api_key_command: str = ""  # scoring.key_command: a command that prints the key, in place of the keychain read
     score_fallback: tuple[str, ...] = ()  # scoring.fallback: backends tried in turn when this can't score
     agy_model: str = ""        # scoring.agy_model: agy's model as a fallback (scoring.model as the backend)
     score_daily: int = 0       # scoring.daily: the most jobs the backend scores a day, then the fallback (0: no cap)
@@ -836,10 +839,12 @@ def load(explicit: str | Path | None = None) -> Config:
         score_rest=_whole(scoring.get("rest", 10), "scoring.rest", path, "0 rests not at all"),
         unload_after=_whole(scoring.get("unload_after", 5), "scoring.unload_after", path, "0 keeps the model loaded"),
         api_keychain=str(scoring.get("keychain") or "").strip(), score_fallback=tuple(fallback),
+        api_key_command=str(scoring.get("key_command") or "").strip(),
         agy_model=str(scoring.get("agy_model") or "").strip(),
         score_daily=_whole(scoring.get("daily", 0), "scoring.daily", path, "0 sets no daily limit"),
         score_workers=max(1, _whole(scoring.get("workers", 4), "scoring.workers", path, "1 makes one call at a time")),
-        chat=_chat(raw.get("chat"), backend, path, str(scoring.get("keychain") or "").strip()),
+        chat=_chat(raw.get("chat"), backend, path, str(scoring.get("keychain") or "").strip(),
+                   str(scoring.get("key_command") or "").strip()),
         prep=_prep(raw.get("prep"), path),
         timeline=timeline, near=_near(learning, filters),
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
@@ -860,7 +865,8 @@ def defaults() -> dict:
     """What each setting is when the watchlist leaves it out, as Settings shows it (by section, as written)."""
     imap = Imap("", "")
     return {"scoring": {"backend": "local", "top": 0},
-            "chat": {k: v for k, v in asdict(Chat()).items() if k not in ("backend", "prompt", "keychain")},
+            "chat": {k: v for k, v in asdict(Chat()).items()
+                     if k not in ("backend", "prompt", "keychain", "key_command")},
             "learning": {"timeline": "quarter", "jobs": Config.learn_jobs},
             "display": {"theme": "system", "width": "standard", "today": Config.today, "company": "matches"},
             "pace": asdict(Pace()),
@@ -945,6 +951,7 @@ scoring:
   top: 0                 # score this many of the most relevant new jobs per digest
   # model: ""            # the model fit scores use; leave out for shortlist-ai's own for the backend
   # keychain: anthropic  # macOS keychain item holding the API key, when ANTHROPIC_API_KEY isn't set (chat too)
+  # key_command: op read op://Private/Anthropic/credential  # or a command that prints the key, run in its place
   # fallback: [agy, local]  # other backends, tried in order, when this can't score (no key, no credit) or is at...
   # daily: 40            # ...the most jobs it scores a day (0: no limit); the fallback's are scored again later
   # agy_model: claude-sonnet-5-5-medium  # agy's model as a fallback (`agy models`); as backend: `model`

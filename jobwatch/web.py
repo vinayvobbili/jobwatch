@@ -562,18 +562,19 @@ class App:
         self.score_in_background()  # new filters, resume or scoring setting: maybe more to score
         return {"saved": str(cfg.path), "companies": len(cfg.boards)}
 
-    def _keychain(self) -> str:
+    def _keychain(self, setting: str = "keychain") -> str:
         raw = (yaml.safe_load(self.path.read_text()) or {}) if self.path.is_file() else {}
         scoring = raw.get("scoring") if isinstance(raw.get("scoring"), dict) else {}
-        return str(scoring.get("keychain") or "").strip()
+        return str(scoring.get(setting) or "").strip()
 
     def get_ai(self, q) -> dict:
         """Where the AI can run on this computer: each choice, ready or what it still needs (see ai.py)."""
-        return ai.status(self._keychain())
+        return ai.status(self._keychain(), self._keychain("key_command"))
 
     def post_ai_test(self, body) -> dict:
         """One small call to the chosen backend, to show it answers (the local model loads first)."""
-        return ai.test(str(body.get("backend") or ""), str(body.get("model") or "").strip(), self._keychain())
+        return ai.test(str(body.get("backend") or ""), str(body.get("model") or "").strip(), self._keychain(),
+                       self._keychain("key_command"))
 
     def post_ai_key(self, body) -> dict:
         """Keeps an Anthropic API key in the macOS keychain and names that item in scoring.keychain: the key is

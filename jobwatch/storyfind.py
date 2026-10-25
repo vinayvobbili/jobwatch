@@ -124,7 +124,7 @@ def start(cfg: Config, store: Store, key: str, gap: str) -> Session:
     if not gap:
         raise ValueError("say what to find a story for (one of the sheet's gaps, or your own words)")
     c = cfg.chat
-    chat.check(c.backend, c.keychain)
+    chat.check(c.backend, c.keychain, c.key_command)
     sheet = prep.build(cfg, store, key)
     bank = stories.load(cfg.stories)
     resume = resume_text(store.package(sheet.key).resume()) or resume_text(cfg.resume)

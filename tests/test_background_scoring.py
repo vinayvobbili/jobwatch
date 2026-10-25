@@ -30,7 +30,7 @@ def scored(monkeypatch):
     asked, fail = [], set()
 
     def fake(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain="",
-             batch=False):
+             batch=False, key_command=""):
         asked.extend(j.key for j in jobs)
         return ({j.key: FIT for j in jobs if j.key not in fail},
                 {j.key: "model said no" for j in jobs if j.key in fail})
@@ -95,7 +95,7 @@ def test_batch_api_scores_todays_room_as_one_half_price_batch(resume_watchlist, 
     calls = []
 
     def fake(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain="",
-             batch=False):
+             batch=False, key_command=""):
         calls.append(([j.key for j in jobs], backend, batch))
         return {j.key: FIT for j in jobs}, {}
 
@@ -149,7 +149,7 @@ def test_a_kick_while_scoring_runs_again(resume_watchlist, monkeypatch):
     gate, calls = threading.Event(), []
 
     def slow(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain="",
-             batch=False):
+             batch=False, key_command=""):
         calls.append(jobs[0].key)
         gate.wait(5)
         return {j.key: FIT for j in jobs}, {}

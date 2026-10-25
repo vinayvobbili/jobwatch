@@ -66,7 +66,7 @@ def fake_model(monkeypatch):
         seen["systems"].append(system)
         seen["backend"] = backend
         yield seen["reply"]
-    monkeypatch.setattr(chat, "check", lambda backend, keychain="": None)
+    monkeypatch.setattr(chat, "check", lambda backend, keychain="", key_command="": None)
     monkeypatch.setattr(chat, "reply", reply)
     return seen
 
@@ -102,7 +102,7 @@ def test_generic_questions_stand_without_a_model_and_without_asking(setup, fake_
     sheet = prep.build(cfg, store, key)  # a plain sheet never calls the model
     assert sheet.role_questions == [] and sheet.expect == prep.SCREEN_QUESTIONS and fake_model["calls"] == 0
 
-    def unavailable(backend, keychain=""):
+    def unavailable(backend, keychain="", key_command=""):
         raise chat.ChatUnavailable("chat on this computer needs Apple Silicon")
     monkeypatch.setattr(chat, "check", unavailable)
     assert prep.role_questions(cfg, store, key) == prep.SCREEN_QUESTIONS

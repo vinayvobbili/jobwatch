@@ -120,6 +120,23 @@ def test_a_missing_keychain_item_says_how_to_add_one_without_the_key(no_key, mon
     assert "security add-generic-password -s anthropic" in problem
 
 
+def test_a_key_command_is_run_in_place_of_the_keychain_and_its_output_never_shown(no_key, monkeypatch):
+    asked = []
+    monkeypatch.setattr(subprocess, "run", lambda argv, **k: asked.append(argv) or
+                        SimpleNamespace(returncode=0, stdout="sk-ant-test", stderr=""))
+    assert load_api_key("anthropic", "~/bin/keyhelper read anthropic --for 'job watch'") is None
+    import os
+    assert asked == [[os.path.expanduser("~/bin/keyhelper"), "read", "anthropic", "--for", "job watch"]]
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-test"
+    assert load_api_key("anthropic", "keyhelper read anthropic") is None and len(asked) == 1  # once a process
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(
+        returncode=1, stdout="sk-ant-half", stderr="the read of anthropic wasn't approved\n"))
+    problem = load_api_key("anthropic", "keyhelper read anthropic")
+    assert problem == "scoring.key_command gave no API key (exit 1): the read of anthropic wasn't approved"
+    assert "sk-ant" not in problem
+
+
 def test_scoring_with_claude_stops_before_any_call_without_a_key(shortlist, no_key, monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=44, stdout=""))
     cv = tmp_path / "cv.md"

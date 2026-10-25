@@ -1,7 +1,7 @@
 """Where jobwatch's AI runs (fit scores, title suggestions and the chat), and whether each choice is ready here.
 
 - claude: Anthropic's API, billed per use. Needs jobwatch[score] and an API key: ANTHROPIC_API_KEY, or a macOS
-  keychain item named by scoring.keychain (save_key puts one there).
+  keychain item named by scoring.keychain (save_key puts one there), or the output of scoring.key_command.
 - agy: Google's Antigravity CLI, on its subscription's quota. Fit scores only. Needs jobwatch[score] and agy.
 - local: the on-device MLX model (Apple Silicon). Needs jobwatch[local]. Nothing leaves the computer.
 
@@ -64,10 +64,13 @@ def _agy_supported() -> bool:
     return hasattr(backends, "AgyBackend")
 
 
-def key_source(keychain: str) -> str:
-    """Where Claude's API key would come from: "environment", "keychain", or "" (none). The key isn't read."""
+def key_source(keychain: str, key_command: str = "") -> str:
+    """Where Claude's API key would come from: "environment", "command", "keychain", or "" (none). The key isn't
+    read, and the command isn't run: it may ask the person to approve."""
     if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
         return "environment"
+    if key_command:
+        return "command"
     if keychain and sys.platform == "darwin":
         try:
             found = subprocess.run(["security", "find-generic-password", "-s", keychain],
@@ -83,15 +86,15 @@ def _step(text: str, command: str = "", link: str = "") -> dict:
     return {"text": text, **({"command": command} if command else {}), **({"link": link} if link else {})}
 
 
-def status(keychain: str = "") -> dict:
+def status(keychain: str = "", key_command: str = "") -> dict:
     """Each choice: ready or not, what's still needed (steps, with a command to run or a page to open), and what
-    it means for the user's data and bill. keychain: scoring.keychain."""
+    it means for the user's data and bill. keychain: scoring.keychain; key_command: scoring.key_command."""
     scoring = _installed("shortlist_ai")
     claude_steps, agy_steps, local_steps = [], [], []
     if not scoring:
         claude_steps.append(_step("Install the scoring add-on", INSTALL_SCORE))
         agy_steps.append(_step("Install the scoring add-on", INSTALL_SCORE))
-    key = key_source(keychain)
+    key = key_source(keychain, key_command)
     if not key:
         claude_steps.append(_step("Create an API key on Anthropic's console, then paste it below: jobwatch keeps it "
                                   "in your macOS keychain, never in the settings file", link=KEYS_PAGE)
@@ -112,7 +115,8 @@ def status(keychain: str = "") -> dict:
                                  INSTALL_LOCAL))
     return {
         "claude": {"label": "Claude API", "ready": not claude_steps, "steps": claude_steps,
-                   "key": key, "keychain": keychain or KEYCHAIN, "can_save_key": sys.platform == "darwin",
+                   "key": key, "keychain": keychain or KEYCHAIN,
+                   "can_save_key": sys.platform == "darwin" and not key_command,  # the command's key isn't ours
                    "about": "The strongest scores. Postings and your resume go to Anthropic; billed per job "
                             "scored (a few cents each)."},
         "agy": {"label": "Antigravity (agy)", "ready": not agy_steps, "steps": agy_steps, "path": agy or "",
@@ -125,7 +129,7 @@ def status(keychain: str = "") -> dict:
     }
 
 
-def test(backend: str, model: str = "", keychain: str = "") -> dict:
+def test(backend: str, model: str = "", keychain: str = "", key_command: str = "") -> dict:
     """One small call to the model: {"ok": True, "seconds": ..., "model": ...} or {"ok": False, "error": ...}.
     The local model loads first (a minute or more the first time)."""
     from .score import load_api_key, turn
@@ -141,7 +145,7 @@ def test(backend: str, model: str = "", keychain: str = "") -> dict:
     class Ping(BaseModel):
         ok: bool
 
-    if backend == "claude" and (problem := load_api_key(keychain)):
+    if backend == "claude" and (problem := load_api_key(keychain, key_command)):
         return {"ok": False, "error": problem}
     start = time.monotonic()
     try:
