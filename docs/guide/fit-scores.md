@@ -94,7 +94,23 @@ Claude scores `scoring.workers` jobs at once (4 by default; the on-device model 
 waiting on (a new resume, a backlog, a `--rescore`), `jobwatch score --batch-api` sends it all through Claude's
 Message Batches API at half the price. The scoring steps depend on each other, so it goes in rounds of one
 batch each (about three); each batch takes minutes, at most a day. Stopping is safe: the next run collects what
-was sent instead of paying for it again. The page never batches: a score you ask for there is wanted now.
+was sent instead of paying for it again. A score you ask for on the page (**Score fit**) is wanted now, so it's
+never batched.
+
+When nothing is urgent, the page's background scoring can batch too, at half price. Turn on **Half price**
+under Settings → Your resume and fit scores (it shows when Claude scores), or in the watchlist:
+
+```yaml
+scoring:
+  backend: claude
+  auto: true
+  batch_api: true    # background scores go through the Batches API: half price, in minutes to hours
+```
+
+The background scorer then sends as many jobs as Claude may still score today (`scoring.daily`; all of them
+without a cap) as one batch, and saves each score when the batch ends. Jobs past the daily limit go to the
+fallback as before, one at a time. `jobwatch score` batches by default too. New jobs get their fit a little later
+(minutes, at most a day); nothing else changes.
 
 To tighten the prompts for the on-device model without losing paid scores (an edited prompt sets every score
 aside), try them in a comparison first: `jobwatch score --compare 20 --stored-by claude --backend local

@@ -161,6 +161,8 @@ def cmd_score(args, cfg, store):
         backend = args.backend or cfg.backend
         cfg = replace(cfg, backend=backend, score_fallback=tuple(b for b in cfg.score_fallback if b != backend),
                       score_model=args.model if args.model else "" if args.backend else cfg.score_model)
+    # scoring.batch_api makes it the default, for the backend it was set for
+    args.batch_api = args.batch_api or (cfg.score_batch_api and cfg.backend == "claude")
     if args.batch_api and cfg.backend != "claude":
         raise ConfigError(f"--batch-api is for Claude (scoring.backend: claude, or --backend claude), "
                           f"not {cfg.backend}")

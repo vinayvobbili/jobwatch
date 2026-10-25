@@ -91,6 +91,40 @@ def test_the_page_scores_new_jobs_in_the_background_after_a_fetch(resume_watchli
     assert asked == []
 
 
+def test_batch_api_scores_todays_room_as_one_half_price_batch(resume_watchlist, monkeypatch):
+    calls = []
+
+    def fake(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain="",
+             batch=False):
+        calls.append(([j.key for j in jobs], backend, batch))
+        return {j.key: FIT for j in jobs}, {}
+
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    raw = yaml.safe_load(resume_watchlist.read_text())
+    resume_watchlist.write_text(yaml.safe_dump({**raw, "scoring": {
+        "backend": "claude", "auto": True, "batch_api": True, "daily": 2, "fallback": "local"}}))
+    app = App(resume_watchlist, background=True)
+    app.post_fetch({})
+    app.scorer.wait(10)
+    # Claude's two for today go out together through the Batches API; the third is past the daily limit, so the
+    # fallback scores it on its own, as without batch_api.
+    assert calls == [(["ashby:initech:c1", "lever:globex:aaaa-1111"], "claude", True),
+                     (["greenhouse:acme:101"], "local", False)]
+    assert app.get_scoring({})["done"] == 3
+
+
+def test_batch_api_is_for_claude_and_a_yes_or_no(watchlist):
+    raw = yaml.safe_load(watchlist.read_text())
+    assert config.load(watchlist).score_batch_api is False
+    watchlist.write_text(yaml.safe_dump({**raw, "scoring": {"backend": "claude", "batch_api": True}}))
+    assert config.load(watchlist).score_batch_api is True
+    for scoring, error in (({"backend": "local", "batch_api": True}, "needs scoring.backend: claude"),
+                           ({"backend": "claude", "batch_api": "yes"}, "true or false")):
+        watchlist.write_text(yaml.safe_dump({**raw, "scoring": scoring}))
+        with pytest.raises(config.ConfigError, match=error):
+            config.load(watchlist)
+
+
 def test_without_background_the_app_only_scores_on_request(resume_watchlist, scored):
     asked, _ = scored
     app = App(resume_watchlist)

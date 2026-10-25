@@ -148,8 +148,8 @@ class Scorer:
             try:
                 batch = self.app._cfg().score_batch
                 steps = 0
-                while self._step():
-                    steps += 1
+                while n := self._step():
+                    steps += n
                     if batch and steps >= batch and self.left:
                         rest = self.app._cfg().score_rest * 60
                         break
@@ -170,31 +170,39 @@ class Scorer:
                     return
                 self._again = False
 
-    def _step(self) -> bool:
-        """Score the most relevant unscored job. False when there's nothing to do."""
+    def _step(self) -> int:
+        """Score the most relevant unscored job, or with scoring.batch_api as many as Claude may score today, as
+        one batch (half price; it waits minutes to hours, which a background thread can). How many it tried: 0
+        when there's nothing to do."""
         cfg = self.app._cfg()
         if not cfg.auto_score:
-            return False
+            return 0
         store = Store(cfg.state)
         try:
             todo = unscored(cfg, store, self._failed)
             self.left = len(todo)
             if not todo:
-                return False
-            e = todo[0]
-            self.current, self.current_key = f"{e.job.display_company}: {e.job.title}", e.job.key
+                return 0
+            room = (max(cfg.score_daily - store.score_usage(cfg.backend), 0) if cfg.score_daily else len(todo))
+            batch = cfg.score_batch_api and room > 0
+            group = todo[:room] if batch else todo[:1]
+            e = group[0]
+            self.current = (f"{len(group)} jobs through Claude's Batches API (half price)" if batch and len(group) > 1
+                            else f"{e.job.display_company}: {e.job.title}")
+            self.current_key = e.job.key
             with turn(cfg.backend, background=True):
-                scored, errors = score_entries(cfg, store, [e], progress=lambda m: None, background=True,
-                                               by="background")
+                scored, errors = score_entries(cfg, store, group, progress=lambda m: None, background=True,
+                                               by="background", batch=batch)
         finally:
             store.close()
         self.done += scored
-        self.left -= 1
+        self.left -= len(group)
         self.current_key = ""
-        if errors:
-            self._failed[e.job.key] = next(iter(errors.values()))
-            self.error = f"{self.current}: {self._failed[e.job.key]}"
-        return True
+        for g in group:
+            if g.job.key in errors:
+                self._failed[g.job.key] = errors[g.job.key]
+                self.error = f"{g.job.display_company}: {g.job.title}: {errors[g.job.key]}"
+        return len(group)
 
 
 def slot(times, now: datetime, after: bool = False) -> datetime:

@@ -4315,11 +4315,16 @@ function renderSettings() {
   const autoDefault = () => backend.value === "local";
   const auto = checkLine(scoring.auto ?? autoDefault(), "Score new jobs by themselves while the page is open");
   backend.addEventListener("change", () => { if (scoring.auto === undefined) auto.box.checked = autoDefault(); });
+  // Claude only: the page's scores go through the Message Batches API, half price, landing in minutes to hours.
+  const batchApi = checkLine(scoring.batch_api, "Half price: score with Claude through the Batches API (scores land in minutes to hours)");
+  const showBatch = () => { batchApi.el.hidden = backend.value !== "claude"; };
+  backend.addEventListener("change", showBatch); showBatch();
   const top = numInput(scoring.top, D.scoring.top);
   const prompts = fitPromptsCard(s.fit_prompts);
   const scoringValues = () => {
     const out = merged(scoring, { ...aiS.values(), model: textOf(scoreModel), agy_model: textOf(agyModel),
-      top: numberOf(top), auto: auto.box.checked === autoDefault() ? null : auto.box.checked });
+      top: numberOf(top), auto: auto.box.checked === autoDefault() ? null : auto.box.checked,
+      batch_api: backend.value === "claude" && batchApi.box.checked ? true : null });
     if (prompts && prompts.editable) {  // otherwise the watchlist's are kept as they are
       const edited = prompts.edited();
       if (Object.keys(edited).length) out.prompts = edited; else delete out.prompts;
@@ -4411,7 +4416,7 @@ function renderSettings() {
         field("Model", scoreModel, "Blank: shortlist-ai's own for where it runs."),
         field("agy model", agyModel, "When agy scores: e.g. claude-sonnet-5-5-medium; `agy models` lists them."),
         field("Score per digest", top, "jobwatch digest scores this many new jobs; 0 none.")),
-      auto.el),
+      auto.el, batchApi.el),
     setCard("people", "People you know", "optional",
       uploadField("connections", ".zip,.csv", s.connections, "On LinkedIn: Settings → Data privacy → Get a copy of your " +
         "data. Upload the archive (.zip) LinkedIn emails you, and each job shows who you know there, the people you " +

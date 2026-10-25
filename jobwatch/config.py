@@ -461,6 +461,7 @@ class Config:
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
     score_batch: int = 10      # scoring.batch: jobs the page scores in a row before it rests (0: no rests)
+    score_batch_api: bool = False  # scoring.batch_api: the page scores with Claude through the Batches API (half price)
     score_rest: int = 10       # scoring.rest: minutes it rests between batches
     unload_after: int = 5      # scoring.unload_after: minutes idle before the local model leaves memory (0: never)
     prompts: dict[str, str] = field(default_factory=dict)  # scoring.prompts: the edited fit-score prompts
@@ -777,6 +778,12 @@ def load(explicit: str | Path | None = None) -> Config:
     auto_score = scoring.get("auto", backend == "local")
     if not isinstance(auto_score, bool):
         raise ConfigError(f"{path}: scoring.auto must be true or false, got {auto_score!r}")
+    batch_api = scoring.get("batch_api", False)
+    if not isinstance(batch_api, bool):
+        raise ConfigError(f"{path}: scoring.batch_api must be true or false, got {batch_api!r}")
+    if batch_api and backend != "claude":
+        raise ConfigError(f"{path}: scoring.batch_api is for Claude's Batches API: it needs scoring.backend: claude, "
+                          f"not {backend}")
     fallback = scoring.get("fallback") or []
     fallback = [fallback] if isinstance(fallback, str) else fallback
     others = ", ".join(b for b in BACKENDS if b != backend)
@@ -825,6 +832,7 @@ def load(explicit: str | Path | None = None) -> Config:
         score_top=_whole(scoring.get("top", 0), "scoring.top", path, "0 scores none when the digest is made"),
         auto_score=auto_score, prompts=_prompts(scoring.get("prompts"), path),
         score_batch=_whole(scoring.get("batch", 10), "scoring.batch", path, "0 scores everything in one go"),
+        score_batch_api=batch_api,
         score_rest=_whole(scoring.get("rest", 10), "scoring.rest", path, "0 rests not at all"),
         unload_after=_whole(scoring.get("unload_after", 5), "scoring.unload_after", path, "0 keeps the model loaded"),
         api_keychain=str(scoring.get("keychain") or "").strip(), score_fallback=tuple(fallback),
