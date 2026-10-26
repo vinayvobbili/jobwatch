@@ -366,6 +366,21 @@ def _pay_lines(pay: dict) -> list[tuple[str, str]]:
     return out
 
 
+def note_entries(note: str) -> list[tuple[str, str]]:
+    """A note's dated lines, newest first, as (day, text): notes grow a dated line at a time (Store.add_note). Text
+    before the first dated line has no day."""
+    out = []
+    for part in re.split(r"\s(?=\d{4}-\d{2}-\d{2}: )", " ".join((note or "").split())):
+        m = re.match(r"(\d{4}-\d{2}-\d{2}): (.*)", part)
+        out.append((m[1], m[2]) if m else ("", part))
+    return [e for e in reversed(out) if e[1]]
+
+
+def _brief_shown(b: dict) -> bool:
+    """The brief's notes are the job's own note, which the sheet shows at the top: the section is for the rest."""
+    return bool(b and (b["about"] or b["facts"] or b["contacts"]))
+
+
 def markdown(s: Sheet) -> str:
     out = [f"# Prep: {s.title}, {s.company}", ""]
     track = [f"**Stage:** {s.status}"] + [f"**{label}:** {v}" for label, v in
@@ -373,7 +388,8 @@ def markdown(s: Sheet) -> str:
                                           ("Follow up", s.follow_up)) if v]
     out.append(" · ".join(track))
     if s.note:
-        out.append(f"\n**Notes:** {s.note}")
+        out += ["", "**Notes** (newest first):"] + [f"- {day + ': ' if day else ''}{text}"
+                                                     for day, text in note_entries(s.note)]
     if s.url:
         out.append(f"\n[The posting]({s.url})" + (f" (found on a watched board: `{s.posting_key}`)"
                                                   if s.posting_key else ""))
@@ -382,11 +398,9 @@ def markdown(s: Sheet) -> str:
                 f"{s.fit.get('must_haves_total', 0)} must-haves."]
         if s.fit.get("summary"):
             out.append(s.fit["summary"])
-    if s.brief:
+    if _brief_shown(s.brief):
         out += ["", "## Company brief", f"_{s.brief['source']}_"]
         out += [f"- {a}" for a in s.brief["about"]] + [f"- {f['label']}: {f['value']}" for f in s.brief["facts"]]
-        if s.brief["notes"]:
-            out.append(f"\n**Your notes:** {s.brief['notes']}")
         if s.brief["contacts"]:
             out.append("\n**You know:** " + "; ".join(
                 p["name"] + (f" ({p['position']})" if p["position"] else "") + (f" [{p['why']}]" if p["why"] else "")
@@ -430,24 +444,95 @@ def markdown(s: Sheet) -> str:
     return "\n".join(out) + "\n"
 
 
+# The page's look is the app's (static/index.html): its palette, glows, gradient tiles and rise-in cards. Theme and
+# width are CSS-only switches (radio buttons read with :has), since the page runs no scripts.
+_DARK = ("--bg:#0a0d16;--glow-1:rgba(99,102,241,.2);--glow-2:rgba(192,80,240,.1);--panel:rgba(21,25,38,.86);"
+         "--panel-solid:#151926;--text:#e9ebf5;--muted:#8f97b2;--line:#252a3b;--accent:#8d8fff;--accent-2:#c77dff;"
+         "--accent-soft:rgba(141,143,255,.14);--chip:#1e2333;--shadow:0 1px 0 rgba(255,255,255,.03) inset,"
+         "0 12px 32px -20px rgba(0,0,0,.9);--shadow-hover:0 1px 0 rgba(255,255,255,.05) inset,"
+         "0 22px 48px -20px rgba(110,100,255,.5);color-scheme:dark")
 _CSS = """
-:root{color-scheme:light dark;--bg:#fff;--fg:#1d2330;--muted:#5d6678;--line:#d9dde5;--card:#f5f7fa;--accent:#1f5fbf}
-@media (prefers-color-scheme:dark){:root{--bg:#161a22;--fg:#e4e8ef;--muted:#9aa3b5;--line:#2c3342;--card:#1e232e;
---accent:#7fb0ff}}
-body{margin:0 auto;max-width:46rem;padding:1.5rem 1rem 3rem;background:var(--bg);color:var(--fg);
-font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-h1{font-size:1.5rem;margin:0 0 .3rem}h2{font-size:1.1rem;margin:1.6rem 0 .5rem;border-bottom:1px solid var(--line)}
-a{color:var(--accent)}.meta,.muted{color:var(--muted)}.small{font-size:.9rem}
-ul{margin:.3rem 0;padding-left:1.3rem}li{margin:.2rem 0}
-.card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.5rem .75rem;margin:.5rem 0}
-.kind{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
-.you{margin-top:.25rem;padding-left:.6rem;border-left:3px solid var(--accent)}.none{margin-top:.25rem;font-style:italic;
-color:var(--muted)}
+:root{--bg:#f3f4fa;--glow-1:rgba(99,102,241,.16);--glow-2:rgba(236,72,153,.09);--panel:rgba(255,255,255,.88);
+--panel-solid:#fff;--text:#141a2e;--muted:#626a84;--line:#e2e5f0;--accent:#5457f0;--accent-2:#a14cf2;
+--accent-soft:rgba(84,87,240,.1);--chip:#eef0f8;
+--shadow:0 1px 2px rgba(20,26,46,.04),0 10px 28px -16px rgba(20,26,46,.16);
+--shadow-hover:0 2px 4px rgba(20,26,46,.05),0 22px 44px -20px rgba(70,60,190,.34);--radius:16px;
+--grad:linear-gradient(135deg,#5a5cf2,#a24af0);--s-applied:#3b82f6;--s-screening:#8b5cf6;--s-interviewing:#f59e0b;
+--s-offer:#10b981;--s-rejected:#94a3b8;--s-withdrawn:#a8a29e;color-scheme:light}
+:root:has(#theme-dark:checked){DARK}
+@media (prefers-color-scheme:dark){:root:has(#theme-system:checked){DARK}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",
+"Segoe UI",Roboto,sans-serif;background:radial-gradient(1100px 560px at 8% -12%,var(--glow-1),transparent 62%),
+radial-gradient(900px 520px at 102% -6%,var(--glow-2),transparent 60%),var(--bg);background-attachment:fixed;
+-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-underline-offset:3px}.muted{color:var(--muted)}.small{font-size:13px}
+ul{margin:4px 0;padding-left:20px}li{margin:3px 0}
+code{font-size:12.5px;background:var(--chip);padding:1px 6px;border-radius:6px}
+.pick{position:absolute;opacity:0;pointer-events:none}
+.bar{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 24px;
+border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--panel-solid) 74%,transparent);
+backdrop-filter:saturate(1.5) blur(16px);-webkit-backdrop-filter:saturate(1.5) blur(16px)}
+.brand{margin-right:auto;font-weight:800;font-size:17px;letter-spacing:-.02em}
+.brand b{background:linear-gradient(120deg,var(--accent),var(--accent-2));-webkit-background-clip:text;
+background-clip:text;color:transparent}.brand span{color:var(--muted);font-weight:600;font-size:14px}
+.seg{display:flex;gap:2px;padding:3px;background:var(--chip);border-radius:11px}
+.seg label{padding:4px 11px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;
+transition:color .15s,background .15s}.seg label:hover{color:var(--text)}
+PICKED{color:var(--text);background:var(--panel-solid);box-shadow:0 1px 3px rgba(20,26,46,.12)}
+main{max-width:1040px;margin:0 auto;padding:30px 24px 80px}
+:root:has(#width-wide:checked) main{max-width:1680px}:root:has(#width-full:checked) main{max-width:none}
+h1{font-size:30px;line-height:1.15;letter-spacing:-.025em;margin:0;font-weight:800}
+h1::after{content:"";display:block;width:76px;height:4px;border-radius:2px;margin-top:12px;background:var(--grad);
+transform-origin:left;animation:grow .5s cubic-bezier(.2,.7,.2,1) both}
+.meta{color:var(--muted);margin:12px 0 0;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center}
+.meta b{color:var(--text);font-weight:600}
+.stage{display:inline-block;padding:2px 11px;border-radius:999px;font-size:12.5px;font-weight:700;color:#fff;
+text-transform:capitalize;background:var(--stage,var(--accent))}
+.s-applied{--stage:var(--s-applied)}.s-screening{--stage:var(--s-screening)}
+.s-interviewing{--stage:var(--s-interviewing)}.s-offer{--stage:var(--s-offer)}.s-rejected{--stage:var(--s-rejected)}
+.s-withdrawn{--stage:var(--s-withdrawn)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;
+box-shadow:var(--shadow);animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+.tile .num{font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1.1;font-variant-numeric:tabular-nums}
+.tile .lbl{color:var(--muted);font-size:13px;margin-top:2px}
+.tile.lead{color:#fff;border-color:transparent;background:var(--grad)}.tile.lead .lbl{color:rgba(255,255,255,.82)}
+.tile:nth-child(2){animation-delay:50ms}.tile:nth-child(3){animation-delay:100ms}.tile:nth-child(4){animation-delay:150ms}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:14px;align-items:start}
+section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px 20px;
+box-shadow:var(--shadow);animation:rise .5s cubic-bezier(.2,.7,.2,1) both;transition:transform .2s,box-shadow .2s}
+section:hover{transform:translateY(-2px);box-shadow:var(--shadow-hover)}
+section.wide{grid-column:1/-1}
+h2{font-size:16px;margin:0 0 10px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px}
+h2::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--grad);
+box-shadow:0 0 0 4px var(--accent-soft)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:10px}
+.card{background:var(--panel-solid);border:1px solid var(--line);border-radius:12px;padding:10px 12px;
+transition:border-color .15s,transform .15s}.card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.kind{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)}
+.you{margin-top:6px;padding-left:10px;border-left:3px solid var(--accent);font-size:14px}
+.none{margin-top:6px;font-style:italic;color:var(--muted);font-size:14px}
 .note{white-space:pre-wrap}
-@media print{:root{--bg:#fff;--fg:#000;--muted:#444;--line:#bbb;--card:#fff;--accent:#000}
-body{max-width:none;padding:0;font-size:11pt}.card,li,h2{break-inside:avoid}h2{break-after:avoid}
+.timeline{list-style:none;padding:0;margin:0;max-height:340px;overflow:auto}
+.timeline li{display:grid;grid-template-columns:92px 1fr;gap:12px;margin:0;padding:7px 0;
+border-top:1px solid var(--line)}
+.timeline li:first-child{border-top:0}
+.day{font-size:12.5px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;padding-top:1px}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}}@keyframes grow{from{transform:scaleX(0)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{:root{--bg:#fff!important;--text:#000!important;--muted:#444!important;--line:#bbb!important;
+--panel:#fff!important;--panel-solid:#fff!important;--accent:#000!important;--chip:#eee!important}
+.bar{display:none}body{background:#fff;font-size:11pt}main{max-width:none;padding:0}
+section,.tile{box-shadow:none;animation:none;border:0;padding:0;margin:0 0 14px}section:hover{transform:none}
+.tile{border:1px solid #bbb;padding:8px}.tile.lead{color:#000;background:none}.tile.lead .lbl{color:#444}
+.grid,.cards{display:block}.card{break-inside:avoid;margin:6px 0}h2{break-after:avoid}.timeline{max-height:none}
 a{text-decoration:none}@page{size:Letter;margin:.7in}}
-"""
+""".replace("DARK", _DARK)
+_THEMES = (("system", "System"), ("light", "Light"), ("dark", "Dark"))
+_WIDTHS = (("standard", "Standard"), ("wide", "Wide"), ("full", "Full"))
+_CSS = _CSS.replace("PICKED", ",".join(f":root:has(#{group}-{v}:checked) label[for={group}-{v}]"
+                                       for group, opts in (("theme", _THEMES), ("width", _WIDTHS)) for v, _ in opts))
 
 
 def _e(text) -> str:
@@ -478,12 +563,10 @@ def _fit_part(s: Sheet):
 
 
 def _brief_part(s: Sheet):
-    if s.brief:
+    if _brief_shown(s.brief):
         b = s.brief
         items = [_e(a) for a in b["about"]] + [f"{_e(f['label'])}: {_e(f['value'])}" for f in b["facts"]]
         body = f'<p class="small muted">{_e(b["source"])}</p>' + (_ul(items) if items else "")
-        if b["notes"]:
-            body += f'<p class="note"><b>Your notes:</b> {_e(b["notes"])}</p>'
         if b["contacts"]:
             body += "<p><b>You know:</b> " + "; ".join(
                 _e(p["name"]) + (f" ({_e(p['position'])})" if p["position"] else "")
@@ -506,7 +589,7 @@ def _matches_part(s: Sheet):
         + (f'<div class="you">{_e(m.resume)}</div>' if m.resume else
            '<div class="none">Nothing close on the resume: have a story, or say plainly how you\'d get there.</div>')
         + "</div>" for m in s.matches)
-    return "Their asks and your closest line" + (f" ({which})" if which else ""), cards
+    return "Their asks and your closest line" + (f" ({which})" if which else ""), f'<div class="cards">{cards}</div>'
 
 
 def _gaps_part(s: Sheet):
@@ -542,7 +625,7 @@ def _expect_part(s: Sheet):
             body = (f'<div class="small muted">From: {_e(", ".join(st["title"] for st in d["stories"]))}</div>'
                     + '<div class="you">' + _ul([_e(p) for p in d["outline"]]) + "</div>")
         cards.append(f'<div class="card">{probes}<div><b>{_e(d["question"])}</b></div>{body}</div>')
-    return "Likely questions for this role, with drafted answers", note + "".join(cards)
+    return "Likely questions for this role, with drafted answers", note + f'<div class="cards">{"".join(cards)}</div>'
 
 
 def _practised_part(s: Sheet):
@@ -550,28 +633,62 @@ def _practised_part(s: Sheet):
         cards = "".join(f'<div class="card"><div><b>{_e(p["question"])}</b></div>'
                         f'<div class="you note">{_e(p["improved"])}</div></div>' for p in s.practised)
         return "Practised answers", ('<p class="small muted">Tightened in mock interviews, from what you said '
-                                     "and your stories.</p>" + cards)
+                                     f'and your stories.</p><div class="cards">{cards}</div>')
 
 
 def _ask_part(s: Sheet):
     return "Ask them", _ul([_e(q) for q in s.ask])
 
 
-def html(s: Sheet) -> str:
-    """The same sheet as a standalone page: inline CSS only, no scripts or network loads, and print styles."""
-    track = [f"<b>Stage:</b> {_e(s.status)}"] + [f"<b>{label}:</b> {_e(v)}" for label, v in
-                                                 (("Applied", s.applied_at), ("Next step", s.next_step),
-                                                  ("Follow up", s.follow_up)) if v]
-    head = [f"<h1>Prep: {_e(s.title)}, {_e(s.company)}</h1>", f'<div class="meta">{" · ".join(track)}</div>']
+def _notes_part(s: Sheet):
     if s.note:
-        head.append(f'<p class="note"><b>Notes:</b> {_e(s.note)}</p>')
+        rows = "".join(f'<li><span class="day">{_e(day)}</span><span>{_e(text)}</span></li>'
+                       for day, text in note_entries(s.note))
+        return "Your notes, newest first", f'<ul class="timeline">{rows}</ul>'
+
+
+def _tiles(s: Sheet) -> str:
+    """The sheet at a glance: fit, must-haves, and the days that matter."""
+    fit = s.fit or {}
+    tiles = ([(f"{fit.get('score', 0):.0f}", "Fit score", "lead"),
+              (f"{fit.get('must_haves_met', 0)}/{fit.get('must_haves_total', 0)}", "Must-haves met", "")] if fit
+             else []) + [(v, label, "") for v, label in ((s.applied_at, "Applied"), (s.follow_up, "Follow up")) if v]
+    return '<div class="tiles">' + "".join(f'<div class="tile {cls}"><div class="num">{_e(v)}</div>'
+                                           f'<div class="lbl">{label}</div></div>'
+                                           for v, label, cls in tiles) + "</div>"
+
+
+def _switches(theme: str, width: str) -> tuple[str, str]:
+    """(the hidden radio buttons, the bar's labels for them): Theme and Width, starting from the app's settings."""
+    picks, segs = [], []
+    for group, opts, on in (("theme", _THEMES, theme), ("width", _WIDTHS, width)):
+        picks += [f'<input type="radio" class="pick" name="{group}" id="{group}-{v}"{" checked" if v == on else ""}>'
+                  for v, _ in opts]
+        segs.append(f'<div class="seg" title="{group.title()}">' + "".join(
+            f'<label for="{group}-{v}">{label}</label>' for v, label in opts) + "</div>")
+    return "".join(picks), "".join(segs)
+
+
+def html(s: Sheet, theme: str = "system", width: str = "standard") -> str:
+    """The same sheet as a standalone page: inline CSS only, no scripts or network loads, and print styles. theme
+    and width (the app's display settings) are where its Theme and Width switches start."""
+    meta = [f'<span class="stage s-{re.sub(r"[^a-z]", "", s.status)}">{_e(s.status)}</span>'] + \
+        [f"<span><b>{label}:</b> {_e(v)}</span>" for label, v in (("Next step", s.next_step),) if v]
     if s.url:
-        head.append("<p>" + _link(s.url, "The posting") + (f" (found on a watched board: <code>{_e(s.posting_key)}"
-                                                         "</code>)" if s.posting_key else "") + "</p>")
-    parts = [p for p in (_fit_part(s), _brief_part(s), _matches_part(s), _gaps_part(s), _pay_part(s),
-                         _sent_part(s), _expect_part(s), _practised_part(s), _ask_part(s)) if p]
-    body = "\n".join(head + [(f"<section><h2>{_e(h)}</h2>{b}</section>" if h else b) for h, b in parts])
+        meta.append("<span>" + _link(s.url, "The posting ↗") + (
+            f' <span class="small">(found on a watched board: <code>{_e(s.posting_key)}</code>)</span>'
+            if s.posting_key else "") + "</span>")
+    head = [f"<h1>Prep: {_e(s.title)}, {_e(s.company)}</h1>", f'<div class="meta">{"".join(meta)}</div>', _tiles(s)]
+    parts = [p for p in (_notes_part(s), _fit_part(s), _brief_part(s), _matches_part(s), _gaps_part(s),
+                         _pay_part(s), _sent_part(s), _expect_part(s), _practised_part(s), _ask_part(s)) if p]
+    full = {"Your notes, newest first", "What you sent"}  # long text reads better across the page
+    sections = "\n".join(
+        (f'<section{" class=wide" if h in full or not h or b.count("card") > 2 else ""}><h2>{_e(h)}</h2>{b}</section>'
+         if h else f'<section class="wide">{b}</section>') for h, b in parts)
+    picks, segs = _switches(theme if theme in dict(_THEMES) else "system",
+                            width if width in dict(_WIDTHS) else "standard")
     return ('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             f"<title>{_e('Prep: ' + s.title + ', ' + s.company)}</title><style>{_CSS}</style></head>\n"
-            f"<body>\n{body}\n</body></html>\n")
+            f'<body>\n{picks}\n<div class="bar"><div class="brand">job<b>watch</b> <span>· prep sheet</span></div>'
+            f'{segs}</div>\n<main>\n{"".join(head)}\n<div class="grid">\n{sections}\n</div>\n</main>\n</body></html>\n')

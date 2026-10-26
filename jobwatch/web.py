@@ -1000,7 +1000,8 @@ class App:
 
         def run(cfg, store):
             sheet = prep.build(cfg, store, key, draft=draft, questions=questions)
-            return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet), "html": prep.html(sheet)}
+            return {**prep.to_dict(sheet), "markdown": prep.markdown(sheet),
+                    "html": prep.html(sheet, cfg.theme, cfg.width)}
         return self._with_store(run)
 
     def get_skills(self, q) -> dict:

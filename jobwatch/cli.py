@@ -750,10 +750,10 @@ def cmd_prep(args, cfg, store):
         print(f"({sheet.questions_note})", file=sys.stderr)
     if args.open:  # the browser needs a file to open; --out names it, otherwise it's a temp file
         out = args.out or Path(tempfile.mkdtemp(prefix="jobwatch-")) / "prep.html"
-        _write(prep.html(sheet), out)
+        _write(prep.html(sheet, cfg.theme, cfg.width), out)
         webbrowser.open(out.resolve().as_uri())
     else:
-        _write(prep.html(sheet) if args.format == "html" else prep.markdown(sheet), args.out)
+        _write(prep.html(sheet, cfg.theme, cfg.width) if args.format == "html" else prep.markdown(sheet), args.out)
 
 
 def cmd_skills(args, cfg, store):

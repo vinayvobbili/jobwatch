@@ -375,6 +375,15 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
   margin: 8px 0; display: grid; gap: 4px; }
 .note-full { white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; margin: 8px 0; max-height: 320px; overflow: auto;
   border-left: 3px solid var(--line, #ddd); padding: 2px 10px; }
+/* a note as its dated lines, newest first (noteTimeline) */
+.timeline { list-style: none; padding: 0; margin: 0; }
+.timeline li { display: grid; grid-template-columns: 88px 1fr; gap: 12px; margin: 0; padding: 6px 0;
+  border-top: 1px solid var(--line); }
+.timeline li:first-child { border-top: 0; }
+.timeline .day { font-size: 12.5px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums;
+  padding-top: 1px; }
+.prep .hero { margin: 16px 0 6px; }
+.prep .hero .num { font-size: 22px; }
 .app .side { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .app .when { color: var(--muted); font-size: 12.5px; }
 select.stage { font-weight: 650; border-radius: 999px; color: var(--sc); padding: 5px 12px;
@@ -1492,7 +1501,7 @@ async function openDetails(key) {
           h("b", {}, `${j.meeting.label} · ${fmtDay(j.meeting.day)} · ${meetingTime(j.meeting)} · ${relDay(j.meeting.day, todayIso())}`),
           j.next_step) : j.next_step || j.follow_up ? nextLine(j, todayIso()) : null,
         sheetButtons(j.sheets, j.sheets_base),
-        j.note ? h("div", { class: "note-full", title: "The whole note, oldest first" }, j.note) : null,
+        j.note ? h("div", { class: "note-full", title: "The whole note, newest first" }, noteTimeline(j.note)) : null,
         linkNote(j),
         j.duplicate_of ? h("div", { class: "warns" }, dupeBadge(j.duplicate_of), " ", j.duplicate_of.text) : null,
         payLine(j),
@@ -1530,6 +1539,25 @@ function detailsScore(j) {
     catch (e) { b.disabled = false; b.textContent = "Score fit"; toast(e.message); }
   };
   return [b, unscoredNote(j)];
+}
+// A note's dated lines, newest first, as [day, text]: notes grow a dated line at a time (prep.note_entries does
+// the same for the standalone page). Text before the first dated line has no day.
+function noteEntries(note) {
+  return String(note || "").trim().split(/\s+/).join(" ").split(/\s(?=\d{4}-\d{2}-\d{2}: )/)
+    .map(p => { const m = p.match(/^(\d{4}-\d{2}-\d{2}): (.*)$/); return m ? [m[1], m[2]] : ["", p]; })
+    .filter(e => e[1]).reverse();
+}
+function noteTimeline(note) {
+  return h("ul", { class: "timeline" }, ...noteEntries(note).map(([day, text]) =>
+    h("li", {}, h("span", { class: "day" }, day), h("span", {}, text))));
+}
+// The prep sheet at a glance: fit, must-haves and the days that matter, as the stat tiles Today uses.
+function prepTiles(p) {
+  const tiles = [p.fit && [Math.round(p.fit.score || 0), "Fit score", "lead"],
+    p.fit && [`${p.fit.must_haves_met || 0}/${p.fit.must_haves_total || 0}`, "Must-haves met", ""],
+    p.applied_at && [p.applied_at, "Applied", ""], p.follow_up && [p.follow_up, "Follow up", ""]].filter(Boolean);
+  return tiles.length ? h("div", { class: "hero" }, ...tiles.map(([num, lbl, cls]) =>
+    h("div", { class: "stat " + cls }, h("div", { class: "num" }, String(num)), h("div", { class: "lbl" }, lbl)))) : null;
 }
 // A prep sheet for a call: the posting's asks next to the closest resume line, gaps, what was sent, questions.
 // draft: the chat's model drafts likely questions with answers from the story file (slow the first time, then kept).
@@ -1570,14 +1598,16 @@ async function openPrep(key, draft = false, questions = false) {
       h("h2", {}, `Prep: ${p.title}`),
       h("div", { class: "meta" }, [p.company, `Stage: ${p.status}`, p.applied_at && `applied ${p.applied_at}`,
         p.next_step && `next: ${p.next_step}`, p.follow_up && `follow up ${p.follow_up}`].filter(Boolean).join(" · ")),
-      p.note ? h("div", { class: "small muted", style: "margin-top:6px" }, p.note) : null,
       p.url ? h("div", { class: "small", style: "margin-top:6px" }, link(p.url, "The posting ↗"),
         p.posting_key ? h("span", { class: "muted" }, " · found on a watched board by its requisition id") : null) : null,
+      prepTiles(p),
+      p.note ? [h("h3", {}, "Your notes, newest first"), h("div", { class: "note-full" }, noteTimeline(p.note))] : null,
       p.fit ? [h("h3", {}, "Fit"), h("div", {}, `${Math.round(p.fit.score || 0)}/100, ${p.fit.must_haves_met || 0} of ` +
         `${p.fit.must_haves_total || 0} must-haves.`), p.fit.summary ? h("p", { class: "small muted" }, p.fit.summary) : null] : null,
-      p.brief.source ? [h("h3", {}, "Company brief"), h("div", { class: "small muted" }, p.brief.source),
+      // the brief's notes are the job's note, shown above
+      p.brief.source && (p.brief.about.length || p.brief.facts.length || p.brief.contacts.length)
+        ? [h("h3", {}, "Company brief"), h("div", { class: "small muted" }, p.brief.source),
         list([...p.brief.about, ...p.brief.facts.map(f => `${f.label}: ${f.value}`)]),
-        p.brief.notes ? h("div", { class: "small", style: "white-space:pre-wrap" }, h("b", {}, "Your notes: "), p.brief.notes) : null,
         p.brief.contacts.length ? h("div", { class: "small" }, h("b", {}, "You know: "), p.brief.contacts.map(c =>
           c.name + (c.position ? ` (${c.position})` : "") + (c.why ? ` [${c.why}]` : "")).join("; ")) : null] : null,
       p.matches.length ? [h("h3", {}, "Their asks and your closest line" + (which ? ` (${which})` : "")),

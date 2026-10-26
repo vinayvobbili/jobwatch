@@ -163,6 +163,19 @@ def test_an_applications_note_is_clamped_on_the_card():
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_note_reads_as_its_dated_lines_newest_first(tmp_path):
+    """The same split as prep.note_entries, for Details and the prep dialog."""
+    note = "Spotted on a board (2031-03-02): hybrid. 2031-03-09: Recruiter is Priya Sol.\n2031-03-20:  Booked the call."
+    js = tmp_path / "note.js"
+    js.write_text(page_function("noteEntries") + f"\nconsole.log(JSON.stringify([noteEntries({json.dumps(note)}),"
+                  " noteEntries(''), noteEntries(null)]));", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [[["2031-03-20", "Booked the call."], ["2031-03-09", "Recruiter is Priya Sol."],
+                                     ["", "Spotted on a board (2031-03-02): hybrid."]], [], []]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_links_keep_the_pages_own_paths_and_fragments_but_not_script_schemes(tmp_path):
     """A prep sheet's link is a path on this page's own server and a jump link is a #fragment: both must survive
     safeUrl; javascript: and data: stay blocked, and a posting's https link is unchanged."""

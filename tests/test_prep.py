@@ -166,6 +166,35 @@ def test_html_has_the_sections_and_the_resume_lines(setup):
         assert text in page, text
 
 
+NOTE = ("Spotted on Initech's board (2031-03-02): hybrid. 2031-03-09: Recruiter is Priya Sol.\n"
+        "2031-03-20: Booked the intro call.")
+
+
+def test_a_note_reads_as_its_dated_lines_newest_first():
+    assert prep.note_entries(NOTE) == [("2031-03-20", "Booked the intro call."),
+                                       ("2031-03-09", "Recruiter is Priya Sol."),
+                                       ("", "Spotted on Initech's board (2031-03-02): hybrid.")]
+    assert prep.note_entries("") == []
+
+
+def test_the_page_has_the_apps_look_and_shows_the_note_once(setup):
+    cfg, store, _ = setup
+    job = store.add("Initech", "Staff Detection Engineer (R0123456)", status="interviewing")
+    store.db.execute("UPDATE jobs SET note=? WHERE key=?", (NOTE, job.key))
+    store.db.commit()
+    s = prep.build(cfg, store, job.key)
+    page = prep.html(s, "dark", "wide")
+    assert "<script" not in page and page.count("Booked the intro call.") == 1  # not again in the company brief
+    assert '<span class="day">2031-03-20</span><span>Booked the intro call.</span>' in page
+    assert page.index("2031-03-20") < page.index("2031-03-09")  # newest first
+    assert 'id="theme-dark" checked' in page and 'id="width-wide" checked' in page
+    assert ":root:has(#theme-dark:checked)" in page and 'class="stage s-interviewing"' in page
+    assert prep.markdown(s).count("Booked the intro call.") == 1
+    # an unknown setting falls back to the defaults
+    page = prep.html(s, "sepia", "huge")
+    assert 'id="theme-system" checked' in page and 'id="width-standard" checked' in page
+
+
 def test_html_escapes_what_the_posting_says(setup):
     cfg, store, _ = setup
     evil = "<script>alert(1)</script>"
