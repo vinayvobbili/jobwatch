@@ -285,7 +285,7 @@ def test_a_body_without_headers_is_read_by_its_links():
 
 
 def test_reading_files_folders_mbox_and_stdin(tmp_path):
-    assert len(alerts.read([str(FIXTURES)])) == 7
+    assert len(alerts.read([str(FIXTURES)])) == 8
     mbox = b"".join(b"From MAILER-DAEMON Thu Oct  8 00:00:00 2026\n" + (FIXTURES / n).read_bytes() + b"\n"
                     for n in ("linkedin.eml", "indeed.eml"))
     (tmp_path / "alerts.mbox").write_bytes(mbox)
@@ -522,6 +522,41 @@ def test_resolving_a_redirect_reads_no_posting(monkeypatch):
     assert [u for u, _ in asked] == list(hops) and {t for _, t in asked} == {3}
 
 
+# -- Indeed job-match emails: the Indeed app's job notifications, by email
+
+def test_an_indeed_match_email_is_one_job_and_only_its_view_job_link_is_followed(web, watchlist):
+    [a] = alerts.parse(emails("indeed_match.eml")[0])
+    assert (a.title, a.company, a.location, a.pay, a.via) == (
+        "Staff Detection Engineer", "Initech", "Remote", "$150,000 - $190,000 a year", "indeed-alert")
+    assert a.url == "https://cts.indeed.com/v3/TOKEN-M1/VIEW-M1"
+    assert alerts.job_link("https://cts.indeed.com/v3/TOKEN-M7/UNSUBSCRIBE-M7") is None  # never a job card
+    followed = []
+
+    def redirect(url, timeout=10):
+        followed.append(url)
+        return "https://www.indeed.com/rc/clk?jk=aa11bb22cc33dd44&from=match"
+
+    _, _, r, _ = take(watchlist, ["indeed_match.eml"], redirect=redirect)
+    assert followed == ["https://cts.indeed.com/v3/TOKEN-M1/VIEW-M1"]  # not the feedback or unsubscribe links
+    assert [f.alert.url for f in r.found] == ["https://www.indeed.com/viewjob?jk=aa11bb22cc33dd44"]
+    assert r.count(result="new") == 1 and r.empty == []
+
+
+def test_an_indeed_match_email_in_html_takes_its_view_job_button():
+    raw = ("From: Indeed <donotreply@match.indeed.com>\nSubject: Staff Detection Engineer @ Initech\n"
+           "Content-Type: text/html; charset=UTF-8\n\n"
+           '<p><a href="https://cts.indeed.com/v3/T1/A1">Staff Detection Engineer</a></p><p>Initech</p>'
+           "<p>Remote</p><p>Salary: $150,000 - $190,000 a year</p>"
+           '<p><a href="https://cts.indeed.com/v3/T2/A2">Apply now</a> '
+           '<a href="https://cts.indeed.com/v3/T3/A3">View job</a></p>'
+           '<p><a href="https://cts.indeed.com/v3/T4/A4">Unsubscribe</a></p>')
+    [a] = alerts.parse(alerts.message(raw))
+    assert (a.title, a.company, a.location, a.pay, a.url) == (
+        "Staff Detection Engineer", "Initech", "Remote", "$150,000 - $190,000 a year", "https://cts.indeed.com/v3/T3/A3")
+    assert alerts.parse(alerts.message(raw.replace(">View job<", ">See details<"))) == []  # no button: nothing
+    assert alerts.parse(alerts.message(raw.replace(" @ Initech", " at Initech"))) == []  # not a match email
+
+
 def test_summary_and_json(web, watchlist):
     _, _, r, _ = take(watchlist, ["linkedin.eml", "builtin.eml", "indeed.eml"])
     text = alerts.summary(r)
@@ -679,6 +714,7 @@ def test_fixtures_hold_no_personal_data():
                              "donotreply@jobalert.indeed.com", "digest@jobs.example.org", "alert-0001@example.com",
                              "alert-0002@example.com", "alert-0003@example.com", "alert-0004@example.com",
                              "alert-0005@example.com", "alert-0006@example.com", "alert-0007@example.com",
+                             "alert-0008@example.com", "donotreply@match.indeed.com",
                              "no-reply@us.greenhouse-jobs.com"}, f
         # No real tracking tokens: long opaque runs of letters and digits
         assert not re.search(r"(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{20,}", text), f

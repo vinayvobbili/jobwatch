@@ -467,7 +467,8 @@ def import_job_alerts(
 ) -> dict:
     """Track the jobs in job-alert emails (LinkedIn, Built In, Indeed; other senders with a generic reader).
     Search the person's mail for them first, e.g. from:jobalerts-noreply@linkedin.com, from:builtin.com,
-    from:jobalert.indeed.com, and pass each message in; jobwatch never needs a mail password. Links lose their
+    from:jobalert.indeed.com, from:match.indeed.com (Indeed's job matches, as its app notifies them), and pass
+    each message in; jobwatch never needs a mail password. Links lose their
     tracking parameters. Each job whose title, place and pay pass the watchlist's filters is looked for on the
     company's own board (a link to a supported board is read from there); job sites' pages are read only when
     their robots.txt allows (LinkedIn's and Indeed's don't, so the email's details are used). Jobs already tracked

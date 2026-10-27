@@ -46,7 +46,7 @@ class Board:
         return f"{self.source}:{self.board}"
 
 
-ALERT_SENDERS = ("jobalerts-noreply@linkedin.com", "builtin.com", "jobalert.indeed.com")
+ALERT_SENDERS = ("jobalerts-noreply@linkedin.com", "builtin.com", "jobalert.indeed.com", "match.indeed.com")
 
 
 @dataclass(frozen=True)

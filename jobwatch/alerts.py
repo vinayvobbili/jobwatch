@@ -112,10 +112,12 @@ def _ats_posting(url: str) -> bool:
 
 
 def indeed_redirect(url: str) -> bool:
-    """A click-tracking link in an Indeed company alert (engage.indeed.com/f/a/...): it carries no job id (jk),
-    only a redirect to the posting."""
+    """A click-tracking link in an Indeed company alert (engage.indeed.com/f/a/...) or job-match email
+    (cts.indeed.com/v3/...): it carries no job id (jk), only a redirect to the posting."""
     p = urlparse(url)
-    return p.netloc.lower() == "engage.indeed.com" and p.path.startswith("/f/a/")
+    host = p.netloc.lower()
+    return (host == "engage.indeed.com" and p.path.startswith("/f/a/")) or \
+        (host == "cts.indeed.com" and p.path.startswith("/v3/"))
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -159,7 +161,10 @@ def job_link(url: str) -> tuple[str, str] | None:
     if linkedin.job_id(clean):
         return "linkedin", clean
     if host.endswith("indeed.com"):
-        return ("indeed", clean) if p.path == "/viewjob" or indeed_redirect(clean) else None
+        # A job-match email's links are all cts redirects, its feedback and unsubscribe links too: only the one
+        # labelled "View job" is a job's (see indeed_match)
+        return ("indeed", clean) if p.path == "/viewjob" or (indeed_redirect(clean) and host != "cts.indeed.com") \
+            else None
     if host == "builtin.com":
         return ("builtin", clean) if re.fullmatch(r"/job/[^/]+/\d+", p.path) else None
     if _ats_posting(clean):
@@ -574,13 +579,54 @@ def remote_search(markup: str, text: str) -> bool:
     return bool(_REMOTE_SEARCH.search(html.unescape(markup + "\n" + text)))
 
 
+_MATCH_SUBJECT = re.compile(r"^(?P<title>.+?)\s+@\s+(?P<company>[^@]+?)$")
+_VIEW_JOB = re.compile(r"^view job\s*:?\s*(?P<url>https?://\S+)?$", re.I)
+
+
+def indeed_match(subject: str, markup: str, text: str) -> list[Alert]:
+    """The job in an Indeed job-match email (match.indeed.com), the email form of the Indeed app's job
+    notifications: one job, "Title @ Company" in the subject, the place on the line after the company's, the
+    pay on a "Salary:" line, and a "View job" link. That link is the only one taken: the email's others are
+    feedback ("more jobs like this?"), settings and unsubscribe links, which following would act on."""
+    m = _MATCH_SUBJECT.match(" ".join(subject.split()))
+    if not m:
+        return []
+    if text:
+        lines = [(x.strip(), "") for x in text.splitlines() if x.strip()]
+        link = next((v["url"] for x, _ in lines if (v := _VIEW_JOB.match(x)) and v["url"]), "")
+    else:
+        parser = _Lines()
+        parser.feed(markup)
+        parser.close()
+        parser._flush()
+        lines = parser.lines
+        link = next((href for x, href in lines if href and _VIEW_JOB.match(x)), "")
+    link = html.unescape(link)
+    if not (indeed_redirect(link) or (job_link(link) or ("",))[0] == "indeed"):
+        return []
+    title, company = m["title"], m["company"]
+    texts = [x for x, _ in lines]
+    at = next((i for i in range(1, len(texts)) if texts[i - 1] == title and texts[i].lower() == company.lower()),
+              None)
+    after = texts[at + 1] if at is not None and at + 1 < len(texts) else ""
+    place = after if len(after) < 80 and not re.match(r"(?:salary|job type|work setting)\b", after, re.I) else ""
+    pay = next((x.split(":", 1)[1].strip() for x in texts if re.match(r"salary\s*:", x, re.I)), "")
+    url = link if indeed_redirect(link) else clean_link(link)
+    return [Alert(title, company, place, pay, url, "indeed")]
+
+
 def parse(msg: EmailMessage) -> list[Alert]:
     """The jobs in one alert email, with clean links."""
     markup, text = bodies(msg)
+    domain = sender(msg).rpartition("@")[2]
+    if domain == "match.indeed.com":
+        out = indeed_match(str(msg.get("Subject") or ""), markup, text)
+        for a in out:
+            a.via = "indeed-alert"
+        return out
     cards = html_cards(markup) if markup else []
     if not cards and text:
         cards = text_cards(text)
-    domain = sender(msg).rpartition("@")[2]
     via, parse_card = _parser_for(domain, cards)
     remote = via == "linkedin-alert" and remote_search(markup, text)
     out = []
