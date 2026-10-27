@@ -1511,8 +1511,13 @@ async function openDetails(key) {
         h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"), detailsScore(j),
           j.candidate_home ? h("span", { title: "This company's own Workday account: sign in to see where your application stands" },
             link(j.candidate_home, "Your applications there ↗")) : null,
-          APPLIED.includes(j.status) ? h("button", { class: "btn", onclick: () => openPrep(j.key),
-            title: "Their asks next to your resume, gaps, what you sent, questions to expect" }, "Prep sheet") : null,
+          APPLIED.includes(j.status) ? [j.sheets?.length && j.sheets_base
+            ? h("a", { class: "btn", href: j.sheets_base + encodeURIComponent(j.sheets[0]), target: "_blank", rel: "noopener",
+              title: `Your prep sheet, ${j.sheets[0]}, in a new tab` }, "Prep sheet ↗")
+            : h("button", { class: "btn", onclick: () => openPrepPage(j.key),
+              title: "Their asks next to your resume, gaps, what you sent, questions to expect, in a new tab" }, "Prep sheet ↗"),
+            h("button", { class: "btn", onclick: () => openPrep(j.key),
+              title: "Find a story, a mock interview and drafted answers for this job" }, "Practise")] : null,
           h("span", { class: "muted small" }, "· key "), h("code", { class: "small" }, j.key)),
         APPLIED.includes(j.status) || hasPackage(j.package) ? sentSection(j) : null,
         gapChips(j.skills),
@@ -1558,6 +1563,19 @@ function prepTiles(p) {
     p.applied_at && [p.applied_at, "Applied", ""], p.follow_up && [p.follow_up, "Follow up", ""]].filter(Boolean);
   return tiles.length ? h("div", { class: "hero" }, ...tiles.map(([num, lbl, cls]) =>
     h("div", { class: "stat " + cls }, h("div", { class: "num" }, String(num)), h("div", { class: "lbl" }, lbl)))) : null;
+}
+// The built prep sheet as its own page, in a new tab, for a job with no sheet you wrote. The tab opens on the click,
+// since one opened after waiting for the sheet would be blocked, and shows the sheet once it's built.
+async function openPrepPage(key) {
+  const tab = window.open("", "_blank");
+  if (!tab) return toast("Couldn't open a new tab: your browser blocked it");
+  tab.document.title = "Prep sheet…";
+  try {
+    const p = await api("/api/prep?key=" + encodeURIComponent(key));
+    const url = URL.createObjectURL(new Blob([p.html], { type: "text/html" }));
+    tab.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { tab.close(); toast(e.message); }
 }
 // A prep sheet for a call: the posting's asks next to the closest resume line, gaps, what was sent, questions.
 // draft: the chat's model drafts likely questions with answers from the story file (slow the first time, then kept).

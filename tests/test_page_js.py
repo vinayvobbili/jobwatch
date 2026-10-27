@@ -318,3 +318,37 @@ console.log(JSON.stringify(out));
     assert out["today"] == {"tab": "today", "sub": None}
     assert out["anchor"] == {"tab": "settings", "sub": "people", "card": "set-pay"}
     assert out["none"] is None and out["byCard"] == "ai"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_the_built_prep_sheet_opens_in_a_tab_opened_on_the_click(tmp_path):
+    """The tab opens before the sheet is fetched (one opened after the wait would be blocked); when the fetch
+    fails the tab closes again, and a blocked tab says so."""
+    js = tmp_path / "prep_page.js"
+    js.write_text(page_function("openPrepPage") + """
+const log = [];
+const toast = m => log.push(["toast", m]);
+globalThis.URL.createObjectURL = () => "blob:sheet";
+globalThis.URL.revokeObjectURL = () => {};
+globalThis.setTimeout = () => {};
+const tab = () => ({ document: {}, location: {}, close() { log.push(["closed"]); } });
+globalThis.Blob = class { constructor(parts) { this.parts = parts; } };
+(async () => {
+  let opened;
+  globalThis.window = { open: () => (opened = tab(), log.push(["open"]), opened) };
+  globalThis.api = async url => { log.push(["api", url]); return { html: "<h1>Prep</h1>" }; };
+  await openPrepPage("greenhouse:initech:1");
+  log.push(["at", opened.location.href]);
+  globalThis.api = async () => { throw new Error("no such job"); };
+  await openPrepPage("greenhouse:initech:2");
+  globalThis.window = { open: () => null };
+  await openPrepPage("greenhouse:initech:3");
+  console.log(JSON.stringify(log));
+})();
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [
+        ["open"], ["api", "/api/prep?key=greenhouse%3Ainitech%3A1"], ["at", "blob:sheet"],
+        ["open"], ["closed"], ["toast", "no such job"],
+        ["toast", "Couldn't open a new tab: your browser blocked it"]]
