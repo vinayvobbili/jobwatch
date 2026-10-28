@@ -7,6 +7,15 @@ from __future__ import annotations
 from .package import MANIFEST, Package
 from .store import Store
 
+# The list of every question shows this much of each answer: cover letters and essays run to pages, and 200
+# applications' worth of them in full is too long to read (or to hand a model). A query returns answers in full.
+PREVIEW = 160
+
+
+def _preview(answer: str) -> str:
+    flat = " ".join((answer or "").split())
+    return flat if len(flat) <= PREVIEW else flat[:PREVIEW].rsplit(" ", 1)[0] + " …"
+
 
 def _when(rec: dict) -> str:
     return rec.get("applied_at") or (rec.get("status_at") or "")[:10] or (rec.get("first_seen") or "")[:10]
@@ -15,7 +24,7 @@ def _when(rec: dict) -> str:
 def find(store: Store, query: str = "") -> list[dict]:
     """The form answers whose question contains every word of the query (any case), newest application first:
     key, company, title, applied (its day), question, answer. Without a query, each distinct question once, with
-    its latest answer and asked (how many applications had it)."""
+    the start of its latest answer (a query for it gives the whole one) and asked (how many applications had it)."""
     words = query.lower().split()
     rows = [(job, rec) for job, rec in store.jobs(include_closed=True)
             if (Package(store.packages, job.key).dir / MANIFEST).is_file()]
@@ -33,7 +42,7 @@ def find(store: Store, query: str = "") -> list[dict]:
             elif q in seen:
                 seen[q]["asked"] += 1
             else:
-                seen[q] = {**hit, "asked": 1}
+                seen[q] = {**hit, "answer": _preview(a["answer"]), "asked": 1}
                 found.append(seen[q])
     return found
 

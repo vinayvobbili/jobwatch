@@ -118,6 +118,18 @@ def test_answers_without_a_query_list_each_question_once_with_its_latest_answer(
     assert len(answers.find(with_answers)) == 5
 
 
+def test_the_list_of_every_question_shows_the_start_of_a_long_answer_and_a_query_gives_it_whole(with_answers):
+    letter = "Dear hiring team,\n\n" + ("I build agents that cite their evidence. " * 60).rstrip()
+    job = with_answers.add("Vandelay Industries", "AI Engineer", status="applied", applied="2026-10-01")
+    with_answers.package(job.key).write(answers=[{"question": "Cover letter", "answer": letter}])
+    listed = answers.find(with_answers)[0]
+    assert listed["question"] == "Cover letter"
+    assert listed["answer"].startswith("Dear hiring team, I build agents") and listed["answer"].endswith(" …")
+    assert len(listed["answer"]) <= answers.PREVIEW + 2
+    assert answers.find(with_answers, "cover letter")[0]["answer"] == letter
+    assert answers.find(with_answers)[-1]["answer"] == "The product."  # short ones stay as they are
+
+
 def test_answers_command(watchlist, with_answers, capsys):
     cli.main(["-c", str(watchlist), "answers", "notice", "period"])
     out = capsys.readouterr().out
@@ -133,6 +145,7 @@ def test_find_past_answers_tool(watchlist, with_answers, monkeypatch):
     monkeypatch.setenv("JOBWATCH_CONFIG", str(watchlist))
     assert mcp.find_past_answers("salary")[0]["answer"] == "Open to discuss."
     assert len(mcp.find_past_answers()) == 5
+    assert [f["company"] for f in mcp.find_past_answers(limit=2)] == ["Globex", "Globex"]  # newest first
     assert "find_past_answers" in {t.name for t in asyncio.run(mcp.server.list_tools())}
 
 

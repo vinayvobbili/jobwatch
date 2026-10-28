@@ -832,16 +832,20 @@ def get_application_package(key: Key) -> dict:
 def find_past_answers(
     query: Annotated[str, Field(description=(
         "Words of the question to look for (\"notice period\", \"reason leaving\"): every word must be in the "
-        "question, any case. Empty lists each distinct question once, with its latest answer."))] = "",
+        "question, any case. Empty lists each distinct question once, with the start of its latest answer."))] = "",
+    limit: Annotated[int, Field(ge=1, description=(
+        "At most this many, newest first; hundreds of distinct questions pile up across applications, so search "
+        "with a query rather than raising it."))] = 50,
 ) -> list[dict]:
     """Form answers the person gave on earlier applications (kept by save_application_package), newest
     application first: key, company, title, applied, question and answer; without a query each question once,
-    with asked (how many applications had it). Use it before filling a form, to reuse what was answered to
+    with asked (how many applications had it) and only the first line or so of its answer: search for the
+    question's words to read it whole. Use it before filling a form, to reuse what was answered to
     \"reason for leaving\", \"notice period\" or \"salary\" instead of writing it again; for everything sent with
     one application use get_application_package."""
     _, store = _open()
     try:
-        return answers.find(store, query)
+        return answers.find(store, query)[:limit]
     finally:
         store.close()
 
