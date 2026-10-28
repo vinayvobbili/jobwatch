@@ -105,6 +105,17 @@ def test_a_track_judges_its_kind_of_job_from_any_board(path):
     store.close()
 
 
+def test_a_digest_for_one_company_lists_only_its_jobs(path):
+    cfg = config.load(path)
+    store = Store(cfg.state)
+    store.sync("greenhouse", "acme", [job("acme", "1", "Staff Engineer", 200_000, 250_000)])
+    store.sync("greenhouse", "globex", [job("globex", "2", "Staff Engineer", 200_000, 250_000)])
+    assert {e.job.key for e in watch.build_digest(cfg, store, company="Acme, Inc.").entries} == {"greenhouse:acme:1"}
+    assert len(watch.build_digest(cfg, store).entries) == 2  # no company: every one
+    assert watch.build_digest(cfg, store, company="Initech").entries == []
+    store.close()
+
+
 @pytest.mark.parametrize("track, error", [
     ("[adjunct]", r"tracks entry 1 looks like"),
     ("{titles: ['c(']}", r"tracks entry 1: 'c\(' isn't a regex"),

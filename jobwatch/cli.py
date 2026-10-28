@@ -124,7 +124,7 @@ def _roles(source: str, board: str, sample: list, text: str):
 def _digest(args, cfg, store):
     # The top display.today unless --all or --limit says otherwise; the rest stay new for the next digest.
     limit = args.limit if args.limit is not None else None if args.all else cfg.today or None
-    d = build_digest(cfg, store, include_seen=args.all, score_top=args.score, limit=limit)
+    d = build_digest(cfg, store, include_seen=args.all, score_top=args.score, limit=limit, company=args.company)
     text = report.to_json(d) if args.format == "json" else report.to_markdown(
         d, more="`jobwatch digest --all`", pace=pace(cfg, store))
     if not args.peek:
@@ -922,6 +922,8 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--peek", action="store_true", help="don't mark the listed jobs as shown")
         p.add_argument("--limit", type=int, default=None, metavar="N",
                        help="list the top N (default: display.today in the watchlist, 10 unless set)")
+        p.add_argument("--company", default="", metavar="NAME",
+                       help="only this company's jobs (its name or board), best first: to pick among its roles")
         p.add_argument("--format", choices=["md", "json"], default="md")
         p.add_argument("-o", "--out", type=Path)
         p.set_defaults(func=func)

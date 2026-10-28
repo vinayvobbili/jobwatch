@@ -296,6 +296,9 @@ def get_digest(
     mark_shown: Annotated[bool, Field(description=(
         "Mark the returned jobs as shown, so the next digest leaves them out. False to peek without "
         "changing anything."))] = True,
+    company: Annotated[str, Field(description=(
+        "Only this company's jobs (its name or board), best first: to pick among one company's roles, e.g. when "
+        "it limits how many you can apply to. Empty: every company."))] = "",
 ) -> dict:
     """New jobs that pass the watchlist's filters, best first (fit score when scored, then keyword relevance),
     with people the user knows at each company. Call fetch_jobs first to pick up today's postings. This is for
@@ -307,7 +310,7 @@ def get_digest(
     cfg, store = _open()
     try:
         d = build_digest(cfg, store, include_seen=include_seen, score_top=score_top,
-                         limit=limit or cfg.today or 25)
+                         limit=limit or cfg.today or 25, company=company)
         if mark_shown:
             store.set_status([k for e in d.entries for k in e.keys], "shown")
         return {**json.loads(report.to_json(d)), "pace": watch.pace(cfg, store)}

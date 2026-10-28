@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from . import alerts, dupes, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config
-from .contacts import Contacts
+from .contacts import Contacts, company_key
 from .filters import KINDS, Filters, red_flags, reject_reason, rejection, relevance, search_terms, title_ok
 from .models import Job
 from .score import ScoringUnavailable, brief, resume_id, score_jobs, turn
@@ -929,13 +929,17 @@ def compare_scores(cfg: Config, picks: list[tuple[Job, dict]], backend: str, mod
 
 
 def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,
-                 limit: int | None = None, progress: Callable[[str], None] | None = None) -> Digest:
+                 limit: int | None = None, progress: Callable[[str], None] | None = None,
+                 company: str = "") -> Digest:
     """Open jobs that pass the filters, ranked by fit score (when scored), then keyword relevance, and spread out
     (see _spread): at most PER_COMPANY from one company lead, and jobs seen over a week ago go below newer ones.
 
     Only jobs not yet shown are included unless include_seen. The `score_top` most relevant unscored
-    jobs are scored with shortlist-ai first, when a resume is configured."""
+    jobs are scored with shortlist-ai first, when a resume is configured. company: only that company's jobs
+    (its name or board, as company_key matches them), to pick among one company's roles."""
     entries, rejected = _matching(cfg, store, ("new", "shown") if include_seen else ("new",))
+    if want := company_key(company):
+        entries = [e for e in entries if want in (company_key(e.job.display_company), company_key(e.job.company))]
     digest = Digest(entries, rejected)
     contacts = load_contacts(cfg)
     if contacts:
