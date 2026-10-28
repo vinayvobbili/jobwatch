@@ -78,6 +78,15 @@ def test_mark_list_show(web, watchlist, capsys):
     assert shown.startswith("# Machine Learning Engineer") and "applied (referral)" in shown
 
 
+def test_show_posting_leaves_out_the_tracking_lines(web, watchlist, capsys, tmp_path):
+    run(capsys, "-c", str(watchlist), "fetch")
+    posting = run(capsys, "-c", str(watchlist), "show", "aaaa-1111", "--posting").out
+    assert posting.startswith("# Machine Learning Engineer") and "first seen" not in posting
+    saved = tmp_path / "posting.md"
+    run(capsys, "-c", str(watchlist), "show", "aaaa-1111", "--posting", str(saved))
+    assert saved.read_text() == posting
+
+
 def test_show_says_which_filter_hides_a_job(web, watchlist, capsys):
     run(capsys, "-c", str(watchlist), "fetch")
     assert "Hidden from Today" not in run(capsys, "-c", str(watchlist), "show", "aaaa-1111").out

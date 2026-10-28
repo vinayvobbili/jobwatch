@@ -297,6 +297,9 @@ def cmd_unscored(args, cfg, store):
 
 def cmd_show(args, cfg, store):
     job, rec = store.find(args.key)
+    if args.posting:  # just the posting, for tailoring a resume to it (`resume draft NAME FILE`)
+        _write(job.to_text(), None if args.posting == "-" else Path(args.posting).expanduser())
+        return
     status = rec["status"] + (f" ({rec['note']})" if rec.get("note") else "")
     closed = f", closed {rec['closed'][:10]}" if rec["closed"] else ""
     via = f" (via {rec['via']})" if rec.get("via") else ""
@@ -963,6 +966,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("show", help="a job's full posting text")
     p.add_argument("key", help="job key, its posting id, or its company")
+    p.add_argument("--posting", nargs="?", const="-", metavar="FILE",
+                   help="only the posting text, without the tracking lines; with FILE, save it there")
     p.set_defaults(func=cmd_show)
 
     p = sub.add_parser("mark", help="record that you queued, applied to or skipped jobs, or how an application "
