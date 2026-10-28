@@ -211,6 +211,14 @@ def test_a_portal_without_postings_in_its_sitemap_is_read_from_its_feed():
     assert jobs["31415"].url == "https://careers.initech.example/careers/JobDetail/Senior-Platform-Engineer/31415"
 
 
+def test_a_portal_with_an_empty_feed_has_no_roles():
+    """Not "no element found": some portals list their roles on another site and answer the feed with nothing."""
+    web = FakeWeb({f"https://{BOARD}/sitemap_index.xml": INDEX,
+                   "https://careers.initech.example/en_US/careers/sitemap.xml": "",
+                   f"https://{BOARD}/SearchJobs/feed/": ""})
+    assert sources.fetch("avature", BOARD, web) == []
+
+
 @pytest.mark.parametrize("url, expected", [
     (FDE, ("avature", BOARD)),
     ("https://careers.initech.example/careers/JobDetail/Senior-Platform-Engineer/31415", ("avature", BOARD)),

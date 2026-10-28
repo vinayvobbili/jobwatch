@@ -77,7 +77,7 @@ def _read(url: str, timeout: float, body: dict | None, accept: str) -> bytes:
                 return resp.read()
         except urllib.error.HTTPError as e:
             if e.code in (404, 410):  # 410: iCIMS's answer for a job that has closed
-                raise NotFound(url) from None
+                raise NotFound(f"{url}: HTTP {e.code}") from None
             if e.code in (401, 403):
                 raise Refused(f"{url}: HTTP {e.code}") from None
             if e.code in (429, 503) and attempt < RETRIES:
@@ -856,8 +856,11 @@ def _avature_sitemap(base: str, get) -> list[str]:
 def _avature_feed(base: str, term: str, get) -> list[tuple[str, str, datetime | None]]:
     """(link, title, posted) for a search's roles in the portal's RSS feed: its 20 oldest, at most."""
     url = f"{base}/SearchJobs/feed/" + (f"?search={quote(term)}" if term else "")
+    text = _avature_get(url, get)
+    if not (text or "").strip():  # a portal that lists its roles elsewhere (Intuit's) answers with nothing
+        return []
     try:
-        root = ET.fromstring(_avature_get(url, get))
+        root = ET.fromstring(text)
     except ET.ParseError as e:
         raise SourceError(f"{url}: {e}") from None
     found = []

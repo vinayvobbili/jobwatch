@@ -80,6 +80,16 @@ def test_the_page_is_read_with_jobwatchs_own_user_agent(monkeypatch):
     assert seen == [(BOARD, sources.USER_AGENT)] and sources.USER_AGENT.startswith("jobwatch/")
 
 
+def test_a_missing_page_says_so(monkeypatch):
+    """`jobwatch find <link>` printed only the link for a page that isn't there: the status says what went wrong."""
+    def urlopen(req: urllib.request.Request, timeout):
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(sources.urllib.request, "urlopen", urlopen)
+    with pytest.raises(sources.NotFound, match=r"^https://jobs\.initech\.example/job/1: HTTP 404$"):
+        sources.get_text("https://jobs.initech.example/job/1")
+
+
 def test_an_offline_board_without_a_careers_link_keeps_its_links_and_says_where_to_apply(watchlist, pages, capsys):
     _, store, r = fetch(watchlist)
     job, _ = store.find(KEY)
