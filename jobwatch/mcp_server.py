@@ -178,9 +178,13 @@ def find_board(
     Hacker News' "Who is hiring?" thread is one board, hn:whoishiring (hn:whoishiring/N: the last N months'),
     found by "Hacker News" or the news.ycombinator.com/submitted?id=whoishiring link.
     Use it before add_board; to track one job from its link, use add_application instead."""
+    try:
+        found = sources.probe(company)
+    except sources.SourceError as e:  # a ToolError, so the model reads why (a link's board answered 401, say)
+        raise ToolError(str(e)) from None
     return [{"entry": f"{s}:{b}", "open_roles": sources.open_roles(jobs), "careers": sources.careers_url(s, b),
              "sample_titles": [j.title for j in jobs[:5]]}
-            for s, b, jobs in sources.probe(company)]
+            for s, b, jobs in found]
 
 
 @server.tool(annotations=READ)

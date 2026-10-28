@@ -5,7 +5,7 @@ from typing import get_args
 
 import pytest
 
-from jobwatch import config, store
+from jobwatch import config, sources, store
 
 mcp = pytest.importorskip("jobwatch.mcp_server")
 TOOLS = {t.name: t for t in asyncio.run(mcp.server.list_tools())}
@@ -51,6 +51,18 @@ VERBS = {"add", "check", "dismiss", "fetch", "find", "get", "import", "list", "m
 
 def test_tool_names_start_with_a_verb():
     assert {name for name in TOOLS if name.split("_")[0] not in VERBS} == set()
+
+
+def test_find_board_says_why_a_link_failed(monkeypatch):
+    """A wrong Workday site answers 401: the client reads that, not a bare "Error executing tool find_board"."""
+    def refused(company):
+        raise sources.SourceError("https://initech.wd1.myworkdayjobs.com/wday/cxs/initech/Jobs/jobs: HTTP 401")
+
+    monkeypatch.setattr(mcp, "_changed_since_start", lambda: None)
+    monkeypatch.setattr(sources, "probe", refused)
+    with pytest.raises(mcp.ToolError) as e:
+        asyncio.run(mcp.server.call_tool("find_board", {"company": "https://initech.wd1.myworkdayjobs.com/Jobs"}))
+    assert str(e.value).endswith("Jobs/jobs: HTTP 401")
 
 
 def test_a_server_whose_code_changed_since_it_started_says_to_restart(monkeypatch):
