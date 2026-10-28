@@ -1,7 +1,7 @@
 import pytest
 
 from jobwatch import cli, config, report, watch
-from jobwatch.contacts import Contacts, company_key
+from jobwatch.contacts import DIVISIONS, Contacts, company_key
 from jobwatch.store import Store
 
 # LinkedIn's export starts with notes before the header.
@@ -32,6 +32,26 @@ def test_company_names_match_across_spellings(a, b):
 
 def test_company_key_keeps_a_name_made_only_of_filler():
     assert company_key("AI Labs") == "ai labs"
+
+
+def test_an_abbreviation_in_parentheses_is_dropped():
+    assert company_key("Initech Cloud (ICS)") == company_key("Initech Cloud") == "initech cloud"
+    assert company_key("(ICS)") == "ics"  # nothing but the parentheses: they're the name
+    assert company_key("Globex.com") == "globex"
+
+
+def test_a_division_matches_the_company_whose_board_posts_its_jobs():
+    for division, parent in DIVISIONS.items():
+        assert company_key(division.title()) == parent
+        assert company_key(f"{division.title()} ({division[:3].upper()})") == parent
+
+
+def test_contacts_at_a_division_are_listed_for_its_company(tmp_path, monkeypatch):
+    monkeypatch.setitem(DIVISIONS, "initech cloud", "initech")
+    path = tmp_path / "Connections.csv"
+    path.write_text(CONNECTIONS + "Eve,Ng,https://www.linkedin.com/in/example-eve,,Initech Cloud (IC),Architect,\n",
+                    encoding="utf-8")
+    assert "Eve Ng" in [p["name"] for p in Contacts.load(path).at("Initech")]
 
 
 def test_load_skips_the_notes_and_blank_rows(connections):

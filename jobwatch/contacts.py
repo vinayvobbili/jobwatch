@@ -20,17 +20,22 @@ from collections import Counter
 from pathlib import Path
 
 # Legal and filler words that differ between how a board and a profile name one company.
-_SUFFIXES = {"inc", "llc", "ltd", "corp", "corporation", "co", "company", "pbc", "plc", "gmbh", "the",
+_SUFFIXES = {"inc", "llc", "ltd", "corp", "corporation", "co", "com", "company", "pbc", "plc", "gmbh", "the",
              "technologies", "technology", "labs", "ai", "hq", "group", "holdings"}
+
+# A division people name on their profile, by its key, -> the company whose board posts its jobs.
+DIVISIONS = {"amazon web services": "amazon", "aws": "amazon"}
 
 TIES_FILE = "linkedin-ties.json"  # derived from an archive, kept next to Connections.csv
 
 
 def company_key(name: str) -> str:
-    """ "Acme, Inc." and "acme" -> "acme"; "Scale AI" -> "scale". Empty when nothing is left."""
-    words = re.findall(r"[a-z0-9]+", name.lower().replace("&", " and "))
-    core = [w for w in words if w not in _SUFFIXES]
-    return " ".join(core or words)
+    """ "Acme, Inc." and "acme" -> "acme"; "Scale AI" -> "scale"; "Acme Cloud (AC)" -> "acme cloud"; a division in
+    DIVISIONS -> its company. Empty when nothing is left."""
+    bare = re.sub(r"\([^)]*\)", " ", name) if re.sub(r"\([^)]*\)", "", name).strip() else name
+    words = re.findall(r"[a-z0-9]+", bare.lower().replace("&", " and "))
+    core = " ".join([w for w in words if w not in _SUFFIXES] or words)
+    return DIVISIONS.get(core, core)
 
 
 def profile_key(url: str) -> str:
