@@ -99,6 +99,28 @@ def test_dry_run_changes_nothing_and_older_versions_are_refused(release, tmp_pat
             release.main([bad, "--dry-run"])
 
 
+def test_a_never_tagged_version_goes_out_as_declared_without_a_bump(release, tmp_path, monkeypatch, capsys):
+    root = make_project(tmp_path)
+    before = {p: p.read_text() for p in root.rglob("*") if p.is_file()}
+    calls = []
+    monkeypatch.setattr(release, "tagged", lambda root, tag: False)
+    monkeypatch.setattr(release, "preflight", lambda root, tag: None)
+    monkeypatch.setattr(release, "run_checks", lambda root: None)
+    monkeypatch.setattr(release, "git", lambda root, *args: calls.append(args[0]) or "")
+    monkeypatch.setattr(release.subprocess, "run", lambda *a, **k: calls.append("push"))
+    assert release.main(["1.2.3", "--root", str(root), "--no-wait"]) == 0
+    assert "acme-tool 1.2.3: not tagged yet" in capsys.readouterr().out
+    assert calls == ["tag", "push"]  # no bump, so no commit
+    assert {p: p.read_text() for p in root.rglob("*") if p.is_file()} == before
+
+
+def test_a_tagged_version_is_still_refused(release, tmp_path, monkeypatch):
+    root = make_project(tmp_path)
+    monkeypatch.setattr(release, "tagged", lambda root, tag: True)
+    with pytest.raises(SystemExit, match="isn't newer"):
+        release.main(["1.2.3", "--dry-run", "--root", str(root)])
+
+
 def test_root_releases_another_project(release, tmp_path, capsys):
     root = make_project(tmp_path, server=False)
     assert release.main(["2.0.0", "--dry-run", "--root", str(root)]) == 0

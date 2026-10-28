@@ -9,6 +9,9 @@ The tag triggers the Release workflow (PyPI). The version is bumped in pyproject
 ``__version__`` and, when there is one, server.json (the MCP Registry entry), whose own workflow runs after
 the release. After pushing, it polls PyPI (and the registry) until the new version shows up.
 
+A first release can give the version the files already declare: when its tag doesn't exist yet, it goes out as
+it is, tagged without a bump commit.
+
 It refuses to run off main, with uncommitted changes, behind origin, or when the tag already exists.
 Standard library only, so the same file works in any of these packages.
 """
@@ -108,6 +111,14 @@ def git(root: Path, *args: str) -> str:
     return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
 
 
+def tagged(root: Path, tag: str) -> bool:
+    """Whether ``tag`` exists; outside a git repository nothing can be released, so it counts as taken."""
+    try:
+        return bool(git(root, "tag", "--list", tag))
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return True
+
+
 def preflight(root: Path, tag: str) -> None:
     if git(root, "branch", "--show-current") != "main":
         raise SystemExit("release: switch to main first")
@@ -198,13 +209,18 @@ def main(argv=None) -> int:
     if not VERSION.match(args.version):
         raise SystemExit("release: give a version like 1.2.3")
     name, old, tag = project_name(root), current_version(root), f"v{args.version}"
-    if tuple(map(int, args.version.split("."))) <= tuple(map(int, old.split("."))):
+    # The version the files already declare goes out as it is when it was never tagged: a first release.
+    as_is = args.version == old and not tagged(root, tag)
+    if not as_is and tuple(map(int, args.version.split("."))) <= tuple(map(int, old.split("."))):
         raise SystemExit(f"release: {args.version} isn't newer than {old}")
     files = version_files(root, name)
-    bumped = {f: bump(f.read_text(), f, old, args.version) for f in files}
+    bumped = {} if as_is else {f: bump(f.read_text(), f, old, args.version) for f in files}
     for line in drift(files, old):
         print(f"note: {line}; this release sets it to {args.version}")
-    print(f"{name} {old} -> {args.version}: " + ", ".join(str(f.relative_to(root)) for f in files))
+    if as_is:
+        print(f"{name} {old}: not tagged yet, released as the files declare it (no bump)")
+    else:
+        print(f"{name} {old} -> {args.version}: " + ", ".join(str(f.relative_to(root)) for f in files))
     if args.dry_run:
         return 0
 
@@ -220,7 +236,8 @@ def main(argv=None) -> int:
         raise SystemExit("release: the checks failed; the version bump was undone") from None
     title = f"{name} {args.version}" + (f" — {args.summary}" if args.summary else "")
     message = title + (f"\n\n{args.body}" if args.body else "")
-    git(root, "commit", "--quiet", "-am", message)
+    if bumped:
+        git(root, "commit", "--quiet", "-am", message)
     git(root, "tag", "-a", tag, "-m", f"{name} {args.version}")
     subprocess.run(["git", "push", "--quiet", "origin", "main", tag], cwd=root, check=True)
     print(f"Pushed {tag}.")
