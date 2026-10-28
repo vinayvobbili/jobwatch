@@ -672,11 +672,12 @@ def _fits(store: Store, rid: str) -> dict[str, dict]:
 
 
 def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
-              fallback_passes: bool = False) -> tuple[list[Entry], dict[str, int]]:
+              redo_passes: bool = False) -> tuple[list[Entry], dict[str, int]]:
     """Jobs with these statuses that pass the filters, with stored fit scores for the current resume, and
     how many were filtered out (reason -> count). A job that's (maybe) the same opening as one acted on stays,
-    flagged: its `duplicate` says which, and its first warning says so (see dupes.py). fallback_passes: a score
-    the fallback made doesn't count against filters.min_fit (for the scorer, which scores it again)."""
+    flagged: its `duplicate` says which, and its first warning says so (see dupes.py). redo_passes: a score
+    the fallback or an older scorer made doesn't count against filters.min_fit (for the scorer, which scores
+    it again; without it, a stale score under min_fit would keep its job hidden for good)."""
     rejected: dict[str, int] = {}
     entries = []
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
@@ -685,7 +686,8 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
     for job, record in store.jobs(statuses):
         fit = fits.get(job.key)
         if reason := reject_reason(job, cfg.filters_for(job),
-                                   None if fallback_passes and fit and fit.get("fallback") else fit):
+                                   None if redo_passes and fit and (fit.get("fallback") or fit.get("stale"))
+                                   else fit):
             kind = reason.split()[0]  # title, department, location, pay, posted, fit
             rejected[kind] = rejected.get(kind, 0) + 1
             continue
@@ -755,7 +757,7 @@ def scoring_line(cfg: Config, store: Store) -> list[Entry]:
     for job, rec in sorted(store.jobs(("queued",)), key=lambda r: r[1]["status_at"] or ""):
         rel, hits = relevance(job, cfg.keywords)
         queued.append(Entry(job, rec, rel, hits, fit=brief(fits.get(job.key))))
-    entries, _ = _matching(cfg, store, ("new", "shown"), fallback_passes=True)
+    entries, _ = _matching(cfg, store, ("new", "shown"), redo_passes=True)
     return [*queued, *_group(sorted(entries, key=_rank))]
 
 

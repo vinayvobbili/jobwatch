@@ -1,5 +1,5 @@
 """A score made by an older scorer stands in (marked stale) until the job is scored afresh: it still hides a poor
-fit and orders Today, but the job stays in the scorer's line."""
+fit and orders Today, but the job stays in the scorer's line, a hidden one too (else it would stay hidden)."""
 
 from types import SimpleNamespace
 
@@ -62,8 +62,8 @@ def test_a_stale_score_hides_ranks_and_is_marked(env):
         [(ACME, 90, True), (GLOBEX, 80, True)]
     assert "(old score, rescoring)" in report.to_markdown(watch.build_digest(cfg, store, score_top=0))
     assert watch.hidden(cfg, store)["by"]["fit"] == 1
-    # still in the scorer's line, with their old score deciding the order
-    assert [e.job.key for e in watch.unscored(cfg, store)] == [ACME, GLOBEX]
+    # still in the scorer's line, with their old score deciding the order; the hidden one too, last
+    assert [e.job.key for e in watch.unscored(cfg, store)] == [ACME, GLOBEX, INITECH]
     assert watch.unscored_reasons(cfg, store)[ACME]["code"] == "queued"
     assert store.score(ACME, rid) is None
 
