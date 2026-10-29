@@ -40,6 +40,7 @@ from . import (
     dupes,
     ics,
     interviews,
+    lca,
     learn,
     levels,
     logos,
@@ -238,6 +239,7 @@ class Refresher:
         self._stop = threading.Event()
         self.tried: datetime | None = None   # when the last scheduled check started
         self.error = ""                      # why the last scheduled check failed, until one works
+        self.lca_tried: datetime | None = None  # when the LCA data was last refreshed (or tried)
 
     @property
     def running(self) -> bool:
@@ -335,7 +337,32 @@ class Refresher:
             except Exception as e:  # never take the page down: say why, and try again later
                 self.error = f"{type(e).__name__}: {e}"
                 print(f"jobwatch: scheduled check for new jobs failed: {self.error}", file=sys.stderr)
+            self.refresh_lca()
             self._stop.wait(self.tick)
+
+    LCA_RETRY = timedelta(days=1)
+
+    def refresh_lca(self, now: datetime | None = None) -> bool:
+        """Refreshes the H-1B LCA cache (lca.py) when it's older than lca.REFRESH, if `jobwatch lca update` made
+        one: a download of several hundred MB, so a failed try waits LCA_RETRY. Whether it ran."""
+        now = now or datetime.now(timezone.utc)
+        if self.lca_tried and now - self.lca_tried < self.LCA_RETRY:
+            return False
+        try:
+            path = lca.cache_path(self.app._cfg())
+            if not lca.stale(path, now):
+                return False
+            self.lca_tried = now
+            out = lca.update(path, say=lambda line: None)
+            store = Store(self.app._cfg().state)
+            try:
+                store.log("pay", f"Refreshed the H-1B LCA data: {out['rows']:,} filings", by="schedule")
+            finally:
+                store.close()
+            return True
+        except Exception as e:  # never take the page down: tried again tomorrow
+            print(f"jobwatch: refreshing the H-1B LCA data failed: {type(e).__name__}: {e}", file=sys.stderr)
+            return False
 
 
 class PayLookup:
@@ -488,10 +515,17 @@ class App:
     def _pay(self, cfg, store, rows: list[tuple], most: int = 1000) -> dict[str, dict]:
         """{key: {"expected_pay": …}} for (job, result) pairs from what's kept, asking Levels.fyi for nothing here.
         A result of None is looked up now, from what's kept. The first `most` jobs still to be looked up are,
-        in the background; the rest show nothing. Empty when pay.levels is off."""
+        in the background; the rest show nothing. Without pay.levels there's no expected_pay. Each job also has
+        lca_pay (H-1B filings, see lca.py) when the cache has an estimate for it: from the local cache, at once."""
+        filings = lca.Index.open(lca.cache_path(cfg))
+        try:
+            out = {job.key: {"lca_pay": lca.as_dict(est)} for job, _ in rows if (est := lca.for_job(filings, job))}
+        finally:
+            if filings:
+                filings.close()
         if not cfg.pay.levels:
-            return {}
-        out, waiting = {}, []
+            return out
+        waiting = []
         for job, result in rows:
             result = result or levels.expected(cfg, store, job)
             if result == levels.PENDING:
@@ -499,7 +533,7 @@ class App:
                     result = None
                 else:
                     waiting.append(job.key)
-            out[job.key] = {"expected_pay": levels.as_dict(result, job)}
+            out[job.key] = {**out.get(job.key, {}), "expected_pay": levels.as_dict(result, job)}
         if waiting and self.background:
             self.pay.kick(waiting)
         return out

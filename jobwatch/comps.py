@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from datetime import date
 
+from . import lca
 from .config import COMP_WEIGHTS, Config, Goals
 from .contacts import company_key
 from .score import resume_id
@@ -355,6 +356,7 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
     fits = _fits(store, rid) if rid else {}
     known, kept, healths = load_contacts(cfg), store.comps(), store.healths()
+    filings = lca.Index.open(lca.cache_path(cfg))
     rows = []
     for job, rec in found:
         fit, comp = fits.get(job.key), kept.get(job.key) or {}
@@ -367,7 +369,7 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
             "key": job.key, "kind": "job", "company": job.display_company, "title": job.title, "url": job.url,
             "status": rec["status"], "applied_at": rec["applied_at"], "next_step": rec["next_step"],
             "follow_up": rec["follow_up"], "pay": job.pay(), "pay_max": job.salary_max or job.salary_min,
-            "places": job.places,
+            "places": job.places, "lca_pay": lca.as_dict(lca.for_job(filings, job)),
             "fit": {"score": fit["score"], "met": fit["must_haves_met"], "total": fit["must_haves_total"],
                     "gaps": (fit.get("gaps") or [])[:MOST_GAPS], "stale": bool(fit.get("stale"))} if fit else None,
             "contacts": [{k: p.get(k) for k in ("name", "position", "why")}
@@ -375,6 +377,8 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
             "comp": {k: comp.get(k) for k in COMP_FIELDS},
             "health": aged(healths.get(company_key(job.display_company))),
             **ranges})
+    if filings:
+        filings.close()
     rows += [_company_row(name, healths) for name in companies or [] if company_key(name)]
     best = {"pay": _best(rows, lambda r: r["pay_max"]), "base": _best(rows, lambda r: r["base_max"]),
             "offered": _best(rows, lambda r: r["offered_max"]),
@@ -405,7 +409,8 @@ def text(v: dict) -> str:
             fit_line += f"; gaps: {'; '.join(fit['gaps'])}" if fit["gaps"] else ""
         know = "; ".join(p["name"] + (f" ({p['position']})" if p["position"] else "") for p in r["contacts"])
         rest = [("applied", r["applied_at"]), ("next", next_step), ("place", "; ".join(r["places"])),
-                ("posted pay", star(r, "pay", r["pay"])), ("base", star(r, "base", c["base"])), ("bonus", c["bonus"]),
+                ("posted pay", star(r, "pay", r["pay"])), ("H-1B filings", (r.get("lca_pay") or {}).get("line")),
+                ("base", star(r, "base", c["base"])), ("bonus", c["bonus"]),
                 ("equity", c["equity"]), ("sign-on", c["signon"]), ("asked", c["asked"]),
                 ("offered", star(r, "offered", c["offered"])), ("fit", fit_line), ("know", know),
                 ("note", c["note"]), ("role", ROLE_WORDS.get(c["role"])), ("career note", c["career_note"]),

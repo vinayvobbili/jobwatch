@@ -25,6 +25,7 @@ from . import (
     contacts,
     dupes,
     inbox,
+    lca,
     learn,
     levels,
     prep,
@@ -156,6 +157,12 @@ def _open():
 def _pay(result, job) -> dict:
     """expected_pay, only when the watchlist turns Levels.fyi pay on (see levels.py)."""
     return {} if result is None else {"expected_pay": levels.as_dict(result, job)}
+
+
+def _lca(est) -> dict:
+    """lca_pay: base pay filed for H-1B hires at the company for this kind of job, once `jobwatch lca update`
+    has made the cache (see lca.py); not total compensation."""
+    return {"lca_pay": lca.as_dict(est)} if est else {}
 
 
 def _boards(cfg: config.Config) -> list[dict]:
@@ -338,8 +345,10 @@ def get_job(key: Key) -> dict:
     queued or skipped that this one is (maybe) the same opening as: key, title, status, date, why, strong (a
     shared req or posting id; false: the same title only, so check it's a different opening), reposted, and
     text, the warning to heed; null when there's none. Check it before drafting a referral request or an
-    application. Use it to tailor a resume or decide whether to apply; for only what was sent use
-    get_application_package, and for a call or interview use get_interview_prep."""
+    application. lca_pay, once `jobwatch lca update` has been run, is the base pay the company filed for H-1B
+    hires in titles like this one (median, 25th-75th percentile, count, wage levels, examples; U.S. DOL LCA
+    disclosures): base only, not total compensation. Use it to tailor a resume or decide whether to apply; for
+    only what was sent use get_application_package, and for a call or interview use get_interview_prep."""
     cfg, store = _open()
     try:
         job, rec = store.find(key)
@@ -355,7 +364,7 @@ def get_job(key: Key) -> dict:
                 "find_referral": contacts.linkedin_search(job.display_company),
                 "candidate_home": store.candidate_home(job),
                 "skill_gaps": learn.job_gaps(cfg, store, job), "package": store.package(job.key).data(),
-                **_pay(levels.for_one_job(cfg, store, job), job)}
+                **_pay(levels.for_one_job(cfg, store, job), job), **_lca(lca.for_one_job(cfg, job))}
     finally:
         store.close()
 
@@ -674,7 +683,8 @@ def list_queued_jobs() -> list[dict]:
         return [{"key": e.job.key, "company": e.job.display_company, "title": e.job.title, "url": e.job.url,
                  "pay": e.job.pay(), "fit": e.fit, "contacts": e.contacts, "note": e.record.get("note"),
                  "queued_at": e.record.get("status_at"), "closed": e.record.get("closed"), "warnings": e.warnings,
-                 "duplicate_of": e.duplicate.to_dict() if e.duplicate else None, **_pay(e.pay, e.job)}
+                 "duplicate_of": e.duplicate.to_dict() if e.duplicate else None, **_pay(e.pay, e.job),
+                 **_lca(e.lca)}
                 for e in queue(cfg, store, pay_budget=levels.QUEUE)]
     finally:
         store.close()

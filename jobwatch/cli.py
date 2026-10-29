@@ -30,6 +30,7 @@ from . import (
     dupes,
     ics,
     inbox,
+    lca,
     learn,
     levels,
     logos,
@@ -328,6 +329,8 @@ def cmd_show(args, cfg, store):
         print("\n".join(report.fit_lines(fit)))
     if (pay := levels.for_one_job(cfg, store, job)) is not None:
         print("\n".join(report.pay_lines(pay, job)))
+    if lines := report.lca_lines(lca.for_one_job(cfg, job)):
+        print("\n".join(lines))
 
 
 def cmd_mark(args, cfg, store):
@@ -469,6 +472,43 @@ def cmd_logos(args, cfg, store):
         kept = store.logo(logos.key(n))
         line = f"{kept[0]} ({kept[1]}, {len(kept[2]):,} bytes)" if kept and kept[2] else "none found"
         print(f"  {n}: {line}" + ("  (new)" if logos.key(n) in found else ""))
+
+
+def cmd_lca(args, cfg, store):
+    """The H-1B LCA cache (lca.py): `lca update` refreshes it; `lca COMPANY [TITLE]` looks filings up (an
+    employer's most filed titles, or the estimate for a title with the filings behind it); `lca` says what's kept."""
+    path = lca.cache_path(cfg)
+    what = args.what
+    if what[:1] == ["update"]:
+        lca.update(path)
+        return
+    index = lca.Index.open(path)
+    if index is None:
+        raise ValueError(f"no LCA data yet: run `jobwatch lca update` (about 500 MB to download; it makes {path})")
+    try:
+        if not what:
+            info = index.info()
+            print(f"{info['rows']:,} certified full-time filings in {path}, updated {(info['updated'] or '?')[:10]}; "
+                  + ", ".join(f"FY{fy}: {n:,}" for fy, n in info["years"].items()))
+            return
+        keys = [lca.employer_key(what[0])]
+        if len(what) == 1:
+            titles = index.titles(keys)
+            if not titles:
+                raise ValueError(f"no filings found for {what[0]!r} (filed under another name?)")
+            for t in titles:
+                print(f"  {t['count']:>4}  median ${t['median']:,}  {t['title']}")
+            return
+        title = " ".join(what[1:])
+        est = index.estimate(keys, title)
+        if not est:
+            raise ValueError(f"fewer than {lca.MIN_FILINGS} filings by {what[0]!r} for titles like {title!r}")
+        print("\n".join(report.lca_lines(est)))
+        for r in est.rows[:15]:
+            print(f"  {r['title']}, {r['city'].title()} {r['state']}: ${r['wage']:,}"
+                  + (f" (level {r['level']})" if r["level"] else "") + (f" {r['year']}" if r["year"] else ""))
+    finally:
+        index.close()
 
 
 def cmd_company(args, cfg, store):
@@ -1300,6 +1340,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name", nargs="*", help="a company's name as jobwatch shows it")
     p.add_argument("--again", action="store_true", help="look again, even for logos already kept")
     p.set_defaults(func=cmd_logos)
+
+    p = sub.add_parser("lca", help="base pay filed for H-1B hires (U.S. DOL LCA disclosures): `lca update` downloads "
+                       "them (pip install 'jobwatch[lca]'), `lca COMPANY [TITLE]` looks filings up")
+    p.add_argument("what", nargs="*", help="update, or a company and optionally a job title")
+    p.set_defaults(func=cmd_lca, read_only=True)
     return ap
 
 

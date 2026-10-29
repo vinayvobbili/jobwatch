@@ -104,6 +104,30 @@ responsible for checking Levels.fyi's terms. What's read stays in the state file
 If Levels.fyi refuses jobwatch's requests (HTTP 403), jobwatch says so on the job and asks nothing for a day.
 Data: [Levels.fyi](https://www.levels.fyi).
 
+### H-1B wage filings as a second pay source
+
+`pip install 'jobwatch[lca]'` (it adds openpyxl, which reads the Excel files) and run `jobwatch lca update` once.
+It reads the U.S. Department of Labor's
+[performance data page](https://www.dol.gov/agencies/eta/foreign-labor/performance) for the newest Labor Condition
+Application (LCA) disclosure file of the current and the previous fiscal year (the links are found on the page, never
+hardcoded), reads robots.txt first, downloads each file (a few hundred MB; a progress line says how far along) and
+keeps only the certified, full-time filings and the columns an estimate needs in `lca.db`, next to the state
+file. Yearly wages are used as filed; hourly, weekly, bi-weekly and monthly ones become yearly (x 2080, 52, 26, 12).
+The Excel files are deleted once read, and a failed update keeps the cache it had. `jobwatch ui` refreshes the
+cache about every 30 days, but only once you have run `jobwatch lca update` yourself.
+
+A job's estimate comes from filings by its company (matched the way `contacts.py` matches company names, so
+"Globex Systems, Inc." is "Globex") for the same kind of work and seniority (senior, staff or lead, principal...),
+preferring its city, then its state, then the whole US. It shows the median and the 25th to 75th percentile base,
+how many filings, the prevailing wage levels (I to IV) filed, and a few examples (title, city, wage, year); with
+fewer than 3 matching filings there is none. It shows on the job's card and details, in `jobwatch show`, the queue,
+`get_job`, `list_queued_jobs` and `get_comps` (as `lca_pay`), whether or not Levels.fyi has anything or is refusing.
+
+It is base pay the employer filed for an H-1B, H-1B1 or E-3 hire: not total compensation (no bonus or stock), and
+a floor rather than a negotiated number. Titles are the employer's own, so a match is a guess; read the examples.
+`jobwatch lca` says what is kept, `jobwatch lca Acme` lists a company's most filed titles and `jobwatch lca Acme
+"Senior Software Engineer"` the estimate with the filings behind it. Data: U.S. DOL LCA disclosures.
+
 `fetch_every` (6 hours unless set, at least 1 hour) is how often the browser page checks the boards while it's
 open; `off` (or `0`) leaves it to you and `jobwatch fetch`.
 

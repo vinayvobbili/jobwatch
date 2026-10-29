@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
-from . import alerts, dupes, levels, linkedin, sources, suggest
+from . import alerts, dupes, lca, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts, company_key
 from .filters import KINDS, Filters, red_flags, reject_reason, rejection, relevance, search_terms, title_ok
@@ -241,6 +241,7 @@ class Entry:
     contacts: list[dict] = field(default_factory=list)  # people you know there
     warnings: list[str] = field(default_factory=list)  # reasons to look twice before applying (queue)
     pay: object = None  # expected pay from Levels.fyi (levels.Estimate, PENDING, REFUSED or None; queue only)
+    lca: lca.Estimate | None = None  # base pay filed for H-1B hires (queue only)
     duplicate: dupes.Match | None = None  # a job acted on that it's (maybe) the same opening as; also in warnings
 
     @property
@@ -302,6 +303,7 @@ def queue(cfg: Config, store: Store, pay_budget: int = 0) -> list[Entry]:
     contacts = load_contacts(cfg)
     reader = levels.Reader(store, pay_budget) if cfg.pay.levels else None
     index = dupes.Index(store)
+    filings = lca.Index.open(lca.cache_path(cfg))
     out = []
     for job, rec in sorted(store.jobs(("queued",), include_closed=True), key=lambda r: r[1]["status_at"] or ""):
         rel, hits = relevance(job, cfg.keywords)
@@ -315,7 +317,10 @@ def queue(cfg: Config, store: Store, pay_budget: int = 0) -> list[Entry]:
             e.pay = levels.expected(cfg, store, job, reader=reader)
             if warn := levels.below(e.pay, cfg.filters_for(job).min_salary):
                 e.warnings.append(warn)
+        e.lca = lca.for_job(filings, job)
         out.append(e)
+    if filings:
+        filings.close()
     return out
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import date
 
-from . import levels
+from . import lca, levels
 from .alerts import LABELS
 from .models import Job
 from .score import scorer_label
@@ -64,6 +64,14 @@ def pay_lines(pay, job: Job) -> list[str]:
     return [f"Expected pay: {pay.line(job.pay())}", *(f"  - {w}" for w in pay.why), f"  {pay.credit}: {pay.url}"]
 
 
+def lca_lines(est: lca.Estimate | None) -> list[str]:
+    """Base pay filed for H-1B hires and how it was worked out, with its credit."""
+    if not est:
+        return []
+    label = est.label[0].lower() + est.label[1:]
+    return [f"{est.line()} ({label})", *(f"  - {w}" for w in est.why), f"  {est.credit}: {est.url}"]
+
+
 def _line(e: Entry) -> list[str]:
     j = e.job
     facts = [j.display_company, "; ".join(j.places[:3]) + (" …" if len(j.places) > 3 else "")]
@@ -88,6 +96,8 @@ def _line(e: Entry) -> list[str]:
         out.append(f"{MANY_ROLES[1]}.")
     if isinstance(e.pay, levels.Estimate):  # set on queued jobs only, never in a digest
         out.append(f"Expected pay: {e.pay.line(j.pay())} ({e.pay.credit}: {e.pay.url})")
+    if e.lca:
+        out.append(f"{e.lca.line()} ({e.lca.label[0].lower() + e.lca.label[1:]}; {e.lca.credit}: {e.lca.url})")
     if e.warnings:
         out.append(f"**Check:** {'; '.join(e.warnings)}")
     if e.keywords:

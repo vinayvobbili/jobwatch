@@ -1327,6 +1327,16 @@ function payLine(job) {
     h("ul", {}, p.why.map(w => h("li", {}, w)), h("li", {}, link(p.url, p.credit + " ↗"))));
 }
 
+// Base pay the company filed for H-1B hires in titles like this one (U.S. DOL LCA data, once `jobwatch lca update`
+// has been run): shown whether or not Levels.fyi has anything. Base only, not total compensation.
+function lcaLine(job) {
+  const p = job.lca_pay;
+  if (!p) return null;
+  return h("details", { class: "whyfit", "data-lca": job.key, title: p.label },
+    h("summary", {}, p.line),
+    h("ul", {}, p.why.map(w => h("li", {}, w)), h("li", {}, p.label + ". ", link(p.url, p.credit + " ↗"))));
+}
+
 // Fills in expected pay that's still being looked up in the background, until none is left. One poll per
 // `scope`, so the Details dialog doesn't stop the page's.
 const payTimers = {};
@@ -1378,6 +1388,7 @@ function jobCard(job, actions, i = 0) {
         ? h("div", { class: "warns" }, h("b", {}, "Check: "), job.warnings.join(" · ")) : null,
       adviceLine(job) || h("span", { "data-advice": job.key, hidden: true }),
       payLine(job),
+      lcaLine(job),
       gapsLine(job.fit),
       job.keywords.length ? h("div", { class: "chips" }, job.keywords.map(k => h("span", { class: "chip hit" }, k))) : null,
       knowLine(job),
@@ -1507,6 +1518,7 @@ async function openDetails(key) {
         linkNote(j),
         j.duplicate_of ? h("div", { class: "warns" }, dupeBadge(j.duplicate_of), " ", j.duplicate_of.text) : null,
         payLine(j),
+        lcaLine(j),
         gapsLine(j.fit),
         whyScore(j.fit),
         knowLine(j, 10),
