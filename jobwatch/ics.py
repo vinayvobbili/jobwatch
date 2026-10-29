@@ -37,8 +37,8 @@ WEEKDAYS = {d: n for n, names in enumerate(
 
 # What makes a next step a meeting, and which of those are calls rather than interviews.
 _MEETING = re.compile(r"\b(interview|call|chat|screen|screening|onsite|on-site|loop|panel|round|meeting|"
-                      r"conversation|sync|demo|presentation)\b", re.I)
-_CALL = re.compile(r"\b(call|chat|screen|screening|conversation|sync)\b", re.I)
+                      r"conversation|sync|demo|presentation|talk|coffee)\b", re.I)
+_CALL = re.compile(r"\b(call|chat|screen|screening|conversation|sync|talk|coffee)\b", re.I)
 
 _ISO = re.compile(r"(?<![\d-])(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::\d{2})?(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?"
                   r"(?![\d])")

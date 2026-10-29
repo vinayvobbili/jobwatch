@@ -37,6 +37,8 @@ def span(text):
     ("call 2026-10-16T09:30Z", ("2026-10-16T09:30:00", "2026-10-16T10:30:00", True, "Call")),
     # no zone: the same clock time wherever it is read
     ("Screen on 10/15 at 2:15 PM", ("2026-10-15T14:15:00", "2026-10-15T15:15:00", False, "Call")),
+    ("In-person talk with Pat Fri 10/30 3:30–3:45 PM (print the prep sheet)",
+     ("2026-10-30T15:30:00", "2026-10-30T15:45:00", False, "Call")),
     # no year and the date is behind us: next year (EST, UTC-5)
     ("interview 1/8 9am ET", ("2027-01-08T14:00:00", "2027-01-08T15:00:00", True, "Interview")),
 ])
