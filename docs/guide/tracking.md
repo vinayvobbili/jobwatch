@@ -25,7 +25,15 @@ jobwatch applications --due      # only the ones to act on today
 ```
 
 The day you applied is kept as an application moves through the stages. `--next ""` or `--follow-up ""`
-clears a field. An application added by hand with only a company and a title can get its posting's text
+clears a field.
+
+Say which interview the next step is with `--round`: `recruiter_screen`, `hiring_manager`, `technical`,
+`system_design`, `panel` (onsite or loop), `executive` (VP, director, CXO), `hr`, `informal` (coffee,
+in-person talk, referral chat) or `offer_call` (`--round ""` clears it; the `mark_job` tool and the edit
+form on the Applications tab set it too). With a round the next step is a meeting whatever its words, and the
+Interviews tab and the calendar feed label it with the round ("Tech interview", "VP / exec round", ...); the
+time still comes from the next step's text (`--next "Fri 10/30 3:30 PM ET" --round informal`). Without a
+round, jobwatch reads the words as before. An application added by hand with only a company and a title can get its posting's text
 later with `--text` (a copy from a job board, or `-` to paste it), so it can be scored and `jobwatch prep`
 has something to work from; the posting kept with the application is replaced with it.
 

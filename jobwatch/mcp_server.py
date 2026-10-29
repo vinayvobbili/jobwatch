@@ -107,6 +107,9 @@ READ = _hints(read_only=True)
 Status = Literal["new", "shown", "queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn",
                  "skipped"]
 Timeline = Literal["week", "month", "quarter", "any"]
+# Kept in step with rounds.ROUNDS (a test checks); "" clears the round.
+Round = Literal["recruiter_screen", "hiring_manager", "technical", "system_design", "panel", "executive", "hr",
+                "informal", "offer_call", ""]
 
 Key = Annotated[str, Field(description=(
     "The job: its key as other tools return it (source:board:posting id, e.g. greenhouse:acme:4012345), just "
@@ -369,6 +372,11 @@ def mark_job(
     = None,
     next_step: Annotated[str | None, Field(description=(
         "What happens next (\"recruiter screen Tuesday\"). An empty string clears it."))] = None,
+    round: Annotated[Round | None, Field(description=(
+        "Which interview the next step is: recruiter_screen, hiring_manager, technical, system_design, panel "
+        "(onsite or loop), executive (VP, director, CXO), hr, informal (coffee, in-person talk, referral chat) "
+        "or offer_call. Set it with a next step that has a date and time: it makes the step a meeting on the "
+        "Interviews tab and in the calendar feed, whatever its words. An empty string clears it."))] = None,
     follow_up: Annotated[str | None, Day] = None,
     applied_on: Annotated[str | None, Field(description="The day applied (YYYY-MM-DD), if not today.")] = None,
     url: Annotated[str | None, Field(description=(
@@ -384,12 +392,14 @@ def mark_job(
     names several, nothing changes and the error lists them. Use applied only after
     the person has submitted the application themselves. add_note adds a dated line to the note, keeping what's
     there: prefer it for news ("recruiter replied: onsite only"); note replaces the whole note. next_step says
-    what happens next ("recruiter screen Tuesday"); follow_up is the day to act (YYYY-MM-DD or +N days);
-    applied_on is the day applied, if not today. url sets the link of a job added by hand (its posting, or the
-    company's careers site once the posting is gone); when the job has no posting text and the link is to one
-    job on a supported board, the posting is read from it (text, pay, places), so it can be scored. text sets
-    its posting's text, pasted (found later, or from a copy once the posting is gone), so it can be scored and
-    prepped. An empty string clears a field. For a job jobwatch doesn't track yet, use add_application.
+    what happens next ("recruiter screen Tuesday"), with its date and time; round says which interview it is
+    (see its description), so it counts as a meeting without depending on its words; follow_up is the day to
+    act (YYYY-MM-DD or +N days); applied_on is the day applied, if not today. url sets the link of a job
+    added by hand (its posting, or the company's careers site once the posting is gone); when the job has no
+    posting text and the link is to one job on a supported board, the posting is read from it (text, pay,
+    places), so it can be scored. text sets its posting's text, pasted (found later, or from a copy once the
+    posting is gone), so it can be scored and prepped. An empty string clears a field.
+    For a job jobwatch doesn't track yet, use add_application.
     Queuing a job that's (maybe) the same opening as one applied to or queued still queues it, and the reply
     ends with the warning: tell the person."""
     _, store = _open()
@@ -402,7 +412,7 @@ def mark_job(
             store.set_status([job.key], status, note, on=applied_on)
         else:
             store.track(job.key, note=note, applied=applied_on)
-        store.track(job.key, next_step=next_step, follow_up=follow_up)
+        store.track(job.key, next_step=next_step, follow_up=follow_up, round=round)
         if url is not None:
             said = f" ({set_link(store, job.key, url)})"
         if add_note:
@@ -532,7 +542,7 @@ def list_applications(
     rejected or withdrawn; never change it on your own), advice, and contacts the person knows there."""
     cfg, store = _open()
     try:
-        fields = ("status", "applied_at", "status_at", "next_step", "follow_up", "note", "closed")
+        fields = ("status", "applied_at", "status_at", "next_step", "round", "follow_up", "note", "closed")
         rows = store.applications()
         found = quiet.find(rows, cfg.quiet, known=watch.load_contacts(cfg))
         return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, "pay": j.pay(),

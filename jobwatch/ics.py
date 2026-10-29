@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from . import rounds
 from .models import Job
 from .store import ENDED
 
@@ -63,6 +64,7 @@ class Meeting:
     end: datetime
     zoned: bool
     label: str  # Interview or Call
+    round: str | None = None  # the round's label (rounds.py), when the application has one
 
 
 def _zone(name: str) -> timezone | ZoneInfo | None:
@@ -141,7 +143,7 @@ def _the_time(text: str) -> tuple[time, time | None] | None:
     return None
 
 
-def _iso_meeting(text: str, label: str) -> Meeting | None:
+def _iso_meeting(text: str, label: str, round_label: str | None) -> Meeting | None:
     found = list(_ISO.finditer(text))
     if len(found) != 1:
         return None
@@ -159,23 +161,29 @@ def _iso_meeting(text: str, label: str) -> Meeting | None:
         start = start.replace(tzinfo=tz)
     if start.tzinfo:
         start = start.astimezone(timezone.utc)
-    return Meeting(start, start + DURATION, start.tzinfo is not None, label)
+    return Meeting(start, start + DURATION, start.tzinfo is not None, label, round_label)
 
 
-def names_meeting(next_step: str | None) -> bool:
-    """Whether a next step is about an interview or call at all, with a time or not."""
-    return bool(_MEETING.search(next_step or ""))
+def names_meeting(next_step: str | None, round_id: str | None = None) -> bool:
+    """Whether a next step is about an interview or call at all, with a time or not. An application with a
+    round (rounds.py) always is; the words are read only when it has none."""
+    return bool(rounds.kind(round_id) or _MEETING.search(next_step or ""))
 
 
-def meeting(next_step: str | None, today: date) -> Meeting | None:
+def meeting(next_step: str | None, today: date, round_id: str | None = None) -> Meeting | None:
     """The interview or call a next step names, when it gives a date and a time confidently, else None.
-    `today` fills in a missing year. See the module's docstring for what is understood."""
+    `today` fills in a missing year. See the module's docstring for what is understood. With a round
+    (rounds.py) the step is a meeting whatever its words, and the round gives its label."""
     text = " ".join((next_step or "").split())
-    if not _MEETING.search(text):
+    if kind := rounds.kind(round_id):
+        label, round_label = kind, rounds.label(round_id)
+    elif not _MEETING.search(text):
         return None
-    label = "Call" if _CALL.search(text) and not re.search(r"\binterview\b", text, re.I) else "Interview"
+    else:
+        label = "Call" if _CALL.search(text) and not re.search(r"\binterview\b", text, re.I) else "Interview"
+        round_label = None
     if _ISO.search(text):
-        return _iso_meeting(text, label)
+        return _iso_meeting(text, label, round_label)
     day_, clock = _the_day(text, today), _the_time(text)
     if day_ is None or clock is None:
         return None
@@ -189,16 +197,16 @@ def meeting(next_step: str | None, today: date) -> Meeting | None:
             return None
         start = start.replace(tzinfo=tz).astimezone(timezone.utc)
         end = end.replace(tzinfo=tz).astimezone(timezone.utc) if end else None
-    return Meeting(start, end or start + DURATION, zoned, label)
+    return Meeting(start, end or start + DURATION, zoned, label, round_label)
 
 
-def meetings(next_step: str | None, today: date) -> list[Meeting]:
+def meetings(next_step: str | None, today: date, round_id: str | None = None) -> list[Meeting]:
     """Every interview or call a next step names, in the order written. When the whole step reads as one meeting,
     that one; else each clause (split at ";" and line breaks) that reads as a meeting on its own, so
     "Sync Fri 10/23 9:30 AM ET; final round Sun 10/25 5:00 PM ET" is two and a clause with no time is dropped."""
-    if m := meeting(next_step, today):
+    if m := meeting(next_step, today, round_id):
         return [m]
-    return [m for clause in re.split(r"[;\r\n]+", next_step or "") if (m := meeting(clause, today))]
+    return [m for clause in re.split(r"[;\r\n]+", next_step or "") if (m := meeting(clause, today, round_id))]
 
 
 def _escape(text: str) -> str:
@@ -261,10 +269,10 @@ def calendar(rows: list[tuple[Job, dict]], today: date | None = None, now: datet
             lines += _event(_uid(job.key, "followup"), now, f"Follow up: {name}", about, job.url,
                             {"DTSTART;VALUE=DATE:": on.strftime("%Y%m%d"),
                              "DTEND;VALUE=DATE:": (on + timedelta(days=1)).strftime("%Y%m%d")})
-        for n, m in enumerate(meetings(step, today), 1):
+        for n, m in enumerate(meetings(step, today, rec.get("round")), 1):
             fmt = "%Y%m%dT%H%M%S" + ("Z" if m.zoned else "")
             kind = "meeting" if n == 1 else f"meeting-{n}"  # the first keeps the UID it always had
-            lines += _event(_uid(job.key, kind), now, f"{m.label}: {name}", about, job.url,
+            lines += _event(_uid(job.key, kind), now, f"{m.round or m.label}: {name}", about, job.url,
                             {"DTSTART:": m.start.strftime(fmt), "DTEND:": m.end.strftime(fmt)}, remind)
     lines.append("END:VCALENDAR")
     return "".join(piece + "\r\n" for line in lines for piece in _fold(line))

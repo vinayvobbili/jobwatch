@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from . import ics
+from . import ics, rounds
 from .models import Job
 from .store import ENDED
 
@@ -52,10 +52,10 @@ def upcoming(rows: list[tuple[Job, dict]], today: date | None = None, ahead: int
     for job, rec in rows:
         if rec.get("status") in ENDED:
             continue
-        step = rec.get("next_step")
-        if found := ics.meetings(step, today):
+        step, round_id = rec.get("next_step"), rec.get("round")
+        if found := ics.meetings(step, today, round_id):
             timed += [Interview(job, rec, m, on) for m in found if today <= (on := _local_day(m)) <= last]
-        elif rec.get("status") != "applied" and ics.names_meeting(step) and (follow := rec.get("follow_up")):
+        elif rec.get("status") != "applied" and ics.names_meeting(step, round_id) and (follow := rec.get("follow_up")):
             if today <= (on := date.fromisoformat(follow)) <= last:
                 untimed.append(Interview(job, rec, None, on))
     timed.sort(key=lambda i: i.meeting.start.astimezone())  # a floating time is read as this computer's
@@ -94,16 +94,17 @@ def to_dict(i: Interview, folder: Path | None) -> dict:
     return {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
             "day": i.day.isoformat(), "scheduled": m is not None,
             "start": m.start.isoformat() if m else None, "end": m.end.isoformat() if m else None,
-            "zoned": bool(m and m.zoned), "label": m.label if m else "Interview",
+            "zoned": bool(m and m.zoned), "label": m.label if m else rounds.kind(rec.get("round")) or "Interview",
+            "round": rec.get("round") or None, "round_label": rounds.label(rec.get("round")),
             "sheets": sheets(folder, j.display_company, j.company),
             **{k: rec.get(k) for k in ("status", "next_step", "follow_up", "note")}}
 
 
-def meeting_dict(next_step: str | None, today: date | None = None) -> dict | None:
+def meeting_dict(next_step: str | None, today: date | None = None, round_id: str | None = None) -> dict | None:
     """A next step's interview time for the details view, or None: the next one that hasn't ended, else the last."""
     today = today or date.today()
-    found = ics.meetings(next_step, today)
+    found = ics.meetings(next_step, today, round_id)
     now = datetime.now(timezone.utc)
     m = next((m for m in found if (m.end if m.zoned else m.end.astimezone()) >= now), found[-1] if found else None)
     return m and {"start": m.start.isoformat(), "end": m.end.isoformat(), "zoned": m.zoned, "label": m.label,
-                  "day": _local_day(m).isoformat()}
+                  "round_label": m.round, "day": _local_day(m).isoformat()}

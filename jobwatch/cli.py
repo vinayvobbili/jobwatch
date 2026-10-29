@@ -46,6 +46,7 @@ from . import (
 )
 from .config import BACKENDS, ConfigError, duration
 from .filters import KINDS, rejection
+from .rounds import ROUNDS
 from .score import AGY_WORKERS, ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
 from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, STAGES, STATUSES, Store
 from .watch import (
@@ -348,7 +349,8 @@ def cmd_mark(args, cfg, store):
         for k in keys:
             store.set_description(k, text)
     for k in keys:
-        store.track(k, next_step=getattr(args, "next", None), follow_up=getattr(args, "follow_up", None))
+        store.track(k, next_step=getattr(args, "next", None), follow_up=getattr(args, "follow_up", None),
+                    round=getattr(args, "round", None))
         if getattr(args, "url", None) is not None:
             print(f"  {k}: {set_link(store, k, args.url)}")
         if getattr(args, "add_note", None):
@@ -415,7 +417,7 @@ def cmd_add(args, cfg, store):
     text = "" if not args.text else sys.stdin.read() if str(args.text) == "-" else args.text.read_text()
     job, read = save_job(store, link, company, title, text, status=args.status, note=args.note, applied=args.on,
                          location=args.location or "", boards=cfg.boards)
-    store.track(job.key, next_step=args.next, follow_up=args.follow_up)
+    store.track(job.key, next_step=args.next, follow_up=args.follow_up, round=args.round)
     if args.add_note:
         store.add_note(job.key, args.add_note)
     how = "read from the link" if read else "with the posting's text" if text.strip() else ""
@@ -882,6 +884,9 @@ def _tracking(p: argparse.ArgumentParser):
     p.add_argument("--add-note", metavar="TEXT", help="adds a dated line to the note, keeping what's there")
     p.add_argument("--on", metavar="DAY", help="the day you applied, if not today (YYYY-MM-DD)")
     p.add_argument("--next", metavar="STEP", help="what happens next, e.g. 'check in with the recruiter'")
+    p.add_argument("--round", choices=[*ROUNDS, ""], metavar="ROUND", help="which interview the next step is "
+                   f"({', '.join(ROUNDS)}): a meeting on the Interviews tab and calendar, whatever its words; "
+                   "'' clears it")
     p.add_argument("--follow-up", metavar="DAY", help="when to act on it: YYYY-MM-DD, tomorrow or +N days")
 
 

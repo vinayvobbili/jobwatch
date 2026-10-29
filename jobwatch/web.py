@@ -57,6 +57,7 @@ from . import (
 from .config import ConfigError
 from .filters import KINDS
 from .package import Package
+from .rounds import ROUNDS
 from .score import LOCAL, ScoringUnavailable, brief, prompt_info, resume_id, turn
 from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, Store
 from .watch import (
@@ -796,8 +797,8 @@ class App:
                 {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
                  "manual": j.source == MANUAL, "due": report.due(rec), "quiet": found.get(j.key),
                  "package": Package(store.packages, j.key).summary(),
-                 **{k: rec.get(k) for k in ("status", "status_at", "applied_at", "next_step", "follow_up", "note",
-                                            "closed")}}
+                 **{k: rec.get(k) for k in ("status", "status_at", "applied_at", "next_step", "round", "follow_up",
+                                            "note", "closed")}}
                 for j, rec in quiet.order(rows, found)]}
         return self._with_store(run)
 
@@ -864,7 +865,8 @@ class App:
                                      boards=cfg.boards)
             except sources.SourceError as e:
                 raise ApiError(f"couldn't read that posting: {e}") from None
-            store.track(job.key, next_step=body.get("next_step"), follow_up=body.get("follow_up"))
+            store.track(job.key, next_step=body.get("next_step"), follow_up=body.get("follow_up"),
+                        round=body.get("round"))
             return {"key": job.key, "company": job.display_company, "title": job.title, "read": read}
         return self._with_store(run)
 
@@ -873,13 +875,15 @@ class App:
         status = body.get("status")
         if status is not None and status not in STATUSES:
             raise ApiError(f"status must be one of {', '.join(STATUSES)}")
+        if (round_id := body.get("round")) is not None and round_id not in (*ROUNDS, ""):
+            raise ApiError(f"round must be one of {', '.join(ROUNDS)}")
 
         def run(cfg, store):
             key = store.find(body.get("key") or "")[0].key
             if status:
                 store.set_status([key], status)
             store.track(key, note=body.get("note"), next_step=body.get("next_step"),
-                        follow_up=body.get("follow_up"), applied=body.get("applied_at"))
+                        follow_up=body.get("follow_up"), applied=body.get("applied_at"), round=round_id)
             if body.get("add_note"):
                 store.add_note(key, body["add_note"])
             return {"key": key}
@@ -923,10 +927,11 @@ class App:
                     "duplicate_of": (same := dupes.check(store, job.key)) and same.to_dict(),
                     "sheets": interviews.sheets(cfg.prep.sheets, job.display_company, job.company),
                     "sheets_base": self._sheets_base(store),
-                    "meeting": None if rec.get("status") in ENDED else interviews.meeting_dict(rec.get("next_step")),
+                    "meeting": None if rec.get("status") in ENDED else interviews.meeting_dict(
+                        rec.get("next_step"), round_id=rec.get("round")),
                     **self._pay(cfg, store, [(job, None)]).get(job.key, {}),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen", "next_step",
-                                               "follow_up", "applied_at")}}
+                                               "round", "follow_up", "applied_at")}}
         return self._with_store(run)
 
     def get_companies(self, q) -> list[dict]:

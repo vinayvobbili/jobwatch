@@ -113,7 +113,8 @@ def _job(store: Store, job: Job, rec: dict, index: dupes.Index) -> dict:
             "status": rec["status"], "closed": _day(rec.get("closed")), "first_seen": _day(rec.get("first_seen")),
             "posted": job.posted.date().isoformat() if job.posted else None, "applied_at": rec.get("applied_at"),
             "status_at": _day(rec.get("status_at")), "next_step": rec.get("next_step"),
-            "follow_up": rec.get("follow_up"), "due": report.due(rec), "note": rec.get("note"),
+            "round": rec.get("round"), "follow_up": rec.get("follow_up"),
+            "due": report.due(rec), "note": rec.get("note"),
             "via": rec.get("via"), "package": pkg, "has_package": any(pkg.values()),
             "duplicate_of": same.to_dict() if same else None}
 

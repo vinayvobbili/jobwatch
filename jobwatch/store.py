@@ -11,7 +11,7 @@ from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from . import linkedin
+from . import linkedin, rounds
 from .contacts import company_key
 from .models import Job
 from .package import Package
@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     applied_at TEXT,
     next_step TEXT,
     follow_up TEXT,
+    round TEXT,
     via TEXT,
     duplicate_of TEXT
 );
@@ -186,7 +187,7 @@ BUSY = 30  # seconds to wait for another thread or process writing the state fil
 
 # Columns added after the first release, and how to fill them in an older state file.
 _ADDED = {"applied_at": "UPDATE jobs SET applied_at=substr(status_at, 1, 10) WHERE status='applied'",
-          "next_step": None, "follow_up": None, "via": None, "duplicate_of": None}
+          "next_step": None, "follow_up": None, "round": None, "via": None, "duplicate_of": None}  # round: rounds.py
 
 
 def _now() -> str:
@@ -456,10 +457,10 @@ class Store:
         return Package(self.packages, self.find(key)[0].key)
 
     def track(self, key: str, *, note: str | None = None, next_step: str | None = None,
-              follow_up: str | None = None, applied: str | None = None):
-        """Update an application's note, next step, follow-up day or day applied. None leaves a field as it is;
-        an empty string clears it."""
-        fields = {"note": note, "next_step": next_step}
+              follow_up: str | None = None, applied: str | None = None, round: str | None = None):
+        """Update an application's note, next step, follow-up day, day applied or interview round (an id in
+        rounds.ROUNDS). None leaves a field as it is; an empty string clears it."""
+        fields = {"note": note, "next_step": next_step, "round": None if round is None else rounds.check(round)}
         fields = {k: v.strip() or None for k, v in fields.items() if v is not None}
         if follow_up is not None:
             fields["follow_up"] = day(follow_up)
