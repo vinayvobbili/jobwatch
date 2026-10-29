@@ -156,6 +156,15 @@ def test_mark_without_a_status_keeps_it(watchlist, capsys):
         cli.main([*c, "mark", "nothing-like-this", "--add-note", "x"])
 
 
+def test_mark_with_an_empty_note_keeps_the_note(watchlist, capsys):
+    """`--note "$(...)"` whose command failed hands mark an empty note; that mustn't erase the one there."""
+    c = ("-c", str(watchlist))
+    run(capsys, *c, "add", "Umbrella", "Principal Engineer", "--note", "met Ana at the meetup")
+    with pytest.raises(SystemExit, match="would erase the note"):
+        cli.main([*c, "mark", "principal-engineer", "--note", " ", "--next", "call Ana"])
+    out = run(capsys, *c, "apps").out
+    assert "met Ana at the meetup" in out and "call Ana" not in out
+
 
 def test_mark_by_company_name_with_the_status_after(watchlist, capsys):
     """The company is enough when you've applied there once; when it names more, nothing changes."""

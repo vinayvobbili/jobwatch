@@ -341,6 +341,8 @@ def cmd_mark(args, cfg, store):
         if not keys:
             raise ValueError("which job? give its key, posting id or company")
         args.status, args.keys = status, keys
+    if args.note is not None and not args.note.strip():  # a "$(...)" that failed and printed nothing, most likely
+        raise ValueError("--note is empty and would erase the note; leave it out to keep the note")
     keys = [store.find(k)[0].key for k in args.keys]
     if args.status:
         store.set_status(keys, args.status, args.note, on=getattr(args, "on", None))
