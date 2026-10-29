@@ -25,6 +25,7 @@ kinds:
       - 'unfortunately,? we (?:will not|won''t|are unable|have decided|cannot)\b[^.]{0,60}'
       - 'we regret to inform you[^.]{0,60}'
       - 'unable to (?:offer you|move forward|proceed)[^.]{0,40}'
+      - '(?:won''t|will not|are not|aren''t|can''t|cannot) (?:be )?able to (?:invite you|move (?:you )?forward|proceed|offer you)[^.]{0,40}'
       - '(?:you were|you have been|you weren''t|you were not) not selected[^.]{0,30}'
       - 'position (?:has been|was|is now) (?:filled|closed)'
       - 'no longer (?:being )?considered'

@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from email.message import EmailMessage
 from email.utils import parseaddr, parsedate_to_datetime
 from functools import cache
@@ -124,6 +124,10 @@ def _day(msg: EmailMessage) -> str:
     try:
         return parsedate_to_datetime(str(msg["Date"])).date().isoformat()
     except (TypeError, ValueError):
+        pass
+    try:  # an ISO date, as a mail connector's own fields give it ("2026-10-27T12:30:15Z")
+        return datetime.fromisoformat(str(msg["Date"]).strip().replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
         return date.today().isoformat()
 
 
@@ -138,6 +142,7 @@ def classify(subject: str, text: str, raw: str = "") -> tuple[Kind | None, str]:
     `raw` is the email as sent, for its links."""
     r = rules()
     whole = " ".join(f"{subject}. {text}".split())  # a line wrapped in the middle of a phrase is one line
+    whole = whole.replace("’", "'")  # "won’t" as mail clients type it
     hedged = " ".join(s for s in _SENTENCES.split(whole) if not r.hedges.search(s))
     for kind in r.kinds:
         for pattern in kind.patterns:

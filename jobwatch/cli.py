@@ -611,6 +611,9 @@ def cmd_applications(args, cfg, store):
         stale = [r for r in rows if found.get(r[0].key, {}).get("long")]
         rows = [r for r in rows if r not in stale]
         more = f"{len(stale)} more due, quiet for {cfg.quiet.long}+ days: `jobwatch quiet`." if stale else ""
+        if not rows:  # applications there may be; none of them is due
+            _write(" ".join(("Nothing to follow up on now.", more)).strip() + "\n", args.out)
+            return
     _write(report.applications_markdown(rows, homes={j.key: store.candidate_home(j) for j, _ in rows},
                                         quiet=found, more=more), args.out)
 

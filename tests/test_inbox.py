@@ -77,6 +77,15 @@ def test_an_email_about_nothing_is_other():
     assert inbox.read(mail("recruiter_reply.eml")).kind == "other"
 
 
+def test_a_rejection_that_wont_invite_you_to_the_next_round_with_a_curly_apostrophe():
+    msg = alerts.message("Subject: Thank you for your application to Initech\nFrom: no-reply@initech.example\n"
+                         "Date: 2026-10-27T12:30:15Z\n\nWe received a large number of applications, and after "
+                         "carefully reviewing all of them, unfortunately, we have to inform you that this time we "
+                         "won’t be able to invite you to the next round of our hiring process.\n".encode())
+    email = inbox.read(msg)
+    assert (email.kind, email.status, email.date) == ("rejection", "rejected", "2026-10-27")
+
+
 def test_rejection_beats_the_interview_it_mentions(store):
     assert one(store, "rejection_lever.eml").kind == "rejection"
 

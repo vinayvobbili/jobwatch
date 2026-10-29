@@ -180,6 +180,14 @@ def test_cli_apps_sorts_stale_below_and_due_collapses_them(watchlist, seeded, ca
     assert out.rstrip().endswith("1 more due, quiet for 45+ days: `jobwatch quiet`.")
 
 
+def test_cli_apps_due_with_nothing_due_says_so(watchlist, tmp_path, capsys):
+    s = Store(tmp_path / "state.db")
+    put(s, "Globex", "Data Engineer", news="2026-10-12", follow_up="2099-01-01")
+    s.close()
+    cli.main(["-c", str(watchlist), "apps", "--due"])
+    assert capsys.readouterr().out == "Nothing to follow up on now.\n"
+
+
 def test_cli_snooze(watchlist, seeded, capsys):
     cli.main(["-c", str(watchlist), "snooze", "controls-engineer", "--days", "14"])
     assert capsys.readouterr().out == "controls-engineer: follow up 2026-10-28\n"
