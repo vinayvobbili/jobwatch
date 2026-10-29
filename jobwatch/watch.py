@@ -287,7 +287,7 @@ def load_contacts(cfg: Config) -> Contacts | None:
             feedback = store.contact_feedback()  # whom to use and not to, from the page, CLI or an assistant
         finally:
             store.close()
-        return Contacts.load(cfg.connections, cfg.connections_skip, feedback)
+        return Contacts.load(cfg.connections, cfg.connections_skip, feedback, cfg.employer)
     except (OSError, ValueError, sqlite3.Error) as e:
         print(f"jobwatch: connections skipped: {e}", file=sys.stderr)
         return None

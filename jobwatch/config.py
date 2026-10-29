@@ -452,6 +452,7 @@ class Config:
     resume: Path | None = None
     connections: Path | None = None  # LinkedIn Connections.csv, for "you know someone there"
     connections_skip: list[str] = field(default_factory=list)  # people never to suggest: names or profile links
+    employer: list[str] = field(default_factory=list)  # where you work now: colleagues there aren't referrals
     stories: Path | None = None      # your projects, for drafted interview answers (see stories.py)
     backend: str = "local"
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
@@ -669,7 +670,8 @@ def locate(explicit: str | Path | None = None) -> Path:
         return DEFAULT_PATHS[1]
 
 
-SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "connections_skip", "stories", "scoring",
+SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "connections_skip", "employer", "stories",
+            "scoring",
             "chat", "prep",
             "learning", "display", "pace", "calendar", "pay", "comps", "goals", "alerts", "suggestions", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
@@ -823,6 +825,8 @@ def load(explicit: str | Path | None = None) -> Config:
                 own[(b.source, b.board)] = Filters.from_dict({**(raw.get("filters") or {}), **b.filters})
             except (TypeError, ValueError) as e:
                 raise ConfigError(f"{path}: {b.entry}: {e}") from None
+    employer = raw.get("employer") or []
+    employer = [employer] if isinstance(employer, str) else employer
     return Config(
         path=path, boards=boards, unknown=[b for b in listed if b.source not in SOURCES], filters=filters,
         board_filters=own, tracks=_tracks(raw.get("tracks"), raw.get("filters") or {}, path),
@@ -830,6 +834,7 @@ def load(explicit: str | Path | None = None) -> Config:
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
         connections_skip=[str(s).strip() for s in raw.get("connections_skip") or [] if str(s).strip()],
+        employer=[s for e in employer if (s := str(e).strip())],
         stories=_path(raw["stories"], base) if raw.get("stories") else None,
         backend=backend, score_model=str(scoring.get("model") or "").strip(),
         score_top=_whole(scoring.get("top", 0), "scoring.top", path, "0 scores none when the digest is made"),
@@ -1020,6 +1025,8 @@ scoring:
 # connections: ~/Downloads/Connections.csv
 # People never to suggest, by name or LinkedIn profile link:
 # connections_skip: [Jane Doe, https://www.linkedin.com/in/example-john]
+# Where you work now: your colleagues there aren't listed as people you know (an internal move needs no referral).
+# employer: Initech
 
 # state: ~/.local/share/jobwatch/state.db
 """

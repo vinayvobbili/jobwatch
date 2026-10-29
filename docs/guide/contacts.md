@@ -29,6 +29,13 @@ Someone you'd never ask for a referral can be left out, by name or profile link:
 connections_skip: [Jane Doe, https://www.linkedin.com/in/example-john]
 ```
 
+Your colleagues where you work now are people you know, but not referrals for an internal move. Name your
+employer and no one there is listed:
+
+```yaml
+employer: Initech        # or a list of its names
+```
+
 Or say so as you go. The **Referrals** tab lists the people you know at companies with a new, queued or open
 job, closest ties first, with the jobs they're at. **Use** puts someone ahead of closer ties; **Don't use**
 stops suggesting them (they wait in a fold, to restore); a note keeps a few words with the name ("doesn't check

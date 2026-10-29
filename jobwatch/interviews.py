@@ -6,7 +6,8 @@ one card for each meeting it names (a step with two calls is on the tab twice). 
 that names a meeting but no time it can read ("panel interview, the recruiter to schedule") is listed as not scheduled
 yet while its follow-up day is today or ahead, so it isn't lost, once the application is past applied (before
 that, "wait for a recruiter screen" is a hope, not an interview). Prep sheets are the .html files in the
-watchlist's prep.sheets folder whose name starts with the company's ("acme-onsite.html" for Acme). The page
+watchlist's prep.sheets folder whose name starts with the company's ("acme-onsite.html" for Acme), narrowed to
+one application's: the ones its note or next step names, else all but those naming another posting's number. The page
 serves that folder at an address with a secret in it, so a sheet's stylesheet, images and drill video next to
 it load as they do from disk, and sandboxed: a sheet can't run scripts or reach the page's token.
 """
@@ -77,6 +78,21 @@ def sheets(folder: Path | None, *names: str) -> list[str]:
     return [p.name for p in sorted(found, key=lambda p: (-p.stat().st_mtime, p.name))]
 
 
+_REQ = re.compile(r"(?<!\d)\d{5,}(?!\d)")  # a req or posting number in a sheet's name ("initech-40125-dana")
+
+
+def job_sheets(folder: Path | None, job: Job, rec: dict) -> list[str]:
+    """One application's prep sheets among its company's: those its note or next step names by file name, if any;
+    else the company's sheets less those naming another posting's number (a company you apply to often has a
+    sheet per opening)."""
+    found = sheets(folder, job.display_company, job.company)
+    text = " ".join(rec.get(k) or "" for k in ("note", "next_step"))
+    if named := [s for s in found if s in text]:
+        return named
+    own = " ".join((job.id, job.title, job.url or ""))
+    return [s for s in found if all(n in own for n in _REQ.findall(Path(s).stem))]
+
+
 def sheet_file(folder: Path | None, name: str) -> tuple[Path, str]:
     """(path, content type) of a file the page serves from the sheets folder: one directly in it (not in a
     folder inside it, nor one it links to elsewhere), of a type in FILE_TYPES."""
@@ -96,7 +112,7 @@ def to_dict(i: Interview, folder: Path | None) -> dict:
             "start": m.start.isoformat() if m else None, "end": m.end.isoformat() if m else None,
             "zoned": bool(m and m.zoned), "label": m.label if m else rounds.kind(rec.get("round")) or "Interview",
             "round": rec.get("round") or None, "round_label": rounds.label(rec.get("round")),
-            "sheets": sheets(folder, j.display_company, j.company),
+            "sheets": job_sheets(folder, j, rec),
             **{k: rec.get(k) for k in ("status", "next_step", "follow_up", "note")}}
 
 

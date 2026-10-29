@@ -164,11 +164,13 @@ def _order(p: dict) -> tuple:
 
 class Contacts:
     def __init__(self, people: list[dict], ties: dict[str, dict] | None = None, skip: list[str] | tuple = (),
-                 feedback: dict[str, dict] | None = None):
+                 feedback: dict[str, dict] | None = None, employer: list[str] | tuple = ()):
         """skip: people never to suggest (a name, or a linkedin.com/in/ link), however close the tie.
         feedback: {person_key: {"verdict": "use" | "skip", "note": ...}} from the referrals page: skip is the same
-        as above, use sorts a person ahead of closer ties, and the note goes with the person."""
+        as above, use sorts a person ahead of closer ties, and the note goes with the person.
+        employer: where you work now; at() lists no one there (colleagues, not referrals)."""
         self.has_ties = bool(ties)
+        self.employer = {k for e in employer if (k := company_key(e))}
         ties = ties or {}
         feedback = feedback or {}
         skip_profiles = {k for s in skip if (k := profile_key(s))}
@@ -190,20 +192,23 @@ class Contacts:
             group.sort(key=_order)
 
     @classmethod
-    def load(cls, path: Path | str, skip: list[str] | tuple = (), feedback: dict[str, dict] | None = None) -> Contacts:
+    def load(cls, path: Path | str, skip: list[str] | tuple = (), feedback: dict[str, dict] | None = None,
+             employer: list[str] | tuple = ()) -> Contacts:
         """Connections.csv (with linkedin-ties.json beside it, if an archive was imported), or the archive .zip."""
         path = Path(path).expanduser()
         if path.suffix.lower() == ".zip":
-            return cls(*read_archive(path), skip=skip, feedback=feedback)
+            return cls(*read_archive(path), skip=skip, feedback=feedback, employer=employer)
         people = parse_connections(path.read_text(encoding="utf-8-sig"), str(path))
         ties_path = path.with_name(TIES_FILE)
         ties = json.loads(ties_path.read_text()) if ties_path.is_file() else None
-        return cls(people, ties, skip, feedback)
+        return cls(people, ties, skip, feedback, employer)
 
     def at(self, *names: str) -> list[dict]:
         """Connections whose current company is any of these names (the board's name, its slug, ...),
-        people you actually talk to first."""
+        people you actually talk to first; none at your own employer."""
         keys = {company_key(n) for n in names if n}
+        if keys & self.employer:
+            return []
         found = [p for k in keys if k for p in self.by_company.get(k, [])]
         return sorted(found, key=_order)
 

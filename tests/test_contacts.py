@@ -69,6 +69,14 @@ def test_people_to_skip_are_never_suggested(connections, watchlist):
     assert [p["name"] for p in watch.load_contacts(config.load(watchlist)).at("Initech")] == ["Ana Li"]
 
 
+def test_no_one_is_listed_at_your_own_employer(connections, watchlist):
+    assert Contacts.load(connections, employer=["Initech Inc."]).at("Initech", "initech") == []
+    assert Contacts.load(connections, employer=["Globex"]).at("Initech")  # others are unchanged
+    watchlist.write_text(watchlist.read_text() + f"connections: {connections}\nemployer: Initech\n")
+    cfg = config.load(watchlist)
+    assert cfg.employer == ["Initech"] and watch.load_contacts(cfg).at("Initech") == []
+
+
 def test_not_a_connections_file(tmp_path):
     p = tmp_path / "x.csv"
     p.write_text("a,b\n1,2\n")

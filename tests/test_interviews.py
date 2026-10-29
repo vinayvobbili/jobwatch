@@ -84,6 +84,21 @@ def test_prep_sheets_are_matched_by_the_start_of_their_name(tmp_path):
     assert interviews.sheets(tmp_path / "missing", "Acme") == []
 
 
+def test_an_application_gets_its_own_sheets_among_its_companys(tmp_path):
+    folder = tmp_path / "prep"
+    folder.mkdir()
+    for name in ("globex-31245-pat.html", "globex-40769-technical.html", "globex-platform-engineer.html",
+                 "globex-tips.html"):
+        (folder / name).write_text("<h1>prep</h1>")
+    job = Job(source="manual", company="globex", id="architect-job-31245", title="Architect (Job 31245)", url="",
+              company_name="Globex")
+    named = {"note": "Booked Fri. Prep sheet: prep/globex-31245-pat.html", "next_step": "Talk with Pat Fri"}
+    assert interviews.job_sheets(folder, job, named) == ["globex-31245-pat.html"]  # the one its note names
+    # none named: all but the sheet for another opening's number
+    assert sorted(interviews.job_sheets(folder, job, {"note": None})) == [
+        "globex-31245-pat.html", "globex-platform-engineer.html", "globex-tips.html"]
+
+
 def test_only_files_directly_in_the_sheets_folder_are_served(tmp_path):
     folder = sheet_dir(tmp_path)
     assert interviews.sheet_file(folder, "acme-onsite.html") == ((folder / "acme-onsite.html").resolve(),
