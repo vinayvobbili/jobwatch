@@ -480,7 +480,7 @@ def cmd_lca(args, cfg, store):
     path = lca.cache_path(cfg)
     what = args.what
     if what[:1] == ["update"]:
-        lca.update(path)
+        lca.update(path, say=lambda line: print(line, flush=True))  # a progress line shows at once, even piped
         return
     index = lca.Index.open(path)
     if index is None:

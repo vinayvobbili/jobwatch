@@ -211,6 +211,19 @@ def test_seniority_and_the_kind_of_work_have_to_match(cache):
     index.close()
 
 
+def test_title_readings_drop_the_team_ids_and_filler():
+    sw = frozenset({"software", "engineer"})
+    team = frozenset({"software", "engineer", "platform"})
+    assert lca.title_words("Senior Software Engineer, Platform") == [sw, team]
+    assert lca.title_words("Software Engineer Hybrid 19166") == [sw]
+    # the role can come after the team: "Incident Response, Sr Staff Engineer"
+    after = lca.title_words("Incident Response, Sr Staff Engineer")
+    assert after[-1] == frozenset({"incident", "response", "engineer"})
+    assert lca.title_words("SDE III") == [frozenset({"software", "engineer"})]
+    assert lca.same_work([sw], [frozenset({"software", "development", "engineer"})])
+    assert not lca.same_work([sw], [frozenset({"software", "quality", "assurance", "engineer", "lead"})])
+
+
 def test_fewer_than_three_filings_is_no_estimate(cache):
     index = lca.Index.open(cache[0])
     assert lca.for_job(index, job(title="Data Analyst", company="Initech")) is None

@@ -278,7 +278,7 @@ def update(path: Path, say=print, get_text=None, fetch=None, robots=None, pause:
 # Words that say the level, which levels.seniority reads, and filler, left out of a title when comparing titles.
 _NOISE = {"a", "an", "and", "of", "the", "for", "in", "to", "at", "remote", "us", "usa", "i", "ii", "iii", "iv", "v",
           "vi", "sr", "jr", "senior", "staff", "principal", "lead", "junior", "associate", "entry", "level",
-          "distinguished", "fellow", "director", "head"}
+          "distinguished", "fellow", "director", "head", "hybrid", "onsite", "contract"}
 _ABBREVIATIONS = {"swe": ("software", "engineer"), "sde": ("software", "engineer"),
                   "sre": ("site", "reliability", "engineer"), "ml": ("machine", "learning"),
                   "qa": ("quality", "assurance")}
@@ -290,21 +290,27 @@ def _stem(word: str) -> str:
     return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
 
 
-def title_words(title: str) -> frozenset[str]:
-    """The words of a title that say what the work is: "Senior Software Engineer, Platform" -> software, engineer.
-    The team after a comma is left out when the part before it is more than a word."""
-    main = re.sub(r"\([^)]*\)", " ", title)
-    head = main.split(",")[0]
-    words = re.findall(r"[a-z0-9]+", (head if len(head.split()) > 1 else main).lower())
+def _words(text: str) -> frozenset[str]:
     out = []
-    for w in words:
+    for w in re.findall(r"[a-z0-9]+", text.lower()):
         out.extend(_ABBREVIATIONS.get(w, (w,)))
-    return frozenset(_stem(w) for w in out if w not in _NOISE)
+    return frozenset(_stem(w) for w in out if w not in _NOISE and not w.isdigit())  # digits: a posting's id
 
 
-def same_work(job_words: frozenset[str], other: frozenset[str]) -> bool:
-    """Whether two titles name the same kind of work: their shared words are most of both (Dice, 0.6)."""
-    return bool(job_words and other) and 2 * len(job_words & other) / (len(job_words) + len(other)) >= 0.6
+def title_words(title: str) -> list[frozenset[str]]:
+    """The words of a title that say what the work is, as the readings to try: "Senior Software Engineer,
+    Platform" -> {software, engineer} (the team after a comma left out), then the whole title's. Seniority words
+    (levels.seniority reads those), filler and numbers aren't words of the work."""
+    plain = re.sub(r"\([^)]*\)", " ", title)
+    head = plain.split(",")[0]
+    readings = [_words(head)] if len(head.split()) > 1 else []
+    return [r for r in dict.fromkeys([*readings, _words(plain)]) if r]
+
+
+def same_work(job_words: list[frozenset[str]], other: list[frozenset[str]]) -> bool:
+    """Whether two titles name the same kind of work: their shared words are most of both (Dice, 0.6), by any of
+    the job's readings against the filing's whole title."""
+    return bool(other) and any(2 * len(j & other[-1]) / (len(j) + len(other[-1])) >= 0.6 for j in job_words)
 
 
 def percentile(values: list[int], p: float) -> int:
