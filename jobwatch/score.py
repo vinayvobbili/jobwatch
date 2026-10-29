@@ -169,7 +169,14 @@ def resume_id(resume: Path, prompts: Mapping[str, str] | None = None) -> str:
     and built-in prompts) and to any edited prompts (scoring.prompts), so an edited resume or prompt, or a
     changed scorer, is scored afresh. With no prompt edited there's no prompts part: putting the prompts back
     brings back the scores made with them."""
-    rid = f"{resume.name}:{hashlib.sha256(resume.read_bytes()).hexdigest()[:12]}:scorer-{scorer_id()}"
+    try:
+        data = resume.read_bytes()
+    except PermissionError:
+        raise PermissionError(
+            f"can't read the resume at {resume}: macOS keeps background apps (like `jobwatch ui` run by launchd) "
+            "out of Downloads, Desktop and Documents. Move the resume to another folder and point `resume:` in "
+            "the watchlist at it, or upload it in Settings.") from None
+    rid = f"{resume.name}:{hashlib.sha256(data).hexdigest()[:12]}:scorer-{scorer_id()}"
     if prompts:
         rid += ":prompts-" + hashlib.sha256(json.dumps(dict(prompts), sort_keys=True).encode()).hexdigest()[:12]
     return rid

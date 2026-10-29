@@ -119,6 +119,17 @@ def test_a_changed_built_in_prompt_or_version_scores_afresh(tmp_path, monkeypatc
     assert resume_id(cv) != changed
 
 
+def test_a_resume_the_os_blocks_says_why_and_what_to_do(tmp_path, monkeypatch):
+    cv = tmp_path / "cv.pdf"
+    cv.write_bytes(b"%PDF")
+
+    def blocked(self):
+        raise PermissionError(1, "Operation not permitted", str(self))
+    monkeypatch.setattr(type(cv), "read_bytes", blocked)
+    with pytest.raises(PermissionError, match="Move the resume to another folder"):
+        resume_id(cv)
+
+
 def test_an_edited_prompt_is_part_of_what_a_score_is_stored_under(tmp_path):
     cv = tmp_path / "cv.md"
     cv.write_text("Dana Acme")
