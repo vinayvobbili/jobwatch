@@ -39,7 +39,7 @@ def test_the_plugin_folder_has_what_the_directory_requires():
     assert len(prose.split()) >= 40 and (PLUGIN / "LICENSE").is_file()
     files = [p for p in PLUGIN.rglob("*") if p.is_file() and "evals" not in p.relative_to(PLUGIN).parts[:1]]
     assert not [p.name for p in files if p.name in (".DS_Store", "Thumbs.db", "desktop.ini")]
-    assert not [p.name for p in files if p.suffix not in (".json", ".md", ".png", ".yaml", "") or
+    assert not [p.name for p in files if p.suffix not in (".json", ".md", ".png", ".yaml", ".toml", ".lock", "") or
                 (p.suffix != ".png" and p.stat().st_size > 256 * 1024)]
     assert not (PLUGIN / "bin").exists()  # a top-level bin/ stops claude.ai and Cowork installing it
 
@@ -49,9 +49,21 @@ def test_the_directory_branch_moves_only_with_a_release():
     release (and its desktop extension) is out."""
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
     job = workflow.split("\n  directory-branch:\n", 1)[1]
-    assert "needs: desktop-extension" in job and 'git push --force origin "$GITHUB_SHA:refs/heads/directory"' in job
+    assert "needs: desktop-extension" in job and 'scripts/directory-branch "$GITHUB_SHA"' in job
     other = [p for p in (ROOT / ".github" / "workflows").glob("*.yml") if p.name != "release.yml"]
-    assert not [p.name for p in other if "refs/heads/directory" in p.read_text()]
+    assert not [p.name for p in other if "directory-branch" in p.read_text()]
+    script = (ROOT / "scripts" / "directory-branch").read_text()
+    assert "uv lock" in script and "add --force plugin/uv.lock" in script and "refs/heads/directory" in script
+
+
+def test_the_plugin_locks_the_server_it_runs():
+    """plugin/pyproject.toml pins what .mcp.json runs; its uv.lock lives only on the directory branch, since
+    it can be written only once PyPI has the release."""
+    env = (PLUGIN / "pyproject.toml").read_text()
+    assert f'version = "{VERSION}"' in env and f'dependencies = ["jobwatch[mcp]=={VERSION}"]' in env
+    assert "plugin/uv.lock" in (ROOT / ".gitignore").read_text().splitlines()
+    tracked = subprocess.run(["git", "ls-files", "plugin"], cwd=ROOT, capture_output=True, text=True).stdout
+    assert "plugin/uv.lock" not in tracked.split()
 
 
 def test_the_desktop_extension_runs_the_released_server_with_uv():

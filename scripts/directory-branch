@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Point the `directory` branch, which the Claude plugin directory and the marketplace install the plugin from,
+# at a release: that commit plus plugin/uv.lock, locked against PyPI. The lock (every package's exact version,
+# source and hash) is what the directory's Verified badge asks for; main doesn't carry it, because it can only
+# be written once PyPI has the release. The release workflow runs this after the release is out. Nothing in it
+# names jobwatch: copy it to another package with a plugin/pyproject.toml as it is.
+#
+#   scripts/directory-branch            # the commit checked out (HEAD)
+#   scripts/directory-branch v0.7.0     # a release tag
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+LIMIT=262144  # the directory reads no file over 256 KiB
+commit=$(git rev-parse "${1:-HEAD}^{commit}")
+work=$(mktemp -d)
+trap 'git worktree remove --force "$work" >/dev/null 2>&1 || rm -rf "$work"' EXIT
+git worktree add --detach --quiet "$work" "$commit"
+
+# PyPI can take a few minutes to serve a release it has just accepted.
+for try in 1 2 3 4 5; do
+  (cd "$work/plugin" && uv lock --quiet) && break
+  [ "$try" = 5 ] && exit 1
+  sleep 60
+done
+size=$(wc -c < "$work/plugin/uv.lock" | tr -d ' ')
+if (( size > LIMIT )); then
+  echo "plugin/uv.lock is $size bytes, over the directory's 256 KiB file limit" >&2
+  exit 1
+fi
+
+git -C "$work" add --force plugin/uv.lock
+git -C "$work" commit --quiet -m "Lock the plugin's server for the Claude directory"
+git -C "$work" push --quiet --force origin HEAD:refs/heads/directory
+echo "directory -> $(git -C "$work" rev-parse --short HEAD) ($(git rev-parse --short "$commit") + plugin/uv.lock, $size bytes)"

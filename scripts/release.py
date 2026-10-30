@@ -84,10 +84,11 @@ def version_files(root: Path, name: str) -> list[Path]:
     return files
 
 
-# The Claude plugin (its manifest, and the server it runs pinned to the release) and the Claude Desktop extension
-# (its manifest, and the environment that pins the release), when the package ships them.
-CLAUDE_FILES = ("plugin/.claude-plugin/plugin.json", "plugin/.mcp.json", "desktop/manifest.json",
-                "desktop/pyproject.toml")
+# The Claude plugin (its manifest, the server it runs pinned to the release, and the environment its lock comes
+# from) and the Claude Desktop extension (its manifest, and the environment that pins the release), when the
+# package ships them.
+CLAUDE_FILES = ("plugin/.claude-plugin/plugin.json", "plugin/.mcp.json", "plugin/pyproject.toml",
+                "desktop/manifest.json", "desktop/pyproject.toml")
 
 
 def bump(text: str, path: Path, old: str, new: str, name: str = "") -> str:

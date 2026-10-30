@@ -50,6 +50,8 @@ def test_the_claude_plugin_and_desktop_extension_move_with_the_release(release, 
     (root / "plugin" / ".claude-plugin").mkdir(parents=True)
     (root / "plugin" / ".claude-plugin" / "plugin.json").write_text('{"name": "acme-tool", "version": "1.2.3"}')
     (root / "plugin" / ".mcp.json").write_text('{"args": ["--from", "acme-tool[mcp]==1.2.3", "acme-tool-mcp"]}')
+    (root / "plugin" / "pyproject.toml").write_text(
+        '[project]\nversion = "1.2.3"\ndependencies = ["acme-tool[mcp]==1.2.3"]\n')
     (root / "desktop").mkdir()
     (root / "desktop" / "manifest.json").write_text('{"manifest_version": "0.4", "version": "1.2.3"}')
     (root / "desktop" / "pyproject.toml").write_text(
@@ -58,6 +60,8 @@ def test_the_claude_plugin_and_desktop_extension_move_with_the_release(release, 
     out = {str(f.relative_to(root)): release.bump(f.read_text(), f, "1.2.3", "1.3.0", "acme-tool") for f in files}
     assert '"version": "1.3.0"' in out["plugin/.claude-plugin/plugin.json"]
     assert "acme-tool[mcp]==1.3.0" in out["plugin/.mcp.json"]
+    plugin = out["plugin/pyproject.toml"]
+    assert 'version = "1.3.0"' in plugin and "acme-tool[mcp]==1.3.0" in plugin
     assert '"manifest_version": "0.4", "version": "1.3.0"' in out["desktop/manifest.json"]
     desktop = out["desktop/pyproject.toml"]
     assert 'version = "1.3.0"' in desktop and "acme-tool[mcp]==1.3.0" in desktop and "other==1.2.3" in desktop

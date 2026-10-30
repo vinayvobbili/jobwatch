@@ -6,6 +6,8 @@ dist/
 build/
 .pytest_cache/
 .ruff_cache/
+# The plugin's lock is written on the directory branch once PyPI has a release (scripts/directory-branch).
+plugin/uv.lock
 # Your own watchlist and state stay out of the repo.
 jobwatch.yaml
 *.db
