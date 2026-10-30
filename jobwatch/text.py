@@ -228,3 +228,19 @@ def split_locations(*raw: str) -> list[str]:
             if part and part not in out:
                 out.append(part)
     return out
+
+
+_HIRING_LINE = re.compile(r"^\W*hiring locations?\s*:\s*(.+)$", re.I | re.M)
+
+
+def hiring_locations(text: str) -> list[str]:
+    """The places a posting's text says it hires in ("HIRING LOCATIONS: Dayton - OH, Boise - ID" -> "Dayton, OH",
+    "Boise, ID"): some boards give only the first in their data. Places are split on ; or |
+    when the line has them, else on commas."""
+    out = []
+    for m in _HIRING_LINE.finditer(text or ""):
+        line = m.group(1)
+        for part in re.split(r"[;|]" if re.search(r"[;|]", line) else ",", line):
+            if part := re.sub(r"\s+-\s+", ", ", part.strip(" .*")):
+                out.append(part)
+    return out

@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import __version__
 from .models import Job
-from .text import annual, html_to_text, in_us, is_remote, parse_salary, pay_period, split_locations
+from .text import annual, hiring_locations, html_to_text, in_us, is_remote, parse_salary, pay_period, split_locations
 
 USER_AGENT = f"jobwatch/{__version__} (+https://github.com/vinayvobbili/jobwatch)"
 
@@ -895,7 +895,9 @@ def fetch_avature(board: str, get=None, search=(), wanted=None, known=None, cap=
         pid, (link, title, posted) = item
         key = f"avature:{board}:{pid}"
         if known and key in known and known[key].description:
-            return known[key]
+            kept = known[key]  # read before its text's hiring locations counted
+            kept.locations = split_locations(*kept.locations, *hiring_locations(kept.description))
+            return kept
         j = Job(source="avature", company=board, id=pid, title=title, url=link,
                 company_name=_avature_company(board), posted=posted)
         if wanted and not wanted(j.title):
@@ -1023,6 +1025,8 @@ def _avature_read(j: Job, get) -> Job:
         or (_avature_date(created.group(1)) if created else None) or _time(data.get("datePosted")) or j.posted
     j.description = _ld_text(data.get("description")) or "\n\n".join(
         text for label, text in fields if not label or _AVATURE_TEXT.search(label))
+    # "HIRING LOCATIONS: Dayton - OH, Boise - ID" in the text, where the Location field names only Dayton
+    j.locations = split_locations(*j.locations, *hiring_locations(j.description))
     _salary(j, j.description)
     return j
 

@@ -37,6 +37,22 @@ def test_sync_reports_only_new_roles(store):
     assert open_jobs["lever:globex:a"].title == "Renamed"
 
 
+def test_an_old_dated_role_new_to_a_board_read_before_counts_as_posted_today(store):
+    """A reopened req can keep its first posting date; on a board's first read, old dates are kept."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    old = job("a")
+    old.posted = now - timedelta(days=200)
+    store.sync("lever", "globex", [old])
+    assert store.jobs()[0][0].posted == old.posted  # the board's first read: its dates are the real ones
+    repost, fresh = job("b"), job("c")
+    repost.posted, fresh.posted = now - timedelta(days=200), now - timedelta(days=3)
+    store.sync("lever", "globex", [old, repost, fresh])
+    posted = {j.id: j.posted for j, _ in store.jobs()}
+    assert posted["b"] > now - timedelta(minutes=1) and posted["c"] == fresh.posted and posted["a"] == old.posted
+
+
 def test_closed_roles_reopen_when_they_come_back(store):
     store.sync("lever", "globex", [job("a")])
     store.sync("lever", "globex", [])

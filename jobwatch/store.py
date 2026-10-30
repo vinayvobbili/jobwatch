@@ -194,6 +194,11 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")  # orders actions within a second
 
 
+# A role that first shows up on a board already read before, dated more than this many days back, was reposted:
+# some boards (Avature's) keep a reopened req's first posting date, which would read it as months old.
+REPOST_DAYS = 14
+
+
 def day(value: str | date | None, today: date | None = None) -> str | None:
     """A calendar day as YYYY-MM-DD, from "2026-10-05", "today", "tomorrow" or "+7" (days from today).
     Empty means none."""
@@ -292,6 +297,9 @@ class Store:
             known = {r["key"] for r in self.db.execute("SELECT key FROM jobs WHERE source=? AND company=?",
                                                         (source, company))}
             for job in jobs:
+                if known and job.key not in known and job.posted and \
+                        (datetime.now(timezone.utc) - job.posted).days > REPOST_DAYS:
+                    job.posted = datetime.now(timezone.utc)  # reposted: new to the board today, not months old
                 data = json.dumps(job.to_dict())
                 if job.key in known:
                     self.db.execute("UPDATE jobs SET data=?, last_seen=?, closed=NULL WHERE key=?",

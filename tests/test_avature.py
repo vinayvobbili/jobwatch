@@ -259,6 +259,31 @@ def test_other_portals_name_their_fields_differently():
     assert "order management solutions" in job.description and "10054428" not in job.description
 
 
+def test_hiring_locations_in_the_text_are_places_too():
+    """Some portals' Location field names one place and the text the rest, so the place filter sees them all."""
+    url = "https://umbrella.avature.net/careers/JobDetail/Buyside-Pre-Sales-Engineer/778"
+    role = "<div><strong>What's the role?"
+    page = BLOOMBERG_PAGE.replace(role, "<div>HIRING LOCATIONS: London, Boulder - CO, Reno - NV</div>" + role)
+    job = sources.posting(url, FakeWeb({url: page}))
+    assert job.locations == ["London", "Boulder, CO", "Reno, NV"]
+    # a job read before this counted them gets them from its kept text, without reading its page again
+    kept = Job(source="avature", company=BOARD, id="31415", title="Senior Platform Engineer", url=FDE,
+               locations=["London"], description="HIRING LOCATIONS: London, Boulder - CO")
+    web = initech_web()
+    jobs = sources.fetch("avature", BOARD, web, search=["platform"], known={kept.key: kept})
+    assert next(j for j in jobs if j.id == "31415").locations == ["London", "Boulder, CO"] and FDE not in web.calls
+
+
+@pytest.mark.parametrize("text, places", [
+    ("HIRING LOCATIONS: Dayton - OH, Boise - ID, Tulsa - OK", ["Dayton, OH", "Boise, ID", "Tulsa, OK"]),
+    ("Hiring location: Boulder, CO; Reno, NV.", ["Boulder, CO", "Reno, NV"]),
+    ("We are hiring in many locations: soon", []),
+])
+def test_hiring_location_lines(text, places):
+    from jobwatch.text import hiring_locations
+    assert hiring_locations(text) == places
+
+
 def test_a_labeled_text_field_is_the_posting_text():
     url = "https://umbrella.avature.net/careers/JobDetail/Buyside-Pre-Sales-Engineer/777"
     rich = 'field--rich-text">\n'
