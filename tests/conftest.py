@@ -137,6 +137,15 @@ def no_real_state(tmp_path, monkeypatch):
     monkeypatch.delenv("JOBWATCH_CONFIG", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def no_hook_git_env(monkeypatch):
+    """Git runs a pre-push hook with GIT_DIR and friends set; in a worktree GIT_DIR is absolute, so `git` in a
+    test's temporary folder would read this repository instead of finding none. Tests never inherit them."""
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_PREFIX",
+                 "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def web(monkeypatch):
     fake = FakeWeb()
