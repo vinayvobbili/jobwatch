@@ -104,3 +104,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$GITHUB_REF_NAME" dist/*.mcpb --repo "$GITHUB_REPOSITORY"
+
+  directory-branch:
+    # The Claude plugin directory follows the `directory` branch, not main: the plugin's skill then always
+    # describes the server version it pins, and a push between releases changes nothing for directory users.
+    name: Directory branch
+    needs: desktop-extension
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Move the directory branch to this release
+        run: git push --force origin "$GITHUB_SHA:refs/heads/directory"

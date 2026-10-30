@@ -39,6 +39,16 @@ def test_the_plugin_folder_has_what_the_directory_requires():
     assert not (PLUGIN / "bin").exists()  # a top-level bin/ stops claude.ai and Cowork installing it
 
 
+def test_the_directory_branch_moves_only_with_a_release():
+    """The Claude directory follows the `directory` branch; only the release workflow moves it, after the
+    release (and its desktop extension) is out."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    job = workflow.split("\n  directory-branch:\n", 1)[1]
+    assert "needs: desktop-extension" in job and 'git push --force origin "$GITHUB_SHA:refs/heads/directory"' in job
+    other = [p for p in (ROOT / ".github" / "workflows").glob("*.yml") if p.name != "release.yml"]
+    assert not [p.name for p in other if "refs/heads/directory" in p.read_text()]
+
+
 def test_the_desktop_extension_runs_the_released_server_with_uv():
     manifest = json.loads((DESKTOP / "manifest.json").read_text())
     assert manifest["manifest_version"] == "0.4" and manifest["version"] == VERSION
