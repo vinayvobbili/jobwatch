@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "jobwatch",
   "display_name": "jobwatch",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Watch the job boards of companies you name, rank new roles into a daily digest, track every application and prep for interviews. Your data stays on your computer.",
   "long_description": "Name the companies you'd like to work for and jobwatch watches their job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Rippling, Google Careers, Amazon, Oracle, SmartRecruiters, Avature, iCIMS, Jobvite and Hacker News' monthly \"Who is hiring?\"). Ask Claude \"what's new today?\" for the best few matches, queue the ones to apply to, and keep track of every application from the day you apply to the offer, including recruiter emails you ask Claude to read. Before an interview, Claude puts the posting, your resume and what you sent on one sheet. jobwatch never applies for you. Everything it keeps (your watchlist, tracker and notes) stays in files on your computer; it only fetches the public job boards of the companies you watch.",
   "author": {

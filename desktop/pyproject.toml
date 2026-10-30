@@ -2,7 +2,7 @@
 # pinned jobwatch from PyPI. scripts/release.py keeps both versions on the release.
 [project]
 name = "jobwatch-desktop"
-version = "0.6.0"
+version = "0.7.0"
 description = "jobwatch's MCP server, packaged as a Claude Desktop extension"
 requires-python = ">=3.10"
-dependencies = ["jobwatch[mcp]==0.6.0"]
+dependencies = ["jobwatch[mcp]==0.7.0"]

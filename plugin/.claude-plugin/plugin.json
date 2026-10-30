@@ -1,7 +1,7 @@
 {
   "name": "jobwatch",
   "displayName": "jobwatch",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Run your job search from Claude: watch the job boards of companies you name (Greenhouse, Lever, Ashby, Workday and more), rank the new roles into a daily digest, track every application through to an offer, and get ready for interviews. Your data stays in a file on your computer. Never applies for you.",
   "author": {
     "name": "Vinay Vobbilichetty",

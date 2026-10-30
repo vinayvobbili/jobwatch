@@ -2,7 +2,7 @@
   "mcpServers": {
     "jobwatch": {
       "command": "uvx",
-      "args": ["--from", "jobwatch[mcp]==0.6.0", "jobwatch-mcp"],
+      "args": ["--from", "jobwatch[mcp]==0.7.0", "jobwatch-mcp"],
       "env": {
         "JOBWATCH_CONFIG": "${user_config.watchlist}"
       }
