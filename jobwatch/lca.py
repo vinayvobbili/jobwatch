@@ -397,16 +397,17 @@ class Index:
         top = sorted(by.items(), key=lambda kv: -len(kv[1]))[:limit]
         return [{"title": t, "count": len(w), "median": percentile(w, 0.5)} for t, w in top]
 
-    def estimate(self, keys: list[str], title: str, cities: list[str] = (), states: list[str] = ()) -> Estimate | None:
+    def estimate(self, keys: list[str], title: str, cities: list[str] = (), states: list[str] = (),
+                 anywhere: bool = True) -> Estimate | None:
         """Filings by the employer for the same kind of work at the same seniority: those in one of the cities
-        if there are MIN_FILINGS, else in one of the states, else anywhere in the US; None when even that is
-        fewer than MIN_FILINGS."""
+        if there are MIN_FILINGS, else in one of the states, else (when `anywhere`) anywhere in the US; None when
+        even that is fewer than MIN_FILINGS."""
         words = title_words(title)
         rank = (seniority(title) or (None,))[0]
         matches = [r for r in self.employer_rows(keys) if r["rank"] == rank and same_work(words, r["words"])]
         cities = {c.lower() for c in cities if c}
         tiers = ((lambda r: r["city"].lower() in cities, "{city}"), (lambda r: r["state"] in states, "{state}"),
-                 (lambda r: True, US))
+                 *([(lambda r: True, US)] if anywhere else []))
         for test, tier in tiers:
             near = sorted((r for r in matches if test(r)), key=_by_recency, reverse=True)
             if len(near) >= MIN_FILINGS:
@@ -434,30 +435,36 @@ class Index:
                         years=(min(years), max(years)) if years else None, rows=near)
 
 
-def places(job: Job) -> tuple[list[str], list[str]]:
-    """(cities, states) of a job's locations: "Boulder, CO" -> Boulder, CO. Remote ones name no city."""
+def places(job: Job, home_state: str = "") -> tuple[list[str], list[str]]:
+    """(cities, states) of a job's locations: "Boulder, CO" -> Boulder, CO. Remote ones name no city. With a
+    home state, only it: the person works from there whatever state a remote posting names, so only the job's
+    cities in that state count."""
     cities, states = [], []
     for loc in job.locations:
-        states += us_states(loc)
+        here = us_states(loc)
+        if home_state and home_state not in here:
+            continue
+        states += here
         head = loc.split(",")[0].strip()
         if head and not re.search(r"remote|united states|usa|hybrid", head, re.I) and not us_states(head):
             cities.append(head)
-    return cities, list(dict.fromkeys(states))
+    return cities, [home_state] if home_state else list(dict.fromkeys(states))
 
 
-def for_job(index: Index | None, job: Job) -> Estimate | None:
+def for_job(index: Index | None, job: Job, home_state: str = "") -> Estimate | None:
     """The job's estimate from the cache; None without a cache, an employer filed under another name, or fewer
-    than MIN_FILINGS matches (then nothing is shown, never a guess)."""
+    than MIN_FILINGS matches (then nothing is shown, never a guess). With a home state (filters.home_state),
+    only filings there count, never another state's or the whole country's."""
     if index is None:
         return None
-    cities, states = places(job)
-    return index.estimate(job_keys(job), job.title, cities, states)
+    cities, states = places(job, home_state)
+    return index.estimate(job_keys(job), job.title, cities, states, anywhere=not home_state)
 
 
 def for_one_job(cfg, job: Job) -> Estimate | None:
     index = Index.open(cache_path(cfg))
     try:
-        return for_job(index, job)
+        return for_job(index, job, cfg.filters_for(job).home_state)
     finally:
         if index:
             index.close()

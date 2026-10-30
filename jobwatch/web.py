@@ -519,7 +519,8 @@ class App:
         lca_pay (H-1B filings, see lca.py) when the cache has an estimate for it: from the local cache, at once."""
         filings = lca.Index.open(lca.cache_path(cfg))
         try:
-            out = {job.key: {"lca_pay": lca.as_dict(est)} for job, _ in rows if (est := lca.for_job(filings, job))}
+            out = {job.key: {"lca_pay": lca.as_dict(est)} for job, _ in rows
+                   if (est := lca.for_job(filings, job, cfg.filters_for(job).home_state))}
         finally:
             if filings:
                 filings.close()

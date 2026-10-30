@@ -199,6 +199,19 @@ def test_with_too_few_in_the_city_the_state_then_the_country_is_used(cache):
     index.close()
 
 
+def test_with_a_home_state_only_its_filings_count(cache):
+    """A remote job listed in Seattle is worked from the home state: its filings, never Washington's or the
+    whole country's."""
+    index = lca.Index.open(cache[0])
+    remote = lca.for_job(index, job(where=("Seattle, WA (Remote)",)), home_state="TX")
+    assert (remote.where, remote.count) == ("TX", 5)
+    assert lca.for_job(index, job(where=("Austin, TX",)), home_state="TX").where == "Austin, TX"
+    # one filing in Washington, and no falling back to the whole US
+    assert lca.for_job(index, job(where=("Seattle, WA (Remote)",)), home_state="WA") is None
+    assert lca.for_job(index, job(where=("Remote - United States",)), home_state="CO") is None
+    index.close()
+
+
 def test_seniority_and_the_kind_of_work_have_to_match(cache):
     index = lca.Index.open(cache[0])
     plain = lca.for_job(index, job(title="Software Engineer, Payments"))

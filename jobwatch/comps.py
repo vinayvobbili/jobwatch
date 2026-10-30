@@ -369,7 +369,7 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
             "key": job.key, "kind": "job", "company": job.display_company, "title": job.title, "url": job.url,
             "status": rec["status"], "applied_at": rec["applied_at"], "next_step": rec["next_step"],
             "follow_up": rec["follow_up"], "pay": job.pay(), "pay_max": job.salary_max or job.salary_min,
-            "places": job.places, "lca_pay": lca.as_dict(lca.for_job(filings, job)),
+            "places": job.places, "lca_pay": lca.as_dict(lca.for_job(filings, job, cfg.filters_for(job).home_state)),
             "fit": {"score": fit["score"], "met": fit["must_haves_met"], "total": fit["must_haves_total"],
                     "gaps": (fit.get("gaps") or [])[:MOST_GAPS], "stale": bool(fit.get("stale"))} if fit else None,
             "contacts": [{k: p.get(k) for k in ("name", "position", "why")}

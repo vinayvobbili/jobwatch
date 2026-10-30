@@ -118,7 +118,9 @@ cache about every 30 days, but only once you have run `jobwatch lca update` your
 
 A job's estimate comes from filings by its company (matched the way `contacts.py` matches company names, so
 "Globex Systems, Inc." is "Globex") for the same kind of work and seniority (senior, staff or lead, principal...),
-preferring its city, then its state, then the whole US. It shows the median and the 25th to 75th percentile base,
+preferring its city, then its state, then the whole US. With `filters.home_state` set, only that state's
+filings count (its cities first): a remote job listed in another state is worked from home, so its pay there is
+what matters, and with too few filings in the home state there is no estimate. It shows the median and the 25th to 75th percentile base,
 how many filings, the prevailing wage levels (I to IV) filed, and a few examples (title, city, wage, year); with
 fewer than 3 matching filings there is none. It shows on the job's card and details, in `jobwatch show`, the queue,
 `get_job`, `list_queued_jobs` and `get_comps` (as `lca_pay`), whether or not Levels.fyi has anything or is refusing.

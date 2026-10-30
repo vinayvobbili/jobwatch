@@ -317,7 +317,7 @@ def queue(cfg: Config, store: Store, pay_budget: int = 0) -> list[Entry]:
             e.pay = levels.expected(cfg, store, job, reader=reader)
             if warn := levels.below(e.pay, cfg.filters_for(job).min_salary):
                 e.warnings.append(warn)
-        e.lca = lca.for_job(filings, job)
+        e.lca = lca.for_job(filings, job, cfg.filters_for(job).home_state)
         out.append(e)
     if filings:
         filings.close()
