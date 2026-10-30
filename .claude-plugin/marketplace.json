@@ -8,7 +8,8 @@
   "plugins": [
     {
       "name": "jobwatch",
-      "source": "./plugin",
+      "source": {"source": "git-subdir", "url": "https://github.com/vinayvobbili/jobwatch.git", "path": "plugin", "ref": "directory"},
+      "displayName": "jobwatch",
       "description": "Watch company job boards, rank new matches into a daily digest, track every application and prep for interviews. Never applies for you."
     }
   ]

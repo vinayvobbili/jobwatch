@@ -23,9 +23,14 @@ def test_the_plugin_runs_the_released_server_pinned_to_this_version():
     assert server["env"]["JOBWATCH_CONFIG"] == "${user_config.watchlist}" and "watchlist" in manifest["userConfig"]
 
 
-def test_the_marketplace_lists_the_plugin_folder():
+def test_the_marketplace_installs_the_plugin_folder_as_released():
+    """`/plugin marketplace add` reads the marketplace from main, but the plugin itself comes from the
+    `directory` branch, the same released copy the Claude directory lists. An https URL: `owner/repo` would
+    clone over SSH, which fails for anyone without a GitHub SSH key."""
     market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text())
-    assert [(p["name"], p["source"]) for p in market["plugins"]] == [("jobwatch", "./plugin")]
+    assert [(p["name"], p["source"]) for p in market["plugins"]] == [
+        ("jobwatch", {"source": "git-subdir", "url": "https://github.com/vinayvobbili/jobwatch.git",
+                      "path": "plugin", "ref": "directory"})]
 
 
 def test_the_plugin_folder_has_what_the_directory_requires():
