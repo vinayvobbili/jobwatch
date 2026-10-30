@@ -339,7 +339,7 @@ class Estimate:
     rows: list[dict] = field(default_factory=list, repr=False)  # every match, newest first (not in to_dict)
 
     def line(self) -> str:
-        """ "H-1B filings: median $168K base (25th–75th $155K–$185K), 42 filings (NC)" """
+        """ "H-1B filings: median $168K base (25th–75th $155K–$182K), 42 filings (CO)" """
         k = lambda n: f"${n / 1000:.0f}K"  # noqa: E731
         return (f"H-1B filings: median {k(self.median)} base (25th–75th {k(self.p25)}–{k(self.p75)}), "
                 f"{self.count} filing{'s' if self.count != 1 else ''} ({self.where})")
