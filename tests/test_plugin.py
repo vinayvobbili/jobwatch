@@ -18,7 +18,10 @@ def test_the_plugin_runs_the_released_server_pinned_to_this_version():
     manifest = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text())
     server = json.loads((PLUGIN / ".mcp.json").read_text())["mcpServers"]["jobwatch"]
     assert manifest["name"] == "jobwatch" and manifest["version"] == VERSION
-    assert server["command"] == "uvx" and f"jobwatch[mcp]=={VERSION}" in server["args"]
+    # the directory's locked launch (its Verified badge) takes `uvx --from <package>==<version>`, no extra
+    assert server["command"] == "uvx" and server["args"] == ["--from", f"jobwatch=={VERSION}", "jobwatch-mcp"]
+    base = re.search(r"^dependencies = \[(.*)\]", (ROOT / "pyproject.toml").read_text(), re.M).group(1)
+    assert '"mcp>=' in base  # so plain jobwatch runs jobwatch-mcp
     # the watchlist the person sets in the plugin's options reaches the server
     assert server["env"]["JOBWATCH_CONFIG"] == "${user_config.watchlist}" and "watchlist" in manifest["userConfig"]
 
@@ -61,7 +64,7 @@ def test_the_plugin_locks_the_server_it_runs():
     since it can be written only once PyPI has the release; where it's committed, it locks this release and
     fits the directory's 256 KiB file limit."""
     env = (PLUGIN / "pyproject.toml").read_text()
-    assert f'version = "{VERSION}"' in env and f'dependencies = ["jobwatch[mcp]=={VERSION}"]' in env
+    assert f'version = "{VERSION}"' in env and f'dependencies = ["jobwatch=={VERSION}"]' in env
     assert "plugin/uv.lock" in (ROOT / ".gitignore").read_text().splitlines()
     tracked = subprocess.run(["git", "ls-files", "plugin"], cwd=ROOT, capture_output=True, text=True).stdout
     if "plugin/uv.lock" in tracked.split():
@@ -78,7 +81,7 @@ def test_the_desktop_extension_runs_the_released_server_with_uv():
     assert server["mcp_config"]["args"][-1] == server["entry_point"]
     assert server["mcp_config"]["env"]["JOBWATCH_CONFIG"] == "${user_config.watchlist}"
     env = (DESKTOP / "pyproject.toml").read_text()
-    assert f'version = "{VERSION}"' in env and f'"jobwatch[mcp]=={VERSION}"' in env
+    assert f'version = "{VERSION}"' in env and f'"jobwatch=={VERSION}"' in env
     assert not (DESKTOP / "server" / "lib").exists()  # the uv type installs dependencies; none are bundled
 
 

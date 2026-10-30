@@ -1123,9 +1123,10 @@ wheels = [
 
 [[package]]
 name = "jobwatch"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
+    { name = "mcp" },
     { name = "pyyaml" },
 ]
 
@@ -1144,9 +1145,6 @@ lca = [
 local = [
     { name = "shortlist-ai", extra = ["local"] },
 ]
-mcp = [
-    { name = "mcp" },
-]
 score = [
     { name = "shortlist-ai" },
 ]
@@ -1156,7 +1154,7 @@ video = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.2" },
+    { name = "mcp", specifier = ">=2.2" },
     { name = "openpyxl", marker = "extra == 'dev'", specifier = ">=3.1" },
     { name = "openpyxl", marker = "extra == 'lca'", specifier = ">=3.1" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.49" },

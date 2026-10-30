@@ -886,7 +886,7 @@ def cmd_mcp(args):
     except ImportError as e:
         if e.name != "mcp" and not str(e.name).startswith("mcp."):
             raise
-        raise SystemExit("jobwatch: the MCP server needs the mcp package: pip install 'jobwatch[mcp]'") from None
+        raise SystemExit("jobwatch: the MCP server needs the mcp package, which comes with jobwatch: pip install --upgrade jobwatch") from None
     if args.config:
         os.environ["JOBWATCH_CONFIG"] = str(args.config)
     mcp_server.main()

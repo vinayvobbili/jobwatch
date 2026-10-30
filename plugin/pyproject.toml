@@ -1,10 +1,11 @@
-# The plugin's server environment, locked: `uvx --from jobwatch[mcp]==<version> jobwatch-mcp` (.mcp.json) runs
+# The plugin's server environment, locked: `uvx --from jobwatch==<version> jobwatch-mcp` (.mcp.json) runs
 # this pin, and uv.lock beside it (written on the directory branch by scripts/directory-branch once PyPI has
 # the release) gives every package's exact version and hash, which the Claude directory's Verified badge asks
-# for. scripts/release.py keeps both versions on the release.
+# for. The pin takes no extra: the directory's locked launch accepts only `uvx --from <package>==<version>`.
+# scripts/release.py keeps both versions on the release.
 [project]
 name = "jobwatch-plugin"
 version = "0.7.0"
 description = "jobwatch's MCP server, as the Claude plugin runs it"
 requires-python = ">=3.10"
-dependencies = ["jobwatch[mcp]==0.7.0"]
+dependencies = ["jobwatch==0.7.0"]

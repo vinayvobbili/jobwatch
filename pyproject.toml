@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
-dependencies = ["pyyaml>=6"]
+dependencies = ["pyyaml>=6", "mcp>=2.2"]
 keywords = ["jobs", "job-search", "job-tracker", "greenhouse", "lever", "ashby", "workable", "workday", "eightfold", "mcp", "resume", "llm"]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -32,7 +32,8 @@ Issues = "https://github.com/vinayvobbili/jobwatch/issues"
 [project.optional-dependencies]
 score = ["shortlist-ai>=0.2.0"]
 local = ["shortlist-ai[local]>=0.2.0"]
-mcp = ["mcp>=2.2"]
+# the MCP server comes with jobwatch now; the extra stays so `jobwatch[mcp]` installs keep working
+mcp = []
 video = ["slidecast[mlx]>=0.4"]
 lca = ["openpyxl>=3.1"]
 dev = ["pytest>=8", "ruff>=0.14", "openpyxl>=3.1"]

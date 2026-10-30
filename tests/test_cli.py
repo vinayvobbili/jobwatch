@@ -223,14 +223,14 @@ def test_mcp_runs_the_server_with_the_watchlist_given(watchlist, monkeypatch):
     assert seen == [str(watchlist)]
 
 
-def test_mcp_without_the_extra_says_how_to_get_it(monkeypatch):
+def test_mcp_without_the_mcp_package_says_how_to_get_it(monkeypatch):
     import jobwatch
 
     monkeypatch.delitem(sys.modules, "jobwatch.mcp_server", raising=False)
     monkeypatch.delattr(jobwatch, "mcp_server", raising=False)
     for name in [m for m in sys.modules if m == "mcp" or m.startswith("mcp.")] or ["mcp"]:
         monkeypatch.setitem(sys.modules, name, None)
-    with pytest.raises(SystemExit, match=r"pip install 'jobwatch\[mcp\]'"):
+    with pytest.raises(SystemExit, match=r"pip install --upgrade jobwatch"):
         cli.main(["mcp"])
 
 

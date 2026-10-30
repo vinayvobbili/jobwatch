@@ -169,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         cmd = docker_command(ROOT, script, f"{script}-smoke", args.build_step)
     else:
         # --no-project: a throwaway environment from this checkout, without writing a uv.lock into it
-        cmd = ["uv", "run", "--no-project", "--isolated", "--with-editable", f"{ROOT}[mcp]", script]
+        cmd = ["uv", "run", "--no-project", "--isolated", "--with-editable", str(ROOT), script]
     info, tools = handshake(cmd)
     if not tools:
         raise SystemExit(f"mcp_smoke: {info.get('name', 'server')} started but lists no tools")

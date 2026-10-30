@@ -15,14 +15,6 @@
       "identifier": "jobwatch",
       "version": "0.7.0",
       "runtimeHint": "uvx",
-      "runtimeArguments": [
-        {
-          "type": "named",
-          "name": "--with",
-          "value": "mcp>=2.2",
-          "description": "The MCP server's dependency (the jobwatch[mcp] extra)"
-        }
-      ],
       "packageArguments": [
         {
           "type": "positional",
