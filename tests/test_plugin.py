@@ -57,13 +57,17 @@ def test_the_directory_branch_moves_only_with_a_release():
 
 
 def test_the_plugin_locks_the_server_it_runs():
-    """plugin/pyproject.toml pins what .mcp.json runs; its uv.lock lives only on the directory branch, since
-    it can be written only once PyPI has the release."""
+    """plugin/pyproject.toml pins what .mcp.json runs. Its uv.lock is committed only on the directory branch,
+    since it can be written only once PyPI has the release; where it's committed, it locks this release and
+    fits the directory's 256 KiB file limit."""
     env = (PLUGIN / "pyproject.toml").read_text()
     assert f'version = "{VERSION}"' in env and f'dependencies = ["jobwatch[mcp]=={VERSION}"]' in env
     assert "plugin/uv.lock" in (ROOT / ".gitignore").read_text().splitlines()
     tracked = subprocess.run(["git", "ls-files", "plugin"], cwd=ROOT, capture_output=True, text=True).stdout
-    assert "plugin/uv.lock" not in tracked.split()
+    if "plugin/uv.lock" in tracked.split():
+        lock = PLUGIN / "uv.lock"
+        assert f'name = "jobwatch"\nversion = "{VERSION}"\n' in lock.read_text()
+        assert lock.stat().st_size <= 256 * 1024
 
 
 def test_the_desktop_extension_runs_the_released_server_with_uv():
