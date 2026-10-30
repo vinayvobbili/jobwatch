@@ -46,9 +46,13 @@ zipfile -c jobwatch-skill.zip jobwatch`.
 /plugin install jobwatch@jobwatch
 ```
 
-Claude Desktop's chat doesn't start a plugin's local server, so the tools come from the desktop extension
-instead: `jobwatch-<version>.mcpb` on the [releases page](https://github.com/vinayvobbili/jobwatch/releases).
-Open it and choose Install; Claude Desktop sets up Python through uv, so nothing else needs installing.
+In the Claude app, the same marketplace goes in through Settings → Plugins → Add → Add marketplace; the
+server runs in the Code tab. Chat runs plugins in the cloud, where the skill loads but the server can't
+reach your computer, so the tools aren't there.
+
+Claude Desktop versions with Settings → Extensions take the desktop extension instead:
+`jobwatch-<version>.mcpb` on the [releases page](https://github.com/vinayvobbili/jobwatch/releases). Open it and
+choose Install; Claude Desktop sets up Python through uv, so nothing else needs installing.
 `scripts/build-mcpb` builds it from [desktop/](../../desktop).
 
 With a resume tool alongside it (for example [resume-kit](https://github.com/vinayvobbili/resume-kit), whose

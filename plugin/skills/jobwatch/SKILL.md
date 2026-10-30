@@ -11,9 +11,11 @@ on the user's computer. Nothing is sent anywhere except the job boards it reads.
 
 ## Setup (once)
 
-The jobwatch plugin starts the server for you in Claude Code. In Claude Desktop's chat, the tools come from
-the jobwatch desktop extension (a `.mcpb` file on github.com/vinayvobbili/jobwatch/releases: open it, then
-Install). If the `jobwatch` tools still aren't available, set it up by hand:
+The jobwatch plugin starts the server for you in Claude Code (the Claude app's Code tab too) and Cowork. A
+chat whose plugins run in the cloud has this skill but not the tools, because jobwatch's data is on the
+person's computer: say so, and suggest the Code tab, or the jobwatch desktop extension (a `.mcpb` file on
+github.com/vinayvobbili/jobwatch/releases) in a Claude Desktop with Settings → Extensions. If the `jobwatch`
+tools still aren't available, set it up by hand:
 
 ```
 pipx install 'jobwatch[mcp]'      # or: pip install 'jobwatch[mcp]'

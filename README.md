@@ -65,14 +65,19 @@ want, the companies to watch, and (optionally) fit scores and job-alert emails. 
 jobs**. Install the page as an app from Chrome's address bar to keep it in its own window, or run
 `jobwatch service install` to have it always running on a Mac.
 
-**Or run it from Claude**, with no terminal needed:
+**Or run it from Claude:**
 
-- **Claude Desktop**: download `jobwatch-<version>.mcpb` from the
-  [latest release](https://github.com/vinayvobbili/jobwatch/releases/latest) and open it, then press Install.
-  Claude Desktop sets up everything it needs. Then ask Claude "watch Stripe for product designer roles".
-- **Claude Code** (and Cowork): `/plugin marketplace add vinayvobbili/jobwatch`, then
-  `/plugin install jobwatch@jobwatch`. The [plugin](plugin/README.md) brings the tools and a skill with the
-  daily routine.
+- **Claude Code** (the Claude app's Code tab, the terminal, and Cowork): add the marketplace
+  `vinayvobbili/jobwatch` (Settings → Plugins → Add → Add marketplace, or `/plugin marketplace add
+  vinayvobbili/jobwatch`), then install **jobwatch** (`/plugin install jobwatch@jobwatch`). The
+  [plugin](plugin/README.md) brings the tools and a skill with the daily routine; it runs jobwatch with
+  [uv](https://docs.astral.sh/uv/). Then ask Claude "watch Stripe for product designer roles".
+- **Claude Desktop with Settings → Extensions**: download `jobwatch-<version>.mcpb` from the
+  [latest release](https://github.com/vinayvobbili/jobwatch/releases/latest), open it and press Install.
+  Claude Desktop sets up everything it needs, uv included.
+
+A chat on claude.ai, or in an app whose plugins run in the cloud, can't reach jobwatch on your computer: the
+skill loads there, but the tools don't.
 
 Extras: `jobwatch[score]` (fit scores with the Claude API), `jobwatch[local]` (fit scores on-device, Apple
 Silicon), `jobwatch[mcp]` (an MCP server for Claude and other assistants), `jobwatch[video]` (drill videos for
