@@ -23,9 +23,12 @@ The first time, Claude asks which companies to watch and creates your watchlist.
 
 ## Install
 
-Claude Code: `/plugin marketplace add vinayvobbili/jobwatch`, then `/plugin install jobwatch@jobwatch`.
-The server runs with [uv](https://docs.astral.sh/uv/) (`uvx`), which downloads jobwatch from PyPI on first
-use. In the Claude app: Settings → Plugins → Add → Add marketplace, `vinayvobbili/jobwatch`; the tools work in
+First install [uv](https://docs.astral.sh/uv/getting-started/installation/), once: the plugin starts
+jobwatch with uv's `uvx`, which downloads jobwatch from PyPI on first use. On a Mac or Linux, in Terminal:
+`curl -LsSf https://astral.sh/uv/install.sh | sh` (or `brew install uv`); on Windows, in PowerShell:
+`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`. Then restart Claude.
+
+Claude Code: `/plugin marketplace add vinayvobbili/jobwatch`, then `/plugin install jobwatch@jobwatch`. In the Claude app: Settings → Plugins → Add → Add marketplace, `vinayvobbili/jobwatch`; the tools work in
 the Code tab and in Cowork. Chat runs plugins in the cloud, where the skill loads but the tools can't reach
 your computer. Claude Desktop versions with Settings → Extensions can install the jobwatch desktop extension
 (`jobwatch-<version>.mcpb` from the [releases page](https://github.com/vinayvobbili/jobwatch/releases))
