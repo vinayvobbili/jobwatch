@@ -653,7 +653,7 @@ def _oracle_read(j: Job, api: str, site: str, get) -> Job:
     j.remote = _oracle_remote(info, j.locations)
     j.department = info.get("Category") or info.get("JobFunction") or j.department
     j.posted = _time(info.get("ExternalPostedStartDate")) or j.posted
-    # the company's own fields: "Base Pay/Salary: New York,NY $137,750.00-$185,000.00", "Years: 3 to 5+ years"
+    # the company's own fields: "Base Pay/Salary: New York,NY $137,750.00-$196,000.00", "Years: 3 to 5+ years"
     fields = "\n".join(f"{f['Prompt'].strip()}: {html_to_text(str(f['Value']))}"
                        for f in info.get("requisitionFlexFields") or [] if f.get("Prompt") and f.get("Value"))
     j.description = "\n\n".join(t for t in (*(html_to_text(info.get(k) or "") for k in (

@@ -69,7 +69,7 @@ def remote_detail():
          "PrimaryLocation": "United States", "secondaryLocations": [], "WorkplaceTypeCode": "ORA_REMOTE",
          "ExternalQualificationsStr": "<p>Career Level - IC3</p>",
          # some sites give pay in a field of their own, not in the posting's text
-         "requisitionFlexFields": [{"Prompt": "Base Pay/Salary", "Value": "New York,NY $137,750.00-$185,000.00",
+         "requisitionFlexFields": [{"Prompt": "Base Pay/Salary", "Value": "New York,NY $137,750.00-$196,000.00",
                                     "ControlType": "TextArea"}, {"Prompt": "Empty", "Value": None}]}
     return {"items": [d], "count": 1, "hasMore": False}
 
@@ -99,7 +99,7 @@ def test_oracle_searches_titles_and_reads_only_wanted_postings(oracle):
     assert j.description.endswith("Years: 3 to 5+ years\nDoes this position require a security clearance?: No")
     assert j.department == "Product and Research" and j.posted.isoformat().startswith("2026-10-07T22:54")
     sre = by_id["346955"]
-    assert sre.remote is True and (sre.salary_min, sre.salary_max) == (137_750, 185_000)
+    assert sre.remote is True and (sre.salary_min, sre.salary_max) == (137_750, 196_000)
     assert "Base Pay/Salary: New York,NY" in sre.description and "Empty" not in sre.description
     operator = by_id["335856"]  # its title fails `wanted`: listed, not read
     assert operator.description == "" and detail_url("335856") not in oracle.calls

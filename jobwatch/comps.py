@@ -57,7 +57,7 @@ _SCALE = {"": 1, "k": 1000, "m": 1_000_000}
 
 
 def amount(text: str | None) -> tuple[int, int] | None:
-    """The yearly amount or range a person wrote, as (low, high) dollars: "140-165K", "$150K - $185K", "165,000",
+    """The yearly amount or range a person wrote, as (low, high) dollars: "140-165K", "$150K - $196K", "165,000",
     "180K most likely their max". A K or M on one end of a range applies to both ("140-165K"). Percentages and
     anything under $1,000 aren't pay (None)."""
     text = text or ""

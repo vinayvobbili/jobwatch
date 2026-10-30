@@ -134,7 +134,7 @@ BOARDS = {
         job("ashby", "initech", "Initech", "c1", "Senior ML Platform Engineer",
             ["Denver, CO, United States", "Remote, United States"], 190000, 240000, 0, PLATFORM),
         job("ashby", "initech", "Initech", "c0", "AI Engineer, LLM Apps", ["Remote, United States"],
-            185000, 235000, 20, AGENTS.replace("Acme", "Initech")),
+            196000, 235000, 20, AGENTS.replace("Acme", "Initech")),
     ],
     ("workable", "umbrella"): [
         job("workable", "umbrella", "Umbrella", "U1A2B3", "Senior Data Platform Engineer", ["Remote, United States"],
@@ -276,7 +276,7 @@ def extras(out: Path, store: Store):
     store.set_comp("ashby:initech:c0", base="190-220K", bonus="10% target", equity="40K RSUs over 4 years",
                    asked="220-240K", role="product", career_note="LLM apps, staff IC",
                    note="Recruiter said 220K is the top of the band")
-    store.set_comp("workable:umbrella:U0Z9Y8", base="165-185K", bonus="8% target", role="internal",
+    store.set_comp("workable:umbrella:U0Z9Y8", base="165-196K", bonus="8% target", role="internal",
                    career_note="Internal analyst tools")
     store.set_comp(offer.key, base="205K", bonus="10% target", equity="60K RSUs over 4 years", signon="15K",
                    asked="215K", offered="205K", role="customer", career_note="Forward-deployed, travel 20%")
