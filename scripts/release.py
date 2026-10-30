@@ -94,8 +94,8 @@ CLAUDE_FILES = ("plugin/.claude-plugin/plugin.json", "plugin/.mcp.json", "plugin
 def bump(text: str, path: Path, old: str, new: str, name: str = "") -> str:
     """Replace ``old`` with ``new`` where the file declares its version; fail if nothing changed. An
     ``__version__`` that had drifted from the release version is set to the new one too (see `drift`).
-    A pin on the package itself (``jobwatch==0.6.0`` or ``jobwatch[mcp]==0.6.0``, in the plugin's server command or the desktop
-    extension's dependencies) moves with it."""
+    A pin on the package itself (``jobwatch==0.6.0`` or ``jobwatch[mcp]==0.6.0``, in the plugin's server
+    command or the desktop extension's dependencies) moves with it."""
     if path.name == "pyproject.toml":
         pattern, repl = rf'^version = "{re.escape(old)}"', f'version = "{new}"'
     elif path.suffix == ".json":
