@@ -1,0 +1,15 @@
+{
+  "name": "jobwatch",
+  "owner": {
+    "name": "Vinay Vobbilichetty",
+    "url": "https://github.com/vinayvobbili"
+  },
+  "description": "jobwatch, the job-board watcher and application tracker, as a Claude plugin.",
+  "plugins": [
+    {
+      "name": "jobwatch",
+      "source": "./plugin",
+      "description": "Watch company job boards, rank new matches into a daily digest, track every application and prep for interviews. Never applies for you."
+    }
+  ]
+}

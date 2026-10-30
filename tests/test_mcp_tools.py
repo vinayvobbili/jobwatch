@@ -65,6 +65,14 @@ def test_find_board_says_why_a_link_failed(monkeypatch):
     assert str(e.value).endswith("Jobs/jobs: HTTP 401")
 
 
+def test_a_first_run_without_a_watchlist_says_to_add_a_board(monkeypatch, tmp_path):
+    """The desktop extension's user has no terminal for `jobwatch init`: the first board added creates the file."""
+    monkeypatch.setattr(mcp, "_changed_since_start", lambda: None)
+    monkeypatch.setenv("JOBWATCH_CONFIG", str(tmp_path / "jobwatch.yaml"))
+    with pytest.raises(mcp.ToolError, match=r"no watchlist yet.*find_board and add_board"):
+        mcp.list_boards()
+
+
 def test_a_server_whose_code_changed_since_it_started_says_to_restart(monkeypatch):
     monkeypatch.setattr(mcp, "_STARTED", 0)  # every module is newer than this "start"
     with pytest.raises(mcp.ToolError, match="Reconnect"):

@@ -32,10 +32,24 @@ claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- uvx --with
 
 It's listed in the [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.vinayvobbili/jobwatch`.
 
-[skills/jobwatch/SKILL.md](../../skills/jobwatch/SKILL.md) is an agent skill that tells an assistant when and how to
-use these tools (setup, the daily loop, status emails, interview prep, and what never to do for you). Copy the
-folder into `~/.claude/skills/`, or zip it for a skills marketplace: `cd skills && python -m zipfile -c
-jobwatch-skill.zip jobwatch`.
+[plugin/skills/jobwatch/SKILL.md](../../plugin/skills/jobwatch/SKILL.md) is an agent skill that tells an assistant
+when and how to use these tools (setup, the daily loop, status emails, interview prep, and what never to do for
+you). Copy the folder into `~/.claude/skills/`, or zip it for a skills marketplace: `cd plugin/skills && python -m
+zipfile -c jobwatch-skill.zip jobwatch`.
+
+## Claude plugin and desktop extension
+
+[plugin/](../../plugin) is a Claude plugin with the skill and the server together. In Claude Code:
+
+```
+/plugin marketplace add vinayvobbili/jobwatch
+/plugin install jobwatch@jobwatch
+```
+
+Claude Desktop's chat doesn't start a plugin's local server, so the tools come from the desktop extension
+instead: `jobwatch-<version>.mcpb` on the [releases page](https://github.com/vinayvobbili/jobwatch/releases).
+Open it and choose Install; Claude Desktop sets up Python through uv, so nothing else needs installing.
+`scripts/build-mcpb` builds it from [desktop/](../../desktop).
 
 With a resume tool alongside it (for example [resume-kit](https://github.com/vinayvobbili/resume-kit), whose
 `resume draft` starts a tailored version from a posting), an assistant can work through your queue: read

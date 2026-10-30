@@ -146,7 +146,11 @@ def _config() -> config.Config:
     if changed := _changed_since_start():  # a ToolError, so the model reads what to do
         raise ToolError(f"jobwatch's code changed after this MCP server started ({changed}), so it would run "
                         "the old code: restart the server (in Claude Code: /mcp, jobwatch, Reconnect)")
-    return config.load(os.environ.get("JOBWATCH_CONFIG"))
+    explicit = os.environ.get("JOBWATCH_CONFIG")
+    if not config.locate(explicit).is_file():  # a first run (the desktop extension has no `jobwatch init` to run)
+        raise ToolError(f"there's no watchlist yet ({config.locate(explicit)}): ask which companies the person "
+                        "wants to watch, then find_board and add_board for each, which creates it")
+    return config.load(explicit)
 
 
 def _open():

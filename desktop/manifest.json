@@ -1,0 +1,48 @@
+{
+  "manifest_version": "0.4",
+  "name": "jobwatch",
+  "display_name": "jobwatch",
+  "version": "0.6.0",
+  "description": "Watch the job boards of companies you name, rank new roles into a daily digest, track every application and prep for interviews. Your data stays on your computer.",
+  "long_description": "Name the companies you'd like to work for and jobwatch watches their job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Rippling, Google Careers, Amazon, Oracle, SmartRecruiters, Avature, iCIMS, Jobvite and Hacker News' monthly \"Who is hiring?\"). Ask Claude \"what's new today?\" for the best few matches, queue the ones to apply to, and keep track of every application from the day you apply to the offer, including recruiter emails you ask Claude to read. Before an interview, Claude puts the posting, your resume and what you sent on one sheet. jobwatch never applies for you. Everything it keeps (your watchlist, tracker and notes) stays in files on your computer; it only fetches the public job boards of the companies you watch.",
+  "author": {
+    "name": "Vinay Vobbilichetty",
+    "url": "https://github.com/vinayvobbili"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vinayvobbili/jobwatch"
+  },
+  "homepage": "https://github.com/vinayvobbili/jobwatch",
+  "documentation": "https://github.com/vinayvobbili/jobwatch/tree/main/docs/guide",
+  "support": "https://github.com/vinayvobbili/jobwatch/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "uv",
+    "entry_point": "server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "server.py"],
+      "env": {
+        "JOBWATCH_CONFIG": "${user_config.watchlist}"
+      }
+    }
+  },
+  "user_config": {
+    "watchlist": {
+      "type": "string",
+      "title": "Watchlist file",
+      "description": "The file that lists the companies to watch. It's created the first time you ask Claude to watch a company; change it only to keep using one you already have.",
+      "default": "${HOME}/.config/jobwatch/config.yaml",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  },
+  "keywords": ["jobs", "job-search", "job-tracker", "applications", "interview-prep"],
+  "license": "MIT"
+}

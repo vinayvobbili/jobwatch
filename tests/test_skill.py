@@ -1,4 +1,4 @@
-"""The agent skill (skills/jobwatch/SKILL.md) that tells an agent when and how to use the MCP tools: its front
+"""The agent skill (plugin/skills/jobwatch/SKILL.md) that tells an agent when and how to use the MCP tools: its front
 matter is what marketplaces read, and every tool it names is one the server has."""
 
 import asyncio
@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 mcp = pytest.importorskip("jobwatch.mcp_server")
-SKILL = Path(__file__).parent.parent / "skills" / "jobwatch" / "SKILL.md"
+SKILL = Path(__file__).parent.parent / "plugin" / "skills" / "jobwatch" / "SKILL.md"
 
 
 def test_the_skill_has_a_name_and_a_description():

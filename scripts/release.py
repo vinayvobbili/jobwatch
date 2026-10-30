@@ -7,7 +7,8 @@
 
 The tag triggers the Release workflow (PyPI). The version is bumped in pyproject.toml, the package's
 ``__version__`` and, when there is one, server.json (the MCP Registry entry), whose own workflow runs after
-the release. After pushing, it polls PyPI (and the registry) until the new version shows up.
+the release, and the Claude plugin and desktop extension (plugin/, desktop/) with their pins on the package.
+After pushing, it polls PyPI (and the registry) until the new version shows up.
 
 A first release can give the version the files already declare: when its tag doesn't exist yet, it goes out as
 it is, tagged without a bump commit.
@@ -79,20 +80,32 @@ def version_files(root: Path, name: str) -> list[Path]:
             files.append(init)
     if (root / "server.json").exists():
         files.append(root / "server.json")
+    files += [p for p in (root / f for f in CLAUDE_FILES) if p.exists()]
     return files
 
 
-def bump(text: str, path: Path, old: str, new: str) -> str:
+# The Claude plugin (its manifest, and the server it runs pinned to the release) and the Claude Desktop extension
+# (its manifest, and the environment that pins the release), when the package ships them.
+CLAUDE_FILES = ("plugin/.claude-plugin/plugin.json", "plugin/.mcp.json", "desktop/manifest.json",
+                "desktop/pyproject.toml")
+
+
+def bump(text: str, path: Path, old: str, new: str, name: str = "") -> str:
     """Replace ``old`` with ``new`` where the file declares its version; fail if nothing changed. An
-    ``__version__`` that had drifted from the release version is set to the new one too (see `drift`)."""
+    ``__version__`` that had drifted from the release version is set to the new one too (see `drift`).
+    A pin on the package itself (``jobwatch[mcp]==0.6.0``, in the plugin's server command or the desktop
+    extension's dependencies) moves with it."""
     if path.name == "pyproject.toml":
         pattern, repl = rf'^version = "{re.escape(old)}"', f'version = "{new}"'
-    elif path.name == "server.json":
+    elif path.suffix == ".json":
         pattern, repl = rf'"version": "{re.escape(old)}"', f'"version": "{new}"'
     else:
         pattern, repl = LITERAL.pattern, f'__version__ = "{new}"'
     out, n = re.subn(pattern, repl, text, flags=re.M)
-    if not n:
+    pins = 0
+    if name:
+        out, pins = re.subn(rf'(\b{re.escape(name)}(?:\[[\w,-]+\])?)=={re.escape(old)}\b', rf"\g<1>=={new}", out)
+    if not (n or pins):
         raise SystemExit(f"release: {path.name} doesn't declare version {old}")
     return out
 
@@ -214,7 +227,7 @@ def main(argv=None) -> int:
     if not as_is and tuple(map(int, args.version.split("."))) <= tuple(map(int, old.split("."))):
         raise SystemExit(f"release: {args.version} isn't newer than {old}")
     files = version_files(root, name)
-    bumped = {} if as_is else {f: bump(f.read_text(), f, old, args.version) for f in files}
+    bumped = {} if as_is else {f: bump(f.read_text(), f, old, args.version, name) for f in files}
     for line in drift(files, old):
         print(f"note: {line}; this release sets it to {args.version}")
     if as_is:

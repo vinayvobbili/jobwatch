@@ -65,6 +65,15 @@ want, the companies to watch, and (optionally) fit scores and job-alert emails. 
 jobs**. Install the page as an app from Chrome's address bar to keep it in its own window, or run
 `jobwatch service install` to have it always running on a Mac.
 
+**Or run it from Claude**, with no terminal needed:
+
+- **Claude Desktop**: download `jobwatch-<version>.mcpb` from the
+  [latest release](https://github.com/vinayvobbili/jobwatch/releases/latest) and open it, then press Install.
+  Claude Desktop sets up everything it needs. Then ask Claude "watch Stripe for product designer roles".
+- **Claude Code** (and Cowork): `/plugin marketplace add vinayvobbili/jobwatch`, then
+  `/plugin install jobwatch@jobwatch`. The [plugin](plugin/README.md) brings the tools and a skill with the
+  daily routine.
+
 Extras: `jobwatch[score]` (fit scores with the Claude API), `jobwatch[local]` (fit scores on-device, Apple
 Silicon), `jobwatch[mcp]` (an MCP server for Claude and other assistants), `jobwatch[video]` (drill videos for
 interview prep), `jobwatch[lca]` (H-1B wage filings from the U.S. Department of Labor as a second pay source: needs

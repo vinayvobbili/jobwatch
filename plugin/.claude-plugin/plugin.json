@@ -1,0 +1,25 @@
+{
+  "name": "jobwatch",
+  "displayName": "jobwatch",
+  "version": "0.6.0",
+  "description": "Run your job search from Claude: watch the job boards of companies you name (Greenhouse, Lever, Ashby, Workday and more), rank the new roles into a daily digest, track every application through to an offer, and get ready for interviews. Your data stays in a file on your computer. Never applies for you.",
+  "author": {
+    "name": "Vinay Vobbilichetty",
+    "url": "https://github.com/vinayvobbili"
+  },
+  "homepage": "https://github.com/vinayvobbili/jobwatch",
+  "repository": "https://github.com/vinayvobbili/jobwatch",
+  "license": "MIT",
+  "keywords": ["jobs", "job-search", "job-tracker", "applications", "interview-prep", "greenhouse", "lever", "workday"],
+  "icon": "./icon.png",
+  "documentationUrl": "https://github.com/vinayvobbili/jobwatch/tree/main/docs/guide",
+  "supportUrl": "https://github.com/vinayvobbili/jobwatch/issues",
+  "userConfig": {
+    "watchlist": {
+      "type": "string",
+      "title": "Watchlist file",
+      "description": "The YAML file that lists the companies to watch. It's created the first time you add a company; point this at an existing one to keep using it.",
+      "default": "~/.config/jobwatch/config.yaml"
+    }
+  }
+}

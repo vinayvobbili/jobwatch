@@ -11,7 +11,9 @@ on the user's computer. Nothing is sent anywhere except the job boards it reads.
 
 ## Setup (once)
 
-If the `jobwatch` tools aren't available, set it up:
+The jobwatch plugin starts the server for you in Claude Code. In Claude Desktop's chat, the tools come from
+the jobwatch desktop extension (a `.mcpb` file on github.com/vinayvobbili/jobwatch/releases: open it, then
+Install). If the `jobwatch` tools still aren't available, set it up by hand:
 
 ```
 pipx install 'jobwatch[mcp]'      # or: pip install 'jobwatch[mcp]'
@@ -21,6 +23,9 @@ claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- jobwatch-m
 
 Other agents take the same command (`jobwatch-mcp`) with `JOBWATCH_CONFIG` pointing at the watchlist. Without
 installing first: `uvx --with 'mcp>=2.2' jobwatch mcp`.
+
+A new user has no watchlist yet: ask which companies they'd like to watch and what roles and places they're
+after, then `find_board` and `add_board` for each company, which creates the file.
 
 ## The daily loop
 
