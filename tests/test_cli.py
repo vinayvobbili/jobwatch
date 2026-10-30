@@ -230,7 +230,7 @@ def test_mcp_without_the_mcp_package_says_how_to_get_it(monkeypatch):
     monkeypatch.delattr(jobwatch, "mcp_server", raising=False)
     for name in [m for m in sys.modules if m == "mcp" or m.startswith("mcp.")] or ["mcp"]:
         monkeypatch.setitem(sys.modules, name, None)
-    with pytest.raises(SystemExit, match=r"pip install --upgrade jobwatch"):
+    with pytest.raises(SystemExit, match=r"pip install --upgrade 'jobwatch\[mcp\]'"):
         cli.main(["mcp"])
 
 

@@ -886,8 +886,8 @@ def cmd_mcp(args):
     except ImportError as e:
         if e.name != "mcp" and not str(e.name).startswith("mcp."):
             raise
-        raise SystemExit("jobwatch: the MCP server needs the mcp package, which comes with jobwatch: "
-                         "pip install --upgrade jobwatch") from None
+        raise SystemExit("jobwatch: the MCP server needs the mcp package: "
+                         "pip install --upgrade 'jobwatch[mcp]'") from None
     if args.config:
         os.environ["JOBWATCH_CONFIG"] = str(args.config)
     mcp_server.main()
@@ -1169,7 +1169,7 @@ def build_parser() -> argparse.ArgumentParser:
                    "role from the posting's asks (no resume or stories are sent; kept for next time)")
     p.add_argument("-o", "--out", type=Path)
     p.add_argument("--drill", type=Path, metavar="OUT.mp4", help="make a drill video instead: each question asked, "
-                   "a pause to answer it out loud, then the cue words while a second voice gives the sheet's answer "
+                   "a pause to answer it out loud, then the sheet's answer on screen while a second voice reads it "
                    "(needs jobwatch[video]; KEY may be a hand-written prep sheet's .html)")
     p.add_argument("--pause", type=float, default=drill.PAUSE, metavar="SECONDS",
                    help=f"with --drill: seconds to answer each question (default {drill.PAUSE:g})")

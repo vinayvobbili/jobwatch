@@ -32,7 +32,8 @@ Issues = "https://github.com/vinayvobbili/jobwatch/issues"
 [project.optional-dependencies]
 score = ["shortlist-ai>=0.2.0"]
 local = ["shortlist-ai[local]>=0.2.0"]
-# the MCP server comes with jobwatch now; the extra stays so `jobwatch[mcp]` installs keep working
+# the MCP server comes with jobwatch now; the extra stays, empty, so `jobwatch[mcp]` installs keep working and the
+# docs' commands work on releases before and after the change
 mcp = []
 video = ["slidecast[mlx]>=0.4"]
 lca = ["openpyxl>=3.1"]

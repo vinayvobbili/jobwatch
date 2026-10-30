@@ -1,5 +1,6 @@
 """A drill video from a prep sheet: each question asked in one voice, a silent hold to answer it out loud, then
-the answer's cue words on screen while a second voice gives the full answer.
+the answer's full text on screen, a page at a time, while a second voice reads it (reading along while hearing
+it sticks better than either alone).
 
 Answers come only from what the sheet already holds: answers tightened in mock interviews, drafted outlines with
 the stories they cite (stories.yaml), or, for a prep sheet written by hand, its question-and-answer tables. A
@@ -26,11 +27,11 @@ PAUSE = 75.0                 # seconds to answer out loud; --pause changes it, -
 # Silence after each spoken line before the next slide. Kokoro's trailing breath counts as speech, so 0.8 left
 # only about half a second of quiet before the cut; 1.6 gives a clear beat after the last word.
 TAIL = 1.6
+BETWEEN = 0.4                # the beat between two pages of one answer
 INTERVIEWER = "am_michael"   # Kokoro voices: one asks, the other answers
 ANSWERER = "af_heart"
 WIDTH, HEIGHT = 1280, 720
-MOST_CUES = 5
-CUE_WORDS = 7
+PAGE_WORDS = 60              # most words on one answer page; a longer answer turns the page as it's read
 _TAG = re.compile(r"^\[(\w+)\] ")
 # Security words Kokoro says wrong, rewritten for the voice only (the slides keep the text): SOC is "sock", not
 # "sosh", and CISO is "SEE-so", given in misaki's own "[word](/phonemes/)" override. slidecast fixes plain English
@@ -48,30 +49,34 @@ _CHROME = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 @dataclass(frozen=True)
 class Card:
     question: str
-    answer: str              # spoken in full, by the second voice
-    cues: tuple[str, ...]    # on screen while it's spoken
+    answer: str              # spoken in full by the second voice, and shown in full while it's spoken
 
 
 @dataclass(frozen=True)
 class Segment:
-    """One slide as slidecast gets it: the page, who speaks (none for a silent hold) and what they say."""
+    """One slide as slidecast gets it: the page, who speaks (none for a silent hold), what they say, and the
+    quiet after it."""
     html: str
     voice: str = ""
     line: str = ""
     hold: float = 0.0
+    tail: float = TAIL
 
 
 def _sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
 
 
-def cues(answer: str) -> tuple[str, ...]:
-    """The first words of each sentence, to glance at while the answer is spoken."""
-    out = []
-    for s in _sentences(answer)[:MOST_CUES]:
-        words = s.strip("\"“”'").split()
-        out.append(" ".join(words[:CUE_WORDS]).rstrip(",;:") + ("…" if len(words) > CUE_WORDS else ""))
-    return tuple(out)
+def pages(answer: str) -> list[list[str]]:
+    """The answer's sentences in pages of at most PAGE_WORDS words (a longer sentence gets a page of its own),
+    so all of it is on screen, big enough to read, while it's spoken."""
+    out: list[list[str]] = []
+    for s in _sentences(answer):
+        if out and sum(len(x.split()) for x in out[-1]) + len(s.split()) <= PAGE_WORDS:
+            out[-1].append(s)
+        else:
+            out.append([s])
+    return out
 
 
 def _point(text: str) -> str:
@@ -85,7 +90,7 @@ def from_sheet(sheet: Sheet, bank: list[Story]) -> list[Card]:
     by_id = {s.id: s for s in bank}
     cards, seen = [], set()
     for p in sheet.practised:
-        cards.append(Card(p["question"], p["improved"], cues(p["improved"])))
+        cards.append(Card(p["question"], p["improved"]))
         seen.add(p["question"].lower())
     for d in sheet.drafted:
         if d["no_story"] or not d["outline"] or d["question"].lower() in seen:
@@ -93,7 +98,7 @@ def from_sheet(sheet: Sheet, bank: list[Story]) -> list[Card]:
         told = [f"{st.did} The hard part: {st.hard} {_point(st.result)}" for c in d["stories"]
                 if (st := by_id.get(c["id"]))]
         answer = " ".join([_point(p) for p in d["outline"]] + told)
-        cards.append(Card(d["question"], answer, tuple(d["outline"][:MOST_CUES])))
+        cards.append(Card(d["question"], answer))
         seen.add(d["question"].lower())
     return cards
 
@@ -197,7 +202,7 @@ def _spoken(question: str, paras: list[str]) -> Card | None:
     unnumbered), the paragraphs that answer it with the quote marks dropped (they're for reading, not saying)."""
     q = m.group(1).strip() if (m := _QUOTED.search(question)) else _NUMBERED.sub("", question).strip()
     answer = re.sub(r"\s+", " ", re.sub(r"[\"“”]", "", " ".join(p for p in paras if not _FOLLOW_UP.match(p)))).strip()
-    return Card(q, answer, cues(answer)) if q and answer else None
+    return Card(q, answer) if q and answer else None
 
 
 def from_page(text: str) -> tuple[str, list[Card]]:
@@ -219,7 +224,7 @@ def from_page(text: str) -> tuple[str, list[Card]]:
             question, answer = row[q], row[a].strip().strip("\"“”").strip()
             if question and answer and question.lower() not in seen:
                 seen.add(question.lower())
-                cards.append(Card(question, answer, cues(answer)))
+                cards.append(Card(question, answer))
     for question, paras in page.spoken:
         if (card := _spoken(question, paras)) and card.question.lower() not in seen:
             seen.add(card.question.lower())
@@ -261,7 +266,7 @@ def _page(label: str, body: str, n: int = 0, total: int = 1) -> str:
 
 def segments(cards: list[Card], title: str, pause: float = PAUSE) -> list[Segment]:
     """What slidecast gets, in order: a title, then for each card the question, the hold (unless pause is 0) and
-    the answer with its cues."""
+    the answer's pages, each read while it's on screen."""
     e = _html.escape
     how = (f"Answer each one out loud in the {pause:g} seconds after it's asked, then hear the answer."
            if pause else "A quick review: each question, then its answer.")
@@ -274,9 +279,12 @@ def segments(cards: list[Card], title: str, pause: float = PAUSE) -> list[Segmen
         if pause:
             out.append(Segment(_page(label, f"<p class='big'>Answer out loud</p><p class='q'>{e(c.question)}</p>"
                                             f"<p class='q'>{pause:g} seconds</p>", n, total), hold=pause))
-        bullets = "".join(f"<li>{e(x)}</li>" for x in c.cues)
-        out.append(Segment(_page(label + " · answer", f"<p class='q'>{e(c.question)}</p><ul>{bullets}</ul>", n,
-                                 total), ANSWERER, c.answer))
+        parts = pages(c.answer)
+        for i, part in enumerate(parts, 1):
+            more = f" · {i} of {len(parts)}" if len(parts) > 1 else ""
+            text = "".join(f"<li>{e(s)}</li>" for s in part)
+            out.append(Segment(_page(f"{label} · answer{more}", f"<p class='q'>{e(c.question)}</p><ul>{text}</ul>",
+                                     n, total), ANSWERER, " ".join(part), tail=TAIL if i == len(parts) else BETWEEN))
     return out
 
 
@@ -317,7 +325,7 @@ def render(segs: list[Segment], out: Path, tts=None, renderer=None) -> Path:
                 music="compose", intro="compose", outro="compose", loudness=-16)
     for s in segs:
         if s.voice:
-            reel.add(s.html, f"[{s.voice}] {s.line}", tail_pad=TAIL)
+            reel.add(s.html, f"[{s.voice}] {s.line}", tail_pad=s.tail)
         else:
             reel.add(s.html, "", min_duration=s.hold)
     out.parent.mkdir(parents=True, exist_ok=True)

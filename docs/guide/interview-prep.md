@@ -108,8 +108,8 @@ what to install, before asking anything.
 
 `jobwatch prep c1 --drill drill.mp4` turns the prep sheet into a video to rehearse with. Each question is asked in
 one voice, then the screen says **Answer out loud** and holds for 75 seconds (`--pause 60` to change it), then
-the answer's cue words come up while a second voice gives the full answer. `--no-pause` drops the hold, for a
-quick review.
+a second voice reads the answer while its full text is on screen, a page at a time for a long one, so you can
+read along as you hear it. `--no-pause` drops the hold, for a quick review.
 
 The answers are only ones the sheet already has: practised answers from mock interviews, then drafted outlines
 told with the stories they cite (so run `--draft` first, or practise with `--mock`). A question with no answer is

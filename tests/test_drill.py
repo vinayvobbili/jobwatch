@@ -47,9 +47,12 @@ def sheet(**kw):
     return Sheet(key="k", company="Initech", title="Staff Engineer", status="interviewing", **kw)
 
 
-def test_cues_are_each_sentences_first_words():
-    assert drill.cues("Latency first. Each region drains its own queue, so one slow region can't hold it.") == (
-        "Latency first.", "Each region drains its own queue, so…")
+def test_an_answer_is_shown_in_full_in_pages_of_whole_sentences():
+    assert drill.pages("Latency first. Each region drains its own queue, so one slow region can't hold it.") == [
+        ["Latency first.", "Each region drains its own queue, so one slow region can't hold it."]]
+    long = " ".join(["Five words in this sentence."] * 15)  # 75 words
+    assert [len(p) for p in drill.pages(long)] == [12, 3]
+    assert drill.pages(" ".join(["word"] * 80)) == [[" ".join(["word"] * 80)]]  # one long sentence, one page
 
 
 def test_page_cards_come_from_question_and_answer_tables():
@@ -60,7 +63,6 @@ def test_page_cards_come_from_question_and_answer_tables():
     assert first.answer == ("Latency. Each region drains its own queue, so one slow region can't hold the rest back. "
                             "We tested it with a replay.")
     assert "Source" not in first.answer  # muted asides are not what you'd say
-    assert first.cues[0] == "Latency."
     assert cards[1].answer == "Unit tests locally, then a replay of a day's traffic."  # the first answer is kept
 
 
@@ -74,7 +76,6 @@ def test_page_cards_come_from_question_headings_and_their_say_blocks():
         ("What are you looking for in pay?", "Around the midpoint of the range.")]  # not the follow-up line
     # a paragraph with a blank to fill in isn't said, a heading with no say block takes no later answer, and
     # only question headings (class="q") ask
-    assert cards[0].cues == ("We split one queue into one per…", "So a slow region can't hold the…")
     _, both = drill.from_page(PAGE.replace("</body>", SPOKEN.split("<body>")[1].split("</body>")[0] + "</body>"))
     assert len(both) == 4  # the tables' cards first, then the spoken ones
 
@@ -91,7 +92,6 @@ def test_sheet_cards_use_practised_answers_then_drafts_with_their_stories():
     cards = drill.from_sheet(s, [STORY])
     assert [c.question for c in cards] == ["Tell me about yourself.", "A time you cut latency?"]
     assert cards[0].answer == "I build queues. I like it."
-    assert cards[1].cues == ("One queue per region", "Replay tested")
     assert cards[1].answer == ("One queue per region. Replay tested. Split one job queue into one per region. "
                                "The hard part: Two regions shared a worker pool. Late jobs went from 40 a day to 3.")
 
@@ -101,7 +101,7 @@ def test_a_sheet_without_answers_gives_no_cards():
 
 
 def test_segments_ask_hold_then_answer_in_two_voices():
-    cards = [drill.Card("Why <queues>?", "Latency.", ("Latency.",)), drill.Card("Tested?", "Yes.", ("Yes.",))]
+    cards = [drill.Card("Why <queues>?", "Latency."), drill.Card("Tested?", "Yes.")]
     segs = drill.segments(cards, "Initech", pause=60)
     assert len(segs) == 1 + 3 * 2
     q, hold, answer = segs[1:4]
@@ -114,8 +114,18 @@ def test_segments_ask_hold_then_answer_in_two_voices():
     assert f"--a:{drill.THEMES[1][0]}" in q.html and f"--a:{drill.THEMES[2][0]}" in segs[4].html  # own colours
 
 
+def test_a_long_answer_turns_the_page_as_its_read():
+    answer = " ".join(f"Sentence {n} has exactly six words." for n in range(1, 13))  # 72 words: 10, then 2
+    segs = drill.segments([drill.Card("Q?", answer)], "T", pause=0)[2:]
+    assert [s.voice for s in segs] == [drill.ANSWERER] * 2
+    assert " ".join(s.line for s in segs) == answer  # all of it is said, and shown while it's said
+    assert all(f"<li>{x}</li>" in s.html for s in segs for x in drill.pages(s.line)[0])
+    assert "answer · 1 of 2" in segs[0].html and "answer · 2 of 2" in segs[1].html
+    assert (segs[0].tail, segs[1].tail) == (drill.BETWEEN, drill.TAIL)  # a short beat at the turn, not a pause
+
+
 def test_no_pause_is_a_quick_review():
-    segs = drill.segments([drill.Card("Q?", "A.", ("A.",))], "T", pause=0)
+    segs = drill.segments([drill.Card("Q?", "A.")], "T", pause=0)
     assert [s.voice for s in segs] == [drill.INTERVIEWER, drill.INTERVIEWER, drill.ANSWERER]
     assert "quick review" in segs[0].line
 
@@ -189,7 +199,7 @@ def fake_slidecast(monkeypatch):
 
 def test_render_sends_tagged_lines_and_silent_holds(fake_slidecast, tmp_path):
     tts = FakeTTS()
-    segs = drill.segments([drill.Card("Q?", "A.", ("A.",))], "T", pause=70)
+    segs = drill.segments([drill.Card("Q?", "A.")], "T", pause=70)
     out = drill.render(segs, tmp_path / "prep" / "drill.mp4", tts=tts, renderer=object())
     slides = fake_slidecast["slides"]
     assert [n for _, n, _ in slides] == [f"[{drill.INTERVIEWER}] {segs[0].line}", f"[{drill.INTERVIEWER}] Q?", "",
@@ -202,7 +212,7 @@ def test_render_sends_tagged_lines_and_silent_holds(fake_slidecast, tmp_path):
 
 
 def test_kokoro_gets_the_security_words(fake_slidecast, tmp_path):
-    drill.render(drill.segments([drill.Card("Q?", "A.", ("A.",))], "T", pause=0), tmp_path / "d.mp4",
+    drill.render(drill.segments([drill.Card("Q?", "A.")], "T", pause=0), tmp_path / "d.mp4",
                  renderer=object())
     assert fake_slidecast["reel"]["tts"].tts.kw == {"phonetic": drill.SAY}
 
@@ -211,7 +221,7 @@ def test_a_render_stopped_part_way_keeps_the_last_good_video(fake_slidecast, tmp
     out = tmp_path / "drill.mp4"
     out.write_bytes(b"last good video")
     fake_slidecast["stop"] = True
-    segs = drill.segments([drill.Card("Q?", "A.", ("A.",))], "T", pause=0)
+    segs = drill.segments([drill.Card("Q?", "A.")], "T", pause=0)
     with pytest.raises(KeyboardInterrupt):
         drill.render(segs, out, tts=FakeTTS(), renderer=object())
     assert out.read_bytes() == b"last good video" and list(tmp_path.iterdir()) == [out]

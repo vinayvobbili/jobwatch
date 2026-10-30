@@ -80,7 +80,7 @@ A chat on claude.ai, or in an app whose plugins run in the cloud, can't reach jo
 skill loads there, but the tools don't.
 
 Extras: `jobwatch[score]` (fit scores with the Claude API), `jobwatch[local]` (fit scores on-device, Apple
-Silicon), `jobwatch[video]` (drill videos for
+Silicon), `jobwatch[mcp]` (an MCP server for Claude and other assistants), `jobwatch[video]` (drill videos for
 interview prep), `jobwatch[lca]` (H-1B wage filings from the U.S. Department of Labor as a second pay source: needs
 openpyxl to read its Excel files; see the [watchlist guide](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/watchlist.md)). Prefer a terminal? `jobwatch init`, `jobwatch find "Globex"`, then `jobwatch run` daily.
 [More on the page and the command line →](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/the-page.md)

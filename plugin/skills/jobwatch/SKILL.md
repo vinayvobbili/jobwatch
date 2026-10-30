@@ -24,13 +24,13 @@ https://astral.sh/uv/install.ps1 | iex"` on Windows. Run it only once the person
 Claude so the plugin starts the server. If the `jobwatch` tools still aren't available, set it up by hand:
 
 ```
-pipx install jobwatch             # or: pip install jobwatch
+pipx install 'jobwatch[mcp]'      # or: pip install 'jobwatch[mcp]'
 jobwatch init                     # writes an example watchlist, jobwatch.yaml
 claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- jobwatch-mcp
 ```
 
 Other agents take the same command (`jobwatch-mcp`) with `JOBWATCH_CONFIG` pointing at the watchlist. Without
-installing first: `uvx jobwatch mcp`.
+installing first: `uvx --with 'mcp>=2.2' jobwatch mcp`.
 
 A new user has no watchlist yet: ask which companies they'd like to watch and what roles and places they're
 after, then `find_board` and `add_board` for each company, which creates the file.
