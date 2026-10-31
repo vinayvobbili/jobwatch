@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>jobwatch settings</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      main { max-width: 600px; margin: 28px auto; padding: 0 16px; }
+      :root[data-width="wide"] main { max-width: 900px; }
+      :root[data-width="full"] main { max-width: none; }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      h2 { font-size: 15px; margin: 0 0 4px; }
+      .lead, .hint { color: var(--muted); font-size: 13px; }
+      .card {
+        background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin-top: 16px;
+        box-shadow: 0 10px 28px -18px rgba(70, 60, 190, .35); animation: rise .4s both;
+      }
+      @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 16px; margin-top: 12px; }
+      label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 3px; }
+      input, select {
+        width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+        color: var(--text); font: inherit;
+      }
+      input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+      #result { margin-left: 4px; font-size: 13px; }
+      #result.ok { color: var(--good); } #result.bad { color: var(--bad); }
+      .top { display: flex; align-items: flex-start; gap: 12px; }
+      .top > div:first-child { flex: 1; }
+      .look { display: flex; gap: 8px; } .look select { width: auto; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="top">
+        <div>
+          <h1 class="brand">jobwatch application filler</h1>
+          <p class="lead">
+            Fill the basics with Simplify or Chrome autofill, then jobwatch fills the rest: answers from your earlier
+            applications, drafts for new questions, the job's resume. Nothing leaves this computer except to jobwatch.
+          </p>
+        </div>
+        <div class="look">
+          <select id="theme" aria-label="Theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+          <select id="width" aria-label="Width"><option value="standard">Standard</option><option value="wide">Wide</option><option value="full">Full</option></select>
+        </div>
+      </div>
+
+      <form class="card" id="form">
+        <h2>Pair with jobwatch</h2>
+        <p class="hint">
+          Run <code>jobwatch ui</code>, open Settings, find Browser extension, and copy the token.
+        </p>
+        <div class="grid">
+          <div><label for="serverUrl">Server</label><input id="serverUrl" type="url" placeholder="http://127.0.0.1:8765" /></div>
+          <div><label for="token">Token</label><input id="token" type="password" autocomplete="off" /></div>
+        </div>
+        <div class="actions">
+          <button class="go" type="submit">Save</button>
+          <button class="ghost" id="test" type="button">Test</button>
+          <span id="result"></span>
+        </div>
+      </form>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

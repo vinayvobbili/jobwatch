@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Careers at Initech</title></head>
+<body style="font: 15px system-ui, sans-serif; margin: 24px">
+<h1>Careers at Initech</h1>
+<p>Platform Engineer. Apply below.</p>
+<div id="grnhse_app"></div>
+<script>
+  // The board's form sits in an iframe from another address, as Greenhouse's embed does.
+  const frame = document.createElement('iframe');
+  frame.src = new URLSearchParams(location.search).get('src');
+  frame.style.cssText = 'width:100%;height:900px;border:0';
+  document.getElementById('grnhse_app').append(frame);
+</script>
+</body>
+</html>

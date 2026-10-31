@@ -37,7 +37,7 @@ One flat object, as the watchlist's `applicant:` section keeps it. Every field i
 | `needs_sponsorship` | `yes` / `no` | Now or in the future. |
 | `relocate` | `yes` / `no` | |
 | `notice_period` | `2 weeks` | |
-| `salary` | `180000` or `180K-200K` | jobwatch fills it from `pay.target` (and `pay.target_max`) when unset. |
+| `salary` | `180000` or `180K-200K` | jobwatch fills it from `pay.target` (and `pay.target_max`) when unset, never `pay.floor`. The extension offers it unticked. |
 | `gender`, `race`, `hispanic`, `veteran`, `disability` | `decline` | Voluntary self-identification. `decline` picks the form's "I don't wish to answer" choice. jobwatch defaults each to `decline`. |
 
 ## Endpoints

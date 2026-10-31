@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Job Application for Platform Engineer at Initech</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; }
+  .field, .select { margin: 14px 0; } label { display: block; font-weight: 600; }
+  input[type=text], input[type=email], input[type=tel], textarea, select { width: 100%; padding: 6px; }
+  .select__control { border: 1px solid #999; border-radius: 4px; padding: 6px; min-height: 36px; cursor: pointer; }
+  .select__input { border: 0; outline: 0; width: 60px; } .select__placeholder { color: #888; }
+  .select__menu { border: 1px solid #999; background: #fff; } .select__option { padding: 6px; cursor: pointer; }
+  .field-error { color: #b00020; } .confirmation { background: #e6f6ea; padding: 12px; }
+</style>
+</head>
+<body>
+<h1 class="section-header">Platform Engineer</h1>
+<div class="company-name">at Initech</div>
+<form id="application-form" action="#" novalidate>
+  <div class="field"><label for="first_name">First Name <span>*</span></label><input type="text" id="first_name" name="first_name" required data-controlled autocomplete="given-name"></div>
+  <div class="field"><label for="last_name">Last Name *</label><input type="text" id="last_name" name="last_name" required data-controlled autocomplete="family-name"></div>
+  <div class="field"><label for="email">Email *</label><input type="text" id="email" name="email" required data-controlled></div>
+  <div class="field"><label for="phone">Phone</label><input type="tel" id="phone" name="phone" data-controlled></div>
+  <div class="field"><label id="resume-label">Resume/CV *</label>
+    <div class="drop-zone"><input type="file" id="resume" name="resume" aria-labelledby="resume-label"><span class="file-name"></span></div></div>
+  <div class="field"><label for="question_1">LinkedIn Profile</label><input type="text" id="question_1" name="question_1" data-controlled></div>
+  <div class="field"><label for="question_2">Website</label><input type="text" id="question_2" name="question_2"></div>
+  <div class="field"><label for="question_7">What's the name you'd prefer us to use throughout the interview process?</label><input type="text" id="question_7" name="question_7"></div>
+  <div class="field"><label for="question_3">Preferred pronouns</label><input type="text" id="question_3" name="question_3"></div>
+  <div class="field"><label for="question_4">What is your notice period? *</label><input type="text" id="question_4" name="question_4" required></div>
+  <div class="field"><label for="question_5">Why do you want to work at Initech? *</label><textarea id="question_5" name="question_5" required rows="4"></textarea></div>
+  <div class="field"><label for="question_6">How did you hear about this job?</label><input type="text" id="question_6" name="question_6"></div>
+  <div class="select"><label for="auth">Are you legally authorized to work in the United States? *</label>
+    <div class="select__control"><div class="select__value-container"><div class="select__placeholder">Select...</div>
+      <input id="auth" class="select__input" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-options="Yes|No"></div></div>
+    <input class="select__required" aria-hidden="true" tabindex="-1" required value="" style="opacity:0;width:1px;height:1px;position:absolute"></div>
+  <div class="select"><label for="sponsor">Will you now or in the future require visa sponsorship? *</label>
+    <div class="select__control"><div class="select__value-container"><div class="select__placeholder">Select...</div>
+      <input id="sponsor" class="select__input" role="combobox" aria-expanded="false" aria-haspopup="listbox" data-options="Yes|No"></div></div>
+    <input class="select__required" tabindex="-1" required value="" style="opacity:0;width:1px;height:1px;position:absolute"></div>
+  <h3>Voluntary self-identification</h3>
+  <div class="field"><label for="gender">Gender</label><select id="gender" name="gender"><option value="">Select...</option><option>Male</option><option>Female</option><option>Decline To Self Identify</option></select></div>
+  <div class="field"><label for="hispanic">Are you Hispanic/Latino?</label><select id="hispanic" name="hispanic"><option value="">Select...</option><option>Yes</option><option>No</option><option>Decline To Self Identify</option></select></div>
+  <div class="field"><label for="race">Race</label><select id="race" name="race"><option value="">Select...</option><option>Asian</option><option>White</option><option>Decline To Self Identify</option></select></div>
+  <div class="field"><label for="veteran">Veteran Status</label><select id="veteran" name="veteran"><option value="">Select...</option><option>I am not a protected veteran</option><option>I don't wish to answer</option></select></div>
+  <div class="field"><label for="disability">Disability Status</label><select id="disability" name="disability"><option value="">Select...</option><option>Yes, I have a disability</option><option>No, I do not have a disability</option><option>I do not want to answer</option></select></div>
+  <button type="submit" class="btn">Submit Application</button>
+</form>
+<div class="confirmation" hidden><h2>Thank you for applying!</h2><p>We have received your application for Platform Engineer.</p></div>
+<script src="/fixture.js"></script>
+</body>
+</html>

@@ -147,7 +147,7 @@ def test_extension_calls_need_its_token(server, watchlist):
     assert request(server, "GET", "/ext/ping", headers={"X-Jobwatch-Extension": "wrong"})[0] == 403
     status, data = request(server, "GET", "/ext/ping", headers=ok)
     assert status == 200 and json.loads(data)["ok"]
-    # A web page calling the local server sends its own Origin: refused even with the token.
+    # A web page calling the local server names its own site in the request header: refused even with the token.
     assert request(server, "GET", "/ext/ping", headers={**ok, "Origin": "https://evil.example"})[0] == 403
     assert request(server, "GET", "/ext/ping", headers={**ok, "Origin": "chrome-extension://abc"})[0] == 200
     # The page's token isn't the extension's, and the other way round.

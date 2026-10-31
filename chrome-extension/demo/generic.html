@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Careers | Globex Corporation</title>
+<style>body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; } p, div.row { margin: 12px 0; }</style>
+</head>
+<body>
+<h1>Apply: Site Reliability Engineer</h1>
+<form action="#" novalidate>
+  <p><label for="fn">First name</label><br><input id="fn" name="fn" type="text"></p>
+  <p><label>Last name<br><input name="ln" type="text"></label></p>
+  <p><input type="email" aria-label="Email address" name="mail"></p>
+  <p><span id="ph-label">Mobile phone</span><br><input type="text" aria-labelledby="ph-label" name="ph"></p>
+  <p><input type="text" placeholder="LinkedIn profile URL" name="li"></p>
+  <div class="row">Your city<br><input type="text" name="c1" value="Austin"></div>
+  <p><label for="country">Country</label><br><select id="country" name="country"><option value="">Choose...</option><option>Canada</option><option>United States of America</option></select></p>
+  <p><label for="st">State</label><br><select id="st" name="st"><option value="">Choose...</option><option>Colorado</option><option>Texas</option></select></p>
+  <fieldset><legend>Do you need visa sponsorship to work for us?</legend>
+    <label><input type="radio" name="sp" value="1"> Yes</label> <label><input type="radio" name="sp" value="0"> No</label></fieldset>
+  <fieldset><legend>Are you willing to relocate?</legend>
+    <label><input type="radio" name="rl" value="1"> Yes, I am</label> <label><input type="radio" name="rl" value="0"> No, I am not</label></fieldset>
+  <p><label for="np">What notice period would you need?</label><br><input id="np" name="np" type="text"></p>
+  <p><label for="sal">Desired salary</label><br><input id="sal" name="sal" type="text"></p>
+  <p><label for="exp">Describe a time you handled a production incident.</label><br><textarea id="exp" name="exp" rows="3"></textarea></p>
+  <fieldset><legend>Which areas interest you?</legend>
+    <label><input type="checkbox" name="area" value="a"> Infrastructure</label> <label><input type="checkbox" name="area" value="b"> Security</label></fieldset>
+  <p><label><input type="checkbox" name="consent"> I agree to the privacy policy</label></p>
+  <button type="submit">Submit</button>
+</form>
+<script src="/fixture.js"></script>
+</body>
+</html>

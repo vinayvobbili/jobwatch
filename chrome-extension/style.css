@@ -1,0 +1,47 @@
+/* jobwatch's look (jobwatch/static/index.html): violet gradient, soft glows, light and dark following the system. */
+:root {
+  --bg: #f3f4fa; --glow-1: rgba(99, 102, 241, .16); --glow-2: rgba(236, 72, 153, .09);
+  --panel: rgba(255, 255, 255, .9); --text: #141a2e; --muted: #626a84; --line: #e2e5f0;
+  --accent: #5457f0; --accent-2: #a14cf2; --soft: rgba(84, 87, 240, .1);
+  --good: #0c9468; --warn: #c26d00; --bad: #d83450; --chip: #eef0f8;
+  --grad: linear-gradient(135deg, #5a5cf2, #a24af0);
+  color-scheme: light;
+}
+/* dark: the system's, unless the options page's Theme says light; or the Theme says dark */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a0d16; --glow-1: rgba(99, 102, 241, .2); --glow-2: rgba(192, 80, 240, .1);
+    --panel: rgba(21, 25, 38, .88); --text: #e9ebf5; --muted: #8f97b2; --line: #252a3b;
+    --accent: #8d8fff; --accent-2: #c77dff; --soft: rgba(141, 143, 255, .14);
+    --good: #3ddc97; --warn: #fbbf24; --bad: #ff7a93; --chip: #1e2333;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a0d16; --glow-1: rgba(99, 102, 241, .2); --glow-2: rgba(192, 80, 240, .1);
+  --panel: rgba(21, 25, 38, .88); --text: #e9ebf5; --muted: #8f97b2; --line: #252a3b;
+  --accent: #8d8fff; --accent-2: #c77dff; --soft: rgba(141, 143, 255, .14);
+  --good: #3ddc97; --warn: #fbbf24; --bad: #ff7a93; --chip: #1e2333;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: radial-gradient(700px 360px at 8% -12%, var(--glow-1), transparent 62%),
+    radial-gradient(600px 340px at 102% -6%, var(--glow-2), transparent 60%), var(--bg);
+  background-attachment: fixed; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); }
+.brand {
+  font-weight: 800; letter-spacing: -.02em; background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+button { font: inherit; cursor: pointer; }
+.go {
+  background: var(--grad); color: #fff; border: 0; border-radius: 10px; padding: 8px 16px; font-weight: 700;
+  box-shadow: 0 8px 18px -10px rgba(110, 70, 240, .8); transition: transform .15s, filter .15s;
+}
+.go:hover { transform: translateY(-1px); filter: brightness(1.06); }
+.ghost { background: var(--chip); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 7px 12px; }
+.ghost:hover { border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

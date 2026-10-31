@@ -129,6 +129,8 @@ applicant:
   # salary: left out, your pay target is used
 ```
 
+A salary question is offered with that number but never ticked for you: tick it when you want the form to say it.
+
 ## Job-alert emails
 
 The job alerts LinkedIn, Built In, Indeed and other job sites email you can go straight in. Save them from

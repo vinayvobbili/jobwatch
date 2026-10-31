@@ -1545,7 +1545,8 @@ def make_handler(app: App, token: str, port_ref: list[int]):
 
         def _extension(self, method: str, url):
             """The browser extension's calls (see chrome-extension/API.md): its own token, kept across restarts, and
-            never a web page's request (a page sends its Origin; the extension's background sends none or its own)."""
+            never a web page's request (a page names its own site in the request; the extension's background names
+            none, or the extension)."""
             origin = self.headers.get("Origin", "")
             if origin and not origin.startswith("chrome-extension://"):
                 return self._json(HTTPStatus.FORBIDDEN, {"error": "only the jobwatch extension can call this"})

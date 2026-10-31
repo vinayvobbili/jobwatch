@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>jobwatch</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      body { width: 300px; padding: 16px; }
+      .brand { font-size: 18px; margin-bottom: 4px; }
+      #state { margin: 4px 0 14px; color: var(--muted); font-size: 13px; }
+      #state.good { color: var(--good); }
+      #state.warn { color: var(--warn); }
+      #fill { width: 100%; padding: 11px; font-size: 15px; }
+      #err { margin-top: 10px; color: var(--bad); font-size: 13px; }
+      a { display: inline-block; margin-top: 14px; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div class="brand">jobwatch</div>
+    <div id="state">Checking...</div>
+    <button id="fill" class="go">Fill this application</button>
+    <div id="err"></div>
+    <a id="options" href="#">Your details and pairing</a>
+    <script src="popup.js"></script>
+  </body>
+</html>

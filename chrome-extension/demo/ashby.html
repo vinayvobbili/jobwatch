@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Platform Engineer @ Initech</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; }
+  .ashby-application-form-field-entry { margin: 14px 0; }
+  .ashby-application-form-question-title { font-weight: 600; display: block; }
+  ._input_x, input[type=text], input[type=email], textarea, select { width: 100%; padding: 6px; }
+  ._yesno_ button { padding: 6px 18px; margin-right: 6px; } ._yesno_ button._active_ { background: #5a5cf2; color: #fff; }
+  .select__control { border: 1px solid #999; border-radius: 4px; padding: 6px; min-height: 36px; }
+  .select__input { border: 0; outline: 0; } .select__menu { border: 1px solid #999; } .select__option { padding: 6px; }
+  .field-error { color: #b00020; } .confirmation { background: #e6f6ea; padding: 12px; }
+</style>
+</head>
+<body>
+<h1>Platform Engineer</h1>
+<form action="#" novalidate>
+  <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="_systemfield_name">Name</label>
+    <input type="text" id="_systemfield_name" name="_systemfield_name" required data-controlled></div>
+  <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="_systemfield_email">Email</label>
+    <input type="email" id="_systemfield_email" name="_systemfield_email" required data-controlled></div>
+  <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="_systemfield_resume">Resume</label>
+    <div class="drop-zone"><input type="file" id="_systemfield_resume" name="_systemfield_resume"><span class="file-name">Drop a file here</span></div></div>
+  <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="loc">Where are you currently located?</label>
+    <div class="select__control"><div class="select__value-container"><div class="select__placeholder">Start typing...</div>
+      <input id="loc" class="select__input" role="combobox" aria-expanded="false" data-options="Boulder, CO|Denver, CO|Austin, TX"></div></div></div>
+  <div class="ashby-application-form-field-entry"><div class="ashby-application-form-question-title">Are you legally authorized to work in the United States?</div>
+    <div class="_yesno_" data-name="auth"><button type="button">Yes</button><button type="button">No</button></div></div>
+  <div class="ashby-application-form-field-entry"><div class="ashby-application-form-question-title">Will you now or in the future require sponsorship?</div>
+    <div class="_yesno_" data-name="sponsor"><button type="button">Yes</button><button type="button">No</button></div></div>
+  <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="notice">How much notice do you need before starting?</label>
+    <input type="text" id="notice" name="notice"></div>
+  <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="gender">Gender</label>
+    <select id="gender" name="gender"><option value="">Select...</option><option>Man</option><option>Woman</option><option>Prefer not to say</option></select></div>
+  <div class="ashby-application-form-field-entry"><label class="ashby-application-form-question-title" for="why">Why Initech?</label>
+    <textarea id="why" name="why" rows="3"></textarea></div>
+  <button type="submit" class="ashby-application-form-submit-button">Submit Application</button>
+</form>
+<div class="confirmation" hidden>Your application has been successfully submitted. Thank you!</div>
+<script src="/fixture.js"></script>
+</body>
+</html>
