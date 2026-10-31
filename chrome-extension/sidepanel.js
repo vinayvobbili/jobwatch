@@ -176,7 +176,10 @@
   async function draft(item, btn) {
     btn.disabled = true;
     btn.textContent = 'Drafting...';
-    const r = await send({ type: 'draft', tabId, question: item.question });
+    // The form's other written answers go along, so the draft doesn't retell a story one of them already tells.
+    const others = state.items.filter((it) => it !== item && !it.key && (it.kind === 'text' || it.kind === 'textarea') && (it.value || '').trim())
+      .map((it) => ({ question: it.question, answer: it.value }));
+    const r = await send({ type: 'draft', tabId, question: item.question, others });
     if (!r.ok) {
       btn.disabled = false;
       btn.textContent = 'Draft with jobwatch';

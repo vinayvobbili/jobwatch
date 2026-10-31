@@ -658,7 +658,8 @@ class App:
 
     def ext_draft(self, body) -> dict:
         return self._with_store(lambda cfg, store: autofill.draft(
-            cfg, store, str(body.get("url") or ""), body.get("question") or "", body.get("words") or autofill.WORDS))
+            cfg, store, str(body.get("url") or ""), body.get("question") or "", body.get("words") or autofill.WORDS,
+            body.get("others")))
 
     def ext_submitted(self, body) -> dict:
         def run(cfg, store):

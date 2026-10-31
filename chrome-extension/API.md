@@ -74,11 +74,13 @@ The resume file `context` named, as bytes, with its `Content-Type` and a `Conten
 ### `POST /ext/draft`
 
 ```json
-{"url": "<the page's address>", "question": "Why do you want to work here?", "words": 150}
+{"url": "<the page's address>", "question": "Why do you want to work here?", "words": 150,
+ "others": [{"question": "Tell us about a project you led.", "answer": "…"}]}
 ```
 
 → `{"answer": "…", "model": "claude-sonnet-5-5"}`. Drafted by the watchlist's chat model from the resume, the
-stories file and the posting (when the job is known). `words` is a rough length (default 150). A model that
+stories file and the posting (when the job is known). `words` is a rough length (default 150). `others`, optional,
+are the form's other written answers so far (drafted, past or typed): the draft won't retell their stories. A model that
 isn't set up answers `400 {"error": "..."}` saying what to set up. Drafts are for the person to review: the
 extension never ticks one by default.
 

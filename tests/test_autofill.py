@@ -127,8 +127,27 @@ def test_draft(app, monkeypatch):
     assert got["answer"] == "I build platforms that teams trust."
     assert "about 80 words" in seen["system"] and "Staff Data Engineer" in seen["system"]
     assert "Kubernetes" in seen["system"] and seen["messages"][0]["content"].endswith("Why do you want this role?")
+    assert "form's other answers so far" not in seen["system"]
     with pytest.raises(ValueError, match="send the question"):
         app.ext_draft({"url": FORM, "question": " "})
+
+
+def test_a_draft_sees_the_forms_other_answers(app, monkeypatch):
+    """Two questions on one form shouldn't get the same story: the draft is told what the others already say."""
+    seen = {}
+
+    def reply(backend, system, messages, model="", max_tokens=0):
+        seen["system"] = system
+        yield "Another story."
+
+    monkeypatch.setattr(chat, "check", lambda *a: None)
+    monkeypatch.setattr(chat, "reply", reply)
+    others = [{"question": "What would you do differently?", "answer": "The night the backup job ran twice..."},
+              {"question": "Empty", "answer": "  "}, "not an answer"]
+    app.ext_draft({"url": FORM, "question": "What did you fix unasked?", "others": others})
+    assert "don't retell a story" in seen["system"]
+    assert "Q: What would you do differently?\nA: The night the backup job ran twice..." in seen["system"]
+    assert "Empty" not in seen["system"]
 
 
 def test_draft_says_what_to_set_up(app, monkeypatch):

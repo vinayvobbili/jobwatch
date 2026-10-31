@@ -37,7 +37,7 @@ async function handle(msg, tabId, sender) {
     case 'test': return { ...(await api('/ext/ping', { settings: msg.settings })) };
     case 'analyze': return analyze(tabId);
     case 'fill': return fill(tabId, msg.items);
-    case 'draft': return draft(tabId, msg.question, msg.words);
+    case 'draft': return draft(tabId, msg.question, msg.words, msg.others);
     case 'captured': return captured(tabId, msg, sender);
     case 'looksSubmitted': return record(tabId);
     default: throw new Error(`unknown message ${msg.type}`);
@@ -136,8 +136,8 @@ async function fetchResume(url, tabId) {
   return { name, type: (ctx.resume && ctx.resume.type) || got.type, b64: toBase64(got.bytes) };
 }
 
-async function draft(tabId, question, words) {
-  const r = await api('/ext/draft', { method: 'POST', body: { url: await tabUrl(tabId), question, words: words || 150 } });
+async function draft(tabId, question, words, others) {
+  const r = await api('/ext/draft', { method: 'POST', body: { url: await tabUrl(tabId), question, words: words || 150, others: others || [] } });
   return { answer: r.answer, model: r.model };
 }
 
