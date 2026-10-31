@@ -5,7 +5,7 @@
 # scripts/release.py keeps both versions on the release.
 [project]
 name = "jobwatch-plugin"
-version = "0.7.0"
+version = "0.8.0"
 description = "jobwatch's MCP server, as the Claude plugin runs it"
 requires-python = ">=3.10"
-dependencies = ["jobwatch==0.7.0"]
+dependencies = ["jobwatch==0.8.0"]
