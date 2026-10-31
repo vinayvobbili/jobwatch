@@ -839,9 +839,16 @@ class _Resolver:
         self.page = page
         self.robots = Robots(page)
         self.found_boards: dict[str, list[tuple[str, str, str]]] = {}
-        # The boards already found for companies that aren't watched (suggest.py), whose slug the name may not
-        # give away ("doordashusa"): by company id
-        self.known = {u["company"]: u["entry"] for u in store.unwatched(dismissed=True) if u["entry"]} if store else {}
+        # The boards already known for companies that aren't watched, whose slug the name may not give away
+        # ("doordashusa"), by company id: first the board one of the company's jobs added by hand or from an alert
+        # links to (a posting's own link is the surest), then the one suggest.py found for it
+        self.known: dict[str, str] = {}
+        for job in store.manual_jobs() if store else []:
+            for entry in suggest.posted_on(job):
+                self.known.setdefault(linkedin._bare(job.display_company), entry)
+        for u in store.unwatched(dismissed=True) if store else []:
+            if u["entry"]:
+                self.known.setdefault(u["company"], u["entry"])
 
     def company_boards(self, company: str) -> list[tuple[str, str, str]]:
         """The company's boards: watched ones under its name, else the one already found for it, else the ones

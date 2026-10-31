@@ -11,7 +11,7 @@ import tempfile
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -549,7 +549,8 @@ def cmd_profile(args):
 
 def cmd_alerts(args, cfg, store):
     if args.backfill:
-        r = alerts.backfill(cfg, store, dry_run=args.dry_run, limit=args.limit)
+        r = alerts.backfill(cfg, store, dry_run=args.dry_run, limit=args.limit,
+                            **({"every": timedelta(0)} if args.again else {}))
         print(alerts.backfill_summary(r))
         return
     if not (args.emails or args.imap):
@@ -1090,6 +1091,8 @@ def build_parser() -> argparse.ArgumentParser:
                    "(every check does this too, for a few jobs a day)")
     p.add_argument("--limit", type=int, default=alerts.BACKFILL_CAP, metavar="N",
                    help="with --backfill: the most jobs to look for (default %(default)s)")
+    p.add_argument("--again", action="store_true", help="with --backfill: look for jobs tried in the past day too "
+                   "(after a fix, or once a board's been added)")
     p.add_argument("--dry-run", action="store_true", help="show what would be tracked, and record nothing")
     p.add_argument("--no-follow", action="store_true", help="read no links: track each job as the email has it")
     p.add_argument("--all", action="store_true", help="list every new job, also the ones your filters leave out")

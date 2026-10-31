@@ -374,6 +374,11 @@ class Store:
         rows = self.db.execute("SELECT key, data FROM jobs WHERE source=? AND company=?", (source, company))
         return {r["key"]: Job.from_dict(json.loads(r["data"])) for r in rows}
 
+    def manual_jobs(self) -> list[Job]:
+        """Every job added by hand or from an alert email (source MANUAL), at any status, open or closed."""
+        rows = self.db.execute("SELECT data FROM jobs WHERE source=?", (MANUAL,))
+        return [Job.from_dict(json.loads(r["data"])) for r in rows]
+
     def open_board_jobs(self, source: str, company: str) -> list[tuple[Job, str]]:
         """One board's jobs still open, newest first, each with when it was first seen."""
         rows = self.db.execute("SELECT data, first_seen FROM jobs WHERE source=? AND company=? AND closed IS NULL "

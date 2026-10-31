@@ -766,6 +766,17 @@ def test_the_board_already_found_for_a_company_is_used(web, watchlist):
     assert found.key == "greenhouse:umbrellacorp:7" and found.company_name == "Umbrella Corp"
 
 
+def test_the_board_another_of_the_companys_jobs_links_to_is_used(web, watchlist):
+    """No board was found for the company by name, but a job there added by hand links to its posting on one."""
+    umbrella_board(web, posting_of(7, "Platform Engineer"))
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    store.note_unwatched("umbrella", "Umbrella", "x", "", None)  # looked up by name: nothing found
+    store.add("Umbrella", "Sales Lead", url="https://job-boards.greenhouse.io/umbrellacorp/jobs/9")
+    found = alerts._Resolver(cfg.boards, None, store).on_board("Platform Engineer", "Umbrella", "")
+    assert found.key == "greenhouse:umbrellacorp:7"
+
+
 def test_backfill_fills_in_a_job_saved_with_no_text(web, watchlist):
     umbrella_board(web, posting_of(7, "Platform Engineer"), posting_of(8, "Sales Lead"))
     cfg = config.load(watchlist)
@@ -830,5 +841,10 @@ def test_alerts_backfill_command(web, watchlist, capsys):
     store.note_unwatched("umbrella", "Umbrella", key, "greenhouse:umbrellacorp", "posting")
     cli.main(["--config", str(watchlist), "alerts", "--backfill", "--dry-run"])
     assert "1 would be filled in" in capsys.readouterr().out and store.find(key)[0].description == ""
+    missing = emailed(store, "Initech", "Quality Analyst")
     cli.main(["--config", str(watchlist), "alerts", "--backfill"])
     assert "1 filled in" in capsys.readouterr().out and store.find(key)[0].description
+    cli.main(["--config", str(watchlist), "alerts", "--backfill"])  # the one not found waits a day...
+    assert "Looked for 0 job(s)" in capsys.readouterr().out
+    cli.main(["--config", str(watchlist), "alerts", "--backfill", "--again"])  # ...unless asked again
+    assert "Looked for 1 job(s)" in capsys.readouterr().out and not store.find(missing)[0].description
