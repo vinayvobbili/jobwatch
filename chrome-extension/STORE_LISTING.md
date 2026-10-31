@@ -97,8 +97,8 @@ except the active tab after the user clicks its icon.
 **Remote code:** No, I am not using remote code. All JavaScript ships in the
 package. jobwatch returns JSON data and a resume file only.
 
-**Data usage.** Tick **Personally identifiable information** and **Website
-content**. Leave every other type unticked.
+**Data usage.** Tick **Personally identifiable information**, **Health
+information** and **Website content**. Leave every other type unticked.
 
 - **Personally identifiable information:** ticked. The extension handles the
   user's name, email address, phone number, address and the other applicant
@@ -112,11 +112,12 @@ content**. Leave every other type unticked.
   current field values, the page address, and the company and job title shown
   on the page, and sends them to the local jobwatch to find earlier answers,
   draft an answer and record the application.
+- **Health information:** ticked. The voluntary self-identification answers
+  include disability status, chosen by the user in jobwatch (default "decline to
+  answer") and written into the form when the user ticks that row. They are
+  never sent back to jobwatch or anywhere else, but the item handles them, so
+  it's declared.
 - Not ticked:
-  - health information: the voluntary self-identification answers (including
-    disability status) are chosen by the user in jobwatch (default "decline") and
-    only written into the form; they are never sent back to jobwatch or anywhere
-    else;
   - financial and payment information;
   - authentication information: the pairing token is the user's own credential
     for their own jobwatch, stored locally, and never collected by the developer;
