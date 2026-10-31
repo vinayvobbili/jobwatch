@@ -192,12 +192,17 @@ def stats_line(stats: dict) -> str:
     return " · ".join(p for p in parts if p)
 
 
+THINKING_ROOM = 16000  # current Claude models think before answering, and that counts against max_tokens
+
+
 def _claude(system: str, messages: list[dict], model: str, max_tokens: int) -> Iterator[str | dict]:
     import anthropic
 
     # Each turn resends the instructions, the resume, the jobs and the conversation so far: automatic prompt
     # caching reads all of that back from the cache when the next question comes within 5 minutes.
-    with anthropic.Anthropic().messages.stream(model=model, max_tokens=max_tokens, system=system,
+    # max_tokens is the reply's length; the cap sent leaves room for the thinking on top, or a short reply
+    # (a 150-word form answer) comes back cut off or empty.
+    with anthropic.Anthropic().messages.stream(model=model, max_tokens=max_tokens + THINKING_ROOM, system=system,
                                                messages=messages, cache_control={"type": "ephemeral"}) as stream:
         yield from stream.text_stream
         usage = stream.get_final_message().usage

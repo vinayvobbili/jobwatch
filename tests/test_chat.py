@@ -78,6 +78,7 @@ def test_claude_chat_caches_the_conversation_and_counts_cached_input(monkeypatch
     monkeypatch.setitem(sys.modules, "anthropic", fake)
     out = list(chat._claude("sys", [{"role": "user", "content": "q"}], "claude-test", 100))
     assert sent["cache_control"] == {"type": "ephemeral"}
+    assert sent["max_tokens"] == 100 + chat.THINKING_ROOM  # thinking counts too: a short cap left no answer
     assert out == ["Hi", {"input_tokens": 920, "output_tokens": 4}]  # what was read from the cache is input too
 
 
