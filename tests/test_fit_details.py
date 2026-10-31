@@ -129,6 +129,20 @@ def test_min_fit_round_trips_through_the_watchlist(watchlist):
     assert "min_fit: 75" in watchlist.read_text()
 
 
+def test_a_company_hidden_from_today_leaves_the_digest_and_is_counted(web, watchlist):
+    app = App(watchlist)
+    app.post_fetch({})
+    jobs = app.get_digest({})["jobs"]
+    name = jobs[0]["company"]  # as Today's Companies list shows it
+    app.post_settings({"filters": {**app.get_settings({})["filters"], "exclude_companies": [name.upper()]}})
+    assert config.load(watchlist).filters.exclude_companies == [name.upper()]
+    left = app.get_digest({})["jobs"]
+    assert left and not any(j["company"] == name for j in left)
+    hidden = App(watchlist).get_hidden({"kind": ["company"]})
+    assert hidden["by"]["company"] == sum(j["company"] == name for j in jobs)
+    assert hidden["jobs"][0]["why"] == f"company {name.upper()!r}"
+
+
 def test_digest_and_hidden_count_jobs_below_min_fit(web, watchlist):
     cli.main(["-c", str(watchlist), "fetch"])
     cfg, rid = _resume(watchlist)

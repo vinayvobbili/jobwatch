@@ -682,6 +682,12 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .facet:hover { background: var(--chip); }
 .facet.on { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
 .facet .c { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.facet .end { display: inline-flex; align-items: center; gap: 4px; }
+.facet .hide { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; color: var(--muted);
+  opacity: 0; transform: scale(.85); transition: opacity .15s, transform .15s, background .15s, color .15s; }
+.facet:hover .hide, .facet:focus-visible .hide, .facet .hide:focus-visible { opacity: 1; transform: none; }
+.facet .hide:hover { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+@media (hover: none) { .facet .hide { opacity: .55; transform: none; } }
 .facet.more { color: var(--accent); font-size: 13px; justify-content: flex-start; }
 .facet .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: var(--sc); margin-right: 8px; }
 .to-watch { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
@@ -2430,14 +2436,21 @@ function segmented(options, value, onpick) {
   draw(value);
   return el;
 }
-function facetList(counts, active, onpick, most = 12) {
+// `onhide`, when given: a ✕ on each row (shown on hover) that leaves that name out, e.g. a company from Today.
+function facetList(counts, active, onpick, most = 12, onhide = null) {
   const el = h("div", {});
   let open = false;
+  const hideBtn = name => {
+    const go = e => { e.stopPropagation(); e.preventDefault(); onhide(name); };
+    return h("span", { class: "hide", role: "button", tabindex: 0, title: `Hide ${name}'s jobs from Today`,
+      "aria-label": `Hide ${name}`, onclick: go, onkeydown: e => (e.key === "Enter" || e.key === " ") && go(e) },
+      icon("x", 12));
+  };
   const draw = () => {
     const rows = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     fill(el, (open ? rows : rows.slice(0, most)).map(([name, n]) =>
       h("button", { class: "facet" + (name === active() ? " on" : ""), onclick: () => { onpick(name === active() ? "" : name); draw(); } },
-        h("span", {}, name), h("span", { class: "c" }, n))),
+        h("span", {}, name), h("span", { class: "end" }, h("span", { class: "c" }, n), onhide ? hideBtn(name) : null))),
       rows.length > most ? h("button", { class: "facet more", onclick: () => { open = !open; draw(); } },
         open ? "Show fewer" : `Show all ${rows.length}`) : null);
   };
@@ -2512,6 +2525,7 @@ function filterInputs(f) {
   const inp = {
     titles: area(f.titles, "engineer\ndeveloper"), exclude: area(f.exclude_titles, "intern\nmanager"),
     excludeText: area(f.exclude_text, "red team\nGPU kernels?"),
+    excludeCompanies: area(f.exclude_companies, "Initech\nGlobex"),
     locations: area(f.locations, "remote\nNew York"),
     country: h("select", {}, h("option", { value: "US" }, "Remote jobs open in the US"),
       h("option", { value: "any" }, "Remote jobs anywhere")),
@@ -2535,7 +2549,7 @@ function filterInputs(f) {
 }
 function filterValues(inp) {
   return { titles: unlines(inp.titles.value), exclude_titles: unlines(inp.exclude.value),
-    exclude_text: unlines(inp.excludeText.value),
+    exclude_text: unlines(inp.excludeText.value), exclude_companies: unlines(inp.excludeCompanies.value),
     locations: placeLines(inp.locations.value), remote_country: inp.country.value,
     home_state: inp.home.value.trim() || null,
     min_salary: inp.minPay.value ? Number(inp.minPay.value) : null, require_salary: inp.requirePay.checked || null,
@@ -2568,6 +2582,9 @@ const FILTER_GROUPS = {
     filterLabel("Job titles", "one per line; a title must contain one"), inp.titles,
     filterLabel("Leave out titles with", "one per line"), inp.exclude,
     filterLabel("Leave out postings that mention", "one per line; matched in the whole posting"), inp.excludeText] },
+  companies: { keys: ["exclude_companies"], fields: inp => [
+    filterLabel("Leave out companies", "one per line, by name; delete a line to see its jobs again"),
+    inp.excludeCompanies] },
   places: { keys: ["locations", "remote_country", "home_state"], fields: inp => [
     filterLabel("Places", "“remote”, or a city or state, one per line"), inp.locations,
     h("div", { style: "margin-top:6px" }, inp.country), homeField(inp)] },
@@ -2590,6 +2607,7 @@ function some(list, most = 3) {
 
 // Why a job was hidden, as rejection() in filters.py names it, and which part of the bar changes that filter.
 const HIDDEN = {
+  company: { label: "company", part: "companies", why: "From a company you leave out." },
   title: { label: "title", part: "titles", why: "Their titles contain none of your job titles." },
   excluded: { label: "excluded", part: "exclude",
     why: "Their titles or postings contain something you leave out." },
@@ -2621,6 +2639,8 @@ function filterBar(hidden) {
       ? ["exclude", "Not", some(readable(f.exclude_titles), 4), f.exclude_titles.join("\n")] : null,
     (f.exclude_text || []).length
       ? ["exclude_text", "Not in text", some(readable(f.exclude_text), 3), f.exclude_text.join("\n")] : null,
+    (f.exclude_companies || []).length
+      ? ["companies", "Not from", some(f.exclude_companies, 3), f.exclude_companies.join("\n")] : null,
     ["places", "Places", places.length ? some(places, 4) : "anywhere", places.join("\n")],
     ["pay", "Pay", pay],
     ["age", "Posted", f.max_age_days ? `within ${f.max_age_days} days` : "any time"],
@@ -2778,6 +2798,23 @@ function quickNarrow(j, v) {
 }
 let todayJobs = [], drawToday = () => {};
 
+// The ✕ beside a company in Today's Companies list: leaves its jobs out from now on (filters.exclude_companies),
+// with Undo. Filters › Not from, or Settings, brings one back.
+async function hideCompany(name) {
+  const save = async list => {
+    await api("/api/settings", { filters: mergeFilters(settings.filters || {}, { exclude_companies: list }) });
+    settings = await api("/api/settings");
+    if (todayView.company === name) todayView.company = "";
+    await render();
+  };
+  const out = (settings.filters || {}).exclude_companies || [];
+  try {
+    await save([...out.filter(n => n !== name), name]);
+    toast(`🙈 Hid ${name}: its jobs stay off Today. Filters › Not from brings it back.`,
+      () => save(((settings.filters || {}).exclude_companies || []).filter(n => n !== name)));
+  } catch (e) { toast(`Couldn't hide ${name}: ${e.message}`); }
+}
+
 async function renderToday() {
   if (!settings.companies.length) return renderWelcome();
   // What the filters hide is a hint, not the page: Today still opens if it can't be counted.
@@ -2802,7 +2839,7 @@ async function renderToday() {
     h("button", { class: "chip toggle" + (v.kws.has(k) ? " on" : ""), title: `${n} jobs`,
       onclick: () => { v.kws.has(k) ? v.kws.delete(k) : v.kws.add(k); drawKws(); drawToday(); } }, k)));
   drawKws();
-  const companies = facetList(byCompany, () => v.company, name => { v.company = name; drawToday(); });
+  const companies = facetList(byCompany, () => v.company, name => { v.company = name; drawToday(); }, 12, hideCompany);
   const narrow = h("div", {});
   const drawNarrow = () => fill(narrow,
     h("div", { class: "hint" }, "Where"),
@@ -4729,6 +4766,8 @@ function renderSettings() {
       field("Leave out titles with", exclude, "One per line."),
       field("Leave out postings that mention", inp.excludeText,
         "One per line, matched in the whole posting; jobs listed without their text still show."),
+      field("Leave out companies", inp.excludeCompanies,
+        "One per line, by name. On Today, the ✕ beside a company in the Companies list adds it here."),
       field("Places", h("div", { class: "stack" }, locations, country), "“remote”, or a city or state, one per line."),
       field("Leave out departments", departments, "One per line, for boards that list a department."),
       field("Your state", inp.home, "Remote jobs open only in other states are left out."),

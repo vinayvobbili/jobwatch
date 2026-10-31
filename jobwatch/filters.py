@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from .dupes import companies, company_key
 from .models import Job
 from .text import (
     bare_remote,
@@ -27,6 +28,9 @@ class Filters:
     # want ("penetration test\w*|red team"). Only text that's there can exclude: a job listed but not read in
     # full has an empty description, so it passes (its title still counts).
     exclude_text: list[str] = field(default_factory=list)
+    # Companies whose jobs you never want ("Initech"), by name: case, punctuation and "Inc." aside. Not
+    # patterns: Today's Companies list hides one in a click.
+    exclude_companies: list[str] = field(default_factory=list)
     locations: list[str] = field(default_factory=list)       # "remote", or text to find in a location (none: anywhere)
     remote_country: str = "US"                               # where a remote job must be open: "US" or "any"
     # The US state the person lives in ("CO" or "Colorado"): a remote job open only in some states is left
@@ -139,15 +143,25 @@ def search_terms(f: Filters) -> list[str]:
 
 
 # Which filter a job failed, in the order they're checked: what rejection() names first.
-KINDS = ("title", "excluded", "department", "place", "pay", "age", "fit")
+KINDS = ("company", "title", "excluded", "department", "place", "pay", "age", "fit")
+
+
+def excluded_company(job: Job, names: list[str]) -> str | None:
+    """Which of the names left out the job's company goes by (dupes.companies), as written; None if none."""
+    if not names:
+        return None
+    mine = companies(job)
+    return next((n for n in names if company_key(str(n)) in mine), None)
 
 
 def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] | None:
     """(which filter, why) for a job that fails the filters, or None if it passes. The filter is one of KINDS:
-    ("title", "title"), ("excluded", "title matches 'manager'"),
+    ("company", "company 'Initech'"), ("title", "title"), ("excluded", "title matches 'manager'"),
     ("excluded", "text matches 'red team'"), ("place", "location"), ("place", "remote only in CA, NV"),
     ("pay", "pay $120K–$160K"), ("age", "posted 45 days ago"),
     ("fit", "fit 55/100"). `fit` is the job's stored fit score; a job without one passes min_fit."""
+    if name := excluded_company(job, f.exclude_companies):
+        return "company", f"company {name!r}"
     if f.titles and not _any_text(f.titles, job.title):
         return "title", "title"
     if p := _any_text(f.exclude_titles, job.title):

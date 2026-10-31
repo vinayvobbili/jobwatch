@@ -972,6 +972,7 @@ filters:
   titles: ["engineer", "developer"]            # regexes; the title must match one
   exclude_titles: ["intern", "manager"]
   # exclude_text: ["red team|offensive security"]  # regexes on the posting's text; a match rejects the job
+  # exclude_companies: ["Initech"]             # companies whose jobs you never want (Today hides one in a click)
   locations: ["remote", "New York"]            # "remote" = remote in remote_country; other text is matched
   remote_country: US                           # or "any"
   # home_state: NY                             # leave out remote jobs open only in other states
