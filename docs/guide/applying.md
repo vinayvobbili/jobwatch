@@ -100,8 +100,9 @@ website", job-alert emails) link through to the company's own board: that link i
 
 ## Filling application forms
 
-The jobwatch extension for Chrome fills an application form for you to review. Paired with `jobwatch ui`, it
-brings what jobwatch knows to the form:
+The jobwatch extension for Chrome fills an application form for you to review. It works alongside the autofill
+you already use: let Simplify, Chrome's autofill or your password manager fill your name and contact details,
+then the extension fills the rest from what `jobwatch ui` knows:
 
 - **Answers you gave before.** A question asked on an earlier form ("Notice period?", "Why are you leaving?")
   gets the answer you sent then, with the question it came from beside it.
@@ -111,11 +112,12 @@ brings what jobwatch knows to the form:
 - **The application recorded.** When you submit, the job is marked applied and the answers you sent are kept
   with it, ready for interview prep.
 
-It never submits for you, and it talks only to jobwatch on your computer.
+It fills only fields that are still empty, never submits for you, and talks only to jobwatch on your computer.
 
-To set it up, fill in **Settings > Applying > Your details** (name, contact, links, work authorization; the
-voluntary self-identification questions are "decline" unless you say otherwise). Then copy the token from
-**Browser extension** on the same tab into the extension's options. The same details live in the watchlist:
+To set it up, copy the token from **Settings > Applying > Browser extension** into the extension's options.
+**Your details** on the same tab (name, contact, links, work authorization; the voluntary self-identification
+questions are "decline" unless you say otherwise) fill any of those fields your other autofill left empty. The
+same details live in the watchlist:
 
 ```yaml
 applicant:
@@ -126,8 +128,6 @@ applicant:
   needs_sponsorship: no
   # salary: left out, your pay target is used
 ```
-
-Without jobwatch running, the extension still fills your details from its own options.
 
 ## Job-alert emails
 

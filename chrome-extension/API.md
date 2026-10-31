@@ -1,9 +1,10 @@
 # The extension's API (jobwatch side)
 
-The browser extension fills job application forms. On its own it fills the basics from details kept in the
-browser. Paired with `jobwatch ui` on the same computer, it also gets the job the page is for, the resume to
-attach, answers given on earlier applications, drafted answers to new questions, and it records the application
-when the person submits it.
+The browser extension fills job application forms alongside the autofill people already use (Simplify, Chrome's
+autofill, a password manager), which fills the basics. Paired with `jobwatch ui` on the same computer, it fills
+what those can't: answers given on earlier applications, drafted answers to new questions, the resume kept for
+the job, and any basic field still empty; and it records the application when the person submits it. It needs
+jobwatch: without it, it does nothing.
 
 Everything stays on the person's computer: the extension talks to `http://127.0.0.1:<port>` (8765 unless
 `jobwatch ui --port` says otherwise) and to nothing else.
@@ -20,8 +21,8 @@ wrong), except `/ext/resume`, which is the file itself.
 
 ## Applicant details
 
-One flat object, the same shape in the extension's own storage and in jobwatch (the watchlist's `applicant:`
-section). Every field is text; an empty string means "not set, leave the form's field alone".
+One flat object, as the watchlist's `applicant:` section keeps it. Every field is text; an empty string means
+"not set, leave the form's field alone". The extension fills these only into fields that are still empty.
 
 | Field | Example | Notes |
 |---|---|---|
