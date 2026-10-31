@@ -129,8 +129,9 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
 def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
     """The card's bottom line, in plain words: {"call": apply | stretch | hold | skip, "text"}. Skip for a hard
     reason (applied already, under the pay floor, most must-haves missing, not a close match); hold off when
-    other roles at the company are already queued or in progress; apply, or apply as a stretch when must-haves
-    are missing or the fit is only fair. None while the job has no fit score and nothing else to go on."""
+    other roles at the company are already queued or in progress; go ahead (queue it from Today, apply once
+    queued), or go ahead as a stretch when must-haves are missing or the fit is only fair. None while the job has
+    no fit score and nothing else to go on."""
     fit, company = entry.fit, entry.job.display_company
     why = dict(zip(said.codes, said.reasons, strict=False)) if said else {}  # older advice may carry no codes
     hard = [c for c in ("applied_before", "under_floor", "must_haves") if c in why and said.action == "skip"]
@@ -139,20 +140,24 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
     score = round(fit["score"]) if fit and fit.get("score") is not None else None
     if score is not None and score < CLOSE:
         return {"call": "skip", "text": f"Skip it: not a close match ({score}/100)."}
+    # The next step: queue it from Today, apply once it's queued.
+    go = "Apply" if (entry.record or {}).get("status") == "queued" else "Queue it"
+    # Holding off isn't skipping: the job stays, and this turns once one of the others there is settled.
+    later = f"leave it, don't skip: this turns to {go.split()[0]} once one of those is settled."
     if (n := history.in_play(entry)) >= BUSY:
         return {"call": "hold", "text": f"Hold off: {plural(n, 'other role')} at {company} already queued or "
-                                        "applied to; one more looks like spraying."}
+                                        f"applied to; {later}"}
     if "busy" in why:
-        return {"call": "hold", "text": f"Hold off: {why['busy']}."}
+        return {"call": "hold", "text": f"Hold off: {why['busy']}; {later}"}
     met, total = (fit.get("must_haves_met", 0), fit.get("must_haves_total", 0)) if fit else (0, 0)
     if total and met * 4 < total * 3:
-        return {"call": "stretch", "text": f"Apply, but it's a stretch: it meets {met} of {total} must-haves."}
+        return {"call": "stretch", "text": f"{go}, but it's a stretch: it meets {met} of {total} must-haves."}
     if score is not None and score < STRONG_FIT:
-        return {"call": "stretch", "text": f"Apply, but it's a stretch: a fair fit ({score}/100)."}
+        return {"call": "stretch", "text": f"{go}, but it's a stretch: a fair fit ({score}/100)."}
     if said and said.action == "queue":
-        return {"call": "apply", "text": f"Apply: {said.reasons[0]}."}
+        return {"call": "apply", "text": f"{go}: {said.reasons[0]}."}
     if score is not None:
-        return {"call": "apply", "text": f"Apply: a strong fit ({score}/100)."}
+        return {"call": "apply", "text": f"{go}: a strong fit ({score}/100)."}
     return None
 
 

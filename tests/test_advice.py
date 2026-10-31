@@ -76,23 +76,29 @@ def test_the_bottom_line_says_apply_stretch_hold_or_skip(watchlist):
         return verdict(e, history, advise(cfg, e, history))
 
     paid = dict(low=190000, high=260000)
+    # On Today the next step is to queue it; once it's queued, to apply.
     assert call(entry(job(**paid), fit(88, 4, 4))) == {
-        "call": "apply", "text": "Apply: the posted pay goes up to $260K, above your $200K–$240K target."}
+        "call": "apply", "text": "Queue it: the posted pay goes up to $260K, above your $200K–$240K target."}
+    assert call(entry(job(**paid), fit(88, 4, 4), status="queued"))["text"].startswith("Apply: the posted pay")
     assert call(entry(job(**paid), fit(80, 1, 4))) == {  # most must-haves missing: advise says skip
         "call": "skip", "text": "Skip it: it meets 1 of 4 must-haves."}
     assert call(entry(job(**paid), fit(80, 5, 7))) == {
-        "call": "stretch", "text": "Apply, but it's a stretch: it meets 5 of 7 must-haves."}
-    assert call(entry(job(**paid), fit(68, 4, 4)))["text"] == "Apply, but it's a stretch: a fair fit (68/100)."
+        "call": "stretch", "text": "Queue it, but it's a stretch: it meets 5 of 7 must-haves."}
+    assert call(entry(job(**paid), fit(68, 4, 4), status="queued"))["text"] == \
+        "Apply, but it's a stretch: a fair fit (68/100)."
     assert call(entry(job(**paid), fit(55, 4, 4)))["text"] == "Skip it: not a close match (55/100)."
     assert call(entry(job(low=100000, high=150000), fit(90, 4, 4)))["text"] == \
         "Skip it: the posted pay tops out at $150K, under your floor."
     assert call(entry(job())) is None  # no score and nothing to go on
-    # Two other roles queued or in progress at the company: hold off, however good this one looks.
+    # Two other roles queued or in progress at the company: hold off, however good this one looks. Not a skip: it
+    # turns back once one of those is settled.
     save_job(store, company="Globex", title="Engineer 1", status="queued")
-    save_job(store, company="Globex", title="Engineer 2", status="screening")
+    settles = save_job(store, company="Globex", title="Engineer 2", status="screening")[0]
     assert call(entry(job(**paid), fit(90, 4, 4))) == {
-        "call": "hold", "text": "Hold off: 2 other roles at Globex already queued or applied to; one more looks "
-                                "like spraying."}
+        "call": "hold", "text": "Hold off: 2 other roles at Globex already queued or applied to; leave it, don't "
+                                "skip: this turns to Queue once one of those is settled."}
+    store.set_status([settles.key], "rejected")
+    assert call(entry(job(**paid), fit(90, 4, 4)))["call"] == "apply"
     assert call(entry(job(company="Initech", **paid), fit(90, 4, 4)))["call"] == "apply"
     store.close()
 
