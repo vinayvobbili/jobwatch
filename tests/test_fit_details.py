@@ -141,6 +141,8 @@ def test_a_company_hidden_from_today_leaves_the_digest_and_is_counted(web, watch
     hidden = App(watchlist).get_hidden({"kind": ["company"]})
     assert hidden["by"]["company"] == sum(j["company"] == name for j in jobs)
     assert hidden["jobs"][0]["why"] == f"company {name.upper()!r}"
+    # Today's Companies list keeps it, unticked, with the jobs that ticking it again brings back.
+    assert hidden["companies"] == {name.upper(): sum(j["company"] == name for j in jobs)}
 
 
 def test_digest_and_hidden_count_jobs_below_min_fit(web, watchlist):

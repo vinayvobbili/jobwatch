@@ -682,12 +682,18 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .facet:hover { background: var(--chip); }
 .facet.on { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
 .facet .c { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
-.facet .end { display: inline-flex; align-items: center; gap: 4px; }
-.facet .hide { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; color: var(--muted);
-  opacity: 0; transform: scale(.85); transition: opacity .15s, transform .15s, background .15s, color .15s; }
-.facet:hover .hide, .facet:focus-visible .hide, .facet .hide:focus-visible { opacity: 1; transform: none; }
-.facet .hide:hover { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
-@media (hover: none) { .facet .hide { opacity: .55; transform: none; } }
+.facet.row { justify-content: flex-start; gap: 8px; padding: 0 8px; cursor: default; }
+.facet.row input { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer;
+  transition: transform .12s; }
+.facet.row input:active { transform: scale(.88); }
+.facet.row .fname { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left;
+  padding: 5px 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.facet.row.off { cursor: pointer; animation: rise .25s ease-out; }
+.facet.row.off .fname { color: var(--muted); text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 55%, transparent); }
+.facet-sep { display: flex; align-items: center; gap: 8px; margin: 10px 8px 4px; font-size: 11px; font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.facet-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .facet.more { color: var(--accent); font-size: 13px; justify-content: flex-start; }
 .facet .dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: var(--sc); margin-right: 8px; }
 .to-watch { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
@@ -2436,23 +2442,33 @@ function segmented(options, value, onpick) {
   draw(value);
   return el;
 }
-// `onhide`, when given: a ✕ on each row (shown on hover) that leaves that name out, e.g. a company from Today.
-function facetList(counts, active, onpick, most = 12, onhide = null) {
+// `toggle`, when given ({hidden: name -> count, onhide, onshow}): a checkbox on each row, ticked while its jobs
+// show. Unticking leaves that name out (a company from Today); the ones left out stay listed at the end, unticked
+// with the jobs they'd bring back, so ticking one again is a click away.
+function facetList(counts, active, onpick, most = 12, toggle = null) {
   const el = h("div", {});
   let open = false;
-  const hideBtn = name => {
-    const go = e => { e.stopPropagation(); e.preventDefault(); onhide(name); };
-    return h("span", { class: "hide", role: "button", tabindex: 0, title: `Hide ${name}'s jobs from Today`,
-      "aria-label": `Hide ${name}`, onclick: go, onkeydown: e => (e.key === "Enter" || e.key === " ") && go(e) },
-      icon("x", 12));
+  const box = (name, on) => {
+    const c = h("input", { type: "checkbox", title: on ? `Untick to hide ${name}'s jobs` : `Tick to show ${name}'s jobs again`,
+      "aria-label": `Show ${name}'s jobs` });
+    c.checked = on;
+    c.onchange = () => { c.disabled = true; (on ? toggle.onhide : toggle.onshow)(name); };
+    return c;
   };
   const draw = () => {
     const rows = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-    fill(el, (open ? rows : rows.slice(0, most)).map(([name, n]) =>
-      h("button", { class: "facet" + (name === active() ? " on" : ""), onclick: () => { onpick(name === active() ? "" : name); draw(); } },
-        h("span", {}, name), h("span", { class: "end" }, h("span", { class: "c" }, n), onhide ? hideBtn(name) : null))),
+    const off = toggle ? Object.entries(toggle.hidden()).sort((a, b) => a[0].localeCompare(b[0])) : [];
+    fill(el, (open ? rows : rows.slice(0, most)).map(([name, n]) => !toggle
+      ? h("button", { class: "facet" + (name === active() ? " on" : ""), onclick: () => { onpick(name === active() ? "" : name); draw(); } },
+        h("span", {}, name), h("span", { class: "c" }, n))
+      : h("div", { class: "facet row" + (name === active() ? " on" : "") }, box(name, true),
+        h("button", { class: "fname", title: `Only ${name}'s jobs`, onclick: () => { onpick(name === active() ? "" : name); draw(); } }, name),
+        h("span", { class: "c" }, n))),
       rows.length > most ? h("button", { class: "facet more", onclick: () => { open = !open; draw(); } },
-        open ? "Show fewer" : `Show all ${rows.length}`) : null);
+        open ? "Show fewer" : `Show all ${rows.length}`) : null,
+      off.length ? h("div", { class: "facet-sep" }, `Hidden · ${off.length}`) : null,
+      off.map(([name, n]) => h("label", { class: "facet row off", title: `Tick to show ${name}'s jobs again` }, box(name, false),
+        h("span", { class: "fname" }, name), h("span", { class: "c" }, n || ""))));
   };
   draw();
   el.redraw = draw;
@@ -2798,21 +2814,27 @@ function quickNarrow(j, v) {
 }
 let todayJobs = [], drawToday = () => {};
 
-// The ✕ beside a company in Today's Companies list: leaves its jobs out from now on (filters.exclude_companies),
-// with Undo. Filters › Not from, or Settings, brings one back.
+// The checkboxes in Today's Companies list: unticking one leaves its jobs out from now on
+// (filters.exclude_companies), ticking it again brings them back, each with Undo.
+const leftOut = () => (settings.filters || {}).exclude_companies || [];
+async function saveLeftOut(list) {
+  await api("/api/settings", { filters: mergeFilters(settings.filters || {}, { exclude_companies: list }) });
+  settings = await api("/api/settings");
+  await render();
+}
+const leftOutBut = name => leftOut().filter(n => n.toLowerCase() !== name.toLowerCase());
 async function hideCompany(name) {
-  const save = async list => {
-    await api("/api/settings", { filters: mergeFilters(settings.filters || {}, { exclude_companies: list }) });
-    settings = await api("/api/settings");
-    if (todayView.company === name) todayView.company = "";
-    await render();
-  };
-  const out = (settings.filters || {}).exclude_companies || [];
+  if (todayView.company === name) todayView.company = "";
   try {
-    await save([...out.filter(n => n !== name), name]);
-    toast(`🙈 Hid ${name}: its jobs stay off Today. Filters › Not from brings it back.`,
-      () => save(((settings.filters || {}).exclude_companies || []).filter(n => n !== name)));
-  } catch (e) { toast(`Couldn't hide ${name}: ${e.message}`); }
+    await saveLeftOut([...leftOutBut(name), name]);
+    toast(`🙈 Hid ${name}: it waits unticked at the bottom of Companies.`, () => saveLeftOut(leftOutBut(name)));
+  } catch (e) { toast(`Couldn't hide ${name}: ${e.message}`); await render(); }
+}
+async function showCompany(name) {
+  try {
+    await saveLeftOut(leftOutBut(name));
+    toast(`👀 ${name}'s jobs are back on Today.`, () => saveLeftOut([...leftOutBut(name), name]), "win");
+  } catch (e) { toast(`Couldn't show ${name}: ${e.message}`); await render(); }
 }
 
 async function renderToday() {
@@ -2839,7 +2861,9 @@ async function renderToday() {
     h("button", { class: "chip toggle" + (v.kws.has(k) ? " on" : ""), title: `${n} jobs`,
       onclick: () => { v.kws.has(k) ? v.kws.delete(k) : v.kws.add(k); drawKws(); drawToday(); } }, k)));
   drawKws();
-  const companies = facetList(byCompany, () => v.company, name => { v.company = name; drawToday(); }, 12, hideCompany);
+  const companies = facetList(byCompany, () => v.company, name => { v.company = name; drawToday(); }, 12, {
+    onhide: hideCompany, onshow: showCompany,
+    hidden: () => (hidden && hidden.companies) || Object.fromEntries(leftOut().map(n => [n, 0])) });
   const narrow = h("div", {});
   const drawNarrow = () => fill(narrow,
     h("div", { class: "hint" }, "Where"),
@@ -4767,7 +4791,7 @@ function renderSettings() {
       field("Leave out postings that mention", inp.excludeText,
         "One per line, matched in the whole posting; jobs listed without their text still show."),
       field("Leave out companies", inp.excludeCompanies,
-        "One per line, by name. On Today, the ✕ beside a company in the Companies list adds it here."),
+        "One per line, by name. On Today, unticking a company in the Companies list adds it here."),
       field("Places", h("div", { class: "stack" }, locations, country), "“remote”, or a city or state, one per line."),
       field("Leave out departments", departments, "One per line, for boards that list a department."),
       field("Your state", inp.home, "Remote jobs open only in other states are left out."),

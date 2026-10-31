@@ -6,13 +6,23 @@ import sqlite3
 import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 
 from . import alerts, dupes, lca, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config
 from .contacts import Contacts, company_key
-from .filters import KINDS, Filters, red_flags, reject_reason, rejection, relevance, search_terms, title_ok
+from .filters import (
+    KINDS,
+    Filters,
+    excluded_company,
+    red_flags,
+    reject_reason,
+    rejection,
+    relevance,
+    search_terms,
+    title_ok,
+)
 from .models import Job
 from .score import ScoringUnavailable, brief, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, Store
@@ -977,24 +987,31 @@ def hidden(cfg: Config, store: Store, kind: str = "", limit: int = 100, since: d
     """What the filters hide from Today: how many, by which filter (filters.KINDS), and with `kind`, those
     jobs, newest first (`limit` of them). With `since`, only the jobs first seen since then, and all of them
     are listed (`kind` still narrows it): what a fetch or an alert email just brought in that you won't see.
-    `source` counts only that source's jobs (manual: the ones from alert emails and links)."""
+    `source` counts only that source's jobs (manual: the ones from alert emails and links). "companies": each
+    company left out (filters.exclude_companies, as written) -> the jobs it would bring back to Today, the ones
+    every other filter passes."""
     if kind and kind not in KINDS:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}")
     by: dict[str, int] = {}
+    companies = dict.fromkeys(cfg.filters.exclude_companies, 0)
     jobs = []
     fits = _fits(store, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
     for job, rec in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
         if (since and datetime.fromisoformat(rec["first_seen"]) < since) or (source and job.source != source):
             continue
-        if r := rejection(job, cfg.filters_for(job), fits.get(job.key)):
+        f = cfg.filters_for(job)
+        if r := rejection(job, f, fits.get(job.key)):
             by[r[0]] = by.get(r[0], 0) + 1
+            if r[0] == "company" and not rejection(job, replace(f, exclude_companies=[]), fits.get(job.key)):
+                name = excluded_company(job, f.exclude_companies)
+                companies[name] = companies.get(name, 0) + 1
             if r[0] == kind or (since and not kind):
                 jobs.append({"key": job.key, "title": job.title, "company": job.display_company,
                              "url": job.url, "locations": job.places, "pay": job.pay(),
                              "age_days": job.age_days(), "kind": r[0], "why": r[1]})
     jobs.sort(key=lambda j: j["age_days"] if j["age_days"] is not None else 10_000)
     return {"total": sum(by.values()), "by": {k: by[k] for k in KINDS if k in by}, "kind": kind or None,
-            "jobs": jobs[:limit], "more": max(0, len(jobs) - limit)}
+            "jobs": jobs[:limit], "more": max(0, len(jobs) - limit), "companies": companies}
 
 
 def _group(entries: list[Entry]) -> list[Entry]:
