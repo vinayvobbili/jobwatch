@@ -67,6 +67,16 @@ def test_the_claude_plugin_and_desktop_extension_move_with_the_release(release, 
     assert 'version = "1.3.0"' in desktop and "acme-tool[mcp]==1.3.0" in desktop and "other==1.2.3" in desktop
 
 
+def test_a_browser_extension_moves_with_the_release(release, tmp_path):
+    root = make_project(tmp_path, server=False)
+    (root / "chrome-extension").mkdir()
+    manifest = root / "chrome-extension" / "manifest.json"
+    manifest.write_text('{"manifest_version": 3, "name": "Acme", "version": "1.2.3"}')
+    assert manifest in release.version_files(root, "acme-tool")
+    assert '"manifest_version": 3, "name": "Acme", "version": "1.3.0"' in \
+        release.bump(manifest.read_text(), manifest, "1.2.3", "1.3.0", "acme-tool")
+
+
 def test_server_json_is_optional(release, tmp_path):
     root = make_project(tmp_path, server=False)
     assert [f.name for f in release.version_files(root, "acme-tool")] == ["pyproject.toml", "__init__.py"]

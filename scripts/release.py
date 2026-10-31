@@ -80,7 +80,7 @@ def version_files(root: Path, name: str) -> list[Path]:
             files.append(init)
     if (root / "server.json").exists():
         files.append(root / "server.json")
-    files += [p for p in (root / f for f in CLAUDE_FILES) if p.exists()]
+    files += [p for p in (root / f for f in CLAUDE_FILES + EXTENSION_FILES) if p.exists()]
     return files
 
 
@@ -89,6 +89,9 @@ def version_files(root: Path, name: str) -> list[Path]:
 # package ships them.
 CLAUDE_FILES = ("plugin/.claude-plugin/plugin.json", "plugin/.mcp.json", "plugin/pyproject.toml",
                 "desktop/manifest.json", "desktop/pyproject.toml")
+# A browser extension shipped with the package: its store zip carries the release's version (jobwatch's and
+# attestq's package.py refuse a manifest that differs from the package).
+EXTENSION_FILES = ("chrome-extension/manifest.json",)
 
 
 def bump(text: str, path: Path, old: str, new: str, name: str = "") -> str:
