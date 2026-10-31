@@ -32,26 +32,32 @@ def page_function(name: str) -> str:
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_job_cards_show_their_rows_in_one_fixed_order(tmp_path):
-    """Every job card has the same labeled rows in the same order; a row with nothing in it is left out, and
-    the place on the meta line is the first one with "+N more" and the whole list on hover."""
+    """Every job card has the same labeled rows in the same order: the five main ones always (a dash when empty, so
+    each sits in the same place), Check and Note only when there is one. The place on the meta line is the first
+    one with "+N more" and the whole list on hover."""
     js = tmp_path / "cards.js"
-    js.write_text(page_const("CARD_ROWS") + page_const("hasKids") + page_function("cardRows")
+    js.write_text(page_const("CARD_ROWS") + page_const("hasKids") + page_const("none") + page_function("cardRows")
                   + page_function("placeSummary") + """
 const h = (tag, attrs, ...kids) => ({ tag, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
-const labels = rows => rows.map(r => r.kids[0].kids[0]);
+const icon = name => ({ tag: "svg", name });
+const labels = rows => rows.map(r => r.kids[0].kids[1]);
+const empty = rows => rows.filter(r => r.kids[1].kids[0].kids?.[0] === "—").map(r => r.kids[0].kids[1]);
+const some = cardRows({ people: "p", pay: ["$", null], gaps: null, note: [], why: false });
 console.log(JSON.stringify({
   all: labels(cardRows({ note: "n", people: "p", skills: ["s"], gaps: "g", check: "c", why: "w", pay: "$" })),
-  some: labels(cardRows({ people: "p", pay: ["$", null], gaps: null, note: [], why: false })),
-  none: cardRows({}).length,
+  some: labels(some), dashed: empty(some), icon: some[0].kids[0].kids[0].name,
+  none: labels(cardRows({})),
   one: placeSummary(["Boulder, CO"]), many: placeSummary(["Boulder, CO", "Austin, TX", "Remote"]), no: placeSummary([]),
 }));
 """, encoding="utf-8")
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout) == {
-        "all": ["Pay", "Why", "Check", "Gaps", "Skills", "People", "Note"],
-        "some": ["Pay", "People"],
-        "none": 0,
+        "all": ["Pay", "Why", "Gaps", "Skills", "People", "Check", "Note"],
+        "some": ["Pay", "Why", "Gaps", "Skills", "People"],
+        "dashed": ["Why", "Gaps", "Skills"],
+        "icon": "dollar",
+        "none": ["Pay", "Why", "Gaps", "Skills", "People"],
         "one": {"first": "Boulder, CO", "more": 0, "full": "Boulder, CO"},
         "many": {"first": "Boulder, CO", "more": 2, "full": "Boulder, CO; Austin, TX; Remote"},
         "no": {"first": "", "more": 0, "full": ""},

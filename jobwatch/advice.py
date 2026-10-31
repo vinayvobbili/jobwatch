@@ -14,6 +14,8 @@ from .watch import STRONG_FIT, Entry, plural
 WEEK = timedelta(days=7)
 BUSY = 2    # applications at one company in a week: more starts to look like spraying
 FRESH = 3   # days: posted this recently, an application is among the first read
+CLOSE = 60  # a fit score under this isn't a close match: the verdict says skip it
+IN_PLAY = ("queued", "applied", "screening", "interviewing", "offer")
 
 
 @dataclass
@@ -40,12 +42,12 @@ class History:
 
     def __init__(self, store: Store, today: date | None = None):
         self.today = today or date.today()
-        self.by_company: dict[str, list[tuple[str, str]]] = defaultdict(list)
-        for job, rec in store.jobs(STAGES, include_closed=True):
+        self.by_company: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
+        for job, rec in store.jobs((*STAGES, "queued"), include_closed=True):
             for name in companies(job):
-                self.by_company[name].append((job.key, rec.get("applied_at") or ""))
+                self.by_company[name].append((job.key, rec.get("applied_at") or "", rec.get("status") or ""))
 
-    def _at(self, entry: Entry) -> list[tuple[str, str]]:
+    def _at(self, entry: Entry) -> list[tuple[str, str, str]]:
         rows = {r[0]: r for n in companies(entry.job) for r in self.by_company.get(n, [])}
         return [r for key, r in rows.items() if key != entry.job.key]
 
@@ -53,7 +55,12 @@ class History:
         """Applications sent to the company in the past WEEK, whatever became of them (a rejection for one role
         is no reason to skip another there)."""
         since = (self.today - WEEK).isoformat()
-        return sum(1 for _, applied in self._at(entry) if applied >= since)
+        return sum(1 for _, applied, status in self._at(entry) if status in STAGES and applied >= since)
+
+    def in_play(self, entry: Entry) -> int:
+        """Other roles at the company queued or in progress (applied, screening, interviewing, an offer): one
+        more there starts to look like spraying, whenever they were sent."""
+        return sum(1 for _, _, status in self._at(entry) if status in IN_PLAY)
 
 
 def _k(n: int) -> str:
@@ -116,6 +123,36 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
         return Advice("skip", [r for _, r in skip], [r for _, r in go], [c for c, _ in skip])
     if go:
         return Advice("queue", [r for _, r in go + extra], codes=[c for c, _ in go + extra])
+    return None
+
+
+def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
+    """The card's bottom line, in plain words: {"call": apply | stretch | hold | skip, "text"}. Skip for a hard
+    reason (applied already, under the pay floor, most must-haves missing, not a close match); hold off when
+    other roles at the company are already queued or in progress; apply, or apply as a stretch when must-haves
+    are missing or the fit is only fair. None while the job has no fit score and nothing else to go on."""
+    fit, company = entry.fit, entry.job.display_company
+    why = dict(zip(said.codes, said.reasons, strict=False)) if said else {}  # older advice may carry no codes
+    hard = [c for c in ("applied_before", "under_floor", "must_haves") if c in why and said.action == "skip"]
+    if hard:
+        return {"call": "skip", "text": f"Skip it: {why[hard[0]]}."}
+    score = round(fit["score"]) if fit and fit.get("score") is not None else None
+    if score is not None and score < CLOSE:
+        return {"call": "skip", "text": f"Skip it: not a close match ({score}/100)."}
+    if (n := history.in_play(entry)) >= BUSY:
+        return {"call": "hold", "text": f"Hold off: {plural(n, 'other role')} at {company} already queued or "
+                                        "applied to; one more looks like spraying."}
+    if "busy" in why:
+        return {"call": "hold", "text": f"Hold off: {why['busy']}."}
+    met, total = (fit.get("must_haves_met", 0), fit.get("must_haves_total", 0)) if fit else (0, 0)
+    if total and met * 4 < total * 3:
+        return {"call": "stretch", "text": f"Apply, but it's a stretch: it meets {met} of {total} must-haves."}
+    if score is not None and score < STRONG_FIT:
+        return {"call": "stretch", "text": f"Apply, but it's a stretch: a fair fit ({score}/100)."}
+    if said and said.action == "queue":
+        return {"call": "apply", "text": f"Apply: {said.reasons[0]}."}
+    if score is not None:
+        return {"call": "apply", "text": f"Apply: a strong fit ({score}/100)."}
     return None
 
 

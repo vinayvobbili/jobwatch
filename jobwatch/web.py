@@ -543,10 +543,11 @@ class App:
         return out
 
     @staticmethod
-    def _advice(cfg, e, history, pay: dict[str, dict]) -> dict | None:
-        """Queue or skip this job, and why (advice.py), with its expected pay from `pay` (see _pay) when known."""
+    def _advice(cfg, e, history, pay: dict[str, dict]) -> dict:
+        """Queue or skip this job, and why (advice.py), with its expected pay from `pay` (see _pay) when known;
+        and the card's bottom line (advice.verdict)."""
         said = advice.advise(cfg, e, history, (pay.get(e.job.key) or {}).get("expected_pay"))
-        return said.to_dict() if said else None
+        return {"advice": said.to_dict() if said else None, "verdict": advice.verdict(e, history, said)}
 
     # -- endpoints
 
@@ -818,7 +819,7 @@ class App:
             history = advice.History(store)
             worth = comps.worth(cfg, store, [(e.job, e.fit) for e in d.entries])
             out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {}),
-                             "worth": worth[e.job.key], "advice": self._advice(cfg, e, history, pay)}
+                             "worth": worth[e.job.key], **self._advice(cfg, e, history, pay)}
                             for e in d.entries],
                    "rejected": d.rejected,
                    "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({}),
@@ -858,7 +859,7 @@ class App:
                      "resume": self._resume_name(store, e.job),
                      "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
                      "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),
-                     **pay.get(e.job.key, {}), "advice": self._advice(cfg, e, history, pay)} for e in entries]
+                     **pay.get(e.job.key, {}), **self._advice(cfg, e, history, pay)} for e in entries]
         return self._with_store(run)
 
     def get_jobs(self, q) -> list[dict]:

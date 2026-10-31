@@ -4,7 +4,7 @@ import json
 from datetime import date, datetime, timedelta, timezone
 
 from jobwatch import cli, config
-from jobwatch.advice import Advice, History, advise
+from jobwatch.advice import Advice, History, advise, verdict
 from jobwatch.models import Job
 from jobwatch.store import Store
 from jobwatch.watch import Entry, save_job
@@ -67,6 +67,36 @@ def test_two_applications_there_this_week_say_skip_whatever_the_pay(watchlist):
     store.close()
 
 
+def test_the_bottom_line_says_apply_stretch_hold_or_skip(watchlist):
+    cfg = cfg_with(watchlist)
+    store = Store(cfg.state)
+
+    def call(e, history=None):
+        history = history or History(store)
+        return verdict(e, history, advise(cfg, e, history))
+
+    paid = dict(low=190000, high=260000)
+    assert call(entry(job(**paid), fit(88, 4, 4))) == {
+        "call": "apply", "text": "Apply: the posted pay goes up to $260K, above your $200K–$240K target."}
+    assert call(entry(job(**paid), fit(80, 1, 4))) == {  # most must-haves missing: advise says skip
+        "call": "skip", "text": "Skip it: it meets 1 of 4 must-haves."}
+    assert call(entry(job(**paid), fit(80, 5, 7))) == {
+        "call": "stretch", "text": "Apply, but it's a stretch: it meets 5 of 7 must-haves."}
+    assert call(entry(job(**paid), fit(68, 4, 4)))["text"] == "Apply, but it's a stretch: a fair fit (68/100)."
+    assert call(entry(job(**paid), fit(55, 4, 4)))["text"] == "Skip it: not a close match (55/100)."
+    assert call(entry(job(low=100000, high=150000), fit(90, 4, 4)))["text"] == \
+        "Skip it: the posted pay tops out at $150K, under your floor."
+    assert call(entry(job())) is None  # no score and nothing to go on
+    # Two other roles queued or in progress at the company: hold off, however good this one looks.
+    save_job(store, company="Globex", title="Engineer 1", status="queued")
+    save_job(store, company="Globex", title="Engineer 2", status="screening")
+    assert call(entry(job(**paid), fit(90, 4, 4))) == {
+        "call": "hold", "text": "Hold off: 2 other roles at Globex already queued or applied to; one more looks "
+                                "like spraying."}
+    assert call(entry(job(company="Initech", **paid), fit(90, 4, 4)))["call"] == "apply"
+    store.close()
+
+
 def test_a_rejection_there_is_no_reason_to_skip_another_role(watchlist):
     cfg = cfg_with(watchlist)
     store = Store(cfg.state)
@@ -112,7 +142,7 @@ def test_today_and_the_queue_carry_the_advice(watchlist, web):
     app = App(watchlist)
     app.post_fetch({})
     jobs = app.get_digest({})["jobs"]
-    assert jobs and all("advice" in j for j in jobs)
+    assert jobs and all("advice" in j and "verdict" in j for j in jobs)
     paid = [j for j in jobs if j["salary_max"]]
     assert paid and all(j["advice"]["action"] == "queue" for j in paid)
     store = Store(cfg.state)

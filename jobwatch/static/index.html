@@ -174,17 +174,24 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--stripe, transparent); }
 .card.job:hover, .card.app:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover);
   border-color: color-mix(in srgb, var(--stripe, var(--accent)) 35%, var(--line)); }
-/* a job card (Today, Queue): header (logo, title, one meta line; the ring top right), labeled rows in a fixed order
-   with the labels in one column, and the actions pinned to the bottom, so every card reads the same way */
-.card.job { display: grid; grid-template-columns: 46px minmax(0, 1fr) 100px; grid-template-rows: auto 1fr auto auto;
+/* a job card (Today, Queue): header (logo, title, one meta line; a compact ring beside them, top right), labeled rows
+   in a fixed order across the card's width with the labels in one column, the bottom line, and the actions pinned to
+   the bottom, so every card reads the same way */
+.card.job { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; grid-template-rows: auto 1fr auto auto auto;
   gap: 0 16px; }
 .card.job > .mono { grid-area: 1 / 1; }
 .card.job > .jc-id { grid-area: 1 / 2; min-width: 0; }
-.card.job > .fitbox { grid-area: 1 / 3 / 3 / 4; align-self: start; }
-.card.job > .jc-rows { grid-area: 2 / 1 / 3 / 3; min-width: 0; margin-top: 8px; }
-.card.job > .jc-note { grid-area: 3 / 1 / 4 / -1; margin-top: 10px; }
+.card.job > .fitbox { grid-area: 1 / 3; align-self: start; display: grid; grid-template-columns: auto auto;
+  column-gap: 8px; align-items: center; text-align: left; padding-left: 0; }
+.card.job > .fitbox .ring { width: 48px; height: 48px; grid-row: 1 / 3; margin: 0; }
+.card.job > .fitbox .ring span { width: 38px; height: 38px; font-size: 15px; }
+.card.job > .fitbox small { margin-top: 0; align-self: end; }
+.card.job > .fitbox .scorer { margin-top: 3px; justify-self: start; align-self: start; }
+.card.job > .jc-rows { grid-area: 2 / 1 / 3 / -1; min-width: 0; margin-top: 10px; }
+.card.job > .verdict { grid-area: 3 / 1 / 4 / -1; }
+.card.job > .jc-note { grid-area: 4 / 1 / 5 / -1; margin-top: 10px; }
 .card.job > .jc-note input { width: 100%; box-sizing: border-box; }
-.card.job > .jc-foot { grid-area: 4 / 1 / 5 / -1; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.card.job > .jc-foot { grid-area: 5 / 1 / 6 / -1; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .jc-title { display: flex; gap: 6px; align-items: center; min-height: 26px; }
 .jc-title a.title, .jc-title span.title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jc-title .badge, .jc-title .chip { flex: none; }
@@ -196,11 +203,27 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .jc-meta .place { flex: 0 1 auto; min-width: 0; display: flex; gap: 4px; }
 .jc-meta .place .pl { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .jc-meta .place .more { flex: none; opacity: .75; }
-.krow { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 0 10px; align-items: baseline; padding: 6px 0;
+.krow { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 0 10px; align-items: baseline; padding: 6px 0;
   border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent); font-size: 13.5px; }
-.krow:has(> .kv:empty), .krow:has(> .kv > [hidden]:only-child) { display: none; }
 .klabel { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted);
-  opacity: .85; }
+  display: flex; align-items: center; gap: 6px; }
+/* Each row's icon in a soft tile of its own color, so a row is found by color before it's read. */
+.klabel .ico { flex: none; box-sizing: content-box; padding: 3px; border-radius: 6px; color: var(--rc, var(--accent));
+  background: color-mix(in srgb, var(--rc, var(--accent)) 14%, transparent); }
+.krow[data-row="pay"] { --rc: var(--good); } .krow[data-row="why"] { --rc: #d97706; }
+.krow[data-row="gaps"] { --rc: #e11d48; } .krow[data-row="skills"] { --rc: #7c3aed; }
+.krow[data-row="people"] { --rc: #0284c7; } .krow[data-row="check"] { --rc: #ea580c; }
+.krow[data-row="note"] { --rc: #64748b; }
+.kv-none { color: var(--muted); opacity: .6; }
+/* The bottom line above the buttons: a tinted strip whose color is the call. */
+.verdict { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; padding: 8px 10px; border-radius: 10px;
+  font-size: 13px; font-weight: 550; color: var(--vc); border: 1px solid color-mix(in srgb, var(--vc) 30%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--vc) 14%, transparent), color-mix(in srgb, var(--vc) 4%, transparent)); }
+.verdict .vic { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: #fff;
+  background: var(--vc); }
+.verdict .vtext { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.verdict.apply { --vc: var(--good); } .verdict.stretch { --vc: #d97706; } .verdict.hold { --vc: #0284c7; }
+.verdict.skip { --vc: var(--bad); }
 .kv { min-width: 0; }
 .kv > * { margin-top: 0; margin-bottom: 0; }
 .kv > * + * { margin-top: 3px; }
@@ -952,9 +975,9 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
   .bar { flex-wrap: wrap; padding: 10px 16px; } main { padding: 20px 16px 60px; }
   .hero { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: 1fr; }
   .card.app { grid-template-columns: 1fr; } .mono { display: none; }
-  .card.job { grid-template-columns: minmax(0, 1fr) 84px; }
-  .card.job > .jc-id { grid-area: 1 / 1; } .card.job > .fitbox { grid-area: 1 / 2; }
-  .card.job > .jc-rows { grid-area: 2 / 1 / 3 / 3; }
+  .card.job { grid-template-columns: minmax(0, 1fr) auto; }
+  .card.job > .jc-id { grid-area: 1 / 1; } .card.job > .fitbox { grid-area: 1 / 2; margin-top: 0; }
+  .card.job > .jc-rows { grid-area: 2 / 1 / 3 / -1; }
   .chat-fab { right: 16px; bottom: 16px; } .chat-pop { right: 16px; bottom: 16px; height: calc(100vh - 90px); }
   .fitbox { text-align: left; margin-top: 8px; } .ring { margin: 0; }
   .fpart .v { max-width: 62vw; } .fbar .sep { display: none; }
@@ -1086,6 +1109,11 @@ const ICONS = {
   copy: "M9 9h11v11H9zM5 15H4V4h11v1",
   download: "M12 3v12M7 10l5 5 5-5M5 21h14",
   dollar: "M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  bulb: "M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.74V16h8v-1.26A7 7 0 0 0 12 2z",
+  target: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+  zap: "M13 2 3 14h9l-1 8 10-12h-9z",
+  alert: "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01",
+  pause: "M10 4H6v16h4zM18 4h-4v16h4z",
 };
 function icon(name, size = 15) {
   const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
@@ -1353,13 +1381,14 @@ function scorerTag(fit) {
 }
 
 // Queue it or skip it, and why (advice.py). A queued job only shows a reason to hold off.
+// A job card's Why row: the reasons for and against, ticked or crossed; the card's bottom line (verdictLine) makes
+// the call.
 function adviceLine(job) {
   const a = job.advice;
   if (!a || (job.status === "queued" && a.action === "queue")) return null;
-  const word = a.action === "queue" ? "Queue" : job.status === "queued" ? "Hold off" : "Skip";
   const why = a.reasons.join("; ") + (a.though.length ? ` (though ${a.though[0]})` : "");
   return h("div", { class: `advice ${a.action}`, "data-advice": job.key }, icon(a.action === "queue" ? "check" : "x", 14),
-    h("span", { class: "atext", title: `Suggest ${word}: ${why}` }, h("b", {}, `Suggest ${word}: `), why));
+    h("span", { class: "atext", title: why }, why.charAt(0).toUpperCase() + why.slice(1)));
 }
 // In a job's details, where the ring would be: why there's no score yet (no posting text, still in line, ...).
 function noFitBox(job) {
@@ -1427,10 +1456,11 @@ function watchPay(jobs, scope = "page") {
           const line = payLine(j);
           line ? el.replaceWith(line) : el.remove();
         });
-        if (r.advice && j.key in r.advice) {  // the advice again, now that the pay is known
-          j.advice = r.advice[j.key];
+        if (r.advice && j.key in r.advice) {  // the advice and the bottom line again, now that the pay is known
+          Object.assign(j, r.advice[j.key]);
           document.querySelectorAll(`[data-advice="${CSS.escape(j.key)}"]`).forEach(el =>
-            el.replaceWith(adviceLine(j) || h("span", { "data-advice": j.key, hidden: true })));
+            el.replaceWith(adviceLine(j) || noAdvice(j)));
+          document.querySelectorAll(`[data-verdict="${CSS.escape(j.key)}"]`).forEach(el => el.replaceWith(verdictLine(j)));
         }
       }
       if (r.running) payTimers[scope] = setTimeout(poll, 5000);
@@ -1451,13 +1481,26 @@ function placeItem(locations) {
     p.more ? h("span", { class: "more" }, `+${p.more} more`) : null) : null;
 }
 
-// The labeled rows of a job card, always in this order; a row with nothing to show is left out.
-const CARD_ROWS = [["pay", "Pay"], ["why", "Why"], ["check", "Check"], ["gaps", "Gaps"], ["skills", "Skills"],
-  ["people", "People"], ["note", "Note"]];
+// The labeled rows of a job card, always in this order, each with its icon. The first five are on every card (a dash
+// when there's nothing), so each sits in the same place; Check and Note come last, only when there is one.
+const CARD_ROWS = [["pay", "Pay", "dollar"], ["why", "Why", "bulb"], ["gaps", "Gaps", "target"],
+  ["skills", "Skills", "zap"], ["people", "People", "users"], ["check", "Check", "alert", true], ["note", "Note", "pencil", true]];
 const hasKids = c => [c].flat(Infinity).some(k => k !== null && k !== undefined && k !== false);
+const none = () => h("span", { class: "kv-none" }, "—");
 function cardRows(parts) {
-  return CARD_ROWS.filter(([key]) => hasKids(parts[key])).map(([key, label]) =>
-    h("div", { class: "krow", "data-row": key }, h("div", { class: "klabel" }, label), h("div", { class: "kv" }, parts[key])));
+  return CARD_ROWS.filter(([key, , , optional]) => !optional || hasKids(parts[key])).map(([key, label, ic]) =>
+    h("div", { class: "krow", "data-row": key }, h("div", { class: "klabel" }, icon(ic, 13), label),
+      h("div", { class: "kv" }, hasKids(parts[key]) ? parts[key] : none())));
+}
+// Where the advice goes once the pay is known (see the pay poll), a dash until then.
+const noAdvice = job => h("span", { class: "kv-none", "data-advice": job.key }, "—");
+// The card's bottom line, in plain words (advice.verdict): apply, apply as a stretch, hold off, or skip it.
+const VERDICT_ICON = { apply: "check", stretch: "zap", hold: "pause", skip: "x" };
+function verdictLine(job) {
+  const v = job.verdict;
+  if (!v) return h("span", { "data-verdict": job.key, hidden: true });
+  return h("div", { class: `verdict ${v.call}`, "data-verdict": job.key, title: v.text },
+    h("span", { class: "vic" }, icon(VERDICT_ICON[v.call] || "check", 14)), h("span", { class: "vtext" }, v.text));
 }
 // Who you know there, one contact to a line (a few, then "+N more"), or the way to find an introduction.
 function peopleRow(job, most = 2) {
@@ -1475,7 +1518,7 @@ function jobCard(job, actions, i = 0, above = null) {
     .filter(Boolean);
   const parts = {
     pay: [job.pay ? h("span", { class: "paychip" }, job.pay) : null, payLine(job), lcaLine(job)],
-    why: adviceLine(job) || h("span", { "data-advice": job.key, hidden: true }),
+    why: adviceLine(job) || noAdvice(job),
     check: [linkNote(job), job.warnings && job.warnings.length ? h("div", { class: "warns" }, job.warnings.join(" · ")) : null],
     gaps: gapsLine(job.fit, true),
     skills: job.keywords.length ? h("div", { class: "chips", title: job.keywords.join(", ") },
@@ -1496,6 +1539,7 @@ function jobCard(job, actions, i = 0, above = null) {
         Object.assign(link(job.url, job.title, "title"), { title: job.title })),
       h("div", { class: "meta jc-meta" }, meta.flatMap((m, n) => n ? [sep(), m] : [m]))),
     h("div", { class: "jc-rows" }, cardRows(parts)),
+    verdictLine(job),
     above ? h("div", { class: "jc-note" }, above) : null,
     h("div", { class: "row jc-foot" }, actions),
     fitBox(job.fit) || noFitBox(job));
