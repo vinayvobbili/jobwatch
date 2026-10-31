@@ -157,6 +157,24 @@ Already done for attestq, which uses the same developer account: the one-off
 US$5 fee, 2-Step Verification, the verified contact email, the trader /
 non-trader declaration and the publisher name. Nothing to repeat.
 
-The first review usually takes from a few days to a couple of weeks. A reviewer
-cannot use the item without the jobwatch app, so if the review asks how to try
-it, point to the README's setup steps and the demo forms in `chrome-extension/demo/`.
+The first review usually takes from a few days to a couple of weeks.
+
+## Test instructions (Privacy practices > "Test instructions" for the reviewer)
+
+The extension does nothing without the jobwatch app on the same computer, so
+the reviewer gets the steps to run it (no account or sign-in is needed):
+
+> The extension fills job application forms from the jobwatch app, which runs
+> on the same computer (free, open source). To try it:
+> 1. Install Python 3.10 or later, then run: pip install jobwatch
+> 2. Run: jobwatch init, then: jobwatch ui. It opens http://127.0.0.1:8765.
+> 3. In jobwatch, open Settings > Applying and fill in a few applicant details
+>    (any made-up name, email and phone). Then open Settings > Browser extension
+>    and copy the token.
+> 4. In the extension's options (right-click its icon > Options), paste the
+>    token and press Test. It says "Connected to jobwatch".
+> 5. Open any Greenhouse, Lever or Ashby job's application page, for example a
+>    job from https://job-boards.greenhouse.io, click the jobwatch icon (the side
+>    panel opens) and press "Fill this application". Each field shows what would
+>    be filled; tick rows and press "Fill selected". The extension never submits
+>    the form; please don't submit it.

@@ -84,6 +84,23 @@ def test_the_caption_band_leaves_the_rest_of_the_screenshot_to_the_capture():
     assert "split" in store_assets.stage_html("t", "s", [EXT / "icons" / "icon16.png"] * 2)
 
 
+def test_the_live_check_samples_one_form_per_kind_of_board():
+    from jobwatch.models import Job
+
+    jobs = [Job("greenhouse", "initech", "1", "SRE", "https://job-boards.greenhouse.io/initech/jobs/1"),
+            Job("greenhouse", "globex", "2", "SRE", "https://careers.globex.example/jobs?gh_jid=2"),
+            Job("greenhouse", "initech", "3", "Older", "https://job-boards.greenhouse.io/initech/jobs/3"),
+            Job("lever", "umbrella", "4", "SRE", "https://jobs.lever.co/umbrella/4"),
+            Job("ashby", "hooli", "5", "SRE", "https://jobs.ashbyhq.com/hooli/5"),
+            Job("workday", "acme", "6", "SRE", "https://acme.wd5.myworkdayjobs.com/x/job/6")]
+    assert live_check.samples(jobs) == {
+        "greenhouse": "https://job-boards.greenhouse.io/initech/jobs/1",
+        "greenhouse embedded": "https://careers.globex.example/jobs?gh_jid=2",
+        "lever": "https://jobs.lever.co/umbrella/4/apply",
+        "ashby": "https://jobs.ashbyhq.com/hooli/5/application",
+    }
+
+
 def test_the_committed_icons_are_the_ones_the_tool_draws():
     for size in make_icons.SIZES:
         png = (EXT / "icons" / f"icon{size}.png").read_bytes()

@@ -1,6 +1,7 @@
 """See what the extension makes of a real application form, without touching it.
 
     python chrome-extension/tools/live_check.py https://job-boards.greenhouse.io/<board>/jobs/<id> [more links]
+    python chrome-extension/tools/live_check.py --sample    # one open job per kind of board, from your jobwatch
 
 Opens each link in Chromium with the extension loaded and paired to the fake jobwatch (made-up details and
 answers, see fake_server.py), scans the form as "Fill this application" does, and prints one line per field:
@@ -46,10 +47,39 @@ def report(url: str, reply: dict) -> str:
     return "\n".join(lines)
 
 
+def samples(jobs) -> dict[str, str]:
+    """One open application form per kind of board, from jobwatch's jobs: Greenhouse on its own site, Greenhouse
+    embedded in a company's page, Lever and Ashby. The newest of each, as the Apply button would open it."""
+    from jobwatch.sources import apply_url
+
+    picked: dict[str, str] = {}
+    for job in jobs:
+        kind = {"lever": "lever", "ashby": "ashby"}.get(job.source)
+        if job.source == "greenhouse":
+            kind = "greenhouse" if "greenhouse.io" in job.url else "greenhouse embedded"
+        if kind and job.url and kind not in picked:
+            picked[kind] = apply_url(job.url)
+    return picked
+
+
+def stored_jobs():
+    """The open jobs in the person's own jobwatch (its watchlist as `jobwatch` finds it), newest first."""
+    from jobwatch import config
+    from jobwatch.store import Store
+
+    store = Store(config.load(None).state)
+    try:
+        return [job for job, _ in store.jobs()]
+    finally:
+        store.close()
+
+
 def scan(stack: Stack, url: str) -> dict:
     page = stack.context.new_page()
     try:
-        page.goto(url, wait_until="networkidle", timeout=45000)
+        response = page.goto(url, wait_until="networkidle", timeout=45000)
+        if response and response.status >= 400:
+            return {"ok": False, "error": f"the page answered HTTP {response.status}: the posting is likely gone"}
         ext = stack.extension_page()
         try:
             tab = tab_id_for(ext, page.url)
@@ -65,9 +95,18 @@ def scan(stack: Stack, url: str) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("urls", nargs="+", help="application form links (the page with the form on it)")
+    parser.add_argument("urls", nargs="*", help="application form links (the page with the form on it)")
+    parser.add_argument("--sample", action="store_true",
+                        help="also check one open job per kind of board, picked from your jobwatch")
     parser.add_argument("--show", action="store_true", help="show the browser window")
     args = parser.parse_args(argv)
+    if args.sample:
+        for kind, url in samples(stored_jobs()).items():
+            print(f"{kind}: {url}")
+            args.urls.append(url)
+        print()
+    if not args.urls:
+        parser.error("give application links, or --sample")
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw, fake_jobwatch() as (api_url, server), \

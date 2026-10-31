@@ -195,6 +195,28 @@ def published(name: str, version: str, registry_name: str | None) -> dict[str, b
     return seen
 
 
+def status(root: Path) -> str:
+    """Where a package stands before a release: the version its files declare, PyPI's latest, the last tag and
+    how long ago it was, and the commits since (what would go out). /release's first step reads this."""
+    name, files = project_name(root), current_version(root)
+    try:
+        pypi = fetch_json(PYPI.format(name=name))["info"]["version"]
+    except urllib.error.HTTPError as e:
+        pypi = "not on PyPI" if e.code == 404 else f"can't check: HTTP {e.code}"
+    except OSError as e:
+        pypi = f"can't check: {e}"
+    try:
+        tag = git(root, "describe", "--tags", "--abbrev=0")
+    except subprocess.CalledProcessError:
+        return f"{name}: files say {files}; PyPI has {pypi}; never tagged"
+    when = git(root, "log", "-1", "--format=%cs", tag)
+    days = (time.time() - int(git(root, "log", "-1", "--format=%ct", tag))) // 86400
+    since = [line for line in git(root, "log", "--oneline", f"{tag}..HEAD").splitlines() if line]
+    lines = [f"{name}: files say {files}; PyPI has {pypi}; last tag {tag} on {when} ({days:.0f} days ago); "
+             f"{len(since)} commit(s) since"]
+    return "\n".join(lines + [f"  {line}" for line in since])
+
+
 def _shown(v: bool | str) -> str:
     return "yes" if v is True else "not yet" if v is False else v
 
@@ -213,7 +235,9 @@ def wait_for(name: str, version: str, registry_name: str | None, timeout: float 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("version", help="the new version, e.g. 0.2.3")
+    ap.add_argument("version", nargs="?", help="the new version, e.g. 0.2.3")
+    ap.add_argument("--status", action="store_true",
+                    help="show the files' version, PyPI's, the last tag and the commits since; change nothing")
     ap.add_argument("-m", "--summary", default="", help="what's in it, for the commit message")
     ap.add_argument("--body", default="", help="extra commit message paragraph(s), e.g. trailers")
     ap.add_argument("--dry-run", action="store_true", help="show the bump, change nothing")
@@ -222,8 +246,11 @@ def main(argv=None) -> int:
                     help="the project to release (default: the one this script is in)")
     args = ap.parse_args(argv)
     root = (args.root or ROOT).expanduser().resolve()
+    if args.status:
+        print(status(root))
+        return 0
 
-    if not VERSION.match(args.version):
+    if not args.version or not VERSION.match(args.version):
         raise SystemExit("release: give a version like 1.2.3")
     name, old, tag = project_name(root), current_version(root), f"v{args.version}"
     # The version the files already declare goes out as it is when it was never tagged: a first release.

@@ -77,6 +77,19 @@ def test_a_browser_extension_moves_with_the_release(release, tmp_path):
         release.bump(manifest.read_text(), manifest, "1.2.3", "1.3.0", "acme-tool")
 
 
+def test_status_shows_what_a_release_would_send(release, tmp_path, monkeypatch):
+    root = make_project(tmp_path, server=False)
+    replies = {("describe", "--tags", "--abbrev=0"): "v1.2.3", ("log", "-1", "--format=%cs", "v1.2.3"): "2026-01-02",
+               ("log", "-1", "--format=%ct", "v1.2.3"): str(int(release.time.time()) - 3 * 86400),
+               ("log", "--oneline", "v1.2.3..HEAD"): "abc1234 Add a widget\ndef5678 Fix a crash"}
+    monkeypatch.setattr(release, "git", lambda root, *args: replies[args])
+    monkeypatch.setattr(release, "fetch_json", lambda url: {"info": {"version": "1.2.3"}})
+    out = release.status(root).splitlines()
+    assert out[0] == ("acme-tool: files say 1.2.3; PyPI has 1.2.3; last tag v1.2.3 on 2026-01-02 (3 days ago); "
+                      "2 commit(s) since")
+    assert out[1:] == ["  abc1234 Add a widget", "  def5678 Fix a crash"]
+
+
 def test_server_json_is_optional(release, tmp_path):
     root = make_project(tmp_path, server=False)
     assert [f.name for f in release.version_files(root, "acme-tool")] == ["pyproject.toml", "__init__.py"]
