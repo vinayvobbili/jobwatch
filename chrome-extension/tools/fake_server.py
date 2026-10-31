@@ -42,6 +42,7 @@ class State:
         self.requests: list[tuple[str, str]] = []
         self.token = TOKEN
         self.know_every_page = False  # live_check.py: every page is a known job, with a resume
+        self.draft_answer = ""  # store_assets.py: a draft that reads like one; else it names the question
 
 
 def _handler(state: State):
@@ -93,7 +94,8 @@ def _handler(state: State):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             if self.path == "/ext/draft":
                 state.drafts.append(body)
-                self._json(200, {"answer": f"A drafted answer to: {body['question']}", "model": "fake-model"})
+                answer = state.draft_answer or f"A drafted answer to: {body['question']}"
+                self._json(200, {"answer": answer, "model": "fake-model"})
             elif self.path == "/ext/submitted":
                 state.submitted.append(body)
                 self._json(200, {"key": "ashby:initech/4f1c", "status": "applied", "added": False})

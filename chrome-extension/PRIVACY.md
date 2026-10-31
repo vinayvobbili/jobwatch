@@ -5,11 +5,17 @@ in the side panel that opens. The side panel itself shows only what the extensio
 It reads the form's questions, their answer options and the values already in the fields, the page's address, and the
 company and job title shown on the page.
 
-**Where that goes:** only to your own jobwatch, which runs on your computer (`http://127.0.0.1`, or `localhost`). The
-extension sends it the page's address, the text of a question you ask it to draft, and, after you submit an
-application, the questions and answers on the form (not your name, contact details or voluntary self-identification
-answers), the company and job title, and the name of the resume file. The extension's authors run no server and
-receive nothing.
+**What it receives, and writes into the form:** from your own jobwatch, your applicant details (name, email, phone,
+address, links, work authorization, and the voluntary self-identification answers you have set there), your answers to
+earlier applications, and the job's resume file. It writes the ones you tick into the form you are looking at, and
+nothing else; the form's own site receives them only when you press its Submit button.
+
+**Where what it reads goes:** only to your own jobwatch, which runs on your computer (`http://127.0.0.1`, or
+`localhost`). The extension sends it the page's address, the text of a question you ask it to draft together with your
+other written answers on that form (so a draft doesn't repeat them), and, after you submit an application, the
+questions and answers on the form (not your name, contact details or voluntary self-identification answers), the
+company and job title, and the name of the resume file. What jobwatch does with a draft request, such as which language
+model it asks, is set in jobwatch, not in the extension. The extension's authors run no server and receive nothing.
 
 **What it stores:**
 - **In Chrome, on this computer:** the server address and token you enter in the options page.

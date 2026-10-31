@@ -13,6 +13,7 @@ Skipped unless Playwright and its Chromium are installed:
 from __future__ import annotations
 
 import contextlib
+import struct
 import sys
 import time
 from pathlib import Path
@@ -24,6 +25,7 @@ sync_api = pytest.importorskip("playwright.sync_api")
 TOOLS = Path(__file__).resolve().parent.parent / "chrome-extension" / "tools"
 sys.path.insert(0, str(TOOLS))
 import harness  # noqa: E402
+import store_assets  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -341,3 +343,16 @@ def test_the_panel_follows_the_active_tab(stack, ext, panels):
     panel.wait_for_selector(".row", timeout=20000)
     assert "Already filled" in row(panel, "Your city").inner_text()
     page.close()
+
+
+def test_store_assets_have_the_sizes_the_web_store_requires(tmp_path, pw):
+    try:
+        written = {p.name: p for p in store_assets.build(tmp_path, playwright=pw)}
+    except harness.BrowserUnavailable as exc:
+        pytest.skip(str(exc))
+    shots = {f"screenshot-{n}.png" for n in ("1-review", "2-filled", "3-draft", "4-pairing")}
+    assert set(written) == shots | {"promo-small.png", "promo-marquee.png", "icon128.png"}
+    sizes = {"promo-small.png": store_assets.PROMO, "promo-marquee.png": store_assets.MARQUEE, "icon128.png": (128, 128)}
+    for name, path in written.items():
+        png = path.read_bytes()
+        assert struct.unpack(">II", png[16:24]) == sizes.get(name, store_assets.SCREEN), name

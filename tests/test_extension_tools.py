@@ -12,6 +12,7 @@ EXT = Path(__file__).resolve().parent.parent / "chrome-extension"
 sys.path.insert(0, str(EXT / "tools"))
 import make_icons  # noqa: E402
 import package  # noqa: E402
+import store_assets  # noqa: E402
 
 live_check = pytest.importorskip("live_check")  # imports the harness, which needs nothing installed to import
 
@@ -50,6 +51,37 @@ def test_the_live_check_prints_a_line_per_field():
     assert out[4].endswith("Decline to answer [3 options] (already filled)")
     assert "…" in out[5]
     assert live_check.report("u", {"ok": False, "error": "No form fields"}) == "u\n  could not scan: No form fields"
+
+
+def test_the_store_composition_makes_screenshots_of_the_size_the_store_requires(tmp_path):
+    """The compose step on blank images, in a plain Chromium (no extension); skips without Playwright."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    blank = tmp_path / "blank.png"
+    blank.write_bytes((EXT / "icons" / "icon128.png").read_bytes())
+    with sync_api.sync_playwright() as pw:
+        try:
+            browser = pw.chromium.launch()
+        except Exception as exc:  # no Chromium installed
+            pytest.skip(f"Chromium unavailable: {exc}")
+        try:
+            context = browser.new_context()
+            two = store_assets.compose(context, "Title", "Subtitle", [blank, blank], tmp_path / "two.png")
+            one = store_assets.compose(context, "Title", "Subtitle", [blank], tmp_path / "one.png")
+            small = store_assets.render(context, store_assets.promo_small_html(blank), store_assets.PROMO,
+                                        tmp_path / "small.png")
+            marquee = store_assets.render(context, store_assets.promo_marquee_html(blank, blank),
+                                          store_assets.MARQUEE, tmp_path / "marquee.png")
+        finally:
+            browser.close()
+    for path, size in [(two, store_assets.SCREEN), (one, store_assets.SCREEN), (small, store_assets.PROMO),
+                       (marquee, store_assets.MARQUEE)]:
+        assert struct.unpack(">II", path.read_bytes()[16:24]) == size
+
+
+def test_the_caption_band_leaves_the_rest_of_the_screenshot_to_the_capture():
+    assert store_assets.FORM_W + store_assets.PANEL_W == store_assets.SCREEN[0]
+    assert store_assets.CAPTION_H + store_assets.BODY_H == store_assets.SCREEN[1]
+    assert "split" in store_assets.stage_html("t", "s", [EXT / "icons" / "icon16.png"] * 2)
 
 
 def test_the_committed_icons_are_the_ones_the_tool_draws():
