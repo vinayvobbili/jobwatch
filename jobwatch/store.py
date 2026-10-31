@@ -288,10 +288,11 @@ class Store:
     def close(self):
         self.db.close()
 
-    def sync(self, source: str, company: str, jobs: list[Job]) -> list[str]:
+    def sync(self, source: str, company: str, jobs: list[Job], close_missing: bool = True) -> list[str]:
         """Record one board's current roles; returns the keys seen for the first time.
 
-        Roles that have disappeared from the board are marked closed (and reopened if they come back)."""
+        Roles that have disappeared from the board are marked closed (and reopened if they come back), unless
+        `close_missing` is off: a board read only partway (sources.Partial) says nothing about the rest."""
         now, new = _now(), []
         with self.db:
             known = {r["key"] for r in self.db.execute("SELECT key FROM jobs WHERE source=? AND company=?",
@@ -308,7 +309,7 @@ class Store:
                     self.db.execute("INSERT INTO jobs (key, source, company, data, first_seen, last_seen) "
                                     "VALUES (?, ?, ?, ?, ?, ?)", (job.key, source, company, data, now, now))
                     new.append(job.key)
-            gone = known - {j.key for j in jobs}
+            gone = known - {j.key for j in jobs} if close_missing else set()
             self.db.executemany("UPDATE jobs SET closed=? WHERE key=? AND closed IS NULL", [(now, k) for k in gone])
         return new
 

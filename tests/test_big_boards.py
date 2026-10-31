@@ -94,6 +94,37 @@ def test_a_search_stops_at_the_cap(monkeypatch):
 EF = "https://globex.eightfold.ai/api/pcsx"
 
 
+@pytest.fixture(autouse=True)
+def no_eightfold_gap(monkeypatch):
+    monkeypatch.setattr(sources, "EIGHTFOLD_GAP", 0)
+
+
+def test_requests_are_spaced_out(monkeypatch):
+    """A board that rate-limits back-to-back reads is read with a gap between requests."""
+    clock, waits = [100.0], []
+    monkeypatch.setattr(sources.time, "monotonic", lambda: clock[0])
+
+    def sleep(s):
+        waits.append(round(s, 2))
+        clock[0] += s
+    monkeypatch.setattr(sources.time, "sleep", sleep)
+    get = sources._paced(lambda url: url, 0.5)
+    assert get("a") == "a"  # the first goes at once
+    clock[0] += 0.2
+    get("b")
+    clock[0] += 2
+    get("c")  # long enough since the last: no wait
+    assert waits == [0.3]
+
+
+def test_eightfold_reads_are_paced(monkeypatch):
+    monkeypatch.setattr(sources, "EIGHTFOLD_GAP", 0.5)
+    waits = []
+    monkeypatch.setattr(sources.time, "sleep", waits.append)
+    sources.fetch("eightfold", "globex", eightfold_web(), search=["engineer"], wanted=lambda t: False)
+    assert waits  # the second search page waited for the first
+
+
 def ef_position(n, name, locations, where):
     return {"id": n, "name": name, "locations": locations, "workLocationOption": where, "department": "Security",
             "postedTs": "1790000000"}
@@ -108,7 +139,7 @@ EF_POSITIONS = [ef_position(1, "Principal Platform Engineer", "['Denver, CO, Uni
 def eightfold_web():
     responses = {}
     for start in (0, 10):
-        responses[f"{EF}/search?domain=globex.com&query=engineer&start={start}"] = {
+        responses[f"{EF}/search?domain=globex.com&query=engineer&start={start}&sort_by=timestamp"] = {
             "data": {"count": len(EF_POSITIONS), "positions": EF_POSITIONS[start:start + 10]}}
     for p in EF_POSITIONS:
         responses[f"{EF}/position_details?position_id={p['id']}&domain=globex.com"] = {"data": {
@@ -134,8 +165,8 @@ def test_eightfold():
 
 def worksite_web(positions, sites, travel=None):
     """A search answering `positions` and details whose efcustomTextWorkSite is sites[id]."""
-    responses = {f"{EF}/search?domain=globex.com&query=&start=0": {"data": {"count": len(positions),
-                                                                           "positions": positions}}}
+    responses = {f"{EF}/search?domain=globex.com&query=&start=0&sort_by=timestamp": {
+        "data": {"count": len(positions), "positions": positions}}}
     for p in positions:
         data = {"jobDescription": "<p>Build things</p>", "efcustomTextWorkSite": sites[p["id"]]}
         if travel:
@@ -159,6 +190,42 @@ def test_eightfold_work_site_marks_remote():
     assert by_id["4"].remote is True
     assert by_id["1"].description.startswith(
         "Work site: 0 days / week in-office – remote\nRequired travel: Less than 25%\n\nBuild things")
+
+
+RATE_LIMITED = sources.SourceError("https://globex.eightfold.ai/api/pcsx/search: HTTP 429")
+
+
+def test_a_board_rate_limited_partway_keeps_the_newest_roles():
+    web = eightfold_web()
+    web.responses[f"{EF}/search?domain=globex.com&query=engineer&start=10&sort_by=timestamp"] = RATE_LIMITED
+    with pytest.raises(sources.Partial, match="HTTP 429; kept the 10 newest roles") as got:
+        sources.fetch("eightfold", "globex", web, search=["engineer"], wanted=lambda t: True)
+    assert [j.id for j in got.value.jobs] == [str(p["id"]) for p in EF_POSITIONS[:10]]
+    assert not any("position_details" in c for c in web.calls)  # postings are read next run, not while limited
+
+
+def test_a_board_rate_limited_from_the_start_fails():
+    web = eightfold_web()
+    web.responses[f"{EF}/search?domain=globex.com&query=engineer&start=0&sort_by=timestamp"] = RATE_LIMITED
+    with pytest.raises(sources.SourceError) as got:
+        sources.fetch("eightfold", "globex", web, search=["engineer"])
+    assert not isinstance(got.value, sources.Partial)
+
+
+def test_a_partial_read_adds_new_roles_and_closes_nothing(tmp_path, monkeypatch):
+    path = tmp_path / "watchlist.yaml"
+    path.write_text("companies:\n  - eightfold:globex\nfilters:\n  titles: [engineer]\n", encoding="utf-8")
+    cfg = config.load(path)
+    store = Store(tmp_path / "state.db")
+    old = Job(source="eightfold", company="globex", id="999", title="Older Engineer", url="u", description="x")
+    store.sync("eightfold", "globex", [old])
+    web = eightfold_web()
+    web.responses[f"{EF}/search?domain=globex.com&query=engineer&start=10&sort_by=timestamp"] = RATE_LIMITED
+    report = fetch_all(cfg, store, get=web)
+    assert not report.errors, report.errors
+    assert "read partway" in report.warnings.get("eightfold:globex", ""), report.warnings
+    assert len(report.new) == 10
+    assert [k for k, _ in store.open_board_jobs("eightfold", "globex") if k.id == "999"]  # not taken as closed
 
 
 @pytest.mark.parametrize("site, expected", [

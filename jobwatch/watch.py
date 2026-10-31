@@ -145,16 +145,22 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
         try:
             jobs = sources.fetch(b.source, b.board, get, search=search_terms(f), wanted=lambda t: title_ok(t, f),
                                  known=known.get(b))
+        except sources.Partial as e:  # rate-limited partway: keep what was read, close nothing
+            partial[b.entry] = str(e)
+            return b, e.jobs, None, None
         except sources.SourceError as e:
             return b, None, str(e), None
         return b, jobs, None, hosted.ask(b.source, b.board) if (b.source, b.board) in due else None
 
     new: list[Job] = []
+    partial: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for b, jobs, err, up in pool.map(one, cfg.boards):
             if err:
                 report.errors[b.entry] = err
                 continue
+            if b.entry in partial:
+                report.warnings[b.entry] = f"read partway: {partial[b.entry]}"
             up = hosted.answer(b.source, b.board, up) if sources.SOURCES[b.source].hosted else None
             src = sources.SOURCES[b.source]
             for j in jobs:
@@ -167,7 +173,7 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
                 report.warnings[b.entry] = offline_warning(b)
             report.boards += 1
             report.jobs += len(jobs)
-            keys = set(found := store.sync(b.source, b.board, jobs))
+            keys = set(found := store.sync(b.source, b.board, jobs, close_missing=b.entry not in partial))
             report.new += found
             new += [j for j in jobs if j.key in keys]
             if src.many_companies and keys:

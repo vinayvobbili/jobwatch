@@ -55,7 +55,16 @@ class Refused(SourceError):
     """The site won't answer jobwatch (HTTP 401 or 403): asking again soon won't help."""
 
 
-RETRIES = 3  # a board that says "slow down" (429) or "busy" (503) is asked again, waiting longer each time
+class Partial(SourceError):
+    """The board stopped answering partway through (rate-limited): `jobs` are the roles read before it did, newest
+    first. They are kept, and nothing missing from them is taken as closed (see Store.sync's `close_missing`)."""
+
+    def __init__(self, message: str, jobs: list):
+        super().__init__(message)
+        self.jobs = jobs
+
+
+RETRIES = 5  # a board that says "slow down" (429) or "busy" (503) is asked again, waiting longer each time (~1 min)
 MAX_WAIT = 30
 
 
@@ -270,6 +279,21 @@ def _unread_if_refused(read: Callable[[], Job], listed: Job) -> Job:
         return listed
 
 
+def _paced(get: Callable, gap: float) -> Callable:
+    """`get`, with at least `gap` seconds between the starts of its calls: for a board that rate-limits a run that
+    reads it back to back (a big Eightfold board answered HTTP 429 a few pages in, every run)."""
+    lock, last = threading.Lock(), [-gap]
+
+    def paced(*args, **kwargs):
+        with lock:
+            wait = last[0] + gap - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            last[0] = time.monotonic()
+        return get(*args, **kwargs)
+    return paced
+
+
 def _details(items: list, read: Callable, workers: int = 4) -> list:
     with ThreadPoolExecutor(max_workers=workers) as pool:
         return list(pool.map(read, items))
@@ -321,6 +345,7 @@ def _workday_read(j: Job, api: str, path: str, get) -> Job:
 EIGHTFOLD_PAGE = 10
 EIGHTFOLD_BACKFILL = 100  # stored jobs per board re-read each run to add the work site they were stored without
 EIGHTFOLD_WORKERS = 1  # pages are 10 roles, so a big board is hundreds of requests: parallel ones get HTTP 429
+EIGHTFOLD_GAP = 1.0  # seconds between requests: a big board answered HTTP 429 a few pages in back to back, ~45 at 0.5
 
 
 def _eightfold_parts(board: str) -> tuple[str, str]:
@@ -349,16 +374,26 @@ def _worksite_remote(text: str) -> bool | None:
 
 
 def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
-    get = get or get_json
+    get = _paced(get or get_json, EIGHTFOLD_GAP)
     api, domain = _eightfold_parts(board)
     tenant = board.partition("/")[0]
     positions = {}
+    stopped = None  # the error a rate-limited board stopped with, once some pages were read
     for term in search or [""]:
-        def page(offset, term=term):
-            d = (get(f"{api}/search?domain={quote(domain)}&query={quote(term)}&start={offset}") or {}).get("data") or {}
-            return d.get("positions") or [], d.get("count") or 0
-        for p in _search_all(page, EIGHTFOLD_PAGE, cap, EIGHTFOLD_WORKERS):
-            positions.setdefault(str(p["id"]), p)
+        offset, total = 0, 1
+        while offset < min(total, cap) and not stopped:
+            url = f"{api}/search?domain={quote(domain)}&query={quote(term)}&start={offset}&sort_by=timestamp"
+            try:
+                d = (get(url) or {}).get("data") or {}
+            except SourceError as e:
+                if not positions or isinstance(e, (NotFound, Refused)):
+                    raise
+                stopped = e  # newest first, so what was read is what's new: keep it, ask for the rest next run
+                break
+            found, total = d.get("positions") or [], d.get("count") or 0
+            for p in found:
+                positions.setdefault(str(p["id"]), p)
+            offset = offset + EIGHTFOLD_PAGE if found else total
 
     backfill = [EIGHTFOLD_BACKFILL]  # re-reads left this run: a big board's stored jobs are caught up over a few runs
 
@@ -395,8 +430,13 @@ def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, ca
             j.description = "\n".join([f"Work site: {site or 'not stated'}"]
                                       + ([f"Required travel: {travel}"] if travel else []) + ["", j.description])
             return j
+        if stopped:  # the board is rate-limiting: keep the listing, read the posting next run
+            return stored or j
         return _unread_if_refused(read, j) if not stored else _unread_if_refused(read, stored)
-    return _details(list(positions.items()), job, EIGHTFOLD_WORKERS)
+    jobs = _details(list(positions.items()), job, EIGHTFOLD_WORKERS)
+    if stopped:
+        raise Partial(f"{stopped}; kept the {len(jobs)} newest roles, older ones stay as they were", jobs)
+    return jobs
 
 
 # -- Jibe (Google's careers-site product, over iCIMS and others): board is the site's host, e.g.
