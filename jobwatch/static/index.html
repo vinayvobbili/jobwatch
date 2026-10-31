@@ -174,7 +174,53 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--stripe, transparent); }
 .card.job:hover, .card.app:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover);
   border-color: color-mix(in srgb, var(--stripe, var(--accent)) 35%, var(--line)); }
-.card.job { display: grid; grid-template-columns: 46px 1fr auto; gap: 0 16px; }
+/* a job card (Today, Queue): header (logo, title, one meta line; the ring top right), labeled rows in a fixed order
+   with the labels in one column, and the actions pinned to the bottom, so every card reads the same way */
+.card.job { display: grid; grid-template-columns: 46px minmax(0, 1fr) 100px; grid-template-rows: auto 1fr auto auto;
+  gap: 0 16px; }
+.card.job > .mono { grid-area: 1 / 1; }
+.card.job > .jc-id { grid-area: 1 / 2; min-width: 0; }
+.card.job > .fitbox { grid-area: 1 / 3 / 3 / 4; align-self: start; }
+.card.job > .jc-rows { grid-area: 2 / 1 / 3 / 3; min-width: 0; margin-top: 8px; }
+.card.job > .jc-note { grid-area: 3 / 1 / 4 / -1; margin-top: 10px; }
+.card.job > .jc-note input { width: 100%; box-sizing: border-box; }
+.card.job > .jc-foot { grid-area: 4 / 1 / 5 / -1; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.jc-title { display: flex; gap: 6px; align-items: center; min-height: 26px; }
+.jc-title a.title, .jc-title span.title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jc-title .badge, .jc-title .chip { flex: none; }
+.meta.jc-meta { flex-wrap: nowrap; margin: 2px 0 0; white-space: nowrap; }
+.kv > .small.muted { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.kv .note { border-left: 0; padding-left: 0; }
+.jc-meta > * { flex: none; }
+.jc-meta .co { flex: none; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; }
+.jc-meta .place { flex: 0 1 auto; min-width: 0; display: flex; gap: 4px; }
+.jc-meta .place .pl { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.jc-meta .place .more { flex: none; opacity: .75; }
+.krow { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 0 10px; align-items: baseline; padding: 6px 0;
+  border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent); font-size: 13.5px; }
+.krow:has(> .kv:empty), .krow:has(> .kv > [hidden]:only-child) { display: none; }
+.klabel { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted);
+  opacity: .85; }
+.kv { min-width: 0; }
+.kv > * { margin-top: 0; margin-bottom: 0; }
+.kv > * + * { margin-top: 3px; }
+.kv .gaps { margin: 0; }
+.kv .dim, .kv .whyfit summary, .kv .whyfit { color: var(--muted); font-size: 12.5px; }
+.kv .whyfit summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paychip { display: inline-block; color: var(--good); font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13px;
+  padding: 1px 10px; border-radius: 999px; background: color-mix(in srgb, var(--good) 14%, transparent); }
+.kv .advice { margin: 0; }
+.kv .advice .atext { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.kv .warns { margin: 0; }
+.kv .chips { margin: 0; max-height: 50px; overflow: hidden; }
+.kv .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.kv .note { margin: 0; }
+.person { display: flex; gap: 6px; align-items: center; color: var(--good); min-width: 0; }
+.person .ptext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person .dont { flex: none; margin-left: auto; }
+.pmore { color: var(--muted); font-size: 13px; }
+.pmore a { color: var(--muted); text-decoration: none; }
+.pmore a:hover { color: var(--accent); text-decoration: underline; }
 .card.fit-hi { --stripe: var(--good); } .card.fit-mid { --stripe: var(--warn); } .card.fit-lo { --stripe: var(--bad); }
 .card.fit-none { --stripe: color-mix(in srgb, var(--accent) 35%, transparent); }
 .card a.title { color: var(--text); font-weight: 700; font-size: 17px; letter-spacing: -.01em; text-decoration: none; }
@@ -227,9 +273,9 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .know { color: var(--good); font-size: 13.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .know a { color: var(--muted); text-decoration: none; }
 .know a:hover { color: var(--accent); text-decoration: underline; }
-.know .dont { font-size: 12px; padding: 0 6px; margin-left: 4px; background: none; border: 1px solid var(--line);
+.know .dont, .person .dont { font-size: 12px; padding: 0 6px; margin-left: 4px; background: none; border: 1px solid var(--line);
   border-radius: 999px; color: var(--muted); cursor: pointer; }
-.know .dont:hover { color: var(--bad); border-color: var(--bad); }
+.know .dont:hover, .person .dont:hover { color: var(--bad); border-color: var(--bad); }
 .know .pnote { color: var(--muted); font-style: italic; }
 .card.ref { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: start; }
 .card.ref .rate { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 230px; }
@@ -905,7 +951,10 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
 @media (max-width: 760px) {
   .bar { flex-wrap: wrap; padding: 10px 16px; } main { padding: 20px 16px 60px; }
   .hero { grid-template-columns: 1fr 1fr; } .grid { grid-template-columns: 1fr; }
-  .card.job, .card.app { grid-template-columns: 1fr; } .mono { display: none; }
+  .card.app { grid-template-columns: 1fr; } .mono { display: none; }
+  .card.job { grid-template-columns: minmax(0, 1fr) 84px; }
+  .card.job > .jc-id { grid-area: 1 / 1; } .card.job > .fitbox { grid-area: 1 / 2; }
+  .card.job > .jc-rows { grid-area: 2 / 1 / 3 / 3; }
   .chat-fab { right: 16px; bottom: 16px; } .chat-pop { right: 16px; bottom: 16px; height: calc(100vh - 90px); }
   .fitbox { text-align: left; margin-top: 8px; } .ring { margin: 0; }
   .fpart .v { max-width: 62vw; } .fbar .sep { display: none; }
@@ -1252,23 +1301,28 @@ async function rateContact(who, verdict, note) {
 // Who you know there, people you chose to ask first and then the strongest ties, and a way to find an introduction
 // when you know nobody.
 function knowLine(job, most = 3) {
-  const bit = p => {
-    const el = h("span", {}, (p.position ? `${p.name} (${p.position})` : p.name) + (p.why ? ` — ${p.why}` : ""),
-      p.note ? h("span", { class: "pnote" }, ` “${p.note}”`) : null,
-      h("button", { class: "dont", title: "Never suggest this person (undo in the Referrals tab)", onclick: async () => {
-        try {
-          await rateContact(p.key, "skip", p.note);
-          el.remove();
-          toast(`${p.name} won't be suggested`, async () => { await rateContact(p.key, "clear"); render(); }, "onward");
-        } catch (e) { toast(e.message); }
-      } }, "Don't use"));
-    return el;
-  };
   const shown = job.contacts.slice(0, most), rest = job.contacts.length - shown.length;
   return h("div", { class: "know" }, icon("users", 14),
-    shown.length ? h("span", {}, "You know ", shown.flatMap((p, i) => i ? ["; ", bit(p)] : [bit(p)]),
+    shown.length ? h("span", {}, "You know ", shown.flatMap((p, i) => i ? ["; ", contactBit(p)] : [contactBit(p)]),
       rest > 0 ? ` and ${rest} more` : null) : null,
-    link(job.find_referral, job.contacts.length ? "more on LinkedIn ↗" : "Find someone who can refer you ↗"));
+    referralLink(job));
+}
+const referralLink = job => link(job.find_referral, job.contacts.length ? "more on LinkedIn ↗" : "Find someone who can refer you ↗");
+// One contact: name (position) — why, the note you gave them, and "Don't use" to stop suggesting them. `tag` is the
+// element ("div" is a line of its own on a job card, with the text cut at the line's end and the full text on hover).
+function contactBit(p, tag = "span") {
+  const text = (p.position ? `${p.name} (${p.position})` : p.name) + (p.why ? ` — ${p.why}` : "");
+  const el = h(tag, { class: tag === "div" ? "person" : null },
+    h("span", { class: "ptext", title: text + (p.note ? ` “${p.note}”` : "") }, text,
+      p.note ? h("span", { class: "pnote" }, ` “${p.note}”`) : null),
+    h("button", { class: "dont", title: "Never suggest this person (undo in the Referrals tab)", onclick: async () => {
+      try {
+        await rateContact(p.key, "skip", p.note);
+        el.remove();
+        toast(`${p.name} won't be suggested`, async () => { await rateContact(p.key, "clear"); render(); }, "onward");
+      } catch (e) { toast(e.message); }
+    } }, "Don't use"));
+  return el;
 }
 
 function fitClass(score) { return score >= 75 ? "hi" : score >= 50 ? "mid" : "lo"; }
@@ -1303,8 +1357,9 @@ function adviceLine(job) {
   const a = job.advice;
   if (!a || (job.status === "queued" && a.action === "queue")) return null;
   const word = a.action === "queue" ? "Queue" : job.status === "queued" ? "Hold off" : "Skip";
+  const why = a.reasons.join("; ") + (a.though.length ? ` (though ${a.though[0]})` : "");
   return h("div", { class: `advice ${a.action}`, "data-advice": job.key }, icon(a.action === "queue" ? "check" : "x", 14),
-    h("b", {}, `Suggest ${word}: `), a.reasons.join("; "), a.though.length ? ` (though ${a.though[0]})` : "");
+    h("span", { class: "atext", title: `Suggest ${word}: ${why}` }, h("b", {}, `Suggest ${word}: `), why));
 }
 // In a job's details, where the ring would be: why there's no score yet (no posting text, still in line, ...).
 function noFitBox(job) {
@@ -1313,9 +1368,11 @@ function noFitBox(job) {
     h("div", { class: "ring", style: "--p:0" }, h("span", {}, "–")), h("small", {}, why));
 }
 
-function gapsLine(fit) {
+// `bare` is the gap sentence alone, for a job card's Gaps row (the row says what it is; click opens it past two lines).
+function gapsLine(fit, bare = false) {
   if (!fit || !fit.gaps || !fit.gaps.length) return null;
-  const el = h("div", { class: "gaps", title: "Click to see every gap" }, h("b", {}, "Gaps: "), fit.gaps.join(" · "));
+  const el = h("div", { class: "gaps", title: bare ? fit.gaps.join(" · ") : "Click to see every gap" },
+    bare ? null : h("b", {}, "Gaps: "), fit.gaps.join(" · "));
   el.onclick = () => el.classList.toggle("open");
   return el;
 }
@@ -1384,32 +1441,64 @@ function watchPay(jobs, scope = "page") {
 
 // -- job cards
 
-function jobCard(job, actions, i = 0) {
-  const places = job.locations.slice(0, 3).join("; ") + (job.locations.length > 3 ? " …" : "");
-  const facts = [places, job.pay ? h("span", { class: "pay" }, job.pay) : null, age(job.age_days), worthChip(job),
-    job.same_title ? `+${job.same_title} more posting${job.same_title > 1 ? "s" : ""}` : null].filter(Boolean);
+// One short place for the meta line: the first, "+N more" after it, the whole list on hover.
+function placeSummary(locations) {
+  return { first: locations[0] || "", more: Math.max(0, locations.length - 1), full: locations.join("; ") };
+}
+function placeItem(locations) {
+  const p = placeSummary(locations);
+  return p.first ? h("span", { class: "place", title: p.full }, h("span", { class: "pl" }, p.first),
+    p.more ? h("span", { class: "more" }, `+${p.more} more`) : null) : null;
+}
+
+// The labeled rows of a job card, always in this order; a row with nothing to show is left out.
+const CARD_ROWS = [["pay", "Pay"], ["why", "Why"], ["check", "Check"], ["gaps", "Gaps"], ["skills", "Skills"],
+  ["people", "People"], ["note", "Note"]];
+const hasKids = c => [c].flat(Infinity).some(k => k !== null && k !== undefined && k !== false);
+function cardRows(parts) {
+  return CARD_ROWS.filter(([key]) => hasKids(parts[key])).map(([key, label]) =>
+    h("div", { class: "krow", "data-row": key }, h("div", { class: "klabel" }, label), h("div", { class: "kv" }, parts[key])));
+}
+// Who you know there, one contact to a line (a few, then "+N more"), or the way to find an introduction.
+function peopleRow(job, most = 2) {
+  const shown = job.contacts.slice(0, most), rest = job.contacts.length - shown.length;
+  return [shown.map(p => contactBit(p, "div")),
+    h("div", { class: "pmore" }, rest > 0 ? `+${rest} more · ` : null, referralLink(job))];
+}
+
+// Every job card has this skeleton: the header (logo, title, company · place · age; the ring top right), the labeled
+// rows, `above` (the queue's note box) and the actions at the bottom.
+function jobCard(job, actions, i = 0, above = null) {
+  const sep = () => h("span", { class: "sep" }, "·");
+  const meta = [h("b", { class: "co", title: job.company }, job.company), placeItem(job.locations),
+    age(job.age_days) ? h("span", { class: "posted", title: age(job.age_days) }, age(job.age_days).replace(/^posted /, "")) : null]
+    .filter(Boolean);
+  const parts = {
+    pay: [job.pay ? h("span", { class: "paychip" }, job.pay) : null, payLine(job), lcaLine(job)],
+    why: adviceLine(job) || h("span", { "data-advice": job.key, hidden: true }),
+    check: [linkNote(job), job.warnings && job.warnings.length ? h("div", { class: "warns" }, job.warnings.join(" · ")) : null],
+    gaps: gapsLine(job.fit, true),
+    skills: job.keywords.length ? h("div", { class: "chips", title: job.keywords.join(", ") },
+      job.keywords.map(k => h("span", { class: "chip hit" }, k))) : null,
+    people: peopleRow(job),
+    note: job.note && job.status !== "queued" ? h("div", { class: "note clamp", title: job.note }, job.note) : null,
+  };
   return h("div", { class: `card job fit-${job.fit ? fitClass(job.fit.score) : "none"}`, id: "job-" + job.key,
     style: `--i:${Math.min(i, 12)}` },
     monogram(job.company),
-    h("div", {},
-      h("div", { class: "row" },
+    h("div", { class: "jc-id" },
+      h("div", { class: "jc-title" },
         job.status === "new" ? h("span", { class: "badge new" }, "new") : null,
         job.closed ? h("span", { class: "badge closed" }, "closed") : null,
-        dupeBadge(job.duplicate_of),
-        link(job.url, job.title, "title")),
-      h("div", { class: "meta" }, h("b", {}, job.company), facts.map(f => [h("span", { class: "sep" }, "·"), f])),
-      linkNote(job),
-      job.warnings && job.warnings.length
-        ? h("div", { class: "warns" }, h("b", {}, "Check: "), job.warnings.join(" · ")) : null,
-      adviceLine(job) || h("span", { "data-advice": job.key, hidden: true }),
-      payLine(job),
-      lcaLine(job),
-      gapsLine(job.fit),
-      job.keywords.length ? h("div", { class: "chips" }, job.keywords.map(k => h("span", { class: "chip hit" }, k))) : null,
-      knowLine(job),
-      job.note && job.status !== "queued" ? h("div", { class: "note" }, job.note) : null,
-      h("div", { class: "row actions" }, actions)),
-    fitBox(job.fit));
+        dupeBadge(job.duplicate_of), worthChip(job),
+        job.same_title ? h("span", { class: "chip", title: `${job.same_title} more posting${job.same_title > 1 ? "s" : ""} with this title` },
+          `+${job.same_title}`) : null,
+        Object.assign(link(job.url, job.title, "title"), { title: job.title })),
+      h("div", { class: "meta jc-meta" }, meta.flatMap((m, n) => n ? [sep(), m] : [m]))),
+    h("div", { class: "jc-rows" }, cardRows(parts)),
+    above ? h("div", { class: "jc-note" }, above) : null,
+    h("div", { class: "row jc-foot" }, actions),
+    fitBox(job.fit) || noFitBox(job));
 }
 
 // The same opening (or maybe) as a job already applied to, queued or skipped: flagged, never hidden.
@@ -3157,7 +3246,6 @@ function queueCard(job, i) {
   const note = h("input", { type: "text", placeholder: "Note (optional): referred by…, applied with…" });
   note.value = job.note || "";
   return jobCard(job, [
-    h("div", { style: "flex-basis:100%" }, note),
     applyButton(job, true),
     tailorButton(job),
     h("button", { class: "btn", onclick: () => mark(job, "applied", note.value || null,
@@ -3165,7 +3253,7 @@ function queueCard(job, i) {
     h("button", { class: "btn", onclick: () => mark(job, "shown", null, `Removed from the queue: ${job.title}`, "queued") },
       "Remove from queue"),
     detailsButton(job), scoreButton(job, job.can_score, j => queueCard(j, 0)),
-  ], i);
+  ], i, note);
 }
 
 // -- applications: everything applied to, how it's going, and what to do next
