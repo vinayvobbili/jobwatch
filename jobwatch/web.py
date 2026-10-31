@@ -816,7 +816,7 @@ class App:
             d = build_digest(cfg, store, include_seen=True, score_top=0)
             why = self.scorer.reasons(cfg, store)
             pay = self._pay(cfg, store, [(e.job, None) for e in d.entries], most=cfg.pay.today)
-            history = advice.History(store)
+            history = advice.History(store, quiet=cfg.quiet)
             worth = comps.worth(cfg, store, [(e.job, e.fit) for e in d.entries])
             out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {}),
                              "worth": worth[e.job.key], **self._advice(cfg, e, history, pay)}
@@ -851,7 +851,7 @@ class App:
             # A job added by hand can be scored once it has the posting's text.
             entries = queue(cfg, store)
             pay = self._pay(cfg, store, [(e.job, e.pay) for e in entries])
-            history = advice.History(store)
+            history = advice.History(store, quiet=cfg.quiet)
             worth = comps.worth(cfg, store, [(e.job, e.fit) for e in entries])
             can_tailor = tailor.ready(cfg.resume_kit)
             return [{**self._entry(e), "worth": worth[e.job.key],
@@ -1069,7 +1069,7 @@ class App:
                     continue
             pay = self._pay(cfg, store, [(j, None) for j, _ in found])
             rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
-            known, index, history = load_contacts(cfg), dupes.Index(store), advice.History(store)
+            known, index, history = load_contacts(cfg), dupes.Index(store), advice.History(store, quiet=cfg.quiet)
             said = {}
             for job, rec in found:
                 if ((pay.get(job.key) or {}).get("expected_pay") or {}).get("pending"):

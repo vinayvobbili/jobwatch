@@ -6,7 +6,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from .config import Config
+from . import quiet as quiet_
+from .config import Config, Quiet
 from .dupes import companies
 from .store import STAGES, Store
 from .watch import STRONG_FIT, Entry, plural
@@ -38,12 +39,16 @@ class Advice:
 
 class History:
     """The applications sent, by the names their company goes by (dupes.companies), to see how many went to one
-    company lately. Build it once for a batch of jobs."""
+    company lately. Build it once for a batch of jobs. `quiet`: the watchlist's quiet settings, for which
+    applications are likely closed (posting gone, or no news for quiet.long days)."""
 
-    def __init__(self, store: Store, today: date | None = None):
+    def __init__(self, store: Store, today: date | None = None, quiet: Quiet | None = None):
         self.today = today or date.today()
         self.by_company: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
+        self.gone: set[str] = set()  # applications that never answered: they no longer hold a company's others
         for job, rec in store.jobs((*STAGES, "queued"), include_closed=True):
+            if (q := quiet_.assess(job, rec, quiet or Quiet(), self.today)) and q["move"] == "close":
+                self.gone.add(job.key)
             for name in companies(job):
                 self.by_company[name].append((job.key, rec.get("applied_at") or "", rec.get("status") or ""))
 
@@ -59,8 +64,9 @@ class History:
 
     def in_play(self, entry: Entry) -> int:
         """Other roles at the company queued or in progress (applied, screening, interviewing, an offer): one
-        more there starts to look like spraying, whenever they were sent."""
-        return sum(1 for _, _, status in self._at(entry) if status in IN_PLAY)
+        more there starts to look like spraying, whenever they were sent. One that's likely closed (quiet.assess
+        says close: its posting is gone, or no news for quiet.long days) doesn't count: many never answer."""
+        return sum(1 for key, _, status in self._at(entry) if status in IN_PLAY and key not in self.gone)
 
 
 def _k(n: int) -> str:
@@ -143,7 +149,7 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
     # The next step: queue it from Today, apply once it's queued.
     go = "Apply" if (entry.record or {}).get("status") == "queued" else "Queue it"
     # Holding off isn't skipping: the job stays, and this turns once one of the others there is settled.
-    later = f"leave it, don't skip: this turns to {go.split()[0]} once one of those is settled."
+    later = f"leave it, don't skip: this turns to {go.split()[0]} once one of those is settled or goes quiet."
     if (n := history.in_play(entry)) >= BUSY:
         return {"call": "hold", "text": f"Hold off: {plural(n, 'other role')} at {company} already queued or "
                                         f"applied to; {later}"}
@@ -177,7 +183,7 @@ REASONS = {
 def summary(cfg: Config, store: Store, entries: list[Entry]) -> dict:
     """How the advice falls across these jobs (Today's, say): {"jobs", "by_action": {queue, skip, none},
     "by_reason": {code: jobs}}, with no expected pay (that's looked up in the background)."""
-    history = History(store)
+    history = History(store, quiet=cfg.quiet)
     by_action, by_reason = Counter(), Counter()
     for e in entries:
         said = advise(cfg, e, history, None)

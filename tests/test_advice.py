@@ -96,7 +96,12 @@ def test_the_bottom_line_says_apply_stretch_hold_or_skip(watchlist):
     settles = save_job(store, company="Globex", title="Engineer 2", status="screening")[0]
     assert call(entry(job(**paid), fit(90, 4, 4))) == {
         "call": "hold", "text": "Hold off: 2 other roles at Globex already queued or applied to; leave it, don't "
-                                "skip: this turns to Queue once one of those is settled."}
+                                "skip: this turns to Queue once one of those is settled or goes quiet."}
+    # Many never answer: one with no news for quiet.long days (45) is likely closed and no longer holds it.
+    later = date.today() + timedelta(days=cfg.quiet.long)
+    assert call(entry(job(**paid), fit(90, 4, 4)), History(store, later, cfg.quiet))["call"] == "apply"
+    assert call(entry(job(**paid), fit(90, 4, 4)), History(store, later - timedelta(days=1), cfg.quiet))["call"] \
+        == "hold"
     store.set_status([settles.key], "rejected")
     assert call(entry(job(**paid), fit(90, 4, 4)))["call"] == "apply"
     assert call(entry(job(company="Initech", **paid), fit(90, 4, 4)))["call"] == "apply"
