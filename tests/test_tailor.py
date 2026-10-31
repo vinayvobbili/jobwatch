@@ -21,6 +21,7 @@ class FakeKit:
 
     def __init__(self, versions=(), build_code=0, build_out=None, build_err="", pdf_name="Jordan_Rivera_Resume_X.pdf"):
         self.versions = list(versions)
+        self.outputs: dict[str, str] = {}  # a version's own PDF stem; others build pdf_name
         self.calls: list[tuple[list[str], str | None]] = []
         self.build_code, self.build_err, self.pdf_name = build_code, build_err, pdf_name
         self.build_out = build_out
@@ -32,7 +33,9 @@ class FakeKit:
         verb = argv[1]
         done = lambda code=0, out="", err="": subprocess.CompletedProcess(argv, code, out, err)  # noqa: E731
         if verb == "list":
-            return done(out="content: /somewhere\n" + "".join(f"{v:<14} A title\n" for v in self.versions))
+            assert argv[2:] == ["--json"]
+            return done(out=json.dumps([{"name": v, "title": "A title", "output": self.output(v), "posting": "",
+                                         "applied": ""} for v in self.versions]))
         if verb == "draft":
             self.versions.append(argv[2])
             return done(out=f"Drafted {argv[2]}")
@@ -40,10 +43,14 @@ class FakeKit:
             if self.build_code and self.build_out is None:
                 return done(1, err=self.build_err)
             out = Path(argv[argv.index("--out") + 1])
-            (out / self.pdf_name).write_bytes(self.pdf)
-            summary = self.build_out or f"{argv[2]}: 2 page(s) -> {out / self.pdf_name}\n"
+            pdf = out / f"{self.output(argv[2])}.pdf"
+            pdf.write_bytes(self.pdf)
+            summary = self.build_out or f"{argv[2]}: 2 page(s) -> {pdf}\n"
             return done(self.build_code, summary, self.build_err)
         raise AssertionError(argv)
+
+    def output(self, version):
+        return self.outputs.get(version) or Path(self.pdf_name).stem
 
     def verbs(self):
         return [argv[1] for argv, _ in self.calls]
@@ -91,6 +98,27 @@ def test_an_existing_version_is_rebuilt_not_redrafted(ctx, kit):
     assert pkg.resume().read_bytes() == b"%PDF-1 rebuilt" and len(pkg.data()["files"]) == 1  # replaced, same name
 
 
+def test_a_resume_tailored_by_hand_is_rebuilt_under_its_own_name(ctx, kit):
+    """The version that built the package's resume is the job's, whatever it's called: no second, generic draft."""
+    cfg, store = ctx
+    kit.versions = ["initech-data", "base"]
+    kit.outputs = {"initech-data": "Jordan_Rivera_Resume_Initech", "base": "Jordan_Rivera_Resume"}
+    store.package("c1").attach("Jordan_Rivera_Resume_Initech.pdf", b"%PDF-1 by hand", "resume")
+    r = tailor.tailor(cfg, store, "c1")
+    assert kit.verbs() == ["list", "build"] and (r["version"], r["new"]) == ("initech-data", False)
+    pkg = store.package("c1")
+    assert [f["name"] for f in pkg.data()["files"]] == ["Jordan_Rivera_Resume_Initech.pdf"]
+    assert pkg.resume().read_bytes() == b"%PDF-1 built"
+
+
+def test_an_old_resume_kit_is_asked_to_update(ctx, kit, monkeypatch):
+    cfg, store = ctx
+    monkeypatch.setattr(tailor.subprocess, "run", lambda argv, **kw: subprocess.CompletedProcess(
+        argv, 2, "", "resume: error: unrecognized arguments: --json"))
+    with pytest.raises(tailor.TailorError, match=r"too old.*update it"):
+        tailor.tailor(cfg, store, "c1")
+
+
 def test_a_rebuild_after_applying_keeps_the_copy_that_was_sent(ctx, kit):
     cfg, store = ctx
     kit.versions = ["initech-staff-data-engineer"]
@@ -127,7 +155,7 @@ def test_a_failing_draft_shows_the_tools_error_trimmed(ctx, kit, monkeypatch):
 
     def fail(argv, **kw):
         if argv[1] == "list":
-            return subprocess.CompletedProcess(argv, 0, "content: /x\n", "")
+            return subprocess.CompletedProcess(argv, 0, "[]", "")
         return subprocess.CompletedProcess(argv, 1, "", "error: boom " + "x" * 2000)
     monkeypatch.setattr(tailor.subprocess, "run", fail)
     with pytest.raises(tailor.TailorError, match=r"draft failed: …x+$") as e:

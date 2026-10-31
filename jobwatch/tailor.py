@@ -11,6 +11,7 @@ its parent version's: edit the version in resume-kit to tailor them, then Rebuil
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shlex
 import shutil
@@ -89,12 +90,27 @@ def _fail(step: str, done: subprocess.CompletedProcess) -> TailorError:
     return TailorError(f"resume-kit {step} failed: " + _trim(done.stderr or done.stdout or f"exit {done.returncode}"))
 
 
-def _versions(argv: list[str]) -> set[str]:
-    """The names of the versions resume-kit has (`resume list`: a "content:" line, then a line per version)."""
-    done = _run([*argv, "list"], DRAFT_TIMEOUT)
+def _versions(argv: list[str]) -> list[dict]:
+    """The versions resume-kit has (`resume list --json`): name, title, output (the PDF's stem), posting, applied."""
+    done = _run([*argv, "list", "--json"], DRAFT_TIMEOUT)
     if done.returncode:
-        raise _fail("list", done)
-    return {line.split()[0] for line in done.stdout.splitlines() if line.strip() and not line.startswith("content:")}
+        raise _fail("list", done) if "--json" not in (done.stderr or "") else \
+            TailorError("this resume-kit is too old to list its versions for jobwatch: update it")
+    try:
+        return [v for v in json.loads(done.stdout) if isinstance(v, dict) and v.get("name")]
+    except ValueError:
+        raise TailorError("resume-kit's version list wasn't JSON: update it") from None
+
+
+def _version_for(job: Job, kept: Path | None, versions: list[dict]) -> tuple[str, bool]:
+    """(version, new) for the job: the version that built the resume its package already has (one tailored by
+    hand, under any name), else the one named after the job, else a new one by that name."""
+    if kept:
+        for v in versions:
+            if v.get("output") and f"{v['output']}.pdf" == kept.name:
+                return v["name"], False
+    name = version_name(job)
+    return name, name not in {v["name"] for v in versions}
 
 
 def tailor(cfg: Config, store: Store, key: str) -> dict:
@@ -105,9 +121,8 @@ def tailor(cfg: Config, store: Store, key: str) -> dict:
     and problems what it said otherwise. A PDF that missed the page target is still kept, flagged: review it."""
     argv = command(cfg.resume_kit)
     job, rec = store.find(key)
-    name = version_name(job)
+    name, new = _version_for(job, store.package(job.key).resume(), _versions(argv))
     title = f"{job.display_company}: {job.title}"[:TITLE_MAX]
-    new = name not in _versions(argv)
     if new:
         done = _run([*argv, "draft", name, "-", "--title", title], DRAFT_TIMEOUT, stdin=job.to_text())
         if done.returncode:
