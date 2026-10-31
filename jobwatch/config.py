@@ -443,6 +443,53 @@ def _goals(raw, path: Path) -> Goals:
                  stages=_preferences(raw.get("stages", []), "stages", GOAL_STAGES, path), track=track, **text)
 
 
+@dataclass(frozen=True)
+class Applicant:
+    """applicant in the watchlist: your details as application forms ask for them, for the browser extension to
+    fill (see autofill.py and chrome-extension/API.md). All text; one left empty is never filled. The voluntary
+    self-identification questions (gender and the rest) are "decline" unless set: the form's "I don't wish to
+    answer". salary unset is your pay target."""
+    first_name: str = ""
+    last_name: str = ""
+    preferred_name: str = ""
+    email: str = ""
+    phone: str = ""
+    city: str = ""
+    state: str = ""
+    country: str = ""
+    postal_code: str = ""
+    linkedin: str = ""
+    github: str = ""
+    website: str = ""
+    work_authorized: str = ""   # yes or no: allowed to work in the job's country
+    needs_sponsorship: str = ""  # yes or no: now or in the future
+    relocate: str = ""          # yes or no
+    notice_period: str = ""
+    salary: str = ""
+    gender: str = "decline"
+    race: str = "decline"
+    hispanic: str = "decline"
+    veteran: str = "decline"
+    disability: str = "decline"
+
+
+APPLICANT_YES_NO = ("work_authorized", "needs_sponsorship", "relocate")
+
+
+def _applicant(raw, path: Path) -> Applicant:
+    raw = _section(raw, "applicant", Applicant, path, "{first_name: Jordan, email: jordan@example.com}")
+    out = {}
+    for k, v in raw.items():
+        if isinstance(v, bool) and k in APPLICANT_YES_NO:  # YAML reads a bare yes or no as true or false
+            v = "yes" if v else "no"
+        if not isinstance(v, (str, int, float)) or isinstance(v, bool):
+            raise ConfigError(f"{path}: applicant.{k} is text, got {v!r}")
+        out[k] = str(v).strip()
+        if k in APPLICANT_YES_NO and out[k].lower() not in ("yes", "no", ""):
+            raise ConfigError(f"{path}: applicant.{k} must be yes or no, got {v!r}")
+    return Applicant(**out)
+
+
 @dataclass
 class Config:
     path: Path
@@ -488,6 +535,7 @@ class Config:
     pay: Pay = field(default_factory=Pay)
     comps: Comps = field(default_factory=Comps)
     goals: Goals = field(default_factory=Goals)
+    applicant: Applicant = field(default_factory=Applicant)
     # How often `jobwatch ui` checks the boards by itself (fetch_every); None: only when asked. Or the times of
     # day it checks (fetch_every: 8am, 2pm, 8pm), this computer's clock; then fetch_every is None.
     fetch_every: timedelta | None = None
@@ -673,7 +721,8 @@ def locate(explicit: str | Path | None = None) -> Path:
 SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "connections_skip", "employer", "stories",
             "scoring",
             "chat", "prep",
-            "learning", "display", "pace", "calendar", "pay", "comps", "goals", "alerts", "suggestions", "fetch_every")
+            "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
+            "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -861,6 +910,7 @@ def load(explicit: str | Path | None = None) -> Config:
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
         comps=_comps(raw.get("comps"), path), goals=_goals(raw.get("goals"), path),
+        applicant=_applicant(raw.get("applicant"), path),
         fetch_every=None if (at := _at(raw.get("fetch_every"), path)) else _every(raw.get("fetch_every"), path),
         fetch_at=at,
     )
@@ -879,6 +929,7 @@ def defaults() -> dict:
             "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "target_max", "floor")},
             "comps": {"weights": dict(COMP_WEIGHTS)},
             "goals": {"track": Goals.track},
+            "applicant": {k: v for k, v in asdict(Applicant()).items() if v},
             "suggestions": asdict(Suggestions()),
             "alerts": {"imap": {"port": imap.port, "folder": imap.folder, "days": imap.days,
                                 "senders": list(imap.senders)}},

@@ -312,7 +312,8 @@ console.log(JSON.stringify(out));
     out = json.loads(r.stdout)
     # every settings card is in exactly one tab, so hiding the others never loses a field
     assert out["cards"] == sorted(["goals", "companies", "filters", "keywords", "today", "display", "resume", "prompts",
-                                   "chat", "people", "pay", "alerts", "suggestions", "skills"])
+                                   "chat", "people", "pay", "alerts", "suggestions", "skills", "applicant",
+                                   "extension"])
     assert out["hash"] == {"tab": "settings", "sub": "ai"}
     assert out["bare"] == {"tab": "settings", "sub": None} and out["bad"] == {"tab": "settings", "sub": None}
     assert out["today"] == {"tab": "today", "sub": None}

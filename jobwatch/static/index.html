@@ -3134,6 +3134,7 @@ const SET_GROUPS = [
   { id: "ai", label: "AI & fit scores", cards: ["resume", "prompts", "chat"] },
   { id: "people", label: "People & pay", cards: ["people", "pay"] },
   { id: "alerts", label: "Alerts & skills", cards: ["alerts", "suggestions", "skills"] },
+  { id: "apply", label: "Applying", cards: ["applicant", "extension"] },
 ];
 // The sub tab a name points at: a tab id ("ai"), a card id ("pay") or a card's anchor ("set-pay"); null if none.
 function settingsGroupOf(name) {
@@ -3638,6 +3639,8 @@ const SET_LOOK = {
   chat: ["send", 30, "Ask jobwatch"], pay: ["dollar", -60, "Expected pay"], alerts: ["inbox", 10, "Job-alert emails"],
   suggestions: ["plus", -10, "Companies worth watching"], skills: ["arrow", 55, "What to learn next"],
   display: ["refresh", -40, "Theme, width and files"],
+  applicant: ["users", 70, "Your details for application forms"],
+  extension: ["send", -70, "Fill application forms from jobwatch"],
 };
 // A card's header: an icon orb, the title (plus anything in extra), and a one-line subtitle.
 function setHead(id, title, hint, extra) {
@@ -3979,6 +3982,64 @@ function alertsCard(s) {
       port: numberOf(port), folder: textOf(folder), days: numberOf(days), senders: unlines(senders.value) });
     return imap ? { imap } : null;
   };
+  el.classList.add("full");
+  return el;
+}
+
+// -- applying: your details as application forms ask for them (applicant), for the browser extension to fill.
+const APPLICANT_TEXT = [["first_name", "First name"], ["last_name", "Last name"], ["preferred_name", "Preferred name"],
+  ["email", "Email"], ["phone", "Phone"], ["city", "City"], ["state", "State or region"], ["country", "Country"],
+  ["postal_code", "Postal code"], ["linkedin", "LinkedIn"], ["github", "GitHub"], ["website", "Website"],
+  ["notice_period", "Notice period"]];
+const APPLICANT_YES_NO = [["work_authorized", "Allowed to work in the job's country"],
+  ["needs_sponsorship", "Needs visa sponsorship"], ["relocate", "Willing to relocate"]];
+const APPLICANT_EEO = [["gender", "Gender"], ["race", "Race"], ["hispanic", "Hispanic or Latino"],
+  ["veteran", "Veteran status"], ["disability", "Disability"]];
+function applicantCard(s) {
+  const a = s.applicant || {}, pay = s.pay || {};
+  const text = Object.fromEntries(APPLICANT_TEXT.map(([k]) => [k, textInput(a[k], "")]));
+  const yesNo = Object.fromEntries(APPLICANT_YES_NO.map(([k]) => [k,
+    choice([["", "Not set"], ["yes", "Yes"], ["no", "No"]], a[k] === true ? "yes" : a[k] === false ? "no" : a[k])]));
+  const target = pay.target ? String(pay.target) + (pay.target_max ? `-${pay.target_max}` : "") : "";
+  const salary = textInput(a.salary, target || "e.g. 180000");
+  const eeo = Object.fromEntries(APPLICANT_EEO.map(([k]) => [k, textInput(a[k], "decline")]));
+  const el = setCard("applicant", "Your details", "what application forms ask for, filled in by the browser extension",
+    h("p", { class: "small muted lead" }, "Only what you enter is filled in; a field left blank is left for you. " +
+      "Nothing here leaves this computer except into a form you're filling."),
+    h("div", { class: "fields" },
+      APPLICANT_TEXT.map(([k, label]) => field(label, text[k])),
+      field("Salary", salary, target ? "Left blank, your pay target (Settings > People & pay)." : "What to answer when asked."),
+      APPLICANT_YES_NO.map(([k, label]) => field(label, yesNo[k])),
+      APPLICANT_EEO.map(([k, label]) => field(label, eeo[k],
+        "Voluntary self-identification. Left blank: decline, the form's “I don't wish to answer”."))));
+  el.values = () => merged(a, {
+    ...Object.fromEntries(APPLICANT_TEXT.map(([k]) => [k, textOf(text[k])])), salary: textOf(salary),
+    ...Object.fromEntries(APPLICANT_YES_NO.map(([k]) => [k, yesNo[k].value || null])),
+    ...Object.fromEntries(APPLICANT_EEO.map(([k]) => [k, textOf(eeo[k])])) });
+  el.classList.add("full");
+  return el;
+}
+// The browser extension's token: pasted into the extension once, it lets the extension ask jobwatch for your
+// details, past answers and resume, and record an application when you submit it.
+function extensionCard() {
+  const token = h("input", { type: "text", readonly: true, "aria-label": "Extension token", value: "Loading…" });
+  const where = `http://127.0.0.1:${location.port || 80}`;
+  const show = d => { token.value = d.token; };
+  api("/api/extension").then(show, e => { token.value = e.message; });
+  const copy = h("button", { class: "btn primary", onclick: async () => {
+    try { await navigator.clipboard.writeText(token.value); toast("Copied the token"); } catch { token.select(); }
+  } }, "Copy");
+  const renew = h("button", { class: "btn", title: "The extension stops working until you paste the new one",
+    onclick: async () => { try { show(await api("/api/extension/token", {})); toast("New token: paste it into the extension"); }
+      catch (e) { toast(e.message); } } }, "New token");
+  const el = setCard("extension", "Browser extension", "fill application forms from jobwatch",
+    h("p", { class: "small muted lead" }, "The jobwatch extension for Chrome fills an application form from your details, " +
+      "answers you gave on earlier forms and drafted answers to new questions, attaches the resume, and records the " +
+      "application here when you submit it. You review everything first; it never submits for you."),
+    h("div", { class: "fields" },
+      field("Token", h("div", { class: "row" }, token, copy, renew),
+        "Paste it into the extension's options, once.", "span3"),
+      field("Server", textInput(where, ""), "The extension's options already have this address.")));
   el.classList.add("full");
   return el;
 }
@@ -4404,6 +4465,7 @@ function renderSettings() {
     return out;
   };
   const chatC = chatCard(s), payC = payCard(s), alertsC = alertsCard(s), goalsC = goalsCard(s);
+  const applicantC = applicantCard(s), extensionC = extensionCard();
 
   // Companies to watch (suggestions) and Skills to build (learning)
   const sug = s.suggestions || {}, learning = s.learning || {};
@@ -4433,7 +4495,7 @@ function renderSettings() {
           : timeline.value, near: textOf(near), jobs: numberOf(exampleJobs) }),
         display, pace: merged(pace, { daily: numberOf(daily), max: numberOf(most) }),
         pay: merged(payC.values(), goalsC.payValues()), alerts: alertsC.values(),
-        goals: goalsC.goals(), comps: goalsC.weights(),
+        goals: goalsC.goals(), comps: goalsC.weights(), applicant: applicantC.values(),
         suggestions: merged(sug, { half_life: numberOf(halfLife), limit: numberOf(sugLimit) }),
         fetch_every: every.value === everyNow && (s.fetch_every === null || s.fetch_every === undefined) ? null : every.value });
       settings = await api("/api/settings");
@@ -4509,6 +4571,8 @@ function renderSettings() {
         field("Programs near", near, "A city, for certificate programs nearby. Blank: your first place."),
         field("Example jobs", exampleJobs, "Jobs listed with each skill."))),
     displayCard(s),
+    applicantC,
+    extensionC,
   ].filter(Boolean);
 
   // A bar that stays on screen: a link to each card, what's unsaved, and Save.

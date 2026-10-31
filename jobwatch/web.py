@@ -32,6 +32,7 @@ from . import (
     __version__,
     advice,
     ai,
+    autofill,
     chat,
     company,
     comps,
@@ -566,6 +567,7 @@ class App:
                 "scoring": scoring, "chat": talk, "learning": raw.get("learning") or {},
                 "display": raw.get("display") or {}, "pace": raw.get("pace") or {}, "pay": raw.get("pay") or {},
                 "alerts": raw.get("alerts") or {}, "goals": raw.get("goals") or {},
+                "applicant": raw.get("applicant") or {},
                 "suggestions": raw.get("suggestions") or {}, "comps": raw.get("comps") or {},
                 # where the history is kept: shown, changed only in the file (a new path starts an empty history)
                 "state": raw.get("state"), "cache": raw.get("cache"),
@@ -626,6 +628,44 @@ class App:
                 config.save(self.path, {"scoring": {**scoring, "keychain": item}})
         self.score_in_background()
         return {"keychain": item}
+
+    # -- the browser extension (see autofill.py)
+
+    def _state(self) -> Path:
+        """Where the history is kept, for the extension's token: the watchlist's state, else the default one."""
+        try:
+            return config.load(self.path).state if self.path.is_file() else config.DEFAULT_STATE
+        except ConfigError:
+            return config.DEFAULT_STATE
+
+    def ext_token(self) -> str:
+        return autofill.token(self._state())
+
+    def get_extension(self, q) -> dict:
+        """The token to paste into the extension, and the address it calls."""
+        return {"token": self.ext_token(), "token_file": str(autofill.token_path(self._state()))}
+
+    def post_extension_token(self, body) -> dict:
+        """A new token: the extension stops working until the new one is pasted in."""
+        return {"token": autofill.token(self._state(), renew=True)}
+
+    def ext_context(self, url: str) -> dict:
+        return self._with_store(lambda cfg, store: autofill.context(cfg, store, url))
+
+    def ext_resume(self, url: str) -> tuple[bytes, str, str]:
+        return self._with_store(lambda cfg, store: autofill.resume_file(cfg, store, url))
+
+    def ext_draft(self, body) -> dict:
+        return self._with_store(lambda cfg, store: autofill.draft(
+            cfg, store, str(body.get("url") or ""), body.get("question") or "", body.get("words") or autofill.WORDS))
+
+    def ext_submitted(self, body) -> dict:
+        def run(cfg, store):
+            try:
+                return autofill.submitted(cfg, store, body)
+            except sources.SourceError as e:
+                raise ApiError(f"couldn't read that posting: {e}") from None
+        return self._with_store(run)
 
     def get_onboarding(self, q) -> dict:
         """Whether first-run onboarding can offer "Suggest titles from my resume": ready, or why not, and where the
@@ -1236,6 +1276,8 @@ ROUTES = {
     ("GET", "/api/ai"): App.get_ai,
     ("POST", "/api/ai/test"): App.post_ai_test,
     ("POST", "/api/ai/key"): App.post_ai_key,
+    ("GET", "/api/extension"): App.get_extension,
+    ("POST", "/api/extension/token"): App.post_extension_token,
     ("GET", "/api/onboarding"): App.get_onboarding,
     ("POST", "/api/onboarding/titles"): App.post_onboarding_titles,
     ("POST", "/api/find"): App.post_find,
@@ -1446,6 +1488,8 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 if found is None:
                     return self._json(HTTPStatus.NOT_FOUND, {"error": "no logo"})
                 return self._send_logo(*found)
+            if url.path.startswith("/ext/"):
+                return self._extension(method, url)
             if not url.path.startswith("/api/"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             if not secrets.compare_digest(self.headers.get("X-Jobwatch-Token", ""), token):
@@ -1497,6 +1541,45 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
             except Exception as e:  # show it in the page rather than hang the request
                 print(f"jobwatch ui: {type(e).__name__}: {e}", file=sys.stderr)
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"{type(e).__name__}: {e}"})
+
+        def _extension(self, method: str, url):
+            """The browser extension's calls (see chrome-extension/API.md): its own token, kept across restarts, and
+            never a web page's request (a page sends its Origin; the extension's background sends none or its own)."""
+            origin = self.headers.get("Origin", "")
+            if origin and not origin.startswith("chrome-extension://"):
+                return self._json(HTTPStatus.FORBIDDEN, {"error": "only the jobwatch extension can call this"})
+            if not secrets.compare_digest(self.headers.get("X-Jobwatch-Extension", ""), app.ext_token()):
+                return self._json(HTTPStatus.FORBIDDEN, {"error": "missing or wrong token: copy it from jobwatch's "
+                                                                  "Settings > Browser extension"})
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > MAX_UPLOAD:
+                    raise ApiError("too large", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                raw = self.rfile.read(length) if length else b""
+                page = (parse_qs(url.query).get("url") or [""])[0]
+                if method == "GET" and url.path == "/ext/ping":
+                    data = {"ok": True, "version": __version__}
+                elif method == "GET" and url.path == "/ext/context":
+                    data = app.ext_context(page)
+                elif method == "GET" and url.path == "/ext/resume":
+                    return self._send(HTTPStatus.OK, *app.ext_resume(page))
+                elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted"):
+                    body = json.loads(raw or b"{}")
+                    if not isinstance(body, dict):
+                        raise ApiError("send a JSON object")
+                    data = app.ext_draft(body) if url.path == "/ext/draft" else app.ext_submitted(body)
+                else:
+                    raise ApiError("not found", HTTPStatus.NOT_FOUND)
+                self._json(HTTPStatus.OK, data)
+            except ApiError as e:
+                self._json(e.status, {"error": str(e)})
+            except KeyError as e:
+                self._json(HTTPStatus.NOT_FOUND, {"error": e.args[0]})
+            except (ConfigError, sources.SourceError, ValueError) as e:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
+            except Exception as e:
+                print(f"jobwatch ui: extension: {type(e).__name__}: {e}", file=sys.stderr)
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"{type(e).__name__}: {e}"})
 
         def do_GET(self):

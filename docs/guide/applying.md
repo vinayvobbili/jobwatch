@@ -98,6 +98,37 @@ pbpaste | jobwatch add "Umbrella" "Staff Engineer" --text - --status queued     
 In the browser, press **Add a job** on the Queue page. Many job sites (LinkedIn's "Apply on company
 website", job-alert emails) link through to the company's own board: that link is the one to use.
 
+## Filling application forms
+
+The jobwatch extension for Chrome fills an application form for you to review. Paired with `jobwatch ui`, it
+brings what jobwatch knows to the form:
+
+- **Answers you gave before.** A question asked on an earlier form ("Notice period?", "Why are you leaving?")
+  gets the answer you sent then, with the question it came from beside it.
+- **Drafted answers.** A new question can be drafted by your chat model from your resume, your stories and the
+  posting. Drafts start unticked: read and edit them first.
+- **The resume.** The one kept with that job's application, else the one in Settings.
+- **The application recorded.** When you submit, the job is marked applied and the answers you sent are kept
+  with it, ready for interview prep.
+
+It never submits for you, and it talks only to jobwatch on your computer.
+
+To set it up, fill in **Settings > Applying > Your details** (name, contact, links, work authorization; the
+voluntary self-identification questions are "decline" unless you say otherwise). Then copy the token from
+**Browser extension** on the same tab into the extension's options. The same details live in the watchlist:
+
+```yaml
+applicant:
+  first_name: Jordan
+  last_name: Rivera
+  email: jordan@example.com
+  work_authorized: yes
+  needs_sponsorship: no
+  # salary: left out, your pay target is used
+```
+
+Without jobwatch running, the extension still fills your details from its own options.
+
 ## Job-alert emails
 
 The job alerts LinkedIn, Built In, Indeed and other job sites email you can go straight in. Save them from

@@ -429,6 +429,17 @@ class Store:
         r = rows[0]
         return Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}
 
+    def with_url(self, urls: list[str]) -> tuple[Job, dict] | None:
+        """The job whose link is one of these, exactly as kept: the one queued or applied to when several are."""
+        if not urls:
+            return None
+        rows = self.db.execute(f"SELECT * FROM jobs WHERE json_extract(data, '$.url') IN ({','.join('?' * len(urls))})"
+                               " ORDER BY key", urls).fetchall()
+        rows = [r for r in rows if r["status"] in ("queued", *STAGES)] or rows
+        if not rows:
+            return None
+        return Job.from_dict(json.loads(rows[0]["data"])), {k: rows[0][k] for k in rows[0].keys() if k != "data"}
+
     def _at_company(self, name: str) -> list[sqlite3.Row]:
         """Jobs whose company name or board contains `name` (any case): the ones queued or applied to, if any."""
         name = name.strip().lower()

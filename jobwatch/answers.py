@@ -21,10 +21,11 @@ def _when(rec: dict) -> str:
     return rec.get("applied_at") or (rec.get("status_at") or "")[:10] or (rec.get("first_seen") or "")[:10]
 
 
-def find(store: Store, query: str = "") -> list[dict]:
+def find(store: Store, query: str = "", full: bool = False) -> list[dict]:
     """The form answers whose question contains every word of the query (any case), newest application first:
     key, company, title, applied (its day), question, answer. Without a query, each distinct question once, with
-    the start of its latest answer (a query for it gives the whole one) and asked (how many applications had it)."""
+    the start of its latest answer (a query for it gives the whole one; full: the whole one at once) and asked (how
+    many applications had it)."""
     words = query.lower().split()
     rows = [(job, rec) for job, rec in store.jobs(include_closed=True)
             if (Package(store.packages, job.key).dir / MANIFEST).is_file()]
@@ -42,7 +43,7 @@ def find(store: Store, query: str = "") -> list[dict]:
             elif q in seen:
                 seen[q]["asked"] += 1
             else:
-                seen[q] = {**hit, "answer": _preview(a["answer"]), "asked": 1}
+                seen[q] = {**hit, "answer": a["answer"] if full else _preview(a["answer"]), "asked": 1}
                 found.append(seen[q])
     return found
 
