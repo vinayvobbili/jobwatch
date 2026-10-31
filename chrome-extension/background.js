@@ -1,7 +1,7 @@
 /**
  * Service worker: the only part that talks to jobwatch, and the one that knows what's going on in a tab.
  *
- * The panel (panel.js, in the page) asks it to scan, fill and draft. Content scripts tell it when the
+ * The side panel (sidepanel.js) asks it to scan, fill and draft. Content scripts tell it when the
  * person submits; it keeps those answers as pending per tab (chrome.storage.session) and posts them to
  * jobwatch only once the page looks like a finished submission.
  */
@@ -19,6 +19,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     .then((r) => sendResponse({ ok: true, ...(r || {}) }))
     .catch((e) => sendResponse({ ok: false, error: e instanceof ApiError || e.expected ? e.message : `Something went wrong: ${e.message}` }));
   return true;
+});
+
+// The toolbar button opens the side panel. Handling the click ourselves (rather than setPanelBehavior's
+// openPanelOnActionClick) is what makes the grant of activeTab certain: onClicked is "executing an action".
+// sidePanel.open must be called straight away, while the click's user gesture is still alive.
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => chrome.storage.session.remove([pendingKey(tabId), ctxKey(tabId)]));
@@ -41,16 +48,15 @@ class Expected extends Error {
   expected = true;
 }
 
-// --- the panel -------------------------------------------------------------------------------------
+// --- the side panel -------------------------------------------------------------------------------------
 
 async function open(tabId) {
   const t = { tabId, allFrames: true };
   try {
     await chrome.scripting.executeScript({ target: t, files: ['logic.js', 'page.js'] });
-    await chrome.scripting.executeScript({ target: { tabId }, files: ['panel.js'] });
     await chrome.scripting.executeScript({ target: t, func: () => globalThis.JWPage && globalThis.JWPage.watch() });
   } catch {
-    throw new Expected("This page can't be filled. Open the application form and try again.");
+    throw new Expected("This page can't be filled. Open the application form, click the jobwatch icon on that tab, and try again.");
   }
 }
 
@@ -148,9 +154,9 @@ async function toast(tabId, text, ok) {
   try {
     await chrome.action.setBadgeText({ tabId, text: ok ? '✓' : '!' });
     await chrome.action.setBadgeBackgroundColor({ tabId, color: ok ? '#0c9468' : '#d83450' });
-    await chrome.tabs.sendMessage(tabId, { type: 'toast', text, ok }, { frameId: 0 });
+    await chrome.runtime.sendMessage({ type: 'toast', tabId, text, ok });
   } catch {
-    /* the panel is gone after a navigation; the badge still shows */
+    /* the side panel is closed; the badge still shows */
   }
 }
 

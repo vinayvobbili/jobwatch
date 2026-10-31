@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>jobwatch</title>
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      html, body { height: 100%; }
+      body { display: flex; flex-direction: column; min-width: 280px; overflow: hidden; }
+      @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+      header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+      .brand { font-size: 17px; }
+      .sub { color: var(--muted); font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #options { font-size: 12px; white-space: nowrap; }
+      #pair { margin: 10px 14px 0; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; background: var(--soft); }
+      #pair.good { color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); }
+      #pair.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+      .note { margin: 10px 14px 0; padding: 8px 10px; border-radius: 10px; font-size: 12.5px; background: var(--soft); }
+      main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+      .scroll { flex: 1; min-height: 0; overflow: auto; padding-bottom: 4px; }
+      .scroll .note:first-child { margin-top: 10px; }
+      .rows { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+      .row {
+        background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; animation: rise .3s both;
+        transition: box-shadow .15s, transform .15s;
+      }
+      .row:hover { box-shadow: 0 10px 24px -16px rgba(70, 60, 190, .5); transform: translateY(-1px); }
+      .top { display: flex; gap: 8px; align-items: flex-start; }
+      .top input[type=checkbox] { margin-top: 3px; accent-color: var(--accent); flex: none; }
+      .q { flex: 1; min-width: 0; font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+      .badge {
+        display: inline-block; margin: 5px 0 0 22px; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px;
+        background: var(--chip); color: var(--muted);
+      }
+      .badge.details, .badge.resume { background: var(--grad); color: #fff; }
+      .badge.past { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+      .badge.draft { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+      .val {
+        width: 100%; margin-top: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+        color: var(--text); font: inherit; resize: vertical;
+      }
+      .val:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+      .meta { margin-top: 5px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+      .meta.bad { color: var(--bad); } .meta.good { color: var(--good); }
+      .small { margin-top: 6px; padding: 3px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--chip); color: var(--text); font-size: 12px; }
+      .small:hover { border-color: var(--accent); }
+      footer { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--panel); }
+      footer .count { flex: 1; min-width: 80px; color: var(--muted); font-size: 12px; }
+      .go:disabled { opacity: .5; transform: none; }
+      .empty { padding: 28px 18px; text-align: center; color: var(--muted); }
+      .empty .go { margin-top: 14px; padding: 11px 18px; font-size: 15px; }
+      #toast {
+        position: fixed; left: 14px; right: 14px; bottom: 64px; padding: 9px 12px; border-radius: 10px; color: #fff; font-size: 13px;
+        background: var(--good); animation: rise .25s both; z-index: 5; box-shadow: 0 12px 28px -14px rgba(0, 0, 0, .5);
+      }
+      #toast.bad { background: var(--bad); }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="brand">jobwatch</span>
+      <span class="sub" id="where"></span>
+      <a id="options" href="#">Settings</a>
+    </header>
+    <div id="pair">Checking...</div>
+    <main id="view"></main>
+    <script src="logic.js"></script>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

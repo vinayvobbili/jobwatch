@@ -18,7 +18,7 @@ It fills only what is still empty. A field Simplify, Chrome or a password manage
 marked "already filled". The basics (name, email, phone, links, work authorization, the voluntary
 self-identification questions) come from the applicant details in jobwatch's Settings, as a fallback for what is left.
 
-It never clicks Submit, Next or any button that sends the form. You review the panel, press **Fill selected**, read
+It never clicks Submit, Next or any button that sends the form. You review the side panel, press **Fill selected**, read
 the form, and submit it yourself.
 
 ## Set it up
@@ -26,13 +26,19 @@ the form, and submit it yourself.
 1. Run `jobwatch ui` and open Settings, Browser extension. Copy the token.
 2. In Chrome, open the extension's options (right-click its icon, Options) and paste the token. The server address is
    `http://127.0.0.1:8765` unless you started `jobwatch ui --port` differently. Press **Test**.
-3. Open a job application, click the extension's icon, then **Fill this application**.
+3. Open a job application and click the extension's icon. Chrome's side panel opens beside the page; press **Fill this application**.
 
-Without jobwatch running, the icon says so and does nothing else. The extension has no standalone mode.
+Without jobwatch running, the side panel says so (with a link to the settings) and does nothing else. The extension
+has no standalone mode.
 
 ## What you see
 
-A panel opens on the right of the page. Each field of the form is a row:
+The review lives in Chrome's side panel, docked beside the page like Claude's, so it never covers the form. At the top
+it says whether it is paired with jobwatch. It works on the tab you are looking at: switch tabs, or let the tab load
+another page, and the rows are dropped with a note to scan again, so a row never fills a form that is gone. If a page
+was not opened with the icon (Chrome only lets the extension touch a tab after you click its icon there), click the
+icon on that tab once. When the application is recorded in jobwatch after you submit, the side panel says so too (the
+icon also shows a check mark). Each field of the form is a row:
 
 | Badge | Meaning |
 |---|---|
@@ -55,12 +61,13 @@ Nothing leaves your computer except to jobwatch, which runs on it. See [PRIVACY.
 ## For developers
 
 ```
-manifest.json       Manifest V3: activeTab, scripting, storage, and http://127.0.0.1 / localhost
-background.js       service worker; the only code that talks to jobwatch (API.md); keeps pending submissions per tab
+manifest.json       Manifest V3: activeTab, scripting, storage, sidePanel, and http://127.0.0.1 / localhost
+background.js       service worker; the only code that talks to jobwatch (API.md); opens the side panel when the
+                    icon is clicked; keeps pending submissions per tab
 logic.js            classification, matching, option picking, the review plan; no DOM, tested with node
 page.js             content script per frame: scan, fill, read company and title, watch for the person's submit
-panel.js            the side panel (shadow DOM), top frame only
-popup.*, options.*  the toolbar popup and the options page (server, token, theme and width)
+sidepanel.*         the review panel in Chrome's side panel: pairing status, scan, rows, fill, drafts, results
+options.*           the options page (server, token, theme and width)
 demo/               fixture forms imitating Greenhouse, Lever and Ashby, and a generic one
 tools/              make_icons.py, package.py (store zip), fake_server.py (API.md stand-in), harness.py (Playwright),
                     live_check.py (what the extension makes of a real form; reads only, never fills or submits)
@@ -77,7 +84,9 @@ python -m pytest tests/test_extension_*.py -q
 ```
 
 The end-to-end test loads the extension into Chromium, serves the demo forms under the addresses of the boards they
-imitate, and runs a fake jobwatch. It skips when Playwright or Chromium is missing.
+imitate, and runs a fake jobwatch. Automation can't click the toolbar button that docks the side panel, so it opens
+`sidepanel.html?tab=<id>` in an ordinary tab, which is the same page pinned to the form's tab. It skips when
+Playwright or Chromium is missing.
 
 To see how a real board's form reads, `python chrome-extension/tools/live_check.py <application link>` prints one
 line per field: what it is, where its value would come from, and whether it starts ticked. It fills nothing.

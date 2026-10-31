@@ -1,6 +1,7 @@
 # jobwatch for Chrome: privacy policy
 
-**What it reads:** only the tab where you click the jobwatch icon, and only after you click **Fill this application**.
+**What it reads:** only the tab where you click the jobwatch icon, and only after you press **Fill this application**
+in the side panel that opens. The side panel itself shows only what the extension read from that tab.
 It reads the form's questions, their answer options and the values already in the fields, the page's address, and the
 company and job title shown on the page.
 

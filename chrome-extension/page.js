@@ -7,7 +7,7 @@
  * boards; see THIRD_PARTY_NOTICES. Field names to expect on Greenhouse and Lever (candidate-location,
  * hispanic_ethnicity, urls[LinkedIn], eeo[gender]) come from reading Autofill-Jobs.
  *
- * Needs logic.js loaded first. The panel (panel.js, top frame only) and the service worker drive it
+ * Needs logic.js loaded first. The side panel (sidepanel.js) and the service worker drive it
  * through chrome.scripting.executeScript calls to `globalThis.JWPage`.
  */
 (function () {
@@ -263,7 +263,7 @@
       fields.push(f);
     };
     for (const el of document.querySelectorAll('input, textarea, select, [role="combobox"]')) {
-      if (seen.has(el) || el.closest('#jobwatch-panel')) continue;
+      if (seen.has(el)) continue;
       const type = (el.type || '').toLowerCase();
       const tag = el.tagName;
       if (tag === 'INPUT' && ['hidden', 'submit', 'button', 'image', 'reset', 'search', 'range', 'color'].includes(type)) continue;
@@ -310,7 +310,7 @@
     const done = new Set();
     for (const b of document.querySelectorAll('button')) {
       const p = b.parentElement;
-      if (!p || done.has(p) || b.closest('#jobwatch-panel')) continue;
+      if (!p || done.has(p)) continue;
       const btns = [...p.children].filter((n) => n.tagName === 'BUTTON');
       const texts = btns.map((n) => JW.normalize(n.textContent));
       if (btns.length !== 2 || !(texts.includes('yes') && texts.includes('no')) || btns.some((n) => n.type === 'submit')) continue;
@@ -531,7 +531,7 @@
     document.addEventListener('submit', capture, true);
     document.addEventListener('click', (e) => {
       const b = e.target.closest && e.target.closest('button, input[type="submit"], [role="button"]');
-      if (b && !b.closest('#jobwatch-panel') && isSubmitControl(b)) capture();
+      if (b && isSubmitControl(b)) capture();
     }, true);
   }
 

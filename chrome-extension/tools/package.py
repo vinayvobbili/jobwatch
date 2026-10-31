@@ -45,7 +45,7 @@ def check_manifest(root: Path = EXTENSION_DIR) -> dict:
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     referenced = [
         manifest["background"]["service_worker"],
-        manifest["action"]["default_popup"],
+        manifest["side_panel"]["default_path"],
         manifest["options_page"],
         *manifest["icons"].values(),
     ]

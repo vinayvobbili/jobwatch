@@ -159,7 +159,7 @@ def pair(stack: Stack, api_url: str, token: str) -> None:
     page.close()
 
 
-# --- driving it as the toolbar popup does ---------------------------------------------------------
+# --- driving it as the side panel does ------------------------------------------------------------
 
 
 def tab_id_for(ext_page, url: str) -> int:
@@ -168,8 +168,20 @@ def tab_id_for(ext_page, url: str) -> int:
 
 
 def open_panel(ext_page, tab_id: int) -> dict:
-    """What the popup's "Fill this application" button sends."""
+    """The first message the side panel's "Fill this application" button sends."""
     return ext_page.evaluate("(tabId) => chrome.runtime.sendMessage({type: 'open', tabId})", tab_id)
+
+
+def side_panel(stack: Stack, form_url: str):
+    """The side panel page, pointed at the tab showing `form_url`.
+
+    Automation can't click the toolbar button, which is what docks the panel beside a tab, so the panel's page is
+    opened in an ordinary tab with `?tab=<id>` (the same code, pinned to one tab instead of following the active one).
+    """
+    page = stack.extension_page("sidepanel.html")
+    tab = tab_id_for(page, form_url)
+    page.goto(f"chrome-extension://{stack.extension_id}/sidepanel.html?tab={tab}")
+    return page
 
 
 def wait_until(test, timeout: float = 10, what: str = "condition"):
