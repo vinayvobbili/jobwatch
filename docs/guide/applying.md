@@ -98,6 +98,30 @@ pbpaste | jobwatch add "Umbrella" "Staff Engineer" --text - --status queued     
 In the browser, press **Add a job** on the Queue page. Many job sites (LinkedIn's "Apply on company
 website", job-alert emails) link through to the company's own board: that link is the one to use.
 
+## Tailoring a resume to a job
+
+With [resume-kit](https://github.com/vinayvobbili/resume-kit) set up (an optional add-on, the way shortlist-ai is
+for fit scores), a queued job's card has a **Tailor resume** button. It sends the posting to `resume draft`,
+which picks and orders your confirmed facts by what the posting asks for, then runs `resume build` and keeps the
+PDF with the job's application. **Apply** and the extension attach it in place of your general resume (the card
+shows `Resume: <file>.pdf`, and the button becomes **Rebuild resume**). The command line has
+`jobwatch tailor <job>` and an assistant has the `tailor_resume` tool.
+
+- Each job gets a resume-kit version named from the company and title (`initech-staff-data-engineer`). The
+  first press drafts it; later presses rebuild it without redrafting, so edits you made to the version in
+  resume-kit are kept.
+- A draft's headline and summary are the ones of the version it extends. jobwatch writes nothing for you: tailor
+  them in resume-kit with facts you've confirmed, then press **Rebuild resume**.
+- Review the PDF (the link on the card) before you apply. If resume-kit says the page target or a fact check
+  failed, the card shows what it said.
+- Rendering takes a few seconds and needs node and LibreOffice, as resume-kit does. Set it up from its README.
+  jobwatch finds its `resume` command on your PATH; if it lives elsewhere, set `resume_kit` in the watchlist
+  (**Settings > Applying > Tailor resumes**) to the command's full path:
+
+```yaml
+resume_kit: ~/tools/resume-kit/.venv/bin/resume
+```
+
 ## Filling application forms
 
 The jobwatch extension for Chrome fills an application form for you to review. It works alongside the autofill

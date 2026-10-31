@@ -501,6 +501,7 @@ class Config:
     connections_skip: list[str] = field(default_factory=list)  # people never to suggest: names or profile links
     employer: list[str] = field(default_factory=list)  # where you work now: colleagues there aren't referrals
     stories: Path | None = None      # your projects, for drafted interview answers (see stories.py)
+    resume_kit: str = ""             # resume-kit's command to tailor a resume (see tailor.py); unset: `resume`
     backend: str = "local"
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
     api_keychain: str = ""     # scoring.keychain: macOS keychain item with the Anthropic API key (for Claude)
@@ -719,7 +720,7 @@ def locate(explicit: str | Path | None = None) -> Path:
 
 
 SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "connections_skip", "employer", "stories",
-            "scoring",
+            "resume_kit", "scoring",
             "chat", "prep",
             "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
             "fetch_every")
@@ -729,6 +730,15 @@ WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big
 # A company's page lists the open roles you haven't acted on that pass every filter Today uses (matches), or all
 # of them (all). Jobs you queued, applied to or skipped are listed either way.
 COMPANY_VIEWS = ("matches", "all")
+
+
+def _command(value, path: Path) -> str:
+    """resume_kit: the command to run, as text ("~/tools/resume-kit/.venv/bin/resume"); unset: "" (`resume` on PATH)."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ConfigError(f"{path}: resume_kit is the resume-kit command, as text, got {value!r}")
+    return value.strip()
 
 
 def _near(learning: dict, filters: Filters) -> str:
@@ -885,6 +895,7 @@ def load(explicit: str | Path | None = None) -> Config:
         connections_skip=[str(s).strip() for s in raw.get("connections_skip") or [] if str(s).strip()],
         employer=[s for e in employer if (s := str(e).strip())],
         stories=_path(raw["stories"], base) if raw.get("stories") else None,
+        resume_kit=_command(raw.get("resume_kit"), path),
         backend=backend, score_model=str(scoring.get("model") or "").strip(),
         score_top=_whole(scoring.get("top", 0), "scoring.top", path, "0 scores none when the digest is made"),
         auto_score=auto_score, prompts=_prompts(scoring.get("prompts"), path),
@@ -1034,6 +1045,10 @@ scoring:
 #   max_tokens: 4000                                # the longest draft
 #   # prompt: |                                     # the drafting instructions; keep {context}
 #   # sheets: ~/Documents/prep                      # prep sheets you wrote (acme-onsite.html), on Interviews
+
+# Optional: tailor a resume to a job from its card with resume-kit (https://github.com/vinayvobbili/resume-kit).
+# Its `resume` command is found on PATH; name it here when it isn't.
+# resume_kit: ~/tools/resume-kit/.venv/bin/resume
 
 # Expected pay from Levels.fyi (off unless levels is true). See docs/guide/watchlist.md in jobwatch's repo.
 # pay:

@@ -44,6 +44,7 @@ from . import (
     stories,
     storyfind,
     suggest,
+    tailor,
 )
 from .config import BACKENDS, ConfigError, duration
 from .filters import KINDS, rejection
@@ -817,6 +818,17 @@ def cmd_queue(args, cfg, store):
     _write(report.queue_markdown(queue(cfg, store, pay_budget=levels.QUEUE)), args.out)
 
 
+def cmd_tailor(args, cfg, store):
+    r = tailor.tailor(cfg, store, args.key)
+    print(f"{'Drafted' if r['new'] else 'Rebuilt'} {r['version']}: {r['pages']} page(s), "
+          f"{'ok' if r['ok'] else 'NOT ok'}; kept {r['pdf']} with {r['key']}")
+    for line in r["problems"]:
+        print(f"  {line}")
+    print("Review the PDF before you apply.")
+    if not r["ok"]:
+        raise SystemExit(1)
+
+
 def cmd_referrals(args, cfg, store):
     for verdict, who in (("use", args.use), ("skip", args.skip), ("clear", args.clear)):
         for name in who or []:
@@ -1192,6 +1204,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--note", help="e.g. 'ask Ana for a referral first'")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_queue)
+
+    p = sub.add_parser("tailor", help="tailor a resume to one job with resume-kit and keep the PDF with the job "
+                                      "(drafts a version the first time, rebuilds it after); review it before applying")
+    p.add_argument("key")
+    p.set_defaults(func=cmd_tailor)
 
     p = sub.add_parser("referrals", help="the people you know at companies you're tracking, and whom to ask for "
                        "a referral: `--use NAME` puts someone first, `--skip NAME` never suggests them, "

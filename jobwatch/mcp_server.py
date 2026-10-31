@@ -37,6 +37,7 @@ from . import (
     stories,
     storyfind,
     suggest,
+    tailor,
     watch,
 )
 from .score import resume_id
@@ -68,7 +69,8 @@ server = MCPServer(
         "present the proposals and call mark_job only for the ones the person confirms. "
         "list_applications shows where each stands; get_comps puts the live ones side by side (pay, fit, stage), "
         "and set_comp keeps what a recruiter said about pay (base, bonus, equity, what was asked and offered), "
-        "set_company_health the company's funding, layoffs and rating that you looked up. After the person submits, "
+        "set_company_health the company's funding, layoffs and rating that you looked up. tailor_resume builds a "
+        "resume for one job with resume-kit and keeps it as that job's resume. After the person submits, "
         "save_application_package keeps the resume, cover letter and form answers they sent; "
         "get_application_package reads them back before a call or "
         "interview, find_past_answers finds what they answered before to a form question (\"notice period\") "
@@ -848,6 +850,21 @@ def get_application_package(key: Key) -> dict:
     _, store = _open()
     try:
         return store.package(key).data()
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(idempotent=True))
+def tailor_resume(key: Key) -> dict:
+    """Tailor a resume to one job with resume-kit and keep the PDF as that job's resume, which the browser
+    extension attaches. The first call drafts a version from the posting; later calls rebuild it without
+    overwriting edits. Takes seconds. Returns version, pdf, pages, ok, problems and new. Needs resume-kit; the
+    person reviews the PDF before applying."""
+    cfg, store = _open()
+    try:
+        return tailor.tailor(cfg, store, key)
+    except tailor.TailorError as e:
+        raise ToolError(str(e)) from None
     finally:
         store.close()
 

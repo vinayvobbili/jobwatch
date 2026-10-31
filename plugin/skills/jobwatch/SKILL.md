@@ -46,7 +46,9 @@ after, then `find_board` and `add_board` for each company, which creates the fil
    why it fits and anything to check first (pay, location).
 4. **Queue and apply.** `mark_job` with `queued` for the ones the user picks; `list_queued_jobs` lists them
    with people the user knows there (a referral is worth asking for before applying). `get_job` gives a
-   posting's full text for tailoring a resume.
+   posting's full text for tailoring a resume. With resume-kit installed, `tailor_resume` builds a resume for
+   one job and keeps it with the application (the browser extension attaches it); the user reviews the PDF
+   before applying.
 5. **Record what happened.** After the user submits, `mark_job` with `applied`, and
    `save_application_package` with the resume and answers they sent. Later stages are `screening`,
    `interviewing`, `offer`, `rejected` (they said no) and `withdrawn` (the user ended it, or it went quiet).

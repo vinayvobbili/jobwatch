@@ -63,6 +63,7 @@ chat:                                     # Ask jobwatch; leave any of these out
   max_turns: 24                           # the latest messages of a conversation sent with each question
   # prompt: ...                           # its instructions (Settings > Chat); must keep {today} and {context}
 stories: ~/Documents/stories.yaml         # your projects, for drafted prep answers (see Prep sheets)
+resume_kit: ~/tools/resume-kit/.venv/bin/resume   # resume-kit's command, to tailor a resume (see Applying); default: `resume` on PATH
 prep:                                     # drafted prep (`jobwatch prep KEY --draft`), with the chat's model
   max_tokens: 4000                        # the longest draft
   # prompt: ...                           # its instructions; must keep {context}

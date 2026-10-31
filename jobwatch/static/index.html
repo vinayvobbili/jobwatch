@@ -269,6 +269,20 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .app .note { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .warns { font-size: 13.5px; color: var(--warn); margin: 2px 0 4px; }
 .warns b { font-weight: 600; }
+/* a job's tailored resume: what's kept, and what a build just said (review it before applying) */
+.tailor { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13.5px;
+  padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); color: var(--muted);
+  background: linear-gradient(135deg, var(--accent-soft), transparent 70%); animation: rise .35s both; }
+.tailor[hidden] { display: none; }
+.tailor[data-tone="ok"] { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+.tailor[data-tone="warn"] { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+.tailor .open { background: none; border: 0; padding: 0; font: inherit; font-weight: 650; color: var(--accent);
+  cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.tailor .open:hover { text-decoration: underline; }
+.tailor .badge { background: var(--grad); color: #fff; text-transform: none; letter-spacing: 0; }
+.tailor .badge.warn { background: var(--warn); }
+.tailor .problems { flex-basis: 100%; color: var(--warn); white-space: pre-wrap; }
+.tailor .review { flex-basis: 100%; }
 .gaps { font-size: 13.5px; color: var(--muted); margin: 2px 0 4px; display: -webkit-box; -webkit-line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .gaps.open { -webkit-line-clamp: unset; }
@@ -1493,6 +1507,48 @@ function applyButton(job, primary, then) {
   return h("a", { class: "btn" + (primary ? " primary" : ""), href: job.apply_url || job.url, target: "_blank",
     rel: "noopener", title: "Open the application form. With the jobwatch browser extension, click its icon there to fill " +
       "the form; it marks the job applied when you submit.", onclick: () => then && then() }, "Apply ↗");
+}
+
+// "Tailor resume": resume-kit drafts a version from the posting and builds its PDF (seconds), kept as this job's
+// resume, which the extension attaches. Updates in place, and says to review the PDF before applying. When
+// resume-kit isn't set up, the button says how to (job.tailor_setup). `job.resume` is the name kept so far.
+function tailorResultLine(r) {
+  const pages = r.pages == null ? "" : `${r.pages} page${r.pages === 1 ? "" : "s"}`;
+  return [r.new ? "new" : "rebuilt", pages, r.ok ? "ok" : "needs a look"].filter(Boolean).join(" · ");
+}
+function tailorButton(job) {
+  const out = h("div", { class: "tailor" });
+  const b = h("button", { class: "btn", title: "Build a resume for this job with resume-kit from the posting, and keep it " +
+    "with the application. You review it before you apply." });
+  const label = () => job.resume ? "Rebuild resume" : "Tailor resume";
+  const draw = r => {
+    out.hidden = !(job.resume || r || job.tailor_help);
+    out.dataset.tone = r ? (r.ok ? "ok" : "warn") : job.tailor_help ? "warn" : "";
+    fill(out,
+      job.tailor_help ? h("span", { class: "problems" }, job.tailor_help) : null,
+      job.resume ? [h("span", {}, "Resume: "), h("button", { class: "open", title: `Open ${job.resume} to review it`,
+        onclick: () => openStored(job.key, job.resume) }, icon("file", 14), job.resume, " ↗")] : null,
+      r ? h("span", { class: "badge" + (r.ok ? "" : " warn") }, tailorResultLine(r)) : null,
+      r ? h("span", { class: "small" }, `version ${r.version}`) : null,
+      r && r.problems.length ? h("div", { class: "problems" }, r.problems.join("\n")) : null,
+      r ? h("div", { class: "review small" }, "Review this PDF before you apply: the page picks your confirmed facts " +
+        "by what the posting asks for, but the headline and summary are the ones your version already had.") : null);
+  };
+  b.textContent = label();
+  b.onclick = async () => {
+    if (!job.can_tailor) { job.tailor_help = job.tailor_setup; draw(); return; }
+    b.disabled = true; b.replaceChildren(icon("refresh", 14), "Building… (a few seconds)");
+    b.classList.add("spin");
+    try {
+      const r = await api("/api/tailor", { key: job.key });
+      job.resume = r.pdf; job.tailor_help = null;
+      draw(r);
+      toast(`📄 ${r.new ? "Drafted" : "Rebuilt"} a resume for ${job.company}: review it, then apply.`, null, r.ok ? "win" : "");
+    } catch (e) { job.tailor_help = e.message; draw(); toast("Couldn't build the resume: see the card"); }
+    b.classList.remove("spin"); b.disabled = false; b.textContent = label();
+  };
+  draw();
+  return [b, out];
 }
 
 function todayCard(job, canScore, i) {
@@ -3103,6 +3159,7 @@ function queueCard(job, i) {
   return jobCard(job, [
     h("div", { style: "flex-basis:100%" }, note),
     applyButton(job, true),
+    tailorButton(job),
     h("button", { class: "btn", onclick: () => mark(job, "applied", note.value || null,
       `Marked applied: ${job.title}`, "queued") }, icon("check", 14), "I applied"),
     h("button", { class: "btn", onclick: () => mark(job, "shown", null, `Removed from the queue: ${job.title}`, "queued") },
@@ -3147,7 +3204,7 @@ const SET_GROUPS = [
   { id: "ai", label: "AI & fit scores", cards: ["resume", "prompts", "chat"] },
   { id: "people", label: "People & pay", cards: ["people", "pay"] },
   { id: "alerts", label: "Alerts & skills", cards: ["alerts", "suggestions", "skills"] },
-  { id: "apply", label: "Applying", cards: ["applicant", "extension"] },
+  { id: "apply", label: "Applying", cards: ["applicant", "tailor", "extension"] },
 ];
 // The sub tab a name points at: a tab id ("ai"), a card id ("pay") or a card's anchor ("set-pay"); null if none.
 function settingsGroupOf(name) {
@@ -4479,6 +4536,15 @@ function renderSettings() {
   };
   const chatC = chatCard(s), payC = payCard(s), alertsC = alertsCard(s), goalsC = goalsCard(s);
   const applicantC = applicantCard(s), extensionC = extensionCard();
+  const resumeKit = textInput(s.resume_kit, "resume");
+  const tailorC = setCard("tailor", "Tailor resumes", "optional",
+    h("p", { class: "small muted lead" }, "The Tailor resume button on a queued job drafts a resume for it with resume-kit " +
+      "and keeps the PDF with the application, so Apply and the extension attach it. " +
+      (s.tailor_ready ? "resume-kit is ready." : s.tailor_setup)),
+    h("div", { class: "fields" },
+      field("resume-kit command", resumeKit, "Blank: the `resume` command on your PATH. Otherwise its full path, " +
+        "e.g. ~/tools/resume-kit/.venv/bin/resume.", "span3")));
+  tailorC.classList.add("full");
 
   // Companies to watch (suggestions) and Skills to build (learning)
   const sug = s.suggestions || {}, learning = s.learning || {};
@@ -4508,7 +4574,7 @@ function renderSettings() {
           : timeline.value, near: textOf(near), jobs: numberOf(exampleJobs) }),
         display, pace: merged(pace, { daily: numberOf(daily), max: numberOf(most) }),
         pay: merged(payC.values(), goalsC.payValues()), alerts: alertsC.values(),
-        goals: goalsC.goals(), comps: goalsC.weights(), applicant: applicantC.values(),
+        goals: goalsC.goals(), comps: goalsC.weights(), applicant: applicantC.values(), resume_kit: textOf(resumeKit),
         suggestions: merged(sug, { half_life: numberOf(halfLife), limit: numberOf(sugLimit) }),
         fetch_every: every.value === everyNow && (s.fetch_every === null || s.fetch_every === undefined) ? null : every.value });
       settings = await api("/api/settings");
@@ -4585,6 +4651,7 @@ function renderSettings() {
         field("Example jobs", exampleJobs, "Jobs listed with each skill."))),
     displayCard(s),
     applicantC,
+    tailorC,
     extensionC,
   ].filter(Boolean);
 

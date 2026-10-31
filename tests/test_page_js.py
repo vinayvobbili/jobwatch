@@ -313,7 +313,7 @@ console.log(JSON.stringify(out));
     # every settings card is in exactly one tab, so hiding the others never loses a field
     assert out["cards"] == sorted(["goals", "companies", "filters", "keywords", "today", "display", "resume", "prompts",
                                    "chat", "people", "pay", "alerts", "suggestions", "skills", "applicant",
-                                   "extension"])
+                                   "tailor", "extension"])
     assert out["hash"] == {"tab": "settings", "sub": "ai"}
     assert out["bare"] == {"tab": "settings", "sub": None} and out["bad"] == {"tab": "settings", "sub": None}
     assert out["today"] == {"tab": "today", "sub": None}
@@ -353,3 +353,16 @@ globalThis.Blob = class { constructor(parts) { this.parts = parts; } };
         ["open"], ["api", "/api/prep?key=greenhouse%3Ainitech%3A1"], ["at", "blob:sheet"],
         ["open"], ["closed"], ["toast", "no such job"],
         ["toast", "Couldn't open a new tab: your browser blocked it"]]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_the_tailor_result_line(tmp_path):
+    js = tmp_path / "tailor.js"
+    js.write_text(page_function("tailorResultLine") + """
+console.log(JSON.stringify([
+  tailorResultLine({ new: true, pages: 2, ok: true }), tailorResultLine({ new: false, pages: 1, ok: false }),
+  tailorResultLine({ new: true, pages: null, ok: true })]));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["new · 2 pages · ok", "rebuilt · 1 page · needs a look", "new · ok"]

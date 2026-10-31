@@ -46,7 +46,7 @@ def test_overlapping_tools_point_to_each_other(tool, sibling):
 
 
 VERBS = {"add", "check", "dismiss", "fetch", "find", "get", "import", "list", "mark", "rate", "read", "remove", "save",
-         "set"}
+         "set", "tailor"}
 
 
 def test_tool_names_start_with_a_verb():

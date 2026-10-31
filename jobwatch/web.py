@@ -55,6 +55,7 @@ from . import (
     stories,
     storyfind,
     suggest,
+    tailor,
 )
 from .config import ConfigError
 from .filters import KINDS
@@ -565,6 +566,8 @@ class App:
         return {"path": str(self.path), "exists": self.path.is_file(), "version": __version__,
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
+                "resume_kit": raw.get("resume_kit"), "tailor_setup": tailor.SETUP,
+                "tailor_ready": tailor.ready(str(raw.get("resume_kit") or "")),
                 "scoring": scoring, "chat": talk, "learning": raw.get("learning") or {},
                 "display": raw.get("display") or {}, "pace": raw.get("pace") or {}, "pay": raw.get("pay") or {},
                 "alerts": raw.get("alerts") or {}, "goals": raw.get("goals") or {},
@@ -849,7 +852,10 @@ class App:
             pay = self._pay(cfg, store, [(e.job, e.pay) for e in entries])
             history = advice.History(store)
             worth = comps.worth(cfg, store, [(e.job, e.fit) for e in entries])
+            can_tailor = tailor.ready(cfg.resume_kit)
             return [{**self._entry(e), "worth": worth[e.job.key],
+                     "can_tailor": can_tailor, "tailor_setup": None if can_tailor else tailor.SETUP,
+                     "resume": self._resume_name(store, e.job),
                      "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
                      "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),
                      **pay.get(e.job.key, {}), "advice": self._advice(cfg, e, history, pay)} for e in entries]
@@ -1102,6 +1108,24 @@ class App:
             return pkg.data()
         return self._with_store(run)
 
+    @staticmethod
+    def _resume_name(store, job) -> str | None:
+        """The resume kept with this job's application (tailored for it), if any."""
+        kept = Package(store.packages, job.key).resume()
+        return kept.name if kept else None
+
+    def post_tailor(self, body) -> dict:
+        """Tailor a resume to the job with resume-kit (seconds) and keep its PDF in the job's package; see
+        tailor.py. It is a draft for the person to review before applying."""
+        def run(cfg, store):
+            try:
+                return tailor.tailor(cfg, store, body.get("key") or "")
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+            except tailor.TailorError as e:
+                raise ApiError(str(e)) from None
+        return self._with_store(run)
+
     def post_package_remove(self, body) -> dict:
         def run(cfg, store):
             pkg = store.package(body.get("key") or "")
@@ -1320,6 +1344,7 @@ ROUTES = {
     ("POST", "/api/mock/save"): App.post_mock_save,
     ("GET", "/api/storyfind"): App.get_storyfind,
     ("POST", "/api/stories/add"): App.post_story,
+    ("POST", "/api/tailor"): App.post_tailor,
     ("POST", "/api/package"): App.post_package,
     ("POST", "/api/package/remove"): App.post_package_remove,
 }
