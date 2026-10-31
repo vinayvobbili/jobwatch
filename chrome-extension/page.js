@@ -457,7 +457,7 @@
         return { id: item.id, ok: true };
       }
       if (item.kind === 'combobox') return { id: item.id, ...(await fillCombo(els[0], value)) };
-      typeInto(els[0], value);
+      typeInto(els[0], els[0].tagName === 'INPUT' ? JW.oneLine(value) : value);
       settle(els[0]);
       return { id: item.id, ok: true };
     } catch (e) {

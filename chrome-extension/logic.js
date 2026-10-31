@@ -270,8 +270,14 @@
     return /^(submit( application)?|apply|send application|apply now|complete application)$/.test(normalize(text));
   }
 
+  /** An answer for a one-line box: the browser drops its line breaks, running "first paragraph.Second" together,
+   * so each break (and the space around it) becomes one space. A textarea keeps the answer as written. */
+  function oneLine(text) {
+    return String(text).replace(/\s*[\r\n]+\s*/g, ' ').trim();
+  }
+
   const JW = { DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
-    valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel };
+    valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;
   root.JW = JW;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

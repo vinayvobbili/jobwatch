@@ -178,6 +178,13 @@ console.log(JSON.stringify([done.map(JW.looksSubmitted), not.map(JW.looksSubmitt
 
 
 @needs_node
+def test_a_one_line_box_gets_spaces_for_line_breaks(tmp_path):
+    """Ashby asks long questions in one-line boxes, which drop line breaks: "the first.The second" otherwise."""
+    got = run_js(tmp_path, r"console.log(JSON.stringify(JW.oneLine('I build guardrails.\n\nThe tools are tagged. \r\n Done.\n')));")
+    assert got == "I build guardrails. The tools are tagged. Done."
+
+
+@needs_node
 def test_who_you_are_is_not_kept_as_an_answer(tmp_path):
     """The recorded application keeps answers to questions, not who the person is or the voluntary ones."""
     got = run_js(tmp_path, "console.log(JSON.stringify(['email', 'gender', 'full_name', 'salary', 'notice_period'].map(k => JW.IDENTITY.has(k))));")
