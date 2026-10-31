@@ -834,18 +834,25 @@ class _Resolver:
     """Finds each alert's job where the application goes, reading as little as it can: robots.txt first for
     any job site's page, each company's boards looked for once."""
 
-    def __init__(self, boards, page=None):
+    def __init__(self, boards, page=None, store: Store | None = None):
         self.boards = boards
         self.page = page
         self.robots = Robots(page)
         self.found_boards: dict[str, list[tuple[str, str, str]]] = {}
+        # The boards already found for companies that aren't watched (suggest.py), whose slug the name may not
+        # give away ("doordashusa"): by company id
+        self.known = {u["company"]: u["entry"] for u in store.unwatched(dismissed=True) if u["entry"]} if store else {}
 
     def company_boards(self, company: str) -> list[tuple[str, str, str]]:
-        """The company's boards: watched ones under its name, else the ones found by looking (once a run)."""
+        """The company's boards: watched ones under its name, else the one already found for it, else the ones
+        found by looking (once a run)."""
         key = linkedin._bare(company)
         if key not in self.found_boards:
             hits = [(b.source, b.board, company) for b in self.boards
                     if linkedin.same_company(b.name or b.board, company) or linkedin.same_company(b.board, company)]
+            source, _, board = self.known.get(key, "").partition(":")
+            if not hits and source in sources.SOURCES and board:
+                hits = [(source, board, company)]
             for name in linkedin.company_names(company) if not hits else []:
                 hits = [(s, b, company) for s, b, _ in sources.probe(name, None, self.page)]
                 if hits:
@@ -933,7 +940,7 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
     result = Intake(emails=len(messages), dry_run=dry_run)
     tracked = _Tracked(store)
     acted = dupes.Index(store)
-    resolver = _Resolver(cfg.boards, page)
+    resolver = _Resolver(cfg.boards, page, store)
     seen: dict[str, Found] = {}
     for msg in messages:
         alerts = parse(msg)
@@ -1012,6 +1019,58 @@ def _record(store: Store, f: Found):
     if f.how in ("board", "posting") and f.alert.url and f.alert.url != f.job.url:
         label = LABELS.get(f.alert.via, f.alert.via.removesuffix("-alert"))
         store.add_note(f.job.key, f"From a {label} job alert: {f.alert.url}")
+
+
+BACKFILL_CAP = 25  # jobs looked for per run: each costs a few requests, and the rest wait for the next run
+BACKFILL_EVERY = timedelta(days=1)  # a job not found isn't looked for again sooner
+
+
+@dataclass
+class Backfill:
+    tried: int = 0
+    filled: list[Job] = field(default_factory=list)  # the jobs, as found on the company's board
+    waiting: int = 0  # text-less jobs not tried: looked for lately, or past the cap
+    dry_run: bool = False
+
+
+def backfill(cfg, store: Store, page=None, limit: int = BACKFILL_CAP, dry_run: bool = False,
+             every: timedelta = BACKFILL_EVERY) -> Backfill:
+    """Look again for the open jobs that came in from alert emails with no posting text on their company's own
+    board (a watched one, the one already found for the company, or one guessed from its name: a company is
+    looked for once), and give each one found its posting's text, pay, places and link, keeping its key,
+    status and notes. Up to `limit` jobs a run, none looked for within `every`. dry_run: nothing is recorded."""
+    result = Backfill(dry_run=dry_run)
+    resolver = _Resolver(cfg.boards, page, store)
+    now = datetime.now(timezone.utc)
+    for job, rec in store.textless_alert_jobs():
+        if (rec["tried_at"] and now - datetime.fromisoformat(rec["tried_at"]) < every) or result.tried >= limit:
+            result.waiting += 1
+            continue
+        result.tried += 1
+        try:
+            found = resolver.on_board(job.title, job.display_company, "")
+        except sources.SourceError:
+            found = None
+        if dry_run:
+            if found:
+                result.filled.append(found)
+            continue
+        store.set_backfill_tried(job.key)
+        if found:
+            if job.url and clean_link(job.url) != clean_link(found.url):
+                store.add_note(job.key, f"Posting found on the company's board; the alert's link was {job.url}")
+            store.set_url(job.key, found.url)
+            store.set_description(job.key, found.description, found)
+            result.filled.append(found)
+    return result
+
+
+def backfill_summary(r: Backfill) -> str:
+    """What the backfill did, in a line or two."""
+    out = (f"{'Dry run: nothing recorded. ' if r.dry_run else ''}Looked for {r.tried} job(s) with no posting text "
+           f"on their companies' boards: {len(r.filled)} {'would be ' if r.dry_run else ''}filled in")
+    out += f", {r.waiting} waiting for a later run." if r.waiting else "."
+    return "\n".join([out, *(f"  {j.display_company}: {j.title}  ({j.url})" for j in r.filled)])
 
 
 HOW = {"board": "found on the company's board", "posting": "read from the posting's link",

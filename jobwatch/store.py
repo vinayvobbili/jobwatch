@@ -117,6 +117,10 @@ CREATE TABLE IF NOT EXISTS unwatched_jobs (
     seen_at TEXT NOT NULL,
     PRIMARY KEY (company, key)
 );
+CREATE TABLE IF NOT EXISTS backfill_tried (
+    key TEXT PRIMARY KEY,
+    tried_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS drafts (
     key TEXT NOT NULL,
     inputs TEXT NOT NULL,
@@ -340,6 +344,25 @@ class Store:
         LinkedIn job-alert email). The first one recorded stays."""
         with self.db:
             self.db.execute("UPDATE jobs SET via=COALESCE(via, ?) WHERE key=?", (via or None, key))
+
+    def textless_alert_jobs(self) -> list[tuple[Job, dict]]:
+        """(job, record) pairs of the open jobs added from a job-alert email (via ends in "-alert") that are
+        still kept as emailed, with no posting text. Oldest tried first (never tried first); the record has
+        tried_at, when the backfill (alerts.backfill) last looked for the job on its company's board."""
+        rows = self.db.execute("SELECT j.*, t.tried_at FROM jobs j LEFT JOIN backfill_tried t ON t.key=j.key "
+                               "WHERE j.source=? AND j.closed IS NULL AND j.via LIKE '%-alert' "
+                               "ORDER BY t.tried_at IS NOT NULL, t.tried_at, j.first_seen DESC", (MANUAL,))
+        out = []
+        for r in rows:
+            job = Job.from_dict(json.loads(r["data"]))
+            if not job.description.strip():
+                out.append((job, {k: r[k] for k in r.keys() if k != "data"}))
+        return out
+
+    def set_backfill_tried(self, key: str):
+        """Note that the backfill looked for this job on its company's board now."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO backfill_tried (key, tried_at) VALUES (?, ?)", (key, _now()))
 
     def set_duplicate(self, key: str, other: str):
         """Record that a job is the same opening as another one already acted on (see dupes.py), by its key."""

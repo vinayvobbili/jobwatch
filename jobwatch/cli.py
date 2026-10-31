@@ -548,6 +548,10 @@ def cmd_profile(args):
 
 
 def cmd_alerts(args, cfg, store):
+    if args.backfill:
+        r = alerts.backfill(cfg, store, dry_run=args.dry_run, limit=args.limit)
+        print(alerts.backfill_summary(r))
+        return
     if not (args.emails or args.imap):
         raise ValueError("give the alert emails: .eml or .mbox files, a folder of them, or - to read stdin; or "
                          "--imap to read them from the mailbox set in alerts.imap")
@@ -1081,6 +1085,11 @@ def build_parser() -> argparse.ArgumentParser:
                    "or - for stdin")
     p.add_argument("--imap", action="store_true", help="also read the last few days' alerts from the mailbox set in "
                    "alerts.imap (read-only: nothing is marked read, moved or deleted)")
+    p.add_argument("--backfill", action="store_true", help="instead of reading emails, look again on the company's "
+                   "own board for the jobs tracked from alerts with no posting text, and fill in the ones found "
+                   "(every check does this too, for a few jobs a day)")
+    p.add_argument("--limit", type=int, default=alerts.BACKFILL_CAP, metavar="N",
+                   help="with --backfill: the most jobs to look for (default %(default)s)")
     p.add_argument("--dry-run", action="store_true", help="show what would be tracked, and record nothing")
     p.add_argument("--no-follow", action="store_true", help="read no links: track each job as the email has it")
     p.add_argument("--all", action="store_true", help="list every new job, also the ones your filters leave out")

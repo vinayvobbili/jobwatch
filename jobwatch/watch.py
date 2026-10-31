@@ -211,6 +211,16 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
                               f"From {cfg.imap.host}: {plural(len(got.found), 'job')}, {len(fresh)} new, "
                               f"{len(fresh) - len(yours)} hidden by your filters"],
                       by=by)
+    # Jobs that came in from alerts with no posting text are looked for again on their companies' boards (a few
+    # a run, none more than once a day), so the page can score them.
+    try:
+        filled = alerts.backfill(cfg, store, page)
+    except Exception as e:  # a better copy of a job is a nicety: it never fails a check
+        report.warnings["alerts.backfill"] = str(e)
+    else:
+        if filled.filled:
+            store.log("mail", f"Found {plural(len(filled.filled), 'alert job')} on the company's own board",
+                      detail=[f"{j.display_company}: {j.title}" for j in filled.filled][:ACTIVITY_LINES], by=by)
     # A new posting of a job already applied to (or queued, or skipped) is marked as its duplicate.
     report.duplicates = dupes.record(store, new) if new else {}
     store.record_fetch(report.boards, report.jobs, len(report.new), report.errors, report.warnings)

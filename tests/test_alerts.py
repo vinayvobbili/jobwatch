@@ -731,3 +731,104 @@ def test_a_base64_raw_message_is_decoded():
     # Text that merely looks like base64 stays text.
     plain = "Engineers wanted for remote roles at Hooli and Globex this week apply soon thanks a lot"
     assert alerts.bodies(alerts.message(plain))[1].strip() == plain
+
+
+# -- Boards already found for a company, and looking again for jobs saved with no posting text
+
+def posting_of(job_id, title, company="Umbrella Corp", content="&lt;p&gt;Build &lt;b&gt;Rust&lt;/b&gt; services. Pay "
+               "$150,000 &amp;mdash; $190,000 USD&lt;/p&gt;"):
+    return {"id": job_id, "title": title, "company_name": company, "content": content,
+            "absolute_url": f"https://job-boards.greenhouse.io/umbrellacorp/jobs/{job_id}",
+            "location": {"name": "Remote, United States"}, "offices": [], "metadata": [], "departments": []}
+
+
+def umbrella_board(web, *jobs):
+    web.responses["https://boards-api.greenhouse.io/v1/boards/umbrellacorp/jobs?content=true"] = {"jobs": list(jobs)}
+
+
+def emailed(store, company="Umbrella", title="Platform Engineer", via="linkedin-alert"):
+    """A job saved as an alert email has it: title, company and place only."""
+    job = alerts.email_job(alerts.Alert(title, company, "United States", url="https://www.linkedin.com/jobs/view/1/",
+                                        site="linkedin", via=via))
+    store.keep(job)
+    store.set_via(job.key, via)
+    return job.key
+
+
+def test_the_board_already_found_for_a_company_is_used(web, watchlist):
+    """The slug isn't the name ("umbrellacorp"): probing "umbrella" finds nothing, but the store knows it."""
+    umbrella_board(web, posting_of(7, "Platform Engineer"))
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    assert alerts._Resolver(cfg.boards, None, store).on_board("Platform Engineer", "Umbrella", "") is None
+    store.note_unwatched("umbrella", "Umbrella", "manual:umbrella:x", "greenhouse:umbrellacorp", "posting")
+    found = alerts._Resolver(cfg.boards, None, store).on_board("Platform Engineer", "Umbrella", "")
+    assert found.key == "greenhouse:umbrellacorp:7" and found.company_name == "Umbrella Corp"
+
+
+def test_backfill_fills_in_a_job_saved_with_no_text(web, watchlist):
+    umbrella_board(web, posting_of(7, "Platform Engineer"), posting_of(8, "Sales Lead"))
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    key = emailed(store)
+    store.set_status([key], "queued", "referral asked")
+    store.note_unwatched("umbrella", "Umbrella", key, "greenhouse:umbrellacorp", "posting")
+    assert store.find(key)[0].description == ""
+    dry = alerts.backfill(cfg, store, dry_run=True)
+    assert (dry.tried, [j.key for j in dry.filled]) == (1, ["greenhouse:umbrellacorp:7"])
+    assert store.find(key)[0].description == "" and "dry run" in alerts.backfill_summary(dry).lower()
+    r = alerts.backfill(cfg, store)
+    job, rec = store.find(key)  # still the same job: its key, status and note stay
+    assert len(r.filled) == 1 and job.key == key and rec["status"] == "queued" and "referral asked" in rec["note"]
+    assert "Rust services" in job.description and job.url == "https://job-boards.greenhouse.io/umbrellacorp/jobs/7"
+    assert job.pay() == "$150K–$190K" and "linkedin.com/jobs/view/1" in rec["note"]
+    assert store.textless_alert_jobs() == []
+    assert not any("linkedin.com" in c for c in web.calls)
+
+
+def test_backfill_tries_a_missing_job_once_a_day_and_only_so_many(web, watchlist):
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    for n in range(3):
+        emailed(store, "Initech", f"Quality Analyst {n}")
+    assert alerts.backfill(cfg, store, limit=2).tried == 2  # the cap
+    r = alerts.backfill(cfg, store, limit=2)  # the two tried are left for a day; the third is next
+    assert (r.tried, r.waiting) == (1, 2)
+    assert alerts.backfill(cfg, store).tried == 0
+    with store.db:
+        store.db.execute("UPDATE backfill_tried SET tried_at='2020-01-01T00:00:00+00:00'")
+    assert alerts.backfill(cfg, store).tried == 3
+
+
+def test_backfill_leaves_other_jobs_alone(web, watchlist):
+    umbrella_board(web, posting_of(7, "Platform Engineer"))
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    store.note_unwatched("umbrella", "Umbrella", "x", "greenhouse:umbrellacorp", "posting")
+    store.add("Umbrella", "Platform Engineer", url="https://example.com/x")  # added by hand, not from an alert
+    done = emailed(store, "Umbrella", "Platform Engineer", via="indeed-alert")
+    store.set_description(done, "Already pasted.")
+    assert alerts.backfill(cfg, store).tried == 0
+
+
+def test_the_regular_check_fills_in_alert_jobs(web, watchlist):
+    umbrella_board(web, posting_of(7, "Platform Engineer"))
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    key = emailed(store)
+    store.note_unwatched("umbrella", "Umbrella", key, "greenhouse:umbrellacorp", "posting")
+    fetch_all(cfg, store)
+    assert "Rust services" in store.find(key)[0].description
+    assert any("own board" in a["text"] for a in store.activity())
+
+
+def test_alerts_backfill_command(web, watchlist, capsys):
+    umbrella_board(web, posting_of(7, "Platform Engineer"))
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    key = emailed(store)
+    store.note_unwatched("umbrella", "Umbrella", key, "greenhouse:umbrellacorp", "posting")
+    cli.main(["--config", str(watchlist), "alerts", "--backfill", "--dry-run"])
+    assert "1 would be filled in" in capsys.readouterr().out and store.find(key)[0].description == ""
+    cli.main(["--config", str(watchlist), "alerts", "--backfill"])
+    assert "1 filled in" in capsys.readouterr().out and store.find(key)[0].description
