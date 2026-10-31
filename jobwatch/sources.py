@@ -1700,6 +1700,20 @@ SOURCES = {
 }
 
 
+def apply_url(url: str) -> str:
+    """The page with a posting's application form: Lever's /apply and Ashby's /application pages; elsewhere the
+    posting itself, which has the form on it or a button to it (Greenhouse's form is on the posting's page)."""
+    if not url:
+        return ""
+    parts = urlparse(url)
+    path = parts.path.rstrip("/")
+    if parts.netloc in ("jobs.lever.co", "jobs.eu.lever.co") and path.count("/") == 2:
+        return parts._replace(path=path + "/apply", query="", fragment="").geturl()
+    if parts.netloc == "jobs.ashbyhq.com" and path.count("/") == 2:
+        return parts._replace(path=path + "/application", query="", fragment="").geturl()
+    return url
+
+
 def careers_url(source: str, board: str) -> str:
     if source == "workday":
         host, _, site = board.partition("/")

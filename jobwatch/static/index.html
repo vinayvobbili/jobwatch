@@ -151,14 +151,15 @@ h3 { font-size: 15.5px; margin: 0; letter-spacing: -.005em; }
 .pipeline .legend b { color: var(--text); margin-left: 3px; }
 
 /* buttons */
-button.btn { font: inherit; font-size: 14px; font-weight: 550; border: 1px solid var(--line);
+button.btn, a.btn { font: inherit; font-size: 14px; font-weight: 550; border: 1px solid var(--line);
   background: var(--panel-solid); color: var(--text); border-radius: 10px; padding: 6px 14px; cursor: pointer;
   display: inline-flex; align-items: center; gap: 6px; transition: transform .12s, box-shadow .15s, border-color .15s; }
-button.btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
-button.btn:active { transform: translateY(1px); }
-button.primary { color: #fff; border-color: transparent; background: var(--grad);
+a.btn { text-decoration: none; } /* a link that opens a page, drawn as a button (Apply ↗, prep sheets) */
+button.btn:hover, a.btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+button.btn:active, a.btn:active { transform: translateY(1px); }
+button.primary, a.btn.primary { color: #fff; border-color: transparent; background: var(--grad);
   box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
-button.primary:hover { border-color: transparent; filter: brightness(1.07);
+button.primary:hover, a.btn.primary:hover { border-color: transparent; filter: brightness(1.07);
   box-shadow: 0 10px 22px -10px color-mix(in srgb, var(--accent) 90%, transparent); }
 button.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 5px 10px; }
 button.ghost:hover { color: var(--text); background: var(--chip); border-color: transparent; }
@@ -1485,10 +1486,21 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   return [b, unscoredNote(job)];
 }
 
+// Opens the application form in a new tab (a link, so the browser lets it open); `then` runs alongside, e.g.
+// queueing the job. The jobwatch browser extension fills the form there and records it when it's submitted.
+function applyButton(job, primary, then) {
+  if (job.closed || !(job.apply_url || job.url)) return null;
+  return h("a", { class: "btn" + (primary ? " primary" : ""), href: job.apply_url || job.url, target: "_blank",
+    rel: "noopener", title: "Open the application form. With the jobwatch browser extension, click its icon there to fill " +
+      "the form; it marks the job applied when you submit.", onclick: () => then && then() }, "Apply ↗");
+}
+
 function todayCard(job, canScore, i) {
   return jobCard(job, [
     h("button", { class: "btn primary",
       onclick: () => mark(job, "queued", null, `📌 Queued: ${job.title}. ${pick(QUEUED)}`, job.status) }, "Queue"),
+    applyButton(job, false, () => mark(job, "queued", null, `📌 Queued and opened: ${job.title}. Submit it there.`,
+      job.status)),
     h("button", { class: "btn",
       onclick: () => mark(job, "skipped", null, `Skipped: ${job.title}. ${pick(SKIPPED)}`, job.status) }, "Skip"),
     detailsButton(job), scoreButton(job, canScore),
@@ -3090,7 +3102,8 @@ function queueCard(job, i) {
   note.value = job.note || "";
   return jobCard(job, [
     h("div", { style: "flex-basis:100%" }, note),
-    h("button", { class: "btn primary", onclick: () => mark(job, "applied", note.value || null,
+    applyButton(job, true),
+    h("button", { class: "btn", onclick: () => mark(job, "applied", note.value || null,
       `Marked applied: ${job.title}`, "queued") }, icon("check", 14), "I applied"),
     h("button", { class: "btn", onclick: () => mark(job, "shown", null, `Removed from the queue: ${job.title}`, "queued") },
       "Remove from queue"),

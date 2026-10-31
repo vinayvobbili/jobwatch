@@ -118,6 +118,20 @@ def test_a_board_that_stays_rate_limited_fails(monkeypatch):
     assert waits == [sources.MAX_WAIT] * sources.RETRIES
 
 
+@pytest.mark.parametrize("url, expected", [
+    ("https://jobs.lever.co/initech/6f1b2c", "https://jobs.lever.co/initech/6f1b2c/apply"),
+    ("https://jobs.lever.co/initech/6f1b2c/?lever-source=x", "https://jobs.lever.co/initech/6f1b2c/apply"),
+    ("https://jobs.lever.co/initech/6f1b2c/apply", "https://jobs.lever.co/initech/6f1b2c/apply"),
+    ("https://jobs.ashbyhq.com/initech/4f1c9a", "https://jobs.ashbyhq.com/initech/4f1c9a/application"),
+    ("https://jobs.ashbyhq.com/initech/4f1c9a/application", "https://jobs.ashbyhq.com/initech/4f1c9a/application"),
+    ("https://job-boards.greenhouse.io/initech/jobs/4001", "https://job-boards.greenhouse.io/initech/jobs/4001"),
+    ("https://careers.globex.example/jobs?gh_jid=7", "https://careers.globex.example/jobs?gh_jid=7"),
+    ("", ""),
+])
+def test_the_apply_button_opens_the_form(url, expected):
+    assert sources.apply_url(url) == expected
+
+
 def test_times_with_a_colonless_offset():
     t = sources._time("2026-09-29T21:03:00+0000")  # Jibe; Python 3.10's fromisoformat needs "+00:00"
     assert (t.year, t.hour, t.utcoffset().total_seconds()) == (2026, 21, 0)
