@@ -990,7 +990,8 @@ def _tracking(p: argparse.ArgumentParser):
     p.add_argument("--round", choices=[*ROUNDS, ""], metavar="ROUND", help="which interview the next step is "
                    f"({', '.join(ROUNDS)}): a meeting on the Interviews tab and calendar, whatever its words; "
                    "'' clears it")
-    p.add_argument("--follow-up", metavar="DAY", help="when to act on it: YYYY-MM-DD, tomorrow or +N days")
+    p.add_argument("--follow-up", metavar="DAY", help="when to act on it: YYYY-MM-DD, tomorrow or +N days; "
+                   "none clears it")
 
 
 def build_parser() -> argparse.ArgumentParser:

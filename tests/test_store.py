@@ -156,6 +156,7 @@ def test_day():
     assert day("tomorrow", today) == "2026-09-30"
     assert day(" 2026-10-01 ", today) == "2026-10-01"
     assert day("", today) is None
+    assert day("none", today) is None  # `mark --follow-up none` clears it
 
 
 def test_add_an_application_found_elsewhere(store):

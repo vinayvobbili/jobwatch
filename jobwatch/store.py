@@ -223,11 +223,11 @@ REPOST_DAYS = 14
 
 def day(value: str | date | None, today: date | None = None) -> str | None:
     """A calendar day as YYYY-MM-DD, from "2026-10-05", "today", "tomorrow" or "+7" (days from today).
-    Empty means none."""
+    Empty or "none" means none."""
     if value is None or isinstance(value, date):
         return value.isoformat() if value else None
     v, today = value.strip().lower(), today or date.today()
-    if not v:
+    if not v or v == "none":
         return None
     if v in ("today", "tomorrow"):
         return (today + timedelta(days=v == "tomorrow")).isoformat()
