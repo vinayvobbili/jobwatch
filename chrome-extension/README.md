@@ -54,6 +54,13 @@ want, press **Fill selected**.
 Works on Greenhouse (job-boards.greenhouse.io, boards.greenhouse.io and the form embedded in a company's own page),
 Lever and Ashby, and tries its best on other single-page forms. Workday is not supported yet.
 
+## Jobs from LinkedIn alerts
+
+A job that came from a LinkedIn alert has no posting text. On Today, **Open on LinkedIn** opens its LinkedIn page. There,
+click the extension's icon and press **Open the company's posting**: it presses LinkedIn's Apply button (never Easy
+Apply) so the company's page opens, and jobwatch reads the posting from that page when it is on a job site it supports.
+On any other company page, press **Save this posting to jobwatch**. The extension reads nothing from LinkedIn's pages.
+
 ## Privacy
 
 Nothing leaves your computer except to jobwatch, which runs on it. See [PRIVACY.md](PRIVACY.md).
