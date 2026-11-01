@@ -85,6 +85,22 @@ def test_applying_saves_the_posting_as_it_read_then(tmp_path, web):
     store.close()
 
 
+def test_text_given_later_replaces_a_kept_posting_that_had_none(tmp_path):
+    """Applied once with no text, then queued again for a reposting: the text found now replaces the empty copy."""
+    from jobwatch.store import Store
+
+    store = Store(tmp_path / "state.db")
+    key = store.add("Initech", "Automation Engineer").key
+    empty = (store.package(key).dir / POSTING).read_text()
+    store.set_status([key], "queued")
+    store.set_description(key, "Automate the SOC with Python and SOAR.")
+    kept = (store.package(key).dir / POSTING).read_text()
+    assert "Automate the SOC" not in empty and "Automate the SOC" in kept
+    store.set_status([key], "applied")
+    assert (store.package(key).dir / POSTING).read_text() == kept
+    store.close()
+
+
 def test_the_page_attaches_shows_and_serves_files(server):
     ok = {"X-Jobwatch-Token": TOKEN}
     request(server, "POST", "/api/fetch", {}, headers=ok)

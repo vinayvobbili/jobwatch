@@ -14,7 +14,7 @@ from pathlib import Path
 from . import linkedin, rounds
 from .contacts import company_key
 from .models import Job
-from .package import Package
+from .package import POSTING, Package
 from .score import resume_family, unjudged
 from .sources import SOURCES, candidate_home
 from .text import parse_salary
@@ -563,8 +563,9 @@ class Store:
             job.salary_min, job.salary_max, job.currency = *pay, "USD"
         with self.db:
             self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
-        if rec["status"] in STAGES:
-            self.package(job.key).keep_posting(job, again=True)
+        kept = self.package(job.key)
+        if rec["status"] in STAGES or (kept.dir / POSTING).is_file():  # applied before, queued again for a reposting
+            kept.keep_posting(job, again=True)
 
     def add_note(self, key: str, text: str):
         """Add a dated line to the note, keeping what's there (the recruiter's name, what was said before). A line
