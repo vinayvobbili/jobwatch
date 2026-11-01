@@ -177,10 +177,20 @@ def place_rejection(job: Job, f: Filters) -> str | None:
     return None
 
 
+def _office_company(job: Job, f: Filters) -> str | None:
+    """The name in nearby_offices the job's company goes by, when the job is in the person's country (the US,
+    unless remote_country is "any"): a recruiter may move a role to another office, rarely to another country."""
+    if not (name := excluded_company(job, f.nearby_offices)):
+        return None
+    here = f.remote_country.lower() == "any" or not job.locations or any(in_us(loc) for loc in job.locations)
+    return name if here else None
+
+
 def office_nearby(job: Job, f: Filters) -> str | None:
     """The nearby office a job passes the place rules through (the name in nearby_offices, as written): it's
-    posted elsewhere, so ask the recruiter about working from that office. None for a job in your places."""
-    return excluded_company(job, f.nearby_offices) if place_rejection(job, f) else None
+    posted elsewhere in the country, so ask the recruiter about working from that office. None for a job in your
+    places, or abroad."""
+    return _office_company(job, f) if place_rejection(job, f) else None
 
 
 def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] | None:
@@ -199,7 +209,7 @@ def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] 
         return "excluded", f"text matches {p!r}"
     if job.department and (p := _any(f.exclude_departments, job.department)):
         return "department", f"department matches {p!r}"
-    if (why := place_rejection(job, f)) and not excluded_company(job, f.nearby_offices):
+    if (why := place_rejection(job, f)) and not _office_company(job, f):
         return "place", why
     if job.salary_min is None:
         if f.require_salary:

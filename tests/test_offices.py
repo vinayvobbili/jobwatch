@@ -24,6 +24,18 @@ def test_a_job_elsewhere_passes_at_a_company_with_an_office_near_you():
                      Filters(locations=["Boulder"], nearby_offices=["Initech"], min_salary=150000))[0] == "pay"
 
 
+def test_an_office_near_you_doesnt_let_in_a_job_in_another_country():
+    f = Filters(locations=["remote", "Boulder"], home_state="CO", nearby_offices=["Initech"])
+    for abroad in ("Sydney, Australia", "London, United Kingdom", "Bangalore, India"):
+        assert rejection(job("Initech", abroad), f) == ("place", "location"), abroad
+        assert office_nearby(job("Initech", abroad), f) is None
+    both = Job(source="greenhouse", company="initech", id="i-9", title="Security Engineer", url="https://example.com/9",
+               company_name="Initech", locations=["Toronto, Canada", "Austin, TX"])
+    assert rejection(both, f) is None  # one of its places is in the US
+    anywhere = Filters(locations=["remote", "Boulder"], remote_country="any", nearby_offices=["Initech"])
+    assert rejection(job("Initech", "Sydney, Australia"), anywhere) is None
+
+
 def test_the_queue_says_to_ask_about_the_office():
     f = Filters(locations=["remote", "Boulder"], nearby_offices=["Initech, Inc."])
     said = warnings(job("Initech", "Seattle, WA"), f)
