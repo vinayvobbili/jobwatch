@@ -233,6 +233,18 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .kv .whyfit summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paychip { display: inline-block; color: var(--good); font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13px;
   padding: 1px 10px; border-radius: 999px; background: color-mix(in srgb, var(--good) 14%, transparent); }
+/* A job's pay, one chip per source in one wrapping row; a source with nothing is dimmed (its reason is the hover) */
+.psrcs { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 4px; }
+.psrc { display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; padding: 1px 9px; border-radius: 999px;
+  background: var(--chip); color: var(--chip-text); font-size: 12.5px; font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.psrc b { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+/* psrc-* names: .empty and .posted already style other things on the page */
+.psrc-posted, .psrc-ask { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); font-weight: 700; }
+.psrc-posted b, .psrc-ask b { color: inherit; opacity: .75; }
+.psrc-levels, .psrc-lca { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.psrc-levels b, .psrc-lca b { color: inherit; opacity: .75; }
+.psrc-none { background: transparent; border: 1px dashed var(--muted); color: var(--muted); opacity: .7; font-style: italic; cursor: help; }
 .kv .advice { margin: 0; }
 .kv .advice .atext { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .kv .warns { margin: 0; }
@@ -1459,25 +1471,27 @@ function whyScore(fit) {
       (r.evidence || []).slice(0, 2).map(q => h("q", {}, q))))));
 }
 
-// Expected pay from Levels.fyi (only when the watchlist turns it on), and how it was worked out.
-function payLine(job) {
-  const p = job.expected_pay;
-  if (!p) return null;
-  if (p.pending) return h("div", { class: "small muted", "data-pay": job.key }, "Expected pay: looking it up on Levels.fyi…");
-  if (p.refused) return h("div", { class: "small muted", "data-pay": job.key },
-    "Expected pay: Levels.fyi is refusing jobwatch's requests for now; it's asked again tomorrow.");
-  return h("details", { class: "whyfit", "data-pay": job.key }, h("summary", {}, "Expected pay: " + p.line),
-    h("ul", {}, p.why.map(w => h("li", {}, w)), h("li", {}, link(p.url, p.credit + " ↗"))));
+// A job's pay, one small chip per source in a fixed order (Posted, Levels, LCA, Recruiter, Glassdoor, Ask; see
+// paysources.py). A source with nothing is a dimmed chip and its reason shows on hover, so a blank is never a mystery.
+function paySources(job) {
+  const items = job.pay_sources;
+  if (!items) return job.pay ? h("span", { class: "paychip" }, job.pay) : null;
+  return h("div", { class: "psrcs", "data-pay": job.key }, items.map(s => s.value
+    ? h("span", { class: `psrc psrc-${s.key}`, title: s.detail || s.value }, h("b", {}, s.label), s.short || s.value)
+    : h("span", { class: "psrc psrc-none", title: s.reason }, h("b", {}, s.label), s.blank)));
 }
 
-// Base pay the company filed for H-1B hires in titles like this one (U.S. DOL LCA data, once `jobwatch lca update`
-// has been run): shown whether or not Levels.fyi has anything. Base only, not total compensation.
-function lcaLine(job) {
-  const p = job.lca_pay;
-  if (!p) return null;
-  return h("details", { class: "whyfit", "data-lca": job.key, title: p.label },
-    h("summary", {}, p.line),
-    h("ul", {}, p.why.map(w => h("li", {}, w)), h("li", {}, p.label + ". ", link(p.url, p.credit + " ↗"))));
+// How the Levels.fyi and H-1B (U.S. DOL LCA, base only, not total compensation) figures were worked out, with
+// their credit, folded away under the chips in a job's details.
+function payWhy(job) {
+  const p = job.expected_pay && !job.expected_pay.pending && !job.expected_pay.refused ? job.expected_pay : null;
+  const l = job.lca_pay;
+  if (!p && !l) return h("span", { "data-paywhy": job.key });
+  return h("details", { class: "whyfit", "data-paywhy": job.key }, h("summary", {}, "How the pay was worked out"),
+    h("ul", {},
+      p ? [p.why.map(w => h("li", {}, w)), h("li", {}, link(p.url, p.credit + " ↗"))] : null,
+      l ? [h("li", {}, h("b", {}, l.line)), l.why.map(w => h("li", {}, w)),
+        h("li", {}, l.label + ". ", link(l.url, l.credit + " ↗"))] : null));
 }
 
 // Fills in expected pay that's still being looked up in the background, until none is left. One poll per
@@ -1494,10 +1508,9 @@ function watchPay(jobs, scope = "page") {
       for (const j of waiting) {
         if (!(j.key in r.pay) || (r.pay[j.key] && r.pay[j.key].pending)) continue;
         j.expected_pay = r.pay[j.key];
-        document.querySelectorAll(`[data-pay="${CSS.escape(j.key)}"]`).forEach(el => {
-          const line = payLine(j);
-          line ? el.replaceWith(line) : el.remove();
-        });
+        if (r.sources && r.sources[j.key]) j.pay_sources = r.sources[j.key];
+        document.querySelectorAll(`[data-pay="${CSS.escape(j.key)}"]`).forEach(el => el.replaceWith(paySources(j)));
+        document.querySelectorAll(`[data-paywhy="${CSS.escape(j.key)}"]`).forEach(el => el.replaceWith(payWhy(j)));
         if (r.advice && j.key in r.advice) {  // the advice and the bottom line again, now that the pay is known
           Object.assign(j, r.advice[j.key]);
           document.querySelectorAll(`[data-advice="${CSS.escape(j.key)}"]`).forEach(el =>
@@ -1559,7 +1572,7 @@ function jobCard(job, actions, i = 0, above = null) {
     age(job.age_days) ? h("span", { class: "posted", title: age(job.age_days) }, age(job.age_days).replace(/^posted /, "")) : null]
     .filter(Boolean);
   const parts = {
-    pay: [job.pay ? h("span", { class: "paychip" }, job.pay) : null, payLine(job), lcaLine(job)],
+    pay: paySources(job),
     why: adviceLine(job) || noAdvice(job),
     check: [linkNote(job), job.warnings && job.warnings.length ? h("div", { class: "warns" }, job.warnings.join(" · ")) : null],
     gaps: gapsLine(job.fit, true),
@@ -1769,8 +1782,8 @@ async function openDetails(key) {
           h("div", { class: "note-full", title: "The whole note, newest first" }, noteTimeline(j.note))] : null,
         linkNote(j),
         j.duplicate_of ? h("div", { class: "warns" }, dupeBadge(j.duplicate_of), " ", j.duplicate_of.text) : null,
-        payLine(j),
-        lcaLine(j),
+        paySources(j),
+        payWhy(j),
         gapsLine(j.fit),
         whyScore(j.fit),
         knowLine(j, 10),
@@ -4499,6 +4512,7 @@ const COMP_ROWS = [  // [label, the value (text or an element; null for none), t
   ["Sign-on", o => o.comp.signon],
   ["You asked", o => o.comp.asked],
   ["Offered", o => o.comp.offered, "offered"],
+  ["Glassdoor", o => o.comp.glassdoor],
   ["Fit", o => o.fit ? `${Math.round(o.fit.score)}/100 · must-haves ${o.fit.met}/${o.fit.total}` + (o.fit.stale ? " (old score)" : "") : null, "fit"],
   ["Gaps", o => o.fit?.gaps.length ? h("div", { class: "gapline" }, o.fit.gaps.join(" · ")) : null],
   ["You know", o => o.contacts.length ? o.contacts.map(p => p.name + (p.position ? ` (${p.position})` : "")).join("; ") : null],
@@ -4554,7 +4568,7 @@ function compFormBox(title, hint, fields, extra, onsave) {
 function compForm(o) {
   const fields = [["base", "Base range they gave", "165-195K"], ["bonus", "Bonus", "10% target"],
     ["equity", "Equity", "40K RSUs over 4 years"], ["signon", "Sign-on", "15K"], ["asked", "You asked for", "210-230K"],
-    ["offered", "They offered", "180K"],
+    ["offered", "They offered", "180K"], ["glassdoor", "Glassdoor (typed in by you)", "170-210K"],
     ["role", "Role: product, customer or internal", "product"], ["career_note", "Career note", "observability product, staff IC"]];
   return compFormBox(`Pay details: ${o.company}`,
     "As the recruiter said them. Amounts like 165-195K are read to mark the highest; blank clears a field. Role and career note feed the career part of the suggestion.",

@@ -375,9 +375,17 @@ def test_queued_jobs_show_expected_pay_and_warn_below_the_minimum(levels_site, w
     assert (acme["ask"], acme["level"], acme["url"]) == (180_000, "A3", SE.format("acme"))
     assert queued["ashby:initech:c1"]["expected_pay"]["level"] == "I4"
     assert mcp.get_job("101")["expected_pay"]["line"] == acme["line"]
+    got = mcp.get_job("101")  # the sources, one key each, next to the old pay and expected_pay
+    assert list(got["pay_sources"]) == ["posted", "levels", "lca", "recruiter", "glassdoor", "ask"]
+    assert got["pay_sources"]["levels"]["value"] == "$160K base" and got["pay_sources"]["ask"]["value"] == "$180K"
+    assert got["pay_sources"]["recruiter"] == {"label": "Recruiter", "value": None, "blank": "none",
+                                               "reason": got["pay_sources"]["recruiter"]["reason"]}
+    page = App(watchlist).get_job({"key": ["101"]})["pay_sources"]  # the page gets them as an ordered list
+    assert [s["key"] for s in page] == list(got["pay_sources"]) and page[1]["value"] == "$160K base"
     cli.main(["-c", str(watchlist), "show", "101"])
     out = capsys.readouterr().out
-    assert "Expected pay: Ask ~$180K" in out and "  - Level A3: the title says Senior" in out
+    assert "Levels $160K base · LCA off" in " ".join(out.split()) and "Ask $180K" in " ".join(out.split())
+    assert "Expected pay:" not in out and "  - Level A3: the title says Senior" in out
 
 
 def test_the_digest_never_has_expected_pay(levels_site, watchlist, capsys):

@@ -179,7 +179,7 @@ def test_set_and_get_comps_tools(tracked, monkeypatch):
     assert [o["company"] for o in v["opportunities"]] == ["Initech", "Acme", "Globex"]
     assert v["opportunities"][2]["comp"] == {"base": "150-190K", "bonus": None, "equity": None, "signon": None,
                                              "asked": None, "offered": None, "note": None, "role": None,
-                                             "career_note": None}
+                                             "career_note": None, "glassdoor": None}
     assert len(mcp.get_comps(stages=["applied"])["opportunities"]) == 1
     assert [o["company"] for o in mcp.get_comps(keys=["umbrella"])["opportunities"]] == ["Umbrella"]
     with pytest.raises(ToolError, match="no job matches"):

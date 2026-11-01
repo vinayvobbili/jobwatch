@@ -36,6 +36,7 @@ from . import (
     logos,
     mock,
     offices,
+    paysources,
     prep,
     profile,
     quiet,
@@ -309,7 +310,8 @@ def cmd_show(args, cfg, store):
     status = rec["status"] + (f" ({rec['note']})" if rec.get("note") else "")
     closed = f", closed {rec['closed'][:10]}" if rec["closed"] else ""
     via = f" (via {rec['via']})" if rec.get("via") else ""
-    print(f"{job.to_text()}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{via}{closed}")
+    text = job.to_text().replace(f"Pay: {job.pay()}\n", "", 1) if job.pay() else job.to_text()  # the Pay line below
+    print(f"{text}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{via}{closed}")
     print(f"Source: {report.found_on(job, rec.get('via'))}")
     if job.link_note:
         print(f"Link: {job.link_note}")
@@ -331,10 +333,12 @@ def cmd_show(args, cfg, store):
         print(f"{MANY_ROLES[1]}.")
     elif fit:
         print("\n".join(report.fit_lines(fit)))
-    if (pay := levels.for_one_job(cfg, store, job)) is not None:
-        print("\n".join(report.pay_lines(pay, job)))
-    if lines := report.lca_lines(lca.for_one_job(cfg, job)):
-        print("\n".join(lines))
+    pay, est = levels.for_one_job(cfg, store, job), lca.for_one_job(cfg, job)
+    print(paysources.line(paysources.gather(cfg, store, job, pay, est)))
+    # How the Levels.fyi and LCA figures were worked out, with their credit
+    if (more := [*(report.pay_lines(pay, job)[1:] if isinstance(pay, levels.Estimate) else []),
+                 *report.lca_lines(est)]):
+        print("\n".join(more))
 
 
 def cmd_mark(args, cfg, store):
@@ -1288,6 +1292,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--asked", help="what you asked for")
     p.add_argument("--offered", help="what they offered")
     p.add_argument("--note", help="a few words, e.g. '195K most likely their max'")
+    p.add_argument("--glassdoor", help="the pay Glassdoor shows for this job or title, as you read it there, "
+                   "e.g. '170-210K' (typed in by you: jobwatch never fetches Glassdoor)")
     p.add_argument("--role", choices=(*ROLES, ""), help="what the job is: product (builds the company's own "
                    "product), customer (forward-deployed, solutions, customer-facing engineering) or internal "
                    "(builds internal tools for the business); the career part of the `comps` suggestion reads it")

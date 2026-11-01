@@ -28,6 +28,7 @@ from . import (
     lca,
     learn,
     levels,
+    paysources,
     prep,
     profile,
     quiet,
@@ -351,7 +352,11 @@ def get_job(key: Key) -> dict:
     queued or skipped that this one is (maybe) the same opening as: key, title, status, date, why, strong (a
     shared req or posting id; false: the same title only, so check it's a different opening), reposted, and
     text, the warning to heed; null when there's none. Check it before drafting a referral request or an
-    application. lca_pay, once `jobwatch lca update` has been run, is the base pay the company filed for H-1B
+    application. pay_sources has one entry per pay source, in order: posted (the posting's range), levels
+    (Levels.fyi), lca (H-1B filings), recruiter (what set_comp kept), glassdoor (only what the person typed in:
+    never fetched) and ask (the base to ask for); each is {label, value, reason, blank, ...}: value is null when
+    the source has nothing, and reason says why (blank is TBD when it will be known later, none or off).
+    lca_pay, once `jobwatch lca update` has been run, is the base pay the company filed for H-1B
     hires in titles like this one (median, 25th-75th percentile, count, wage levels, examples; U.S. DOL LCA
     disclosures): base only, not total compensation. Use it to tailor a resume or decide whether to apply; for
     only what was sent use get_application_package, and for a call or interview use get_interview_prep."""
@@ -361,16 +366,18 @@ def get_job(key: Key) -> dict:
         known = load_contacts(cfg)
         fit = store.score(job.key, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else None
         same = dupes.check(store, job.key)
+        result, est = levels.for_one_job(cfg, store, job), lca.for_one_job(cfg, job)
         return {"key": job.key, "company": job.display_company, "title": job.title, "url": job.url,
                 "link_note": job.link_note or None,
-                "pay": job.pay(), "locations": job.places, "text": job.to_text(), **rec,
+                "pay": job.pay(), "pay_sources": paysources.as_dict(paysources.gather(cfg, store, job, result, est)),
+                "locations": job.places, "text": job.to_text(), **rec,
                 "duplicate_of": same.to_dict() if same else None, "fit": fit,
                 "unscored_reason": None if fit else unscored_reason(cfg, store, job),
                 "contacts": known.at(job.display_company, job.company) if known else [],
                 "find_referral": contacts.linkedin_search(job.display_company),
                 "candidate_home": store.candidate_home(job),
                 "skill_gaps": learn.job_gaps(cfg, store, job), "package": store.package(job.key).data(),
-                **_pay(levels.for_one_job(cfg, store, job), job), **_lca(lca.for_one_job(cfg, job))}
+                **_pay(result, job), **_lca(est)}
     finally:
         store.close()
 
@@ -613,6 +620,9 @@ def set_comp(
     offered: Annotated[str | None, Field(description="What they offered. Empty clears it.")] = None,
     note: Annotated[str | None, Field(description=(
         "A few words (\"195K most likely their max\"). Replaces the old note. Empty clears it."))] = None,
+    glassdoor: Annotated[str | None, Field(description=(
+        "The pay Glassdoor shows for this job, as the person read it there (\"170-210K\"). Only a figure they "
+        "typed in: jobwatch never fetches Glassdoor. Empty clears it."))] = None,
     role: Annotated[Literal["product", "customer", "internal", ""] | None, Field(description=(
         "What the job is, for its career value: product (builds the company's own product), customer "
         "(forward-deployed, solutions, customer-facing engineering) or internal (builds internal tools or "
@@ -629,7 +639,7 @@ def set_comp(
         try:
             job, _ = store.find(key)
             store.set_comp(job.key, base=base, bonus=bonus, equity=equity, signon=signon, asked=asked,
-                           offered=offered, note=note, role=role, career_note=career_note)
+                           offered=offered, note=note, role=role, career_note=career_note, glassdoor=glassdoor)
         except (KeyError, ValueError) as e:
             raise ToolError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
         return {"key": job.key, "company": job.display_company, "title": job.title, "comp": store.comp(job.key)}

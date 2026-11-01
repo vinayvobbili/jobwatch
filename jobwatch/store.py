@@ -25,7 +25,8 @@ ENDED = ("rejected", "withdrawn")
 STATUSES = ("new", "shown", "queued", *STAGES, "skipped")
 VERDICTS = ("use", "skip")  # what can be said of a person to ask for a referral
 # What a recruiter said about pay, then what the job is for your career: its role (ROLES) and a few words on why.
-COMP_FIELDS = ("base", "bonus", "equity", "signon", "asked", "offered", "note", "role", "career_note")
+COMP_FIELDS = ("base", "bonus", "equity", "signon", "asked", "offered", "note", "role", "career_note",
+               "glassdoor")  # glassdoor: a figure typed in by hand, never fetched
 ROLES = ("product", "customer", "internal")  # builds the company's product; customer-facing engineering; internal tools
 # What is known of a company's health, per company: public or private, stage and last round, total raised, revenue
 # or growth, headcount trend, recent layoffs, employee rating, a risk note, source links, and the day it was true;
@@ -160,6 +161,7 @@ CREATE TABLE IF NOT EXISTS comps (
     note TEXT,
     role TEXT,
     career_note TEXT,
+    glassdoor TEXT,
     set_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS company_health (
@@ -283,7 +285,8 @@ class Store:
                 except sqlite3.OperationalError as e:  # another connection added it just now
                     if "duplicate column" not in str(e):
                         raise
-            for table, column in (("comps", "role"), ("comps", "career_note"), ("company_health", "kind")):
+            for table, column in (("comps", "role"), ("comps", "career_note"), ("comps", "glassdoor"),
+                                  ("company_health", "kind")):
                 if column not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     try:
                         self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")

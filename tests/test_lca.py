@@ -259,7 +259,9 @@ def test_lookups_without_a_cache_say_how_to_make_one(web, watchlist, capsys):
     with pytest.raises(SystemExit, match="jobwatch lca update"):
         cli.main(["-c", str(watchlist), "lca", "acme"])
     cli.main(["-c", str(watchlist), "show", "101"])
-    assert "H-1B" not in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "H-1B filings: median" not in out
+    assert "LCA off (no H-1B filings cache yet; run jobwatch lca update)" in " ".join(out.split())
 
 
 def test_lca_shows_wherever_expected_pay_does(web, watchlist, tmp_path, capsys, monkeypatch):

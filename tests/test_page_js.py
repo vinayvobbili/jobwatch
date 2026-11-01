@@ -516,3 +516,37 @@ console.log(JSON.stringify([
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout) == ["new · 2 pages · ok", "rebuilt · 1 page · needs a look", "new · ok"]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_jobs_pay_is_one_row_of_labelled_chips_and_empty_ones_say_why(tmp_path):
+    """Posted, Levels, LCA, Recruiter, Glassdoor and Ask are one chip each, in that order; the LCA chip is short, an
+    empty source is a dimmed chip showing its blank word with the reason on hover, and a job without sources (an
+    older server) still gets the plain pay chip."""
+    js = tmp_path / "pay.js"
+    js.write_text(page_function("paySources") + """
+const h = (tag, attrs, ...kids) =>
+  ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const chips = el => el.kids.map(c => [c.attrs.class, c.kids[0].kids[0], c.kids[1], c.attrs.title]);
+const items = [
+  { key: "posted", label: "Posted", value: "$150K–$196K", reason: null },
+  { key: "levels", label: "Levels", value: null, blank: "TBD", reason: "refused today, asks again tomorrow" },
+  { key: "lca", label: "LCA", value: "$165K median (14 filings)", short: "$165K med",
+    detail: "H-1B filings: median $165K" },
+  { key: "recruiter", label: "Recruiter", value: null, blank: "none", reason: "no recruiter figures kept" },
+  { key: "ask", label: "Ask", value: "$180K" }];
+const row = paySources({ key: "k", pay: "$150K–$196K", pay_sources: items });
+console.log(JSON.stringify({ attrs: row.attrs, chips: chips(row), old: paySources({ pay: "$1K" }).kids,
+  none: paySources({}) }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    assert got["attrs"] == {"class": "psrcs", "data-pay": "k"}
+    assert got["chips"] == [
+        ["psrc psrc-posted", "Posted", "$150K–$196K", "$150K–$196K"],
+        ["psrc psrc-none", "Levels", "TBD", "refused today, asks again tomorrow"],
+        ["psrc psrc-lca", "LCA", "$165K med", "H-1B filings: median $165K"],
+        ["psrc psrc-none", "Recruiter", "none", "no recruiter figures kept"],
+        ["psrc psrc-ask", "Ask", "$180K", "$180K"]]
+    assert got["old"] == ["$1K"] and got["none"] is None

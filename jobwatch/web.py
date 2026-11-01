@@ -47,6 +47,7 @@ from . import (
     logos,
     mock,
     onboard,
+    paysources,
     prep,
     quiet,
     referrals,
@@ -522,24 +523,28 @@ class App:
         lca_pay (H-1B filings, see lca.py) when the cache has an estimate for it: from the local cache, at once."""
         filings = lca.Index.open(lca.cache_path(cfg))
         try:
-            out = {job.key: {"lca_pay": lca.as_dict(est)} for job, _ in rows
-                   if (est := lca.for_job(filings, job, cfg.filters_for(job).home_state))}
+            ests = {job.key: lca.for_job(filings, job, cfg.filters_for(job).home_state) for job, _ in rows}
         finally:
             if filings:
                 filings.close()
-        if not cfg.pay.levels:
-            return out
-        waiting = []
-        for job, result in rows:
-            result = result or levels.expected(cfg, store, job)
-            if result == levels.PENDING:
-                if len(waiting) >= most:
-                    result = None
-                else:
-                    waiting.append(job.key)
-            out[job.key] = {**out.get(job.key, {}), "expected_pay": levels.as_dict(result, job)}
-        if waiting and self.background:
-            self.pay.kick(waiting)
+        out = {k: {"lca_pay": lca.as_dict(est)} for k, est in ests.items() if est}
+        results = {}
+        if cfg.pay.levels:
+            waiting = []
+            for job, result in rows:
+                result = result or levels.expected(cfg, store, job)
+                results[job.key] = result
+                if result == levels.PENDING:
+                    if len(waiting) >= most:
+                        result, results[job.key] = None, paysources.LATER
+                    else:
+                        waiting.append(job.key)
+                out[job.key] = {**out.get(job.key, {}), "expected_pay": levels.as_dict(result, job)}
+            if waiting and self.background:
+                self.pay.kick(waiting)
+        for job, _ in rows:  # every pay source, as labelled chips (see paysources.py)
+            out[job.key] = {**out.get(job.key, {}), "pay_sources": paysources.gather(
+                cfg, store, job, results.get(job.key), ests[job.key])}
         return out
 
     @staticmethod
@@ -1101,7 +1106,8 @@ class App:
                           duplicate=index.match(job, rec))
                 said[job.key] = self._advice(cfg, e, history, pay)
             return {"enabled": True, "running": self.pay.running,
-                    "pay": {k: v["expected_pay"] for k, v in pay.items()}, "advice": said}
+                    "pay": {k: v["expected_pay"] for k, v in pay.items()}, "advice": said,
+                    "sources": {k: v["pay_sources"] for k, v in pay.items()}}
         return self._with_store(run)
 
     def get_prep(self, q) -> dict:
