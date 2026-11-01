@@ -589,3 +589,19 @@ console.log(JSON.stringify(focusFirst(newest).map(j => j.k)));
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout) == ["b", "d", "a", "c"]  # each part keeps the sort's order
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_notice_opens_activity_on_the_list_that_holds_it(tmp_path):
+    """A strong fit is a scoring event: opening Activity from its notice shows the Scored list, not the Job Boards
+    list picked last time, where every line reads "nothing new for you"."""
+    js = tmp_path / "notices.js"
+    js.write_text(page_const("ACT_KINDS") + page_function("actListFor") + """
+console.log(JSON.stringify(["score", "pay", "mail", "boards", "something-else"].map(actListFor)));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["score,pay,logos", "score,pay,logos", "mail", "boards", "boards"]
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    assert "notices.list = unseen.length ? actListFor(unseen[0].kind) : null;" in page
+    assert "if (notices.list) { activityView.kind = notices.list; notices.list = null; }" in page

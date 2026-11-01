@@ -4777,6 +4777,8 @@ async function renderSkills() {
 // first, and what it's doing now. It asks again every 10 seconds while it's open; details left open stay open.
 // One list at a time (the kinds each shows), so the hundreds of jobs scored don't bury the board checks and emails.
 const ACT_KINDS = [["boards", "Job Boards"], ["mail", "Gmail"], ["score,pay,logos", "Scored"]];
+// the list an event's kind is shown in ("score" → "score,pay,logos"), so a notice opens Activity where it is
+function actListFor(kind) { return (ACT_KINDS.find(([k]) => k.split(",").includes(kind)) || ACT_KINDS[0])[0]; }
 const activityView = { kind: remembered("activity.kind", "boards"), open: new Set(), timer: null, seen: "0" };
 const ACT_ICON = { boards: "refresh", mail: "inbox", score: "sparkle", pay: "dollar", logos: "cloud" };
 // what started it, said only when it was you: the schedule and the background are what jobwatch always does
@@ -4791,6 +4793,8 @@ function activityTick() {
 }
 
 async function renderActivity() {
+  // a notice not seen yet (a strong fit, say) opens the list it's in, not the one picked last time; the pick stays
+  if (notices.list) { activityView.kind = notices.list; notices.list = null; }
   if (!ACT_KINDS.some(([k]) => k === activityView.kind)) activityView.kind = ACT_KINDS[0][0];
   const d = await api("/api/activity?kind=" + activityView.kind);
   // what's worth a look and new since you last looked stands out; looking marks it seen (see watchNotices)
@@ -5147,7 +5151,7 @@ async function refreshQueueCount() {
 // while it's open shows as a toast, and the ones not seen yet as a count on the Activity tab and in the browser
 // tab's title. Opening Activity marks them seen. "Seen" is the newest one's time, kept per browser; the first
 // time on a browser, what came before counts as seen (it's all on the tab).
-const notices = { newest: null, timer: null };
+const notices = { newest: null, timer: null, list: null };
 async function watchNotices() {
   clearTimeout(notices.timer);
   try {
@@ -5158,6 +5162,7 @@ async function watchNotices() {
       const unseen = !seen || tab === "activity" ? [] : d.events;
       const fresh = notices.newest === null ? [] : unseen.filter(e => e.at > notices.newest);
       notices.newest = d.events[0]?.at ?? notices.newest ?? "0";
+      notices.list = unseen.length ? actListFor(unseen[0].kind) : null;
       showNoticeCount(unseen.length);
       if (fresh.length) toast(fresh.length === 1 ? `Worth a look: ${fresh[0].text}` : `${fresh.length} things worth a look`,
         () => go("activity"), "win", "Show");
