@@ -24,6 +24,7 @@ import threading
 from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
 from pathlib import Path
 
 from .models import Job
@@ -365,7 +366,40 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
             }
         return results, errors
 
-    return model.run(run) if batch else run()
+    out = None
+    try:
+        out = model.run(run) if batch else run()
+        return out
+    finally:
+        _note_usage(model, backend, batch, len(out[0]) if out else 0)
+
+
+# Where score_jobs leaves the Claude token usage of a run for whoever asked (see collecting_usage), so the callers'
+# signatures stay as they are.
+_USAGE_SINK: ContextVar[list | None] = ContextVar("jobwatch_score_usage", default=None)
+
+
+@contextmanager
+def collecting_usage() -> Iterator[list[dict]]:
+    """The token usage of every Claude run of score_jobs inside the block, each {backend, model, batch, jobs,
+    input_tokens, output_tokens, cache_write_tokens, cache_read_tokens}, for Store.add_score_cost."""
+    used: list[dict] = []
+    token = _USAGE_SINK.set(used)
+    try:
+        yield used
+    finally:
+        _USAGE_SINK.reset(token)
+
+
+def _note_usage(model, backend: str, batch: bool, jobs: int):
+    """Leave a run's tokens (shortlist-ai's backend.usage, from the API replies) for collecting_usage. Claude only:
+    the on-device model and agy don't bill by the token."""
+    used, usage = _USAGE_SINK.get(), getattr(model, "usage", None)
+    if used is None or backend != "claude" or not getattr(usage, "calls", 0):
+        return
+    used.append({"backend": backend, "model": str(getattr(model, "model", "")), "batch": batch, "jobs": jobs,
+                 "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+                 "cache_write_tokens": usage.cache_write_tokens, "cache_read_tokens": usage.cache_read_tokens})
 
 
 def scorer_label(scored_by: str) -> str:

@@ -601,6 +601,25 @@ textarea { min-height: 70px; resize: vertical; }
 .kw { display: grid; grid-template-columns: 1fr 160px auto; gap: 6px; margin: 5px 0; }
 .error { color: var(--bad); }
 .done-ok { color: var(--good); }
+/* Settings' Fit scoring panel: stat tiles for the backend in effect, a count per backend, and the Claude cost */
+.use-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 14px 0; }
+/* use-* names: .lead and .bar already style Settings' intro lines and the page header */
+.use-tiles .stat { background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel) 70%); }
+.use-tiles .stat .num { font-size: 20px; overflow-wrap: anywhere; }
+.use-tiles .stat.use-main { color: #fff; border-color: transparent; background: var(--grad); }
+.use-tiles .stat.use-main .lbl { color: rgba(255, 255, 255, .85); }
+.use-tiles .use-bar { height: 6px; border-radius: 3px; background: var(--chip); margin-top: 8px; overflow: hidden; }
+.use-tiles .use-bar i { display: block; height: 100%; background: var(--grad); border-radius: 3px; transition: width .6s ease; }
+.use-cost { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, transparent),
+  color-mix(in srgb, #a24af0 10%, transparent)); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 16px; margin-top: 14px; }
+.use-cost .num { font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+table.use { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.use th, table.use td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+table.use td.n, table.use th.n { text-align: right; font-variant-numeric: tabular-nums; }
+table.use th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
+.chip.on { background: var(--accent-soft); color: var(--accent); }
+
 /* where the AI runs: a tile per choice (pick the main one), then the fallback chain */
 /* three across where there's room (Settings), stacked in a narrow card (onboarding) */
 .ai-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 18px 0 14px; }
@@ -3531,7 +3550,7 @@ function remember(key, value) {
 const SET_GROUPS = [
   { id: "search", label: "Your search", cards: ["goals", "companies", "filters", "keywords"] },
   { id: "today", label: "Today & display", cards: ["today", "display"] },
-  { id: "ai", label: "AI & fit scores", cards: ["resume", "prompts", "chat"] },
+  { id: "ai", label: "AI & fit scores", cards: ["resume", "usage", "prompts", "chat"] },
   { id: "people", label: "People & pay", cards: ["people", "pay"] },
   { id: "alerts", label: "Alerts & skills", cards: ["alerts", "suggestions", "skills"] },
   { id: "apply", label: "Applying", cards: ["applicant", "tailor", "extension"] },
@@ -4035,7 +4054,8 @@ const SET_LOOK = {
   goals: ["sparkle", 0, "What you want next"], companies: ["cloud", -30, "The job boards jobwatch checks"],
   filters: ["check", 25, "A job must pass these to show"], keywords: ["pencil", 50, "Words that rank a job higher"],
   today: ["calendar", -50, "How much Today shows and your pace"], resume: ["file", 15, "Your resume and fit scores"],
-  people: ["users", 40, "Who you know at companies"], prompts: ["pencil", -20, "What the model is told"],
+  people: ["users", 40, "Who you know at companies"], usage: ["dollar", 35, "Which backend scores, and what it cost"],
+  prompts: ["pencil", -20, "What the model is told"],
   chat: ["send", 30, "Ask jobwatch"], pay: ["dollar", -60, "Expected pay"], alerts: ["inbox", 10, "Job-alert emails"],
   suggestions: ["plus", -10, "Companies worth watching"], skills: ["arrow", 55, "What to learn next"],
   display: ["refresh", -40, "Theme, width and files"],
@@ -4421,6 +4441,62 @@ function applicantCard(s) {
 }
 // The browser extension's token: pasted into the extension once, it lets the extension ask jobwatch for your
 // details, past answers and resume, and record an application when you submit it.
+// -- fit scoring: the backend in effect and what it has cost (from /api/scoring/usage, see scorestats.py)
+const USD = n => n > 0 && n < 0.01 ? "under $0.01" : "$" + Number(n || 0).toFixed(2);
+// The Claude cost this month as {main, notes}: recorded dollars (tokens kept from the API replies) plus an
+// estimate for scores made before tokens were recorded; "not recorded" when there's nothing to average from.
+function claudeCostText(c) {
+  const notes = [];
+  const scores = (n, what = "score") => `${n} ${what}${n === 1 ? "" : "s"}`;
+  if (c.recorded_jobs) notes.push(`${USD(c.recorded_usd)} recorded for ${scores(c.recorded_jobs)}`);
+  if (c.estimated_jobs) notes.push(`${USD(c.estimated_usd)} estimated for ${scores(c.estimated_jobs, "earlier score")}, at ${USD(c.average_usd)} each`);
+  if (c.not_recorded_jobs) notes.push(`${scores(c.not_recorded_jobs)} made before tokens were recorded: cost not recorded`);
+  if (c.unpriced && c.unpriced.length) notes.push(`no price known for ${c.unpriced.join(", ")}`);
+  const main = !c.recorded_jobs && !c.estimated_jobs && !c.not_recorded_jobs ? "$0.00"
+    : !c.recorded_jobs && !c.estimated_jobs ? "not recorded"
+    : USD(c.total_usd) + (c.estimated_jobs ? " (partly estimated)" : "");
+  return { main, notes };
+}
+const USE_ROLE = { main: "main", fallback: "fallback", unused: "not used" };
+function usageCard() {
+  const body = h("div", {}, h("p", { class: "small muted lead" }, "Loading…"));
+  const el = setCard("usage", "Fit scoring", "which backend scores, and what it has cost", body);
+  el.classList.add("full");
+  api("/api/scoring/usage").then(d => body.replaceChildren(...usageBody(d)),
+    e => body.replaceChildren(h("p", { class: "small error" }, e.message)));
+  return el;
+}
+function usageBody(d) {
+  const name = b => (AI_LOOK[b.backend] || {}).name || b.backend;
+  const sc = d.scoring || {}, cap = d.daily;
+  const on = (yes, label) => h("span", { class: "chip" + (yes ? " on" : "") }, label + (yes ? ": on" : ": off"));
+  const tiles = h("div", { class: "use-tiles" },
+    h("div", { class: "stat use-main" }, h("div", { class: "num" }, name(d.backend)),
+      h("div", { class: "lbl" }, d.backend.model || "shortlist-ai's own model")),
+    h("div", { class: "stat" }, h("div", { class: "num" }, d.fallback.length ? d.fallback.map(name).join(" → ") : "none"),
+      h("div", { class: "lbl" }, d.fallback.length ? "fallbacks, in order" : "no fallback")),
+    h("div", { class: "stat" }, h("div", { class: "num" }, cap ? `${d.used_today} of ${cap}` : `${d.used_today} today`),
+      h("div", { class: "lbl" }, cap ? `daily cap with ${name(d.backend)}` : "no daily cap"),
+      cap ? h("div", { class: "use-bar" }, h("i", { style: `width:${Math.min(100, d.used_today / cap * 100)}%` })) : null),
+    h("div", { class: "stat" }, h("div", { class: "num" }, sc.running ? `${sc.left} to go` : "idle"),
+      h("div", { class: "lbl" }, sc.error ? "stopped: " + sc.error : sc.running ? "scoring in the background" : "background scoring"),
+      h("div", { class: "chips" }, on(d.batch_api, "Batches API (half price)"), on(d.auto, "Auto"))));
+  const cost = claudeCostText(d.claude);
+  const rows = d.backends.map(b => h("tr", {},
+    h("td", {}, name(b), " ", h("span", { class: "chip" + (b.role === "main" ? " on" : "") }, USE_ROLE[b.role])),
+    h("td", { class: "n" }, String(b.today)), h("td", { class: "n" }, String(b.week)), h("td", { class: "n" }, String(b.month)),
+    h("td", {}, b.cost || (b.backend === "claude" ? cost.main + " this month" : ""))));
+  const table = h("table", { class: "use" },
+    h("thead", {}, h("tr", {}, h("th", {}, "Scored by"), h("th", { class: "n" }, "Today"), h("th", { class: "n" }, "Last 7 days"),
+      h("th", { class: "n" }, "This month"), h("th", {}, "Cost"))), h("tbody", {}, rows));
+  return [tiles, table, h("div", { class: "use-cost" },
+    h("div", { class: "lbl small muted" }, `Claude API cost since ${d.claude.since}`),
+    h("div", { class: "num" }, cost.main),
+    cost.notes.map(n => h("div", { class: "small muted" }, n)),
+    h("div", { class: "small muted" }, "Antigravity is covered by your subscription and the model on this computer costs nothing, so " +
+      "those show counts only. Batch runs are priced at half."))];
+}
+
 function extensionCard() {
   const token = h("input", { type: "text", readonly: true, "aria-label": "Extension token", value: "Loading…" });
   const where = `http://127.0.0.1:${location.port || 80}`;
@@ -4972,6 +5048,7 @@ function renderSettings() {
         "actually talk to first (from how often you've messaged, recommended or endorsed each other). Only those " +
         "counts are kept, never your messages. Connections.csv on its own works too. Everything stays on this " +
         "computer.")),
+    usageCard(),
     prompts,
     chatC,
     payC,

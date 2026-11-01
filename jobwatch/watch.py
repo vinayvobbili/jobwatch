@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import sys
 from collections.abc import Callable
@@ -25,7 +26,7 @@ from .filters import (
     title_ok,
 )
 from .models import Job
-from .score import ScoringUnavailable, brief, resume_id, score_jobs, turn
+from .score import ScoringUnavailable, brief, collecting_usage, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, Store
 
 
@@ -281,6 +282,7 @@ class Entry:
     pay: object = None  # expected pay from Levels.fyi (levels.Estimate, PENDING, REFUSED or None; queue only)
     lca: lca.Estimate | None = None  # base pay filed for H-1B hires (queue only)
     duplicate: dupes.Match | None = None  # a job acted on that it's (maybe) the same opening as; also in warnings
+    focus: bool = False  # its title matches the watchlist's focus: the work wanted most, ranked first
 
     @property
     def keys(self) -> list[str]:
@@ -707,9 +709,14 @@ def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict
     return {"code": code, "text": text}
 
 
+def in_focus(job: Job, focus: list[str]) -> bool:
+    """The job's title matches one of the watchlist's focus patterns (the work wanted most)."""
+    return any(re.search(p, job.title, re.I) for p in focus)
+
+
 def _rank(e: Entry):
     fit = e.fit["score"] if e.fit else -1
-    return (-fit, -e.relevance, e.job.age_days() if e.job.age_days() is not None else 10_000)
+    return (not e.focus, -fit, -e.relevance, e.job.age_days() if e.job.age_days() is not None else 10_000)
 
 
 PER_COMPANY = 2  # Today leads with at most this many jobs from one company
@@ -767,7 +774,8 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
             continue
         same = index.match(job, record)
         rel, hits = relevance(job, cfg.keywords)
-        entries.append(e := Entry(job, record, rel, hits, fit=brief(fits.get(job.key)), duplicate=same))
+        entries.append(e := Entry(job, record, rel, hits, fit=brief(fits.get(job.key)), duplicate=same,
+                                  focus=in_focus(job, cfg.focus)))
         if same:
             e.warnings.append(same.line)
     return entries, rejected
@@ -856,6 +864,16 @@ def _only_limit(reason: str) -> bool:
     return reason.startswith(DAILY_LIMIT) and "; " not in reason
 
 
+def _score_jobs(store: Store, *args, **kwargs):
+    """score_jobs, keeping a Claude run's token usage in the store (Store.add_score_cost) even when it fails."""
+    with collecting_usage() as used:
+        try:
+            return score_jobs(*args, **kwargs)
+        finally:
+            for u in used:
+                store.add_score_cost(**u)
+
+
 def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Callable[[str], None] | None = None,
                         background: bool = False, batch: bool = False) -> tuple[dict[str, dict], dict[str, str]]:
     """Score with the backend, at most scoring.daily jobs a day, and what it can't (the limit reached, no key, no
@@ -868,7 +886,7 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
     first = jobs[:room]
     if first:
         try:
-            results, errors = score_jobs(first, cfg.resume, cfg.backend, cfg.cache, workers=cfg.score_workers,
+            results, errors = _score_jobs(store, first, cfg.resume, cfg.backend, cfg.cache, workers=cfg.score_workers,
                                          progress=progress, prompts=cfg.prompts, model=cfg.score_model,
                                          keychain=cfg.api_keychain, batch=batch, key_command=cfg.api_key_command)
         except ScoringUnavailable as e:
@@ -884,7 +902,7 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
     for name in cfg.score_fallback:  # in order; a backend that can't score (or fails a job) leaves it to the next
         try:
             with turn(name, background):
-                more, more_errors = score_jobs(rest, cfg.resume, name, cfg.cache, workers=cfg.score_workers,
+                more, more_errors = _score_jobs(store, rest, cfg.resume, name, cfg.cache, workers=cfg.score_workers,
                                                progress=progress, prompts=cfg.prompts, keychain=cfg.api_keychain,
                                                model=fallback_model(cfg, name), key_command=cfg.api_key_command)
         except ScoringUnavailable as e:

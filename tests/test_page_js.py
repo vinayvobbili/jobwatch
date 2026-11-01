@@ -461,8 +461,8 @@ console.log(JSON.stringify(out));
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
     # every settings card is in exactly one tab, so hiding the others never loses a field
-    assert out["cards"] == sorted(["goals", "companies", "filters", "keywords", "today", "display", "resume", "prompts",
-                                   "chat", "people", "pay", "alerts", "suggestions", "skills", "applicant",
+    assert out["cards"] == sorted(["goals", "companies", "filters", "keywords", "today", "display", "resume", "usage",
+                                   "prompts", "chat", "people", "pay", "alerts", "suggestions", "skills", "applicant",
                                    "tailor", "extension"])
     assert out["hash"] == {"tab": "settings", "sub": "ai"}
     assert out["bare"] == {"tab": "settings", "sub": None} and out["bad"] == {"tab": "settings", "sub": None}
@@ -550,3 +550,30 @@ console.log(JSON.stringify({ attrs: row.attrs, chips: chips(row), old: paySource
         ["psrc psrc-none", "Recruiter", "none", "no recruiter figures kept"],
         ["psrc psrc-ask", "Ask", "$180K", "$180K"]]
     assert got["old"] == ["$1K"] and got["none"] is None
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_the_fit_scoring_cost_line_says_what_was_recorded_and_what_is_estimated(tmp_path):
+    js = tmp_path / "usage.js"
+    js.write_text(page_const("USD") + page_function("claudeCostText") + """
+const none = { recorded_jobs: 0, estimated_jobs: 0, not_recorded_jobs: 0, unpriced: [] };
+console.log(JSON.stringify({
+  empty: claudeCostText(none),
+  unknown: claudeCostText({ ...none, not_recorded_jobs: 1 }),
+  recorded: claudeCostText({ ...none, recorded_jobs: 2, recorded_usd: 3, total_usd: 3 }),
+  mixed: claudeCostText({ ...none, recorded_jobs: 1, recorded_usd: 1.5, estimated_jobs: 2, estimated_usd: 3,
+    average_usd: 1.5, total_usd: 4.5, unpriced: ["claude-x"] }),
+  tiny: claudeCostText({ ...none, recorded_jobs: 1, recorded_usd: 0.004, total_usd: 0.004 }).main,
+}));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    assert got["empty"] == {"main": "$0.00", "notes": []}
+    assert got["unknown"] == {"main": "not recorded", "notes": [
+        "1 score made before tokens were recorded: cost not recorded"]}
+    assert got["recorded"] == {"main": "$3.00", "notes": ["$3.00 recorded for 2 scores"]}
+    assert got["mixed"] == {"main": "$4.50 (partly estimated)", "notes": [
+        "$1.50 recorded for 1 score", "$3.00 estimated for 2 earlier scores, at $1.50 each",
+        "no price known for claude-x"]}
+    assert got["tiny"] == "under $0.01"

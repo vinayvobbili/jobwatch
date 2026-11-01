@@ -496,6 +496,7 @@ class Config:
     boards: list[Board]
     filters: Filters = field(default_factory=Filters)
     keywords: dict[str, float] = field(default_factory=dict)
+    focus: list[str] = field(default_factory=list)  # title regexes for the work wanted most: first on Today
     resume: Path | None = None
     connections: Path | None = None  # LinkedIn Connections.csv, for "you know someone there"
     connections_skip: list[str] = field(default_factory=list)  # people never to suggest: names or profile links
@@ -594,6 +595,18 @@ def _board(entry, path: Path, strict: bool = True) -> Board:
         raise ConfigError(f"{path}: {entry['source']}:{entry['board']}: unknown filter setting(s): "
                           f"{', '.join(sorted(map(str, unknown)))}")
     return Board(str(entry["source"]), str(entry["board"]), entry.get("name") or "", careers, dict(own))
+
+
+def _focus(raw, path: Path) -> list[str]:
+    """focus: title regexes for the work you want most ("security", "\\bai\\b"): a job whose title matches one
+    leads Today and the scoring line, ahead of better scores outside it."""
+    focus = [raw] if isinstance(raw, str) else [str(x) for x in raw or []]
+    for x in focus:
+        try:
+            re.compile(x)
+        except re.error as e:
+            raise ConfigError(f"{path}: focus: {x!r} isn't a regex: {e}") from None
+    return focus
 
 
 def _tracks(raw, base: dict, path: Path) -> list[tuple[list[str], Filters]]:
@@ -719,8 +732,8 @@ def locate(explicit: str | Path | None = None) -> Path:
         return DEFAULT_PATHS[1]
 
 
-SETTINGS = ("companies", "filters", "keywords", "resume", "connections", "connections_skip", "employer", "stories",
-            "resume_kit", "scoring",
+SETTINGS = ("companies", "filters", "keywords", "focus", "resume", "connections", "connections_skip", "employer",
+            "stories", "resume_kit", "scoring",
             "chat", "prep",
             "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
             "fetch_every")
@@ -890,6 +903,7 @@ def load(explicit: str | Path | None = None) -> Config:
         path=path, boards=boards, unknown=[b for b in listed if b.source not in SOURCES], filters=filters,
         board_filters=own, tracks=_tracks(raw.get("tracks"), raw.get("filters") or {}, path),
         keywords={str(k): float(v) for k, v in (raw.get("keywords") or {}).items()},
+        focus=_focus(raw.get("focus"), path),
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
         connections_skip=[str(s).strip() for s in raw.get("connections_skip") or [] if str(s).strip()],
@@ -1013,6 +1027,10 @@ keywords:
   Python: 2
   machine learning: 2
   distributed systems: 1
+
+# The work you want most, as title regexes: these jobs lead Today and are scored first, ahead of better
+# scores outside them (the rest still show, after).
+# focus: [security, '\\bml\\b', machine learning]
 
 # Optional fit scoring with shortlist-ai (pip install 'jobwatch[score]').
 # resume: ~/Documents/resume.pdf

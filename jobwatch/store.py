@@ -83,6 +83,18 @@ CREATE TABLE IF NOT EXISTS score_usage (
     jobs INTEGER NOT NULL,
     PRIMARY KEY (day, backend)
 );
+CREATE TABLE IF NOT EXISTS score_cost (
+    day TEXT NOT NULL,
+    backend TEXT NOT NULL,
+    model TEXT NOT NULL,
+    batch INTEGER NOT NULL,
+    jobs INTEGER NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cache_write_tokens INTEGER NOT NULL,
+    cache_read_tokens INTEGER NOT NULL,
+    PRIMARY KEY (day, backend, model, batch)
+);
 CREATE TABLE IF NOT EXISTS pay_pages (
     url TEXT PRIMARY KEY,
     body TEXT NOT NULL,
@@ -748,6 +760,40 @@ class Store:
         row = self.db.execute("SELECT jobs FROM score_usage WHERE day=? AND backend=?",
                               ((day or date.today()).isoformat(), backend)).fetchone()
         return row["jobs"] if row else 0
+
+    def add_score_cost(self, backend: str, model: str, batch: bool, jobs: int, input_tokens: int, output_tokens: int,
+                       cache_write_tokens: int = 0, cache_read_tokens: int = 0, day: date | None = None):
+        """Tokens a scoring run used (from the API replies), by local day, backend, model and whether it went
+        through the Batches API, with the jobs it scored. Prices are applied when read (see scorestats.py)."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO score_cost (day, backend, model, batch, jobs, input_tokens, output_tokens, "
+                "cache_write_tokens, cache_read_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (day, backend, model, batch) DO UPDATE SET jobs = jobs + excluded.jobs, "
+                "input_tokens = input_tokens + excluded.input_tokens, "
+                "output_tokens = output_tokens + excluded.output_tokens, "
+                "cache_write_tokens = cache_write_tokens + excluded.cache_write_tokens, "
+                "cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens",
+                ((day or date.today()).isoformat(), backend, model, int(batch), jobs, input_tokens, output_tokens,
+                 cache_write_tokens, cache_read_tokens))
+
+    def score_costs(self, since: date | None = None) -> list[dict]:
+        """The recorded token usage (see add_score_cost) from this local day on (default: all of it)."""
+        return [dict(r) for r in self.db.execute("SELECT * FROM score_cost WHERE day>=? ORDER BY day",
+                                                 ((since or date.min).isoformat(),))]
+
+    def scored_by_day(self, since: date) -> list[tuple[date, str]]:
+        """(local day, scored_by) of every fit score made from this local day on, whatever the resume, for counting
+        what each backend scored. Scores kept from an earlier scorer (keep_old_scores) aren't new work."""
+        edge = (datetime.combine(since, datetime.min.time()).astimezone() - timedelta(hours=1)).astimezone(
+            timezone.utc).isoformat(timespec="microseconds")
+        out = []
+        for r in self.db.execute("SELECT result, scored_at FROM scores WHERE scored_at>=?", (edge,)):
+            day = datetime.fromisoformat(r["scored_at"]).astimezone().date()
+            fit = json.loads(r["result"])
+            if day >= since and "kept_from" not in fit:
+                out.append((day, str(fit.get("scored_by") or "")))
+        return out
 
     # Drafted prep-sheet answers (see drafts.py): the model's reply as it came, under a hash of everything it was
     # sent, so opening a sheet again doesn't ask again. It's checked again each time it's read.

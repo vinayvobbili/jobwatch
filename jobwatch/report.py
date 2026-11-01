@@ -237,7 +237,7 @@ def to_json(d: Digest) -> str:
     return json.dumps({
         "jobs": [{**{k: v for k, v in e.job.to_dict().items() if k != "description"},
                   "status": e.record["status"], "first_seen": e.record["first_seen"], "via": e.record.get("via"),
-                  "relevance": e.relevance, "keywords": e.keywords, "fit": e.fit,
+                  "relevance": e.relevance, "keywords": e.keywords, "focus": e.focus, "fit": e.fit,
                   "not_scored": None if scorable(e.job) else MANY_ROLES[1], "contacts": e.contacts,
                   "same_title": [{"key": o.key, "url": o.url, "locations": o.locations} for o in e.same_title],
                   "duplicate_of": e.duplicate.to_dict() if e.duplicate else None}

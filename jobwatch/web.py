@@ -52,6 +52,7 @@ from . import (
     quiet,
     referrals,
     report,
+    scorestats,
     sources,
     stories,
     storyfind,
@@ -511,7 +512,7 @@ class App:
                 "locations": j.places, "pay": j.pay(), "age_days": j.age_days(), "department": j.department,
                 "status": e.record.get("status"), "note": e.record.get("note"), "closed": e.record.get("closed"),
                 "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
-                "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
+                "focus": e.focus, "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
                 "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max,
                 "warnings": e.warnings, "link_note": j.link_note or None,
                 "duplicate_of": e.duplicate.to_dict() if e.duplicate else None}
@@ -1215,6 +1216,11 @@ class App:
         """Background fit scoring: running, how many done and left, the job being scored, the last error."""
         return {**self.scorer.status(), "enabled": self.background}
 
+    def get_scoring_usage(self, q) -> dict:
+        """Settings' Fit scoring panel: the backend in effect, what each backend scored and the Claude cost (see
+        scorestats.summary)."""
+        return self._with_store(lambda cfg, store: scorestats.summary(cfg, store, self.get_scoring({})))
+
     def get_chat(self, q) -> dict:
         c = self._cfg().chat
         return chat.where(c.backend, c.model)
@@ -1366,6 +1372,7 @@ ROUTES = {
     ("POST", "/api/posting"): App.post_posting,
     ("POST", "/api/pay"): App.post_pay,
     ("GET", "/api/scoring"): App.get_scoring,
+    ("GET", "/api/scoring/usage"): App.get_scoring_usage,
     ("GET", "/api/chat"): App.get_chat,
     ("GET", "/api/skills"): App.get_skills,
     ("GET", "/api/prep"): App.get_prep,

@@ -92,6 +92,30 @@ def test_digest_uses_stored_scores_before_relevance(setup, tmp_path):
     assert d.entries[0].job.key == "greenhouse:acme:101"
 
 
+def test_jobs_in_your_focus_come_first_scored_or_not(setup, tmp_path, monkeypatch):
+    cfg, store = setup
+    watch.fetch_all(cfg, store)
+    cfg.resume = tmp_path / "cv.pdf"
+    cfg.resume.write_bytes(b"resume")
+    store.save_score("greenhouse:acme:101", watch.resume_id(cfg.resume),
+                     {"score": 90, "must_haves_met": 5, "must_haves_total": 5, "gaps": [], "summary": ""})
+    cfg.focus = [r"\bmachine learning\b"]
+    d = watch.build_digest(cfg, store)
+    # an unscored job in focus goes above a 90 outside it; the rest keep their order
+    assert [e.job.key for e in d.entries] == ["lever:globex:aaaa-1111", "greenhouse:acme:101", "ashby:initech:c1"]
+    assert [e.focus for e in d.entries] == [True, False, False]
+    assert watch.scoring_line(cfg, store)[0].job.key == "lever:globex:aaaa-1111"  # and is scored first
+
+
+def test_focus_patterns_are_checked_when_the_watchlist_loads(watchlist):
+    base = watchlist.read_text()
+    watchlist.write_text(base + "focus: [security, '\\bai\\b']\n")
+    assert config.load(watchlist).focus == ["security", r"\bai\b"]
+    watchlist.write_text(base + "focus: ['(ai']\n")
+    with pytest.raises(config.ConfigError, match="focus"):
+        config.load(watchlist)
+
+
 def test_scoring_only_the_top_unscored_jobs(setup, tmp_path, monkeypatch):
     cfg, store = setup
     watch.fetch_all(cfg, store)
