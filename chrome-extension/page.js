@@ -155,13 +155,15 @@
     return nearby(el) || precedingText(el);
   }
 
-  /** Plain text just before the field, with no label element around it ("Your city<br><input>"). */
+  /** Plain text just before the field, with no label element around it ("Your city<br><input>"), or in a box of
+   * its own a few levels up (Rippling's custom questions: a paragraph beside the field's wrapper). Climbing stops
+   * at a box that holds another field, so it never reads a neighbour's question. */
   function precedingText(el) {
     let node = el;
-    for (let up = 0; node && up < 3; up++, node = node.parentElement) {
+    for (let up = 0; node && up < 6; up++, node = node.parentElement) {
       for (let n = node.previousSibling; n; n = n.previousSibling) {
         const t = clean(n.nodeType === 3 ? n.textContent : n.tagName === 'BR' ? '' : n.querySelector && n.querySelector('input, select, textarea') ? '' : n.textContent);
-        if (t && t.length < 200) return t;
+        if (t && t.length < 400) return t;
         if (n.nodeType === 1 && n.tagName !== 'BR') break;
       }
       if (!node.parentElement || node.parentElement.querySelectorAll('input, select, textarea').length > 1) break;

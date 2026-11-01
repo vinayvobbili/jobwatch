@@ -290,6 +290,17 @@ def test_a_generic_form_a_job_jobwatch_does_not_know(stack, ext, panels):
     page.close()
 
 
+def test_a_question_in_its_own_box_above_the_field_is_read(stack, ext, panels):
+    """Rippling-style custom questions: the question is a paragraph in a sibling box a few levels above the field."""
+    url = f"http://127.0.0.1:{stack.site_port}/nested.html"
+    page = open_form(stack, ext, url)
+    panel = start_panel(stack, panels, url)
+    assert row(panel, "Which agentic tools have you used hands-on").count() == 1
+    assert row(panel, "how hooks, skills, plugins, or MCP servers work").count() == 1  # a long question too
+    assert panel.locator(".row").filter(has_text="field 8").count() == 0  # never named after its id
+    page.close()
+
+
 def test_the_panel_says_when_jobwatch_is_missing(stack, ext, panels):
     url = f"http://127.0.0.1:{stack.site_port}/generic.html"
     page = open_form(stack, ext, url)
