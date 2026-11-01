@@ -9,7 +9,7 @@ companies:
   - {source: ashby, board: initech, name: Initech}
   - {board: ashby:acme, careers: https://acme.example/careers}  # job links go to its own site (see below)
   - workable:acme                                       # apply.workable.com/acme
-  - {source: workday, board: nvidia.wd5/NVIDIAExternalCareerSite, name: NVIDIA}  # tenant.wdN/site
+  - {source: workday, board: umbrella.wd5/UmbrellaCareers, name: Umbrella}  # tenant.wdN/site
   - {source: eightfold, board: acme, name: Acme}      # tenant (or tenant/domain), from a link
   - {source: jibe, board: careers.acme.com, name: Acme}  # a Jibe site's host (job links: /careers-home/jobs/...)
   - rippling:acme                                       # ats.rippling.com/acme/jobs
