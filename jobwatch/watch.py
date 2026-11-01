@@ -865,13 +865,10 @@ def _only_limit(reason: str) -> bool:
 
 
 def _score_jobs(store: Store, *args, **kwargs):
-    """score_jobs, keeping a Claude run's token usage in the store (Store.add_score_cost) even when it fails."""
-    with collecting_usage() as used:
-        try:
-            return score_jobs(*args, **kwargs)
-        finally:
-            for u in used:
-                store.add_score_cost(**u)
+    """score_jobs, keeping a Claude run's token usage in the store (Store.add_score_cost) as it's paid for: each
+    batch's when it's collected, so a run that fails or is stopped part way still counts what it cost."""
+    with collecting_usage(record=lambda u: store.add_score_cost(**u)):
+        return score_jobs(*args, **kwargs)
 
 
 def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Callable[[str], None] | None = None,

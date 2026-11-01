@@ -311,11 +311,16 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
 
     progress = progress or (lambda msg: None)
     workers = 1 if backend == "local" else min(max(1, workers), AGY_WORKERS) if backend == "agy" else max(1, workers)
+    tokens = _Tokens(None, backend, batch)
     if batch:
         from shortlist_ai.batch import BatchBackend
 
-        model = BatchBackend(cache_dir / "batch", **({"model": model} if model else {}),
-                             notify=lambda msg: progress(msg))
+        def said(msg: str):
+            progress(msg)
+            if msg.endswith(": collected"):  # shortlist-ai kept a batch's answers: keep what they cost now
+                tokens.note()
+
+        model = BatchBackend(cache_dir / "batch", **({"model": model} if model else {}), notify=said)
     else:
         model = get_backend(backend, model) if model else get_backend(backend)
         if backend == "agy":
@@ -366,40 +371,66 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
             }
         return results, errors
 
+    tokens.model = model
     out = None
     try:
         out = model.run(run) if batch else run()
         return out
     finally:
-        _note_usage(model, backend, batch, len(out[0]) if out else 0)
+        tokens.note(len(out[0]) if out else 0)
 
 
 # Where score_jobs leaves the Claude token usage of a run for whoever asked (see collecting_usage), so the callers'
 # signatures stay as they are.
-_USAGE_SINK: ContextVar[list | None] = ContextVar("jobwatch_score_usage", default=None)
+_USAGE_SINK: ContextVar[Callable[[dict], None] | None] = ContextVar("jobwatch_score_usage", default=None)
+TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens")
 
 
 @contextmanager
-def collecting_usage() -> Iterator[list[dict]]:
+def collecting_usage(record: Callable[[dict], None] | None = None) -> Iterator[list[dict]]:
     """The token usage of every Claude run of score_jobs inside the block, each {backend, model, batch, jobs,
-    input_tokens, output_tokens, cache_write_tokens, cache_read_tokens}, for Store.add_score_cost."""
+    input_tokens, output_tokens, cache_write_tokens, cache_read_tokens}, for Store.add_score_cost. A run hands
+    them over in parts (see _Tokens); record gets each part as it comes, so what was paid for is kept even when
+    the process is stopped part way (the page restarted during a batch run)."""
     used: list[dict] = []
-    token = _USAGE_SINK.set(used)
+
+    def sink(part: dict):
+        used.append(part)
+        if record:
+            record(part)
+
+    token = _USAGE_SINK.set(sink)
     try:
         yield used
     finally:
         _USAGE_SINK.reset(token)
 
 
+class _Tokens:
+    """A run's tokens (shortlist-ai's backend.usage, from the API replies) for collecting_usage, each note() handing
+    over only what's new since the one before: after each batch is collected, and at the run's end with the jobs it
+    scored. Claude only: the on-device model and agy don't bill by the token."""
+
+    def __init__(self, model, backend: str, batch: bool):
+        self.model, self.backend, self.batch = model, backend, batch
+        self.seen = dict.fromkeys(TOKEN_FIELDS, 0)
+
+    def note(self, jobs: int = 0):
+        sink, usage = _USAGE_SINK.get(), getattr(self.model, "usage", None)
+        if sink is None or self.backend != "claude" or not getattr(usage, "calls", 0):
+            return
+        now = {f: getattr(usage, f) for f in TOKEN_FIELDS}
+        new = {f: now[f] - self.seen[f] for f in TOKEN_FIELDS}
+        if not jobs and not any(new.values()):
+            return
+        self.seen = now
+        sink({"backend": self.backend, "model": str(getattr(self.model, "model", "")), "batch": self.batch,
+              "jobs": jobs, **new})
+
+
 def _note_usage(model, backend: str, batch: bool, jobs: int):
-    """Leave a run's tokens (shortlist-ai's backend.usage, from the API replies) for collecting_usage. Claude only:
-    the on-device model and agy don't bill by the token."""
-    used, usage = _USAGE_SINK.get(), getattr(model, "usage", None)
-    if used is None or backend != "claude" or not getattr(usage, "calls", 0):
-        return
-    used.append({"backend": backend, "model": str(getattr(model, "model", "")), "batch": batch, "jobs": jobs,
-                 "input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
-                 "cache_write_tokens": usage.cache_write_tokens, "cache_read_tokens": usage.cache_read_tokens})
+    """A whole run's tokens at once (for a caller that has no _Tokens of its own)."""
+    _Tokens(model, backend, batch).note(jobs)
 
 
 def scorer_label(scored_by: str) -> str:

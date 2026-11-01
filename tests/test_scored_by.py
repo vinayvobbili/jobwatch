@@ -442,6 +442,39 @@ def test_batch_scoring_runs_the_work_in_rounds_through_the_batch_backend(shortli
     assert results["greenhouse:acme:1"]["scored_by"] == "claude:claude-sonnet-5-5"
 
 
+def test_a_batch_run_stopped_part_way_keeps_what_its_collected_batches_cost(shortlist, monkeypatch, tmp_path):
+    """The page restarted between rounds: the batches collected before it were paid for, so they're in the store."""
+
+    class BatchBackend:
+        name = "claude"
+
+        def __init__(self, store, model="claude-opus-5", notify=None):
+            self.model, self.notify = model, notify
+            self.usage = SimpleNamespace(calls=0, input_tokens=0, output_tokens=0, cache_write_tokens=0,
+                                         cache_read_tokens=0)
+
+        def run(self, work):
+            for calls in (100, 60):  # two rounds' batches come back, then the process is stopped
+                self.usage.calls += calls
+                self.usage.input_tokens += calls * 10
+                self.usage.output_tokens += calls * 5
+                self.notify(f"batch msgbatch_{calls}: collected")
+            self.notify("batch msgbatch_3: 0 of 40 done")  # not a collection: nothing new to keep
+            raise KeyboardInterrupt
+
+    monkeypatch.setitem(sys.modules, "shortlist_ai.batch", _module("shortlist_ai.batch", BatchBackend=BatchBackend))
+    monkeypatch.setattr(score.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    store = Store(tmp_path / "state.db")
+    with pytest.raises(KeyboardInterrupt):
+        watch._score_jobs(store, [_job()], cv, "claude", tmp_path, model="claude-sonnet-5-5", batch=True)
+    [row] = store.score_costs()
+    assert (row["batch"], row["jobs"], row["input_tokens"], row["output_tokens"]) == (1, 0, 1600, 800)
+    store.close()
+
+
 def test_claude_scores_in_groups_of_workers_and_batch_api_sends_them_all_at_once(scored, monkeypatch, capsys):
     cfg, rid, jobs = scored
     calls, n_at_once = [], 2

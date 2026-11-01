@@ -42,6 +42,7 @@ from . import (
     quiet,
     referrals,
     report,
+    scorestats,
     sources,
     stories,
     storyfind,
@@ -52,7 +53,7 @@ from .config import BACKENDS, ConfigError, duration
 from .filters import KINDS, rejection
 from .rounds import ROUNDS
 from .score import AGY_WORKERS, ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
-from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, STAGES, STATUSES, Store
+from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, STAGES, STATUSES, Store, day, day_start
 from .watch import (
     CHECKED,
     MANY_ROLES,
@@ -65,6 +66,7 @@ from .watch import (
     hidden,
     load_contacts,
     pace,
+    plural,
     queue,
     rescore_line,
     save_job,
@@ -162,6 +164,8 @@ def cmd_score(args, cfg, store):
         for p in info["prompts"]:
             print(f"== {p['name']}{' (edited)' if p['edited'] else ''}: {p['about']}\n{p['text']}\n")
         return
+    if args.cost:
+        return _cost(cfg, store)
     if not (cfg.resume and cfg.resume.is_file()):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
     if args.backend or args.model:  # this run only; the watchlist keeps its own
@@ -285,6 +289,34 @@ def _compare(args, cfg, store):
               + (f", {flips} on the other side of min_fit {cut}" if cut else ""))
 
 
+def _cost(cfg, store):
+    """`score --cost`: Settings' Fit scoring panel as text (the backends in order, the daily cap, jobs each scored
+    today, in 7 days and this month, the Claude API's cost this month), then the recorded Claude runs by day."""
+    s = scorestats.summary(cfg, store)
+
+    def name(m):
+        return f"{m['backend']} ({m['model'] or 'default model'})"
+
+    print(f"Scoring with {name(s['backend'])}" + "".join(f", then {name(m)}" for m in s["fallback"])
+          + (" through the Batches API" if s["batch_api"] else ""))
+    print("Daily cap: none" if not s["daily"] else f"Daily cap: {s['daily']} ({s['used_today']} used today)")
+    for b in s["backends"]:
+        print(f"  {b['backend']:<7}{b['role']:<9} today {b['today']:>4}   7 days {b['week']:>5}   "
+              f"this month {b['month']:>5}" + (f"   {b['cost']}" if b["cost"] else ""))
+    c = s["claude"]
+    print(f"Claude API since {c['since']}: ${c['total_usd']:.2f} (${c['recorded_usd']:.2f} recorded for "
+          f"{plural(c['recorded_jobs'], 'score')}"
+          + (f", ${c['estimated_usd']:.2f} estimated for {c['estimated_jobs']} from before tokens were recorded"
+             if c["estimated_usd"] else "")
+          + (f", {c['not_recorded_jobs']} not recorded" if c["not_recorded_jobs"] else "") + ")"
+          + (f"; no price for {', '.join(c['unpriced'])}" if c["unpriced"] else ""))
+    for r in store.score_costs():
+        usd = scorestats.cost_usd(r)
+        print(f"  {r['day']}  {r['model']}{' (batch)' if r['batch'] else ''}: {plural(r['jobs'], 'job')}, "
+              f"{r['input_tokens']:,} in, {r['output_tokens']:,} out, {r['cache_read_tokens']:,} cache read  "
+              + (f"${usd:.2f}" if usd is not None else "not priced"))
+
+
 def cmd_unscored(args, cfg, store):
     """Today's jobs with no fit score, and why: in the background scorer's line (and where), no posting text to
     score, the same role scored before this posting came in, no resume. Failures and the job being scored
@@ -300,6 +332,47 @@ def cmd_unscored(args, cfg, store):
     for w in why.values():
         counts[w["code"]] = counts.get(w["code"], 0) + 1
     print(f"\n{len(why)} without a score: " + ", ".join(f"{n} {code.replace('_', ' ')}" for code, n in counts.items()))
+
+
+def cmd_scored(args, cfg, store):
+    """The fit scores made from a day on (default today), best first, with who made each: Claude, agy, or the
+    on-device model as a fallback (worth scoring again with Claude: `score --rescore MIN`)."""
+    if not (cfg.resume and cfg.resume.is_file()):
+        raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
+    since = datetime.fromisoformat(day(args.since)).date()
+    rows = [(key, at, fit) for key, at, fit in store.scored_since(resume_id(cfg.resume, cfg.prompts), since)
+            if (fit.get("score") or 0) >= args.min
+            and (not args.by or str(fit.get("scored_by") or "").startswith(args.by + ":"))]
+    if not rows:
+        print(f"No fit scores since {since:%a %b %-d}" + (f" of {args.min:g} or more" if args.min else "")
+              + (f" by {args.by}" if args.by else "") + ".")
+        return
+    by: dict[str, int] = {}
+    for key, at, fit in sorted(rows, key=lambda r: -(r[2].get("score") or 0)):
+        job, rec = store.find(key)
+        who = scorer_label(str(fit.get("scored_by") or "")) or "unlabelled"
+        by[who] = by.get(who, 0) + 1
+        print(f"{fit.get('score') or 0:5.1f}  {at:%m-%d %H:%M}  {job.display_company}: {job.title}"
+              + (" (closed)" if rec.get("closed") else "") + f"\n       by {who}  {key}")
+    print(f"\n{plural(len(rows), 'score')} since {since:%a %b %-d}: "
+          + ", ".join(f"{n} by {who}" for who, n in sorted(by.items(), key=lambda kv: -kv[1])))
+
+
+def cmd_activity(args, cfg, store):
+    """What the page and the schedule did (board checks, mail read, scores, failures), as the page's Activity
+    lists it, the oldest first so the newest ends the list."""
+    since = day_start(datetime.fromisoformat(day(args.since)).date()) if args.since else ""
+    rows = store.activity(limit=args.limit, kind=args.kind, since=since, notable=args.notable)
+    if not rows:
+        print("No activity" + (f" since {args.since}" if args.since else "") + ".")
+        return
+    for a in reversed(rows):
+        at = datetime.fromisoformat(a["at"]).astimezone()
+        first, *rest = a["text"].splitlines() or [""]
+        print(f"{at:%m-%d %H:%M}  {a['kind']:<7}{'' if a['ok'] else 'FAILED '}{'* ' if a['notable'] else ''}{first}"
+              + (f"  ({a['by']})" if a["by"] else ""))
+        for line in (rest + a["detail"]) if args.details else []:
+            print(f"{'':21}{line}")
 
 
 def cmd_show(args, cfg, store):
@@ -1070,10 +1143,31 @@ def build_parser() -> argparse.ArgumentParser:
                    "caching), keep one earlier scorer's scores as current instead of scoring those jobs again: by "
                    "default the scorer in use just before, or the one whose id (after 'scorer-') is given. Scores "
                    "from other, replaced scorers stay set aside. Scores nothing")
+    p.add_argument("--cost", action="store_true",
+                   help="what scoring has used and cost (as Settings shows it: jobs per backend, the Claude API's "
+                   "dollars this month, the recorded runs by day) and stop")
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")
     p.set_defaults(func=cmd_unscored)
+
+    p = sub.add_parser("scored", help="fit scores made from a day on, best first, with who made each (Claude, "
+                       "agy, or the on-device model as a fallback)")
+    p.add_argument("--since", default="today", metavar="DAY",
+                   help="from this day on: YYYY-MM-DD, today, yesterday or -N days (default: today)")
+    p.add_argument("--min", type=float, default=0, metavar="SCORE", help="only scores of at least SCORE")
+    p.add_argument("--by", choices=BACKENDS, default=None, help="only scores this backend made")
+    p.set_defaults(func=cmd_scored, read_only=True)
+
+    p = sub.add_parser("activity", help="what the page and the schedule did (board checks, mail read, scores, "
+                       "failures), as the page's Activity lists it")
+    p.add_argument("--since", default=None, metavar="DAY",
+                   help="from this day on: YYYY-MM-DD, today, yesterday or -N days")
+    p.add_argument("--kind", default="", help="only this kind, or kinds (score,mail,boards...)")
+    p.add_argument("--notable", action="store_true", help="only what the page alerts about")
+    p.add_argument("--limit", type=int, default=50, metavar="N", help="the newest N (default: 50)")
+    p.add_argument("--details", action="store_true", help="each one's detail lines too")
+    p.set_defaults(func=cmd_activity, read_only=True)
 
     p = sub.add_parser("show", help="a job's full posting text")
     p.add_argument("key", help="job key, its posting id, or its company")

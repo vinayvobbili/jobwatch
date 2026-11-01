@@ -222,21 +222,28 @@ REPOST_DAYS = 14
 
 
 def day(value: str | date | None, today: date | None = None) -> str | None:
-    """A calendar day as YYYY-MM-DD, from "2026-10-05", "today", "tomorrow" or "+7" (days from today).
-    Empty or "none" means none."""
+    """A calendar day as YYYY-MM-DD, from "2026-10-05", "today", "tomorrow", "yesterday", "+7" (days from today)
+    or "-7" (days ago). Empty or "none" means none."""
     if value is None or isinstance(value, date):
         return value.isoformat() if value else None
     v, today = value.strip().lower(), today or date.today()
     if not v or v == "none":
         return None
-    if v in ("today", "tomorrow"):
-        return (today + timedelta(days=v == "tomorrow")).isoformat()
-    if m := re.fullmatch(r"\+(\d+)d?", v):
-        return (today + timedelta(days=int(m.group(1)))).isoformat()
+    if v in ("today", "tomorrow", "yesterday"):
+        return (today + timedelta(days={"today": 0, "tomorrow": 1, "yesterday": -1}[v])).isoformat()
+    if m := re.fullmatch(r"([+-])(\d+)d?", v):
+        return (today + timedelta(days=int(m.group(2)) * (1 if m.group(1) == "+" else -1))).isoformat()
     try:
         return date.fromisoformat(v).isoformat()
     except ValueError:
-        raise ValueError(f"{value!r} isn't a date: use YYYY-MM-DD, today, tomorrow or +N days") from None
+        raise ValueError(f"{value!r} isn't a date: use YYYY-MM-DD, today, tomorrow, yesterday, +N or -N "
+                         "days") from None
+
+
+def day_start(d: date) -> str:
+    """The start of a local calendar day as the store's UTC timestamps write it, to compare them with."""
+    return datetime.combine(d, datetime.min.time()).astimezone().astimezone(timezone.utc).isoformat(
+        timespec="microseconds")
 
 
 # A requisition id: R0123456, REQ-4711, JR12345, WD00104836, Job 20769 (at least four digits).
@@ -794,6 +801,14 @@ class Store:
             if day >= since and "kept_from" not in fit:
                 out.append((day, str(fit.get("scored_by") or "")))
         return out
+
+    def scored_since(self, resume: str, since: date) -> list[tuple[str, datetime, dict]]:
+        """(job key, when in local time, the fit) of every score for this resume made from this local day on, the
+        newest first; scores kept from an earlier scorer (keep_old_scores) aren't new and are left out."""
+        rows = self.db.execute(f"SELECT key, result, scored_at FROM scores WHERE resume=? AND scored_at>=? AND "
+                               f"{_SCORED} ORDER BY scored_at DESC", (resume, day_start(since)))
+        return [(r["key"], datetime.fromisoformat(r["scored_at"]).astimezone(), fit) for r in rows
+                if "kept_from" not in (fit := json.loads(r["result"]))]
 
     # Drafted prep-sheet answers (see drafts.py): the model's reply as it came, under a hash of everything it was
     # sent, so opening a sheet again doesn't ask again. It's checked again each time it's read.

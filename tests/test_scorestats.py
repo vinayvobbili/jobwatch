@@ -136,6 +136,23 @@ def test_score_jobs_hands_a_claude_runs_tokens_to_whoever_collects_them():
                      "output_tokens": 5, "cache_write_tokens": 2, "cache_read_tokens": 1}]
 
 
+def test_a_runs_tokens_are_handed_over_in_parts_each_only_whats_new():
+    usage = SimpleNamespace(calls=0, input_tokens=0, output_tokens=0, cache_write_tokens=0, cache_read_tokens=0)
+    kept = []
+    with score.collecting_usage(record=kept.append) as used:
+        tokens = score._Tokens(SimpleNamespace(usage=usage, model="claude-sonnet-5-5"), "claude", True)
+        tokens.note()  # no calls yet: nothing
+        usage.calls, usage.input_tokens, usage.output_tokens = 100, 1000, 500  # a batch collected
+        tokens.note()
+        usage.calls, usage.input_tokens, usage.output_tokens = 150, 1400, 700  # the next one
+        tokens.note()
+        tokens.note()  # nothing new since
+        tokens.note(jobs=50)  # the run's end: the jobs it scored
+    assert kept == used
+    assert [(u["jobs"], u["input_tokens"], u["output_tokens"]) for u in kept] == [(0, 1000, 500), (0, 400, 200),
+                                                                                   (50, 0, 0)]
+
+
 def test_a_scoring_run_keeps_its_tokens_in_the_store(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, backend="claude")
     cfg.resume = tmp_path / "cv.md"
