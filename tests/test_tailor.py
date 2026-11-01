@@ -87,6 +87,22 @@ def test_a_new_job_is_drafted_from_its_posting_built_and_kept_as_its_resume(ctx,
     assert kept.name == "Jordan_Rivera_Resume_X.pdf" and kept.read_bytes() == b"%PDF-1 built"
 
 
+def test_the_extension_tailors_the_resume_for_the_job_on_its_page(ctx, kit, monkeypatch):
+    """From an application form, the extension asks for a tailored resume; from then on it attaches that one."""
+    from jobwatch import autofill
+    cfg, store = ctx
+    monkeypatch.setattr(tailor, "ready", lambda setting: True)
+    form = "https://jobs.ashbyhq.com/initech/c1/application"
+    before = autofill.context(cfg, store, form)
+    assert before["can_tailor"] is True and before["resume"] is None  # this watchlist has no default resume
+    got = autofill.tailored(cfg, store, form)
+    assert got["resume"] == {"name": "Jordan_Rivera_Resume_X.pdf", "type": "application/pdf", "tailored": True}
+    assert autofill.context(cfg, store, form)["resume"]["tailored"] is True
+    assert autofill.resume_file(cfg, store, form)[2] == "Jordan_Rivera_Resume_X.pdf"
+    with pytest.raises(KeyError, match="doesn't track this job"):
+        autofill.tailored(cfg, store, "https://careers.umbrella.example/jobs/42/apply")
+
+
 def test_an_existing_version_is_rebuilt_not_redrafted(ctx, kit):
     cfg, store = ctx
     kit.versions = ["initech-staff-data-engineer", "base"]  # you may have edited it

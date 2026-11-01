@@ -65,7 +65,8 @@ def test_context_for_an_application_page(app):
     a = got["applicant"]
     assert (a["first_name"], a["work_authorized"], a["needs_sponsorship"]) == ("Jordan", "yes", "no")
     assert a["salary"] == "180000-200000" and a["veteran"] == "decline"
-    assert got["resume"] == {"name": "resume.txt", "type": "text/plain"}
+    assert got["resume"] == {"name": "resume.txt", "type": "text/plain", "tailored": False}  # the default one
+    assert got["can_tailor"] is False  # no resume-kit set up in this watchlist
     assert [(x["question"], x["answer"], x["company"]) for x in got["answers"]] == [
         ("Notice period?", "Two weeks.", "Globex")]
 

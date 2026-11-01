@@ -10,6 +10,7 @@ import { ApiError, api, getSettings, toBase64 } from './lib.js';
 
 const JW = globalThis.JW;
 const PENDING_MAX_MS = 30 * 60 * 1000;
+const TAILOR_TIMEOUT_MS = 6 * 60 * 1000; // resume-kit drafts, then renders the PDF: a minute or two, up to its own limits
 const pendingKey = (tabId) => `pending:${tabId}`;
 const ctxKey = (tabId) => `ctx:${tabId}`;
 
@@ -39,6 +40,7 @@ async function handle(msg, tabId, sender) {
     case 'fill': return fill(tabId, msg.items);
     case 'draft': return draft(tabId, msg.question, msg.words, msg.others);
     case 'posting': return posting(tabId);
+    case 'tailor': return tailor(tabId);
     case 'captured': return captured(tabId, msg, sender);
     case 'looksSubmitted': return record(tabId);
     default: throw new Error(`unknown message ${msg.type}`);
@@ -105,7 +107,20 @@ async function analyze(tabId) {
     items, info,
     job: ctx.job ? { title: ctx.job.title, company: ctx.job.company } : null,
     answers: (ctx.answers || []).length,
+    resume: resume ? { name: resume.name, tailored: !!resume.tailored } : null,
+    canTailor: !!ctx.can_tailor,
   };
+}
+
+/** Tailor a resume to this page's job with resume-kit (in jobwatch), and attach that one from now on. */
+async function tailor(tabId) {
+  const url = await tabUrl(tabId);
+  const r = await api('/ext/tailor', { method: 'POST', body: { url }, timeout: TAILOR_TIMEOUT_MS });
+  const key = ctxKey(tabId);
+  const ctx = (await chrome.storage.session.get(key))[key] || {};
+  await chrome.storage.session.set({ [key]: { ...ctx, resume: r.resume } });
+  // `checked`, not `ok`: the reply's own `ok` says the call worked
+  return { resume: r.resume, checked: r.ok, pages: r.pages, problems: r.problems || [], isNew: r.new };
 }
 
 async function fill(tabId, items) {

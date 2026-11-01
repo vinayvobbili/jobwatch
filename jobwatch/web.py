@@ -673,6 +673,17 @@ class App:
                 raise ApiError(f"couldn't read that posting: {e}") from None
         return self._with_store(run)
 
+    def ext_tailor(self, body) -> dict:
+        """Tailor a resume to the job on the extension's page (see autofill.tailored)."""
+        def run(cfg, store):
+            try:
+                return autofill.tailored(cfg, store, str(body.get("url") or ""))
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+            except tailor.TailorError as e:
+                raise ApiError(str(e)) from None
+        return self._with_store(run)
+
     def ext_posting(self, body) -> dict:
         def run(cfg, store):
             try:
@@ -1604,12 +1615,12 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     data = app.ext_context(page)
                 elif method == "GET" and url.path == "/ext/resume":
                     return self._send(HTTPStatus.OK, *app.ext_resume(page))
-                elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/posting"):
+                elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/posting", "/ext/tailor"):
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
                     data = {"/ext/draft": app.ext_draft, "/ext/submitted": app.ext_submitted,
-                            "/ext/posting": app.ext_posting}[url.path](body)
+                            "/ext/posting": app.ext_posting, "/ext/tailor": app.ext_tailor}[url.path](body)
                 else:
                     raise ApiError("not found", HTTPStatus.NOT_FOUND)
                 self._json(HTTPStatus.OK, data)

@@ -148,7 +148,9 @@
       h('span', { class: `badge ${item.source}`, textContent: SOURCE[item.source] }),
       item.filled ? h('div', { class: 'meta', textContent: `Already filled on the page${item.current ? `: ${item.current.slice(0, 60)}` : ''}` }) : null,
       item.kind === 'file' && item.source !== 'resume' ? null : edit,
-      item.kind === 'file' ? h('div', { class: 'meta', textContent: item.source === 'resume' ? `Attaches ${item.value} from jobwatch` : 'Attach this one yourself' }) : null,
+      item.kind === 'file' ? h('div', { class: 'meta', textContent: item.source === 'resume' ? `Attaches ${item.value} from jobwatch${state.resume && state.resume.tailored ? ', tailored for this job' : ', your default resume'}` : 'Attach this one yourself' }) : null,
+      item.source === 'resume' && state.canTailor && !(state.resume && state.resume.tailored)
+        ? h('button', { class: 'small', textContent: 'Tailor a resume for this job', onclick: (e) => tailorResume(item, e.target) }) : null,
       m ? h('div', { class: 'meta', textContent: `From your answer to "${m.question}"${[m.company, m.title, m.applied_at].some(Boolean) ? ` (${[m.company, m.title, m.applied_at].filter(Boolean).join(', ')})` : ''}, ${Math.round(m.score * 100)}% alike. Check it fits this job.` }) : null,
       meta,
       !item.key && (item.kind === 'text' || item.kind === 'textarea') ? h('button', { class: 'small', textContent: item.source === 'draft' ? 'Draft again' : 'Draft with jobwatch', onclick: (e) => draft(item, e.target) }) : null);
@@ -233,6 +235,25 @@
     Object.assign(item, { value: r.answer, source: 'draft', matched: null, checked: false, result: null });
     render();
     toast('Drafted. Read it, edit it, then tick it to fill.', true);
+  }
+
+  async function tailorResume(item, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Tailoring... (a minute or two)';
+    const r = await send({ type: 'tailor', tabId });
+    if (!r.ok) {
+      btn.disabled = false;
+      btn.textContent = 'Tailor a resume for this job';
+      toast(r.error, false);
+      return;
+    }
+    if (!state) return;
+    state.resume = r.resume;
+    Object.assign(item, { value: r.resume.name, result: null });
+    render();
+    // resume-kit's verdict: a version that missed its page target or a fact check is kept, but flagged
+    toast(!r.checked ? `Tailored, but check it in jobwatch first: ${r.problems[0] || "resume-kit's checks didn't pass"}`
+      : `Tailored ${r.resume.name}${r.pages ? ` (${r.pages} pages)` : ''}. Review it in jobwatch before you submit.`, r.checked);
   }
 
   async function fill() {

@@ -14,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import answers, chat, linkedin, sources, stories
+from . import answers, chat, linkedin, sources, stories, tailor
 from .config import Config
 from .models import Job
 from .resume import resume_text
@@ -118,8 +118,23 @@ def context(cfg: Config, store: Store, url: str) -> dict:
     job = found[0] if found else None
     past = [{"question": a["question"], "answer": a["answer"], "company": a["company"], "title": a["title"],
              "applied_at": a["applied"]} for a in answers.find(store, full=True) if a["answer"]]
-    return {"job": _job(*found) if found else None, "applicant": applicant(cfg),
-            "resume": _file(resume_for(cfg, store, job)), "answers": past}
+    resume = _file(resume_for(cfg, store, job))
+    if resume:  # tailored: kept with this job's application, not the watchlist's default
+        resume["tailored"] = bool(job and store.package(job.key).resume())
+    return {"job": _job(*found) if found else None, "applicant": applicant(cfg), "resume": resume,
+            "answers": past, "can_tailor": bool(job) and tailor.ready(cfg.resume_kit)}
+
+
+def tailored(cfg: Config, store: Store, url: str) -> dict:
+    """Tailor a resume to the job at this page with resume-kit (see tailor.py) and keep it with the job, so the
+    extension attaches it: what POST /ext/tailor answers, with the resume to attach now. KeyError when jobwatch
+    doesn't track the job; tailor.TailorError when resume-kit isn't set up or fails."""
+    found = job_for(store, url)
+    if not found:
+        raise KeyError("jobwatch doesn't track this job yet: save the posting to jobwatch first")
+    made = tailor.tailor(cfg, store, found[0].key)
+    resume = _file(resume_for(cfg, store, found[0]))
+    return {**made, "resume": {**resume, "tailored": True} if resume else None}
 
 
 def resume_file(cfg: Config, store: Store, url: str) -> tuple[bytes, str, str]:

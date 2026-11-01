@@ -55,21 +55,31 @@ What jobwatch knows for the application on that page.
   "job": {"key": "ashby:initech/4f1c…", "title": "Platform Engineer", "company": "Initech",
           "status": "queued", "url": "https://jobs.ashbyhq.com/initech/4f1c…"},
   "applicant": {"first_name": "Jordan", "...": "..."},
-  "resume": {"name": "resume.pdf", "type": "application/pdf"},
+  "resume": {"name": "resume.pdf", "type": "application/pdf", "tailored": false},
   "answers": [{"question": "Notice period?", "answer": "Two weeks.", "company": "Globex",
-               "title": "SRE", "applied_at": "2026-09-14"}]
+               "title": "SRE", "applied_at": "2026-09-14"}],
+  "can_tailor": true
 }
 ```
 
 - `job` is `null` when the page isn't for a job jobwatch can tell (then `/ext/submitted` adds it).
-- `resume` is the one saved with this job's application package if there is one, else the watchlist's
-  `resume:`; `null` when there's neither.
+- `resume` is the one saved with this job's application package if there is one (`tailored: true`), else the
+  watchlist's `resume:`; `null` when there's neither.
+- `can_tailor` is true when jobwatch knows the job and resume-kit is set up: `/ext/tailor` can make one.
 - `answers` are the form answers kept from earlier applications, newest first, each in full.
 
 ### `GET /ext/resume?url=<the page's address>`
 
 The resume file `context` named, as bytes, with its `Content-Type` and a `Content-Disposition` filename.
 404 when there's none.
+
+### `POST /ext/tailor`
+
+`{"url": "<the page's address>"}`: tailors a resume to that page's job with resume-kit (a minute or two) and
+keeps it with the job's application, so `/ext/resume` gives that one from now on. Answers what jobwatch's own
+Tailor resume does (`version`, `new`, `pages`, `ok`: resume-kit's checks passed, `problems`), plus `resume`:
+`{"name", "type", "tailored": true}`. 404 when jobwatch doesn't track the job; 400 when resume-kit isn't set
+up or fails.
 
 ### `POST /ext/draft`
 
