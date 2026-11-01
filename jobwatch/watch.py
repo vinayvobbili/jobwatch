@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import sqlite3
 import sys
 from collections.abc import Callable
@@ -17,6 +16,7 @@ from .filters import (
     KINDS,
     Filters,
     excluded_company,
+    in_focus,
     office_nearby,
     red_flags,
     reject_reason,
@@ -707,11 +707,6 @@ def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict
                   else NO_TEXT if not job.description.strip()
                   else ("manual", "Only queued and Today's jobs are scored in the background: press Score fit"))
     return {"code": code, "text": text}
-
-
-def in_focus(job: Job, focus: list[str]) -> bool:
-    """The job's title matches one of the watchlist's focus patterns (the work wanted most)."""
-    return any(re.search(p, job.title, re.I) for p in focus)
 
 
 def _rank(e: Entry):

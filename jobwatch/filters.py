@@ -134,6 +134,11 @@ def remote_states(job: Job) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def in_focus(job: Job, focus: list[str]) -> bool:
+    """The job's title matches one of the watchlist's focus patterns (the work wanted most): it's listed first."""
+    return any(_any([p], job.title) for p in focus)
+
+
 def title_ok(title: str, f: Filters) -> bool:
     """The title rules alone: what a searched board (Workday, Eightfold) reads in full."""
     return (not f.titles or bool(_any(f.titles, title))) and not _any(f.exclude_titles, title)

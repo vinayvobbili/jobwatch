@@ -2919,6 +2919,10 @@ function paceLine(el, p) {
 // where, fit, pay: the quick narrowing (see quickNarrow); "any" and 0 mean off.
 const todayView = { q: "", sort: remembered("today.sort", "fit"), company: "", kws: new Set(), where: "any", fit: 0, pay: 0, posted: 0, page: 1, all: false };
 const SORTED = { fit: "best fit first", new: "newest first", pay: "top pay first", worth: "most worth it first" };
+// The work wanted most (the watchlist's focus) leads whichever sort is picked; each part keeps that sort's order.
+function focusFirst(jobs) {
+  return [...jobs.filter(j => j.focus), ...jobs.filter(j => !j.focus)];
+}
 // "Worth it": the Comps tab's weighted score (career, pay, fit, company health); cards show it while that order is on.
 let worthShown = false;
 const byWorth = (a, b) => (b.worth?.score ?? -1) - (a.worth?.score ?? -1);
@@ -3042,6 +3046,7 @@ async function renderToday() {
     if (v.sort === "new") jobs = [...jobs].sort((a, b) => (a.age_days ?? 1e4) - (b.age_days ?? 1e4));
     if (v.sort === "pay") jobs = [...jobs].sort((a, b) => (b.salary_max ?? -1) - (a.salary_max ?? -1));
     if (v.sort === "worth") jobs = [...jobs].sort(byWorth);
+    jobs = focusFirst(jobs);
     worthShown = v.sort === "worth";
     const narrowed = v.q || v.company || v.kws.size || v.where !== "any" || v.fit || v.pay || v.posted;
     // Today's picks: the top few in this order. A search, company, keyword or quick narrowing looks through every match.

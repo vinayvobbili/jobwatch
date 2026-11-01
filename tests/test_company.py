@@ -120,6 +120,10 @@ def test_open_roles_not_acted_on_list_the_latest_posting_first(cfg, store):
     v = company.view(cfg, store, "globex", every=True)
     assert [j["title"] for j in v["jobs"]] == ["Data Engineer", "ML Engineer", "Platform Engineer",
                                               "Site Reliability Engineer"]
+    cfg.focus = [r"\bml\b", "reliability"]  # the work wanted most leads, latest first within it
+    v = company.view(cfg, store, "globex", every=True)
+    assert [j["title"] for j in v["jobs"]] == ["ML Engineer", "Site Reliability Engineer", "Data Engineer",
+                                              "Platform Engineer"]
 
 
 def test_open_roles_not_acted_on_are_capped(cfg, store, monkeypatch):

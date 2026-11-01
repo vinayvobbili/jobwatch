@@ -577,3 +577,15 @@ console.log(JSON.stringify({
         "$1.50 recorded for 1 score", "$3.00 estimated for 2 earlier scores, at $1.50 each",
         "no price known for claude-x"]}
     assert got["tiny"] == "under $0.01"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_the_work_wanted_most_leads_whichever_sort_is_picked(tmp_path):
+    js = tmp_path / "focus.js"
+    js.write_text(page_function("focusFirst") + """
+const newest = [{ k: "a" }, { k: "b", focus: true }, { k: "c" }, { k: "d", focus: true }];
+console.log(JSON.stringify(focusFirst(newest).map(j => j.k)));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["b", "d", "a", "c"]  # each part keeps the sort's order
