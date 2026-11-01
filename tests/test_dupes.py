@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import sqlite3
+from datetime import datetime, timezone
 
 import pytest
 
@@ -166,6 +167,25 @@ def test_an_alert_import_of_a_job_applied_to_is_flagged(store):
                       f"({applied.key}; same req 482913). Don't apply or ask for a referral again")
     # and the other way around: the application knows about the queued one
     assert dupes.check(store, applied.key).label == f"Already queued {store.find(again.key)[1]['status_at'][:10]}"
+
+
+def test_a_req_applied_to_and_closed_that_comes_back_shows_even_with_its_old_posted_date(watchlist):
+    """A req put on hold and reopened months later keeps its first posted date on some boards (Avature): the
+    age filter would hide it, yet it's the one opening worth hearing about at once."""
+    cfg = config.load(watchlist)
+    cfg.filters.max_age_days = 45
+    store = Store(cfg.state)
+    app = store.add("Initech", "Solutions Engineer (61542)", applied="2026-03-02")
+    store.set_status([app.key], "rejected")
+    back = board_job("61542", posted=datetime(2026, 3, 18, tzinfo=timezone.utc), locations=["Denver, CO"])
+    store.sync("avature", AVATURE, [back])
+    dupes.record(store, [back])
+    entries = {e.job.key: e for e in build_digest(cfg, store, include_seen=True).entries}
+    assert back.key in entries  # not hidden as "posted 200+ days ago"
+    m = entries[back.key].duplicate
+    assert m.back and m.label.startswith("Open again: you applied 2026-03-02, now rejected")
+    assert m.line.endswith("Ask the recruiter whether your earlier loop carries over, or apply again")
+    store.close()
 
 
 def test_of_many_postings_with_one_title_only_the_reposted_one_is_the_same_opening(store):

@@ -35,7 +35,7 @@ from urllib.parse import urlparse
 
 from . import linkedin, sources
 from .models import Job
-from .store import MANUAL, STAGES, Store
+from .store import ENDED, MANUAL, STAGES, Store
 
 ACTED = ("queued", *STAGES, "skipped")
 SAME_TITLE = "same title"  # why a title-only match matched: possibly the same opening
@@ -239,6 +239,9 @@ class Match:
     record: dict
     why: str
     old_req: str = ""  # for a repost: the req applied to before, when the old job names just one other
+    # The same opening, applied to and ended (rejected, withdrawn), seen again after it ended: a req put on hold
+    # and reopened. Worth hearing about whatever date the posting shows (some boards keep the first one).
+    back: bool = False
 
     @property
     def status(self) -> str:
@@ -274,6 +277,8 @@ class Match:
                 self.status, f"your {self.day} application{later}")
             return f"Possible duplicate of {what}" + (": check it's a different opening"
                                                        if self.status != "skipped" else "")
+        if self.back:
+            return f"Open again: you applied {self.day}, now {self.status}"
         if self.applied and self.reposted:
             return f"Reposted: you applied {self.day}{later}" + (f" (old req {self.old_req})" if self.old_req else "")
         if self.applied:
@@ -288,7 +293,8 @@ class Match:
             head = self.label.removesuffix(": check it's a different opening")
             tail = ": check it's a different opening" if self.status != "skipped" else ""
             return f"{head}, {o.title} ({o.key}; same title){tail}"
-        todo = ("check whether that application carries over before applying again" if self.applied and
+        todo = ("ask the recruiter whether your earlier loop carries over, or apply again" if self.back else
+                "check whether that application carries over before applying again" if self.applied and
                 self.reposted else "don't apply or ask for a referral again" if self.applied else
                 "don't queue it twice" if self.status == "queued" else "you skipped it then")
         return f"{self.label}: same opening as {o.title} ({o.key}; {self.why}). {todo[0].upper()}{todo[1:]}"
@@ -296,7 +302,7 @@ class Match:
     def to_dict(self) -> dict:
         return {"key": self.other.key, "title": self.other.title, "company": self.other.display_company,
                 "status": self.status, "date": self.day, "why": self.why, "strong": self.strong,
-                "reposted": self.reposted, "label": self.label, "text": self.line}
+                "reposted": self.reposted, "back": self.back, "label": self.label, "text": self.line}
 
 
 _RANK = {**{s: 0 for s in STAGES}, "queued": 1, "skipped": 2}
@@ -336,12 +342,20 @@ class Index:
         if pinned and pinned[0].job.key != job.key:
             why = same_opening(sig, pinned[0])
             why = why if why and why != SAME_TITLE else "matched when it came in"
-            return Match(pinned[0].job, pinned[1], why, _old_req(sig, pinned[0], why))
+            return _back(Match(pinned[0].job, pinned[1], why, _old_req(sig, pinned[0], why)), record)
         found = [Match(other.job, rec, why, _old_req(sig, other, why))
                  for other, rec in others if (why := same_opening(sig, other))]
         found.sort(key=lambda m: m.record.get("status_at") or "", reverse=True)
         found.sort(key=lambda m: (not m.strong, _RANK[m.status]))  # stable: the latest first within each
-        return found[0] if found else None
+        return _back(found[0], record) if found else None
+
+
+def _back(m: Match, record: dict) -> Match:
+    """Mark the match `back` when it's the same opening, its application ended, and this posting (its `record`)
+    was first seen after that."""
+    seen, ended = record.get("first_seen") or "", m.record.get("status_at") or ""
+    m.back = m.strong and m.status in ENDED and bool(seen and ended) and seen > ended
+    return m
 
 
 def _old_req(new: Signature, old: Signature, why: str) -> str:

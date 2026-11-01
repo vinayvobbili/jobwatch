@@ -766,13 +766,18 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
     index = dupes.Index(store)
     for job, record in store.jobs(statuses):
         fit = fits.get(job.key)
-        if reason := reject_reason(job, cfg.filters_for(job),
-                                   None if redo_passes and fit and (fit.get("fallback") or fit.get("stale"))
-                                   else fit):
+        f = cfg.filters_for(job)
+        judged = None if redo_passes and fit and (fit.get("fallback") or fit.get("stale")) else fit
+        reason, same = reject_reason(job, f, judged), None
+        # A req applied to that ended and is now posted again (see dupes.Match.back) may keep its first posted
+        # date: its age doesn't count against it.
+        if reason and reason.startswith("posted") and (same := index.match(job, record)) and same.back:
+            reason = reject_reason(job, replace(f, max_age_days=None), judged)
+        if reason:
             kind = reason.split()[0]  # title, department, location, pay, posted, fit
             rejected[kind] = rejected.get(kind, 0) + 1
             continue
-        same = index.match(job, record)
+        same = same or index.match(job, record)
         rel, hits = relevance(job, cfg.keywords)
         entries.append(e := Entry(job, record, rel, hits, fit=brief(fits.get(job.key)), duplicate=same,
                                   focus=in_focus(job, cfg.focus)))
