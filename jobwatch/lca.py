@@ -44,6 +44,7 @@ PAUSE = 2.0                   # seconds between two requests to the DOL
 MIN_FILINGS = 3               # fewer matching filings than this is no estimate
 EXAMPLES = 3
 US = "US-wide"
+MARKET = "all employers"  # the tail of `where` for every employer's filings in the home state
 # Hours in a work year and so on, to turn the unit a wage was filed in into a yearly one:
 PER_YEAR = {"year": 1, "month": 12, "bi-weekly": 26, "biweekly": 26, "week": 52, "hour": 2080}
 SANE = (30_000, 2_000_000)    # yearly wages outside this are typing errors (a monthly wage filed as yearly...)
@@ -419,7 +420,7 @@ class Index:
         cities = {c.lower() for c in cities if c}
         tiers = ((lambda: matches, lambda r: r["city"].lower() in cities, "{city}"),
                  (lambda: matches, lambda r: r["state"] in states, "{state}"),
-                 *([(lambda: alike(self.state_rows(states)), lambda r: True, "{state}, all employers")]
+                 *([(lambda: alike(self.state_rows(states)), lambda r: True, "{state}, " + MARKET)]
                    if market and states else []),
                  *([(lambda: matches, lambda r: True, US)] if anywhere else []))
         for rows, test, tier in tiers:

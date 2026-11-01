@@ -34,6 +34,13 @@ def test_sources_come_in_one_fixed_order_each_with_a_label():
     assert all(s[k]["reason"] is None for k in ("posted", "levels", "lca", "ask"))
 
 
+def test_other_employers_filings_say_they_are_not_this_employers_pay():
+    market = lca.Estimate(**{**FILINGS.__dict__, "where": f"CO, {lca.MARKET}", "count": 40})
+    s = by_key(paysources.sources(job(), est=market, lca_cached=True))["lca"]
+    assert s["value"] == "$165K median (40 filings, CO, all employers; not this employer's)"
+    assert s["short"] == "$165K mkt"
+
+
 def test_levels_without_a_base_shows_the_total():
     s = by_key(paysources.sources(job(), result=levels.Estimate(**{**EST.__dict__, "base": None, "ask": None}),
                                   levels_on=True))
