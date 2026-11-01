@@ -73,6 +73,17 @@
 
   const scanButton = () => h('button', { id: 'scan', class: 'go', textContent: 'Fill this application', onclick: scan });
 
+  // The posting action: on a LinkedIn job it presses Apply to open the company's posting, anywhere else it saves the page's posting.
+  const POSTING = { linkedin: "Open the company's posting", site: 'Save this posting to jobwatch' };
+  const postingButton = () => {
+    const b = h('button', { id: 'posting', class: 'ghost', textContent: POSTING.site, onclick: savePosting });
+    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      if (JW.postingMode(pinned || !tab ? '' : tab.url) === 'linkedin') b.textContent = POSTING.linkedin;
+    }, () => {});
+    return b;
+  };
+  const actions = () => h('div', { class: 'actions' }, scanButton(), postingButton());
+
   function idle(text) {
     state = null;
     $('where').textContent = '';
@@ -81,11 +92,25 @@
         h('button', { id: 'recheck', class: 'ghost', textContent: 'Check again', onclick: async () => { if (await checkPairing()) idle(text); } })));
       return;
     }
-    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: text }), scanButton()));
+    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: text }), actions()));
   }
 
   function failed(message) {
-    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: message }), scanButton()));
+    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: message }), actions()));
+  }
+
+  /** What the posting action did, with a link to the job on jobwatch's page. */
+  function posted(r) {
+    $('where').textContent = `${r.title} at ${r.company}`;
+    view(h('div', { class: 'empty done' }, h('div', { class: 'msg good', textContent: r.said + '.' }),
+      h('a', { class: 'go linkbtn', href: r.link, target: '_blank', rel: 'noopener', textContent: 'See it in jobwatch' }),
+      h('div', { class: 'msg small', textContent: r.has_text ? '' : 'Press Apply on the company\'s site, then use "Save this posting to jobwatch" on its page.' })));
+  }
+
+  /** LinkedIn's Apply button was pressed: the company's site opens in a new tab, and jobwatch follows it there. */
+  function opened() {
+    view(h('div', { class: 'empty' }, h('div', { class: 'msg good', textContent: "Opening the company's posting in a new tab." }),
+      h('div', { class: 'msg small', textContent: 'jobwatch fills the job in when that page has loaded, if it is a job site it can read. If not, use "Save this posting to jobwatch" on that page.' })));
   }
 
   const pick = (item) => {
@@ -173,6 +198,24 @@
     render();
   }
 
+  async function savePosting() {
+    if (busy) return;
+    if (!tabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = tab && tab.id;
+    }
+    if (!tabId) return failed('No tab to read. Open a job posting and try again.');
+    busy = true;
+    const readId = tabId;
+    view(h('div', { class: 'empty', textContent: 'Reading the posting...' }));
+    const r = await send({ type: 'posting', tabId: readId });
+    busy = false;
+    if (readId !== tabId) return;
+    if (!r.ok) return failed(r.error);
+    if (r.stage === 'opened') return opened();
+    posted(r);
+  }
+
   async function draft(item, btn) {
     btn.disabled = true;
     btn.textContent = 'Drafting...';
@@ -229,7 +272,6 @@
       if (!busy) idle('Open a job application in this tab, then press Fill this application.');
     });
   }
-  // Without the "tabs" permission this still reports that a tab started loading, which is all that's needed.
   chrome.tabs.onUpdated.addListener((id, change) => {
     if (id === tabId && (change.status === 'loading' || change.url)) tabChanged();
   });

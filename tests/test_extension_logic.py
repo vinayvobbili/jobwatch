@@ -32,7 +32,8 @@ def test_every_script_parses():
 def test_the_manifest_asks_for_little():
     manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["manifest_version"] == 3
-    assert sorted(manifest["permissions"]) == ["activeTab", "scripting", "sidePanel", "storage"]  # no "tabs"
+    # "tabs" only to see the address of the tab LinkedIn's Apply button opens (background.js, openCompany)
+    assert sorted(manifest["permissions"]) == ["activeTab", "scripting", "sidePanel", "storage", "tabs"]
     assert sorted(manifest["host_permissions"]) == ["http://127.0.0.1/*", "http://localhost/*"]
     assert "content_scripts" not in manifest  # nothing runs on a page until the person clicks
     assert "default_popup" not in manifest["action"]  # the toolbar button opens the side panel instead
@@ -189,3 +190,47 @@ def test_who_you_are_is_not_kept_as_an_answer(tmp_path):
     """The recorded application keeps answers to questions, not who the person is or the voluntary ones."""
     got = run_js(tmp_path, "console.log(JSON.stringify(['email', 'gender', 'full_name', 'salary', 'notice_period'].map(k => JW.IDENTITY.has(k))));")
     assert got == [True, True, True, False, False]
+
+
+@needs_node
+def test_linkedin_addresses_and_what_the_posting_action_does_on_them(tmp_path):
+    urls = {
+        "https://www.linkedin.com/jobs/view/3900000123/": ("3900000123", "linkedin"),
+        "https://www.linkedin.com/jobs/view/platform-engineer-at-initech-3900000123": ("3900000123", "linkedin"),
+        "https://www.linkedin.com/jobs/search/?keywords=sre&currentJobId=3900000777": ("3900000777", "linkedin"),
+        "https://www.linkedin.com/jobs/search/?currentJobId=abc": ("", "linkedin-none"),
+        "https://www.linkedin.com/feed/": ("", "linkedin-none"),
+        "https://jobs.lever.co/globex/aaaa-1111": ("", "site"),
+        "http://127.0.0.1:8765/": ("", "none"),
+        "chrome://extensions": ("", "none"),
+        "": ("", "none"),
+    }
+    got = run_js(tmp_path, f"const urls = {json.dumps(list(urls))};\nconsole.log(JSON.stringify(urls.map(u => [JW.linkedinJobId(u), JW.postingMode(u)])));")
+    assert got == [list(v) for v in urls.values()]
+
+
+@needs_node
+def test_only_the_offsite_apply_button_is_pressed(tmp_path):
+    """Easy Apply applies on LinkedIn, and Save, Share and the rest aren't Apply: none of them is the button to press."""
+    buttons = [
+        {"label": "Apply on company website", "text": "Apply"}, {"label": "", "text": "Apply"},
+        {"label": "Apply", "text": "Apply"}, {"label": "Easy Apply to this job", "text": "Easy Apply"},
+        {"label": "", "text": "Easy Apply"}, {"label": "Apply on company website", "text": "Easy Apply"},
+        {"label": "Save Platform Engineer at Initech", "text": "Save"}, {"label": "Submit application", "text": "Submit"},
+        {"label": "", "text": "Apply now and relocate"}, {"label": "Applications", "text": ""},
+    ]
+    got = run_js(tmp_path, f"const b = {json.dumps(buttons)};\nconsole.log(JSON.stringify(b.map(x => [JW.isOffsiteApply(x), JW.isEasyApply(x)])));")
+    assert got == [[True, False], [True, False], [True, False], [False, True], [False, True], [False, True],
+                   [False, False], [False, False], [False, False], [False, False]]
+
+
+@needs_node
+def test_a_companys_name_matches_its_spellings(tmp_path):
+    got = run_js(tmp_path, "console.log(JSON.stringify([['Initech, Inc.', 'Initech'], ['Initech Systems', 'initech'], ['Globex', 'Umbrella'], ['', 'Globex']].map(p => JW.sameCompany(...p))));")
+    assert got == [True, True, False, False]
+
+
+@needs_node
+def test_a_postings_text_is_tidied(tmp_path):
+    got = run_js(tmp_path, r"console.log(JSON.stringify(JW.tidyText('Platform Engineer \n\n\n\nShow more\nBuild  tools.\r\n')));")
+    assert got == "Platform Engineer\n\nBuild tools."

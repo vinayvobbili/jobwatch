@@ -50,6 +50,12 @@
       .go:disabled { opacity: .5; transform: none; }
       .empty { padding: 28px 18px; text-align: center; color: var(--muted); }
       .empty .go { margin-top: 14px; padding: 11px 18px; font-size: 15px; }
+      .actions { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+      .actions .ghost { font-size: 13.5px; }
+      .empty .msg + .ghost, .empty .msg + .go { margin-top: 14px; }
+      .empty .msg.good { color: var(--good); font-weight: 600; font-size: 14.5px; }
+      .empty .msg.small { margin-top: 12px; font-size: 12.5px; }
+      a.linkbtn { display: inline-block; text-decoration: none; color: #fff; border-radius: 10px; }
       #toast {
         position: fixed; left: 14px; right: 14px; bottom: 64px; padding: 9px 12px; border-radius: 10px; color: #fff; font-size: 13px;
         background: var(--good); animation: rise .25s both; z-index: 5; box-shadow: 0 12px 28px -14px rgba(0, 0, 0, .5);

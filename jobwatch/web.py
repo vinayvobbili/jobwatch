@@ -673,6 +673,17 @@ class App:
                 raise ApiError(f"couldn't read that posting: {e}") from None
         return self._with_store(run)
 
+    def ext_posting(self, body) -> dict:
+        def run(cfg, store):
+            try:
+                return autofill.posting(cfg, store, body)
+            except sources.SourceError as e:
+                raise ApiError(f"couldn't read that posting: {e}") from None
+        got = self._with_store(run)
+        if got["has_text"]:
+            self.score_in_background()  # it has text to score now
+        return got
+
     def get_onboarding(self, q) -> dict:
         """Whether first-run onboarding can offer "Suggest titles from my resume": ready, or why not, and where the
         resume would go. Looks at settings only; no model is called."""
@@ -1593,11 +1604,12 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     data = app.ext_context(page)
                 elif method == "GET" and url.path == "/ext/resume":
                     return self._send(HTTPStatus.OK, *app.ext_resume(page))
-                elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted"):
+                elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/posting"):
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
-                    data = app.ext_draft(body) if url.path == "/ext/draft" else app.ext_submitted(body)
+                    data = {"/ext/draft": app.ext_draft, "/ext/submitted": app.ext_submitted,
+                            "/ext/posting": app.ext_posting}[url.path](body)
                 else:
                     raise ApiError("not found", HTTPStatus.NOT_FOUND)
                 self._json(HTTPStatus.OK, data)

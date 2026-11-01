@@ -8,16 +8,17 @@ Browser extension). The token is kept beside jobwatch's history, so it outlives 
 from __future__ import annotations
 
 import mimetypes
+import re
 import secrets
 from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import urlparse
 
-from . import answers, chat, sources, stories
+from . import answers, chat, linkedin, sources, stories
 from .config import Config
 from .models import Job
 from .resume import resume_text
-from .store import STAGES, Store
+from .store import MANUAL, STAGES, Store
 from .watch import save_job
 
 TOKEN_FILE = "extension-token"
@@ -203,3 +204,105 @@ def submitted(cfg: Config, store: Store, body: dict) -> dict:
         pkg.attach(path.name, path.read_bytes(), "resume")
     _, rec = store.find(job.key)
     return {"key": job.key, "status": rec["status"], "added": added}
+
+
+MAX_TEXT = 60_000  # a posting's text, as much as the extension may send
+
+
+def _own_site(url: str) -> bool:
+    """A link that isn't LinkedIn's: the company's posting, or the site it applies on."""
+    host = urlparse(url).netloc.lower()
+    return bool(host) and not host.endswith("linkedin.com")
+
+
+def _listing(store: Store, pid: str, links: list[str], company: str, title: str) -> tuple[Job, dict] | None:
+    """The job the posting on screen is: the one that came from that LinkedIn id (its link, or the note saying
+    where it was found), else the one kept at the company's link, else the same company and title (a text-less
+    one first)."""
+    rows = store.jobs()
+    if pid:
+        seen = re.compile(rf"linkedin\.com/jobs/view/\S*{pid}\b")
+        for job, rec in rows:
+            if linkedin.job_id(job.url) == pid or seen.search(rec.get("note") or ""):
+                return job, rec
+    for link in links:
+        if found := job_for(store, link):
+            return found
+    like = [(j, r) for j, r in rows if company and title and linkedin.same_company(j.display_company, company)
+            and linkedin.same_title(j.title, title)]
+    return next(((j, r) for j, r in like if not j.description.strip() and j.source == MANUAL),
+                like[0] if like else None)
+
+
+def _read(links: list[str], get=None) -> Job | None:
+    """The first of these links that is a posting on a supported board and reads with its text."""
+    for link in links:
+        try:
+            read = sources.posting(link, get)
+        except sources.SourceError:
+            continue
+        if read and read.description.strip():
+            return read
+    return None
+
+
+def _said(job: Job) -> str:
+    return f"Filled in from {job.source.capitalize()}" if job.source in sources.SOURCES else \
+        "Filled in from the page's text"
+
+
+def posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
+    """What POST /ext/posting does: the job for the posting the person has open, filled in with its text (keeping
+    its key, status and notes), or added when jobwatch has none. The text is read from the company's posting when
+    page_url (the company's page the person is on) is on a supported board (as for a link added by hand), else it is
+    the `text` that page showed. `linkedin` (the job's id or address) finds the job; the LinkedIn page itself is
+    never read. `said` tells what happened; `where` is the page's tab the job is on."""
+    given = str(body.get("linkedin") or "").strip()
+    pid = linkedin.job_id(given) or (given if given.isdigit() else "")
+    company, title = str(body.get("company") or "").strip(), str(body.get("title") or "").strip()
+    text = str(body.get("text") or "").strip()[:MAX_TEXT]
+    links = [u for u in [str(body.get("page_url") or "").strip()] if _own_site(u)]
+    if not (pid or links or (company and title)):
+        raise ValueError("send the posting's company and title, or its link")
+    came = f"Found on LinkedIn: https://www.linkedin.com/jobs/view/{pid}/" if pid else None
+    if found := _listing(store, pid, links, company, title):
+        job = found[0]
+        if job.description.strip():
+            return _posted(store, job, "jobwatch already has this posting's text", False)
+        if job.source != MANUAL:
+            raise ValueError(f"{job.key} comes from its board, which sets its text")
+        read = _read(links, get)
+        if not (read or text):
+            raise ValueError("jobwatch can't read postings on that site: use Save this posting to jobwatch on the page")
+        # Where the posting lives now: the board's link, else the company's own page (never LinkedIn's)
+        link = read.url if read else next((u for u in links if not sources.detect(u)), "")
+        if link and link != job.url:
+            store.set_url(job.key, link)
+            store.add_note(job.key, f"Posting found at {link}; the link before was {job.url}" if job.url else
+                           f"Posting found at {link}")
+            if came and not linkedin.job_id(link):
+                store.add_note(job.key, came)  # so this LinkedIn job is still found by its id
+        store.set_description(job.key, read.description if read else text, read)
+        if not read:
+            store.add_note(job.key, "Posting text sent from the page you had open, by the browser extension")
+        return _posted(store, store.find(job.key)[0], _said(read or job), False)
+    for link in links:
+        try:
+            job, _ = save_job(store, link, company, title, note=came, boards=cfg.boards)
+        except (sources.SourceError, ValueError):
+            continue
+        if job.description.strip():
+            return _posted(store, job, _said(job), True)
+    link = next((u for u in links if not sources.detect(u)), "") or (came or "").rpartition(": ")[2]
+    job, _ = save_job(store, link, company, title, text, note=came, boards=cfg.boards)
+    return _posted(store, job, _said(job), True)
+
+
+def _posted(store: Store, job: Job, said: str, added: bool) -> dict:
+    job, rec = store.find(job.key)
+    has_text = bool(job.description.strip())
+    if "already has" not in said:
+        said += "; scoring now" if has_text else "; it has no posting text, so it can't be scored"
+    return {"key": job.key, "company": job.display_company, "title": job.title, "added": added, "has_text": has_text,
+            "where": "today" if rec["status"] in ("new", "shown") else "queue" if rec["status"] == "queued"
+            else "applied", "said": ("Added. " if added else "") + said}

@@ -5,7 +5,7 @@
   "version": "0.8.0",
   "description": "Fills job application forms from your details and your earlier answers. You review every field and press Submit yourself.",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "scripting", "storage", "sidePanel"],
+  "permissions": ["activeTab", "scripting", "storage", "sidePanel", "tabs"],
   "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
   "background": {
     "service_worker": "background.js",

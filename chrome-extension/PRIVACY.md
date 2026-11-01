@@ -5,6 +5,14 @@ in the side panel that opens. The side panel itself shows only what the extensio
 It reads the form's questions, their answer options and the values already in the fields, the page's address, and the
 company and job title shown on the page.
 
+**LinkedIn:** it reads nothing from LinkedIn's pages: no title, company, description or page data. From a LinkedIn
+tab it takes only the address, for the job's number. When you press **Open the company's posting**, it presses
+LinkedIn's Apply button (the one that opens the company's own site, never Easy Apply or anything that submits), and
+then gives the address of the tab that opens, with the job's number, to your own jobwatch. For that it uses the `tabs`
+permission, to see the address of that one new tab (opened within two minutes of the press) and of the active tab.
+On a company's page, **Save this posting to jobwatch** sends your jobwatch the page's address and the job text the page
+shows, only when you press it.
+
 **What it receives, and writes into the form:** from your own jobwatch, your applicant details (name, email, phone,
 address, links, work authorization, and the voluntary self-identification answers you have set there), your answers to
 earlier applications, and the job's resume file. It writes the ones you tick into the form you are looking at, and
@@ -23,6 +31,6 @@ model it asks, is set in jobwatch, not in the extension. The extension's authors
   Submit, until the application is recorded.
 
 **What it doesn't do:** it never submits a form for you, has no analytics, no tracking, no advertising, no sale or
-transfer of data, and no access to any other tab or site.
+transfer of data, and no reading of any other tab or site.
 
 Questions or issues: <https://github.com/vinayvobbili/jobwatch/issues>

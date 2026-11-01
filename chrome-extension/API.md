@@ -97,3 +97,21 @@ Sent after the person submits the form.
 application already further along keeps its stage), the answers are kept in its package, and the resume it
 named is attached to the package. A page jobwatch doesn't know yet is added from its link, with `company` and
 `title` from the page when the link can't be read; `added` says so.
+
+### `POST /ext/posting`
+
+Sent when the person opened a company's posting from a LinkedIn job, or presses **Save this posting to jobwatch**.
+Nothing is taken from LinkedIn's pages: `linkedin` is the job's address or number only.
+
+```json
+{"linkedin": "https://www.linkedin.com/jobs/view/3900000123/", "page_url": "https://jobs.lever.co/globex/aaaa-1111",
+ "company": "Globex", "title": "Machine Learning Engineer", "text": "<the company page's visible job text>"}
+```
+
+Every field is optional but one of `linkedin`, `page_url` or `company` with `title` is needed. The job is found by its
+LinkedIn number (its link, or the note saying where it was found), else by `page_url`, else by company and title. It is
+filled in, keeping its key, status and notes: from `page_url` when that is a posting on a supported board (read as for
+a link added by hand), else from `text`. No job found: one is added. → `{"key": "…", "company": "Globex",
+"title": "…", "added": false, "has_text": true, "where": "queue", "said": "Filled in from Lever; scoring now"}`;
+`where` is the tab of jobwatch's page the job is on. A page jobwatch can't read, sent with no `text`, answers `400`
+saying to use **Save this posting to jobwatch** on it.

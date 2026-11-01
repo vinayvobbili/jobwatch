@@ -41,6 +41,10 @@ description come from `manifest.json`.
 >   Next or any button that sends the form.
 > • After you submit, jobwatch records the application and keeps your answers
 >   for the next form.
+> • On a LinkedIn job, press Open the company's posting and the extension
+>   presses LinkedIn's Apply button for you, so the company's own page opens.
+>   jobwatch reads the posting there. On a company page it can't read, press
+>   Save this posting to jobwatch.
 >
 > Works with
 > • Greenhouse, Lever and Ashby application forms, including a Greenhouse form
@@ -56,6 +60,9 @@ description come from `manifest.json`.
 >   (127.0.0.1). The authors run no server and receive nothing.
 > • A draft is written by the model you chose in jobwatch's settings: one on
 >   your own computer, or a cloud API you set up with your own key.
+> • It reads nothing from LinkedIn's pages: it takes the job's number from the
+>   address, and presses LinkedIn's Apply button only when you ask. It never
+>   presses Easy Apply or Submit.
 > • No analytics, tracking or advertising.
 
 - **Category:** Productivity › Workflow & Planning
@@ -88,11 +95,17 @@ All data in the images is made up (the demo server's Jordan Rivera and Initech).
 | `scripting` | Injects the script that finds the form's fields and writes the ticked values into that tab. It runs only after the user clicks the icon and presses Fill this application. |
 | `storage` | Saves the jobwatch address and the pairing token the user enters on the options page, and keeps an answer the user just submitted until jobwatch has recorded it. |
 | `sidePanel` | Shows the review (each field, where its value came from, and the Fill selected button) in Chrome's side panel beside the form, so it never covers the page. |
+| `tabs` | Used for one thing: when the user presses Open the company's posting on a LinkedIn job, the extension presses LinkedIn's Apply button, and `tabs` lets it see the address of the new tab that button opens (and the active tab's address, to choose the button's label), so it can give that address to the user's local jobwatch. It looks only at the tab LinkedIn's Apply button opened, within two minutes, and at the active tab. |
 | Host permission `http://127.0.0.1/*` | The extension's only network access: the jobwatch app the user runs on their own computer (default `http://127.0.0.1:8765`) supplies the user's details, earlier answers and resume, drafts answers, and records the application. |
 | Host permission `http://localhost/*` | Same, for a user whose jobwatch address is written as `localhost` instead of `127.0.0.1`. |
 
 No other host permissions are requested; the extension cannot read any website
-except the active tab after the user clicks its icon.
+except the active tab after the user clicks its icon. It reads nothing from
+LinkedIn's pages (only the job number in the address); the one thing it does
+there, when the user asks, is press LinkedIn's Apply button for the company's
+site, never Easy Apply and never a button that submits. On a company's page,
+Save this posting to jobwatch reads the page's visible job text, only on the
+user's click.
 
 **Remote code:** No, I am not using remote code. All JavaScript ships in the
 package. jobwatch returns JSON data and a resume file only.
@@ -111,7 +124,9 @@ information** and **Website content**. Leave every other type unticked.
 - **Website content:** ticked. It reads the form's questions, answer options,
   current field values, the page address, and the company and job title shown
   on the page, and sends them to the local jobwatch to find earlier answers,
-  draft an answer and record the application.
+  draft an answer and record the application. With Save this posting to
+  jobwatch it also sends the job text a company's page shows. Nothing is read
+  from LinkedIn's pages.
 - **Health information:** ticked. The voluntary self-identification answers
   include disability status, chosen by the user in jobwatch (default "decline to
   answer") and written into the form when the user ticks that row. They are
@@ -124,7 +139,9 @@ information** and **Website content**. Leave every other type unticked.
   - personal communications;
   - location: the city and state in the user's details are an address for the
     form, not the device's location;
-  - web history: only the active tab's address is read, after the user clicks;
+  - web history: only the active tab's address, and the address of the one tab
+    LinkedIn's Apply button opens, are used, and only to give to the user's own
+    jobwatch; nothing is kept as a history;
   - user activity: no clicks, keystrokes or mouse movement are recorded. After a
     scan it only notices that the form was submitted, so it can tell jobwatch.
 
