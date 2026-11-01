@@ -234,3 +234,11 @@ def test_a_companys_name_matches_its_spellings(tmp_path):
 def test_a_postings_text_is_tidied(tmp_path):
     got = run_js(tmp_path, r"console.log(JSON.stringify(JW.tidyText('Platform Engineer \n\n\n\nShow more\nBuild  tools.\r\n')));")
     assert got == "Platform Engineer\n\nBuild tools."
+
+
+@needs_node
+def test_a_form_is_replaced_when_most_of_its_fields_are_gone(tmp_path):
+    """A multi-step form swapping its step in place: most scanned fields gone. A follow-up question opening or
+    closing is the same form."""
+    got = run_js(tmp_path, "console.log(JSON.stringify([[8, 0], [8, 3], [8, 4], [8, 7], [8, 8], [0, 0]].map(p => JW.formReplaced(...p))));")
+    assert got == [True, True, False, False, False, False]

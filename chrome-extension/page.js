@@ -338,6 +338,7 @@
     }
     for (const f of fields) f.weak = !f.question;
     for (const f of fields) f.question = f.question || clean(registry.get(f.id).els[0].getAttribute('placeholder') || f.hint);
+    if (fields.length) trackForm();
     return { info: info(), fields, frame: location.href };
   }
 
@@ -467,8 +468,46 @@
 
   async function fill(items) {
     const out = [];
-    for (const item of items) out.push(await fillOne(item));
+    filling = true;
+    try {
+      for (const item of items) out.push(await fillOne(item));
+    } finally {
+      filling = false;
+    }
     return out;
+  }
+
+  // --- the form being replaced in place -------------------------------------------------------------
+
+  // Multi-step forms in a single-page app (Workday's Save and Continue) swap the step without a navigation, so the
+  // side panel would keep rows for fields that are gone. After a scan, watch the page and tell the panel once when
+  // most of the scanned fields have left it. Not while filling: that opens dropdowns and follow-up questions.
+  let scanned = [];
+  let filling = false;
+  let observer = null;
+  let checkTimer = 0;
+
+  function stillThere(els) {
+    return els.some((el) => el.isConnected && (el.type === 'file' || visible(el)));
+  }
+
+  function checkReplaced() {
+    checkTimer = 0;
+    if (filling) return;
+    if (!JW.formReplaced(scanned.length, scanned.filter(stillThere).length)) return;
+    observer.disconnect();
+    observer = null;
+    chrome.runtime.sendMessage({ type: 'formChanged' });
+  }
+
+  function trackForm() {
+    scanned = [...registry.values()].map((reg) => reg.els);
+    if (observer) return;
+    observer = new MutationObserver(() => {
+      clearTimeout(checkTimer);
+      checkTimer = setTimeout(checkReplaced, 400);
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
   }
 
   // --- the person's own submit --------------------------------------------------------------------

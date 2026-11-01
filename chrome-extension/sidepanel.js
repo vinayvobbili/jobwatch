@@ -3,8 +3,9 @@
  * active tab; scanning, filling and drafting all go back through the worker (background.js).
  *
  * It follows the active tab. When the person switches tabs or the tab loads another page, the rows are dropped
- * and a rescan is asked for, so a row never fills a form that is no longer on screen. `?tab=<id>` pins it to one
- * tab (the end-to-end test opens this page in an ordinary tab and points it at the form's tab).
+ * and a rescan is asked for, so a row never fills a form that is no longer on screen. A form that is replaced in
+ * place (a multi-step application moving to its next step) is told by the page and scanned again. `?tab=<id>` pins
+ * it to one tab (the end-to-end test opens this page in an ordinary tab and points it at the form's tab).
  */
 (function () {
   'use strict';
@@ -300,7 +301,19 @@
     if (id === tabId) idle('Open a job application in this tab, then press Fill this application.');
   });
 
-  chrome.runtime.onMessage.addListener((msg) => {
+  // A multi-step form that swaps its step in place (no navigation): the page says so, and the new step is read
+  // again. Scanning only reads (answers come from jobwatch, nothing is drafted), so it is safe to repeat; if the
+  // new step has no fields yet, the person is asked to scan once it is there.
+  async function stepChanged() {
+    if (!state || busy) return;
+    const old = state;
+    const id = tabId;
+    await scan();
+    if (state === old && id === tabId) idle(CHANGED);
+  }
+
+  chrome.runtime.onMessage.addListener((msg, sender) => {
+    if (msg && msg.type === 'formChanged' && sender.tab && sender.tab.id === tabId) stepChanged();
     if (msg && msg.type === 'toast' && (!tabId || msg.tabId === tabId)) toast(msg.text, msg.ok);
   });
   chrome.storage.onChanged.addListener((changes, area) => {

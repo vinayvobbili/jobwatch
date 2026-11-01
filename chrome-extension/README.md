@@ -35,7 +35,9 @@ has no standalone mode.
 
 The review lives in Chrome's side panel, docked beside the page like Claude's, so it never covers the form. At the top
 it says whether it is paired with jobwatch. It works on the tab you are looking at: switch tabs, or let the tab load
-another page, and the rows are dropped with a note to scan again, so a row never fills a form that is gone. If a page
+another page, and the rows are dropped with a note to scan again, so a row never fills a form that is gone. A
+multi-step form that swaps its next step in place (the address stays the same) is noticed too: the panel reads the
+new step by itself. If a page
 was not opened with the icon (Chrome only lets the extension touch a tab after you click its icon there), click the
 icon on that tab once. When the application is recorded in jobwatch after you submit, the side panel says so too (the
 icon also shows a check mark). Each field of the form is a row:

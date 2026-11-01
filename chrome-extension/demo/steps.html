@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Careers | Globex Corporation</title>
+<style>body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; } p { margin: 12px 0; }</style>
+</head>
+<body>
+<h1>Apply: Site Reliability Engineer</h1>
+<!-- A multi-step application in a single-page app (like Workday's): Save and Continue swaps the step in place, the address never changes. -->
+<form action="#" novalidate id="step" data-step="1">
+  <h2>My Information</h2>
+  <p><label for="fn">First name</label><br><input id="fn" name="fn" type="text"></p>
+  <p><label for="ln">Last name</label><br><input id="ln" name="ln" type="text"></p>
+  <p><label for="mail">Email address</label><br><input id="mail" name="mail" type="email"></p>
+  <button type="button" id="next">Save and Continue</button>
+</form>
+<script>
+const second = `<h2>Application Questions</h2>
+  <p><label for="np">What notice period would you need?</label><br><input id="np" name="np" type="text"></p>
+  <p><label for="city">Your city</label><br><input id="city" name="city" type="text"></p>
+  <p><label for="exp">Describe a time you handled a production incident.</label><br><textarea id="exp" name="exp" rows="3"></textarea></p>
+  <button type="button" id="next">Save and Continue</button>`;
+document.getElementById('next').addEventListener('click', () => {
+  setTimeout(() => { document.getElementById('step').innerHTML = second; }, 100);
+});
+</script>
+</body>
+</html>

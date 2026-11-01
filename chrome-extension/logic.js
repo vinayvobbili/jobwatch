@@ -337,7 +337,16 @@
       .replace(/\n{3,}/g, '\n\n').trim().slice(0, max || 60000);
   }
 
-  const JW = { DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
+  /**
+   * Whether the form a scan read has been swapped for another in place (a multi-step form moving on): fewer than
+   * half of the scanned fields are still on the page. A field or two appearing or going (an answer that opens a
+   * follow-up question) is the same form.
+   */
+  function formReplaced(scanned, remaining) {
+    return scanned > 0 && remaining * 2 < scanned;
+  }
+
+  const JW = { formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
     linkedinJobId, postingMode, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;

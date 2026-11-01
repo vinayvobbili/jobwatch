@@ -333,6 +333,21 @@ def test_nothing_is_put_in_the_page_and_a_new_page_asks_for_a_rescan(stack, ext,
     page.close()
 
 
+def test_a_step_that_replaces_the_form_in_place_is_scanned_again(stack, ext, panels):
+    url = f"http://127.0.0.1:{stack.site_port}/steps.html"
+    page = open_form(stack, ext, url)
+    panel = start_panel(stack, panels, url)
+    assert row(panel, "First name").count() == 1 and row(panel, "notice period").count() == 0
+    page.click("#next")  # Save and Continue: the next step replaces the first, the address stays
+    panel.wait_for_selector(".row:has-text('notice period')", timeout=20000)  # no press of the button
+    assert row(panel, "First name").count() == 0
+    assert page.url == url
+    fill_selected(panel)  # and the rows fill this step, not "the page changed"
+    assert page.input_value("#np") == "2 weeks"
+    assert stack.server.submitted == []
+    page.close()
+
+
 def test_the_panel_follows_the_active_tab(stack, ext, panels):
     url = f"http://127.0.0.1:{stack.site_port}/generic.html"
     panel = stack.extension_page("sidepanel.html")  # not pinned: it reads whichever tab is active

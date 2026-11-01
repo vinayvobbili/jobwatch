@@ -43,6 +43,7 @@ async function handle(msg, tabId, sender) {
     case 'tailor': return tailor(tabId);
     case 'captured': return captured(tabId, msg, sender);
     case 'looksSubmitted': return record(tabId);
+    case 'formChanged': return {}; // for the side panel, which hears it straight from the content script
     default: throw new Error(`unknown message ${msg.type}`);
   }
 }
