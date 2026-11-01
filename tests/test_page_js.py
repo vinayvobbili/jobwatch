@@ -103,6 +103,38 @@ console.log(JSON.stringify(out));
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_company_counts_follow_the_other_filters(tmp_path):
+    """A company's count is what picking it shows: a fit filter that leaves its one job out takes it off the list,
+    unless it's the company picked, which stays to be unpicked."""
+    jobs = [
+        {"company": "Initech", "title": "SRE", "keywords": ["python"], "fit": {"score": 85}, "where": []},
+        {"company": "Initech", "title": "Data Engineer", "keywords": [], "fit": None, "where": []},
+        {"company": "Globex", "title": "SRE", "keywords": ["python"], "fit": None, "where": []},
+    ]
+    base = {"q": "", "kws": [], "company": "", "where": "any", "fit": 0, "pay": 0, "posted": 0}
+    views = {"off": base, "fit80": {**base, "fit": 80}, "picked": {**base, "fit": 80, "company": "Globex"},
+             "search": {**base, "q": "data"}, "python": {**base, "kws": ["python"]}}
+    js = tmp_path / "counts.js"
+    js.write_text(page_function("quickNarrow") + "\n" + page_function("companyCounts") + f"""
+const jobs = {json.dumps(jobs)}, views = {json.dumps(views)};
+const out = {{}}, kept = {{Umbrella: 4}};
+for (const [n, v] of Object.entries(views)) out[n] = companyCounts(jobs, {{...v, kws: new Set(v.kws)}});
+out.kept = companyCounts(jobs, {{...views.fit80, kws: new Set()}}, kept);
+console.log(JSON.stringify(out));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {
+        "off": {"Initech": 2, "Globex": 1},
+        "fit80": {"Initech": 1},
+        "picked": {"Initech": 1, "Globex": 0},
+        "search": {"Initech": 1},
+        "python": {"Initech": 1, "Globex": 1},
+        "kept": {"Initech": 1},  # refilled in place: old names go
+    }
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_the_page_stays_on_the_persons_side(tmp_path):
     """Every stage gets its own kind word (a no is put in its place, never just "marked rejected"), and Today
     says hello for the time of day."""

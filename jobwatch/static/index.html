@@ -2822,6 +2822,17 @@ function quickNarrow(j, v) {
     (!v.pay || j.salary_max == null || j.salary_max >= v.pay) &&
     (!v.posted || j.age_days == null || j.age_days <= v.posted);  // no posting date: still shows
 }
+// Jobs per company among the ones the other filters (search, keywords, quick narrowing) let through: a company's
+// count is what picking it shows. `into` is refilled in place, since the Companies list keeps reading it.
+function companyCounts(jobs, v, into = {}) {
+  const q = v.q.trim().toLowerCase();
+  for (const k of Object.keys(into)) delete into[k];
+  for (const j of jobs)
+    if ((!q || `${j.title} ${j.company}`.toLowerCase().includes(q)) && [...v.kws].every(k => j.keywords.includes(k)) &&
+        quickNarrow(j, v)) into[j.company] = (into[j.company] || 0) + 1;
+  if (v.company && !(v.company in into)) into[v.company] = 0;  // the picked one stays listed, to unpick
+  return into;
+}
 let todayJobs = [], drawToday = () => {};
 
 // The checkboxes in Today's Companies list: unticking one leaves its jobs out from now on
@@ -2855,11 +2866,8 @@ async function renderToday() {
   const out = Object.values(d.rejected).reduce((a, b) => a + b, 0);
   const fresh = d.jobs.filter(j => j.status === "new").length, strong = d.jobs.filter(j => j.fit && j.fit.score >= 75).length;
   const picks = d.picks && d.jobs.length > d.picks ? d.picks : 0;  // Today's picks lead when there are more matches
-  const byCompany = {}, byKw = {};
-  for (const j of d.jobs) {
-    byCompany[j.company] = (byCompany[j.company] || 0) + 1;
-    for (const k of j.keywords) byKw[k] = (byKw[k] || 0) + 1;
-  }
+  const byCompany = companyCounts(d.jobs, todayView), byKw = {};
+  for (const j of d.jobs) for (const k of j.keywords) byKw[k] = (byKw[k] || 0) + 1;
   const v = todayView;
   const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
   const scoring = h("div", { class: "scoring" }), checked = h("div", { class: "scoring checked" });
@@ -2893,6 +2901,8 @@ async function renderToday() {
   };
 
   drawToday = () => {
+    companyCounts(todayJobs, v, byCompany);
+    companies.redraw();
     const q = v.q.trim().toLowerCase();
     let jobs = todayJobs.filter(j => (!q || `${j.title} ${j.company}`.toLowerCase().includes(q)) &&
       (!v.company || j.company === v.company) && [...v.kws].every(k => j.keywords.includes(k)) && quickNarrow(j, v));
