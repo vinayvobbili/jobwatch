@@ -876,7 +876,9 @@ def cmd_comps(args, cfg, store):
 
 
 def cmd_check(args, cfg, store):
-    if args.daily:  # what the scheduled check does: Today's alert jobs too, a day's cap, none twice in a day
+    if args.keys:  # these jobs only, whatever their status (one closed by mistake reopens if it's up)
+        checks = check_postings(store, watched=cfg.boards, jobs=[store.find(k) for k in args.keys])
+    elif args.daily:  # what the scheduled check does: Today's alert jobs too, a day's cap, none twice in a day
         checks = check_daily(store, watched=cfg.boards)
     else:
         checks = check_postings(store, tuple(args.status or CHECKED), watched=cfg.boards)
@@ -1302,6 +1304,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("check", help="check that queued jobs and open applications are still posted, and record "
                        "the ones that closed (or came back)")
+    p.add_argument("keys", nargs="*", metavar="KEY", help="check only these jobs (key or posting id), any status")
     p.add_argument("--status", choices=STATUSES, action="append", help="only jobs with this status (repeatable)")
     p.add_argument("--all", action="store_true", help="also list the ones still open")
     p.add_argument("--daily", action="store_true", help="what each scheduled check does: also the alert and "

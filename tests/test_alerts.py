@@ -797,6 +797,19 @@ def test_backfill_fills_in_a_job_saved_with_no_text(web, watchlist):
     assert not any("linkedin.com" in c for c in web.calls)
 
 
+def test_backfill_keeps_a_link_the_board_can_be_read_by(web, watchlist):
+    """A board embedded on the company's careers page gives that page as the posting's link, which names no board:
+    the job gets the board's own page instead, so the daily posting check can still read it."""
+    embedded = {**posting_of(7, "Platform Engineer"), "absolute_url": "https://umbrella.example/careers?gh_jid=7"}
+    umbrella_board(web, embedded)
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    key = emailed(store)
+    store.note_unwatched("umbrella", "Umbrella", key, "greenhouse:umbrellacorp", "posting")
+    alerts.backfill(cfg, store)
+    assert store.find(key)[0].url == "https://job-boards.greenhouse.io/umbrellacorp/jobs/7"
+
+
 def test_backfill_tries_a_missing_job_once_a_day_and_only_so_many(web, watchlist):
     cfg = config.load(watchlist)
     store = Store(cfg.state)

@@ -67,18 +67,20 @@ console.log(JSON.stringify({
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_todays_quick_narrowing(tmp_path):
     jobs = {
-        "remote": {"where": ["remote"], "fit": {"score": 82}, "salary_max": 260000},
-        "city": {"where": ["onsite"], "fit": {"score": 65}, "salary_max": 180000},
-        "both": {"where": ["remote", "onsite"], "fit": None, "salary_max": None},  # not scored, no pay listed
-        "nowhere": {"where": [], "fit": {"score": 50}, "salary_max": 300000},
+        "remote": {"where": ["remote"], "fit": {"score": 82}, "salary_max": 260000, "age_days": 2},
+        "city": {"where": ["onsite"], "fit": {"score": 65}, "salary_max": 180000, "age_days": 10},
+        # not scored, no pay listed, no posting date
+        "both": {"where": ["remote", "onsite"], "fit": None, "salary_max": None, "age_days": None},
+        "nowhere": {"where": [], "fit": {"score": 50}, "salary_max": 300000, "age_days": 3},
     }
     views = {
-        "off": {"where": "any", "fit": 0, "pay": 0},
-        "remote": {"where": "remote", "fit": 0, "pay": 0},
-        "onsite": {"where": "onsite", "fit": 0, "pay": 0},
-        "fit70": {"where": "any", "fit": 70, "pay": 0},
-        "pay250": {"where": "any", "fit": 0, "pay": 250000},
-        "all": {"where": "remote", "fit": 80, "pay": 250000},
+        "off": {"where": "any", "fit": 0, "pay": 0, "posted": 0},
+        "remote": {"where": "remote", "fit": 0, "pay": 0, "posted": 0},
+        "onsite": {"where": "onsite", "fit": 0, "pay": 0, "posted": 0},
+        "fit70": {"where": "any", "fit": 70, "pay": 0, "posted": 0},
+        "pay250": {"where": "any", "fit": 0, "pay": 250000, "posted": 0},
+        "week": {"where": "any", "fit": 0, "pay": 0, "posted": 3},
+        "all": {"where": "remote", "fit": 80, "pay": 250000, "posted": 3},
     }
     js = tmp_path / "narrow.js"
     js.write_text(page_function("quickNarrow") + f"""
@@ -95,6 +97,7 @@ console.log(JSON.stringify(out));
         "onsite": ["city", "both", "nowhere"],
         "fit70": ["remote", "both"],                 # not scored yet still shows
         "pay250": ["remote", "both", "nowhere"],     # no listed pay still shows
+        "week": ["remote", "both", "nowhere"],       # posted within 3 days; no date still shows
         "all": ["remote", "both"],
     }
 

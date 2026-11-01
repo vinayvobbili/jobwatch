@@ -727,10 +727,10 @@ def _past(stamp) -> bool:
 
 def page_open(job: Job, page=None, robots: Robots | None = None) -> bool | None:
     """Whether a job site's page (Built In's, say) still shows the posting: False when the page is gone (404/410),
-    its JobPosting data has ended (validThrough is past: Built In's removed pages keep their data and say when
-    it was removed there), or a job that was read from a page has none now. None when the site's robots.txt
-    doesn't allow reading it, it's LinkedIn's or Indeed's, or the page says nothing either way. Raises
-    SourceError when the page can't be read now."""
+    or its JobPosting data has ended (validThrough is past: Built In's removed pages keep their data and say when
+    it was removed there). None when the site's robots.txt doesn't allow reading it, it's LinkedIn's or Indeed's,
+    or the page says nothing either way: a page with no JobPosting data isn't taken as closed, since many careers
+    sites never had any. Raises SourceError when the page can't be read now."""
     host = urlparse(job.url).netloc.lower()
     if not job.url or any(host == s or host.endswith(f".{s}") for s in UNREAD_SITES):
         return None
@@ -741,9 +741,7 @@ def page_open(job: Job, page=None, robots: Robots | None = None) -> bool | None:
     except sources.NotFound:
         return False
     data = job_posting_data(text)
-    if data is None:
-        return False if job.description.strip() else None
-    return not _past(data.get("validThrough"))
+    return None if data is None else not _past(data.get("validThrough"))
 
 
 def _place(loc) -> str:
@@ -1101,10 +1099,19 @@ def backfill(cfg, store: Store, page=None, limit: int = BACKFILL_CAP, dry_run: b
         if found:
             if job.url and clean_link(job.url) != clean_link(found.url):
                 store.add_note(job.key, f"Posting found on the company's board; the alert's link was {job.url}")
-            store.set_url(job.key, found.url)
+            store.set_url(job.key, board_link(found))
             store.set_description(job.key, found.description, found)
             result.filled.append(found)
     return result
+
+
+def board_link(job: Job) -> str:
+    """A link to a board's posting that jobwatch can read again (to see it's still up): its own link, unless
+    that's the company's careers page embedding a Greenhouse board ("acme.com/careers?gh_jid=123"), which names
+    no board; then the board's hosted page for it."""
+    if job.source == "greenhouse" and not sources.detect(job.url):
+        return f"https://job-boards.greenhouse.io/{job.company}/jobs/{job.id}"
+    return job.url
 
 
 def backfill_summary(r: Backfill) -> str:

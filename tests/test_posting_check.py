@@ -63,10 +63,11 @@ def test_a_missing_page_is_gone_and_an_unreadable_one_is_an_error():
         alerts.page_open(job(), pages(**{URL: sources.SourceError("HTTP 500")}))
 
 
-def test_a_page_without_posting_data_is_gone_only_for_a_job_read_from_a_page():
+def test_a_page_without_posting_data_says_nothing():
+    """Many careers sites never had JobPosting data: its absence isn't taken as closed."""
     page = pages(**{URL: "<html><body>Search our jobs</body></html>"})
-    assert alerts.page_open(job(description="Build things."), page) is False
-    assert alerts.page_open(job(), page) is None  # nothing says it was ever a posting
+    assert alerts.page_open(job(description="Build things."), page) is None
+    assert alerts.page_open(job(), page) is None
 
 
 def test_robots_linkedin_and_indeed_are_not_read():
