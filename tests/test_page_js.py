@@ -103,6 +103,39 @@ console.log(JSON.stringify(out));
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_companies_can_be_filtered_and_ticked_or_unticked_all_at_once(tmp_path):
+    """Today's Companies list has a search box, and All / None act on what it shows: every name, or the matches."""
+    js = tmp_path / "facets.js"
+    js.write_text(page_function("facetList") + """
+const kept = kids => kids.flat(Infinity).filter(k => k != null && k !== false);
+const h = (tag, attrs, ...kids) => ({ tag, ...(attrs || {}), kids: kept(kids) });
+const fill = (el, ...kids) => { el.kids = kept(kids); };
+const counts = { Initech: 3, Globex: 2, "Globex Labs": 1 }, calls = [];
+const el = facetList(counts, () => "", () => {}, 12, { hidden: () => ({ Umbrella: 4, "Globex Retail": 1 }),
+  onhide: () => {}, onshow: () => {},
+  onhideall: n => calls.push(["hide", n]), onshowall: n => calls.push(["show", n]) });
+const [tools, list] = el.kids, [search, all, none] = tools.kids;
+const names = () => list.kids.filter(r => r.kids && r.kids.length === 3).map(r => r.kids[1].kids[0]);
+const click = b => b.onclick({ currentTarget: b });
+const shown = [names()];
+search.value = "glob"; search.oninput();
+shown.push(names());
+click(none); click(all);
+search.value = "zzz"; search.oninput();
+const empty = list.kids.map(k => k.kids?.[0]).filter(t => typeof t === "string");
+console.log(JSON.stringify({ shown, calls, empty }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {
+        "shown": [["Initech", "Globex", "Globex Labs", "Globex Retail", "Umbrella"],  # hidden ones last, A-Z
+                  ["Globex", "Globex Labs", "Globex Retail"]],
+        "calls": [["hide", ["Globex", "Globex Labs"]], ["show", ["Globex Retail"]]],
+        "empty": ["No company matches"],
+    }
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_an_old_open_role_isnt_called_new(tmp_path):
     """A company's roles all arrive as "new" when its board is first watched: one posted long ago says its age."""
     js = tmp_path / "status.js"

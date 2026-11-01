@@ -697,6 +697,9 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .facet:hover { background: var(--chip); }
 .facet.on { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
 .facet .c { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+.facet-tools { display: flex; gap: 6px; align-items: center; margin: 0 0 8px; }
+.facet-tools .facet-search { flex: 1; min-width: 0; padding: 6px 10px; border-radius: 999px; font-size: 13px; }
+.facet-tools .btn { padding: 4px 10px; font-size: 12.5px; flex: none; }
 .facet.row { justify-content: flex-start; gap: 8px; padding: 0 8px; cursor: default; }
 .facet.row input { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer;
   transition: transform .12s; }
@@ -1193,12 +1196,24 @@ function relDay(day, today) {
 }
 function addDays(day, n) { return new Date(Date.parse(day) + n * 86400000).toISOString().slice(0, 10); }
 
+// jobwatch was restarted since this page loaded, so its token is a new one: load the page again to get it (once,
+// not in a loop if the reload doesn't help).
+function staleToken() {
+  try {
+    const last = Number(sessionStorage.getItem("jobwatch-reloaded")) || 0;
+    if (Date.now() - last < 30000) return;
+    sessionStorage.setItem("jobwatch-reloaded", String(Date.now()));
+  } catch { return; }
+  toast("jobwatch restarted: reloading the page…");
+  setTimeout(() => location.reload(), 800);
+}
 async function api(path, body, raw) {
   const opts = { method: body === undefined && !raw ? "GET" : "POST", headers: { "X-Jobwatch-Token": TOKEN } };
   if (raw) { opts.body = raw; }
   else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
   const r = await fetch(path, opts);
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  if (r.status === 403 && /wrong token/.test(data.error || "")) staleToken();
   if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
   return data;
 }
@@ -2496,9 +2511,29 @@ function segmented(options, value, onpick) {
 // `toggle`, when given ({hidden: name -> count, onhide, onshow}): a checkbox on each row, ticked while its jobs
 // show. Unticking leaves that name out (a company from Today); the ones left out stay listed at the end, unticked
 // with the jobs they'd bring back, so ticking one again is a click away.
+// With `toggle.onhideall` and `toggle.onshowall` (each given the names), a search box narrows the list and All / None
+// tick or untick every name it shows at once.
 function facetList(counts, active, onpick, most = 12, toggle = null) {
-  const el = h("div", {});
-  let open = false;
+  const list = h("div", {});
+  let open = false, q = "";
+  const matches = name => !q || name.toLowerCase().includes(q);
+  const bulk = toggle && toggle.onhideall ? (() => {
+    const search = h("input", { type: "search", class: "facet-search", placeholder: "Filter companies", "aria-label": "Filter companies" });
+    search.oninput = () => { q = search.value.trim().toLowerCase(); draw(); };
+    const names = on => Object.keys(on ? counts : toggle.hidden()).filter(matches);
+    const btn = (label, title, on) => h("button", { class: "btn ghost", title, onclick: e => {
+      const pick = names(on);
+      if (!pick.length) return;
+      e.currentTarget.disabled = true;
+      (on ? toggle.onhideall : toggle.onshowall)(pick);
+    } }, label);
+    return h("div", { class: "facet-tools" }, search,
+      btn("All", "Tick every company listed (the filter's matches when you've typed one)", false),
+      btn("None", "Hide every company listed from Today (the filter's matches when you've typed one): saved, like " +
+        "unticking each, until you tick them again", true));
+  })() : null;
+  const el = h("div", {}, bulk, list);
+  const fill_ = (...kids) => fill(list, ...kids);
   const box = (name, on) => {
     const c = h("input", { type: "checkbox", title: on ? `Untick to hide ${name}'s jobs` : `Tick to show ${name}'s jobs again`,
       "aria-label": `Show ${name}'s jobs` });
@@ -2507,16 +2542,17 @@ function facetList(counts, active, onpick, most = 12, toggle = null) {
     return c;
   };
   const draw = () => {
-    const rows = Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-    const off = toggle ? Object.entries(toggle.hidden()).sort((a, b) => a[0].localeCompare(b[0])) : [];
-    fill(el, (open ? rows : rows.slice(0, most)).map(([name, n]) => !toggle
+    const rows = Object.entries(counts).filter(([name]) => matches(name)).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const off = toggle ? Object.entries(toggle.hidden()).filter(([name]) => matches(name)).sort((a, b) => a[0].localeCompare(b[0])) : [];
+    fill_((open || q ? rows : rows.slice(0, most)).map(([name, n]) => !toggle
       ? h("button", { class: "facet" + (name === active() ? " on" : ""), onclick: () => { onpick(name === active() ? "" : name); draw(); } },
         h("span", {}, name), h("span", { class: "c" }, n))
       : h("div", { class: "facet row" + (name === active() ? " on" : "") }, box(name, true),
         h("button", { class: "fname", title: `Only ${name}'s jobs`, onclick: () => { onpick(name === active() ? "" : name); draw(); } }, name),
         h("span", { class: "c" }, n))),
-      rows.length > most ? h("button", { class: "facet more", onclick: () => { open = !open; draw(); } },
+      rows.length > most && !q ? h("button", { class: "facet more", onclick: () => { open = !open; draw(); } },
         open ? "Show fewer" : `Show all ${rows.length}`) : null,
+      q && !rows.length && !off.length ? h("div", { class: "small muted", style: "padding:4px 8px" }, "No company matches") : null,
       off.length ? h("div", { class: "facet-sep" }, `Hidden · ${off.length}`) : null,
       off.map(([name, n]) => h("label", { class: "facet row off", title: `Tick to show ${name}'s jobs again` }, box(name, false),
         h("span", { class: "fname" }, name), h("span", { class: "c" }, n || ""))));
@@ -2893,6 +2929,21 @@ async function hideCompany(name) {
     toast(`🙈 Hid ${name}: it waits unticked at the bottom of Companies.`, () => saveLeftOut(leftOutBut(name)));
   } catch (e) { toast(`Couldn't hide ${name}: ${e.message}`); await render(); }
 }
+async function hideCompanies(names) {
+  if (names.includes(todayView.company)) todayView.company = "";
+  const before = leftOut();
+  try {
+    await saveLeftOut([...new Set([...before, ...names])]);
+    toast(`🙈 Hid ${names.length} compan${names.length === 1 ? "y" : "ies"}: tick the ones you want back.`, () => saveLeftOut(before));
+  } catch (e) { toast(`Couldn't hide them: ${e.message}`); await render(); }
+}
+async function showCompanies(names) {
+  const before = leftOut(), back = new Set(names.map(n => n.toLowerCase()));
+  try {
+    await saveLeftOut(before.filter(n => !back.has(n.toLowerCase())));
+    toast(`👀 ${names.length} compan${names.length === 1 ? "y is" : "ies are"} back on Today.`, () => saveLeftOut(before), "win");
+  } catch (e) { toast(`Couldn't show them: ${e.message}`); await render(); }
+}
 async function showCompany(name) {
   try {
     await saveLeftOut(leftOutBut(name));
@@ -2922,7 +2973,7 @@ async function renderToday() {
       onclick: () => { v.kws.has(k) ? v.kws.delete(k) : v.kws.add(k); drawKws(); drawToday(); } }, k)));
   drawKws();
   const companies = facetList(byCompany, () => v.company, name => { v.company = name; drawToday(); }, 12, {
-    onhide: hideCompany, onshow: showCompany,
+    onhide: hideCompany, onshow: showCompany, onhideall: hideCompanies, onshowall: showCompanies,
     hidden: () => (hidden && hidden.companies) || Object.fromEntries(leftOut().map(n => [n, 0])) });
   const narrow = h("div", {});
   const drawNarrow = () => fill(narrow,
