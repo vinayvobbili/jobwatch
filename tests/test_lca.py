@@ -199,17 +199,26 @@ def test_with_too_few_in_the_city_the_state_then_the_country_is_used(cache):
     index.close()
 
 
-def test_with_a_home_state_its_filings_come_first_then_the_whole_us(cache):
-    """A remote job listed in Seattle is worked from the home state: its filings first, never Washington's; with
-    too few there, the whole US, labeled so (home state only left almost every job blank)."""
+def test_with_a_home_state_only_its_filings_count(cache):
+    """A remote job listed in Seattle is worked from the home state: its filings, never Washington's or the
+    whole country's. The employer's there first, else every employer's there for the same work (its market)."""
     index = lca.Index.open(cache[0])
     remote = lca.for_job(index, job(where=("Seattle, WA (Remote)",)), home_state="TX")
     assert (remote.where, remote.count) == ("TX", 5)
     assert lca.for_job(index, job(where=("Austin, TX",)), home_state="TX").where == "Austin, TX"
-    # one filing in Washington: not Washington's alone, the whole US's
-    seattle = lca.for_job(index, job(where=("Seattle, WA (Remote)",)), home_state="WA")
-    assert (seattle.where, seattle.count) == (lca.US, 6)
-    assert lca.for_job(index, job(where=("Remote - United States",)), home_state="CO").where == lca.US
+    # Umbrella filed nothing: Texas's market for a senior software engineer, Acme's filings there
+    market = lca.for_job(index, job(company="Umbrella", where=("Remote - United States",)), home_state="TX")
+    assert (market.where, market.count) == ("TX, all employers", 5)
+    # one filing in Washington, two in Colorado: no falling back to the whole US
+    assert lca.for_job(index, job(where=("Seattle, WA (Remote)",)), home_state="WA") is None
+    assert lca.for_job(index, job(title="Data Analyst", where=("Remote",)), home_state="CO") is None
+    index.close()
+
+
+def test_a_market_estimate_names_how_many_employers_filed(cache):
+    index = lca.Index.open(cache[0])
+    two = lca.Index.estimate(index, [], "Senior Software Engineer", states=["TX"], anywhere=False, market=True)
+    assert two.why[0].startswith("5 certified full-time LCA filings by Acme")
     index.close()
 
 

@@ -358,6 +358,7 @@ class Index:
     def __init__(self, db: sqlite3.Connection):
         self.db = db
         self.db.row_factory = sqlite3.Row
+        self._states: dict[tuple[str, ...], list[dict]] = {}
 
     @classmethod
     def open(cls, path: Path) -> Index | None:
@@ -380,14 +381,23 @@ class Index:
         return {"updated": row[0] if row else None, "rows": sum(r["n"] for r in years),
                 "years": {r["fy"]: r["n"] for r in years}}
 
-    def employer_rows(self, keys: list[str]) -> list[dict]:
-        if not keys:
-            return []
-        marks = ",".join("?" * len(keys))
+    def _rows(self, where: str, args: list) -> list[dict]:
         return [{"employer": r["employer"], "title": r["title"], "city": r["city"], "state": r["state"],
                  "wage": r["low"], "high": r["high"], "level": r["level"], "year": r["year"] or r["fy"],
                  "words": title_words(r["title"]), "rank": (seniority(r["title"]) or (None,))[0]}
-                for r in self.db.execute(f"SELECT * FROM filings WHERE ekey IN ({marks})", keys)]
+                for r in self.db.execute(f"SELECT * FROM filings WHERE {where}", args)]
+
+    def employer_rows(self, keys: list[str]) -> list[dict]:
+        if not keys:
+            return []
+        return self._rows(f"ekey IN ({','.join('?' * len(keys))})", keys)
+
+    def state_rows(self, states: list[str]) -> list[dict]:
+        """Every employer's filings in those states, read once per Index (a home state's market)."""
+        key = tuple(sorted(states))
+        if key not in self._states:
+            self._states[key] = self._rows(f"state IN ({','.join('?' * len(key))})", list(key)) if key else []
+        return self._states[key]
 
     def titles(self, keys: list[str], limit: int = 15) -> list[dict]:
         """An employer's most filed titles, with how many filings and the median base of each."""
@@ -398,18 +408,22 @@ class Index:
         return [{"title": t, "count": len(w), "median": percentile(w, 0.5)} for t, w in top]
 
     def estimate(self, keys: list[str], title: str, cities: list[str] = (), states: list[str] = (),
-                 anywhere: bool = True) -> Estimate | None:
+                 anywhere: bool = True, market: bool = False) -> Estimate | None:
         """Filings by the employer for the same kind of work at the same seniority: those in one of the cities
-        if there are MIN_FILINGS, else in one of the states, else (when `anywhere`) anywhere in the US; None when
-        even that is fewer than MIN_FILINGS."""
+        if there are MIN_FILINGS, else in one of the states, else (when `market`) every employer's in those states,
+        else (when `anywhere`) the employer's anywhere in the US; None when even that is fewer than MIN_FILINGS."""
         words = title_words(title)
         rank = (seniority(title) or (None,))[0]
-        matches = [r for r in self.employer_rows(keys) if r["rank"] == rank and same_work(words, r["words"])]
+        alike = lambda rows: [r for r in rows if r["rank"] == rank and same_work(words, r["words"])]  # noqa: E731
+        matches = alike(self.employer_rows(keys))
         cities = {c.lower() for c in cities if c}
-        tiers = ((lambda r: r["city"].lower() in cities, "{city}"), (lambda r: r["state"] in states, "{state}"),
-                 *([(lambda r: True, US)] if anywhere else []))
-        for test, tier in tiers:
-            near = sorted((r for r in matches if test(r)), key=_by_recency, reverse=True)
+        tiers = ((lambda: matches, lambda r: r["city"].lower() in cities, "{city}"),
+                 (lambda: matches, lambda r: r["state"] in states, "{state}"),
+                 *([(lambda: alike(self.state_rows(states)), lambda r: True, "{state}, all employers")]
+                   if market and states else []),
+                 *([(lambda: matches, lambda r: True, US)] if anywhere else []))
+        for rows, test, tier in tiers:
+            near = sorted((r for r in rows() if test(r)), key=_by_recency, reverse=True)
             if len(near) >= MIN_FILINGS:
                 where = tier.format(city=f"{near[0]['city'].title()}, {near[0]['state']}", state=", ".join(states))
                 break
@@ -422,7 +436,9 @@ class Index:
         years = [r["year"] for r in near if r["year"]]
         seen = ", ".join(f"{lv} x{n}" for lv, n in levels.items())
         same = ", the same seniority as the job's title" if rank is not None else ""
-        why = [f"{len(near)} certified full-time LCA filings by {common('employer')} for titles like "
+        employers = len({r["employer"] for r in near})
+        who = common("employer") if employers == 1 else f"{employers} employers"
+        why = [f"{len(near)} certified full-time LCA filings by {who} for titles like "
                f"\"{common('title')}\" ({where}){same}",
                "Each is the base wage the employer filed for an H-1B hire: no bonus or stock, and a floor rather "
                "than a negotiated number",
@@ -453,13 +469,14 @@ def places(job: Job, home_state: str = "") -> tuple[list[str], list[str]]:
 
 def for_job(index: Index | None, job: Job, home_state: str = "") -> Estimate | None:
     """The job's estimate from the cache; None without a cache, an employer filed under another name, or fewer
-    than MIN_FILINGS matches (then nothing is shown, never a guess). With a home state (filters.home_state), its
-    filings come first, never another state's; with too few there, the whole US, labeled US-wide. (Home state
-    only left almost every job blank: few employers file three for one title in any one state.)"""
+    than MIN_FILINGS matches (then nothing is shown, never a guess). With a home state (filters.home_state), only
+    its filings count, never another state's or the whole country's: the employer's there first, else every
+    employer's there for the same kind of work and seniority (its market), since few employers file three for one
+    title in any one state."""
     if index is None:
         return None
     cities, states = places(job, home_state)
-    return index.estimate(job_keys(job), job.title, cities, states)
+    return index.estimate(job_keys(job), job.title, cities, states, anywhere=not home_state, market=bool(home_state))
 
 
 def for_one_job(cfg, job: Job) -> Estimate | None:
