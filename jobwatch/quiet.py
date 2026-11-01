@@ -4,7 +4,7 @@ still open and what to do next. A suggestion only: nothing here changes an appli
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime
 
 from .config import Quiet
 from .contacts import Contacts
@@ -17,10 +17,18 @@ NUDGE = "A short check-in to the recruiter or a contact."
 
 
 def _day(text: str | None) -> date | None:
-    try:
-        return date.fromisoformat(text[:10]) if text else None
-    except ValueError:
+    """The local day of a date or a timestamp: a status change stored in UTC at 9 PM Eastern is still today here,
+    not tomorrow, as date.today() counts."""
+    if not text:
         return None
+    try:
+        when = datetime.fromisoformat(text)
+    except ValueError:
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            return None
+    return when.astimezone().date() if when.tzinfo and len(text) > 10 else when.date()
 
 
 def last_news(rec: dict) -> date | None:

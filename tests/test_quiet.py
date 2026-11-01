@@ -1,6 +1,6 @@
 """Applications that have gone quiet: detection by stage, what to do next, snoozing, the due list, where it shows."""
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -63,6 +63,15 @@ def test_quiet_after_the_days_set_for_its_stage(store, status, news, days):
     ("offer", "2026-01-01"), ("rejected", "2026-01-01"), ("withdrawn", "2026-01-01")])
 def test_not_quiet_yet_or_not_open(store, status, news):
     assert assess(store, put(store, "Globex", "Data Engineer", status, news)) is None
+
+
+def test_a_timestamp_counts_on_its_local_day():
+    """A status change stored in UTC late in the evening is still that day where the person is, not the next."""
+    evening = datetime(2026, 10, 31, 21, 30).astimezone()  # 9:30 PM local
+    stamp = evening.astimezone(timezone.utc).isoformat()
+    assert quiet._day(stamp) == date(2026, 10, 31)
+    assert quiet._day("2026-10-31") == date(2026, 10, 31) and quiet._day("") is None
+    assert quiet._day((evening + timedelta(hours=3)).astimezone(timezone.utc).isoformat()) == date(2026, 11, 1)
 
 
 def test_a_stage_set_to_zero_is_never_quiet(store):
