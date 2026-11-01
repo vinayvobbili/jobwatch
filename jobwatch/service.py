@@ -39,7 +39,8 @@ def log_path() -> Path:
 
 
 def definition(config: Path, port: int) -> dict:
-    """The launchd job: this Python and jobwatch, the watchlist by absolute path, no browser tab."""
+    """The launchd job: this Python and jobwatch, the watchlist by absolute path, no browser tab, and the PATH of
+    the shell that installed it (launchd's own is /usr/bin:/bin..., without Homebrew: Tailor resume runs node)."""
     return {
         "Label": LABEL,
         "ProgramArguments": [sys.executable, "-m", "jobwatch.cli", "-c", str(config), "ui", "--no-browser",
@@ -51,7 +52,7 @@ def definition(config: Path, port: int) -> dict:
         "LowPriorityIO": True,
         "StandardOutPath": str(log_path()),
         "StandardErrorPath": str(log_path()),
-        "EnvironmentVariables": {"PYTHONUNBUFFERED": "1"},
+        "EnvironmentVariables": {"PYTHONUNBUFFERED": "1", "PATH": os.environ.get("PATH", os.defpath)},
     }
 
 

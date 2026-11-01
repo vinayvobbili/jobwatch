@@ -26,13 +26,16 @@ def launchd(tmp_path, monkeypatch):
     return calls
 
 
-def test_install_writes_a_login_item_for_this_watchlist(launchd, watchlist, capsys):
+def test_install_writes_a_login_item_for_this_watchlist(launchd, watchlist, capsys, monkeypatch):
+    monkeypatch.setenv("PATH", "/opt/tools/bin:/usr/bin:/bin")
     cli.main(["-c", str(watchlist), "service", "install", "--port", "8800"])
     assert "http://jobwatch.localhost:8800/" in capsys.readouterr().out
     job = plistlib.loads(service.plist_path().read_bytes())
     assert job["Label"] == service.LABEL and job["RunAtLoad"] and job["KeepAlive"]
     assert job["ProgramArguments"] == [sys.executable, "-m", "jobwatch.cli", "-c", str(watchlist.resolve()), "ui",
                                        "--no-browser", "--port", "8800"]
+    # the shell's PATH: launchd's own lacks Homebrew, and Tailor resume runs node from there
+    assert job["EnvironmentVariables"]["PATH"] == "/opt/tools/bin:/usr/bin:/bin"
     assert [c[0] for c in launchd] == ["bootout", "print", "bootstrap"]
     assert service.status() == {"installed": True, "running": True, "pid": 4242, "log": str(service.log_path()),
                                 "url": "http://jobwatch.localhost:8800/"}
