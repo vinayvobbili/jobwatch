@@ -16,6 +16,7 @@ from .filters import (
     KINDS,
     Filters,
     excluded_company,
+    office_nearby,
     red_flags,
     reject_reason,
     rejection,
@@ -372,7 +373,10 @@ def warnings(job: Job, f: Filters) -> list[str]:
     if job.source != MANUAL and job.locations and \
             (why := reject_reason(job, Filters(locations=f.locations, remote_country=f.remote_country,
                                                home_state=f.home_state))):
-        out.append(f"location: {'; '.join(job.locations[:3])}" + (f" ({why})" if why != "location" else ""))
+        where = f"location: {'; '.join(job.locations[:3])}" + (f" ({why})" if why != "location" else "")
+        if office := office_nearby(job, f):
+            where += f"; {office} has an office near you: ask the recruiter about working from it in the phone screen"
+        out.append(where)
     out += red_flags(job, f)
     return out
 

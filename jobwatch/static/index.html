@@ -2630,6 +2630,7 @@ function filterInputs(f) {
     excludeText: area(f.exclude_text, "red team\nGPU kernels?"),
     excludeCompanies: area(f.exclude_companies, "Initech\nGlobex"),
     locations: area(f.locations, "remote\nNew York"),
+    nearOffices: area(f.nearby_offices, "Initech\nGlobex"),
     country: h("select", {}, h("option", { value: "US" }, "Remote jobs open in the US"),
       h("option", { value: "any" }, "Remote jobs anywhere")),
     home: h("input", { type: "text", placeholder: "e.g. NC", maxlength: 30 }),
@@ -2654,7 +2655,7 @@ function filterValues(inp) {
   return { titles: unlines(inp.titles.value), exclude_titles: unlines(inp.exclude.value),
     exclude_text: unlines(inp.excludeText.value), exclude_companies: unlines(inp.excludeCompanies.value),
     locations: placeLines(inp.locations.value), remote_country: inp.country.value,
-    home_state: inp.home.value.trim() || null,
+    home_state: inp.home.value.trim() || null, nearby_offices: unlines(inp.nearOffices.value),
     min_salary: inp.minPay.value ? Number(inp.minPay.value) : null, require_salary: inp.requirePay.checked || null,
     max_age_days: inp.maxAge.value ? Number(inp.maxAge.value) : null,
     min_fit: Number(inp.minFit.value) || null };
@@ -2672,6 +2673,13 @@ function filterLabel(text, hint) { return h("label", {}, text, hint ? [" ", h("s
 function homeField(inp) {
   return h("div", {}, filterLabel("Your state", "remote jobs open only in other states are left out"), inp.home);
 }
+// Companies with an office in your places: their jobs anywhere show, to ask the recruiter about that office.
+const NEAR_OFFICES_HINT = "one per line; their jobs anywhere show, to ask the recruiter about working from that " +
+  "office (`jobwatch offices` finds them)";
+function nearOfficesField(inp) {
+  return h("div", { style: "margin-top:6px" }, filterLabel("Companies with an office near you", NEAR_OFFICES_HINT),
+    inp.nearOffices);
+}
 
 // The minimum fit score: a slider in steps of 5, 0 is off. Unscored jobs aren't hidden (scoring catches up).
 function fitField(inp) {
@@ -2688,9 +2696,9 @@ const FILTER_GROUPS = {
   companies: { keys: ["exclude_companies"], fields: inp => [
     filterLabel("Leave out companies", "one per line, by name; delete a line to see its jobs again"),
     inp.excludeCompanies] },
-  places: { keys: ["locations", "remote_country", "home_state"], fields: inp => [
+  places: { keys: ["locations", "remote_country", "home_state", "nearby_offices"], fields: inp => [
     filterLabel("Places", "“remote”, or a city or state, one per line"), inp.locations,
-    h("div", { style: "margin-top:6px" }, inp.country), homeField(inp)] },
+    h("div", { style: "margin-top:6px" }, inp.country), homeField(inp), nearOfficesField(inp)] },
   pay: { keys: ["min_salary", "require_salary"], fields: inp => [
     filterLabel("Minimum pay per year", "jobs that don't list pay still show"), inp.minPay,
     h("label", { class: "row" }, inp.requirePay, h("span", { class: "hint" }, "Only show jobs that list pay"))] },
@@ -4911,6 +4919,9 @@ function renderSettings() {
       field("Places", h("div", { class: "stack" }, locations, country), "“remote”, or a city or state, one per line."),
       field("Leave out departments", departments, "One per line, for boards that list a department."),
       field("Your state", inp.home, "Remote jobs open only in other states are left out."),
+      field("Companies with an office near you", inp.nearOffices,
+        "One per line. Their jobs anywhere show, to ask the recruiter about working from that office; " +
+        "`jobwatch offices` finds the ones that have posted jobs in your places."),
       field("Minimum pay per year", h("div", { class: "stack" }, minPay,
         h("label", { class: "check" }, requirePay, h("span", {}, "Only jobs that list pay"))),
         "Jobs that don't list pay still show, unless ticked."),

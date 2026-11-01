@@ -35,6 +35,7 @@ from . import (
     levels,
     logos,
     mock,
+    offices,
     prep,
     profile,
     quiet,
@@ -612,6 +613,21 @@ def cmd_suggest(args, cfg, store):
         print(suggest.text(found))
 
 
+def cmd_offices(args, cfg, store):
+    rows = offices.found(cfg, store)
+    names = [r["name"] for r in rows] if args.add_all else (args.add or [])
+    if names:
+        cfg = offices.add(cfg, names)
+        print(f"Counted as having an office near you: {', '.join(names)}. Their jobs anywhere now pass your place "
+              f"filter, with a warning to ask the recruiter about that office ({cfg.path}; the old file is kept as "
+              f"{cfg.path.name}.bak).")
+        return
+    if args.format == "json":
+        print(json.dumps({"counted": cfg.filters.nearby_offices, "found": rows}, indent=2, ensure_ascii=False))
+    else:
+        print(offices.text(cfg, rows), end="")
+
+
 def cmd_applications(args, cfg, store):
     rows = store.applications()
     found = quiet.find(rows, cfg.quiet, known=load_contacts(cfg))
@@ -1142,6 +1158,18 @@ def build_parser() -> argparse.ArgumentParser:
                    "that pass your filters (still open; nothing is read from the web)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_suggest)
+
+    p = sub.add_parser("offices", help="companies with an office near you: their jobs elsewhere pass your place "
+                       "filter, to ask the recruiter about working from that office",
+                       description="Companies that have posted jobs in your places (the location filter's places "
+                       "that aren't remote) have an office there. Counted ones (filters.nearby_offices) get their "
+                       "jobs anywhere past the place filter, with a warning on the queue to ask the recruiter in the "
+                       "phone screen about working from that office. Lists the ones found and not counted yet; --add "
+                       "counts one (the file is rewritten, the old one kept as .bak).")
+    p.add_argument("--add", action="append", metavar="COMPANY", help="count this company; repeatable")
+    p.add_argument("--add-all", action="store_true", help="count every company listed")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_offices)
 
     p = sub.add_parser("applications", aliases=["apps"],help="where each application stands, follow-ups first")
     p.add_argument("--due", action="store_true", help="only applications to follow up on now")

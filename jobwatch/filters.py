@@ -36,7 +36,11 @@ class Filters:
     # The US state the person lives in ("CO" or "Colorado"): a remote job open only in some states is left
     # out unless it's one of them. Empty: any US remote job passes.
     home_state: str = ""
-    min_salary: int | None = None                            # a listed range must reach this; unlisted pay passes
+    # Companies with an office in your places ("Initech"), by name like exclude_companies: their jobs pass the
+    # place rules wherever they're posted, with a warning to ask the recruiter about working from that office.
+    # `jobwatch offices` finds them from the jobs seen in your places.
+    nearby_offices: list[str] = field(default_factory=list)
+    min_salary: int | None = None                           # a listed range must reach this; unlisted pay passes
     require_salary: bool = False                             # reject jobs that don't list pay
     max_age_days: int | None = None
     # Hide jobs whose fit score is below this (0-100; 0: off). Jobs not scored yet still show.
@@ -154,6 +158,31 @@ def excluded_company(job: Job, names: list[str]) -> str | None:
     return next((n for n in names if company_key(str(n)) in mine), None)
 
 
+def place_rejection(job: Job, f: Filters) -> str | None:
+    """Why the job's place isn't one of the person's ("location", "remote only in CA, NV"); None if it is.
+    Says nothing of nearby_offices: rejection() lets those through."""
+    if not f.locations:
+        return None
+    wanted = [w for w in f.locations if w.lower() != "remote"]
+    remote_wanted = len(wanted) < len(f.locations)
+    if any(w.lower() in loc.lower() for w in wanted for loc in job.locations):
+        return None
+    remote = remote_wanted and (job.remote or any(is_remote(loc) for loc in job.locations))
+    states = remote_states(job) if remote and f.home_state else []
+    # Remote only in the home state ("Remote - Colorado") is remote for this person.
+    if not ((remote_wanted and _remote_ok(job, f.remote_country)) or f.home_state in states):
+        return "location"
+    if states and f.home_state not in states:
+        return f"remote only in {', '.join(states)}"
+    return None
+
+
+def office_nearby(job: Job, f: Filters) -> str | None:
+    """The nearby office a job passes the place rules through (the name in nearby_offices, as written): it's
+    posted elsewhere, so ask the recruiter about working from that office. None for a job in your places."""
+    return excluded_company(job, f.nearby_offices) if place_rejection(job, f) else None
+
+
 def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] | None:
     """(which filter, why) for a job that fails the filters, or None if it passes. The filter is one of KINDS:
     ("company", "company 'Initech'"), ("title", "title"), ("excluded", "title matches 'manager'"),
@@ -170,17 +199,8 @@ def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] 
         return "excluded", f"text matches {p!r}"
     if job.department and (p := _any(f.exclude_departments, job.department)):
         return "department", f"department matches {p!r}"
-    if f.locations:
-        wanted = [w for w in f.locations if w.lower() != "remote"]
-        remote_wanted = len(wanted) < len(f.locations)
-        if not any(w.lower() in loc.lower() for w in wanted for loc in job.locations):
-            remote = remote_wanted and (job.remote or any(is_remote(loc) for loc in job.locations))
-            states = remote_states(job) if remote and f.home_state else []
-            # Remote only in the home state ("Remote - Colorado") is remote for this person.
-            if not ((remote_wanted and _remote_ok(job, f.remote_country)) or f.home_state in states):
-                return "place", "location"
-            if states and f.home_state not in states:
-                return "place", f"remote only in {', '.join(states)}"
+    if (why := place_rejection(job, f)) and not excluded_company(job, f.nearby_offices):
+        return "place", why
     if job.salary_min is None:
         if f.require_salary:
             return "pay", "pay not listed"
