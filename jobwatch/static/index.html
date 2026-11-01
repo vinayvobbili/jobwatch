@@ -21,6 +21,7 @@
   --grad: linear-gradient(135deg, #5a5cf2, #a24af0);  /* filled surfaces carry white text in both themes */
   --s-applied: #3b82f6; --s-screening: #8b5cf6; --s-interviewing: #f59e0b; --s-offer: #10b981;
   --s-rejected: #94a3b8; --s-withdrawn: #a8a29e;
+  --s-queued: #06b6d4; --s-skipped: #a8a29e; --s-new: #5a5cf2; --s-shown: #5a5cf2;
   color-scheme: light;
 }
 /* dark: set by the Theme setting, or by the computer's when that is System (applyDisplay) */
@@ -459,6 +460,20 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .sheets { gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
 .iv-banner { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 10px; padding: 8px 12px;
   margin: 8px 0; display: grid; gap: 4px; }
+/* the job details' top strip: the stage (pick another right there) and the days that matter, as small tiles */
+.d-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 12px 0 10px; }
+.d-fact { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; background: var(--panel);
+  animation: rise .45s cubic-bezier(.2, .7, .2, 1) both; transition: transform .15s, box-shadow .15s; }
+.d-fact:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.d-fact .lbl { color: var(--muted); font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.d-fact .val { font-size: 15px; font-weight: 750; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.d-fact.stage { border-color: color-mix(in srgb, var(--sc) 45%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--sc) 16%, var(--panel-solid)), var(--panel)); }
+.d-fact.stage select.stage { margin-top: 3px; width: 100%; }
+.d-fact:nth-child(2) { animation-delay: 40ms; } .d-fact:nth-child(3) { animation-delay: 80ms; }
+.d-fact:nth-child(4) { animation-delay: 120ms; }
+.d-head { display: flex; align-items: center; gap: 6px; margin: 16px 0 4px; font-size: 13px; font-weight: 750;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .note-full { white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; margin: 8px 0; max-height: 320px; overflow: auto;
   border-left: 3px solid var(--line, #ddd); padding: 2px 10px; }
 /* a note as its dated lines, newest first (noteTimeline) */
@@ -1730,13 +1745,13 @@ async function openDetails(key) {
         h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, j.title), fitBox(j.fit) || noFitBox(j),
           h("button", { class: "btn", onclick: closeDetails }, "Close")),
         h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
-        h("div", { class: "small muted" }, `Status: ${j.status}` + (j.applied_at ? ` · applied ${j.applied_at.slice(0, 10)}` : "") +
-          (j.closed ? ` · closed ${j.closed.slice(0, 10)}` : "") + ` · first seen ${j.first_seen.slice(0, 10)}`),
+        detailsFacts(j),
         j.meeting ? h("div", { class: "iv-banner" },
           h("b", {}, `${j.meeting.round_label || j.meeting.label} · ${fmtDay(j.meeting.day)} · ${meetingTime(j.meeting)} · ${relDay(j.meeting.day, todayIso())}`),
           j.next_step) : j.next_step || j.follow_up ? nextLine(j, todayIso()) : null,
         sheetButtons(j.sheets, j.sheets_base),
-        j.note ? h("div", { class: "note-full", title: "The whole note, newest first" }, noteTimeline(j.note)) : null,
+        j.note ? [h("div", { class: "d-head" }, icon("calendar", 14), "History"),
+          h("div", { class: "note-full", title: "The whole note, newest first" }, noteTimeline(j.note))] : null,
         linkNote(j),
         j.duplicate_of ? h("div", { class: "warns" }, dupeBadge(j.duplicate_of), " ", j.duplicate_of.text) : null,
         payLine(j),
@@ -1757,7 +1772,7 @@ async function openDetails(key) {
           h("span", { class: "muted small" }, "· key "), h("code", { class: "small" }, j.key)),
         APPLIED.includes(j.status) || hasPackage(j.package) ? sentSection(j) : null,
         gapChips(j.skills),
-        h("div", { class: "posting" }, j.text)),
+        j.text ? [h("div", { class: "d-head" }, icon("file", 14), "The posting"), h("div", { class: "posting" }, j.text)] : null),
       h("div", { class: "job-chat" }, chatBox({
         key: j.key, title: `Ask about ${j.company}`, intro: `Ask anything about ${j.title}: how you fit, what to lead with, how to prepare.`,
         suggestions: APPLIED.includes(j.status)
@@ -1768,6 +1783,32 @@ async function openDetails(key) {
       })));
     watchPay([j], "details");
   } catch (e) { dialog.classList.remove("with-chat", "co-page"); showError(dialog, e); }
+}
+// Every stage a job can be put at from its details, in the order a search goes.
+const DETAIL_STAGES = ["queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "skipped"];
+// The details' top strip: the stage, as a picker (the one place to mark a job rejected, withdrawn...), then the days.
+function detailsFacts(j) {
+  const names = { ...STAGE_NAMES, queued: "Queued", skipped: "Skipped", new: "Not acted on", shown: "Not acted on" };
+  const stages = DETAIL_STAGES.includes(j.status) ? DETAIL_STAGES : [j.status, ...DETAIL_STAGES];
+  const sel = h("select", { class: "stage", "aria-label": "Stage", title: "Move this job to another stage" },
+    stages.map(s => h("option", { value: s }, names[s] || s)));
+  sel.value = j.status;
+  sel.onchange = async () => {
+    const to = sel.value, before = j.status;
+    try {
+      await api("/api/track", { key: j.key, status: to });
+      detailsDirty = true;
+      toast(stageWords(j.company, to), async () => {
+        await api("/api/track", { key: j.key, status: before }); openDetails(j.key); render();
+      }, TONES[to]);
+      openDetails(j.key);
+    } catch (e) { toast(e.message); sel.value = before; }
+  };
+  const day = s => s ? fmtDay(s.slice(0, 10)) : null;
+  const tile = (lbl, val) => val ? h("div", { class: "d-fact" }, h("div", { class: "lbl" }, lbl), h("div", { class: "val" }, val)) : null;
+  return h("div", { class: "d-facts" },
+    h("div", { class: "d-fact stage", style: `--sc:var(--s-${j.status}, var(--accent))` }, h("div", { class: "lbl" }, "Stage"), sel),
+    tile("Applied", day(j.applied_at)), tile("Posting closed", day(j.closed)), tile("First seen", day(j.first_seen)));
 }
 function detailsScore(j) {
   if (j.fit && !j.fit.stale) return null;
@@ -2119,10 +2160,11 @@ function gapChips(skills) {
     }, s.name))));
 }
 let sentChanged = false;  // the Applications cards show counts from the package
+let detailsDirty = false;  // a stage changed in the job details: the page behind redraws on close
 function closeDetails() {
   document.getElementById("overlay").style.display = "none";
-  if (sentChanged && tab === "applied") render();
-  sentChanged = false;
+  if ((sentChanged && tab === "applied") || detailsDirty) render();
+  sentChanged = false; detailsDirty = false;
 }
 document.getElementById("overlay").addEventListener("click", e => { if (e.target.id === "overlay") closeDetails(); });
 document.addEventListener("keydown", e => {

@@ -103,6 +103,39 @@ console.log(JSON.stringify(out));
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_jobs_details_can_change_its_stage(tmp_path):
+    """The job details open on a stage picker: any stage from queued to skipped (an application can be marked
+    rejected right there), saved through /api/track, and the page behind redraws when the details close."""
+    js = tmp_path / "facts.js"
+    js.write_text(page_const("STAGE_NAMES") + page_const("DETAIL_STAGES") + page_function("detailsFacts") + """
+const h = (tag, attrs, ...kids) => ({ tag, attrs, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const calls = [], fmtDay = d => "day " + d, stageWords = (c, to) => `${c} ${to}`, TONES = {};
+const api = async (path, body) => { calls.push([path, body]); return {}; };
+const toast = () => {}, openDetails = key => calls.push(["open", key]), render = () => {};
+let detailsDirty = false;
+const job = { key: "k1", company: "Initech", status: "screening", applied_at: "2026-10-28T20:00:00", closed: null,
+              first_seen: "2026-10-29T01:00:00" };
+const strip = detailsFacts(job), sel = strip.kids[0].kids[1];
+const options = sel.kids.map(o => o.attrs.value);
+const tiles = strip.kids.slice(1).map(t => t.kids.map(k => k.kids[0]));
+const fresh = detailsFacts({ ...job, status: "shown", applied_at: null }).kids[0].kids[1].kids[0];
+sel.value = "rejected";
+sel.onchange().then(() => console.log(JSON.stringify({ options, value: job.status, tiles, calls, detailsDirty,
+  fresh: [fresh.attrs.value, fresh.kids[0]] })));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {
+        "options": ["queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "skipped"],
+        "value": "screening",
+        "tiles": [["Applied", "day 2026-10-28"], ["First seen", "day 2026-10-29"]],
+        "calls": [["/api/track", {"key": "k1", "status": "rejected"}], ["open", "k1"]],
+        "detailsDirty": True,
+        "fresh": ["shown", "Not acted on"],  # a job not acted on yet shows as that, then every stage to pick
+    }
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_company_counts_follow_the_other_filters(tmp_path):
     """A company's count is what picking it shows: a fit filter that leaves its one job out takes it off the list,
     unless it's the company picked, which stays to be unpicked."""
