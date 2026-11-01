@@ -535,5 +535,15 @@
     }, true);
   }
 
-  globalThis.JWPage = { scan, fill, info, collect, watch, gather };
+  // --- the job posting on screen (the side panel's "Save this posting to jobwatch"), on a company's page ---------
+
+  /** The company page's title and company, and the text it shows (its main part, else the whole page). */
+  function readPosting() {
+    const main = document.querySelector('main, [role="main"], article');
+    const root = main && main.innerText.length > 400 ? main : document.body;
+    const { title, company } = info();
+    return { title, company, text: JW.tidyText(root.innerText) };
+  }
+
+  globalThis.JWPage = { scan, fill, info, collect, watch, gather, readPosting };
 })();

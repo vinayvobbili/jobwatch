@@ -1625,6 +1625,15 @@ function postingButton(job, done) {
   return b;
 }
 
+// A job from a LinkedIn alert: opens its LinkedIn page in a new tab (jobwatch never reads linkedin.com itself). There,
+// the extension's "Open the company's posting" presses LinkedIn's Apply button, and the company's page fills the job in.
+function linkedinButton(job) {
+  if (!/^https?:\/\/([\w-]+\.)?linkedin\.com\/jobs\//i.test(job.url || "")) return null;
+  return h("a", { class: "btn", href: job.url, target: "_blank", rel: "noopener",
+    title: "Open the job on LinkedIn. With the jobwatch browser extension, click its icon there and choose \"Open the " +
+      "company's posting\" to get to the company's own page for it." }, "Open on LinkedIn ↗");
+}
+
 function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   if (job.fit && !job.fit.stale) return null;
   const redraw = j => document.getElementById("job-" + j.key).replaceWith(card(j));
@@ -1632,7 +1641,7 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
     return [postingButton(job, r => {
       if (r.has_text) job.unscored = { code: "queued", text: "Posting added: in line to score" };
       redraw(job);
-    }), unscoredNote(job)];
+    }), linkedinButton(job), unscoredNote(job)];
   if (!canScore || NO_SCORE_BUTTON.includes(job.unscored?.code)) return unscoredNote(job);
   const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");
   b.onclick = async () => {

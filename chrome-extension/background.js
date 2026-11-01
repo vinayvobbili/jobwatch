@@ -38,6 +38,7 @@ async function handle(msg, tabId, sender) {
     case 'analyze': return analyze(tabId);
     case 'fill': return fill(tabId, msg.items);
     case 'draft': return draft(tabId, msg.question, msg.words, msg.others);
+    case 'posting': return posting(tabId);
     case 'captured': return captured(tabId, msg, sender);
     case 'looksSubmitted': return record(tabId);
     default: throw new Error(`unknown message ${msg.type}`);
@@ -139,6 +140,110 @@ async function fetchResume(url, tabId) {
 async function draft(tabId, question, words, others) {
   const r = await api('/ext/draft', { method: 'POST', body: { url: await tabUrl(tabId), question, words: words || 150, others: others || [] } });
   return { answer: r.answer, model: r.model };
+}
+
+// --- the job posting on screen ----------------------------------------------------------------------
+
+const LINKEDIN_KEY = 'lastLinkedIn';
+const LINKEDIN_MAX_MS = 30 * 60 * 1000; // a company page opened this soon after a LinkedIn job is probably that job's
+
+const AWAITING_KEY = 'awaitingCompanyTab';
+const AWAIT_MAX_MS = 2 * 60 * 1000; // how long after Apply is pressed a tab it opens is taken to be the company's
+const EASY = "This job applies on LinkedIn (Easy Apply), so there's no company page to read. Use Add the posting on Today to paste it.";
+
+async function pairedSettings() {
+  const settings = await getSettings();
+  if (!settings.token) throw new Expected('Pair the extension with jobwatch first: run "jobwatch ui", then paste its token into this extension\'s options.');
+  return settings;
+}
+
+/**
+ * On a LinkedIn job: presses LinkedIn's offsite Apply button, for the person who asked, so the company's site opens in
+ * a new tab. Nothing is read from the LinkedIn page and nothing is sent from it: only its address is kept, for the job
+ * id. The button is found by its label (JW.isOffsiteApply); Easy Apply is never pressed, nor anything that submits.
+ * The tab it opens is followed by followOpened().
+ */
+async function openCompany(tabId) {
+  await pairedSettings();
+  const url = await tabUrl(tabId);
+  const id = JW.linkedinJobId(url);
+  if (!id) throw new Expected('Open a job on LinkedIn (its own page, or select one in the list), then try again.');
+  await chrome.storage.session.set({ [AWAITING_KEY]: { opener: tabId, id, at: Date.now() },
+    [LINKEDIN_KEY]: { id, at: Date.now() } });
+  let pressed;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['logic.js'] });
+    [pressed] = await chrome.scripting.executeScript({ target: { tabId }, func: () => {
+      const JW = globalThis.JW;
+      const found = [...document.querySelectorAll('a, button')].filter((el) => el.getClientRects().length)
+        .map((el) => ({ el, label: el.getAttribute('aria-label') || '', text: (el.textContent || '').trim() }));
+      const apply = found.find(JW.isOffsiteApply);
+      if (apply) { apply.el.click(); return 'pressed'; }
+      return found.some(JW.isEasyApply) ? 'easy' : 'none';
+    } });
+  } catch {
+    await chrome.storage.session.remove(AWAITING_KEY);
+    throw new Expected("This page can't be used. Click the jobwatch icon on the job's tab, and try again.");
+  }
+  if (pressed.result !== 'pressed') {
+    await chrome.storage.session.remove(AWAITING_KEY);
+    throw new Expected(pressed.result === 'easy' ? EASY : "Couldn't find LinkedIn's Apply button for the company's site on this page. Press it yourself, then use Save this posting to jobwatch on the company's page.");
+  }
+  return { stage: 'opened' };
+}
+
+// The tab Apply opened: remember it while it is the awaited one's child, and once it has loaded a page that isn't
+// LinkedIn's (Apply goes through LinkedIn's redirect first), give jobwatch its address and the LinkedIn job id. jobwatch
+// reads the posting itself when it is on a job site it supports; otherwise the person uses Save this posting there.
+chrome.tabs.onCreated.addListener(async (tab) => {
+  if (!tab.openerTabId) return;
+  const w = (await chrome.storage.session.get(AWAITING_KEY))[AWAITING_KEY];
+  if (w && w.opener === tab.openerTabId && !w.child && Date.now() - w.at < AWAIT_MAX_MS) {
+    await chrome.storage.session.set({ [AWAITING_KEY]: { ...w, child: tab.id } });
+  }
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, change, tab) => {
+  if (change.status !== 'complete') return;
+  const w = (await chrome.storage.session.get(AWAITING_KEY))[AWAITING_KEY];
+  if (!w || w.child !== tabId || JW.postingMode(tab.url) !== 'site') return;
+  await chrome.storage.session.remove(AWAITING_KEY);
+  if (Date.now() - w.at > AWAIT_MAX_MS) return;
+  try {
+    const r = await api('/ext/posting', { method: 'POST', body: { linkedin: w.id, page_url: tab.url } });
+    await toast(tabId, `${r.said}. See it in jobwatch's ${r.where} tab.`, true);
+  } catch (e) {
+    await toast(tabId, e.message, false);
+  }
+});
+
+/**
+ * On a company's page: sends jobwatch its address and the job text the page shows (the person pressed the button),
+ * to fill in the job it has from an alert, or to add one. The LinkedIn job id goes along when the person pressed
+ * Apply on LinkedIn a moment ago.
+ */
+async function posting(tabId) {
+  const settings = await pairedSettings();
+  const url = await tabUrl(tabId);
+  const mode = JW.postingMode(url);
+  if (mode === 'linkedin') return openCompany(tabId);
+  if (mode !== 'site') throw new Expected("This page isn't a job posting. Open a job on LinkedIn, or the company's page for it, and try again.");
+  let read;
+  try {
+    const t = { tabId };
+    await chrome.scripting.executeScript({ target: t, files: ['logic.js', 'page.js'] });
+    [read] = await chrome.scripting.executeScript({ target: t, func: () => (globalThis.JWPage && globalThis.JWPage.readPosting ? globalThis.JWPage.readPosting() : null) });
+  } catch {
+    throw new Expected("This page can't be read. Click the jobwatch icon on the job's tab, and try again.");
+  }
+  const page = read && read.result;
+  if (!page) throw new Expected('Reload this page, then try again.');
+  if (page.text.length < 200) throw new Expected("This page doesn't show a job posting's text. Open the posting itself and try again.");
+  const body = { company: page.company, title: page.title, text: page.text, page_url: url };
+  const last = (await chrome.storage.session.get(LINKEDIN_KEY))[LINKEDIN_KEY];
+  if (last && Date.now() - last.at < LINKEDIN_MAX_MS) body.linkedin = last.id;
+  const r = await api('/ext/posting', { method: 'POST', body, settings });
+  return { stage: 'done', ...r, link: `${settings.serverUrl}/#${r.where}` };
 }
 
 // --- recording the application ---------------------------------------------------------------------

@@ -276,8 +276,70 @@
     return String(text).replace(/\s*[\r\n]+\s*/g, ' ').trim();
   }
 
+  // --- a job posting the person has open -------------------------------------------------
+
+  const LINKEDIN_HOST = /(^|\.)linkedin\.com$/;
+
+  function urlOf(url) {
+    try {
+      const u = new URL(url);
+      return /^https?:$/.test(u.protocol) ? u : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The posting id in a LinkedIn job address: /jobs/view/<id>, /jobs/view/<title>-<id>, or ?currentJobId=<id>.
+   * The address is all the extension takes from a LinkedIn tab. */
+  function linkedinJobId(url) {
+    const u = urlOf(url);
+    if (!u || !LINKEDIN_HOST.test(u.hostname.toLowerCase())) return '';
+    const current = u.searchParams.get('currentJobId');
+    if (current) return /^\d+$/.test(current) ? current : '';
+    const m = u.pathname.match(/^\/jobs(?:-guest\/jobs\/api\/jobPosting|\/view)\/(?:[\w%-]*-)?(\d{6,})\/?$/);
+    return m ? m[1] : '';
+  }
+
+  /** What the side panel's posting action does on this address: 'linkedin' (a job is open: open the company's posting),
+   * 'linkedin-none' (LinkedIn, but no job open), 'site' (any other page: save its posting), or 'none' (not a web page,
+   * or jobwatch's own). */
+  function postingMode(url) {
+    const u = urlOf(url);
+    if (!u) return 'none';
+    const host = u.hostname.toLowerCase();
+    if (LINKEDIN_HOST.test(host)) return linkedinJobId(url) ? 'linkedin' : 'linkedin-none';
+    return host === 'localhost' || host === '127.0.0.1' ? 'none' : 'site';
+  }
+
+  /** Whether a button, by its accessible label and its text, is LinkedIn's offsite Apply button (it opens the
+   * company's site). Never Easy Apply, which applies on LinkedIn; anything else is not it. */
+  function isOffsiteApply(b) {
+    const label = normalize(b.label), text = normalize(b.text);
+    if (/\beasy\b/.test(label) || /\beasy\b/.test(text)) return false;
+    return /^apply on company website\b/.test(label) || (text === 'apply' && (label === '' || label === 'apply'));
+  }
+
+  function isEasyApply(b) {
+    return /\beasy apply\b/.test(normalize(b.label)) || /\beasy apply\b/.test(normalize(b.text));
+  }
+
+  /** Two spellings of one company, loosely: "Initech, Inc." and "Initech" (one name holds the other). */
+  function sameCompany(a, b) {
+    const bare = (s) => normalize(s).replace(/\b(inc|incorporated|llc|ltd|limited|corp|corporation|co|plc|gmbh|group|holdings)\b/g, '').replace(/ /g, '');
+    const x = bare(a), y = bare(b);
+    return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+  }
+
+  /** A posting's text tidied: no runs of blank lines, nothing a page's buttons left behind, at most `max` characters. */
+  function tidyText(text, max) {
+    return String(text || '').replace(/\r/g, '').replace(/[ \t ]+/g, ' ').replace(/ *\n */g, '\n')
+      .split('\n').filter((l) => !/^(show more|show less|see more|see less)$/i.test(l.trim())).join('\n')
+      .replace(/\n{3,}/g, '\n\n').trim().slice(0, max || 60000);
+  }
+
   const JW = { DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
-    valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine };
+    valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
+    linkedinJobId, postingMode, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;
   root.JW = JW;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
