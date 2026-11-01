@@ -221,6 +221,17 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
         if filled.filled:
             store.log("mail", f"Found {plural(len(filled.filled), 'alert job')} on the company's own board",
                       detail=[f"{j.display_company}: {j.title}" for j in filled.filled][:ACTIVITY_LINES], by=by)
+    # Queued jobs, open applications and Today's alert and hand-added jobs are checked to still be posted (a few a
+    # run, none more than once a day): a posting taken down leaves Today, as a watched board's jobs do.
+    try:
+        closed = [c for c in check_daily(store, get, page, cfg.boards)
+                  if c.result == "closed" and not c.detail.startswith("since ")]
+    except Exception as e:  # a closed posting noticed a day later is fine: it never fails a check
+        report.warnings["check_postings"] = str(e)
+    else:
+        if closed:
+            store.log("boards", f"Found {plural(len(closed), 'posting')} taken down",
+                      detail=[f"{c.job.display_company}: {c.job.title}" for c in closed][:ACTIVITY_LINES], by=by)
     # A new posting of a job already applied to (or queued, or skipped) is marked as its duplicate.
     report.duplicates = dupes.record(store, new) if new else {}
     store.record_fetch(report.boards, report.jobs, len(report.new), report.errors, report.warnings)
@@ -433,10 +444,12 @@ def find_repost(store: Store, job: Job, note: str = "", get=None, boards: dict |
     return found
 
 
-def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> bool | None:
-    """Whether a job's posting still takes applications: on its board, at its link (a supported board), or None
-    when jobwatch can't tell (a LinkedIn job: LinkedIn's robots.txt doesn't allow reading it). Raises SourceError
-    when the board can't be read now."""
+def still_open(job: Job, get=None, page=None, boards: dict | None = None,
+               robots: alerts.Robots | None = None) -> bool | None:
+    """Whether a job's posting still takes applications: on its board, at its link (a supported board or a job
+    site's page that robots.txt allows reading: see alerts.page_open), or None when jobwatch can't tell (a
+    LinkedIn job: LinkedIn's robots.txt doesn't allow reading it). Raises SourceError when the board can't be
+    read now."""
     boards = {} if boards is None else boards
     # one posting can be read by its link: surer than a title search (the board's own link, when the job's link
     # is the company's careers site: see mark_hosted)
@@ -450,27 +463,53 @@ def still_open(job: Job, get=None, page=None, boards: dict | None = None) -> boo
         return job.id in _open_ids(job, get, boards)
     if not job.url or linkedin.job_id(job.url):
         return None
+    if not sources.detect(job.url):
+        return alerts.page_open(job, page, robots)
     try:
         return sources.posting(job.url, get) is not None or None
     except sources.NotFound:
         return False
 
 
-def check_postings(store: Store, statuses: tuple[str, ...] = ("queued", "applied", "screening", "interviewing"),
-                   get=None, page=None, watched: list[Board] = ()) -> list[Check]:
+CHECKED = ("queued", "applied", "screening", "interviewing")  # the statuses whose postings are checked
+CHECK_CAP = 40  # postings checked per scheduled run: each costs a request or two, and the rest wait for the next
+CHECK_EVERY = timedelta(days=1)  # a posting isn't checked again sooner
+
+
+def check_daily(store: Store, get=None, page=None, watched: list[Board] = (), limit: int = CHECK_CAP,
+                every: timedelta = CHECK_EVERY) -> list[Check]:
+    """check_postings for the scheduled check: the queued jobs and open applications, and the open jobs on Today
+    that came from an alert or were added by hand (source MANUAL) with a link jobwatch can read. Up to `limit`
+    jobs a run, none checked within `every`, the longest unchecked first. Returns the ones checked."""
+    done, now = store.posting_checked(), datetime.now(timezone.utc)
+    rows = store.jobs(CHECKED, include_closed=True) + [
+        (j, r) for j, r in store.jobs(("new", "shown")) if j.source == MANUAL and j.url
+        and not linkedin.job_id(j.url) and not any(s in j.url for s in alerts.UNREAD_SITES)]
+    due = [(j, r) for j, r in rows if not (t := done.get(j.key)) or now - datetime.fromisoformat(t) >= every]
+    due.sort(key=lambda p: done.get(p[0].key, ""))
+    checks = check_postings(store, get=get, page=page, watched=watched, jobs=due[:limit])
+    for c in checks:
+        store.set_posting_checked(c.job.key)
+    return checks
+
+
+def check_postings(store: Store, statuses: tuple[str, ...] = CHECKED,
+                   get=None, page=None, watched: list[Board] = (),
+                   jobs: list[tuple[Job, dict]] | None = None) -> list[Check]:
     """Check that the postings of queued jobs and open applications are still up, and record the ones that
     closed (or came back). Jobs from watched boards are checked by every fetch too; this also covers jobs added
     by hand from a link, and boards that aren't watched. For a closed one, its board is searched for the same
     opening posted again (see find_repost): its detail then says what it was reposted as.
     A job whose board's hosted pages are offline (see HostedPages) is still open while the board's API lists it:
-    its detail says where to apply, and it links to the careers site its board has in `watched`, if any."""
+    its detail says where to apply, and it links to the careers site its board has in `watched`, if any.
+    `jobs` (job, record) pairs are checked instead of every job with one of the `statuses`."""
     boards: dict = {}
-    hosted, pages = HostedPages(store, page), {}
+    hosted, pages, robots = HostedPages(store, page), {}, alerts.Robots(page)
     careers = {(b.source, b.board): b.careers for b in watched}
     out = []
-    for job, rec in store.jobs(statuses, include_closed=True):
+    for job, rec in store.jobs(statuses, include_closed=True) if jobs is None else jobs:
         try:
-            up = still_open(job, get, page, boards)
+            up = still_open(job, get, page, boards, robots)
         except sources.SourceError as e:
             out.append(Check(job, "unknown", str(e)))
             continue

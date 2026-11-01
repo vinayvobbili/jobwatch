@@ -710,6 +710,41 @@ class Robots:
 
 job_posting_data = sources.job_posting_data
 
+UNREAD_SITES = ("linkedin.com", "indeed.com")  # never read, whatever their robots.txt says
+
+
+def _past(stamp) -> bool:
+    """Whether an ISO date or time (a JobPosting's validThrough) is behind us; a date alone ends at its day's end."""
+    text = str(stamp or "").strip().replace("Z", "+00:00")
+    try:
+        when = datetime.fromisoformat(text)
+    except ValueError:
+        return False
+    if len(text) <= 10:
+        when += timedelta(days=1)
+    return (when if when.tzinfo else when.replace(tzinfo=timezone.utc)) < datetime.now(timezone.utc)
+
+
+def page_open(job: Job, page=None, robots: Robots | None = None) -> bool | None:
+    """Whether a job site's page (Built In's, say) still shows the posting: False when the page is gone (404/410),
+    its JobPosting data has ended (validThrough is past: Built In's removed pages keep their data and say when
+    it was removed there), or a job that was read from a page has none now. None when the site's robots.txt
+    doesn't allow reading it, it's LinkedIn's or Indeed's, or the page says nothing either way. Raises
+    SourceError when the page can't be read now."""
+    host = urlparse(job.url).netloc.lower()
+    if not job.url or any(host == s or host.endswith(f".{s}") for s in UNREAD_SITES):
+        return None
+    if not (robots or Robots(page)).allowed(job.url):
+        return None
+    try:
+        text = (page or sources.get_text)(job.url)
+    except sources.NotFound:
+        return False
+    data = job_posting_data(text)
+    if data is None:
+        return False if job.description.strip() else None
+    return not _past(data.get("validThrough"))
+
 
 def _place(loc) -> str:
     address = (loc or {}).get("address") if isinstance(loc, dict) else None

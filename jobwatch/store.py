@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS backfill_tried (
     key TEXT PRIMARY KEY,
     tried_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS posting_checked (
+    key TEXT PRIMARY KEY,
+    checked_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS drafts (
     key TEXT NOT NULL,
     inputs TEXT NOT NULL,
@@ -363,6 +367,15 @@ class Store:
         """Note that the backfill looked for this job on its company's board now."""
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO backfill_tried (key, tried_at) VALUES (?, ?)", (key, _now()))
+
+    def posting_checked(self) -> dict[str, str]:
+        """When each job's posting was last checked (watch.check_daily), by key."""
+        return {r["key"]: r["checked_at"] for r in self.db.execute("SELECT key, checked_at FROM posting_checked")}
+
+    def set_posting_checked(self, key: str):
+        """Note that this job's posting was checked now."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO posting_checked (key, checked_at) VALUES (?, ?)", (key, _now()))
 
     def set_duplicate(self, key: str, other: str):
         """Record that a job is the same opening as another one already acted on (see dupes.py), by its key."""

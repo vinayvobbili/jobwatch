@@ -52,8 +52,10 @@ from .rounds import ROUNDS
 from .score import AGY_WORKERS, ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
 from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, STAGES, STATUSES, Store
 from .watch import (
+    CHECKED,
     MANY_ROLES,
     build_digest,
+    check_daily,
     check_postings,
     compare_picks,
     compare_scores,
@@ -874,8 +876,10 @@ def cmd_comps(args, cfg, store):
 
 
 def cmd_check(args, cfg, store):
-    checks = check_postings(store, tuple(args.status or ("queued", "applied", "screening", "interviewing")),
-                            watched=cfg.boards)
+    if args.daily:  # what the scheduled check does: Today's alert jobs too, a day's cap, none twice in a day
+        checks = check_daily(store, watched=cfg.boards)
+    else:
+        checks = check_postings(store, tuple(args.status or CHECKED), watched=cfg.boards)
     order = {"closed": 0, "reopened": 1, "unknown": 2, "open": 3}
     for c in sorted(checks, key=lambda c: order[c.result]):
         if c.result != "open" or args.all:
@@ -1300,6 +1304,8 @@ def build_parser() -> argparse.ArgumentParser:
                        "the ones that closed (or came back)")
     p.add_argument("--status", choices=STATUSES, action="append", help="only jobs with this status (repeatable)")
     p.add_argument("--all", action="store_true", help="also list the ones still open")
+    p.add_argument("--daily", action="store_true", help="what each scheduled check does: also the alert and "
+                   "hand-added jobs on Today, up to a day's share, none checked twice in a day")
     p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("ui", help="open jobwatch in your browser (setup, digest, queue, applied)")
