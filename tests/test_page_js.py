@@ -103,6 +103,21 @@ console.log(JSON.stringify(out));
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_an_old_open_role_isnt_called_new(tmp_path):
+    """A company's roles all arrive as "new" when its board is first watched: one posted long ago says its age."""
+    js = tmp_path / "status.js"
+    js.write_text(page_const("STAGE_NAMES") + page_function("dayDiff") + page_function("companyStatus") + """
+const t = "2026-10-31", word = (status, posted, max) => companyStatus({ status, posted }, t, max)[0];
+console.log(JSON.stringify([word("new", "2026-10-20"), word("new", "2025-02-20"), word("shown", "2026-08-01"),
+  word("new", null), word("rejected", "2025-02-20"), word("new", "2026-09-15", 60), word("new", "2026-09-15")]));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["New", "Posted 1y+ ago", "Posted 3mo ago", "New", "Rejected", "New",
+                                    "Posted 2mo ago"]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_a_jobs_details_can_change_its_stage(tmp_path):
     """The job details open on a stage picker: any stage from queued to skipped (an application can be marked
     rejected right there), saved through /api/track, and the page behind redraws when the details close."""

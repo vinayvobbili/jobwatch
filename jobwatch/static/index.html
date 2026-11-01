@@ -5080,16 +5080,27 @@ function noteLine(note) {
   el.onclick = () => el.classList.toggle("open");
   return el;
 }
+// A company's job's status word. "New" means not acted on yet, so a role still open from long ago (all of a
+// board's open roles arrive as new when it's first watched) says how old it is instead of looking fresh.
+function companyStatus(j, today, maxAge) {
+  const age = j.posted ? -dayDiff(j.posted.slice(0, 10), today) : null;
+  if ((j.status === "new" || j.status === "shown") && age != null && age > (maxAge || 30))
+    return [age >= 365 ? `Posted ${Math.floor(age / 365)}y+ ago` : `Posted ${Math.round(age / 30)}mo ago`,
+      `Still open, but posted ${age} days ago: older than Today shows (${maxAge || 30} days), so it isn't new`];
+  return [STAGE_NAMES[j.status] || j.status[0].toUpperCase() + j.status.slice(1),
+    j.status === "new" ? "Not acted on yet" : null];
+}
 function companyJob(j, today) {
   const stage = APPLIED.includes(j.status);
+  const [word, why] = companyStatus(j, today, (settings.filters || {}).max_age_days);
   const facts = [j.applied_at ? `applied ${fmtDay(j.applied_at, today)}` : j.posted ? `posted ${fmtDay(j.posted, today)}`
     : j.first_seen ? `first seen ${fmtDay(j.first_seen, today)}` : "", j.locations.join("; "), j.pay,
     j.closed ? `posting closed ${fmtDay(j.closed, today)}` : ""].filter(Boolean).join(" · ");
   return h("div", { class: "cjob" },
     h("div", { class: "row" }, h("b", {}, j.title),
       j.closed ? h("span", { class: "badge closed" }, "CLOSED") : null, dupeBadge(j.duplicate_of),
-      h("span", { class: "chip", style: stage ? `background:color-mix(in srgb, var(--s-${j.status}) 15%, transparent);color:var(--s-${j.status})` : null },
-        STAGE_NAMES[j.status] || j.status[0].toUpperCase() + j.status.slice(1))),
+      h("span", { class: "chip", title: why,
+        style: stage ? `background:color-mix(in srgb, var(--s-${j.status}) 15%, transparent);color:var(--s-${j.status})` : null }, word)),
     h("div", { class: "small muted" }, facts),
     j.next_step || j.follow_up ? h("div", { class: "small" + (j.due ? " warns" : "") },
       (j.due ? "Due: " : "Next: ") + [j.next_step, j.follow_up && `follow up ${fmtDay(j.follow_up, today)}`].filter(Boolean).join(" · ")) : null,
