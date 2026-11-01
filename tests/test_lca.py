@@ -199,16 +199,17 @@ def test_with_too_few_in_the_city_the_state_then_the_country_is_used(cache):
     index.close()
 
 
-def test_with_a_home_state_only_its_filings_count(cache):
-    """A remote job listed in Seattle is worked from the home state: its filings, never Washington's or the
-    whole country's."""
+def test_with_a_home_state_its_filings_come_first_then_the_whole_us(cache):
+    """A remote job listed in Seattle is worked from the home state: its filings first, never Washington's; with
+    too few there, the whole US, labeled so (home state only left almost every job blank)."""
     index = lca.Index.open(cache[0])
     remote = lca.for_job(index, job(where=("Seattle, WA (Remote)",)), home_state="TX")
     assert (remote.where, remote.count) == ("TX", 5)
     assert lca.for_job(index, job(where=("Austin, TX",)), home_state="TX").where == "Austin, TX"
-    # one filing in Washington, and no falling back to the whole US
-    assert lca.for_job(index, job(where=("Seattle, WA (Remote)",)), home_state="WA") is None
-    assert lca.for_job(index, job(where=("Remote - United States",)), home_state="CO") is None
+    # one filing in Washington: not Washington's alone, the whole US's
+    seattle = lca.for_job(index, job(where=("Seattle, WA (Remote)",)), home_state="WA")
+    assert (seattle.where, seattle.count) == (lca.US, 6)
+    assert lca.for_job(index, job(where=("Remote - United States",)), home_state="CO").where == lca.US
     index.close()
 
 
@@ -283,6 +284,9 @@ def test_lca_shows_wherever_expected_pay_does(web, watchlist, tmp_path, capsys, 
     assert "senior software engineer" in capsys.readouterr().out
     cli.main(["-c", str(watchlist), "lca"])
     assert "15 certified full-time filings" in capsys.readouterr().out
+    cli.main(["-c", str(watchlist), "lca", "jobs"])
+    out = capsys.readouterr().out
+    assert "Acme" in out and "`greenhouse:acme:101`" in out and " open jobs have H-1B filings" in out
 
     monkeypatch.setenv("JOBWATCH_CONFIG", str(watchlist))
     got = mcp.get_job("101")

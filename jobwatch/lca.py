@@ -453,12 +453,13 @@ def places(job: Job, home_state: str = "") -> tuple[list[str], list[str]]:
 
 def for_job(index: Index | None, job: Job, home_state: str = "") -> Estimate | None:
     """The job's estimate from the cache; None without a cache, an employer filed under another name, or fewer
-    than MIN_FILINGS matches (then nothing is shown, never a guess). With a home state (filters.home_state),
-    only filings there count, never another state's or the whole country's."""
+    than MIN_FILINGS matches (then nothing is shown, never a guess). With a home state (filters.home_state), its
+    filings come first, never another state's; with too few there, the whole US, labeled US-wide. (Home state
+    only left almost every job blank: few employers file three for one title in any one state.)"""
     if index is None:
         return None
     cities, states = places(job, home_state)
-    return index.estimate(job_keys(job), job.title, cities, states, anywhere=not home_state)
+    return index.estimate(job_keys(job), job.title, cities, states)
 
 
 def for_one_job(cfg, job: Job) -> Estimate | None:

@@ -484,9 +484,13 @@ def cmd_logos(args, cfg, store):
         print(f"  {n}: {line}" + ("  (new)" if logos.key(n) in found else ""))
 
 
+LCA_DONE = ("skipped", "rejected", "withdrawn")  # `lca jobs` leaves these out
+
+
 def cmd_lca(args, cfg, store):
     """The H-1B LCA cache (lca.py): `lca update` refreshes it; `lca COMPANY [TITLE]` looks filings up (an
-    employer's most filed titles, or the estimate for a title with the filings behind it); `lca` says what's kept."""
+    employer's most filed titles, or the estimate for a title with the filings behind it); `lca jobs` lists the
+    tracked jobs that have an estimate; `lca` says what's kept."""
     path = lca.cache_path(cfg)
     what = args.what
     if what[:1] == ["update"]:
@@ -500,6 +504,16 @@ def cmd_lca(args, cfg, store):
             info = index.info()
             print(f"{info['rows']:,} certified full-time filings in {path}, updated {(info['updated'] or '?')[:10]}; "
                   + ", ".join(f"FY{fy}: {n:,}" for fy, n in info["years"].items()))
+            return
+        if what == ["jobs"]:  # which tracked jobs have an estimate, the way the page and `show` work it out
+            rows = [(job, rec) for job, rec in store.jobs() if rec["status"] not in LCA_DONE]
+            found = [(job, est) for job, _ in rows
+                     if (est := lca.for_job(index, job, cfg.filters_for(job).home_state))]
+            for job, est in sorted(found, key=lambda f: -f[1].median):
+                print(f"  ${est.median / 1000:.0f}K  {job.display_company}: {job.title} ({est.count} filings, "
+                      f"{est.where})  `{job.key}`")
+            print(f"{len(found)} of {len(rows)} open jobs have H-1B filings for their title"
+                  + ("" if found else " (with filters.home_state set, only filings in that state count)"))
             return
         keys = [lca.employer_key(what[0])]
         if len(what) == 1:
@@ -1420,8 +1434,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_logos)
 
     p = sub.add_parser("lca", help="base pay filed for H-1B hires (U.S. DOL LCA disclosures): `lca update` downloads "
-                       "them (pip install 'jobwatch[lca]'), `lca COMPANY [TITLE]` looks filings up")
-    p.add_argument("what", nargs="*", help="update, or a company and optionally a job title")
+                       "them (pip install 'jobwatch[lca]'), `lca COMPANY [TITLE]` looks filings up, `lca jobs` "
+                       "lists the tracked jobs that have them")
+    p.add_argument("what", nargs="*", help="update, jobs, or a company and optionally a job title")
     p.set_defaults(func=cmd_lca, read_only=True)
     return ap
 
