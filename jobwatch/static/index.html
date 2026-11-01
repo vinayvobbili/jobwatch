@@ -2818,7 +2818,7 @@ function worthChip(job) {
 function quickNarrow(j, v) {
   const where = j.where || [];  // a server from before `where` sends none
   return (v.where === "any" || !where.length || where.includes(v.where)) &&
-    (!v.fit || !j.fit || j.fit.score >= v.fit) &&
+    (!v.fit || (j.fit && j.fit.score >= v.fit)) &&  // a fit filter shows scored jobs only
     (!v.pay || j.salary_max == null || j.salary_max >= v.pay) &&
     (!v.posted || j.age_days == null || j.age_days <= v.posted);  // no posting date: still shows
 }
@@ -2878,7 +2878,7 @@ async function renderToday() {
   const drawNarrow = () => fill(narrow,
     h("div", { class: "hint" }, "Where"),
     segmented([["any", "Any"], ["remote", "Remote"], ["onsite", "On-site or hybrid"]], v.where, k => { v.where = k; drawToday(); }),
-    h("div", { class: "hint", style: "margin-top:8px", title: "Jobs not scored yet still show" }, "Fit score"),
+    h("div", { class: "hint", style: "margin-top:8px", title: "Only jobs with a fit score: ones not scored yet are left out" }, "Fit score"),
     segmented([[0, "Any"], [60, "60+"], [70, "70+"], [80, "80+"]], v.fit, k => { v.fit = k; drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "The top of the posted range; jobs that don't list pay still show" }, "Top of posted pay"),
     segmented([[0, "Any"], [150000, "$150K+"], [200000, "$200K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,

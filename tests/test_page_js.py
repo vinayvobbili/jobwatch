@@ -95,10 +95,10 @@ console.log(JSON.stringify(out));
         "off": ["remote", "city", "both", "nowhere"],
         "remote": ["remote", "both", "nowhere"],     # no location given isn't hidden
         "onsite": ["city", "both", "nowhere"],
-        "fit70": ["remote", "both"],                 # not scored yet still shows
+        "fit70": ["remote"],                         # not scored yet is left out
         "pay250": ["remote", "both", "nowhere"],     # no listed pay still shows
         "week": ["remote", "both", "nowhere"],       # posted within 3 days; no date still shows
-        "all": ["remote", "both"],
+        "all": ["remote"],
     }
 
 
