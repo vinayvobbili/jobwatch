@@ -110,6 +110,18 @@ def test_a_watched_board_has_no_hint_and_lists_its_open_roles(cfg, store, tracke
     assert {j["status"] for j in v["jobs"]} == {"new"} and v["jobs"][0]["posted"] == "2026-09-01"
 
 
+def test_open_roles_not_acted_on_list_the_latest_posting_first(cfg, store):
+    """A board's roles all arrive together when it's first watched, so the order they came says nothing."""
+    store.sync("lever", "globex", [
+        board_job("g1", "Platform Engineer", posted=datetime(2025, 2, 20, tzinfo=timezone.utc)),
+        board_job("g2", "Data Engineer", posted=datetime(2026, 10, 30, tzinfo=timezone.utc)),
+        board_job("g3", "Site Reliability Engineer", posted=None),
+        board_job("g4", "ML Engineer", posted=datetime(2026, 8, 14, tzinfo=timezone.utc))])
+    v = company.view(cfg, store, "globex", every=True)
+    assert [j["title"] for j in v["jobs"]] == ["Data Engineer", "ML Engineer", "Platform Engineer",
+                                              "Site Reliability Engineer"]
+
+
 def test_open_roles_not_acted_on_are_capped(cfg, store, monkeypatch):
     monkeypatch.setattr(company, "OPEN_SHOWN", 2)
     store.sync("lever", "globex", [board_job(f"g{i}", f"Engineer {i}") for i in range(5)])

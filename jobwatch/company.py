@@ -165,6 +165,8 @@ def view(cfg: Config, store: Store, text: str, every: bool | None = None) -> dic
     mine.sort(key=lambda r: _order(r[1]))  # stable: newest first within each
     acted = [r for r in mine if _order(r[1]) < 4]
     unacted = [r for r in mine if _order(r[1]) == 4 and not r[1].get("closed")]
+    # A board's roles all arrive together when it's first watched: the latest posting leads, not the order they came
+    unacted.sort(key=lambda r: (r[0].posted.isoformat() if r[0].posted else "", r[1]["first_seen"]), reverse=True)
     every = cfg.company_view == "all" if every is None else every
     hide = {} if every else _left_out(cfg, store, unacted)
     open_ = [r for r in unacted if r[0].key not in hide]
