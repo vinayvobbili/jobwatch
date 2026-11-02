@@ -6,7 +6,7 @@ domain its postings link to whose name is the company's ("Acme" and acme.com), e
 that home page names the company. The icon is the biggest one the home page declares (an apple-touch-icon, then
 <link rel=icon> by size), else /favicon.ico. robots.txt is obeyed on the company's own site (an icon its home
 page links to on a CDN is part of that page), and only an image is kept (checked by its bytes, not by what the
-site says it is). A site that turns away every program (Cloudflare's bot check) gets its logo by hand:
+site says it is). A site that turns away every program (a CDN's bot check) gets its logo by hand:
 `jobwatch logos NAME --image FILE|URL`.
 """
 

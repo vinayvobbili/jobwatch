@@ -719,6 +719,19 @@ def cmd_suggest(args, cfg, store):
 
 
 def cmd_offices(args, cfg, store):
+    if args.jobs:
+        there = offices.jobs_there(cfg, store, args.jobs)
+        if args.format == "json":
+            print(json.dumps([{"key": j.key, "title": j.title, "locations": here, "status": rec["status"],
+                               "first_seen": rec["first_seen"], "closed": rec["closed"]} for j, rec, here in there],
+                             indent=2, ensure_ascii=False))
+            return
+        near = ", ".join(offices.wanted_places(cfg)) or "your places"
+        print(f"{args.jobs}: {plural(len(there), 'job')} posted in {near}" + (":" if there else "."))
+        for j, rec, here in there:
+            seen = (rec["first_seen"] or "")[:10] + (f", closed {rec['closed'][:10]}" if rec["closed"] else ", open")
+            print(f"  {j.title}  ({'; '.join(here)})\n    {seen} · {rec['status']} · `{j.key}`")
+        return
     rows = offices.found(cfg, store)
     names = [r["name"] for r in rows] if args.add_all else (args.add or [])
     if names:
@@ -1298,6 +1311,8 @@ def build_parser() -> argparse.ArgumentParser:
                        "counts one (the file is rewritten, the old one kept as .bak).")
     p.add_argument("--add", action="append", metavar="COMPANY", help="count this company; repeatable")
     p.add_argument("--add-all", action="store_true", help="count every company listed")
+    p.add_argument("--jobs", metavar="COMPANY", help="the jobs this company has posted in your places, open or "
+                   "closed (counted or not)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_offices)
 

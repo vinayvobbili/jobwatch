@@ -23,6 +23,20 @@ def wanted_places(cfg: Config) -> list[str]:
     return [p for p in cfg.filters.locations if p.strip() and p.strip().lower() != "remote"]
 
 
+def _here(job, places: list[str]) -> list[str]:
+    """The job's locations in one of your places (lowercased). "Remote - Boulder, CO" is a remote job for people
+    there, not an office."""
+    return [loc for loc in job.locations if any(p in loc.lower() for p in places) and not is_remote(loc)]
+
+
+def jobs_there(cfg: Config, store: Store, name: str) -> list[tuple]:
+    """A company's jobs posted in one of your places, open or closed, newest first: (job, record, locations
+    there). What `offices --jobs NAME` lists: has it ever posted here, and what?"""
+    places, want = [p.lower() for p in wanted_places(cfg)], company_key(name)
+    return [(job, rec, here) for job, rec in store.jobs(include_closed=True)
+            if want in companies(job) and (here := _here(job, places))]
+
+
 def found(cfg: Config, store: Store) -> list[dict]:
     """Companies with a job seen in one of your places, open or closed, that aren't counted yet (nor left out):
     name, places (where, as the postings say), jobs (how many there), most jobs first."""
@@ -34,8 +48,7 @@ def found(cfg: Config, store: Store) -> list[dict]:
     for job, _ in store.jobs(include_closed=True):
         if companies(job) & known:
             continue
-        # "Remote - Boulder, CO" is a remote job for people there, not an office
-        here = [loc for loc in job.locations if any(p in loc.lower() for p in places) and not is_remote(loc)]
+        here = _here(job, places)
         if not here:
             continue
         c = out.setdefault(company_key(job.display_company), {"name": job.display_company, "places": [], "jobs": 0})

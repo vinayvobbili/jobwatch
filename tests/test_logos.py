@@ -85,7 +85,7 @@ def test_a_name_with_an_ampersand_is_guessed_without_it_too():
 
 
 def test_a_long_names_guess_is_taken_when_its_home_page_turns_programs_away():
-    """Cloudflare's bot check 403s the home page, so it can't name the company: a long name is trusted anyway,
+    """A CDN's bot check 403s the home page, so it can't name the company: a long name is trusted anyway,
     a short one (acme.com could be anyone's) isn't."""
     kw, _ = finder({"https://umbrella.com/": sources.Refused("HTTP 403")}, {"https://umbrella.com/favicon.ico": ICO})
     umbrella = job(company="Umbrella", board="umbrella.wd1/Jobs")

@@ -68,3 +68,11 @@ def test_offices_are_found_from_jobs_posted_in_your_places_and_counted(tmp_path,
     out = capsys.readouterr().out
     assert "Counted as having an office near you: Initech, Umbrella." in out
     assert "No other company has posted a job in Boulder." in out
+
+    # Counted or not, `--jobs` says what a company has posted here, closed ones too
+    cli.main(["-c", str(path), "offices", "--jobs", "Initech, Inc."])
+    out = capsys.readouterr().out
+    assert out.startswith("Initech, Inc.: 2 jobs posted in Boulder:") and "Seattle" not in out
+    assert "(Boulder, CO (Hybrid))" in out and ", open · new · `greenhouse:initech:Initech-2`" in out
+    cli.main(["-c", str(path), "offices", "--jobs", "Globex"])
+    assert capsys.readouterr().out == "Globex: 0 jobs posted in Boulder.\n"
