@@ -41,6 +41,9 @@ def test_the_queue_says_to_ask_about_the_office():
     said = warnings(job("Initech", "Seattle, WA"), f)
     assert said == ["location: Seattle, WA; Initech, Inc. has an office near you: ask the recruiter about working "
                     "from it in the phone screen"]
+    offered = job("Globex", "Seattle, WA", description="Hybrid: in-office 3 days a week unless designated remote.")
+    assert warnings(offered, f) == ['location: Seattle, WA; the posting offers remote by arrangement ("unless '
+                                    'designated remote"): ask the recruiter about it']
 
 
 def test_offices_are_found_from_jobs_posted_in_your_places_and_counted(tmp_path, capsys):
@@ -76,3 +79,35 @@ def test_offices_are_found_from_jobs_posted_in_your_places_and_counted(tmp_path,
     assert "(Boulder, CO (Hybrid))" in out and ", open · new · `greenhouse:initech:Initech-2`" in out
     cli.main(["-c", str(path), "offices", "--jobs", "Globex"])
     assert capsys.readouterr().out == "Globex: 0 jobs posted in Boulder.\n"
+
+
+def test_only_a_tech_job_says_there_is_an_office():
+    """Field sales and customer-facing roles live near their customers, so they don't show an office."""
+    for title in ("Security Engineer", "IT Support Specialist", "Systems Administrator", "Penetration Tester",
+                  "Senior Network Engineer", "Machine Learning Engineer", "Database Administrator"):
+        assert offices.tech_role(title), title
+    for title in ("Senior Customer Engineer, Majors", "Commercial Account Executive", "Enterprise Sales Executive",
+                  "Sales Engineer", "Shift Supervisor", "Research Economist", "Commit it to memory",
+                  "Sr. Forward Deployed Engineer (FDE) - Retail", "Sr. Solutions Architect - Media"):
+        assert not offices.tech_role(title), title
+    assert offices.tech_job(Job(source="hn", company="whoishiring", id="1", title="Open roles (see the post)",
+                                url="https://example.com/hn/1", company_name="Vandelay"))
+
+
+def test_a_counted_company_with_only_field_sales_near_you_is_doubted_and_dropped(tmp_path, capsys):
+    path = tmp_path / "jobwatch.yaml"
+    path.write_text("companies:\n  - greenhouse:acme\nfilters:\n  locations: [remote, Boulder]\n"
+                    "  nearby_offices: [Initech, Globex, Umbrella]\nstate: state.db\n")
+    cfg = config.load(path)
+    store = Store(tmp_path / "state.db")
+    store.sync("greenhouse", "initech", [job("Initech", "Boulder, CO")])
+    store.sync("greenhouse", "globex", [Job(source="greenhouse", company="globex", id="g-1", url="https://example.com/g",
+                                            title="Account Executive, Mountain West", company_name="Globex",
+                                            locations=["Boulder, CO"])])
+    assert offices.unproven(cfg, store) == ["Globex", "Umbrella"]
+    assert offices.found(cfg, store) == []  # an uncounted field-sales job isn't suggested either
+    store.close()
+    cli.main(["-c", str(path), "offices"])
+    assert "no tech job seen in Boulder (field sales or nothing): Globex, Umbrella." in capsys.readouterr().out
+    cli.main(["-c", str(path), "offices", "--drop", "Globex", "--drop", "umbrella"])
+    assert config.load(path).filters.nearby_offices == ["Initech"]

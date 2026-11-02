@@ -18,10 +18,12 @@ from .filters import (
     excluded_company,
     in_focus,
     office_nearby,
+    place_rejection,
     red_flags,
     reject_reason,
     rejection,
     relevance,
+    remote_offered,
     search_terms,
     title_ok,
 )
@@ -373,11 +375,12 @@ def warnings(job: Job, f: Filters) -> list[str]:
         out.append(f"pay {job.pay()} is below ${f.min_salary / 1000:.0f}K")
     # A job added by hand has its place as typed ("Remote (NC)"), which the location rules can't judge.
     if job.source != MANUAL and job.locations and \
-            (why := reject_reason(job, Filters(locations=f.locations, remote_country=f.remote_country,
-                                               home_state=f.home_state))):
+            (why := place_rejection(job, f)):
         where = f"location: {'; '.join(job.locations[:3])}" + (f" ({why})" if why != "location" else "")
         if office := office_nearby(job, f):
             where += f"; {office} has an office near you: ask the recruiter about working from it in the phone screen"
+        if offer := remote_offered(job, f):
+            where += f"; the posting offers remote by arrangement (\"{offer}\"): ask the recruiter about it"
         out.append(where)
     out += red_flags(job, f)
     return out

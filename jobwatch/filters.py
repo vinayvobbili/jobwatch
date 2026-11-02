@@ -12,6 +12,7 @@ from .text import (
     in_us,
     is_remote,
     names_a_region,
+    remote_offer,
     remote_states_in_text,
     remote_us_wide,
     state_code,
@@ -198,6 +199,16 @@ def office_nearby(job: Job, f: Filters) -> str | None:
     return _office_company(job, f) if place_rejection(job, f) else None
 
 
+def remote_offered(job: Job, f: Filters) -> str | None:
+    """The posting's words offering remote by arrangement ("unless designated remote"), for a job placed outside
+    your places in your country, when remote is one of your places: it passes the place rules, and the queue
+    says to ask about it. None otherwise."""
+    if not any(w.lower() == "remote" for w in f.locations) or not place_rejection(job, f):
+        return None
+    here = f.remote_country.lower() == "any" or not job.locations or any(in_us(loc) for loc in job.locations)
+    return remote_offer(job.description) if here else None
+
+
 def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] | None:
     """(which filter, why) for a job that fails the filters, or None if it passes. The filter is one of KINDS:
     ("company", "company 'Initech'"), ("title", "title"), ("excluded", "title matches 'manager'"),
@@ -214,7 +225,7 @@ def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] 
         return "excluded", f"text matches {p!r}"
     if job.department and (p := _any(f.exclude_departments, job.department)):
         return "department", f"department matches {p!r}"
-    if (why := place_rejection(job, f)) and not _office_company(job, f):
+    if (why := place_rejection(job, f)) and not _office_company(job, f) and not remote_offered(job, f):
         return "place", why
     if job.salary_min is None:
         if f.require_salary:

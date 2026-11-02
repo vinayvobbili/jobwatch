@@ -732,6 +732,11 @@ def cmd_offices(args, cfg, store):
             seen = (rec["first_seen"] or "")[:10] + (f", closed {rec['closed'][:10]}" if rec["closed"] else ", open")
             print(f"  {j.title}  ({'; '.join(here)})\n    {seen} · {rec['status']} · `{j.key}`")
         return
+    if args.drop:
+        cfg = offices.drop(cfg, args.drop)
+        print(f"No longer counted as having an office near you: {', '.join(args.drop)} ({cfg.path}; the old file is "
+              f"kept as {cfg.path.name}.bak).")
+        return
     rows = offices.found(cfg, store)
     names = [r["name"] for r in rows] if args.add_all else (args.add or [])
     if names:
@@ -740,10 +745,12 @@ def cmd_offices(args, cfg, store):
               f"filter, with a warning to ask the recruiter about that office ({cfg.path}; the old file is kept as "
               f"{cfg.path.name}.bak).")
         return
+    doubtful = offices.unproven(cfg, store)
     if args.format == "json":
-        print(json.dumps({"counted": cfg.filters.nearby_offices, "found": rows}, indent=2, ensure_ascii=False))
+        print(json.dumps({"counted": cfg.filters.nearby_offices, "no_tech_job_seen": doubtful, "found": rows},
+                         indent=2, ensure_ascii=False))
     else:
-        print(offices.text(cfg, rows), end="")
+        print(offices.text(cfg, rows, doubtful), end="")
 
 
 def cmd_applications(args, cfg, store):
@@ -1311,6 +1318,7 @@ def build_parser() -> argparse.ArgumentParser:
                        "counts one (the file is rewritten, the old one kept as .bak).")
     p.add_argument("--add", action="append", metavar="COMPANY", help="count this company; repeatable")
     p.add_argument("--add-all", action="store_true", help="count every company listed")
+    p.add_argument("--drop", action="append", metavar="COMPANY", help="stop counting this company; repeatable")
     p.add_argument("--jobs", metavar="COMPANY", help="the jobs this company has posted in your places, open or "
                    "closed (counted or not)")
     p.add_argument("--format", choices=["text", "json"], default="text")

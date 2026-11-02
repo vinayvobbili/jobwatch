@@ -215,6 +215,26 @@ def is_remote(location: str) -> bool:
     return bool(_REMOTE.search(location))
 
 
+# A posting placed in one city whose text says remote can be arranged ("In-office 3 days a week unless designated
+# remote"): the location field doesn't say so.
+_REMOTE_OFFER = re.compile(
+    r"unless (?:designated|approved|hired|agreed) (?:as |for |to be )?(?:a |fully )?remote"
+    r"|remote (?:candidates|applicants) (?:will |may |would )?(?:also )?(?:be )?considered"
+    r"|(?:will|would|may) (?:also )?consider (?:fully )?remote"
+    r"|open to (?:fully )?remote(?: candidates| applicants| work)?"
+    r"|remote (?:work )?(?:is )?(?:also )?(?:an option|possible|negotiable)", re.I)
+_NOT = re.compile(r"\b(?:not|no|never|isn't|aren't|won't|cannot|can't)\b[^.;\n]{0,25}$", re.I)
+
+
+def remote_offer(text: str) -> str | None:
+    """The words in a posting saying remote can be arranged ("unless designated remote", "remote candidates
+    will be considered"); None when it says none, or says it's not ("we are not open to remote")."""
+    for m in _REMOTE_OFFER.finditer(text or ""):
+        if not _NOT.search(text[max(0, m.start() - 40):m.start()]):
+            return m.group(0)
+    return None
+
+
 def names_no_place(location: str) -> bool:
     """True for a bare "Remote" / "Remote-Friendly" with no country or city after it."""
     return not _REMOTE_WORDS.sub("", location).strip()

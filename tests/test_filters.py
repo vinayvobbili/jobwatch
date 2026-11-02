@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from jobwatch.filters import KINDS, Filters, reject_reason, rejection, relevance
+from jobwatch.filters import KINDS, Filters, reject_reason, rejection, relevance, remote_offered
 from jobwatch.models import Job
 
 
@@ -118,6 +118,25 @@ GOOGLE_STATES = dict(  # Google's feed: a remote role open in four states, liste
                 "Remote locations: California, USA; Nevada, USA; Oregon, USA; Washington, USA.\n"
                 "In accordance with Washington state law, we are highlighting our benefits.")
 HOME = ["remote", "Denver", "Boulder"]
+
+
+@pytest.mark.parametrize("text, offer", [
+    ("Hybrid culture. In-office 3 days per week unless designated remote.", "unless designated remote"),
+    ("Based in Austin; remote candidates will also be considered.", "remote candidates will also be considered"),
+    ("We're open to remote candidates in the US.", "open to remote candidates"),
+    ("Remote is an option for the right person.", "Remote is an option"),
+    ("We are not open to remote work for this role.", None),
+    ("Remote is not an option.", None),
+    ("Five days a week in our Austin office.", None),
+])
+def test_remote_offered_in_the_text_passes_the_place_rules(text, offer):
+    f = Filters(locations=HOME, home_state="CO")
+    austin = job(description=text)
+    assert remote_offered(austin, f) == offer
+    assert (reject_reason(austin, f) is None) == bool(offer)
+    # Only when remote is one of your places, and not for a job abroad
+    assert remote_offered(austin, Filters(locations=["Denver"])) is None
+    assert remote_offered(job(description=text, locations=["London, UK"]), f) is None
 
 
 def test_remote_only_in_other_states_is_left_out_for_a_home_state():
