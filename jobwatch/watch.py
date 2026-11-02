@@ -404,7 +404,10 @@ def _listed(job: Job, get, boards: dict) -> list[Job]:
     searched = bool(src.search) and not src.many_companies
     k = (job.source, job.company, job.title if searched else "")
     if k not in boards:
-        boards[k] = sources.fetch(job.source, job.company, get, search=[job.title], wanted=_never)
+        try:
+            boards[k] = sources.fetch(job.source, job.company, get, search=[job.title], wanted=_never)
+        except sources.NotFound:  # the board is gone (a company that moved to another ATS): nothing open on it
+            boards[k] = []
     return boards[k]
 
 
@@ -488,14 +491,20 @@ CHECK_EVERY = timedelta(days=1)  # a posting isn't checked again sooner
 def check_daily(store: Store, get=None, page=None, watched: list[Board] = (), limit: int = CHECK_CAP,
                 every: timedelta = CHECK_EVERY) -> list[Check]:
     """check_postings for the scheduled check: the queued jobs and open applications, and the open jobs on Today
-    that came from an alert or were added by hand (source MANUAL) with a link jobwatch can read. Up to `limit`
-    jobs a run, none checked within `every`, the longest unchecked first. Returns the ones checked."""
+    that came from an alert or were added by hand (source MANUAL) with a link jobwatch can read, or are on a
+    board that isn't watched (one alerts matched them to, or one taken off the watchlist when the company moved
+    to another ATS: no fetch closes those). Up to `limit` jobs a run, none checked within `every`, the longest
+    unchecked first. Returns the ones checked."""
     done, now = store.posting_checked(), datetime.now(timezone.utc)
+    on = {(b.source, b.board) for b in watched}
     rows = store.jobs(CHECKED, include_closed=True) + [
-        (j, r) for j, r in store.jobs(("new", "shown")) if j.source == MANUAL and j.url
-        and not linkedin.job_id(j.url) and not any(s in j.url for s in alerts.UNREAD_SITES)]
+        (j, r) for j, r in store.jobs(("new", "shown"))
+        if (j.source == MANUAL and j.url and not linkedin.job_id(j.url)
+            and not any(s in j.url for s in alerts.UNREAD_SITES))
+        or (j.source in sources.SOURCES and not sources.SOURCES[j.source].many_companies
+            and (j.source, j.company) not in on)]
     due = [(j, r) for j, r in rows if not (t := done.get(j.key)) or now - datetime.fromisoformat(t) >= every]
-    due.sort(key=lambda p: done.get(p[0].key, ""))
+    due.sort(key=lambda p: (p[1]["status"] not in CHECKED, done.get(p[0].key, "")))  # yours first, then Today's
     checks = check_postings(store, get=get, page=page, watched=watched, jobs=due[:limit])
     for c in checks:
         store.set_posting_checked(c.job.key)

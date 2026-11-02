@@ -114,6 +114,23 @@ def test_check_daily_closes_a_job_whose_page_has_ended_and_checks_each_once_a_da
     assert not store.find(gone)[1]["closed"]
 
 
+def test_check_daily_closes_todays_jobs_on_a_board_that_is_gone_and_not_watched(web, watchlist):
+    """A company that moved to another ATS: its old board is off the watchlist, so no fetch closes its jobs, and
+    the board answers 404 (Greenhouse's "no longer active")."""
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    old = [Job(source="greenhouse", company="globexold", id=str(i), title=f"Engineer {i}",
+               url=f"https://job-boards.greenhouse.io/globexold/jobs/{i}", company_name="Globex") for i in (1, 2)]
+    store.sync("greenhouse", "globexold", old)
+    watched = cfg.boards[0]
+    store.sync(watched.source, watched.board, [Job(source=watched.source, company=watched.board, id="9",
+                                                   title="Engineer", url="https://example.com/9")])
+    get = pages()  # every board 404s
+    got = {c.job.key: c.result for c in watch.check_daily(store, get=get, page=pages(), watched=cfg.boards)}
+    assert got == {"greenhouse:globexold:1": "closed", "greenhouse:globexold:2": "closed"}  # the fetch has the rest
+    assert sum("globexold" in u for u in get.seen) == 1  # the board is read once for both
+
+
 def test_check_daily_covers_queued_jobs_not_other_statuses_and_unreadable_links(web, watchlist):
     store = Store(config.load(watchlist).state)
     queued = added(store, status="queued")
