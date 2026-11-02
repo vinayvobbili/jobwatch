@@ -443,6 +443,25 @@ console.log(JSON.stringify({json.dumps(cases)}.map(c => split[keys[c.key]](lines
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_saving_settings_keeps_a_company_name_with_a_comma_whole(tmp_path):
+    """Left-out companies and companies with an office near you are names, one per line: saving once split
+    "Initech, Inc." into "Initech" and "Inc." (and the stray "Inc." matched nothing, or every Inc.)."""
+    js = tmp_path / "companies.js"
+    js.write_text("\n".join([page_function("unlines"), page_function("placeLines"), page_function("filterValues")])
+                  + r"""
+const box = value => ({ value }), names = "Initech, Inc.\nGlobex\nUmbrella, LLC";
+const inp = { titles: box("engineer"), exclude: box(""), excludeText: box(""), excludeCompanies: box(names),
+  locations: box("remote"), country: box(""), home: box(""), nearOffices: box(names), minPay: box(""),
+  requirePay: { checked: false }, maxAge: box(""), minFit: box("") };
+const f = filterValues(inp);
+console.log(JSON.stringify([f.exclude_companies, f.nearby_offices]));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [["Initech, Inc.", "Globex", "Umbrella, LLC"]] * 2
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_settings_sub_tabs_follow_the_url_hash_and_old_anchors(tmp_path):
     js = tmp_path / "tabs.js"
     js.write_text(page_const("SET_GROUPS") + "\n" + page_function("settingsGroupOf") + "\n"

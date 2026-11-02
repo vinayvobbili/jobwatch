@@ -2685,9 +2685,9 @@ function filterInputs(f) {
 }
 function filterValues(inp) {
   return { titles: unlines(inp.titles.value), exclude_titles: unlines(inp.exclude.value),
-    exclude_text: unlines(inp.excludeText.value), exclude_companies: unlines(inp.excludeCompanies.value),
+    exclude_text: unlines(inp.excludeText.value), exclude_companies: placeLines(inp.excludeCompanies.value),
     locations: placeLines(inp.locations.value), remote_country: inp.country.value,
-    home_state: inp.home.value.trim() || null, nearby_offices: unlines(inp.nearOffices.value),
+    home_state: inp.home.value.trim() || null, nearby_offices: placeLines(inp.nearOffices.value),
     min_salary: inp.minPay.value ? Number(inp.minPay.value) : null, require_salary: inp.requirePay.checked || null,
     max_age_days: inp.maxAge.value ? Number(inp.maxAge.value) : null,
     min_fit: Number(inp.minFit.value) || null };
@@ -4003,7 +4003,7 @@ function unlines(v) {
   }
   return out.map(s => s.trim()).filter(Boolean);
 }
-// Places, one per line: "Boulder, CO" is one place.
+// Places and company names, one per line: "Boulder, CO" is one place, "Initech, Inc." one company.
 function placeLines(v) { return v.split("\n").map(s => s.trim()).filter(Boolean); }
 
 // A setting in Settings: a short label, its input, and a line of help under it (so inputs side by side line up).
