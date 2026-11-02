@@ -157,6 +157,32 @@ def us_states(text: str) -> list[str]:
     return list(dict.fromkeys(c for c in found if c))
 
 
+# A tier for the rest: "all other U.S. states", "any other location", "other U.S. locations", "rest of the US".
+_OTHER_PLACES = re.compile(r"\b(?:all|any)\s+other\b|\bother\s+(?:u\.?s\.?a?\s+)?(?:states|locations|areas|regions)\b"
+                           r"|\brest\s+of\s+(?:the\s+)?(?:u\.?s\.?a?|united\s+states|country)\b", re.I)
+
+
+def local_salary(text: str, home_state: str) -> tuple[int, int] | None:
+    """The yearly range of the pay tier that applies to a state, when the text lists pay by place:
+    "(CO, WA) per year: $130,000 - $160,000" and "(all other U.S. states): $110,000 - $140,000". The tier
+    naming the state (by code or name) wins, else the one for all other places. None when the text has one range,
+    or the tiers don't settle it (none or several fit): parse_salary's first range then stands."""
+    tiers, start = [], 0
+    for m in _RANGE.finditer(text):
+        low, high = _dollars(m.group(1), m.group(2)), _dollars(m.group(3), m.group(4) or m.group(2))
+        if high < low or _NOT_ANNUAL.match(text, m.end()) or low < _LOWEST:
+            continue
+        # what names the tier: the text before the range, back to the line's start or the last range
+        tiers.append((text[max(start, text.rfind("\n", 0, m.start()) + 1):m.start()], (low, high)))
+        start = m.end()
+    if len(tiers) < 2:
+        return None
+    for fits in (lambda label: home_state in us_states(label), _OTHER_PLACES.search):
+        if len(found := [pay for label, pay in tiers if fits(label)]) == 1:
+            return found[0]
+    return None
+
+
 def state_list(text: str) -> list[str] | None:
     """The states, when the text is nothing but a list of US states: "California, USA; Nevada, USA",
     "CA, NV, OR or WA", "Remote - Texas". None when it names anything else too ("Austin, TX", "anywhere in the

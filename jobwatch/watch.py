@@ -30,6 +30,7 @@ from .filters import (
 from .models import Job
 from .score import ScoringUnavailable, brief, collecting_usage, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, Store
+from .text import local_salary
 
 
 @dataclass
@@ -183,6 +184,9 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
                 if not src.many_companies:
                     j.company_name = (b.name or j.company_name) if src.search else (j.company_name or b.name)
                 mark_hosted(j, up, b.careers)
+                # Pay listed by place: the tier for the home state, which the pay filter and the display use.
+                if (home := cfg.filters_for(j).home_state) and (pay := local_salary(j.description, home)):
+                    j.salary_min, j.salary_max, j.currency = *pay, j.currency or "USD"
             if up is False and not b.careers:
                 report.warnings[b.entry] = offline_warning(b)
             report.boards += 1

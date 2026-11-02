@@ -1,6 +1,15 @@
 import pytest
 
-from jobwatch.text import annual, html_to_text, in_us, names_no_place, parse_salary, pay_period, split_locations
+from jobwatch.text import (
+    annual,
+    html_to_text,
+    in_us,
+    local_salary,
+    names_no_place,
+    parse_salary,
+    pay_period,
+    split_locations,
+)
 
 
 def test_html_to_text_handles_escaped_markup_and_lists():
@@ -36,6 +45,31 @@ def test_parse_salary_finds_annual_ranges(text, expected):
 ])
 def test_parse_salary_skips_non_annual_and_missing(text):
     assert parse_salary(text) is None
+
+
+TIERS = ("Base pay range (CA, WA) per year: $150,000 - 200,000\n"
+         "Base pay range (all other U.S. states) per year: $120,000-160,000")
+
+
+@pytest.mark.parametrize("text, state, expected", [
+    (TIERS, "CO", (120_000, 160_000)),  # no tier names it: the one for the other states
+    (TIERS, "WA", (150_000, 200_000)),  # a tier names it
+    ("For Colorado: $130K - $170K\nFor New York and California: $160K - $200K", "CO", (130_000, 170_000)),
+    ("Colorado, Utah: $130K - $170K. Rest of the US: $110K - $150K.", "UT", (130_000, 170_000)),
+    ("CA or NY: $160K - $200K; any other U.S. location: $110K - $150K.", "CO", (110_000, 150_000)),
+    ("Zone A (CA, NY): $160K - $200K\nZone B (TX): $110K - $150K", "CO", None),  # nothing says Colorado is B
+    ("CO Level 4: $130K - $170K\nCO Level 5: $160K - $200K", "CO", None),  # two tiers name it
+    ("Base pay: $120,000 - $160,000 for Initech (CO)", "CO", None),  # one range: parse_salary's job
+    ("Level 4: $130K - $170K\nLevel 5: $160K - $200K", "CO", None),  # tiers by level, not place
+    ("CA: $160K - $200K\nOther locations: $20 - $30 per hour", "CO", None),  # an hourly wage isn't a tier
+    ("", "CO", None),
+])
+def test_local_salary_picks_the_tier_for_a_state(text, state, expected):
+    assert local_salary(text, state) == expected
+
+
+def test_parse_salary_still_reads_the_first_tier():
+    assert parse_salary(TIERS) == (150_000, 200_000)
 
 
 @pytest.mark.parametrize("text, expected", [
