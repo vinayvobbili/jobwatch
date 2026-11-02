@@ -111,3 +111,32 @@ def test_a_counted_company_with_only_field_sales_near_you_is_doubted_and_dropped
     assert "no tech job seen in Boulder (field sales or nothing): Globex, Umbrella." in capsys.readouterr().out
     cli.main(["-c", str(path), "offices", "--drop", "Globex", "--drop", "umbrella"])
     assert config.load(path).filters.nearby_offices == ["Initech"]
+    # One you know has a tech office there is counted and never doubted, whatever jobwatch has seen
+    cli.main(["-c", str(path), "offices", "--known", "Umbrella"])
+    cfg = config.load(path)
+    assert (cfg.filters.nearby_offices, cfg.filters.known_offices) == (["Initech", "Umbrella"], ["Umbrella"])
+    store = Store(tmp_path / "state.db")
+    assert offices.unproven(cfg, store) == []
+    store.close()
+    cli.main(["-c", str(path), "offices", "--drop", "Umbrella"])
+    assert config.load(path).filters.known_offices == []
+
+
+def test_remote_offers_lists_the_jobs_that_rule_lets_into_today(tmp_path, capsys):
+    path = tmp_path / "jobwatch.yaml"
+    path.write_text("companies:\n  - greenhouse:acme\nfilters:\n  locations: [remote, Boulder]\n"
+                    "  titles: [engineer]\n  nearby_offices: [Initech]\nstate: state.db\n")
+    store = Store(tmp_path / "state.db")
+    offer = "In-office 3 days a week unless designated remote."
+    store.sync("greenhouse", "globex", [job("Globex", "Seattle, WA", 1, description=offer),
+                                        job("Globex", "Seattle, WA", 2),  # no offer: still hidden
+                                        Job(source="greenhouse", company="globex", id="g-3", title="Office Manager",
+                                            url="https://example.com/g3", company_name="Globex",
+                                            locations=["Seattle, WA"], description=offer)])  # fails titles
+    store.sync("greenhouse", "initech", [job("Initech", "Seattle, WA", description=offer)])  # an office near: not this
+    store.close()
+    cli.main(["-c", str(path), "offices", "--remote-offers"])
+    out = capsys.readouterr().out
+    assert out.startswith("Shown only because the posting offers remote by arrangement: 1 open job outside")
+    assert "Globex: Security Engineer  (Seattle, WA)" in out
+    assert '"unless designated remote"' in out and "Initech" not in out and "Office Manager" not in out

@@ -992,6 +992,7 @@ filters:
   # home_state: NY                             # leave out remote jobs open only in other states
   # nearby_offices: ["Initech"]                # companies with an office near you: their jobs anywhere show, to
   #                                            # ask the recruiter about that office (`jobwatch offices` finds them)
+  # known_offices: ["Initech"]                 # ones you know have a tech office near you: never doubted
   min_salary: 150000                          # listed pay must reach this; jobs without pay still pass
   max_age_days: 30
   # min_fit: 70                                # hide jobs whose fit score is below this; unscored ones still show

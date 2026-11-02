@@ -41,6 +41,9 @@ class Filters:
     # place rules wherever they're posted, with a warning to ask the recruiter about working from that office.
     # `jobwatch offices` finds them from the jobs seen in your places.
     nearby_offices: list[str] = field(default_factory=list)
+    # The ones you know have a tech office near you (jobwatch sees only some of a company's postings): `offices`
+    # doesn't doubt them for having no tech job seen there. `jobwatch offices --known NAME`.
+    known_offices: list[str] = field(default_factory=list)
     min_salary: int | None = None                           # a listed range must reach this; unlisted pay passes
     require_salary: bool = False                             # reject jobs that don't list pay
     max_age_days: int | None = None

@@ -15,6 +15,7 @@ import yaml
 
 from .config import Config, save
 from .dupes import companies, company_key
+from .filters import office_nearby, rejection, remote_offered
 from .rolekinds import OTHER, role_kinds
 from .store import Store
 from .text import is_remote
@@ -80,11 +81,24 @@ def found(cfg: Config, store: Store) -> list[dict]:
     return sorted(out.values(), key=lambda c: (-c["jobs"], c["name"].lower()))
 
 
+def remote_offers(cfg: Config, store: Store) -> list[tuple]:
+    """Open jobs placed outside your places that show only because the posting offers remote by arrangement
+    ("unless designated remote"), passing every other filter: (job, record, the words), newest first.
+    `offices --remote-offers`, to see what that rule lets in."""
+    out = []
+    for job, rec in store.jobs():
+        f = cfg.filters_for(job)
+        if (offer := remote_offered(job, f)) and not office_nearby(job, f) and rejection(job, f) is None:
+            out.append((job, rec, offer))
+    return out
+
+
 def unproven(cfg: Config, store: Store) -> list[str]:
     """Counted companies (filters.nearby_offices) with no tech role seen in your places, open or closed: only
-    field sales there, or nothing at all. `offices --drop` uncounts them."""
+    field sales there, or nothing at all. A hint, not proof: jobwatch sees only some of a company's postings, so
+    one you know has a tech office there (filters.known_offices) isn't listed. `offices --drop` uncounts one."""
     places = [p.lower() for p in wanted_places(cfg)]
-    shown = set()
+    shown = {company_key(n) for n in cfg.filters.known_offices}
     for job, _ in store.jobs(include_closed=True):
         if tech_job(job) and _here(job, places):
             shown |= companies(job)
@@ -98,23 +112,27 @@ def drop(cfg: Config, names: list[str]) -> Config:
     raw = (yaml.safe_load(path.read_text()) or {}) if path.is_file() else {}
     filters = dict(raw.get("filters") or {})
     gone = {company_key(n) for n in names}
-    filters["nearby_offices"] = [n for n in filters.get("nearby_offices") or [] if company_key(str(n)) not in gone]
+    for key in ("nearby_offices", "known_offices"):
+        if key in filters:
+            filters[key] = [n for n in filters[key] or [] if company_key(str(n)) not in gone]
     return save(path, {"filters": filters})
 
 
-def add(cfg: Config, names: list[str]) -> Config:
-    """Count these companies as having an office near you (filters.nearby_offices); the watchlist is rewritten,
-    the old one kept as .bak. One already there isn't added twice."""
+def add(cfg: Config, names: list[str], known: bool = False) -> Config:
+    """Count these companies as having an office near you (filters.nearby_offices; known: also
+    filters.known_offices, a tech office you know of); the watchlist is rewritten, the old one kept as .bak. One
+    already there isn't added twice."""
     path = Path(cfg.path)
     raw = (yaml.safe_load(path.read_text()) or {}) if path.is_file() else {}
     filters = dict(raw.get("filters") or {})
-    have = list(filters.get("nearby_offices") or [])
-    keys = {company_key(str(n)) for n in have}
-    for name in (n.strip() for n in names):
-        if name and company_key(name) not in keys:
-            have.append(name)
-            keys.add(company_key(name))
-    filters["nearby_offices"] = have
+    for key in ("nearby_offices", "known_offices") if known else ("nearby_offices",):
+        have = list(filters.get(key) or [])
+        keys = {company_key(str(n)) for n in have}
+        for name in (n.strip() for n in names):
+            if name and company_key(name) not in keys:
+                have.append(name)
+                keys.add(company_key(name))
+        filters[key] = have
     return save(path, {"filters": filters})
 
 
@@ -123,7 +141,8 @@ def text(cfg: Config, rows: list[dict], doubtful: list[str] = ()) -> str:
     head = f"Counted as having an office near you: {', '.join(cfg.filters.nearby_offices) or 'none yet'}.\n"
     if doubtful:
         head += (f"\nCounted, with no tech job seen in {near} (field sales or nothing): {', '.join(doubtful)}.\n"
-                 "`jobwatch offices --drop NAME` stops counting one; `--jobs NAME` lists what it posted there.\n")
+                 "jobwatch sees only some postings: check before `jobwatch offices --drop NAME`; `--known NAME` "
+                 "keeps one you know has a tech office there; `--jobs NAME` lists what it posted there.\n")
     if not wanted_places(cfg):
         return head + "\nYour location filter names no place but remote, so there's nothing to look for.\n"
     if not rows:

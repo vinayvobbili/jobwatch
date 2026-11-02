@@ -737,6 +737,19 @@ def cmd_offices(args, cfg, store):
         print(f"No longer counted as having an office near you: {', '.join(args.drop)} ({cfg.path}; the old file is "
               f"kept as {cfg.path.name}.bak).")
         return
+    if args.remote_offers:
+        offers = offices.remote_offers(cfg, store)
+        print(f"Shown only because the posting offers remote by arrangement: {plural(len(offers), 'open job')} "
+              f"outside your places" + (":" if offers else "."))
+        for j, rec, offer in offers:
+            print(f"  {j.display_company}: {j.title}  ({'; '.join(j.locations[:2])})\n    \"{offer}\" · {rec['status']}"
+                  f" · `{j.key}`")
+        return
+    if args.known:
+        cfg = offices.add(cfg, args.known, known=True)
+        print(f"Known to have a tech office near you: {', '.join(args.known)}. Counted, and not doubted for having no "
+              f"tech job seen there ({cfg.path}; the old file is kept as {cfg.path.name}.bak).")
+        return
     rows = offices.found(cfg, store)
     names = [r["name"] for r in rows] if args.add_all else (args.add or [])
     if names:
@@ -1319,6 +1332,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--add", action="append", metavar="COMPANY", help="count this company; repeatable")
     p.add_argument("--add-all", action="store_true", help="count every company listed")
     p.add_argument("--drop", action="append", metavar="COMPANY", help="stop counting this company; repeatable")
+    p.add_argument("--known", action="append", metavar="COMPANY", help="count a company you know has a tech office "
+                   "near you, and don't doubt it for having no tech job seen there; repeatable")
+    p.add_argument("--remote-offers", action="store_true", help="the open jobs outside your places that pass "
+                   "because the posting offers remote by arrangement (\"unless designated remote\")")
     p.add_argument("--jobs", metavar="COMPANY", help="the jobs this company has posted in your places, open or "
                    "closed (counted or not)")
     p.add_argument("--format", choices=["text", "json"], default="text")
