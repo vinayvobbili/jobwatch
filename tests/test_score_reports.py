@@ -84,6 +84,18 @@ def test_score_cost_prints_the_panel_and_each_recorded_run(setup, capsys):
     assert f"{date.today()}  claude-sonnet-5-5 (batch): 10 jobs, 1,000,000 in, 100,000 out" in out
 
 
+def test_digest_role_lists_only_jobs_of_that_kind(setup, capsys):
+    """`digest --role ai` is Today's Roles checkboxes from the command line, before the top-N cut."""
+    import json
+    cfg, store = setup
+    store.close()
+    cli.main(["-c", str(cfg.path), "digest", "--role", "ai", "--all", "--peek", "--format", "json"])
+    assert [j["title"] for j in json.loads(capsys.readouterr().out)["jobs"]] == ["AI Engineer"]
+    cli.main(["-c", str(cfg.path), "digest", "--role", "ai", "--role", "other", "--peek", "--limit", "5",
+              "--format", "json"])
+    assert sorted(j["title"] for j in json.loads(capsys.readouterr().out)["jobs"]) == ["AI Engineer", "Analyst"]
+
+
 def test_day_reads_days_ago_and_a_days_start_is_local_midnight():
     today = date(2026, 9, 29)
     assert (day("-7", today), day("yesterday", today)) == ("2026-09-22", "2026-09-28")

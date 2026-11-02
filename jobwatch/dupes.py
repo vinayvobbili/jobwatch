@@ -43,7 +43,8 @@ SAME_TITLE = "same title"  # why a title-only match matched: possibly the same o
 # Words after a company's name that don't change which company it is: "Globex Investments", "Initech, Inc.".
 _COMPANY_SUFFIXES = {"inc", "incorporated", "llc", "llp", "lp", "ltd", "limited", "corp", "corporation", "co",
                      "company", "plc", "gmbh", "ag", "sa", "nv", "bv", "group", "holdings", "holding",
-                     "technologies", "technology", "labs", "investments", "international"}
+                     "technologies", "technology", "labs", "investments", "international",
+                     "usa"}  # a board for one country's jobs: "Globex USA" is Globex
 
 # Boards whose name is the company's own short name (greenhouse:acme); a Workday or Oracle board names a tenant.
 _NAMED_BOARDS = {"greenhouse", "lever", "ashby", "workable", "rippling", "smartrecruiters", "google", "amazon", MANUAL}

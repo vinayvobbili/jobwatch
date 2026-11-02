@@ -47,6 +47,7 @@ def test_company_names_set_aside_case_punctuation_and_suffixes():
     assert company_key("Hooli Investments") == company_key("hooli") == company_key("HOOLI, Inc.") == "hooli"
     assert company_key("Initech Holdings, LLC") == company_key("The Initech Group") == "initech"
     assert company_key("Pied Piper Technologies") == "piedpiper"
+    assert company_key("Globex USA") == company_key("Globex") == "globex"  # one country's board is the company's
     assert company_key("Hewlett Packard Enterprise") != company_key("hpe")  # a different name stays different
     assert company_key("Group") == "group"  # a suffix alone is the name
 

@@ -42,6 +42,7 @@ from . import (
     quiet,
     referrals,
     report,
+    rolekinds,
     scorestats,
     sources,
     stories,
@@ -133,7 +134,11 @@ def _roles(source: str, board: str, sample: list, text: str):
 def _digest(args, cfg, store):
     # The top display.today unless --all or --limit says otherwise; the rest stay new for the next digest.
     limit = args.limit if args.limit is not None else None if args.all else cfg.today or None
-    d = build_digest(cfg, store, include_seen=args.all, score_top=args.score, limit=limit, company=args.company)
+    roles = set(args.role or ())  # Today's Roles checkboxes: only jobs whose title names one of these kinds
+    d = build_digest(cfg, store, include_seen=args.all, score_top=args.score, limit=None if roles else limit,
+                     company=args.company)
+    if roles:
+        d.entries = [e for e in d.entries if roles & set(rolekinds.role_kinds(e.job.title))][:limit]
     text = report.to_json(d) if args.format == "json" else report.to_markdown(
         d, more="`jobwatch digest --all`", pace=pace(cfg, store))
     if not args.peek:
@@ -1106,6 +1111,9 @@ def build_parser() -> argparse.ArgumentParser:
                        help="list the top N (default: display.today in the watchlist, 10 unless set)")
         p.add_argument("--company", default="", metavar="NAME",
                        help="only this company's jobs (its name or board), best first: to pick among its roles")
+        p.add_argument("--role", action="append", choices=[k for k, _ in rolekinds.labels()], metavar="KIND",
+                       help="only jobs whose title names this kind of work, as Today's Roles checkboxes sort them: "
+                       + ", ".join(f"{k} ({label})" for k, label in rolekinds.labels()) + "; repeatable")
         p.add_argument("--format", choices=["md", "json"], default="md")
         p.add_argument("-o", "--out", type=Path)
         p.set_defaults(func=func)
