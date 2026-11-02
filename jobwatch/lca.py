@@ -308,10 +308,29 @@ def title_words(title: str) -> list[frozenset[str]]:
     return [r for r in dict.fromkeys([*readings, _words(plain)]) if r]
 
 
+# Words of a title that name the kind of role, or only loosely the field: sharing them says little. The rest of a
+# title's words (security, network, data, machine...) are its specialty, and a match has to keep the job's.
+_ROLE = {"engineer", "engineering", "developer", "development", "analyst", "manager", "specialist", "consultant",
+         "architect", "programmer", "scientist", "administrator", "designer", "technician", "officer", "professional",
+         "member", "technical"}
+_FIELD = {"system", "software", "application", "platform", "technology", "information", "computer"}
+
+
+def _agrees(job: frozenset[str], other: frozenset[str]) -> bool:
+    """Whether a filing title keeps what the job's title is about: every specialty word of the job's is in the
+    filing's ("Security Systems Engineer" is not "Systems Engineer"), a job with none matches no filing that has
+    some, and a filing of role words alone ("Engineer II") shares nothing but the role."""
+    mine, theirs = job - _ROLE - _FIELD, other - _ROLE - _FIELD
+    if (mine and not mine <= other) or (not mine and theirs):
+        return False
+    return not (job - _ROLE) or bool((job - _ROLE) & other)
+
+
 def same_work(job_words: list[frozenset[str]], other: list[frozenset[str]]) -> bool:
     """Whether two titles name the same kind of work: their shared words are most of both (Dice, 0.6), by any of
-    the job's readings against the filing's whole title."""
-    return bool(other) and any(2 * len(j & other[-1]) / (len(j) + len(other[-1])) >= 0.6 for j in job_words)
+    the job's readings against the filing's whole title, and the specialty words agree (_agrees)."""
+    return bool(other) and any(2 * len(j & other[-1]) / (len(j) + len(other[-1])) >= 0.6 and _agrees(j, other[-1])
+                               for j in job_words)
 
 
 def percentile(values: list[int], p: float) -> int:

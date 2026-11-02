@@ -247,6 +247,30 @@ def test_title_readings_drop_the_team_ids_and_filler():
     assert not lca.same_work([sw], [frozenset({"software", "quality", "assurance", "engineer", "lead"})])
 
 
+def test_a_specialty_word_survives_and_a_bare_role_title_does_not_win(tmp_path):
+    sw, sec = frozenset({"software", "engineer"}), frozenset({"security", "system", "engineer"})
+    assert not lca.same_work([sec], lca.title_words("Systems Engineer"))  # "Security" can't be dropped
+    assert not lca.same_work([frozenset({"security", "engineer"})], lca.title_words("Engineer II"))
+    assert not lca.same_work([sw], lca.title_words("Engineer II"))
+    assert not lca.same_work([sw], lca.title_words("Machine Learning Software Engineer"))
+    assert lca.same_work([frozenset({"security", "engineer"})], lca.title_words("Network Security Engineer"))
+    assert lca.same_work([frozenset({"engineer"})], lca.title_words("Engineer II"))
+    rows = [filing(i, "Umbrella Corp", t, "Boulder", "CO", w + i % 3 * 1_000)
+            for i, (t, w) in enumerate(3 * [("Systems Engineer", 100_000), ("Engineer II", 120_000),
+                                            ("Network Security Engineer", 140_000)])]
+    rows += [filing(50 + i, "Globex Corp", t, "Boulder", "CO", 110_000)
+             for i, t in enumerate(3 * ["Systems Engineer", "Engineer II"])]
+    index = lca.Index.open(update_from(tmp_path / "lca.db", workbook(tmp_path / "u.xlsx", rows))[0])
+    where = ("Boulder, CO",)
+    systems = lca.for_job(index, job("Security Systems Engineer", "Umbrella", where))
+    assert systems.title == "Network Security Engineer"  # a security title, never the plain "Systems Engineer"
+    assert lca.for_job(index, job("Security Systems Engineer", "Globex", where)) is None  # only the plain titles
+    assert lca.for_job(index, job("Systems Engineer", "Umbrella", where)).median == 100_000
+    incident = lca.for_job(index, job("Security Engineer, Incident Response", "Umbrella", where))
+    assert (incident.title, incident.count, incident.median) == ("Network Security Engineer", 3, 142_000)
+    index.close()
+
+
 def test_fewer_than_three_filings_is_no_estimate(cache):
     index = lca.Index.open(cache[0])
     assert lca.for_job(index, job(title="Data Analyst", company="Initech")) is None
