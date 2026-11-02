@@ -108,6 +108,19 @@ def test_find_by_company_name(store):
         store.find("hooli")
     assert store.find("a")[0].company == "globex"  # a posting id still comes first
 
+
+def test_find_by_company_name_ignores_punctuation(store):
+    """A name typed without its "&" or hyphen still finds the company, but punctuation alone finds nothing."""
+    store.sync("greenhouse", "hooli-labs", [Job(source="greenhouse", company="hooli-labs", id="7", title="Engineer",
+                                                url="u", company_name="Pied & Piper, Inc.")])
+    assert store.find("Pied Piper")[0].id == "7"
+    assert store.find("pied-piper inc")[0].id == "7"
+    assert store.find("hooli labs")[0].id == "7"
+    for nothing in ("!!", "Pied Pipers"):
+        with pytest.raises(KeyError, match="no job matches"):
+            store.find(nothing)
+
+
 def test_status_and_note(store):
     store.sync("lever", "globex", [job("a"), job("b")])
     store.set_status(["lever:globex:a"], "applied", "referred by a friend")

@@ -207,6 +207,11 @@ ACTIVITY_KEPT = 1000  # the things done in the background remembered, of each ki
 BUSY = 30  # seconds to wait for another thread or process writing the state file, instead of "database is locked"
 
 
+def _letters(text: str | None) -> str:
+    """A company's name with only its letters and digits, in lower case, to match it however it's punctuated."""
+    return re.sub(r"[\W_]+", "", text or "").lower()
+
+
 # Columns added after the first release, and how to fill them in an older state file.
 _ADDED = {"applied_at": "UPDATE jobs SET applied_at=substr(status_at, 1, 10) WHERE status='applied'",
           "next_step": None, "follow_up": None, "round": None, "via": None, "duplicate_of": None}  # round: rounds.py
@@ -505,13 +510,19 @@ class Store:
         return Job.from_dict(json.loads(rows[0]["data"])), {k: rows[0][k] for k in rows[0].keys() if k != "data"}
 
     def _at_company(self, name: str) -> list[sqlite3.Row]:
-        """Jobs whose company name or board contains `name` (any case): the ones queued or applied to, if any."""
+        """Jobs whose company name or board contains `name` (any case), or failing that, contains it once spaces
+        and punctuation are ignored ("Smith Wesson" for Smith & Wesson): the ones queued or applied to, if any."""
         name = name.strip().lower()
         if not name:
             return []
         rows = self.db.execute("SELECT * FROM jobs WHERE instr(lower(company), ?) "
                                "OR instr(lower(json_extract(data, '$.company_name')), ?) ORDER BY key",
                                (name, name)).fetchall()
+        if not rows and (bare := _letters(name)):
+            self.db.create_function("letters", 1, _letters, deterministic=True)
+            rows = self.db.execute("SELECT * FROM jobs WHERE instr(letters(company), ?) "
+                                   "OR instr(letters(json_extract(data, '$.company_name')), ?) ORDER BY key",
+                                   (bare, bare)).fetchall()
         return [r for r in rows if r["status"] in ("queued", *STAGES)] or rows
 
     @staticmethod
