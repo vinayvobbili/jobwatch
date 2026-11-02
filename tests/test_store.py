@@ -114,6 +114,7 @@ def test_find_by_company_name_ignores_punctuation(store):
     store.sync("greenhouse", "hooli-labs", [Job(source="greenhouse", company="hooli-labs", id="7", title="Engineer",
                                                 url="u", company_name="Pied & Piper, Inc.")])
     assert store.find("Pied Piper")[0].id == "7"
+    assert store.find("Pied and Piper")[0].id == "7"
     assert store.find("pied-piper inc")[0].id == "7"
     assert store.find("hooli labs")[0].id == "7"
     for nothing in ("!!", "Pied Pipers"):

@@ -275,6 +275,32 @@ def test_get_company_tool(watchlist, tracked, monkeypatch):
     assert "get_company" in {t.name for t in asyncio.run(mcp.server.list_tools())}
 
 
+def test_a_name_finds_its_company_however_the_ampersand_is_written(cfg, store, watchlist, monkeypatch):
+    """Pied & Piper keys as "piedandpiper": "Pied Piper" and "Pied and Piper" find it too, in search, view and the
+    get_company tool, and for the reverse, a company stored as "Globex and Sons" is found by "Globex & Sons"."""
+    store.add("Pied & Piper", "Compression Engineer", status="applied", applied="2026-09-01")
+    store.add("Initech", "Support Engineer", status="queued")
+    mcp = pytest.importorskip("jobwatch.mcp_server")
+    monkeypatch.setenv("JOBWATCH_CONFIG", str(watchlist))
+    for asked in ("Pied & Piper", "pied piper", "Pied and Piper", "PIED-PIPER", "pied  &  piper"):
+        assert [c["name"] for c in company.search(store, asked)] == ["Pied & Piper"], asked
+        assert company.view(cfg, store, asked)["jobs"][0]["title"] == "Compression Engineer"
+        assert mcp.get_company(asked)["company"] == "Pied & Piper"
+    store.add("Globex and Sons", "Designer", status="queued")
+    assert [c["name"] for c in company.search(store, "Globex & Sons")] == ["Globex and Sons"]
+    assert [c["name"] for c in company.search(store, "globex sons")] == ["Globex and Sons"]
+
+
+def test_a_looser_spelling_does_not_merge_or_invent_companies(cfg, store):
+    store.add("Pied & Piper", "Compression Engineer", status="applied", applied="2026-09-01")
+    store.add("Pied Piper Labs", "Analyst", status="applied", applied="2026-09-02")
+    store.add("Initech", "Support Engineer", status="queued")
+    assert company.search(store, "pied piper")[0]["name"] == "Pied & Piper"  # the same name first
+    assert company.search(store, "Initech Globex") == []
+    assert company.view(cfg, store, "pied piper")["counts"] == {"applied": 1}  # Labs stays a different company
+    assert company.view(cfg, store, "Pied Pipers") is None
+
+
 def test_get_company_says_why_when_no_company_matches(watchlist, tracked, monkeypatch):
     """The server hands a client the text of a ToolError only: any other exception reached it as a bare "Error
     executing tool get_company"."""

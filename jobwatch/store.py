@@ -208,8 +208,9 @@ BUSY = 30  # seconds to wait for another thread or process writing the state fil
 
 
 def _letters(text: str | None) -> str:
-    """A company's name with only its letters and digits, in lower case, to match it however it's punctuated."""
-    return re.sub(r"[\W_]+", "", text or "").lower()
+    """A company's name with only its letters and digits, in lower case, to match it however it's punctuated.
+    "&" and the word "and" are left out, so "Pied & Piper", "Pied and Piper" and "Pied Piper" read the same."""
+    return re.sub(r"[\W_]+", "", re.sub(r"&|\band\b", " ", (text or "").lower()))
 
 
 # Columns added after the first release, and how to fill them in an older state file.

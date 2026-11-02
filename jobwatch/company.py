@@ -23,7 +23,7 @@ from .filters import KINDS, in_focus, rejection
 from .models import Job
 from .package import Package
 from .score import resume_id
-from .store import ENDED, STAGES, Store
+from .store import ENDED, STAGES, Store, _letters
 from .watch import _fits, load_contacts
 
 MIN_KEY = 2     # a shorter search ("a") would match nearly everything
@@ -76,14 +76,31 @@ def _groups(store: Store) -> dict[str, dict]:
 def search(store: Store, text: str, limit: int = 8) -> list[dict]:
     """The companies a name, part of one, or a domain matches, best first: name, key, applications (applied or
     a later stage), queued, skipped, open (new roles on a board), jobs (all of them) and exact (the same
-    name)."""
+    name). Names are also compared by their letters alone, as Store.find does: "Pied Piper" finds "Pied & Piper",
+    whose key reads "piedandpiper", and as the same name as it."""
     query = query_key(text)
     if len(query) < MIN_KEY:
         return []
+    groups = _groups(store)
+    bare = _letters(text) if query == dupes.company_key(text) else query  # a domain's name is already bare
+    found = _ranked(groups, lambda key, g: _rank(query, {key}), lambda key, g: _rank(query, g["keys"]))
+    if len(bare) >= MIN_KEY:
+        loose = _ranked(groups, lambda key, g: _rank(bare, {_letters(n) for n in g["names"]}), lambda key, g: None)
+        best = {f["key"]: (r, f) for r, f in loose}
+        for r, f in found:  # the better of the two ranks
+            if f["key"] not in best or r < best[f["key"]][0]:
+                best[f["key"]] = (r, f)
+        found = list(best.values())
+    found.sort(key=lambda f: (f[0], not f[1]["applications"], not f[1]["queued"], f[1]["name"].lower()))
+    return [f for _, f in found[:limit]]
+
+
+def _ranked(groups: dict[str, dict], by_name, by_board) -> list[tuple[int, dict]]:
+    """(rank, company) for each group whose name ranks, or else whose board's name does (below those)."""
     found = []
-    for key, g in _groups(store).items():
-        rank = _rank(query, {key})
-        if rank is None and (rank := _rank(query, g["keys"])) is not None:
+    for key, g in groups.items():
+        rank = by_name(key, g)
+        if rank is None and (rank := by_board(key, g)) is not None:
             rank += 3  # only its board's name matches
         if rank is not None:
             s = g["status"]
@@ -91,8 +108,7 @@ def search(store: Store, text: str, limit: int = 8) -> list[dict]:
                                  "applications": sum(s[x] for x in STAGES), "queued": s["queued"],
                                  "skipped": s["skipped"], "open": g["open"], "jobs": sum(s.values()),
                                  "exact": rank == 0}))
-    found.sort(key=lambda f: (f[0], not f[1]["applications"], not f[1]["queued"], f[1]["name"].lower()))
-    return [f for _, f in found[:limit]]
+    return found
 
 
 # Open applications, then queued jobs, the ones that ended, skipped ones, and last the roles not acted on.
