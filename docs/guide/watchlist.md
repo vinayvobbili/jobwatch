@@ -33,7 +33,7 @@ filters:
   home_state: CO                          # leave out remote roles open only in other states (or "Colorado")
   min_salary: 200000                      # the top of a listed range must reach this
   require_salary: false                   # true: drop postings without pay
-  max_age_days: 30
+  max_age_days: 30                        # for jobs added by hand, from alerts or HN: a board's are open while listed
   min_fit: 70                             # hide jobs whose fit score is below this; unscored jobs still show
   flags:                                  # not filters: a warning on queued jobs whose posting says this
     "active (TS|top secret)": clearance

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from . import sources
 from .dupes import companies, company_key
 from .models import Job
 from .text import (
@@ -47,6 +48,8 @@ class Filters:
     known_offices: list[str] = field(default_factory=list)
     min_salary: int | None = None                           # a listed range must reach this; unlisted pay passes
     require_salary: bool = False                             # reject jobs that don't list pay
+    # Hide jobs posted longer ago than this, among the ones jobwatch can't tell are still up (added by hand, from an
+    # alert's link, HN posts): a job on a company's board is open while it shows (kept_open).
     max_age_days: int | None = None
     # Hide jobs whose fit score is below this (0-100; 0: off). Jobs not scored yet still show.
     min_fit: int = 0
@@ -214,6 +217,15 @@ def remote_offered(job: Job, f: Filters) -> str | None:
     return remote_offer(job.description) if here else None
 
 
+def kept_open(job: Job) -> bool:
+    """A job on a company's own board: each check of its board (or, for a board not watched, the daily posting
+    check) closes it once it's taken down, so it's open while it shows, however old (one open for months is an
+    evergreen req, still hiring). max_age_days doesn't hide these, only a job added by hand or from an alert's
+    link, and an HN post: jobwatch can't always tell those are still up."""
+    src = sources.SOURCES.get(job.source)
+    return bool(src) and not src.many_companies
+
+
 def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] | None:
     """(which filter, why) for a job that fails the filters, or None if it passes. The filter is one of KINDS:
     ("company", "company 'Initech'"), ("title", "title"), ("excluded", "title matches 'manager'"),
@@ -237,7 +249,8 @@ def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] 
             return "pay", "pay not listed"
     elif f.min_salary and (job.salary_max or job.salary_min) < f.min_salary:
         return "pay", f"pay {job.pay()}"
-    if f.max_age_days is not None and (age := job.age_days()) is not None and age > f.max_age_days:
+    if f.max_age_days is not None and not kept_open(job) and (age := job.age_days()) is not None \
+            and age > f.max_age_days:
         return "age", f"posted {age} days ago"
     if f.min_fit and fit and fit.get("score") is not None and fit["score"] < f.min_fit:
         return "fit", f"fit {fit['score']:.0f}/100"

@@ -193,10 +193,14 @@ def test_home_state_is_a_us_state():
         Filters.from_dict({"home_state": "Ontario"})
 
 
-def test_age():
-    old = job(posted=datetime.now(timezone.utc) - timedelta(days=45))
-    assert reject_reason(old, Filters(max_age_days=30)) == "posted 45 days ago"
-    assert reject_reason(job(), Filters(max_age_days=30)) is None  # unknown date passes
+def test_age_hides_only_jobs_jobwatch_cant_tell_are_still_up():
+    """An old job on a company's board is open while it shows (an evergreen req): only a job added by hand or from
+    an alert's link, or an HN post, is hidden for its age."""
+    posted = datetime.now(timezone.utc) - timedelta(days=45)
+    for source in ("manual", "hn"):
+        assert reject_reason(job(source=source, posted=posted), Filters(max_age_days=30)) == "posted 45 days ago"
+    assert reject_reason(job(posted=posted), Filters(max_age_days=30)) is None  # greenhouse: checked every fetch
+    assert reject_reason(job(source="manual"), Filters(max_age_days=30)) is None  # unknown date passes
 
 
 def test_rejection_names_the_filter():
@@ -215,7 +219,7 @@ def test_rejection_names_the_filter():
         (job(**{**ok, "locations": ["London, UK"]}), None, ("place", "location")),
         (job(**{**ok, "salary_min": None, "salary_max": None}), None, ("pay", "pay not listed")),
         (job(**{**ok, "salary_min": 120_000, "salary_max": 160_000}), None, ("pay", "pay $120K–$160K")),
-        (job(**ok, posted=old), None, ("age", "posted 45 days ago")),
+        (job(**ok, posted=old, source="manual"), None, ("age", "posted 45 days ago")),
         (job(**ok), low, ("fit", "fit 42/100")),
         (job(**{**ok, "title": "Recruiter", "locations": ["London, UK"]}), low, ("title", "title")),  # the first one
     ]
