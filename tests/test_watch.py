@@ -75,7 +75,7 @@ def test_fetch_all_keeps_the_pay_tier_for_the_home_state(watchlist, web):
     web.responses["https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true"] = {"jobs": [{
         "id": 301, "title": "Platform Engineer", "company_name": "Acme", "location": {"name": "Remote, US"},
         "absolute_url": "https://job-boards.greenhouse.io/acme/jobs/301", "first_published": iso(1),
-        "content": "&lt;p&gt;Pay (CA, NY): $150,000 - $200,000&lt;/p&gt;&lt;p&gt;Pay (all other U.S. states): "
+        "content": "&lt;p&gt;Pay (CA, NY): $150,000 - $190,000&lt;/p&gt;&lt;p&gt;Pay (all other U.S. states): "
                    "$120,000 - $160,000&lt;/p&gt;"}]}
 
     def pay(home):
@@ -90,7 +90,7 @@ def test_fetch_all_keeps_the_pay_tier_for_the_home_state(watchlist, web):
         return job.pay()
 
     assert pay("CO") == "$120K–$160K"
-    assert pay("CA") == "$150K–$200K"  # a changed home state is read again on the next check
+    assert pay("CA") == "$150K–$190K"  # a changed home state is read again on the next check
 
 
 def test_digest_filters_ranks_and_explains(setup):
