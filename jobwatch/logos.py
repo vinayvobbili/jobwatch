@@ -4,8 +4,10 @@ shows the company's logo instead of its initials. No logo service is asked: the 
 The site comes from what's tracked about the company: a job's link on its own domain (careers.acme.com), or the
 domain its postings link to whose name is the company's ("Acme" and acme.com), else its name plus .com when
 that home page names the company. The icon is the biggest one the home page declares (an apple-touch-icon, then
-<link rel=icon> by size), else /favicon.ico. robots.txt is obeyed, and only an image is kept (checked by its
-bytes, not by what the site says it is).
+<link rel=icon> by size), else /favicon.ico. robots.txt is obeyed on the company's own site (an icon its home
+page links to on a CDN is part of that page), and only an image is kept (checked by its bytes, not by what the
+site says it is). A site that turns away every program (Cloudflare's bot check) gets its logo by hand:
+`jobwatch logos NAME --image FILE|URL`.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import re
 import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from . import dupes, sources
@@ -25,6 +28,7 @@ MISSING = timedelta(days=14)  # when to look again for a company whose logo wasn
 MAX_BYTES = 256_000           # a bigger "icon" isn't one
 PAUSE = 1.0                   # seconds between two companies looked up
 MIN_NAME = 3                  # a domain name this short ("ge") could be anyone's
+SURE_NAME = 6                 # a name.com this long is taken as the company's when its home page won't be read
 
 _LINK = re.compile(r"<link\b[^>]*>", re.I)
 _ATTR = re.compile(r"""([a-z-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)""", re.I)
@@ -44,9 +48,11 @@ def site_of(host: str) -> str:
 
 
 def _names(job: Job) -> set[str]:
-    """The company's name, and its board's when that's a plain name (a Workday board's isn't)."""
+    """The company's name (also without its "&": Globex & Initech is globexinitech.com as often as
+    globexandinitech.com), and its board's when that's a plain name (a Workday board's isn't)."""
     board = key(job.company) if re.fullmatch(r"[a-z0-9-]+", job.company or "") else ""
-    return {k for k in (key(job.display_company), board) if len(k) >= MIN_NAME}
+    name = job.display_company or ""
+    return {k for k in (key(name), key(name.replace("&", " ")), board) if len(k) >= MIN_NAME}
 
 
 def _fit(site: str, names: set[str]) -> int:
@@ -118,29 +124,58 @@ def image_type(data: bytes) -> str | None:
     return None
 
 
-def find(jobs: list[Job], get=None, get_bytes=None, robots=None) -> tuple[str, str, bytes]:
-    """(domain, content type, image) for the company these jobs are at; ("", "", b"") when none is found."""
+def find(jobs: list[Job], get=None, get_bytes=None, robots=None, say=None) -> tuple[str, str, bytes]:
+    """(domain, content type, image) for the company these jobs are at; ("", "", b"") when none is found.
+    say: told each site and icon tried and why it was passed over (`jobwatch logos --why`)."""
     from .alerts import Robots
     get, get_bytes = get or sources.get_text, get_bytes or sources.get_bytes
-    robots = robots or Robots(get)
+    robots, say = robots or Robots(get), say or (lambda line: None)
+    if not jobs or not sites(jobs):
+        say("no site to try: no job link or posting names a domain, and the name is too short to guess")
     for site, guess in sites(jobs):
         home = f"https://{site}/"
-        try:
-            html = get(home) if robots.allowed(home) else ""
-        except sources.SourceError:
-            html = ""
-        if guess and not named(html, jobs):
+        html, refused = "", False
+        if not robots.allowed(home):
+            say(f"{site}: robots.txt doesn't allow reading its home page")
+        else:
+            try:
+                html = get(home)
+            except sources.SourceError as e:
+                refused = True
+                say(f"{site}: couldn't read its home page ({e})")
+        if guess and refused and len(site.split(".")[0]) >= SURE_NAME:
+            say(f"{site}: taken as the company's anyway: its name is long enough to be theirs")
+        elif guess and not named(html, jobs):
+            say(f"{site}: a guess from the name, and its home page doesn't name the company"
+                + (" (nothing read)" if not html else ""))
             continue
         for url in icons(html, home):
-            if not robots.allowed(url):
+            # robots.txt is about crawling a site: an icon its readable home page links to on a CDN
+            # (cdn.prod.website-files.com, which disallows all) is part of that page, as a browser loads it
+            if site_of(urlparse(url).hostname or "") == site and not robots.allowed(url):
+                say(f"{url}: robots.txt doesn't allow it")
                 continue
             try:
                 data = get_bytes(url)
-            except sources.SourceError:
+            except sources.SourceError as e:
+                say(f"{url}: {e}")
                 continue
             if len(data) <= MAX_BYTES and (ctype := image_type(data)):
                 return site, ctype, data
+            say(f"{url}: " + ("too big" if len(data) > MAX_BYTES else "not an image"))
     return "", "", b""
+
+
+def read_image(src: str, get_bytes=None) -> tuple[str, str, bytes]:
+    """A logo given by hand (`logos NAME --image`): (domain, content type, image) from a link or a saved file.
+    ValueError when it isn't an image, or is too big to be an icon."""
+    if re.match(r"https?://", src):
+        site, data = site_of(urlparse(src).hostname or ""), (get_bytes or sources.get_bytes)(src)
+    else:
+        site, data = "", Path(src).expanduser().read_bytes()
+    if len(data) > MAX_BYTES or not (ctype := image_type(data)):
+        raise ValueError(f"{src} isn't an image of {MAX_BYTES:,} bytes or less")
+    return site, ctype, data
 
 
 def due(kept, now: datetime | None = None) -> bool:
@@ -163,6 +198,8 @@ def look_up(store, names: list[str], jobs: list[Job], **kw) -> list[str]:
         if i:
             time.sleep(PAUSE)
         site, ctype, data = find(by_name[name][:20], **kw)
+        if not data and (kept := store.logo(name)) and kept[2]:
+            site, ctype, data = kept[:3]  # not found this time (a site down, or one given by hand): keep the old one
         store.save_logo(name, site, ctype, data)
         if data:
             found.append(name)

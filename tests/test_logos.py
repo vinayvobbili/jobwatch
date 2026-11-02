@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
+import pytest
+
 from jobwatch import logos, sources
 from jobwatch.alerts import Robots
 from jobwatch.models import Job
@@ -75,6 +77,49 @@ def test_a_guessed_domain_must_name_the_company_and_robots_is_obeyed():
 def test_a_site_that_refuses_finds_nothing():
     kw, _ = finder({"https://acme.com/": sources.Refused("HTTP 403")}, {})
     assert logos.find([job(text="acme.com")], **kw) == ("", "", b"")
+
+
+def test_a_name_with_an_ampersand_is_guessed_without_it_too():
+    gi = job(company="Globex & Initech", board="globexinitech.wd1/Careers")
+    assert logos.sites([gi]) == [("globexinitech.com", True), ("globexandinitech.com", True)]
+
+
+def test_a_long_names_guess_is_taken_when_its_home_page_turns_programs_away():
+    """Cloudflare's bot check 403s the home page, so it can't name the company: a long name is trusted anyway,
+    a short one (acme.com could be anyone's) isn't."""
+    kw, _ = finder({"https://umbrella.com/": sources.Refused("HTTP 403")}, {"https://umbrella.com/favicon.ico": ICO})
+    umbrella = job(company="Umbrella", board="umbrella.wd1/Jobs")
+    assert logos.find([umbrella], **kw) == ("umbrella.com", "image/x-icon", ICO)
+    kw, _ = finder({"https://acme.com/": sources.Refused("HTTP 403")}, {"https://acme.com/favicon.ico": ICO})
+    said = []
+    assert logos.find([job(board="acme.wd1/Jobs")], **kw, say=said.append) == ("", "", b"")
+    assert said == ["acme.com: couldn't read its home page (HTTP 403)",
+                    "acme.com: a guess from the name, and its home page doesn't name the company (nothing read)"]
+
+
+def test_an_icon_on_a_cdn_is_part_of_the_page_whatever_the_cdns_robots_says():
+    kw, _ = finder({"https://acme.com/": '<link rel="icon" href="https://cdn.example.net/acme/a.png">',
+                    "https://cdn.example.net/robots.txt": "User-agent: *\nDisallow: /\n"},
+                   {"https://cdn.example.net/acme/a.png": PNG})
+    assert logos.find([job(text="acme.com")], **kw) == ("acme.com", "image/png", PNG)
+
+
+def test_a_logo_given_by_hand_is_an_image_and_outlives_a_look_up_that_finds_nothing(tmp_path, monkeypatch):
+    (tmp_path / "a.png").write_bytes(PNG)
+    (tmp_path / "a.html").write_text("<html>not found</html>")
+    assert logos.read_image(str(tmp_path / "a.png")) == ("", "image/png", PNG)
+    assert logos.read_image("https://cdn.example.net/x/a.png", Bytes({"https://cdn.example.net/x/a.png": ICO})) == (
+        "example.net", "image/x-icon", ICO)
+    with pytest.raises(ValueError, match="isn't an image"):
+        logos.read_image(str(tmp_path / "a.html"))
+    monkeypatch.setattr(logos, "PAUSE", 0)
+    monkeypatch.setattr(logos, "due", lambda kept, now=None: True)
+    store = Store(tmp_path / "state.db")
+    store.save_logo("acme", "", "image/png", PNG)
+    kw, _ = finder({"https://acme.com/": sources.Refused("HTTP 403")}, {})
+    assert logos.look_up(store, ["Acme"], [job(text="acme.com")], **kw) == ["acme"]
+    assert store.logo("acme")[:3] == ("", "image/png", PNG)
+    store.close()
 
 
 def test_look_up_keeps_what_it_found_and_waits_before_asking_again(tmp_path, monkeypatch):

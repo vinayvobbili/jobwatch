@@ -551,11 +551,20 @@ def cmd_logos(args, cfg, store):
     """Look up company logos for the page (logos.py): the companies named, or every one with an open job."""
     jobs = [j for j, _ in store.jobs(include_closed=True)]
     names = args.name or list(dict.fromkeys(j.display_company for j, _ in store.jobs()))
-    if args.again:
+    if args.image:
+        if len(args.name) != 1:
+            raise SystemExit("--image is one company's logo: name that company")
+        try:
+            store.save_logo(logos.key(names[0]), *logos.read_image(args.image))
+        except (ValueError, OSError, sources.SourceError) as e:
+            raise SystemExit(str(e)) from None
+        print(f"  {names[0]}: logo kept from {args.image}")
+        return
+    if args.again or args.why:  # --why looks again: an answer kept from before has no reasons to show
         for n in names:
             store.db.execute("DELETE FROM logos WHERE company=?", (logos.key(n),))
         store.db.commit()
-    found = set(logos.look_up(store, names, jobs))
+    found = set(logos.look_up(store, names, jobs, **({"say": lambda line: print(f"    {line}")} if args.why else {})))
     for n in dict.fromkeys(names):
         kept = store.logo(logos.key(n))
         line = f"{kept[0]} ({kept[1]}, {len(kept[2]):,} bytes)" if kept and kept[2] else "none found"
@@ -1534,6 +1543,10 @@ def build_parser() -> argparse.ArgumentParser:
                        "for the companies named or every one with an open job")
     p.add_argument("name", nargs="*", help="a company's name as jobwatch shows it")
     p.add_argument("--again", action="store_true", help="look again, even for logos already kept")
+    p.add_argument("--why", action="store_true", help="look again, saying each site and icon tried and why it "
+                   "was passed over")
+    p.add_argument("--image", metavar="FILE|URL", help="keep this image as the named company's logo (for a site "
+                   "that turns programs away); it's kept when later look-ups find nothing")
     p.set_defaults(func=cmd_logos)
 
     p = sub.add_parser("lca", help="base pay filed for H-1B hires (U.S. DOL LCA disclosures): `lca update` downloads "
