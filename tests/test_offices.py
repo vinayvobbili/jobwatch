@@ -88,7 +88,7 @@ def test_only_a_tech_job_says_there_is_an_office():
         assert offices.tech_role(title), title
     for title in ("Senior Customer Engineer, Majors", "Commercial Account Executive", "Enterprise Sales Executive",
                   "Sales Engineer", "Shift Supervisor", "Research Economist", "Commit it to memory",
-                  "Sr. Forward Deployed Engineer (FDE) - Retail", "Sr. Solutions Architect - Media"):
+                  "Forward Deployed Engineer", "Principal Solutions Architect"):
         assert not offices.tech_role(title), title
     assert offices.tech_job(Job(source="hn", company="whoishiring", id="1", title="Open roles (see the post)",
                                 url="https://example.com/hn/1", company_name="Vandelay"))
