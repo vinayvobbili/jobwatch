@@ -67,6 +67,24 @@ def test_two_applications_there_this_week_say_skip_whatever_the_pay(watchlist):
     store.close()
 
 
+def test_a_company_that_turned_you_down_twice_says_apply_somewhere_new(watchlist):
+    """One rejection is no reason to skip another role there; a second is: variety does more good."""
+    cfg = cfg_with(watchlist)
+    store = Store(cfg.state)
+    long_ago = (date.today() - timedelta(days=60)).isoformat()
+    save_job(store, company="Globex", title="Engineer 1", status="rejected", applied=long_ago)
+    assert advise(cfg, entry(job(high=260000), fit(85)), History(store)).action == "queue"
+    save_job(store, company="Globex", title="Engineer 2", status="rejected", applied=long_ago)
+    said = advise(cfg, entry(job(high=260000), fit(85)), History(store))
+    assert (said.action, said.codes) == ("skip", ["turned_down"])
+    assert said.reasons == ["Globex has turned you down 2 times: this application does more good at a company "
+                            "that hasn't said no"]
+    e, history = entry(job(high=260000), fit(85)), History(store)
+    assert verdict(e, history, advise(cfg, e, history))["text"].startswith("Skip it: Globex has turned you down")
+    assert advise(cfg, entry(job(company="Initech", high=260000), fit(85)), History(store)).action == "queue"
+    store.close()
+
+
 def test_the_bottom_line_says_apply_stretch_hold_or_skip(watchlist):
     cfg = cfg_with(watchlist)
     store = Store(cfg.state)

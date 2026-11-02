@@ -18,6 +18,8 @@ def test_html_to_text_empty():
     ("$150,000 USD to $190,000", (150_000, 190_000)),
     ("between $120k–160k", (120_000, 160_000)),
     ("base salary range for this job is USD $140,400.00 - USD $372,300.00 /Yr.", (140_400, 372_300)),
+    ("ranges for this position are:\n150,000 USD – 240,000 USD for Level 4; and 190,000 USD – 300,000 USD for Level 5.",
+     (150_000, 240_000)),  # the currency after each amount, and no dollar sign
 ])
 def test_parse_salary_finds_annual_ranges(text, expected):
     assert parse_salary(text) == expected

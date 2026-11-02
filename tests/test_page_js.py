@@ -83,7 +83,7 @@ def test_todays_quick_narrowing(tmp_path):
         "all": {"where": "remote", "fit": 80, "pay": 250000, "posted": 3},
     }
     js = tmp_path / "narrow.js"
-    js.write_text(page_function("quickNarrow") + f"""
+    js.write_text(page_const("roleShown") + "\n" + page_function("quickNarrow") + f"""
 const jobs = {json.dumps(jobs)}, views = {json.dumps(views)};
 const out = {{}};
 for (const [v, view] of Object.entries(views)) out[v] = Object.keys(jobs).filter(k => quickNarrow(jobs[k], view));
@@ -196,7 +196,8 @@ def test_company_counts_follow_the_other_filters(tmp_path):
     views = {"off": base, "fit80": {**base, "fit": 80}, "picked": {**base, "fit": 80, "company": "Globex"},
              "search": {**base, "q": "data"}, "python": {**base, "kws": ["python"]}}
     js = tmp_path / "counts.js"
-    js.write_text(page_function("quickNarrow") + "\n" + page_function("companyCounts") + f"""
+    js.write_text(page_const("roleShown") + "\n" + page_function("quickNarrow") + "\n" + page_function("companyCounts")
+                  + f"""
 const jobs = {json.dumps(jobs)}, views = {json.dumps(views)};
 const out = {{}}, kept = {{Umbrella: 4}};
 for (const [n, v] of Object.entries(views)) out[n] = companyCounts(jobs, {{...v, kws: new Set(v.kws)}});
@@ -440,6 +441,39 @@ console.log(JSON.stringify({json.dumps(cases)}.map(c => split[keys[c.key]](lines
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout) == [c["list"] for c in cases]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_todays_picks_take_each_companys_best_job_before_a_second_one(tmp_path):
+    js = tmp_path / "picks.js"
+    js.write_text(page_function("spreadPicks") + r"""
+const jobs = [["Globex", 1], ["Globex", 2], ["Globex", 3], ["Initech", 4], ["Umbrella", 5], ["Initech", 6]]
+  .map(([company, id]) => ({ company, id }));
+console.log(JSON.stringify([spreadPicks(jobs, 4).map(j => j.id), spreadPicks(jobs.slice(0, 3), 2).map(j => j.id)]));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [[1, 4, 5, 2], [1, 2]]  # one company only: its jobs in order
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_unticking_a_role_hides_only_the_jobs_that_are_only_that_kind(tmp_path):
+    """Today's Roles: with software engineering unticked a security software engineer stays (security is still
+    ticked), a plain software engineer goes, and a job from a server that sends no roles stays."""
+    js = tmp_path / "roles.js"
+    js.write_text(page_const("roleShown") + r"""
+const jobs = [{ title: "Security Software Engineer", roles: ["security", "software"] },
+              { title: "Staff Software Engineer", roles: ["software"] }, { title: "From an older server" }];
+const shown = off => jobs.filter(j => roleShown(j, { rolesOff: new Set(off) })).map(j => j.title);
+console.log(JSON.stringify([shown([]), shown(["software"]), shown(["software", "security"])]));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [
+        ["Security Software Engineer", "Staff Software Engineer", "From an older server"],
+        ["Security Software Engineer", "From an older server"],
+        ["From an older server"],
+    ]
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")

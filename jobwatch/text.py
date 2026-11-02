@@ -50,9 +50,10 @@ _RANGE = re.compile(_AMOUNT + r"\s*(?:USD)?\s*(?:-|–|—|to)\s*(?:USD\s*)?\$?\
 _NOT_ANNUAL = re.compile(r"\s*(?:USD\s*)?(?:/|per\s+|an?\s+)(hour|hr|month|mo|week|wk|day)\b", re.I)
 # "$75 an hour", "$70/hr": one amount, an hourly wage
 _HOURLY = re.compile(_AMOUNT + r"(?=\s*(?:USD\s*)?(?:/|per\s+|an?\s+)(?:hour|hr)\b)", re.I)
-# "167,000 - 230,000 USD per year" or "88,000 to 136,900.00 USD": no dollar sign, the currency after (a CAD
-# range next to it is skipped)
-_USD_AFTER = re.compile(r"(?<![\d,.$])(\d{2,3},\d{3})(?:\.\d{2})?\s*(?:-|–|—|to)\s*(\d{2,3},\d{3})(?:\.\d{2})?\s*USD\b")
+# "167,000 - 230,000 USD per year", "88,000 to 136,900.00 USD" or "184,000 USD – 287,500 USD": no dollar sign,
+# the currency after (a CAD range next to it is skipped)
+_USD_AFTER = re.compile(r"(?<![\d,.$])(\d{2,3},\d{3})(?:\.\d{2})?\s*(?:USD\s*)?(?:-|–|—|to)\s*(\d{2,3},\d{3})"
+                        r"(?:\.\d{2})?\s*USD\b")
 # Paid hours, days, weeks and months in a year: a rate is compared and shown as the yearly pay it comes to.
 PER_YEAR = {"hour": 2080, "hr": 2080, "day": 260, "week": 52, "wk": 52, "month": 12, "mo": 12}
 _LOWEST = 20_000  # less a year than any salary: a bonus, a stipend or a typo

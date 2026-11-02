@@ -52,6 +52,7 @@ from . import (
     quiet,
     referrals,
     report,
+    rolekinds,
     scorestats,
     sources,
     stories,
@@ -512,7 +513,8 @@ class App:
                 "locations": j.places, "pay": j.pay(), "age_days": j.age_days(), "department": j.department,
                 "status": e.record.get("status"), "note": e.record.get("note"), "closed": e.record.get("closed"),
                 "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
-                "focus": e.focus, "fit": e.fit, "contacts": e.contacts, "same_title": len(e.same_title), "keys": e.keys,
+                "focus": e.focus, "roles": rolekinds.role_kinds(j.title), "fit": e.fit, "contacts": e.contacts,
+                "same_title": len(e.same_title), "keys": e.keys,
                 "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max,
                 "warnings": e.warnings, "link_note": j.link_note or None,
                 "duplicate_of": e.duplicate.to_dict() if e.duplicate else None}
@@ -853,7 +855,8 @@ class App:
                    "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({}),
                    "checked": self.refresher.status(cfg, store),
                    # Today leads with the top `picks` in the order picked (0: every match), and says the pace.
-                   "picks": cfg.today, "pace": pace(cfg, store)}
+                   "picks": cfg.today, "pace": pace(cfg, store),
+                   "role_kinds": rolekinds.labels()}  # Today's Roles checkboxes; each job's "roles" are its kinds
             # "New" shows once: the next visit lists these as seen.
             store.set_status([k for e in d.entries if e.record.get("status") == "new" for k in e.keys], "shown")
             return out

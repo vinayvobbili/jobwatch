@@ -163,6 +163,32 @@ def test_eightfold():
     assert lead.description.startswith("Work site: not stated\n")
 
 
+def one_posting_web():
+    """position_details for one posting, with the fields the search lists too (as Eightfold sends them)."""
+    return FakeWeb({f"{EF}/position_details?position_id=12&domain=globex.com": {"data": {
+        **ef_position(12, "Senior Cloud Platform Engineer", "['US, CO, Remote']", "remote"),
+        "jobDescription": "<p>150,000 USD – 240,000 USD for Level 4.</p>",
+        "publicUrl": "https://jobs.globex.com/careers/job/12"}}})
+
+
+@pytest.mark.parametrize("link", ["https://globex.eightfold.ai/careers/job/12?domain=globex.com",
+                                  "https://globex.eightfold.ai/careers?pid=12&domain=globex.com",
+                                  "https://jobs.globex.com/careers/job/12"])  # the company's own domain in front
+def test_a_link_to_one_eightfold_posting_reads_just_that_posting(link):
+    web = one_posting_web()
+    j = sources.posting(link, web)
+    assert (j.key, j.title, j.remote, j.salary_min) == ("eightfold:globex:12", "Senior Cloud Platform Engineer", True,
+                                                        150_000)
+    assert j.url == "https://jobs.globex.com/careers/job/12" and j.description.startswith("Work site:")
+    assert web.calls == [f"{EF}/position_details?position_id=12&domain=globex.com"]  # not the whole board
+
+
+def test_a_careers_job_link_that_isnt_eightfold_is_no_posting():
+    """The same path on a site that isn't in front of Eightfold: the tenant it names doesn't have it."""
+    assert sources.posting("https://jobs.initech.com/careers/job/12", one_posting_web()) is None
+    assert sources.posting("https://jobs.globex.com/careers/team/12", one_posting_web()) is None
+
+
 def worksite_web(positions, sites, travel=None):
     """A search answering `positions` and details whose efcustomTextWorkSite is sites[id]."""
     responses = {f"{EF}/search?domain=globex.com&query=&start=0&sort_by=timestamp": {

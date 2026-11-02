@@ -373,10 +373,47 @@ def _worksite_remote(text: str) -> bool | None:
     return True if "remote" in t else None
 
 
+def _eightfold_job(board: str, pid: str, p: dict) -> Job:
+    """A posting as the board's search lists it (or position_details, which has the same fields): no text yet."""
+    _, domain = _eightfold_parts(board)
+    tenant = board.partition("/")[0]
+    where = p.get("workLocationOption") or ""
+    posted = p.get("postedTs") or p.get("creationTs")
+    return Job(source="eightfold", company=board, id=pid, title=(p.get("name") or "").strip(),
+               url=f"https://{tenant}.eightfold.ai/careers/job/{pid}?domain={domain}", company_name=tenant,
+               locations=split_locations(*_listish(p.get("locations"))), department=p.get("department") or "",
+               remote=True if where == "remote" or (where == "remote_local" and not _listish(p.get("locations")))
+               else None,
+               posted=datetime.fromtimestamp(int(posted), timezone.utc) if str(posted or "").isdigit() else None)
+
+
+def _eightfold_read(j: Job, info: dict) -> Job:
+    """The posting's text, work site, travel and pay from its position_details."""
+    j.url = info.get("publicUrl") or j.url
+    site = " ".join(_listish(info.get("efcustomTextWorkSite")))
+    travel = " ".join(_listish(info.get("efcustomTextRequiredTravel")))
+    remote = _worksite_remote(site)  # the work site is the posting's own word: it beats workLocationOption
+    j.remote = j.remote if remote is None else remote
+    j.description = html_to_text(info.get("jobDescription") or "")
+    _salary(j, j.description)
+    # Always a first line, so a stored job without one is known to be unread (see fetch_eightfold's backfill).
+    j.description = "\n".join([f"Work site: {site or 'not stated'}"]
+                              + ([f"Required travel: {travel}"] if travel else []) + ["", j.description])
+    return j
+
+
+def _eightfold_posting(board: str, pid: str, get) -> Job:
+    """One posting read on its own (position_details), rather than by listing the whole board."""
+    api, domain = _eightfold_parts(board)
+    info = (get(f"{api}/position_details?position_id={pid}&domain={quote(domain)}") or {}).get("data") or {}
+    if not info.get("name"):
+        raise NotFound(f"the eightfold board {board!r} doesn't list that job any more")
+    return _eightfold_read(_eightfold_job(board, pid, info), info)
+
+
 def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
     get = _paced(get or get_json, EIGHTFOLD_GAP)
     api, domain = _eightfold_parts(board)
-    tenant = board.partition("/")[0]
     positions = {}
     stopped = None  # the error a rate-limited board stopped with, once some pages were read
     for term in search or [""]:
@@ -407,29 +444,13 @@ def fetch_eightfold(board: str, get=None, search=(), wanted=None, known=None, ca
                     or backfill[0] <= 0:
                 return stored
             backfill[0] -= 1
-        where = p.get("workLocationOption") or ""
-        posted = p.get("postedTs") or p.get("creationTs")
-        j = Job(source="eightfold", company=board, id=pid, title=(p.get("name") or "").strip(),
-                url=f"https://{tenant}.eightfold.ai/careers/job/{pid}?domain={domain}", company_name=tenant,
-                locations=split_locations(*_listish(p.get("locations"))), department=p.get("department") or "",
-                remote=True if where == "remote" or (where == "remote_local" and not _listish(p.get("locations")))
-                else None,
-                posted=datetime.fromtimestamp(int(posted), timezone.utc) if str(posted or "").isdigit() else None)
+        j = _eightfold_job(board, pid, p)
         if wanted and not wanted(j.title):
             return j
+
         def read() -> Job:
-            info = (get(f"{api}/position_details?position_id={pid}&domain={quote(domain)}") or {}).get("data") or {}
-            j.url = info.get("publicUrl") or j.url
-            site = " ".join(_listish(info.get("efcustomTextWorkSite")))
-            travel = " ".join(_listish(info.get("efcustomTextRequiredTravel")))
-            remote = _worksite_remote(site)  # the work site is the posting's own word: it beats workLocationOption
-            j.remote = j.remote if remote is None else remote
-            j.description = html_to_text(info.get("jobDescription") or "")
-            _salary(j, j.description)
-            # Always a first line, so a stored job without one is known to be unread (see the backfill above).
-            j.description = "\n".join([f"Work site: {site or 'not stated'}"]
-                                      + ([f"Required travel: {travel}"] if travel else []) + ["", j.description])
-            return j
+            return _eightfold_read(j, (get(f"{api}/position_details?position_id={pid}&domain={quote(domain)}")
+                                       or {}).get("data") or {})
         if stopped:  # the board is rate-limiting: keep the listing, read the posting next run
             return stored or j
         return _unread_if_refused(read, j) if not stored else _unread_if_refused(read, stored)
@@ -1861,6 +1882,10 @@ def _posting_id(source: str, url: str) -> str | None:
         return parts[parts.index("jobs") + 1] if "jobs" in parts[:-1] else None
     if source in ("lever", "ashby"):
         return parts[1] if len(parts) > 1 else None
+    if source == "eightfold":  # /careers/job/<id>, or /careers?pid=<id>
+        if pid := parse_qs(parsed.query).get("pid"):
+            return pid[0] if pid[0].isdigit() else None
+        return parts[2] if len(parts) > 2 and parts[:2] == ["careers", "job"] and parts[2].isdigit() else None
     if source == "jibe":
         return parts[2] if len(parts) > 2 and parts[1] == "jobs" else None
     if source == "rippling":
@@ -1893,13 +1918,33 @@ def _posting_id(source: str, url: str) -> str | None:
     return None
 
 
+def _eightfold_on_own_domain(url: str, get) -> Job | None:
+    """A link to one job on a company's own careers domain in front of Eightfold (jobs.initech.com/careers/job/<id>,
+    which is initech.eightfold.ai's): the posting, read from the tenant named by the domain; None when the link
+    isn't shaped like one or that tenant doesn't have the job (the site is something else)."""
+    parsed = urlparse(url if "//" in url else f"https://{url}")
+    m = re.fullmatch(r"/careers/job/(\d+)/?", parsed.path)
+    labels = (parsed.hostname or "").split(".")
+    if not m or len(labels) < 2:
+        return None
+    tenant = labels[-2]
+    try:
+        return _eightfold_posting(tenant if f"{tenant}.{labels[-1]}" == f"{tenant}.com" else f"{tenant}/"
+                                  f"{tenant}.{labels[-1]}", m.group(1), get)
+    except SourceError:
+        return None
+
+
 def posting(url: str, get=None) -> Job | None:
     """One job, read from its link on a supported board; None when the link isn't to one job on one.
     Raises SourceError when the board can't be read or no longer lists the job."""
     found = detect(url)
     if not found:
-        return None
+        return _eightfold_on_own_domain(url, get or get_json)
     source, board = found
+    if source == "eightfold":  # read on its own: a big board is thousands of roles
+        pid = _posting_id(source, url)
+        return _eightfold_posting(board, pid, _paced(get or get_json, EIGHTFOLD_GAP)) if pid else None
     if source == "google":  # looked up in the whole feed (an XML one): a link can be to a role outside the US
         pid = _posting_id(source, url)
         return _google_posting(pid, board, get) if pid else None

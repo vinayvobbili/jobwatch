@@ -16,6 +16,7 @@ WEEK = timedelta(days=7)
 BUSY = 2    # applications at one company in a week: more starts to look like spraying
 FRESH = 3   # days: posted this recently, an application is among the first read
 CLOSE = 60  # a fit score under this isn't a close match: the verdict says skip it
+TURNED_DOWN = 2  # rejections from one company: past this, an application does more good somewhere new
 IN_PLAY = ("queued", "applied", "screening", "interviewing", "offer")
 
 
@@ -68,6 +69,10 @@ class History:
         says close: its posting is gone, or no news for quiet.long days) doesn't count: many never answer."""
         return sum(1 for key, _, status in self._at(entry) if status in IN_PLAY and key not in self.gone)
 
+    def turned_down(self, entry: Entry) -> int:
+        """Other roles at the company that ended in a rejection, whenever."""
+        return sum(1 for _, _, status in self._at(entry) if status == "rejected")
+
 
 def _k(n: int) -> str:
     return f"${n / 1000:.0f}K"
@@ -86,7 +91,8 @@ def _target(cfg: Config) -> str:
 def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = None) -> Advice | None:
     """Queue or skip, and why; None when nothing stands out either way. Any reason to skip wins: applying twice,
     too often at one company, under the pay floor, or missing most must-haves costs more than a good job
-    gained. A rejection there isn't one: another role at that company is its own chance. `expected`: the job's
+    gained. One rejection there isn't one: another role at that company is its own chance; TURNED_DOWN of them
+    are, since the next application does more good at a company that hasn't said no yet. `expected`: the job's
     expected pay from Levels.fyi, as levels.as_dict gives it."""
     job, fit = entry.job, entry.fit
     company = job.display_company
@@ -100,6 +106,9 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
         skip.append(("applied_before", f"you already applied to this opening on {d.day}"))
     if (n := history.applied_lately(entry)) >= BUSY:
         skip.append(("busy", f"you've applied to {plural(n, 'role')} at {company} this past week"))
+    if entry.record.get("status") not in STAGES and (n := history.turned_down(entry)) >= TURNED_DOWN:
+        skip.append(("turned_down", f"{company} has turned you down {n} times: this application does more good "
+                                    "at a company that hasn't said no"))
     if top and floor and top < floor:
         skip.append(("under_floor", f"the posted pay tops out at {_k(top)}, under your floor"))
     elif not top and floor and expected.get("base") and expected["base"] < floor:
@@ -134,13 +143,15 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
 
 def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
     """The card's bottom line, in plain words: {"call": apply | stretch | hold | skip, "text"}. Skip for a hard
-    reason (applied already, under the pay floor, most must-haves missing, not a close match); hold off when
+    reason (applied already, turned down there TURNED_DOWN times, under the pay floor, most must-haves missing,
+    not a close match); hold off when
     other roles at the company are already queued or in progress; go ahead (queue it from Today, apply once
     queued), or go ahead as a stretch when must-haves are missing or the fit is only fair. None while the job has
     no fit score and nothing else to go on."""
     fit, company = entry.fit, entry.job.display_company
     why = dict(zip(said.codes, said.reasons, strict=False)) if said else {}  # older advice may carry no codes
-    hard = [c for c in ("applied_before", "under_floor", "must_haves") if c in why and said.action == "skip"]
+    hard = [c for c in ("applied_before", "turned_down", "under_floor", "must_haves")
+            if c in why and said.action == "skip"]
     if hard:
         return {"call": "skip", "text": f"Skip it: {why[hard[0]]}."}
     score = round(fit["score"]) if fit and fit.get("score") is not None else None
@@ -171,6 +182,7 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
 REASONS = {
     "applied_before": "the same opening (a shared req or posting id) was applied to already",
     "busy": f"{BUSY} or more applications at the company in the past {WEEK.days} days",
+    "turned_down": f"{TURNED_DOWN} or more rejections from the company: apply somewhere new",
     "under_floor": "the posted pay, or Levels.fyi's median base when none is posted, is under pay.floor",
     "must_haves": "the fit score found fewer than half the must-haves",
     "pay": "the posted pay, or Levels.fyi's ask when none is posted, reaches pay.target",

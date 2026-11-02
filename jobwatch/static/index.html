@@ -2917,8 +2917,23 @@ function paceLine(el, p) {
 
 // all: every matching job, paged, rather than today's picks (the top display.today in the order picked).
 // where, fit, pay: the quick narrowing (see quickNarrow); "any" and 0 mean off.
-const todayView = { q: "", sort: remembered("today.sort", "fit"), company: "", kws: new Set(), where: "any", fit: 0, pay: 0, posted: 0, page: 1, all: false };
+const todayView = { q: "", sort: remembered("today.sort", "fit"), company: "", kws: new Set(), where: "any", fit: 0, pay: 0, posted: 0, page: 1, all: false,
+  rolesOff: rolesOffKept() };
+// Today's Roles checkboxes: the kinds of work unticked, kept in this browser (a view, not a filter in the watchlist).
+function rolesOffKept() {
+  try { return new Set(JSON.parse(remembered("today.roles-off", "[]"))); } catch { return new Set(); }
+}
+// A job stays while any kind of work its title names is ticked (a server from before `roles` sends none: it stays).
+const roleShown = (j, v) => !(v.rolesOff && v.rolesOff.size) || !(j.roles || []).length ||
+  j.roles.some(r => !v.rolesOff.has(r));
 const SORTED = { fit: "best fit first", new: "newest first", pay: "top pay first", worth: "most worth it first" };
+// Today's picks: the top `n` in order, but each company's best job before a second one from anywhere, so the
+// applications go to many companies rather than again and again to one.
+function spreadPicks(jobs, n) {
+  const seen = new Set(), first = [], rest = [];
+  for (const j of jobs) (seen.has(j.company) ? rest : (seen.add(j.company), first)).push(j);
+  return [...first, ...rest].slice(0, n);
+}
 // The work wanted most (the watchlist's focus) leads whichever sort is picked; each part keeps that sort's order.
 function focusFirst(jobs) {
   return [...jobs.filter(j => j.focus), ...jobs.filter(j => !j.focus)];
@@ -2939,7 +2954,7 @@ function worthChip(job) {
 // saved filters treat them.
 function quickNarrow(j, v) {
   const where = j.where || [];  // a server from before `where` sends none
-  return (v.where === "any" || !where.length || where.includes(v.where)) &&
+  return roleShown(j, v) && (v.where === "any" || !where.length || where.includes(v.where)) &&
     (!v.fit || (j.fit && j.fit.score >= v.fit)) &&  // a fit filter shows scored jobs only
     (!v.pay || j.salary_max == null || j.salary_max >= v.pay) &&
     (!v.posted || j.age_days == null || j.age_days <= v.posted);  // no posting date: still shows
@@ -2956,6 +2971,38 @@ function companyCounts(jobs, v, into = {}) {
   return into;
 }
 let todayJobs = [], drawToday = () => {};
+
+// Today's Roles list: a checkbox per kind of work ([key, label] from the server), with how many of Today's jobs
+// name it. Unticking one hides the jobs that are only that kind (see roleShown); the name shows that kind alone,
+// and again brings every kind back. Kept in this browser.
+function rolesList(kinds, jobs, v, changed) {
+  const list = h("div", {});
+  const keep = () => { remember("today.roles-off", JSON.stringify([...v.rolesOff])); changed(); };
+  // All ticks every kind; None unticks them all (an empty wall), to tick just the ones wanted.
+  const tools = h("div", { class: "facet-tools" },
+    h("button", { class: "btn ghost", title: "Tick every kind of role", onclick: () => { v.rolesOff = new Set(); keep(); } }, "All"),
+    h("button", { class: "btn ghost", title: "Untick every kind of role, then tick the ones you want",
+      onclick: () => { v.rolesOff = new Set(kinds.map(([k]) => k)); keep(); } }, "None"));
+  const el = h("div", {}, tools, list);
+  const draw = () => {
+    const n = Object.fromEntries(kinds.map(([k]) => [k, jobs.filter(j => (j.roles || []).includes(k)).length]));
+    const only = k => v.rolesOff.size === kinds.length - 1 && !v.rolesOff.has(k);
+    fill(list, kinds.filter(([k]) => n[k]).map(([k, label]) => {
+      const box = h("input", { type: "checkbox", "aria-label": `Show ${label} jobs`,
+        title: v.rolesOff.has(k) ? `Tick to show ${label} jobs` : `Untick to hide jobs that are only ${label}` });
+      box.checked = !v.rolesOff.has(k);
+      box.onchange = () => { box.checked ? v.rolesOff.delete(k) : v.rolesOff.add(k); keep(); };
+      return h("div", { class: "facet row" + (only(k) ? " on" : "") + (v.rolesOff.has(k) ? " off" : "") }, box,
+        h("button", { class: "fname", title: only(k) ? "Show every kind again" : `Only ${label} jobs`, onclick: () => {
+          v.rolesOff = only(k) ? new Set() : new Set(kinds.map(([x]) => x).filter(x => x !== k)); keep();
+        } }, label),
+        h("span", { class: "c" }, n[k]));
+    }));
+  };
+  draw();
+  el.redraw = draw;
+  return el;
+}
 
 // The checkboxes in Today's Companies list: unticking one leaves its jobs out from now on
 // (filters.exclude_companies), ticking it again brings them back, each with Undo.
@@ -3032,6 +3079,7 @@ async function renderToday() {
     segmented([[0, "Any"], [1, "24h"], [3, "3d"], [7, "7d"], [14, "14d"]], v.posted,
       k => { v.posted = k; drawToday(); }));
   drawNarrow();
+  const roles = rolesList(d.role_kinds || [], todayJobs, v, () => drawToday());
   const clear = () => {
     Object.assign(v, { q: "", company: "", where: "any", fit: 0, pay: 0, posted: 0 });
     v.kws.clear(); search.value = ""; drawKws(); drawNarrow(); companies.redraw(); drawToday();
@@ -3040,6 +3088,7 @@ async function renderToday() {
   drawToday = () => {
     companyCounts(todayJobs, v, byCompany);
     companies.redraw();
+    roles.redraw();
     const q = v.q.trim().toLowerCase();
     let jobs = todayJobs.filter(j => (!q || `${j.title} ${j.company}`.toLowerCase().includes(q)) &&
       (!v.company || j.company === v.company) && [...v.kws].every(k => j.keywords.includes(k)) && quickNarrow(j, v));
@@ -3053,12 +3102,13 @@ async function renderToday() {
     const top = d.picks && jobs.length > d.picks;
     if (top && !narrowed && !v.all) {
       fill(showing, `Today's ${d.picks} picks, ${SORTED[v.sort]}, of ${jobs.length} matching jobs`);
-      fill(list, jobs.slice(0, d.picks).map((j, i) => todayCard(j, d.can_score, i)));
+      fill(list, spreadPicks(jobs, d.picks).map((j, i) => todayCard(j, d.can_score, i)));
       fill(pager, h("div", { class: "more-all" }, h("button", { class: "btn", onclick: () => { v.all = true; drawToday(); } },
         `Show all ${jobs.length} matching jobs`)));
       return;
     }
-    const pg = paged(jobs, v, JSON.stringify([v.q, v.company, [...v.kws], v.where, v.fit, v.pay, v.posted, v.sort]), drawToday);
+    const pg = paged(jobs, v, JSON.stringify([v.q, v.company, [...v.kws], v.where, v.fit, v.pay, v.posted, v.sort,
+      [...v.rolesOff]]), drawToday);
     const back = top && !narrowed ? h("button", { class: "btn ghost", onclick: () => {
       v.all = false; drawToday(); scrollTo({ top: 0, behavior: REDUCED ? "auto" : "smooth" }); } }, `Back to today's ${d.picks} picks`) : null;
     fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
@@ -3080,6 +3130,7 @@ async function renderToday() {
         segmented([["fit", "Best fit"], ["new", "Newest"], ["pay", "Top pay"], ["worth", "Worth it"]], v.sort,
           k => { v.sort = k; remember("today.sort", k); drawToday(); }))),
       panel("Narrow down", narrow),
+      (d.role_kinds || []).length ? panel("Roles", roles) : null,
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
       toWatchPanel(),
