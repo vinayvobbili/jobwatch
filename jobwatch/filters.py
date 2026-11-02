@@ -14,6 +14,7 @@ from .text import (
     names_a_region,
     remote_offer,
     remote_states_in_text,
+    remote_title,
     remote_us_wide,
     state_code,
     state_list,
@@ -117,8 +118,9 @@ def _remote_ok(job: Job, country: str) -> bool:
     # "Remote - Washington D.C." is remote for people there: it counts only as a place (a wanted one or not).
     if any(anywhere or remote_us_wide(loc) or (bare_remote(loc) and bare_ok) for loc in remote_places):
         return True
-    # The posting's own remote flag, with the location saying where.
-    return bool(job.remote) and (anywhere or not job.locations or any(in_us(loc) for loc in job.locations))
+    # The posting's own remote flag (or a title that says it: "... (remote)"), with the location saying where.
+    return (bool(job.remote) or remote_title(job.title)) and \
+        (anywhere or not job.locations or any(in_us(loc) for loc in job.locations))
 
 
 def remote_states(job: Job) -> list[str]:
@@ -176,7 +178,7 @@ def place_rejection(job: Job, f: Filters) -> str | None:
     remote_wanted = len(wanted) < len(f.locations)
     if any(w.lower() in loc.lower() for w in wanted for loc in job.locations):
         return None
-    remote = remote_wanted and (job.remote or any(is_remote(loc) for loc in job.locations))
+    remote = remote_wanted and (job.remote or remote_title(job.title) or any(is_remote(loc) for loc in job.locations))
     states = remote_states(job) if remote and f.home_state else []
     # Remote only in the home state ("Remote - Colorado") is remote for this person.
     if not ((remote_wanted and _remote_ok(job, f.remote_country)) or f.home_state in states):

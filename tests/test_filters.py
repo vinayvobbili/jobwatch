@@ -120,6 +120,22 @@ GOOGLE_STATES = dict(  # Google's feed: a remote role open in four states, liste
 HOME = ["remote", "Denver", "Boulder"]
 
 
+@pytest.mark.parametrize("title, remote", [
+    ("Principal Engineer - Agentic Security Operations (remote)", True),
+    ("Staff Security Engineer - Remote", True),
+    ("Senior Engineer (Remote, US)", True),
+    ("Remote Sensing Engineer", False),
+    ("Remote Access Engineer - Network", False),
+    ("Senior Software Engineer", False),
+])
+def test_a_title_that_says_remote_is_a_remote_job_in_the_us(title, remote):
+    """A title saying "(remote)" over one office ("Santa Ana, California") is remote across the US, not only there."""
+    f = Filters(locations=HOME, home_state="CO")
+    office = job(title=title, locations=["USA, California, Santa Ana"])
+    assert (reject_reason(office, f) is None) == remote
+    assert reject_reason(job(title=title, locations=["London, UK"]), f) == "location"  # remote abroad: still out
+
+
 @pytest.mark.parametrize("text, offer", [
     ("Hybrid culture. In-office 3 days per week unless designated remote.", "unless designated remote"),
     ("Based in Austin; remote candidates will also be considered.", "remote candidates will also be considered"),

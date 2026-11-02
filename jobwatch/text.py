@@ -215,6 +215,16 @@ def is_remote(location: str) -> bool:
     return bool(_REMOTE.search(location))
 
 
+# "Principal Engineer (remote)", "Security Engineer - Remote": a title that says the job is remote, whatever office
+# the location field names. Not "Remote Sensing Engineer": the word must be set off.
+_REMOTE_TITLE = re.compile(r"\(\s*(?:fully |100% )?remote\b[^)]*\)"
+                           r"|(?:\s[-–—|,]|^)\s*(?:fully )?remote\s*(?:$|[-–—|,(])", re.I)
+
+
+def remote_title(title: str) -> bool:
+    return bool(_REMOTE_TITLE.search(title or ""))
+
+
 # A posting placed in one city whose text says remote can be arranged ("In-office 3 days a week unless designated
 # remote"): the location field doesn't say so.
 _REMOTE_OFFER = re.compile(

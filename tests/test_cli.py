@@ -36,6 +36,14 @@ def test_find(web, capsys):
         "Jobvite board found" in out
 
 
+def test_find_add_watches_the_one_board_found(web, watchlist, capsys):
+    out = run(capsys, "-c", str(watchlist), "find", "Globex", "--add").out
+    assert "    Watching lever:globex as Globex (" in out
+    assert any(b.entry == "lever:globex" and b.name == "Globex" for b in config.load(watchlist).boards)
+    out = run(capsys, "-c", str(watchlist), "find", "Nobody", "--add").out
+    assert "Not added: no board with open roles found for 'Nobody'" in out
+
+
 def test_hidden_says_what_the_filters_hide(web, watchlist, capsys):
     run(capsys, "-c", str(watchlist), "fetch")
     assert run(capsys, "-c", str(watchlist), "hidden").out.startswith("2 job(s) hidden: excluded 1, place 1")

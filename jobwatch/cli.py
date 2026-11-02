@@ -115,6 +115,22 @@ def cmd_find(args):
                   f"{sources.careers_url(source, board)}\n    e.g. {jobs[0].title}")
             if args.roles:
                 _roles(source, board, jobs, args.roles)
+        if args.add:
+            _watch(args, query, [(s, b) for s, b, jobs in hits if jobs])
+
+
+def _watch(args, query: str, boards: list[tuple[str, str]]):
+    """`find --add`: watch the board found, when there's just one with open roles (several: pick with
+    `find --add ENTRY`, the entry as listed)."""
+    if len(boards) != 1:
+        print(f"    Not added: {'no board with open roles' if not boards else 'several boards'} found for {query!r}"
+              + ("; give one as source:board" if boards else ""))
+        return
+    source, board = boards[0]
+    name = "" if ":" in query or "/" in query else query  # a link or an entry names no company to show
+    cfg = config.add_board(config.locate(args.config), f"{source}:{board}", name)
+    print(f"    Watching {source}:{board}{f' as {name}' if name else ''} ({cfg.path}; the old file is kept as "
+          f"{cfg.path.name}.bak): `jobwatch fetch` reads it.")
 
 
 def _roles(source: str, board: str, sample: list, text: str):
@@ -1133,6 +1149,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("company", nargs="+")
     p.add_argument("--roles", metavar="TEXT", help="also list each board's open roles with TEXT in the title, "
                    "with place, pay and posted day")
+    p.add_argument("--add", action="store_true", help="watch the board found (the watchlist is rewritten, the old "
+                   "one kept as .bak); with several found, give the one to add as source:board")
     p.set_defaults(func=cmd_find, needs_config=False)
 
     p = sub.add_parser("fetch", help="check every board and record new roles")
