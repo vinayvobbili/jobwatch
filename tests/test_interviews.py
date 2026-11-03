@@ -160,14 +160,31 @@ def test_page_has_an_interviews_tab(server):
     assert "sheetButtons(j.sheets, j.sheets_base)" in page and "sheetButtons(iv.sheets, d.sheets_base)" in page
 
 
+def test_a_sheets_web_links_open_in_new_tabs(server, watchlist, tmp_path):
+    folder = sheet_dir(tmp_path)
+    (folder / "acme-links.html").write_text(
+        "<a href='https://example.com/a'>a</a> <a class=x href=http://example.com/b>b</a> "
+        "<a href='#notes'>c</a> <a href='prep.css'>d</a> <a target=_self href='https://example.com/e'>e</a>")
+    watchlist.write_text(watchlist.read_text() + "prep:\n  sheets: prep\n")
+    base = App(watchlist).get_interviews({})["sheets_base"]
+    status, body, headers = request(server, "GET", base + "acme-links.html", with_headers=True)
+    new_tab = '<a target="_blank" rel="noopener"'
+    assert status == 200 and body.decode() == (
+        f"{new_tab} href='https://example.com/a'>a</a> {new_tab} class=x href=http://example.com/b>b</a> "
+        "<a href='#notes'>c</a> <a href='prep.css'>d</a> <a target=_self href='https://example.com/e'>e</a>")
+    assert int(headers["Content-Length"]) == len(body)
+
+
 def test_the_sheets_folder_is_served_sandboxed_with_byte_ranges(server, watchlist, tmp_path):
     folder = sheet_dir(tmp_path)
     (folder / "acme-drill.mp4").write_bytes(bytes(range(100)))
     watchlist.write_text(watchlist.read_text() + "prep:\n  sheets: prep\n")
     base = App(watchlist).get_interviews({})["sheets_base"]
     status, body, headers = request(server, "GET", base + "acme-onsite.html", with_headers=True)
-    assert status == 200 and b"hi" in body and headers["Content-Security-Policy"] == "sandbox"
-    assert request(server, "GET", base + "prep.css")[1] == b"body { color: red }"
+    assert status == 200 and b"hi" in body and headers["Content-Security-Policy"] == interviews.SHEET_POLICY
+    assert "allow-scripts" not in interviews.SHEET_POLICY and "allow-same-origin" not in interviews.SHEET_POLICY
+    status, body, headers = request(server, "GET", base + "prep.css", with_headers=True)
+    assert body == b"body { color: red }" and headers["Content-Security-Policy"] == "sandbox"
     status, body, headers = request(server, "GET", base + "acme-drill.mp4", headers={"Range": "bytes=10-19"},
                                     with_headers=True)
     assert (status, body, headers["Content-Range"]) == (206, bytes(range(10, 20)), "bytes 10-19/100")

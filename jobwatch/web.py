@@ -1437,10 +1437,12 @@ def make_handler(app: App, token: str, port_ref: list[int]):
             self.end_headers()
             self.wfile.write(body)
 
-        def _send_file(self, path: Path, ctype: str):
+        def _send_file(self, path: Path, ctype: str, policy: str = "sandbox", edit=None):
             """A file from disk, whole or the one byte range asked for (a video player seeks with ranges).
-            Sandboxed: a page served this way can't run scripts or read this page's origin."""
-            size, start, end = path.stat().st_size, 0, None
+            Sandboxed: a page served this way can't run scripts or read this page's origin. edit, when given,
+            changes the file's bytes before they're sent."""
+            edited = edit(path.read_bytes()) if edit else None
+            size, start, end = path.stat().st_size if edited is None else len(edited), 0, None
             if m := re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range", "").strip()):
                 if m.group(1):
                     start, end = int(m.group(1)), int(m.group(2)) if m.group(2) else size - 1
@@ -1453,16 +1455,19 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     self.end_headers()
                     return
             end = min(size - 1, end if end is not None else size - 1)
-            with path.open("rb") as f:
-                f.seek(start)
-                body = f.read(end - start + 1) if size else b""
+            if edited is not None:
+                body = edited[start:end + 1]
+            else:
+                with path.open("rb") as f:
+                    f.seek(start)
+                    body = f.read(end - start + 1) if size else b""
             self.send_response(HTTPStatus.PARTIAL_CONTENT if m and (m.group(1) or m.group(2)) else HTTPStatus.OK)
             if m and (m.group(1) or m.group(2)):
                 self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Content-Security-Policy", "sandbox")
+            self.send_header("Content-Security-Policy", policy)
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
@@ -1539,6 +1544,8 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 found = app.prep_file(secret, unquote(name))
                 if found is None:
                     return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                if found[1].startswith("text/html"):
+                    return self._send_file(*found, policy=interviews.SHEET_POLICY, edit=interviews.new_tab_links)
                 return self._send_file(*found)
             if method == "GET" and (ctype := APP_FILES.get(url.path.lstrip("/"))):
                 # The page's own icons and manifest, for the tab and for installing it as an app: no token (the

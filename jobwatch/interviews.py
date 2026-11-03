@@ -9,7 +9,8 @@ that, "wait for a recruiter screen" is a hope, not an interview). Prep sheets ar
 watchlist's prep.sheets folder whose name starts with the company's ("acme-onsite.html" for Acme), narrowed to
 one application's: the ones its note or next step names, else all but those naming another posting's number. The page
 serves that folder at an address with a secret in it, so a sheet's stylesheet, images and drill video next to
-it load as they do from disk, and sandboxed: a sheet can't run scripts or reach the page's token.
+it load as they do from disk, and sandboxed: a sheet can't run scripts or reach the page's token. Its web links
+open in new tabs, outside the sandbox, so the sheet stays open during the call.
 """
 
 from __future__ import annotations
@@ -30,6 +31,9 @@ FILE_TYPES = {".html": "text/html; charset=utf-8", ".htm": "text/html; charset=u
               ".mp4": "video/mp4", ".webm": "video/webm", ".m4a": "audio/mp4", ".mp3": "audio/mpeg",
               ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
               ".webp": "image/webp", ".svg": "image/svg+xml", ".pdf": "application/pdf"}
+# A sheet stays unable to run scripts, but its links may open a normal tab: a site opened from it isn't sandboxed.
+SHEET_POLICY = "sandbox allow-popups allow-popups-to-escape-sandbox"
+_WEB_LINK = re.compile(r"""<a\b(?![^>]*\btarget\s*=)(?=[^>]*\bhref\s*=\s*["']?https?:)""", re.I)
 
 
 @dataclass(frozen=True)
@@ -103,6 +107,11 @@ def sheet_file(folder: Path | None, name: str) -> tuple[Path, str]:
     if Path(name).name != name or path.parent != folder.resolve() or not ctype or not path.is_file():
         raise FileNotFoundError(f"no prep sheet file named {name!r}")
     return path, ctype
+
+
+def new_tab_links(sheet: bytes) -> bytes:
+    """A sheet with its web links set to open in new tabs. In-page links and a link with its own target stay."""
+    return _WEB_LINK.sub('<a target="_blank" rel="noopener"', sheet.decode("utf-8", "replace")).encode()
 
 
 def to_dict(i: Interview, folder: Path | None) -> dict:
