@@ -86,7 +86,7 @@ GLOBEX_LD = ('{"@context":"https:\\/\\/schema.org\\/","@type":"JobPosting",'
              '"validThrough":"2027-01-29T00:00"}')
 # The first of the page's two JobPostings: named by an internal requisition title, its text the page's HTML
 GLOBEX_INTERNAL_LD = ('{"@context":"http://schema.org","@type":"JobPosting","datePosted":"2026-06-09",'
-                      '"title":"US Widgets Services-Agentic AI Engineer-Widgets-W&D",'
+                      '"title":"US Widgets Services-Agentic AI Engineer-Widgets-GLBX",'
                       '"description":"<p>Globex is building agents for widgets.</p>","validThrough":"2027-01-29"}')
 
 
