@@ -197,10 +197,29 @@ def test_cli_and_mcp(resume_watchlist, web, capsys, monkeypatch):
     cli.main(["--config", str(resume_watchlist), "unscored"])
     out = capsys.readouterr().out
     assert "Acme: Staff Python Engineer\n  No posting text" in out and "4 without a score: 3 queued, 1 no text" in out
+    cli.main(["--config", str(resume_watchlist), "unscored", "--no-text"])
+    out = capsys.readouterr().out
+    assert "Acme: Staff Python Engineer\n  No posting text" in out and "1 without a score: 1 no text" in out
+    assert "queued" not in out
     monkeypatch.setenv("JOBWATCH_CONFIG", str(resume_watchlist))
     assert get_job(job.key)["unscored_reason"]["code"] == "no_text"
     assert mark_job(job.key, url=POSTING).endswith("(link saved; posting read from it)")
     assert get_job(job.key)["unscored_reason"]["code"] == "queued"
+
+
+def test_no_text_lists_each_job_with_its_link(resume_watchlist, web, capsys):
+    _, store = _fetched(resume_watchlist)
+    job = store.add("Initech", "Staff Python Engineer", status="new", location="Remote",
+                    url="https://jobs.example.com/view/101")
+    store.close()
+    cli.main(["--config", str(resume_watchlist), "unscored", "--no-text"])
+    assert f"{job.key}\n  https://jobs.example.com/view/101\n" in capsys.readouterr().out
+
+
+def test_no_text_says_when_none_are_waiting(resume_watchlist, web, capsys):
+    _fetched(resume_watchlist)[1].close()
+    cli.main(["--config", str(resume_watchlist), "unscored", "--no-text"])
+    assert capsys.readouterr().out.strip() == "No job on Today is waiting for its posting's text."
 
 
 # -- a Hacker News post: one job per company's post, often listing several roles, places and links

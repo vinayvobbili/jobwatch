@@ -343,12 +343,16 @@ def cmd_unscored(args, cfg, store):
     score, the same role scored before this posting came in, no resume. Failures and the job being scored
     right now are what the page itself knows: see Today there."""
     why = unscored_reasons(cfg, store)
+    if args.no_text:
+        why = {key: w for key, w in why.items() if w["code"] == "no_text"}
     if not why:
-        print("Every job on Today has a fit score.")
+        print("No job on Today is waiting for its posting's text." if args.no_text
+              else "Every job on Today has a fit score.")
         return
     for key, w in why.items():
         job, _ = store.find(key)
-        print(f"{job.display_company}: {job.title}\n  {w['text']}\n  {key}")
+        print(f"{job.display_company}: {job.title}\n  {w['text']}\n  {key}"
+              + (f"\n  {job.url}" if args.no_text and job.url else ""))
     counts: dict[str, int] = {}
     for w in why.values():
         counts[w["code"]] = counts.get(w["code"], 0) + 1
@@ -1217,6 +1221,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_score)
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")
+    p.add_argument("--no-text", action="store_true", help="only the jobs waiting for their posting's text, each with "
+                   "its link: give them the text with `mark KEY --url LINK` or `mark KEY --text FILE`")
     p.set_defaults(func=cmd_unscored)
 
     p = sub.add_parser("scored", help="fit scores made from a day on, best first, with who made each (Claude, "
