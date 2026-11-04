@@ -9,7 +9,8 @@ no API key or scraping; Google publishes its own (with YouTube's and DeepMind's)
 Amazon's careers site (amazon.jobs, with AWS) answers its own search in JSON, and Avature careers portals
 (company career sites on Avature) list every posting in a sitemap for search engines, iCIMS careers sites
 (careers-<company>.icims.com) list theirs in plain pages, and Jobvite careers sites (jobs.jobvite.com/<company>)
-list every open role on one page. Hundreds of startups post once a month
+list every open role on one page; and a careers site on its own domain that links every posting in its sitemap,
+with schema.org JobPosting markup on each job page, is a `sitemap:` board. Hundreds of startups post once a month
 in Hacker News' "Ask HN: Who is hiring?" thread, which HN's search API serves whole.
 jobwatch reads those feeds for the companies on your watchlist:
 
@@ -33,7 +34,8 @@ jobwatch reads those feeds for the companies on your watchlist:
   US roles unless the board is `amazon/any`. A SmartRecruiters board is searched the same way, 24 titles a
   page, and each posting it reads is one page. An Avature portal's sitemap is one request a run; a posting
   whose title has your `filters.titles` words and passes your title filters is read from its page, once, two at
-  a time. An iCIMS site's list is a page of 50 roles a request, and its postings are read the same way. A Jobvite site's whole list is one request. HN's Who is hiring is one request to find the thread and one to read it whole.
+  a time. An iCIMS site's list is a page of 50 roles a request, and its postings are read the same way. A Jobvite site's whole list is one request. A sitemap board's sitemap is one request a run (a few, when it's an
+  index of sitemaps), and its postings are read like an Avature portal's. HN's Who is hiring is one request to find the thread and one to read it whole.
   `jobwatch fetch --reread <board>` reads a searched board's stored postings again, as after an update that
   reads its pages better.
 - **Within the rules:** it reads public APIs meant for this, and follows robots.txt. SmartRecruiters' own API
@@ -41,4 +43,5 @@ jobwatch reads those feeds for the companies on your watchlist:
   (careers.smartrecruiters.com, and each posting's page on jobs.smartrecruiters.com), which robots.txt leaves
   open. On an Avature portal it reads only the public pages its robots.txt lets robots read (never a link with
   `qtvc=`, never anything behind a sign-in); on iCIMS, the list and job pages, never its sign-in, referral or
-  candidate pages; on Jobvite, the list and job pages, never the apply form. It doesn't scrape LinkedIn or Indeed, which forbid it.
+  candidate pages; on Jobvite, the list and job pages, never the apply form; on a sitemap board, its robots.txt, the
+  sitemap it names and the job pages robots.txt allows. It doesn't scrape LinkedIn or Indeed, which forbid it.

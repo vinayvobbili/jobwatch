@@ -470,9 +470,9 @@ def still_open(job: Job, get=None, page=None, boards: dict | None = None,
     # one posting can be read by its link: surer than a title search (the board's own link, when the job's link
     # is the company's careers site: see mark_hosted)
     if job.source in ("workday", "rippling", "amazon", "oracle", "smartrecruiters", "avature", "icims",
-                      "jobvite"):
+                      "jobvite", "sitemap"):
         try:
-            return sources.posting(job.posting_url or job.url, get) is not None
+            return sources.posting(job.posting_url or job.url, get, hosts=(job.company,)) is not None
         except sources.NotFound:
             return False
     if job.source in sources.SOURCES:
@@ -569,8 +569,8 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
     """Add a job found somewhere else: (the job, whether its posting was read from the link).
 
     A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google,
-    Amazon, Oracle, SmartRecruiters, Avature, iCIMS, Jobvite) is read in full, so the job can be scored and prepped
-    like any other; its board needn't be watched.
+    Amazon, Oracle, SmartRecruiters, Avature, iCIMS, Jobvite, or a careers site's job page with JobPosting markup)
+    is read in full, so the job can be scored and prepped like any other; its board needn't be watched.
     A LinkedIn job link isn't read (LinkedIn's robots.txt disallows its job pages), so it needs the company and
     the title too; the same job is looked for on the company's own board (a watched one in `boards` under the
     company's name first): found, that posting is tracked, since it's where the application goes; not found, the
@@ -605,7 +605,7 @@ def _save_job(store: Store, link: str, company: str, title: str, text: str, stat
             job.company_name = p.company
         note = f"{note} {why}" if note else why
     elif link:
-        job = sources.posting(link, get)
+        job = sources.posting(link, get, hosts=[b.board for b in boards if b.source == "sitemap"])
     if job is None:
         if link and not (company.strip() and title.strip()):
             raise ValueError("jobwatch can't read that link: give the company and the job title too, and paste "

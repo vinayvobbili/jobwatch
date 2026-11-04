@@ -2,7 +2,7 @@
 
 Run your job search from a conversation with Claude. Name the companies you'd like to work for, and jobwatch
 watches their job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Rippling, Google Careers,
-Amazon, Oracle, SmartRecruiters, Avature, iCIMS, Jobvite and Hacker News' monthly "Who is hiring?"), ranks
+Amazon, Oracle, SmartRecruiters, Avature, iCIMS, Jobvite, careers sites with a job sitemap and Hacker News' monthly "Who is hiring?"), ranks
 the new roles that match what you're looking for, and keeps track of every application from the day you apply
 to the offer. It never applies for you: Claude fills in what it can and you press Submit.
 

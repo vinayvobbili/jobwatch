@@ -1137,8 +1137,9 @@ def _tracking(p: argparse.ArgumentParser):
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="jobwatch", description="Watch company job boards (Greenhouse, Lever, "
                                  "Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google Careers, Amazon, "
-                                 "Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, HN's Who is "
-                                 "hiring) and get a ranked digest of new matches.")
+                                 "Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, "
+                                 "careers sites with a job sitemap, HN's Who is hiring) and get a ranked digest "
+                                 "of new matches.")
     ap.add_argument("--version", action="version", version=f"jobwatch {__version__}")
     ap.add_argument("-c", "--config", help="watchlist file (default: ./jobwatch.yaml, $JOBWATCH_CONFIG, "
                     "~/.config/jobwatch/config.yaml)")
@@ -1266,7 +1267,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("add", help="add a job found elsewhere (LinkedIn, a referral, a recruiter): `add <link>` "
                        "reads the posting from Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google "
-                       "Careers, amazon.jobs, Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS or Jobvite; "
+                       "Careers, amazon.jobs, Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite or "
+                       "a careers site's job page; "
                        "`add <company> "
                        "<title>` for anything else, a LinkedIn link included (--url; LinkedIn's robots.txt doesn't "
                        "allow reading it, so jobwatch looks for the job on the company's own board). "

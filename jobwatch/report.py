@@ -128,6 +128,8 @@ def found_on(job: Job, via: str | None = None) -> str:
         board = "Google Careers"
     elif job.source == "amazon":
         board = "amazon.jobs"
+    elif job.source == "sitemap":
+        board = f"{job.display_company}'s careers site"
     elif job.source != "manual":
         board = f"{job.display_company}'s {BOARDS.get(job.source, job.source)} board"
     else:

@@ -82,7 +82,8 @@ pbpaste | jobwatch profile -
 
 A job from LinkedIn, a job-alert email or a friend goes in the queue with its link. When the link is to a
 posting on Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers, amazon.jobs, Oracle Recruiting
-Cloud, SmartRecruiters, iCIMS, Jobvite or an Avature portal, jobwatch reads the posting from there, so it
+Cloud, SmartRecruiters, iCIMS, Jobvite, an Avature portal or a careers site's job page with JobPosting markup
+(robots.txt permitting), jobwatch reads the posting from there, so it
 can be fit-scored and prepped for like any other, even if you don't watch that company. jobwatch never reads
 LinkedIn (its robots.txt disallows every page), so a LinkedIn job link needs the company and title too; the
 same job is looked for on the company's own board: found, that's what is tracked, since it's where the

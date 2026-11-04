@@ -1,5 +1,5 @@
 """Public job boards: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google, Amazon,
-Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS and Jobvite.
+Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite and any careers site with a job sitemap.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
@@ -15,6 +15,8 @@ are read from their public pages, as robots.txt allows.
 iCIMS careers sites list their roles a page at a time (the page for the site's iframe, which is plain HTML); the ones
 whose titles match are read from their job pages, each carrying schema.org JobPosting markup.
 Jobvite careers sites list every role on one page; the ones whose titles match are read from their job pages.
+A careers site that links every posting in its sitemap (sitemap:careers.example.com) is listed from there, when
+its job pages carry schema.org JobPosting markup; the ones whose titles match are read from those pages.
 Hacker News' monthly "Ask HN: Who is hiring?" thread is a board of many companies' posts, read whole from HN's
 search API: each post is one job.
 """
@@ -1310,6 +1312,200 @@ def _jobvite_read(j: Job, get) -> Job:
     return j
 
 
+# -- Sitemap: a careers site that lists its job pages in a sitemap, each carrying schema.org JobPosting markup.
+# The board is the site's host (sitemap:careers.example.com). A site's own search page can answer a crawler with
+# the same first few roles whatever it's asked, so the roles are listed from the sitemap its robots.txt names (else
+# /sitemap.xml), which links every open posting (.../jobs/<id>/<slug>/) with its title as a slug. Only new
+# postings whose titles match are read in full, from their pages: the markup has every place, the career area, the
+# date posted and the text. robots.txt is read first, and what it closes is left alone.
+
+SITEMAP_WORKERS = 2  # postings are web pages: read a couple at a time
+SITEMAP_READS = 8  # sitemap files read for one site: an index of sitemaps names one per language or section
+SITEMAP_SAMPLE = 2  # job pages looked at to tell that a site's sitemap is a board
+_SITEMAP_ID = re.compile(r"((?:[a-z]{1,5}[-_]?)?\d+)(?=[-_]|$)", re.I)
+_SITEMAP_LOCALE = re.compile(r"[a-z]{2}(?:[-_][a-z]{2})?", re.I)
+_SITEMAP_CLOSED = re.compile(r"<title>[^<]*\b(?:(?:now|been|has|is) closed|no longer (?:available|open|accepting)"
+                             r"|expired)", re.I)
+_SITEMAP_SUFFIX = re.compile(r"(?:jobs|careers)$")
+
+
+def _sitemap_board(board: str) -> str:
+    if not re.fullmatch(r"[\w-]+(?:\.[\w-]+)+", board):
+        raise SourceError(f"a sitemap board is a careers site's host, like careers.example.com, got {board!r}")
+    return board.lower()
+
+
+def _sitemap_company(board: str) -> str:
+    """The company a site's host names: Initech for careers.initech.com or initechjobs.com."""
+    labels = board.lower().split(".")
+    while len(labels) > 2 and labels[0] in ("www", "career", "careers", "job", "jobs"):
+        labels.pop(0)
+    return (_SITEMAP_SUFFIX.sub("", labels[0]) or labels[0]).replace("-", " ").title()
+
+
+def _sitemap_job(url: str) -> tuple[str, str] | None:
+    """(id, title) from a link to one job: a path with a `job` or `jobs` segment, then an id (r-1234, 1234, JR0012)
+    and, after it, the title as a slug ("senior-engineer"); None for a link to anything else."""
+    parts = [p for p in urlparse(url if "//" in url else f"https://{url}").path.split("/") if p]
+    for i, part in enumerate(parts[:-1]):
+        if part.lower() in ("job", "jobs") and (m := _SITEMAP_ID.match(parts[i + 1])):
+            slug = parts[i + 1][m.end():].strip("-_") or (parts[i + 2] if len(parts) > i + 2 else "")
+            return m.group(1).upper(), " ".join(w.capitalize() for w in re.split(r"[-_]+", slug) if w)
+    return None
+
+
+def _sitemap_english(url: str) -> bool:
+    """Whether a link isn't a copy in another language (a first path segment like /fr/ or /de-DE/)."""
+    parts = [p for p in urlparse(url).path.split("/") if p]
+    return not parts or not _SITEMAP_LOCALE.fullmatch(parts[0]) or parts[0].lower().startswith("en")
+
+
+def _site_robots(host: str, get) -> tuple[list[str], Callable[[str], bool]]:
+    """(the sitemaps its robots.txt names, whether it allows a link). No robots.txt allows everything; one that
+    can't be read raises SourceError, as it allows nothing."""
+    from .alerts import robots_allows, robots_rules  # alerts imports sources
+    try:
+        text = get(f"https://{host}/robots.txt") or ""
+    except NotFound:
+        text = ""
+    rules = robots_rules(text)
+    return re.findall(r"(?im)^\s*sitemap:\s*(\S+)", text), lambda url: robots_allows(rules, url)
+
+
+def _sitemap_links(host: str, get, named: list[str]) -> list[str]:
+    """The links on the host that its sitemaps list (those robots.txt names, else /sitemap.xml). An index of
+    sitemaps is followed, to the ones named for jobs if any are."""
+    queue, seen, links = named or [f"https://{host}/sitemap.xml"], set(), []
+    bare = host.removeprefix("www.")
+    while queue and len(seen) < SITEMAP_READS:
+        url = queue.pop(0)
+        if url in seen:
+            continue
+        seen.add(url)
+        try:
+            locs = _sitemap_locs(get(url), url)
+        except NotFound:
+            continue
+        maps = [loc for loc in locs if urlparse(loc).path.lower().endswith(".xml")]
+        queue += [m for m in maps if "job" in m.lower()] or maps
+        links += [loc for loc in locs if loc not in maps and urlparse(loc).netloc.lower().removeprefix("www.") == bare]
+    return links
+
+
+def _sitemap_listed(host: str, get, allows: Callable[[str], bool], named: list[str]) -> list[tuple[str, str, str]]:
+    """(id, title, link) of every job the sitemaps link, in English when a job has copies in other languages."""
+    found: dict[str, tuple[str, str, str]] = {}
+    for link in _sitemap_links(host, get, named):
+        if (job := _sitemap_job(link)) and allows(link):
+            if job[0] not in found or (_sitemap_english(link) and not _sitemap_english(found[job[0]][2])):
+                found[job[0]] = (*job, link)
+    if not found:
+        raise SourceError(f"{host}: no job pages in its sitemap (robots.txt names none or /sitemap.xml has none)")
+    return list(found.values())
+
+
+def fetch_sitemap(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """The roles on a careers site whose titles have one of the `search` terms' words (all of them, with no
+    terms), listed from its sitemap; only the ones whose titles pass `wanted` and that aren't in `known` are
+    read in full, from their pages."""
+    get = get or get_text
+    host = _sitemap_board(board)
+    named, allows = _site_robots(host, get)
+    listed = [item for item in _sitemap_listed(host, get, allows, named) if not search or _title_has(item[1], search)]
+
+    def job(item) -> Job:
+        pid, title, link = item
+        key = f"sitemap:{board}:{pid}"
+        if known and key in known and known[key].description:
+            return known[key]
+        j = Job(source="sitemap", company=board, id=pid, title=title, url=link, company_name=_sitemap_company(host))
+        if wanted and not wanted(j.title):
+            return j
+        return _unread_if_refused(lambda: _sitemap_read(j, get), j)
+    return _details(listed[:cap], job, SITEMAP_WORKERS)
+
+
+def _sitemap_places(data: dict) -> list[str]:
+    """A posting's places from its markup, which may write a city in capitals: "San Jose, California"; a place
+    outside the US ends with its country."""
+    places = []
+    for place in _as_list(data.get("jobLocation")):
+        for a in _as_list(place.get("address") if isinstance(place, dict) else place):
+            if not isinstance(a, dict):
+                places.append(str(a))
+                continue
+            country = a.get("addressCountry")
+            country = "" if str(country).lower() in ("united states of america", "united states", "us", "usa") \
+                else country
+            city = a.get("addressLocality") or ""
+            parts = [city.title() if city.isupper() else city, a.get("addressRegion"), country]
+            places.append(", ".join(p for p in parts if p))
+    return split_locations(*places)
+
+
+def _as_list(value) -> list:
+    return value if isinstance(value, list) else [] if value is None else [value]
+
+
+def _sitemap_read(j: Job, get) -> Job:
+    """Fill a job from its page. Raises NotFound when the job has closed (HTTP 404, or a page titled "Sorry, this
+    job posting is now closed"), SourceError when the page has no posting markup."""
+    page = get(j.url) or ""
+    data = job_posting_data(page)
+    if not data:
+        if _SITEMAP_CLOSED.search(page):
+            raise NotFound(f"that posting ({j.id}) has closed")
+        raise SourceError(f"{j.url}: couldn't read that posting's page (no JobPosting markup found on it)")
+    j.title = _ld_text(data.get("title")) or j.title
+    j.company_name = _ld_text((data.get("hiringOrganization") or {}).get("name")) or j.company_name
+    j.department = next(iter(_as_list(data.get("industry"))), None) or _ld_text(data.get("occupationalCategory")) \
+        or j.department
+    j.posted = _time(data.get("datePosted")) or j.posted
+    j.locations = _sitemap_places(data) or j.locations
+    j.remote = True if any(is_remote(p) for p in j.locations) \
+        or str(data.get("jobLocationType")).upper() == "TELECOMMUTE" else None
+    j.description = _ld_text(data.get("description"))
+    if not j.description:
+        raise SourceError(f"{j.url}: couldn't read that posting's page (no posting text found on it)")
+    _salary(j, j.description)
+    return j
+
+
+def _sitemap_posting(url: str, get, hosts=()) -> Job | None:
+    """One job on a careers site, read from its link: a site named in `hosts` (watched boards), or else one whose
+    robots.txt allows the page. None when the link isn't to a job page, or (for a site not in `hosts`, which may
+    be anything) the page isn't one."""
+    found = _sitemap_job(url)
+    parsed = urlparse(url if "//" in url else f"https://{url}")
+    if not found or not parsed.netloc:
+        return None
+    host, link = parsed.netloc.lower(), parsed._replace(scheme="https", query="", fragment="").geturl()
+    watched = host in {h.lower() for h in hosts}
+    get = get or get_text
+    try:
+        if not _site_robots(host, get)[1](link):
+            raise SourceError(f"{host}'s robots.txt doesn't allow reading {link}")
+        return _sitemap_read(Job(source="sitemap", company=host, id=found[0], title=found[1], url=link,
+                                 company_name=_sitemap_company(host)), get)
+    except SourceError:
+        if watched:
+            raise
+        return None
+
+
+def _sitemap_peek(host: str, get) -> list[Job]:
+    """The roles on a site if its sitemap links job pages and a few of them carry JobPosting markup, else []."""
+    get = get or get_text
+    jobs = fetch_sitemap(host, get, wanted=_never, cap=PROBE_CAP)
+    for j in jobs[:SITEMAP_SAMPLE]:
+        try:
+            if job_posting_data(get(j.url) or ""):
+                return jobs
+        except SourceError:
+            continue  # a closed job, or one that can't be read now: the next one says
+    return []
+
+
 # -- Amazon (with AWS and its subsidiaries): board "amazon" for its roles in the US, "amazon/any" for all of them.
 # amazon.jobs answers its own search in JSON, each role with its full text, 100 a page; its robots.txt closes
 # only /internal pages. It lists tens of thousands of roles, so like a Workday board it's searched for the
@@ -1716,6 +1912,7 @@ SOURCES = {
     "avature": Source("avature", "", None, "https://{board}/SearchJobs", fetch_avature),
     "icims": Source("icims", "", None, "https://{host}/jobs/search", fetch_icims),
     "jobvite": Source("jobvite", "", None, JOBVITE_LIST, fetch_jobvite),
+    "sitemap": Source("sitemap", "", None, "https://{board}/", fetch_sitemap),
     "hn": Source("hn", "", None, "https://news.ycombinator.com/submitted?id=whoishiring", fetch_hn,
                  many_companies=True),
 }
@@ -1935,12 +2132,16 @@ def _eightfold_on_own_domain(url: str, get) -> Job | None:
         return None
 
 
-def posting(url: str, get=None) -> Job | None:
+def posting(url: str, get=None, hosts=()) -> Job | None:
     """One job, read from its link on a supported board; None when the link isn't to one job on one.
-    Raises SourceError when the board can't be read or no longer lists the job."""
+    Raises SourceError when the board can't be read or no longer lists the job.
+
+    A link on a host that is no known board but looks like a job page (.../jobs/<id>/...) is read from its page,
+    where robots.txt allows, when the page carries JobPosting markup (a careers site with a job sitemap): else
+    None. For a host in `hosts` (watched sitemap boards) that page's failures are raised instead."""
     found = detect(url)
     if not found:
-        return _eightfold_on_own_domain(url, get or get_json)
+        return _eightfold_on_own_domain(url, get or get_json) or _sitemap_posting(url, get, hosts)
     source, board = found
     if source == "eightfold":  # read on its own: a big board is thousands of roles
         pid = _posting_id(source, url)
@@ -2118,24 +2319,39 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
     A link to the company's own careers page is read for links to a board instead (`page` fetches it).
 
     A guessed name can belong to a different company, so check a role or two before adding a board. Roles on
-    a searched board (Workday, Eightfold, Avature, iCIMS, Jobvite) are listed, not read in full: a sample of up to
-    PROBE_CAP."""
+    a searched board (Workday, Eightfold, Avature, iCIMS, Jobvite, a sitemap) are listed, not read in full: a
+    sample of up to PROBE_CAP. A careers page or job link whose page links to no board is last tried as a
+    sitemap board: its host's sitemap links job pages, and sampled ones carry JobPosting markup."""
     if found := detect(company):
         source, board = found
         return [(source, board, _peek(source, board, get))]
     if _LINK.match(company):  # the company's own careers page: look for links to a board on it
-        hits = []
-        for source, board in boards_on_page(company, page):
+        hits, unread = [], None
+        try:
+            boards = boards_on_page(company, page)
+        except SourceError as e:  # a closed job's link: its host may still have a sitemap
+            boards, unread = [], e
+        for source, board in boards:
             try:
                 hits.append((source, board, _peek(source, board, get)))
             except SourceError:
                 continue
+        if not boards:
+            host = urlparse(company if "//" in company else f"https://{company}").netloc.lower()
+            try:
+                if jobs := _sitemap_peek(host, page):
+                    return [("sitemap", host, jobs)]
+            except SourceError:
+                pass
+            if unread:
+                raise unread
         return hits
     names = board_names(company)
     # jibe: sites on their own domains; google, amazon: the company's own board ("Google DeepMind", "AWS" find them);
     # oracle: a site's host is a pod code ("eeho.fa.us2") nobody can guess from the name, so it's found from a link;
     # avature: tried as name.avature.net/careers below; hn: one board, HN's Who is hiring ("Hacker News" finds it)
-    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "hn")
+    # sitemap: a careers site's host, found from a link to its careers page or a job
+    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "sitemap", "hn")
     tries = [(s, n) for n in names for s in SOURCES if s not in skip]
     tries += [("google", "google")] if "google" in names else []
     tries += [("amazon", "amazon")] if {"amazon", "aws"} & set(names) else []

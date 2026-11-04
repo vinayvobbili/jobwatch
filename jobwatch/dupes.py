@@ -50,7 +50,7 @@ _COMPANY_SUFFIXES = {"inc", "incorporated", "llc", "llp", "lp", "ltd", "limited"
 _NAMED_BOARDS = {"greenhouse", "lever", "ashby", "workable", "rippling", "smartrecruiters", "google", "amazon", MANUAL}
 
 # Boards whose posting id is the company's requisition number, so it can conflict with a req given elsewhere.
-_REQ_BOARDS = {"workday", "oracle", "avature", "amazon"}
+_REQ_BOARDS = {"workday", "oracle", "avature", "amazon", "sitemap"}
 
 _SENIORITY = {"senior": "senior", "sr": "senior", "snr": "senior", "staff": "staff", "lead": "lead",
               "principal": "principal", "junior": "junior", "jr": "junior", "i": "i", "ii": "ii", "iii": "iii",

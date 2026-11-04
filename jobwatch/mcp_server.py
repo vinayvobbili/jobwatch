@@ -49,8 +49,9 @@ server = MCPServer(
     "jobwatch",
     instructions=(
         "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, "
-        "Google Careers, Amazon, Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite) and Hacker "
-        "News' monthly \"Ask HN: Who is hiring?\" thread (one job per company's post) from a watchlist file. "
+        "Google Careers, Amazon, Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, "
+        "careers sites with a job sitemap) and Hacker News' monthly \"Ask HN: Who is hiring?\" thread (one job "
+        "per company's post) from a watchlist file. "
         "find_board looks up a company's board (by name, or a job or careers page link), add_board puts it on the "
         "watchlist, list_boards and remove_board manage the rest. list_suggested_boards lists companies whose jobs "
         "keep coming in from alerts, add_application or HN posts while their board isn't watched, with what to pass "
@@ -192,6 +193,9 @@ def find_board(
     An iCIMS careers site is icims:<company> (careers-<company>.icims.com), or the whole host for another
     (icims:jobs-acme.icims.com); a name finds one at careers-<name>.icims.com.
     A Jobvite careers site is jobvite:<company> (jobs.jobvite.com/<company>); a name finds one there.
+    A careers site that lists its job pages in a sitemap (their pages carrying schema.org JobPosting markup) is
+    sitemap:<host>, like sitemap:careers.example.com; a link to its careers page or a job on it finds it, a name
+    doesn't.
     Hacker News' "Who is hiring?" thread is one board, hn:whoishiring (hn:whoishiring/N: the last N months'),
     found by "Hacker News" or the news.ycombinator.com/submitted?id=whoishiring link.
     Use it before add_board; to track one job from its link, use add_application instead."""
@@ -453,7 +457,8 @@ def add_application(
     = "",
     url: Annotated[str, Field(description=(
         "A link to the job: Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google Careers, amazon.jobs, "
-        "Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite or LinkedIn are read in full; "
+        "Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, "
+        "a careers site's job page (JobPosting markup) or LinkedIn are read in full; "
         "any other link is just kept."))] = "",
     status: Annotated[str, Field(description=(
         "applied (the default; only once the person has applied themselves), queued for one they're "
@@ -472,8 +477,8 @@ def add_application(
     .../jobs/results/<id> link), amazon.jobs (a .../jobs/<id> link), Oracle Recruiting Cloud (an
     ...oraclecloud.com/.../sites/<site>/job/<id> link), SmartRecruiters (a jobs.smartrecruiters.com/<company>/<id>
     link), an Avature portal (a .../JobDetail/<title>/<id> link) or
-    iCIMS (a .../jobs/<id>/<title>/job link) or Jobvite (a jobs.jobvite.com/<company>/job/<id> link) is read in
-    full (company and
+    iCIMS (a .../jobs/<id>/<title>/job link) or Jobvite (a jobs.jobvite.com/<company>/job/<id> link) or a careers
+    site's job page (a .../jobs/<id>/<title> link whose page has JobPosting markup) is read in full (company and
     title may be left out). A LinkedIn job link is never read (LinkedIn's robots.txt disallows it): give company
     and title with it (and text to score it), and it's tracked on the company's own board when the same job is
     found there. Otherwise give company and title, and text (the posting, pasted) so it can be scored.
