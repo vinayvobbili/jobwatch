@@ -237,7 +237,7 @@ def _line(j: dict) -> list[str]:
         out.append(("    Due: " if j["due"] else "    Next: ") + step)
     if j["note"]:
         shown, cut = note_preview(j["note"])
-        out.append(f"    Note: {shown}" + (f" (all of it: `jobwatch show {j['key']}` or --format json)" if cut else ""))
+        out.append(f"    Note: {shown}" + (f" (all of it: `jobwatch show {j['key']}`)" if cut else ""))
     if j["duplicate_of"]:
         out.append(f"    Check: {j['duplicate_of']['text']}")
     return [*out, f"    `{j['key']}`"]

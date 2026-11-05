@@ -44,6 +44,19 @@ def test_a_site_is_listed_and_wanted_roles_read():
     assert len(sources.fetch("jobvite", "initech", initech_web(), wanted=lambda t: False, cap=2)) == 2
 
 
+def test_a_site_in_the_table_layout_is_listed():
+    # Some sites still list roles as a table under each department's heading, with a place or "3 Locations"
+    site = "https://jobs.jobvite.com/umbrella"
+    web = FakeWeb({f"{site}/jobs": (FIXTURES / "jobvite_list_table.html").read_text(encoding="utf-8")})
+    jobs = {j.id: j for j in sources.fetch("jobvite", "umbrella", web, wanted=lambda t: False)}
+    assert set(jobs) == {"oTb1Aa11", "oTb2Bb22", "oTb3Cc33"}
+    assert (jobs["oTb1Aa11"].title, jobs["oTb1Aa11"].department) == ("Senior Billing Analyst", "Finance & Accounting")
+    assert jobs["oTb1Aa11"].locations == ["Boulder, Colorado"] and jobs["oTb1Aa11"].remote is None
+    assert (jobs["oTb2Bb22"].department, jobs["oTb2Bb22"].locations) == ("Platform", [])  # on its own page
+    assert jobs["oTb3Cc33"].title == "Build & Release Engineer" and jobs["oTb3Cc33"].remote is True
+    assert jobs["oTb2Bb22"].company_name == "Umbrella" and jobs["oTb2Bb22"].url == f"{site}/job/oTb2Bb22"
+
+
 def test_jobvite_known_postings_are_not_read_again():
     known = Job(source="jobvite", company="initech", id="oAbC1dEf", title="Senior Platform Engineer", url=FDE,
                 description="read before")

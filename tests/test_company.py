@@ -240,7 +240,7 @@ def test_text_shows_a_compact_note_and_json_keeps_all_of_it(cfg, store, tracked)
     note = next(line for line in out.splitlines() if line.startswith("    Note:"))
     assert "2026-10-01: asked for availability" in note and "phone screen done" not in note
     assert "long story" not in note and "…" in note and len(note) < 330
-    assert f"`jobwatch show {key}`" in note and "--format json" in note
+    assert note.endswith(f"(all of it: `jobwatch show {key}`)")  # one command that runs as written
     full = next(j["note"] for j in v["jobs"] if j["key"] == key)
     assert "phone screen done" in full and "long story" in full and "2026-10-01" in full  # JSON stays whole
 

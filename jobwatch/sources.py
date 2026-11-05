@@ -1234,6 +1234,10 @@ _JOBVITE_NOT_BOARDS = {"search", "api", "static", "support"}
 _JOBVITE_CARD = re.compile(r'<li class="row">\s*<a href="[^"]*/job/(\w+)[^"]*">(.*?)</li>', re.S)
 _JOBVITE_NAME = re.compile(r'class="jv-job-list-name">(.*?)</div>', re.S)
 _JOBVITE_SPANS = re.compile(r'class="[^"]*jv-job-list-location">(.*?)</div>', re.S)
+# The older table layout: each department's heading, then a table of its roles (a link, then a place cell)
+_JOBVITE_DEPARTMENT = re.compile(r'<h3 class="h2">(.*?)</h3>', re.S)
+_JOBVITE_ROW = re.compile(r'<td class="jv-job-list-name">\s*<a href="[^"]*/job/(\w+)[^"]*">(.*?)</a>.*?'
+                          r'<td class="jv-job-list-location">(.*?)</td>', re.S)
 _JOBVITE_TITLE = re.compile(r"<title>\s*(.+?)\s*</title>", re.S)
 _JOBVITE_HEADER = re.compile(r'<h2 class="jv-header">(.*?)</h2>', re.S)
 _JOBVITE_META = re.compile(r'<p class="jv-job-detail-meta">(.*?)</p>', re.S)
@@ -1267,7 +1271,23 @@ def _jobvite_listed(board: str, get, cap: int) -> tuple[list[tuple[str, str, str
         place = spans[1] if len(spans) > 1 and not re.fullmatch(r"\d+ Locations?", spans[1]) else ""
         found.setdefault(pid, (pid, " ".join(html.unescape(re.sub(r"<[^>]+>", "", name.group(1))).split()),
                                spans[0] if spans else "", split_locations(place)))
+    if not found:
+        for row in _jobvite_table_rows(text):
+            found.setdefault(row[0], row)
     return list(found.values())[:cap], _jobvite_company(text)
+
+
+def _jobvite_table_rows(text: str):
+    """(id, title, department, places) of each role in the older table layout, where a department's heading comes
+    before a table of its roles, each with its place or "3 Locations"."""
+    def plain(s: str) -> str:
+        return " ".join(html.unescape(re.sub(r"<[^>]+>", "", s)).split())
+    parts = _JOBVITE_DEPARTMENT.split(text)  # what comes before the first heading, then heading, roles, heading...
+    for department, chunk in zip(["", *parts[1::2]], parts[0::2], strict=True):
+        for pid, title, where in _JOBVITE_ROW.findall(chunk):
+            place = plain(where)
+            yield (pid, plain(title), plain(department),
+                   [] if re.fullmatch(r"\d+ Locations?", place) else split_locations(place))
 
 
 def fetch_jobvite(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
