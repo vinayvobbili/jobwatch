@@ -265,15 +265,36 @@ class Suggestions:
     """suggestions in the watchlist: Companies to watch (see suggest.py)."""
     half_life: int = 30  # days: a job that came in this long ago counts half as much as one that came in today
     limit: int = 10      # companies listed, and so the most looked for at once
+    auto_watch: bool = False  # each check adds the boards that meet the rules (see suggest.auto_watch)
 
 
 def _suggestions(raw, path: Path) -> Suggestions:
     raw = _section(raw, "suggestions", Suggestions, path, "{half_life: 30, limit: 10}")
+    if not isinstance(raw.get("auto_watch", False), bool):
+        raise ConfigError(f"{path}: suggestions.auto_watch is true or false, got {raw['auto_watch']!r}")
     return Suggestions(
         half_life=_between(raw.get("half_life", Suggestions.half_life), "suggestions.half_life", path, 1, 3650,
                            "days until a job counts half"),
         limit=_between(raw.get("limit", Suggestions.limit), "suggestions.limit", path, 1, 50,
-                       "companies listed"))
+                       "companies listed"),
+        auto_watch=raw.get("auto_watch", False))
+
+
+@dataclass(frozen=True)
+class SlowBoards:
+    """slow_boards in the watchlist: a board whose last read took `seconds` or more is read only every `every_days`
+    days, so one huge board doesn't hold up every check. every_days 0: every board on every check."""
+    seconds: int = 120
+    every_days: int = 2
+
+
+def _slow_boards(raw, path: Path) -> SlowBoards:
+    raw = _section(raw, "slow_boards", SlowBoards, path, "{seconds: 120, every_days: 2}")
+    return SlowBoards(
+        seconds=_between(raw.get("seconds", SlowBoards.seconds), "slow_boards.seconds", path, 1, 86400,
+                         "seconds a read takes before a board counts as slow"),
+        every_days=_between(raw.get("every_days", SlowBoards.every_days), "slow_boards.every_days", path, 0, 30,
+                            "days between reads of a slow board"))
 
 
 # What the Comps suggestion weighs (see comps.py), as a share of its score, when the watchlist doesn't say.
@@ -524,6 +545,7 @@ class Config:
     near: str = ""             # a city, for certificate programs at colleges nearby
     learn_jobs: int = 5        # learning.jobs: example jobs listed with each skill
     suggest: Suggestions = field(default_factory=Suggestions)
+    slow_boards: SlowBoards = field(default_factory=SlowBoards)
     theme: str = "system"      # the page: see THEMES and WIDTHS
     width: str = "standard"
     today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
@@ -736,7 +758,7 @@ SETTINGS = ("companies", "filters", "keywords", "focus", "resume", "connections"
             "stories", "resume_kit", "scoring",
             "chat", "prep",
             "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
-            "fetch_every")
+            "slow_boards", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -928,6 +950,7 @@ def load(explicit: str | Path | None = None) -> Config:
         timeline=timeline, near=_near(learning, filters),
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
         suggest=_suggestions(raw.get("suggestions"), path),
+        slow_boards=_slow_boards(raw.get("slow_boards"), path),
         theme=theme, width=width, today=today, company_view=company_view,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
         quiet=_quiet(raw.get("quiet"), path),
@@ -1103,6 +1126,13 @@ scoring:
 # suggestions:
 #   half_life: 30          # days: a job this old counts half as much as one from today
 #   limit: 10              # how many companies are listed
+#   auto_watch: false      # true: each check adds a board when one of the company's jobs is on it and you've
+#                          # applied there, it has an office near you, or it has 2+ matching jobs
+
+# A board this slow to read is read less often (0 days: every board on every check; `fetch --all` reads them all):
+# slow_boards:
+#   seconds: 120
+#   every_days: 2
 
 # Skills to build:
 # learning:

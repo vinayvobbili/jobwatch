@@ -14,17 +14,22 @@ old one. A company with an application in flight (applied to, and no no heard ye
 filters say of its jobs: they're in the middle of something there, and a req that's taken down often comes
 back under a new one, which only watching its board catches. Accepting one adds its board the way add_board
 does; a dismissed one isn't suggested again.
+
+With suggestions.auto_watch on, each check does the accepting (see auto_watch): a board goes on the watchlist when
+one of the company's jobs is on it and the person has applied there, the company has an office near them, or it has
+several matching jobs. A board only guessed from the company's name never does: it can be another company's.
 """
 
 from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
-from . import config, linkedin, sources
+from . import config, dupes, linkedin, sources
 from .config import Board, Config
-from .filters import reject_reason
+from .filters import excluded_company, reject_reason
 from .models import Job
 from .store import ENDED, MANUAL, STAGES, Store
 
@@ -34,6 +39,15 @@ from .store import ENDED, MANUAL, STAGES, Store
 # Where the person is in the middle of something: applied, and not turned down or withdrawn. (Queued isn't: a job
 # added by hand is queued unless told otherwise, filtered out or not.)
 ENGAGED = tuple(s for s in STAGES if s not in ENDED)
+
+AUTO_MIN_JOBS = 2  # matching jobs that make a company worth watching on their own
+AUTO_ADDS = 10     # boards added per check: a long list of suggestions joins the watchlist over a few days
+AUTO_LOOKS = 10    # companies looked into per check: looking one up can take dozens of requests
+AUTO_RETRY = timedelta(days=7)  # a company looked into isn't looked into again sooner
+TITLES_TRIED = 5   # a company's job titles searched for on a board, at most
+GUESS_TITLE_WORDS = 3  # a board guessed from the name must have a title this long to count as theirs: "Software
+#                        Engineer" is on anybody's board
+
 
 @dataclass
 class Suggestion:
@@ -45,6 +59,7 @@ class Suggestion:
     last_seen: str = ""          # when the newest of those came in (YYYY-MM-DD)
     weight: float = 0.0          # the ranking: each job counts 1, halving every half_life days since it came in
     engaged: list[Job] = field(default_factory=list)  # the person's applications there in flight (ENGAGED)
+    looked_at: str | None = None  # when a check last looked for which board its jobs are on (see auto_watch)
 
     @property
     def sample_titles(self) -> list[str]:
@@ -185,7 +200,8 @@ def suggestions(cfg: Config, store: Store, limit: int | None = None, look: bool 
             continue
         out.append(Suggestion(row["company"], row["name"], row["entry"], row["found_by"], [j for j, _ in jobs],
                               last_seen=(jobs or row["jobs"])[0][1][:10],
-                              weight=sum(0.5 ** (_age(at, now) / half_life) for _, at in jobs), engaged=mine))
+                              weight=sum(0.5 ** (_age(at, now) / half_life) for _, at in jobs), engaged=mine,
+                              looked_at=row["looked_at"]))
     out.sort(key=lambda s: s.name.lower())
     out.sort(key=lambda s: (bool(s.engaged), s.weight, s.last_seen), reverse=True)
     if not look:
@@ -232,6 +248,94 @@ def dismiss(store: Store, which: str) -> Suggestion:
     s = find(store, which)
     store.dismiss_unwatched(s.company)
     return s
+
+
+def _titled_on(entry: str, titles: list[str], get=None) -> bool:
+    """Is one of these job titles open on that board? Listed only: nothing is read in full."""
+    source, _, board = entry.partition(":")
+    src = sources.SOURCES.get(source)
+    if not src or src.many_companies:
+        return False
+    titles, want = titles[:TITLES_TRIED], {dupes.title_key(t) for t in titles}
+    for title in titles if src.search else titles[:1]:  # a board that lists every role answers for all the titles
+        try:
+            listed = sources.fetch(source, board, get, search=(title,), wanted=lambda _: False)
+        except sources.SourceError:
+            return False
+        if any(dupes.title_key(j.title) in want for j in listed):
+            return True
+    return False
+
+
+def find_job_board(store: Store, s: Suggestion, get=None, page=None):
+    """Work out the board a company's jobs are on, and keep it as the one they're on: from where its jobs link (a
+    careers site on the company's own domain included), else by checking that the board found under its name has
+    one of its titles. Robots.txt is kept to, and LinkedIn and Indeed are never read, as for any page."""
+    from .alerts import UNREAD_SITES, Robots  # alerts imports this module
+
+    jobs = [*s.jobs, *s.engaged]
+    titles = list(dict.fromkeys(j.title for j in jobs if j.title))
+    robots = Robots(page)
+    for link in dict.fromkeys(j.posting_url or j.url for j in jobs if j.posting_url or j.url):
+        host = urlparse(link).netloc.lower()
+        if any(host == u or host.endswith(f".{u}") for u in UNREAD_SITES) or not robots.allowed(link):
+            continue
+        try:
+            hits = sources.probe(link, get, page)
+        except sources.SourceError:
+            continue
+        for source, board, listed in hits:
+            if listed and _titled_on(f"{source}:{board}", titles, get):
+                s.entry, s.found_by = f"{source}:{board}", "posting"
+                store.set_unwatched_board(s.company, s.entry, s.found_by)
+                return
+    if s.entry is None:
+        look_up(store, s, page)
+    long_titles = [t for t in titles if len(dupes.title_key(t)[0].split()) >= GUESS_TITLE_WORDS]
+    if s.entry and s.found_by == "name" and long_titles and _titled_on(s.entry, long_titles, get):
+        s.found_by = "posting"
+        store.set_unwatched_board(s.company, s.entry, s.found_by)
+
+
+def worth_watching(cfg: Config, s: Suggestion) -> bool:
+    """The rules for watching a company's board without being asked: an application in flight there, an office near
+    the person, or several matching jobs."""
+    return bool(s.engaged) or len(s.jobs) >= AUTO_MIN_JOBS or any(
+        excluded_company(j, cfg.filters_for(j).nearby_offices) for j in s.jobs)
+
+
+def auto_watch(cfg: Config, store: Store, get=None, page=None,
+               now: datetime | None = None) -> tuple[Config, list[Suggestion]]:
+    """suggestions.auto_watch: add the boards of the companies worth watching (see worth_watching) when one of their
+    jobs is on the board, best first: up to AUTO_ADDS a check, looking into up to AUTO_LOOKS companies, each at most
+    once every AUTO_RETRY. The watchlist is rewritten as add_board does, the old one kept as .bak; a dismissed
+    company is left alone. Returns the watchlist as it now is and the companies added."""
+    if not cfg.suggest.auto_watch:
+        return cfg, []
+    now, added, looked = now or datetime.now(timezone.utc), [], 0
+    for s in suggestions(cfg, store, limit=0, now=now):
+        if len(added) >= AUTO_ADDS:
+            break
+        if not worth_watching(cfg, s) or watched(cfg.boards, s.name, s.entry or ""):
+            continue
+        due = not s.looked_at or now - datetime.fromisoformat(s.looked_at) >= AUTO_RETRY
+        if s.found_by != "posting" and due and looked < AUTO_LOOKS:
+            looked += 1
+            find_job_board(store, s, get, page)
+            store.set_unwatched_looked(s.company)
+        if s.entry and s.found_by == "posting" and not watched(cfg.boards, s.name, s.entry):
+            cfg = config.add_board(cfg.path, s.entry, s.board_name)
+            added.append(s)
+    return cfg, added
+
+
+def why_watched(cfg: Config, s: Suggestion) -> str:
+    """Why auto_watch added a company's board, for the Activity tab."""
+    if s.engaged:
+        return "you applied there"
+    if any(excluded_company(j, cfg.filters_for(j).nearby_offices) for j in s.jobs):
+        return "an office near you"
+    return f"{len(s.jobs)} matching jobs"
 
 
 def text(found: list[Suggestion]) -> str:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -42,9 +43,46 @@ class FetchReport:
     warnings: dict[str, str] = field(default_factory=dict)  # "source:board" -> what to do about it
     duplicates: dict[str, dupes.Match] = field(default_factory=dict)  # new job's key -> the job acted on it matches
     emails: int | None = None  # job-alert emails read from the mailbox (alerts.imap); None: no mailbox set
+    not_due: list[str] = field(default_factory=list)  # slow boards left for a later check (see slow_boards)
+    watching: list[str] = field(default_factory=list)  # boards added by this check (see suggest.auto_watch)
+    quiet: list[str] = field(default_factory=list)  # boards that just went quiet (see QUIET_CHECKS)
 
 
 MAILBOX = "alerts.imap"  # the errors key for a mailbox that couldn't be read
+
+# A board that has failed or come back empty this many checks in a row, over at least this long, is said once to
+# have gone quiet. A bad network morning or an empty week at a small company doesn't get that far.
+QUIET_CHECKS = 3
+QUIET_FOR = timedelta(days=3)
+
+
+def boards_due(cfg: Config, store: Store, again: set[str] = frozenset(), now: datetime | None = None) -> list[Board]:
+    """The boards to read now: all but the slow ones (slow_boards) read within the last every_days days. A board
+    that isn't answering is always due, and so are the ones named in `again`."""
+    every = timedelta(days=cfg.slow_boards.every_days)
+    if not every:
+        return list(cfg.boards)
+    now, checks = now or datetime.now(timezone.utc), store.board_checks()
+
+    def due(b: Board) -> bool:
+        c = checks.get(b.entry)
+        return (not c or not c["read_at"] or c["quiet"] > 0 or c["seconds"] < cfg.slow_boards.seconds
+                or now - datetime.fromisoformat(c["read_at"]) >= every
+                or bool(again & {b.entry.lower(), b.board.lower(), (b.name or "").lower()}))
+    return [b for b in cfg.boards if due(b)]
+
+
+def just_quiet(store: Store, boards: list[Board], now: datetime | None = None) -> list[str]:
+    """The boards that have just gone quiet (see QUIET_CHECKS), marked as told: each is said once, until it answers
+    with jobs again."""
+    now, checks, out = now or datetime.now(timezone.utc), store.board_checks(), []
+    for b in boards:
+        c = checks.get(b.entry)
+        if (c and not c["told"] and c["quiet"] >= QUIET_CHECKS
+                and (not c["read_at"] or now - datetime.fromisoformat(c["read_at"]) >= QUIET_FOR)):
+            store.set_board_told(b.entry)
+            out.append(b.entry)
+    return out
 
 
 HOSTED_KEEP = timedelta(days=1)  # how long an answer about a board's hosted job pages is trusted
@@ -126,8 +164,11 @@ def offline_warning(b: Board) -> str:
 
 
 def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, mail=None,
-              reread: tuple[str, ...] = (), by: str = "") -> FetchReport:
-    """Pull every board in the watchlist and record what is new. Boards that fail are reported and skipped.
+              reread: tuple[str, ...] = (), by: str = "", every_board: bool = False) -> FetchReport:
+    """Pull the boards in the watchlist that are due (see boards_due; every_board: all of them) and record what is
+    new. Boards that fail are reported and skipped; one that keeps failing or coming back empty is said once to have
+    gone quiet (see just_quiet). With suggestions.auto_watch on, boards that meet its rules join the watchlist at
+    the end, read from the next check on (see suggest.auto_watch).
 
     A searched board's postings are read in full once; the boards named in `reread` (by entry, board or name) have
     every matching posting read again, as after a fix to how their pages are read.
@@ -150,30 +191,37 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
     again = {r.lower() for r in reread}
     if missing := again - {n.lower() for b in cfg.boards for n in (b.entry, b.board, b.name) if n}:
         raise ValueError(f"no watched board named {', '.join(sorted(missing))}: see `jobwatch list`")
-    known = {b: store.board_jobs(b.source, b.board) for b in cfg.boards if sources.SOURCES[b.source].search
+    to_read = list(cfg.boards) if every_board else boards_due(cfg, store, again)
+    report.not_due = [b.entry for b in cfg.boards if b not in to_read]
+    known = {b: store.board_jobs(b.source, b.board) for b in to_read if sources.SOURCES[b.source].search
              and not again & {b.entry.lower(), b.board.lower(), (b.name or "").lower()}}
     hosted = HostedPages(store, page)
-    due = hosted.due([(b.source, b.board) for b in cfg.boards])
+    due = hosted.due([(b.source, b.board) for b in to_read])
 
     def one(b: Board):
-        f = cfg.filters_of(b)
+        f, started = cfg.filters_of(b), time.monotonic()
         try:
             jobs = sources.fetch(b.source, b.board, get, search=search_terms(f), wanted=lambda t: title_ok(t, f),
                                  known=known.get(b))
         except sources.Partial as e:  # rate-limited partway: keep what was read, close nothing
             partial[b.entry] = str(e)
+            took[b.entry] = time.monotonic() - started
             return b, e.jobs, None, None
         except sources.SourceError as e:
             return b, None, str(e), None
+        took[b.entry] = time.monotonic() - started
         return b, jobs, None, hosted.ask(b.source, b.board) if (b.source, b.board) in due else None
 
     new: list[Job] = []
     partial: dict[str, str] = {}
+    took: dict[str, float] = {}
+    answered: list[tuple[Board, list[Job]]] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for b, jobs, err, up in pool.map(one, cfg.boards):
+        for b, jobs, err, up in pool.map(one, to_read):
             if err:
                 report.errors[b.entry] = err
                 continue
+            answered.append((b, jobs))
             if b.entry in partial:
                 report.warnings[b.entry] = f"read partway: {partial[b.entry]}"
             up = hosted.answer(b.source, b.board, up) if sources.SOURCES[b.source].hosted else None
@@ -242,6 +290,30 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
                       detail=[f"{c.job.display_company}: {c.job.title}" for c in closed][:ACTIVITY_LINES], by=by)
     # A new posting of a job already applied to (or queued, or skipped) is marked as its duplicate.
     report.duplicates = dupes.record(store, new) if new else {}
+    # How each board's read went. With no board answering the network is down: that says nothing about any board.
+    if answered:
+        for b, jobs in answered:
+            store.save_board_read(b.entry, took.get(b.entry, 0.0), len(jobs))
+        for b in to_read:
+            if b.entry in report.errors:
+                store.save_board_failure(b.entry)
+    report.quiet = just_quiet(store, to_read) if answered else []
+    if report.quiet:
+        for entry in report.quiet:
+            report.warnings[entry] = "has failed or come back empty for days: its company may have moved to " \
+                                     "another job system"
+        store.log("boards", f"{plural(len(report.quiet), 'board')} went quiet", ok=False,
+                  detail=[f"{e}: {report.errors.get(e, 'no open roles')}" for e in report.quiet], by=by, notable=True)
+    # Boards that meet the rules join the watchlist, read from the next check on (see suggest.auto_watch).
+    try:
+        _, added = suggest.auto_watch(cfg, store, get, page)
+    except Exception as e:  # a board watched a day later is fine: it never fails a check
+        report.warnings["suggestions.auto_watch"] = str(e)
+    else:
+        report.watching = [s.entry for s in added]
+        if added:
+            store.log("boards", f"Now watching {plural(len(added), 'more board')}",
+                      detail=[f"{s.name}: {s.entry} ({suggest.why_watched(cfg, s)})" for s in added], by=by)
     store.record_fetch(report.boards, report.jobs, len(report.new), report.errors, report.warnings)
     boards = {k: v for k, v in report.errors.items() if k != MAILBOX}
     # What the check found that Today shows leads; the thousands of new postings the filters hide are a detail.

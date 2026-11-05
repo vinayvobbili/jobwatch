@@ -18,6 +18,10 @@ def fetch_summary(r: FetchReport) -> str:
     out = [f"Checked {r.boards} board(s): {r.jobs} open roles, {len(r.new)} new."]
     if r.emails is not None:
         out[0] = out[0][:-1] + f" (with {r.emails} job-alert email(s) from the mailbox)."
+    if r.not_due:
+        out[0] += f" {len(r.not_due)} slow board(s) wait for a later check (`jobwatch fetch --all` reads them now)."
+    if r.watching:
+        out.append(f"  now watching: {', '.join(r.watching)}")
     out += [f"  failed {board}: {err}" for board, err in r.errors.items()]
     out += [f"  warning {board}: {text}" for board, text in r.warnings.items()]
     return "\n".join(out)

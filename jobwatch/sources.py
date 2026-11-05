@@ -489,6 +489,8 @@ def fetch_jibe(board: str, get=None, search=(), wanted=None, known=None, cap=SEA
 
     def page(offset):
         d = get(f"https://{board}/api/jobs?page={offset // JIBE_PAGE + 1}&limit={JIBE_PAGE}") or {}
+        if not isinstance(d, dict):  # some other site's /api/jobs: not a Jibe site (see probe)
+            raise SourceError(f"{board}: not a Jibe careers site")
         return [j.get("data") or {} for j in d.get("jobs") or []], d.get("totalCount") or 0
     jobs = []
     for d in _search_all(page, JIBE_PAGE, cap):
@@ -505,7 +507,9 @@ def fetch_jibe(board: str, get=None, search=(), wanted=None, known=None, cap=SEA
         # Some sites list a remote role under the country alone and say "remote" only in the text
         country_only = _squash(place) in (_squash(d.get("country") or ""), "united states", "united states of america")
         j = Job(source="jibe", company=board, id=rid, title=(d.get("title") or "").strip(),
-                url=f"https://{board}/careers-home/jobs/{d.get('slug') or rid}",
+                # the site's own link when it gives one: not every Jibe site has /careers-home
+                url=d.get("canonical_url") or (d.get("meta") or {}).get("canonical_url")
+                or f"https://{board}/careers-home/jobs/{d.get('slug') or rid}",
                 company_name=d.get("hiring_organization") or "",
                 locations=split_locations(place),
                 remote=True if "remote" in (where + " " + " ".join(d.get("tags6") or [])).lower()
@@ -2320,8 +2324,9 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
 
     A guessed name can belong to a different company, so check a role or two before adding a board. Roles on
     a searched board (Workday, Eightfold, Avature, iCIMS, Jobvite, a sitemap) are listed, not read in full: a
-    sample of up to PROBE_CAP. A careers page or job link whose page links to no board is last tried as a
-    sitemap board: its host's sitemap links job pages, and sampled ones carry JobPosting markup."""
+    sample of up to PROBE_CAP. A careers page or job link whose page links to no board with open roles (a company
+    can leave an old ATS's links behind) is tried as a Jibe site on its host. One whose page links to no board at all
+    is last tried as a sitemap board: its host's sitemap links job pages, and sampled ones carry JobPosting markup."""
     if found := detect(company):
         source, board = found
         return [(source, board, _peek(source, board, get))]
@@ -2336,6 +2341,13 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
                 hits.append((source, board, _peek(source, board, get)))
             except SourceError:
                 continue
+        if not any(jobs for _, _, jobs in hits):
+            host = urlparse(company if "//" in company else f"https://{company}").netloc.lower()
+            try:
+                if jobs := fetch_jibe(host, get, cap=PROBE_CAP):
+                    return [("jibe", host, jobs)]
+            except SourceError:
+                pass
         if not boards:
             host = urlparse(company if "//" in company else f"https://{company}").netloc.lower()
             try:

@@ -80,6 +80,10 @@ pay:                                      # expected pay from Levels.fyi: off un
 suggestions:                              # Companies to watch
   half_life: 30                           # days: a job this old counts half as much as today's
   limit: 10                               # how many companies are listed
+  auto_watch: false                       # true: each check adds the boards that meet the rules
+slow_boards:                              # a board this slow to read is read less often
+  seconds: 120
+  every_days: 2                           # 0: every board on every check
 learning:                                 # Skills to build
   timeline: quarter
   jobs: 5                                 # example jobs listed with each skill

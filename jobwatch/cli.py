@@ -163,7 +163,7 @@ def _digest(args, cfg, store):
 
 
 def cmd_fetch(args, cfg, store):
-    print(report.fetch_summary(fetch_all(cfg, store, reread=tuple(args.reread))))
+    print(report.fetch_summary(fetch_all(cfg, store, reread=tuple(args.reread), every_board=args.all)))
 
 
 def cmd_digest(args, cfg, store):
@@ -1162,6 +1162,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reread", nargs="+", default=[], metavar="BOARD",
                    help="read these boards' postings again, even ones already stored (by name or entry, as "
                         "`jobwatch list` shows them): after a jobwatch update that reads their pages better")
+    p.add_argument("--all", action="store_true", help="read the slow boards too, even if they aren't due yet (see "
+                                                      "slow_boards in the watchlist)")
     p.set_defaults(func=cmd_fetch)
 
     for name, func, help_ in (("digest", cmd_digest, "ranked list of new matching jobs"),

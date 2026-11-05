@@ -275,3 +275,17 @@ lists what's known without looking. When no board turns up, give `jobwatch find`
 `--add` rewrites the watchlist the way Settings does, keeping the old one as `.bak` (comments in a hand-written
 file aren't kept). On the page, the same list is on Today with **Add** and **Dismiss**; in Claude,
 `list_suggested_boards` gives each company's `add_board` arguments, and `dismiss_suggested_board` drops one.
+
+To stop adding boards by hand, turn on `suggestions.auto_watch`. Each check then adds a company's board when you've
+applied there (and haven't heard no), it has an office near you (`filters.nearby_offices`), or it has two or more
+matching jobs. The board has to be proven first: one of the company's jobs links to it, or, for a board found under
+the company's name, one of its job titles (three words or more, level aside) is open there. A guess that isn't proven
+stays a suggestion, for you to judge. A link can show a careers site on the company's own domain, which no name would
+find. Up to 10 boards are added and 10 companies looked into per check, each at most once a week, so a long list joins
+over a few days. What was added shows on the Activity tab, and a dismissed company stays out.
+
+A board that has failed or come back empty for three checks over at least three days is said once on the Activity
+tab, in case the company moved to another job system; if every board fails at once, that's your network, and it counts
+against none of them. A board that takes `slow_boards.seconds` (120 unless set) or more to read is read every
+`slow_boards.every_days` days (2 unless set; 0 reads every board on every check), so one huge board doesn't hold up
+the rest; `jobwatch fetch --all` reads them all now.

@@ -122,7 +122,15 @@ CREATE TABLE IF NOT EXISTS unwatched (
     entry TEXT,
     found_by TEXT,
     found_at TEXT,
-    dismissed_at TEXT
+    dismissed_at TEXT,
+    looked_at TEXT
+);
+CREATE TABLE IF NOT EXISTS board_checks (
+    entry TEXT PRIMARY KEY,
+    read_at TEXT,
+    seconds REAL NOT NULL DEFAULT 0,
+    quiet INTEGER NOT NULL DEFAULT 0,
+    told INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS unwatched_jobs (
     company TEXT NOT NULL,
@@ -311,7 +319,7 @@ class Store:
                     if "duplicate column" not in str(e):
                         raise
             for table, column in (("comps", "role"), ("comps", "career_note"), ("comps", "glassdoor"),
-                                  ("company_health", "kind")):
+                                  ("company_health", "kind"), ("unwatched", "looked_at")):
                 if column not in {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     try:
                         self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
@@ -975,6 +983,38 @@ class Store:
         with self.db:
             return bool(self.db.execute("UPDATE unwatched SET dismissed_at=COALESCE(dismissed_at, ?) "
                                         "WHERE company=?", (_now(), company)).rowcount)
+
+    def set_unwatched_looked(self, company: str):
+        """A check looked for which board this company's jobs are on (see suggest.auto_watch), found or not."""
+        with self.db:
+            self.db.execute("UPDATE unwatched SET looked_at=? WHERE company=?", (_now(), company))
+
+    # How each watched board's reads go, for the check: when it last answered with jobs, how long that read took,
+    # how many checks since found it failing or empty, and whether the person has been told it went quiet.
+
+    def board_checks(self) -> dict[str, dict]:
+        """{entry: {read_at (ISO, or None), seconds, quiet, told}}."""
+        return {r["entry"]: {"read_at": r["read_at"], "seconds": r["seconds"], "quiet": r["quiet"],
+                             "told": bool(r["told"])} for r in self.db.execute("SELECT * FROM board_checks")}
+
+    def save_board_read(self, entry: str, seconds: float, jobs: int):
+        """A read that came back with jobs clears what's held against the board; an empty one counts against it."""
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO board_checks (entry) VALUES (?)", (entry,))
+            if jobs:
+                self.db.execute("UPDATE board_checks SET read_at=?, seconds=?, quiet=0, told=0 WHERE entry=?",
+                                (_now(), seconds, entry))
+            else:
+                self.db.execute("UPDATE board_checks SET seconds=?, quiet=quiet+1 WHERE entry=?", (seconds, entry))
+
+    def save_board_failure(self, entry: str):
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO board_checks (entry) VALUES (?)", (entry,))
+            self.db.execute("UPDATE board_checks SET quiet=quiet+1 WHERE entry=?", (entry,))
+
+    def set_board_told(self, entry: str):
+        with self.db:
+            self.db.execute("UPDATE board_checks SET told=1 WHERE entry=?", (entry,))
 
     # -- compensation details learned from recruiters, per job (see comps.py)
 
