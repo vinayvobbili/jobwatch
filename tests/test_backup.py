@@ -75,6 +75,24 @@ def test_a_bad_copy_of_the_database_is_refused(tmp_path):
         backup._copy_db(source, tmp_path / "copy.db")
 
 
+def test_also_keeps_a_file_no_repo_holds_and_the_daily_job_keeps_it_too(cfg, tmp_path):
+    extra = tmp_path / "answers.yaml"
+    extra.write_text("city: Boulder")
+    archive, _ = backup.backup(cfg, tmp_path / "out", also=[extra])
+    assert "also/answers.yaml" in names(archive)
+    assert "also/answers.yaml" in backup.contents(cfg, [extra])
+    args = backup.definition(tmp_path / "w.yaml", tmp_path / "out", 12, [extra])["ProgramArguments"]
+    assert args[args.index("--also") + 1] == str(extra)
+
+
+def test_a_missing_also_fails_loudly_and_leaves_the_last_good_archive(cfg, tmp_path):
+    out = tmp_path / "out"
+    good, _ = backup.backup(cfg, out, day=date(2030, 1, 15))
+    with pytest.raises(backup.BackupError, match="isn't there"):
+        backup.backup(cfg, out, day=date(2030, 1, 15), also=[tmp_path / "moved.yaml"])
+    assert [p.name for p in out.iterdir()] == [good.name]
+
+
 def test_keeping_none_is_refused(cfg, tmp_path):
     with pytest.raises(backup.BackupError, match="at least one"):
         backup.backup(cfg, tmp_path, keep=0)

@@ -60,7 +60,8 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
 - **Your data** is one folder on this computer (`~/.local/share/jobwatch`). `jobwatch backup` writes the database,
   what you sent with each application and the watchlist to a dated archive in a synced drive's folder (Google
   Drive, Dropbox or OneDrive, or `--dest`), keeping the newest 30; `jobwatch backup --install` runs it daily on a
-  Mac. To restore, stop the page and unpack the newest archive into that folder.
+  Mac. `--also PATH` keeps another file or folder in the archive, such as one your private repo ignores. To restore,
+  stop the page and unpack the newest archive into that folder.
 - **Settings:** the whole watchlist, one card per part, with a bar that jumps to each card and keeps Save in
   reach: the companies you watch (with each one's name and careers link) and how often to check them; filters
   (titles, places, departments, pay, age, minimum fit score, and warnings to flag in a posting); keywords;

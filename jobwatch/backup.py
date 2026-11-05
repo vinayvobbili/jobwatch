@@ -22,6 +22,7 @@ import sqlite3
 import sys
 import tarfile
 import tempfile
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 
@@ -50,13 +51,14 @@ def default_dest() -> Path:
     return Path(FALLBACK).expanduser()
 
 
-def parts(cfg: Config) -> list[tuple[Path, str]]:
-    """(file or folder, its name in the archive) for what's there, the database apart (see _copy_db)."""
+def parts(cfg: Config, also: Sequence[Path] = ()) -> list[tuple[Path, str]]:
+    """(file or folder, its name in the archive) for what's there, the database apart (see _copy_db). `also` is what
+    else can't be fetched again, such as files a private repo ignores; a path that's missing is refused, in backup."""
     home = cfg.state.parent
     found = [(home / "packages", "packages"), (home / "resume", "resume"), (cfg.path, f"config/{cfg.path.name}")]
     if cfg.connections:
         found.append((cfg.connections, f"config/{cfg.connections.name}"))
-    return [(p, name) for p, name in found if p.exists()]
+    return [(p, name) for p, name in found if p.exists()] + [(p, f"also/{p.name}") for p in also]
 
 
 def _copy_db(source: Path, to: Path):
@@ -78,11 +80,15 @@ def archives(dest: Path) -> list[Path]:
         if dest.is_dir() else []
 
 
-def backup(cfg: Config, dest: Path, keep: int = KEEP, day: date | None = None) -> tuple[Path, list[Path]]:
+def backup(cfg: Config, dest: Path, keep: int = KEEP, day: date | None = None,
+           also: Sequence[Path] = ()) -> tuple[Path, list[Path]]:
     """Write today's archive (replacing one from earlier today) and drop all but the newest `keep`. Returns the
     archive and the ones dropped. It appears only when whole: an interrupted run leaves the last good one alone."""
     if keep < 1:
         raise BackupError("keep at least one backup")
+    for path in also:  # a file that moved must fail loudly, or the backups quietly stop holding it
+        if not path.exists():
+            raise BackupError(f"{path} isn't there: fix --also, nothing was backed up")
     if not cfg.state.is_file():
         raise BackupError(f"no database at {cfg.state}: nothing to back up")
     dest.mkdir(parents=True, exist_ok=True)
@@ -94,7 +100,7 @@ def backup(cfg: Config, dest: Path, keep: int = KEEP, day: date | None = None) -
             _copy_db(cfg.state, db)
             with tarfile.open(partial, "w:gz") as tar:
                 tar.add(db, arcname="state.db")
-                for path, name in parts(cfg):
+                for path, name in parts(cfg, also):
                     tar.add(path, arcname=name)
         os.replace(partial, target)
     finally:
@@ -105,9 +111,9 @@ def backup(cfg: Config, dest: Path, keep: int = KEEP, day: date | None = None) -
     return target, dropped
 
 
-def contents(cfg: Config) -> list[str]:
+def contents(cfg: Config, also: Sequence[Path] = ()) -> list[str]:
     """What an archive made now would hold, without writing one."""
-    return ["state.db", *(name for _, name in parts(cfg))]
+    return ["state.db", *(name for _, name in parts(cfg, also))]
 
 
 def plist_path() -> Path:
@@ -118,12 +124,13 @@ def log_path() -> Path:
     return Path.home() / "Library" / "Logs" / "jobwatch-backup.log"
 
 
-def definition(config: Path, dest: Path, keep: int) -> dict:
+def definition(config: Path, dest: Path, keep: int, also: Sequence[Path] = ()) -> dict:
     """The launchd job: this Python and jobwatch, once a day. A Mac asleep at that time runs it when it wakes."""
     return {
         "Label": LABEL,
         "ProgramArguments": [sys.executable, "-m", "jobwatch.cli", "-c", str(config), "backup",
-                             "--dest", str(dest), "--keep", str(keep)],
+                             "--dest", str(dest), "--keep", str(keep),
+                             *(arg for path in also for arg in ("--also", str(path)))],
         "StartCalendarInterval": {"Hour": HOUR, "Minute": MINUTE},
         "Nice": 10,
         "LowPriorityIO": True,
@@ -132,7 +139,7 @@ def definition(config: Path, dest: Path, keep: int) -> dict:
     }
 
 
-def install(config: Path, dest: Path, keep: int = KEEP) -> str:
+def install(config: Path, dest: Path, keep: int = KEEP, also: Sequence[Path] = ()) -> str:
     """Write and load the daily job (replacing one installed before); says when it runs."""
     try:
         _mac()
@@ -141,7 +148,7 @@ def install(config: Path, dest: Path, keep: int = KEEP) -> str:
         log_path().parent.mkdir(parents=True, exist_ok=True)
         _launchctl("bootout", f"{_domain()}/{LABEL}", check=False)
         with path.open("wb") as f:
-            plistlib.dump(definition(config.expanduser().resolve(), dest, keep), f)
+            plistlib.dump(definition(config.expanduser().resolve(), dest, keep, also), f)
         _launchctl("bootstrap", _domain(), str(path))
     except ServiceError as e:
         raise BackupError(str(e)) from None

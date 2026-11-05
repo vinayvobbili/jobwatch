@@ -810,19 +810,20 @@ def cmd_quiet(args, cfg, store):
 
 def cmd_backup(args, cfg, store):
     dest = args.dest.expanduser() if args.dest else backup.default_dest()
+    also = [path.expanduser().resolve() for path in args.also]
     if args.list:
         print(f"Would go to {dest}:")
-        print("\n".join(f"  {name}" for name in backup.contents(cfg)))
+        print("\n".join(f"  {name}" for name in backup.contents(cfg, also)))
         for old in backup.archives(dest):
             print(f"  have {old.name} ({old.stat().st_size / 1e6:,.0f} MB)")
         return
     if str(dest).startswith(str(Path(backup.FALLBACK).expanduser())):
         print("jobwatch: no synced drive found, so this copy stays on this computer: pass --dest", file=sys.stderr)
-    made, dropped = backup.backup(cfg, dest, args.keep)
+    made, dropped = backup.backup(cfg, dest, args.keep, also=also)
     print(f"{date.today().isoformat()} wrote {made} ({made.stat().st_size / 1e6:,.0f} MB)"
           + (f"; dropped {len(dropped)} older" if dropped else ""))
     if args.install:
-        print(f"Backing up {backup.install(cfg.path, dest, args.keep)} to {dest}; log: {backup.log_path()}")
+        print(f"Backing up {backup.install(cfg.path, dest, args.keep, also)} to {dest}; log: {backup.log_path()}")
 
 
 def cmd_snooze(args, cfg, store):
@@ -1405,6 +1406,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("backup", help="a dated copy of the database, what you sent with each application and the "
                                       "watchlist, in a synced drive's folder (Google Drive, Dropbox, OneDrive)")
     p.add_argument("--dest", type=Path, help="the folder (default: <drive>/Backups/jobwatch/<this computer>)")
+    p.add_argument("--also", type=Path, action="append", default=[], metavar="PATH",
+                   help="another file or folder to keep in the archive, such as one a private repo ignores; repeat it "
+                        "for more, and give it with --install so the daily job keeps it too")
     p.add_argument("--keep", type=int, default=backup.KEEP,
                    help=f"archives to keep, newest first (default {backup.KEEP})")
     p.add_argument("--list", action="store_true", help="say what would go in and what's there, writing nothing")
