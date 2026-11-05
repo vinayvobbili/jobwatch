@@ -2,6 +2,7 @@
 the test, and nothing reaches the network."""
 
 import json
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -212,6 +213,29 @@ def test_with_a_home_state_only_its_filings_count(cache):
     # one filing in Washington, two in Colorado: no falling back to the whole US
     assert lca.for_job(index, job(where=("Seattle, WA (Remote)",)), home_state="WA") is None
     assert lca.for_job(index, job(title="Data Analyst", where=("Remote",)), home_state="CO") is None
+    index.close()
+
+
+def test_a_trading_name_is_the_employers_own_filings_not_its_market(tmp_path):
+    assert lca.employer_key("Hooli Holdings, LLC d/b/a Hooli") == lca.employer_key("Hooli") == "hooli"
+    assert lca.employer_key("Hooli Holdings DBA Hooli") == "hooli"
+    assert lca.employer_key("Hooli DBA") == "hooli dba"
+    rows = [filing(n, "Hooli Holdings, LLC d/b/a Hooli", "Senior Software Engineer", "Reno", "NV", 150_000)
+            for n in range(3)]
+    path = tmp_path / "lca.db"
+    update_from(path, workbook(tmp_path / "s.xlsx", rows=rows))
+    remote = job(company="Hooli", where=("Remote - United States",))
+    index = lca.Index.open(path)
+    assert index.employer_rows(["hooli"]) and lca.for_job(index, remote, home_state="NV").where == "NV"
+    index.close()
+    # a cache built before trading names were read keeps the old key: still this employer's, found by its name
+    db = sqlite3.connect(path)
+    db.execute("UPDATE filings SET ekey = 'hooli holdings d b a hooli'")
+    db.commit()
+    db.close()
+    index = lca.Index.open(path)
+    assert not index.employer_rows(["hooli"])
+    assert lca.for_job(index, remote, home_state="NV").where == "NV"
     index.close()
 
 

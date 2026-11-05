@@ -99,11 +99,13 @@ def yearly(amount, unit) -> int | None:
 
 # Words an employer's name has in the DOL's files and not on its job board ("Globex Systems, Inc." and "Globex"):
 _EXTRA = {"systems", "usa", "us", "america", "americas", "international", "intl"}
+_DBA = re.compile(r"\bd\s*/?\s*b\s*/?\s*a\b\.?", re.I)
 
 
 def employer_key(name: str) -> str:
-    """contacts.company_key, and without words like "Systems" too: "Globex Systems, Inc." -> "globex"."""
-    key = company_key(name)
+    """contacts.company_key, and without words like "Systems" too: "Globex Systems, Inc." -> "globex". An employer
+    that files under a legal name goes by its trading name: "Globex Holdings LLC d/b/a Globex" -> "globex"."""
+    key = company_key(_DBA.split(name)[-1].strip() or name)
     return " ".join(w for w in key.split() if w not in _EXTRA) or key
 
 
@@ -437,8 +439,12 @@ class Index:
         alike = lambda rows: [r for r in rows if r["rank"] == rank and same_work(words, r["words"])]  # noqa: E731
         matches = alike(self.employer_rows(keys))
         cities = {c.lower() for c in cities if c}
+        # A cache built before employer_key read a trading name keeps the old ekey, so the employer's own filings in
+        # the market's rows are found by name here: they're this employer's, never "all employers".
+        own = lambda: [r for r in alike(self.state_rows(states)) if employer_key(r["employer"]) in keys]  # noqa: E731
         tiers = ((lambda: matches, lambda r: r["city"].lower() in cities, "{city}"),
                  (lambda: matches, lambda r: r["state"] in states, "{state}"),
+                 *([(own, lambda r: True, "{state}")] if market and states else []),
                  *([(lambda: alike(self.state_rows(states)), lambda r: True, "{state}, " + MARKET)]
                    if market and states else []),
                  *([(lambda: matches, lambda r: True, US)] if anywhere else []))
