@@ -57,6 +57,10 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
   **Snooze** on a card sets a job aside while you have an application in progress at that company: it isn't a
   no, and it comes back to your Queue when that application ends, or after 3 weeks if there's no news. The Queue
   lists what's snoozed at the side, with **Queue now**.
+- **Your data** is one folder on this computer (`~/.local/share/jobwatch`). `jobwatch backup` writes the database,
+  what you sent with each application and the watchlist to a dated archive in a synced drive's folder (Google
+  Drive, Dropbox or OneDrive, or `--dest`), keeping the newest 30; `jobwatch backup --install` runs it daily on a
+  Mac. To restore, stop the page and unpack the newest archive into that folder.
 - **Settings:** the whole watchlist, one card per part, with a bar that jumps to each card and keeps Save in
   reach: the companies you watch (with each one's name and careers link) and how often to check them; filters
   (titles, places, departments, pay, age, minimum fit score, and warnings to flag in a posting); keywords;

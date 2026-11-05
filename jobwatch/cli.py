@@ -11,7 +11,7 @@ import tempfile
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -22,6 +22,7 @@ from . import (
     advice,
     alerts,
     answers,
+    backup,
     chat,
     company,
     comps,
@@ -807,6 +808,23 @@ def cmd_quiet(args, cfg, store):
     _write(report.quiet_markdown(rows, quiet.find(rows, cfg.quiet, known=load_contacts(cfg))), args.out)
 
 
+def cmd_backup(args, cfg, store):
+    dest = args.dest.expanduser() if args.dest else backup.default_dest()
+    if args.list:
+        print(f"Would go to {dest}:")
+        print("\n".join(f"  {name}" for name in backup.contents(cfg)))
+        for old in backup.archives(dest):
+            print(f"  have {old.name} ({old.stat().st_size / 1e6:,.0f} MB)")
+        return
+    if str(dest).startswith(str(Path(backup.FALLBACK).expanduser())):
+        print("jobwatch: no synced drive found, so this copy stays on this computer: pass --dest", file=sys.stderr)
+    made, dropped = backup.backup(cfg, dest, args.keep)
+    print(f"{date.today().isoformat()} wrote {made} ({made.stat().st_size / 1e6:,.0f} MB)"
+          + (f"; dropped {len(dropped)} older" if dropped else ""))
+    if args.install:
+        print(f"Backing up {backup.install(cfg.path, dest, args.keep)} to {dest}; log: {backup.log_path()}")
+
+
 def cmd_snooze(args, cfg, store):
     for k in args.keys:
         print(f"{k}: follow up {store.snooze(k, args.days)}")
@@ -1383,6 +1401,15 @@ def build_parser() -> argparse.ArgumentParser:
                        "and what to do next: a check-in, or mark it closed. Changes nothing")
     p.add_argument("-o", "--out", type=Path)
     p.set_defaults(func=cmd_quiet)
+
+    p = sub.add_parser("backup", help="a dated copy of the database, what you sent with each application and the "
+                                      "watchlist, in a synced drive's folder (Google Drive, Dropbox, OneDrive)")
+    p.add_argument("--dest", type=Path, help="the folder (default: <drive>/Backups/jobwatch/<this computer>)")
+    p.add_argument("--keep", type=int, default=backup.KEEP,
+                   help=f"archives to keep, newest first (default {backup.KEEP})")
+    p.add_argument("--list", action="store_true", help="say what would go in and what's there, writing nothing")
+    p.add_argument("--install", action="store_true", help="back up now, and then daily through launchd (macOS)")
+    p.set_defaults(func=cmd_backup)
 
     p = sub.add_parser("snooze", help="push an application's follow-up out, keeping its stage; noted in its history")
     p.add_argument("keys", nargs="+", metavar="KEY", help="the application: its key, posting id or company")
