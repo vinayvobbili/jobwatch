@@ -31,6 +31,17 @@ def page_function(name: str) -> str:
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_today_words_a_stopped_backup(tmp_path):
+    js = tmp_path / "late.js"
+    js.write_text(page_function("backupLate") + """
+console.log(JSON.stringify([backupLate(null), backupLate({ last: "2030-01-15" }), backupLate({ last: null })]));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [None, "Last backup 2030-01-15", "No backup found"]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_job_cards_show_their_rows_in_one_fixed_order(tmp_path):
     """Every job card has the same labeled rows in the same order: the five main ones always (a dash when empty, so
     each sits in the same place), Check and Note only when there is one. The place on the meta line is the first

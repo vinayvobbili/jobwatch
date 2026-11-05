@@ -1,6 +1,8 @@
 """`jobwatch backup`: a dated copy of what can't be fetched again, restored from in the last test."""
 
+import plistlib
 import sqlite3
+import subprocess
 import tarfile
 from datetime import date
 
@@ -91,6 +93,50 @@ def test_a_missing_also_fails_loudly_and_leaves_the_last_good_archive(cfg, tmp_p
     with pytest.raises(backup.BackupError, match="isn't there"):
         backup.backup(cfg, out, day=date(2030, 1, 15), also=[tmp_path / "moved.yaml"])
     assert [p.name for p in out.iterdir()] == [good.name]
+
+
+def test_verify_opens_a_good_archive_and_a_git_repo_kept_with_it(cfg, tmp_path):
+    repo = tmp_path / "private"
+    repo.mkdir()
+    run = ("git", "-C", str(repo), "-c", "user.name=Dana", "-c", "user.email=dana@example.com")
+    subprocess.run(("git", "init", "-q", str(repo)), check=True)
+    (repo / "notes.md").write_text("hello")
+    subprocess.run((*run, "add", "notes.md"), check=True)
+    subprocess.run((*run, "commit", "-qm", "first"), check=True)
+    head = subprocess.run((*run, "rev-parse", "--short", "HEAD"), check=True, capture_output=True, text=True).stdout
+    archive, _ = backup.backup(cfg, tmp_path / "out", also=[repo])
+    said = backup.verify(archive)
+    assert "database ok, 1 jobs" in said[0]
+    assert f"also/private: git repo ok, at {head.strip()}" in said
+
+
+def test_verify_refuses_a_damaged_repo(cfg, tmp_path):
+    repo = tmp_path / "private"
+    (repo / ".git").mkdir(parents=True)
+    archive, _ = backup.backup(cfg, tmp_path / "out", also=[repo])
+    with pytest.raises(backup.BackupError, match="is damaged"):
+        backup.verify(archive)
+
+
+def test_verify_refuses_an_archive_with_no_good_database(tmp_path):
+    bad = tmp_path / "jobwatch-2030-01-15.tar.gz"
+    with tarfile.open(bad, "w:gz"):
+        pass
+    with pytest.raises(backup.BackupError, match="no database"):
+        backup.verify(bad)
+
+
+def test_today_hears_when_the_daily_job_has_stopped(cfg, tmp_path, monkeypatch):
+    monkeypatch.setattr(backup, "plist_path", lambda: tmp_path / "job.plist")
+    out = tmp_path / "out"
+    assert backup.overdue() is None  # no daily job: nothing was promised
+    with (tmp_path / "job.plist").open("wb") as f:
+        plistlib.dump(backup.definition(tmp_path / "w.yaml", out, 12), f)
+    assert backup.overdue()["last"] is None  # installed, and nothing has ever landed
+    backup.backup(cfg, out, day=date(2030, 1, 15))
+    assert backup.overdue(today=date(2030, 1, 17)) is None
+    late = backup.overdue(today=date(2030, 1, 18))
+    assert late["last"] == "2030-01-15" and late["dest"] == str(out)
 
 
 def test_keeping_none_is_refused(cfg, tmp_path):

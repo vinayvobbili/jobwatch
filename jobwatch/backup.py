@@ -19,6 +19,7 @@ import plistlib
 import re
 import socket
 import sqlite3
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -32,6 +33,7 @@ from .service import ServiceError, _domain, _launchctl, _mac
 LABEL = "io.github.jobwatch.backup"
 KEEP = 30
 HOUR, MINUTE = 9, 30
+LATE_DAYS = 2  # Today warns past this: a Mac off for a day or a slow upload shouldn't cry wolf
 DRIVES = ("~/Google Drive/My Drive", "~/Dropbox", "~/OneDrive")  # the first of these that exists holds the backups
 FALLBACK = "~/jobwatch-backups"
 _ARCHIVE = re.compile(r"jobwatch-\d{4}-\d{2}-\d{2}\.tar\.gz$")
@@ -114,6 +116,61 @@ def backup(cfg: Config, dest: Path, keep: int = KEEP, day: date | None = None,
 def contents(cfg: Config, also: Sequence[Path] = ()) -> list[str]:
     """What an archive made now would hold, without writing one."""
     return ["state.db", *(name for _, name in parts(cfg, also))]
+
+
+def verify(archive: Path) -> list[str]:
+    """Unpack an archive somewhere temporary, as a restore would, and open what's in it: the database passes its
+    check and has jobs, and a git repo kept with --also is whole. What it found, one line each, or BackupError."""
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp)
+        with tarfile.open(archive) as tar:
+            tar.extractall(home, filter="data")
+        if not (home / "state.db").is_file():
+            raise BackupError(f"{archive.name} has no database")
+        db = sqlite3.connect(home / "state.db")
+        try:
+            if (said := db.execute("PRAGMA integrity_check").fetchone()[0]) != "ok":
+                raise BackupError(f"the database in {archive.name} failed its check: {said}")
+            jobs = db.execute("SELECT count(*) FROM jobs").fetchone()[0]
+        except sqlite3.DatabaseError as e:
+            raise BackupError(f"the database in {archive.name} can't be read: {e}") from None
+        finally:
+            db.close()
+        if not jobs:
+            raise BackupError(f"the database in {archive.name} has no jobs")
+        found = [f"{archive.name}: database ok, {jobs:,} jobs"]
+        packages = home / "packages"
+        if packages.is_dir():
+            found.append(f"{sum(1 for _ in packages.iterdir()):,} application packages")
+        for path in sorted((home / "also").glob("*")):
+            found.append(_repo_line(path) if (path / ".git").exists() else f"also/{path.name}")
+    return found
+
+
+def _repo_line(path: Path) -> str:
+    def git(*args):
+        return subprocess.run(["git", "-c", f"safe.directory={path}", "-C", str(path), *args],
+                              capture_output=True, text=True, check=False)
+    fsck = git("fsck", "--no-progress")
+    if fsck.returncode:
+        raise BackupError(f"the git repo also/{path.name} is damaged: {fsck.stderr.strip() or fsck.stdout.strip()}")
+    return f"also/{path.name}: git repo ok, at {git('rev-parse', '--short', 'HEAD').stdout.strip()}"
+
+
+def overdue(today: date | None = None) -> dict | None:
+    """For Today, when the daily job is installed but its newest archive is over LATE_DAYS old (or there's none): the
+    last archive's day, the folder and the log. None when all's well, or when no daily job was asked for."""
+    try:
+        with plist_path().open("rb") as f:
+            args = plistlib.load(f)["ProgramArguments"]
+        dest = Path(args[args.index("--dest") + 1])
+        newest = archives(dest)
+    except (OSError, ValueError, KeyError, IndexError):
+        return None
+    last = date.fromisoformat(newest[0].name[len("jobwatch-"):-len(".tar.gz")]) if newest else None
+    if last and ((today or date.today()) - last).days <= LATE_DAYS:
+        return None
+    return {"last": last.isoformat() if last else None, "dest": str(dest), "log": str(log_path())}
 
 
 def plist_path() -> Path:

@@ -817,6 +817,12 @@ def cmd_backup(args, cfg, store):
         for old in backup.archives(dest):
             print(f"  have {old.name} ({old.stat().st_size / 1e6:,.0f} MB)")
         return
+    if args.verify:
+        newest = backup.archives(dest)
+        if not newest:
+            raise backup.BackupError(f"no backups in {dest}")
+        print("\n".join(backup.verify(newest[0])))
+        return
     if str(dest).startswith(str(Path(backup.FALLBACK).expanduser())):
         print("jobwatch: no synced drive found, so this copy stays on this computer: pass --dest", file=sys.stderr)
     made, dropped = backup.backup(cfg, dest, args.keep, also=also)
@@ -1412,6 +1418,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--keep", type=int, default=backup.KEEP,
                    help=f"archives to keep, newest first (default {backup.KEEP})")
     p.add_argument("--list", action="store_true", help="say what would go in and what's there, writing nothing")
+    p.add_argument("--verify", action="store_true",
+                   help="unpack the newest archive somewhere temporary, as a restore would, and open what's in it")
     p.add_argument("--install", action="store_true", help="back up now, and then daily through launchd (macOS)")
     p.set_defaults(func=cmd_backup)
 

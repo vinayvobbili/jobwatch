@@ -2634,6 +2634,11 @@ function watchScoring(first, el) {
   if (first.running) scoringTimer = setTimeout(poll, 15000);
 }
 
+// The daily backup runs where nobody's looking and a failure only reaches its log, so Today says when it has stopped.
+function backupLate(b) {
+  return !b ? null : b.last ? `Last backup ${b.last}` : "No backup found";
+}
+
 // When the boards were last checked. The page checks them by itself every few hours (fetch_every in the
 // watchlist) and the button checks now; a check that finishes while you read offers to show what it found.
 let checkedTimer = null;
@@ -2655,7 +2660,9 @@ function watchChecked(first, el) {
         ` · ${failed.length} failed`) : null,
       warned.length ? h("span", { class: "hint", title: warned.map(b => `${b}: ${c.warnings[b]}`).join("\n") },
         ` · ${warned.length} to look at`) : null,
-      c.error ? h("span", { class: "hint", title: c.error }, " · the last scheduled check failed") : null, fresh);
+      c.error ? h("span", { class: "hint", title: c.error }, " · the last scheduled check failed") : null,
+      c.backup ? h("span", { style: "color:var(--bad);font-weight:600", title: `Folder: ${c.backup.dest}\nLog: ${c.backup.log}` },
+        ` · ${backupLate(c.backup)}`) : null, fresh);
   };
   const poll = async () => {
     if (!el.isConnected) return;

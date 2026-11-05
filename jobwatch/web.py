@@ -33,6 +33,7 @@ from . import (
     advice,
     ai,
     autofill,
+    backup,
     chat,
     company,
     comps,
@@ -331,7 +332,7 @@ class Refresher:
     def status(self, cfg, store) -> dict:
         """For Today: when the boards were last checked (at, ISO), running, how often they're checked by
         themselves (every_hours; None: off, at set times, or no schedule running), the set times (times, "14:00";
-        next, ISO), and the last check's new count, errors and warnings."""
+        next, ISO), the last check's new count, errors and warnings, and whether the daily backup has stopped."""
         last = store.last_fetch()
         every = cfg.fetch_every if self._thread else None
         times = cfg.fetch_at if self._thread else ()
@@ -340,7 +341,7 @@ class Refresher:
                 "times": [t.strftime("%H:%M") for t in times],
                 "next": slot(times, datetime.now(timezone.utc), after=True).isoformat() if times else None,
                 "new": last["new"] if last else 0, "errors": last["errors"] if last else {},
-                "warnings": last["warnings"] if last else {}, "error": self.error}
+                "warnings": last["warnings"] if last else {}, "error": self.error, "backup": backup.overdue()}
 
     def start(self):
         with self._lock:
