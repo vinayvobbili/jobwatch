@@ -32,7 +32,7 @@ filters:
   locations: ["remote", "Denver", "Boulder, CO"]
   remote_country: US                      # remote roles must be open in the US ("any" to allow all)
   home_state: CO                          # leave out remote roles open only in other states (or "Colorado")
-  min_salary: 200000                      # the top of a listed range must reach this
+  min_salary: 190000                      # the top of a listed range must reach this
   require_salary: false                   # true: drop postings without pay
   max_age_days: 30                        # for jobs added by hand, from alerts or HN: a board's are open while listed
   min_fit: 70                             # hide jobs whose fit score is below this; unscored jobs still show

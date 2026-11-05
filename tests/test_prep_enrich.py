@@ -214,7 +214,7 @@ def test_the_local_sheet_shows_the_range_the_target_and_the_private_floor(setup)
 
 
 def test_pay_notes_compare_with_the_range(tmp_path):
-    cfg, store, key, _ = make(tmp_path, pay="pay: {target: 120000, floor: 200000}\n")
+    cfg, store, key, _ = make(tmp_path, pay="pay: {target: 120000, floor: 215000}\n")
     pay = prep.build(cfg, store, key).pay
     assert pay["target_note"] == "below the posted range" and "above the top" in pay["floor_note"]
     store.close()
