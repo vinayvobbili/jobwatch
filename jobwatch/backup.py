@@ -173,6 +173,19 @@ def overdue(today: date | None = None) -> dict | None:
     return {"last": last.isoformat() if last else None, "dest": str(dest), "log": str(log_path())}
 
 
+def installed_also(dest: Path) -> list[Path]:
+    """What the daily job keeps with --also, when it writes to this folder. A run by hand replaces today's archive, so
+    without these it would quietly swap a whole backup for a smaller one."""
+    try:
+        with plist_path().open("rb") as f:
+            args = plistlib.load(f)["ProgramArguments"]
+        if Path(args[args.index("--dest") + 1]) != dest:
+            return []
+    except (OSError, ValueError, KeyError, IndexError):
+        return []
+    return [Path(args[i + 1]) for i, arg in enumerate(args[:-1]) if arg == "--also"]
+
+
 def plist_path() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
 

@@ -813,7 +813,7 @@ def cmd_quiet(args, cfg, store):
 
 def cmd_backup(args, cfg, store):
     dest = args.dest.expanduser() if args.dest else backup.default_dest()
-    also = [path.expanduser().resolve() for path in args.also]
+    also = [path.expanduser().resolve() for path in args.also] or backup.installed_also(dest)
     if args.list:
         print(f"Would go to {dest}:")
         print("\n".join(f"  {name}" for name in backup.contents(cfg, also)))

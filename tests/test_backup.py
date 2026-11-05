@@ -178,6 +178,19 @@ def test_a_restored_archive_has_every_job_and_package(cfg, tmp_path):
     s.close()
 
 
+def test_a_run_by_hand_keeps_what_the_daily_job_keeps(watchlist, cfg, tmp_path, monkeypatch):
+    from jobwatch.cli import main
+    kept, out = tmp_path / "notes.txt", tmp_path / "out"
+    kept.write_text("no repo holds this")
+    monkeypatch.setattr(backup, "plist_path", lambda: tmp_path / "job.plist")
+    with (tmp_path / "job.plist").open("wb") as f:
+        plistlib.dump(backup.definition(watchlist, out, 12, [kept]), f)
+    assert backup.installed_also(out) == [kept]
+    assert backup.installed_also(tmp_path / "elsewhere") == []
+    assert main(["-c", str(watchlist), "backup", "--dest", str(out)]) in (0, None)
+    assert "also/notes.txt" in names(backup.archives(out)[0])
+
+
 def test_the_command_says_where_it_wrote(watchlist, cfg, tmp_path, capsys):
     from jobwatch.cli import main
     assert main(["-c", str(watchlist), "backup", "--dest", str(tmp_path / "out")]) in (0, None)
