@@ -110,7 +110,7 @@ READ = _hints(read_only=True)
 
 # Kept in step with store.STATUSES and config.TIMELINES (tests check), so clients see the allowed values.
 Status = Literal["new", "shown", "queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn",
-                 "skipped"]
+                 "skipped", "snoozed"]
 Timeline = Literal["week", "month", "quarter", "any"]
 # Kept in step with rounds.ROUNDS (a test checks); "" clears the round.
 Round = Literal["recruiter_screen", "hiring_manager", "technical", "system_design", "panel", "executive", "hr",

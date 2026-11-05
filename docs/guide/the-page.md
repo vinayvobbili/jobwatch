@@ -52,6 +52,11 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
   rejected, withdrawn), with the next step and a follow-up day. Those due come first. Filter by status with
   the chips over the list (or click the pipeline bar), and switch between **Cards** and a sortable **Table**.
   **Add an application** covers jobs you found elsewhere, such as a referral or a recruiter.
+- **Company:** everything tracked at one company, whatever its status, as the same cards with the buttons each
+  status calls for. Find one with the box at the top (`/` from any tab), or click a company's name on a card.
+  **Snooze** on a card sets a job aside while you have an application in progress at that company: it isn't a
+  no, and it comes back to your Queue when that application ends, or after 3 weeks if there's no news. The Queue
+  lists what's snoozed at the side, with **Queue now**.
 - **Settings:** the whole watchlist, one card per part, with a bar that jumps to each card and keeps Save in
   reach: the companies you watch (with each one's name and careers link) and how often to check them; filters
   (titles, places, departments, pay, age, minimum fit score, and warnings to flag in a posting); keywords;

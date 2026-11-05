@@ -28,6 +28,18 @@ class _Text(HTMLParser):
         self.parts.append(data)
 
 
+_ROLE_WORD = re.compile(r"\b(?:engineer|developer|manager|scientist|designer|architect|analyst|researcher|recruiter"
+                        r"|strategist|consultant)s?\b", re.I)
+_LEAD_WORD = re.compile(r"\b(?:lead|head|director|vp|cto|chief)\b", re.I)
+
+
+def names_one_role(title: str) -> bool:
+    """Does a post's title name one role? "Staff Engineers (Python)" and "Senior or Lead Data Engineer" do;
+    "Designer + iOS Developer", "Engineering & Data Science" (a department) and "Multiple roles" don't."""
+    roles = len(_ROLE_WORD.findall(title))
+    return roles == 1 or (roles == 0 and bool(_LEAD_WORD.search(title)))
+
+
 def html_to_text(markup: str) -> str:
     """Readable text: paragraphs on their own lines, list items as "- item".
 

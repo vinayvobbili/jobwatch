@@ -37,7 +37,7 @@ from . import linkedin, sources
 from .models import Job
 from .store import ENDED, MANUAL, STAGES, Store
 
-ACTED = ("queued", *STAGES, "skipped")
+ACTED = ("queued", *STAGES, "skipped", "snoozed")
 SAME_TITLE = "same title"  # why a title-only match matched: possibly the same opening
 
 # Words after a company's name that don't change which company it is: "Globex Investments", "Initech, Inc.".
@@ -274,8 +274,8 @@ class Match:
         200431)", "Possible duplicate of your 2026-03-02 application: check it's a different opening"."""
         later = f", now {self.status}" if self.applied and self.status != "applied" else ""
         if not self.strong:
-            what = {"queued": f"a job you queued {self.day}", "skipped": f"a job you skipped {self.day}"}.get(
-                self.status, f"your {self.day} application{later}")
+            what = {"queued": f"a job you queued {self.day}", "skipped": f"a job you skipped {self.day}",
+                    "snoozed": f"a job you snoozed {self.day}"}.get(self.status, f"your {self.day} application{later}")
             return f"Possible duplicate of {what}" + (": check it's a different opening"
                                                        if self.status != "skipped" else "")
         if self.back:
@@ -284,7 +284,8 @@ class Match:
             return f"Reposted: you applied {self.day}{later}" + (f" (old req {self.old_req})" if self.old_req else "")
         if self.applied:
             return f"Already applied {self.day}{later}"
-        return f"Already queued {self.day}" if self.status == "queued" else f"Skipped before {self.day}"
+        return {"queued": f"Already queued {self.day}", "snoozed": f"Snoozed {self.day}"}.get(
+            self.status, f"Skipped before {self.day}")
 
     @property
     def line(self) -> str:
@@ -297,7 +298,8 @@ class Match:
         todo = ("ask the recruiter whether your earlier loop carries over, or apply again" if self.back else
                 "check whether that application carries over before applying again" if self.applied and
                 self.reposted else "don't apply or ask for a referral again" if self.applied else
-                "don't queue it twice" if self.status == "queued" else "you skipped it then")
+                "don't queue it twice" if self.status == "queued" else
+                "it comes back when your application there ends" if self.status == "snoozed" else "you skipped it then")
         return f"{self.label}: same opening as {o.title} ({o.key}; {self.why}). {todo[0].upper()}{todo[1:]}"
 
     def to_dict(self) -> dict:
@@ -306,7 +308,7 @@ class Match:
                 "reposted": self.reposted, "back": self.back, "label": self.label, "text": self.line}
 
 
-_RANK = {**{s: 0 for s in STAGES}, "queued": 1, "skipped": 2}
+_RANK = {**{s: 0 for s in STAGES}, "queued": 1, "snoozed": 1, "skipped": 2}
 
 
 def _order(rec: dict) -> int:

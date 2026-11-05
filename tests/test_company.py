@@ -324,8 +324,11 @@ def test_company_endpoints(server, watchlist, tracked):
 
 
 def test_page_has_the_company_search(server):
-    """A search box in the header on every tab, focused by `/`, and a hint where a tab's own search finds nothing."""
+    """A search box at the top of the Company tab, reached by `/` from any tab, and a hint where a tab's own search
+    finds nothing."""
     page = request(server, "GET", "/")[1].decode()
-    assert 'id="jump"' in page and 'e.key !== "/"' in page and "function openCompany(" in page
+    assert 'id: "jump"' in page and 'e.key !== "/"' in page and "function openCompany(" in page
+    assert 'class="jump"' not in page.split("<script")[0]  # not in the header
+    assert 'pagehead("Company", sub, jumpBox)' in page
     assert 'api("/api/companies?q="' in page and 'api("/api/company?q="' in page
     assert "elsewhere(v.q)" in page and "elsewhere(appView.q)" in page

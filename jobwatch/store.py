@@ -17,12 +17,16 @@ from .models import Job
 from .package import POSTING, Package
 from .score import resume_family, unjudged
 from .sources import SOURCES, candidate_home
-from .text import parse_salary
+from .text import names_one_role, parse_salary
 
 # queued: to apply to next. After applying: applied, then screening, interviewing, offer, or it ends.
 STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdrawn")
 ENDED = ("rejected", "withdrawn")
-STATUSES = ("new", "shown", "queued", *STAGES, "skipped")
+IN_PROGRESS = tuple(s for s in STAGES if s not in ENDED)
+# snoozed: wanted, but waiting for the application in progress at its company to end. It's queued again then, or
+# after SNOOZE_DAYS (its follow_up day), since many companies never say no (wake_snoozed).
+STATUSES = ("new", "shown", "queued", *STAGES, "skipped", "snoozed")
+SNOOZE_DAYS = 21
 VERDICTS = ("use", "skip")  # what can be said of a person to ask for a referral
 # What a recruiter said about pay, then what the job is for your career: its role (ROLES) and a few words on why.
 COMP_FIELDS = ("base", "bonus", "equity", "signon", "asked", "offered", "note", "role", "career_note",
@@ -37,9 +41,11 @@ LISTINGS = ("public", "private")
 # a technology company; consulting; a non-tech business whose IT builds for itself
 COMPANY_KINDS = ("tech", "consulting", "enterprise")
 MANUAL = "manual"  # the source of applications added by hand (found elsewhere, not on a watched board)
-# Posts from a thread of many companies' posts (HN's Who is hiring) aren't fit-scored (see watch.scorable): a
-# score saved for one before that is left out when scores are read (it stays in the file, unused).
-_SCORED = "key NOT IN (SELECT key FROM jobs WHERE source IN ({}))".format(
+# A post listing several roles in a thread of many companies' posts (HN's Who is hiring) isn't fit-scored (see
+# watch.scorable): a score saved for one before that is left out when scores are read (it stays in the file, unused).
+# A post for one role is scored, so its score counts. one_role is names_one_role, added to each connection.
+_SCORED = ("key NOT IN (SELECT key FROM jobs WHERE source IN ({}) "
+           "AND NOT one_role(json_extract(data, '$.title')))").format(
     ", ".join(f"'{s.name}'" for s in SOURCES.values() if s.many_companies) or "''")
 
 _SCHEMA = """
@@ -285,10 +291,12 @@ class Store:
         if read_only:
             self.db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
             self.db.row_factory = sqlite3.Row
+            self.db.create_function("one_role", 1, names_one_role, deterministic=True)
             return
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, timeout=BUSY)
         self.db.row_factory = sqlite3.Row
+        self.db.create_function("one_role", 1, names_one_role, deterministic=True)
         # Write-ahead logging: a long read (the page drawing Today) and a write (a score, a logo) don't wait on
         # each other. Kept in the file, so this only changes it the first time.
         try:
@@ -542,18 +550,62 @@ class Store:
     def set_status(self, keys: list[str], status: str, note: str | None = None, on: str | None = None):
         """Move jobs to a status. Moving to an application stage records the day applied: `on` when given (it
         corrects an earlier day), else today unless a day is already recorded. It also saves the posting as it
-        reads then; moving back before applying clears the day."""
+        reads then; moving back before applying clears the day. Snoozing needs an application in progress at the
+        job's company to wait for, and sets the day it comes back at the latest (see wake_snoozed)."""
         if status not in STATUSES:
             raise ValueError(f"status must be one of {', '.join(STATUSES)}")
+        if status == "snoozed":
+            for key in keys:
+                job, _ = self.find(key)
+                if not self.waiting_on(job):
+                    raise ValueError(f"no application is in progress at {job.display_company}, so {job.key} has "
+                                     "nothing to wait for: queue it or skip it")
         with self.db:
             for key in keys:
-                self.db.execute("UPDATE jobs SET status=?, status_at=?, note=COALESCE(?, note), applied_at="
+                self.db.execute("UPDATE jobs SET follow_up=CASE WHEN ? THEN ? WHEN status='snoozed' THEN NULL "
+                                "ELSE follow_up END, status=?, status_at=?, note=COALESCE(?, note), applied_at="
                                 "CASE WHEN ? THEN COALESCE(?, applied_at, ?) END WHERE key=?",
-                                (status, _now(), note, status in STAGES, day(on), date.today().isoformat(), key))
+                                (status == "snoozed", day(f"+{SNOOZE_DAYS}"), status, _now(), note, status in STAGES,
+                                 day(on), date.today().isoformat(), key))
         if status in STAGES:
             for key in keys:
                 job, _ = self.find(key)
                 self.package(job.key).keep_posting(job)
+        self.wake_snoozed()
+
+    def in_progress(self) -> dict[str, list[dict]]:
+        """The applications still open, by company (contacts.company_key): each one's key, title and status."""
+        out: dict[str, list[dict]] = {}
+        for job, rec in self.jobs(IN_PROGRESS, include_closed=True):  # a closed posting's application can go on
+            out.setdefault(company_key(job.display_company), []).append(
+                {"key": job.key, "title": job.title, "status": rec["status"]})
+        return out
+
+    def waiting_on(self, job: Job, open_now: dict[str, list[dict]] | None = None) -> list[dict]:
+        """The other applications in progress at this job's company (pass `open_now` when you have in_progress())."""
+        at = (self.in_progress() if open_now is None else open_now).get(company_key(job.display_company), [])
+        return [a for a in at if a["key"] != job.key]
+
+    def wake_snoozed(self) -> list[str]:
+        """Queue the snoozed jobs whose company has no application in progress any more, or whose day to come back
+        has come (many companies never say no), and note why. Returns their keys."""
+        rows = self.jobs(("snoozed",), include_closed=True)
+        if not rows:
+            return []
+        open_now, today = self.in_progress(), date.today().isoformat()
+        why = {}
+        for job, rec in rows:
+            if not self.waiting_on(job, open_now):
+                why[job.key] = "your application there ended"
+            elif rec["follow_up"] and rec["follow_up"] <= today:
+                why[job.key] = "its time was up, with no news from your application there"
+        with self.db:
+            for key in why:
+                self.db.execute("UPDATE jobs SET status='queued', status_at=?, follow_up=NULL WHERE key=?",
+                                (_now(), key))
+        for key, reason in why.items():
+            self.add_note(key, f"Back from snooze: {reason}, so it's in the queue again.")
+        return list(why)
 
     def package(self, key: str) -> Package:
         """What was sent with the application for this job (key or posting id)."""

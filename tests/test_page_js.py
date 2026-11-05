@@ -174,7 +174,8 @@ sel.onchange().then(() => console.log(JSON.stringify({ options, value: job.statu
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout) == {
-        "options": ["queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "skipped"],
+        "options": ["queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "skipped",
+                    "snoozed"],
         "value": "screening",
         "tiles": [["Applied", "day 2026-10-28"], ["First seen", "day 2026-10-29"]],
         "calls": [["/api/track", {"key": "k1", "status": "rejected"}], ["open", "k1"]],

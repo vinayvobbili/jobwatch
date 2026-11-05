@@ -21,7 +21,7 @@
   --grad: linear-gradient(135deg, #5a5cf2, #a24af0);  /* filled surfaces carry white text in both themes */
   --s-applied: #3b82f6; --s-screening: #8b5cf6; --s-interviewing: #f59e0b; --s-offer: #10b981;
   --s-rejected: #94a3b8; --s-withdrawn: #a8a29e;
-  --s-queued: #06b6d4; --s-skipped: #a8a29e; --s-new: #5a5cf2; --s-shown: #5a5cf2;
+  --s-queued: #06b6d4; --s-skipped: #a8a29e; --s-snoozed: #8b5cf6; --s-new: #5a5cf2; --s-shown: #5a5cf2;
   color-scheme: light;
 }
 /* dark: set by the Theme setting, or by the computer's when that is System (applyDisplay) */
@@ -386,7 +386,7 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .empty .ico { color: var(--accent-2); opacity: .85; animation: float 4s ease-in-out infinite; }
 
 /* find a company: the box in the header, on every tab */
-.jump { position: relative; width: 210px; flex: none; }
+.jump { position: relative; width: 320px; max-width: 100%; flex: none; }
 .jump input[type=search] { padding-right: 30px; }
 .jump kbd { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); pointer-events: none; font: inherit;
   font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
@@ -399,12 +399,12 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .jump-list button.on, .jump-list button:hover { background: var(--accent-soft); }
 .jump-list .small { display: block; }
 .jump-list .none { padding: 8px 10px; color: var(--muted); font-size: 13.5px; }
-.cjob { border-top: 1px solid var(--line); padding: 10px 0; }
-/* a company's page: nothing behind it is being read, so it spreads across the screen, its jobs in columns */
-.dialog.co-page { max-width: 2400px; }
-.cjobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); gap: 0 32px; }
-.cjob .row { align-items: center; gap: 8px; }
-.cjob .row b { flex: 1; }
+.jc-meta .co[role="link"] { cursor: pointer; }
+.jc-meta .co[role="link"]:hover { color: var(--accent); }
+.stage-chip { margin-right: 6px; }
+.jc-note .facts { color: var(--muted); font-size: 13px; display: grid; gap: 3px; }
+.snoozed-row { padding: 8px 0; border-top: 1px solid var(--line); display: grid; gap: 4px; font-size: 13.5px; }
+.snoozed-row:first-child { border-top: 0; padding-top: 0; }
 .elsewhere { margin-top: 10px; font-size: 14px; }
 
 /* applications */
@@ -1043,7 +1043,7 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
   .fitbox { text-align: left; margin-top: 8px; } .ring { margin: 0; }
   .fpart .v { max-width: 62vw; } .fbar .sep { display: none; }
   /* the tabs get a row of their own, scrolling sideways if they must, so the page never does */
-  .jump { order: 4; flex: 1 0 100%; width: auto; } .jump-list { width: 100%; }
+  .jump { flex: 1 0 100%; width: auto; } .jump-list { width: 100%; }
   nav#tabs { order: 3; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; gap: 0; }
   nav#tabs button { flex: 1 0 auto; justify-content: center; padding: 6px 5px; gap: 4px; font-size: 13.5px; }
   .snav .links { mask-image: linear-gradient(90deg, #000 80%, transparent); }
@@ -1078,18 +1078,13 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
       <button data-tab="interviews">Interviews<span id="ivcount"></span></button>
       <button data-tab="queue">Queue<span id="qcount"></span></button>
       <button data-tab="applied">Applications<span id="duecount"></span></button>
+      <button data-tab="company">Company</button>
       <button data-tab="comps">Comps</button>
       <button data-tab="referrals">Referrals</button>
       <button data-tab="skills">Skills</button>
       <button data-tab="activity">Activity<span id="actcount"></span></button>
       <button data-tab="settings">Settings</button>
     </nav>
-    <div class="jump">
-      <input type="search" id="jump" placeholder="Find a company" aria-label="Find a company" autocomplete="off"
-        title="Look a company up under any status: press / from anywhere">
-      <kbd>/</kbd>
-      <div id="jumpList" class="jump-list" role="listbox"></div>
-    </div>
     <span class="spacer"></span>
     <span id="fetchStatus" class="status"></span>
     <button id="fetchBtn" class="btn primary"></button>
@@ -1346,7 +1341,7 @@ function stageWords(company, to) {
     applied: `${company}: back to applied.` }[to] || `${company}: marked ${to}.`;
 }
 const TONES = { applied: "win", queued: "win", screening: "win", interviewing: "win", offer: "win",
-  rejected: "onward", withdrawn: "onward", skipped: "onward" };
+  rejected: "onward", withdrawn: "onward", skipped: "onward", snoozed: "onward" };
 
 // The day's hello on Today, by the local hour.
 // The greeting ends in an emoji, so a dash joins it to the line, not a full stop.
@@ -1530,7 +1525,8 @@ function watchPay(jobs, scope = "page") {
         if (r.sources && r.sources[j.key]) j.pay_sources = r.sources[j.key];
         document.querySelectorAll(`[data-pay="${CSS.escape(j.key)}"]`).forEach(el => el.replaceWith(paySources(j)));
         document.querySelectorAll(`[data-paywhy="${CSS.escape(j.key)}"]`).forEach(el => el.replaceWith(payWhy(j)));
-        if (r.advice && j.key in r.advice) {  // the advice and the bottom line again, now that the pay is known
+        // the advice and the bottom line again, now that the pay is known (a job applied to is past advice)
+        if (r.advice && j.key in r.advice && !APPLIED.includes(j.status)) {
           Object.assign(j, r.advice[j.key]);
           document.querySelectorAll(`[data-advice="${CSS.escape(j.key)}"]`).forEach(el =>
             el.replaceWith(adviceLine(j) || noAdvice(j)));
@@ -1572,7 +1568,7 @@ const noAdvice = job => h("span", { class: "kv-none", "data-advice": job.key }, 
 const VERDICT_ICON = { apply: "check", stretch: "zap", hold: "pause", skip: "x" };
 function verdictLine(job) {
   const v = job.verdict;
-  if (!v) return h("span", { "data-verdict": job.key, hidden: true });
+  if (!v || job.status === "snoozed") return h("span", { "data-verdict": job.key, hidden: true });  // already decided
   return h("div", { class: `verdict ${v.call}`, "data-verdict": job.key, title: v.text },
     h("span", { class: "vic" }, icon(VERDICT_ICON[v.call] || "check", 14)), h("span", { class: "vtext" }, v.text));
 }
@@ -1584,10 +1580,13 @@ function peopleRow(job, most = 2) {
 }
 
 // Every job card has this skeleton: the header (logo, title, company · place · age; the ring top right), the labeled
-// rows, `above` (the queue's note box) and the actions at the bottom.
-function jobCard(job, actions, i = 0, above = null) {
+// rows, `above` (the queue's note box) and the actions at the bottom. `stage` is a chip before the title, on the
+// company page, where a job can be at any status. The company's name opens that page.
+function jobCard(job, actions, i = 0, above = null, stage = null) {
   const sep = () => h("span", { class: "sep" }, "·");
-  const meta = [h("b", { class: "co", title: job.company }, job.company), placeItem(job.locations),
+  const meta = [h("b", { class: "co", title: `See everything at ${job.company}`, role: "link", tabindex: 0,
+    onclick: () => openCompany(job.company),
+    onkeydown: e => { if (e.key === "Enter") openCompany(job.company); } }, job.company), placeItem(job.locations),
     age(job.age_days) ? h("span", { class: "posted", title: age(job.age_days) }, age(job.age_days).replace(/^posted /, "")) : null]
     .filter(Boolean);
   const parts = {
@@ -1605,6 +1604,7 @@ function jobCard(job, actions, i = 0, above = null) {
     monogram(job.company),
     h("div", { class: "jc-id" },
       h("div", { class: "jc-title" },
+        stage,
         job.status === "new" ? h("span", { class: "badge new" }, "new") : null,
         job.closed ? h("span", { class: "badge closed" }, "closed") : null,
         dupeBadge(job.duplicate_of), worthChip(job),
@@ -1716,6 +1716,20 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   return [b, unscoredNote(job)];
 }
 
+// "Snooze": not a no, only not while an application is in progress at the same company. The job comes back to the
+// queue when that application ends, or after store.SNOOZE_DAYS (many companies never say no). `act(status, label)`
+// marks it. No button when there's nothing to wait for.
+const SNOOZE_LIMIT = "3 weeks";
+function snoozeButton(job, act) {
+  const on = job.waiting_on || [];
+  if (!on.length || job.closed || job.status === "snoozed") return null;
+  const what = on.length === 1 ? `your ${on[0].title} application` : `your ${on.length} applications there`;
+  return h("button", { class: "btn", title: `Set it aside while ${what} is in progress. It comes back to your queue ` +
+      `when ${on.length === 1 ? "that ends" : "they end"}, or in ${SNOOZE_LIMIT} if there's no news.`,
+    onclick: () => act("snoozed", `😴 Snoozed: ${job.title}. Back in your queue when ${what} ends, or in ${SNOOZE_LIMIT}.`) },
+    icon("pause", 14), "Snooze");
+}
+
 // Opens the application form in a new tab (a link, so the browser lets it open); `then` runs alongside, e.g.
 // queueing the job. The jobwatch browser extension fills the form there and records it when it's submitted.
 function applyButton(job, primary, then) {
@@ -1773,6 +1787,7 @@ function todayCard(job, canScore, i) {
       onclick: () => mark(job, "queued", null, `📌 Queued: ${job.title}. ${pick(QUEUED)}`, job.status) }, "Queue"),
     applyButton(job, false, () => mark(job, "queued", null, `📌 Queued and opened: ${job.title}. Submit it there.`,
       job.status)),
+    snoozeButton(job, (status, label) => mark(job, status, null, label, job.status)),
     h("button", { class: "btn",
       onclick: () => mark(job, "skipped", null, `Skipped: ${job.title}. ${pick(SKIPPED)}`, job.status) }, "Skip"),
     detailsButton(job), scoreButton(job, canScore),
@@ -1781,7 +1796,7 @@ function todayCard(job, canScore, i) {
 
 async function openDetails(key) {
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
-  dialog.classList.remove("with-chat", "co-page");
+  dialog.classList.remove("with-chat");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   overlay.style.display = "flex";
   try {
@@ -1829,13 +1844,13 @@ async function openDetails(key) {
             "What are they likely to ask in interviews?", "Draft a short note to a recruiter here"],
       })));
     watchPay([j], "details");
-  } catch (e) { dialog.classList.remove("with-chat", "co-page"); showError(dialog, e); }
+  } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
 }
 // Every stage a job can be put at from its details, in the order a search goes.
-const DETAIL_STAGES = ["queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "skipped"];
+const DETAIL_STAGES = ["queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "skipped", "snoozed"];
 // The details' top strip: the stage, as a picker (the one place to mark a job rejected, withdrawn...), then the days.
 function detailsFacts(j) {
-  const names = { ...STAGE_NAMES, queued: "Queued", skipped: "Skipped", new: "Not acted on", shown: "Not acted on" };
+  const names = { ...STAGE_NAMES, queued: "Queued", skipped: "Skipped", snoozed: "Snoozed", new: "Not acted on", shown: "Not acted on" };
   const stages = DETAIL_STAGES.includes(j.status) ? DETAIL_STAGES : [j.status, ...DETAIL_STAGES];
   const sel = h("select", { class: "stage", "aria-label": "Stage", title: "Move this job to another stage" },
     stages.map(s => h("option", { value: s }, names[s] || s)));
@@ -1905,7 +1920,7 @@ async function openPrepPage(key) {
 // draft: the chat's model drafts likely questions with answers from the story file (slow the first time, then kept).
 async function openPrep(key, draft = false, questions = false) {
   const dialog = document.getElementById("dialog");
-  dialog.classList.remove("with-chat", "co-page");
+  dialog.classList.remove("with-chat");
   dialog.replaceChildren(h("div", { class: "muted" }, draft ? "Drafting questions and answers from your stories… "
     + "(the first time can take a minute or two)" : "Loading…"));
   try {
@@ -2000,7 +2015,7 @@ async function openPrep(key, draft = false, questions = false) {
 // and a tightened answer built only from what you said and your stories, which you can keep on the prep sheet.
 async function openMock(key) {
   const dialog = document.getElementById("dialog");
-  dialog.classList.remove("with-chat", "co-page");
+  dialog.classList.remove("with-chat");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   let m;
   try { m = await api("/api/mock?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
@@ -2090,7 +2105,7 @@ function storyFromForm(f) {
 // is saved until you press Save.
 async function openStoryFind(key, gap = null) {
   const dialog = document.getElementById("dialog");
-  dialog.classList.remove("with-chat", "co-page");
+  dialog.classList.remove("with-chat");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   let s;
   try { s = await api("/api/storyfind?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
@@ -2877,7 +2892,7 @@ function brokenLine() {
 async function openHidden(kind) {
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
   const info = HIDDEN[kind];
-  dialog.classList.remove("with-chat", "co-page");
+  dialog.classList.remove("with-chat");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   overlay.style.display = "flex";
   try {
@@ -3553,10 +3568,33 @@ async function renderQueue() {
         step(2, "Tailor your resume", "Match it to the posting, from things you've really done."),
         step(3, "Apply on their site", "Answer honestly and press Submit yourself."),
         step(4, "Press “I applied”", "It moves to Applications, where you track what comes next.")),
+      snoozedPanel(),
     ], [h("div", { class: "status-row" }, pace, jobs.length ? showing : null), jobs.length ? [list, pager]
       : emptyState("The queue is empty. Queue jobs from Today: your next yes could be in there.")]));
   drawQueue();
   watchPay(queueJobs);
+}
+
+// The jobs set aside until an application at their company ends: which one, the day they come back at the latest,
+// and a way to bring one back now. It fills in after the Queue is drawn, and stays out of the way when there are none.
+function snoozedPanel() {
+  const body = h("div", {}), el = panel("Snoozed", body);
+  el.style.display = "none";
+  api("/api/snoozed").then(list => {
+    el.style.display = list.length ? "" : "none";
+    fill(body, list.map(j => h("div", { class: "snoozed-row" },
+      h("a", { href: "#", title: `See everything at ${j.company}`,
+        onclick: e => { e.preventDefault(); openCompany(j.company); } }, `${j.company}: ${j.title}`),
+      h("div", { class: "hint" }, `Waiting on ${j.waiting_on.map(a => a.title).join(", ")}` +
+        (j.back_by ? `; back by ${fmtDay(j.back_by)}` : "")),
+      h("div", {}, h("button", { class: "btn ghost", onclick: async () => {
+        try {
+          await api("/api/mark", { keys: [j.key], status: "queued" });
+          render();
+        } catch (e) { toast(e.message); }
+      } }, "Queue now")))));
+  }).catch(() => { /* a side panel, not the page */ });
+  return el;
 }
 
 function queueCard(job, i) {
@@ -3567,6 +3605,7 @@ function queueCard(job, i) {
     tailorButton(job),
     h("button", { class: "btn", onclick: () => mark(job, "applied", note.value || null,
       `Marked applied: ${job.title}`, "queued") }, icon("check", 14), "I applied"),
+    snoozeButton(job, (status, label) => mark(job, status, null, label, "queued")),
     h("button", { class: "btn", onclick: () => mark(job, "shown", null, `Removed from the queue: ${job.title}`, "queued") },
       "Remove from queue"),
     detailsButton(job), scoreButton(job, job.can_score, j => queueCard(j, 0)),
@@ -3620,6 +3659,9 @@ function settingsGroupOf(name) {
 // Where a URL hash goes: "#settings/ai" is Settings on its AI tab, and an old card anchor ("#set-pay") opens the tab holding it.
 function pageOfHash(hash, tabs) {
   const [base, sub] = String(hash || "").replace(/^#/, "").split("/");
+  if (base === "company" && tabs.includes(base)) {  // "#company/Globex%20Inc" is that company's page
+    try { return { tab: base, sub: sub ? decodeURIComponent(sub) : null }; } catch { return { tab: base, sub: null }; }
+  }
   if (tabs.includes(base)) return { tab: base, sub: base === "settings" ? settingsGroupOf(sub) : null };
   if (base.startsWith("set-") && settingsGroupOf(base)) return { tab: "settings", sub: settingsGroupOf(base), card: base };
   return null;
@@ -5245,7 +5287,11 @@ function elsewhere(q) {
   return el;
 }
 
-const jump = document.getElementById("jump"), jumpList = document.getElementById("jumpList");
+// The box lives at the top of the Company tab, kept between redraws so what's typed stays.
+const jump = h("input", { type: "search", id: "jump", placeholder: "Find a company", "aria-label": "Find a company",
+  autocomplete: "off", title: "Look a company up under any status: press / from anywhere" });
+const jumpList = h("div", { id: "jumpList", class: "jump-list", role: "listbox" });
+const jumpBox = h("div", { class: "jump" }, jump, h("kbd", {}, "/"), jumpList);
 let jumpHits = [], jumpAt = -1, jumpSeq = 0, jumpTimer;
 function jumpClose() { jumpList.style.display = "none"; jumpAt = -1; }
 function jumpDraw() {
@@ -5281,19 +5327,11 @@ document.addEventListener("keydown", e => {
   if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || t.closest?.("input, textarea, select, [contenteditable]") ||
     document.getElementById("overlay").style.display === "flex") return;
   e.preventDefault();
-  jump.focus();
-  jump.select();
+  if (tab === "company") { jump.focus(); jump.select(); return; }
+  jumpNext = true;  // once the Company tab has drawn its box
+  go("company");
 });
 
-// A long note (dated entries added over weeks) is two lines until clicked.
-function noteLine(note) {
-  const el = h("div", { class: "small" }, "Note: " + note);
-  if (note.length <= 200) return el;
-  el.classList.add("gaps");
-  el.title = "Click to see the whole note";
-  el.onclick = () => el.classList.toggle("open");
-  return el;
-}
 // A company's job's status word. "New" means not acted on yet, so a role still open from long ago (all of a
 // board's open roles arrive as new when it's first watched) says how old it is instead of looking fresh.
 function companyStatus(j, today, maxAge) {
@@ -5304,64 +5342,147 @@ function companyStatus(j, today, maxAge) {
   return [STAGE_NAMES[j.status] || j.status[0].toUpperCase() + j.status.slice(1),
     j.status === "new" ? "Not acted on yet" : null];
 }
-function companyJob(j, today) {
-  const stage = APPLIED.includes(j.status);
+// The chip before a job's title on the company page: its status, unless it's simply open to act on.
+function stageChip(j, today) {
   const [word, why] = companyStatus(j, today, (settings.filters || {}).max_age_days);
-  const facts = [j.applied_at ? `applied ${fmtDay(j.applied_at, today)}` : j.posted ? `posted ${fmtDay(j.posted, today)}`
-    : j.first_seen ? `first seen ${fmtDay(j.first_seen, today)}` : "", j.locations.join("; "), j.pay,
-    j.closed ? `posting closed ${fmtDay(j.closed, today)}` : ""].filter(Boolean).join(" · ");
-  return h("div", { class: "cjob" },
-    h("div", { class: "row" }, h("b", {}, j.title),
-      j.closed ? h("span", { class: "badge closed" }, "CLOSED") : null, dupeBadge(j.duplicate_of),
-      h("span", { class: "chip", title: why,
-        style: stage ? `background:color-mix(in srgb, var(--s-${j.status}) 15%, transparent);color:var(--s-${j.status})` : null }, word)),
-    h("div", { class: "small muted" }, facts),
-    j.next_step || j.follow_up ? h("div", { class: "small" + (j.due ? " warns" : "") },
-      (j.due ? "Due: " : "Next: ") + [j.next_step, j.follow_up && `follow up ${fmtDay(j.follow_up, today)}`].filter(Boolean).join(" · ")) : null,
-    j.note ? noteLine(j.note) : null,
-    j.duplicate_of ? h("div", { class: "warns small" }, j.duplicate_of.text) : null,
-    h("div", { class: "row actions" }, h("button", { class: "btn", onclick: () => openDetails(j.key) }, "Details"),
-      link(j.url, "Posting ↗"),
-      j.has_package ? h("span", { class: "sent-chip", title: "What you sent is saved with this job" }, icon("clip", 13), "package saved") : null));
+  if ((j.status === "new" || j.status === "shown") && word === (STAGE_NAMES[j.status] || j.status[0].toUpperCase() + j.status.slice(1))) return null;
+  return h("span", { class: "chip stage-chip", title: why,
+    style: `background:color-mix(in srgb, var(--s-${j.status}) 15%, transparent);color:var(--s-${j.status})` }, word);
 }
-async function openCompany(q, every = false) {
+// What only the company page says about a job: the day applied, what's next, what a snoozed job waits for.
+function companyFacts(j, today) {
+  const waiting = j.status === "snoozed" && (j.waiting_on || []).length;
+  const lines = [
+    j.applied_at ? `Applied ${fmtDay(j.applied_at, today)}` : null,
+    j.closed ? `Posting closed ${fmtDay(j.closed, today)}` : null,
+    waiting ? `Waiting on ${j.waiting_on.map(a => a.title).join(", ")}` + (j.follow_up ? `; back by ${fmtDay(j.follow_up, today)}` : "") : null,
+    j.status !== "snoozed" && (j.next_step || j.follow_up) ? (j.due ? "Due: " : "Next: ") +
+      [j.next_step, j.follow_up && `follow up ${fmtDay(j.follow_up, today)}`].filter(Boolean).join(" · ") : null,
+    j.status === "queued" && j.note ? `Note: ${j.note}` : null,  // other statuses have the card's Note row
+  ].filter(Boolean);
+  return lines.length ? h("div", { class: "facts" }, lines.map(l => h("div", {}, l))) : null;
+}
+// A job card as on Today and the Queue, with the buttons its status calls for. Marking one keeps it on the page,
+// now at its new status, with a way back; the counts above follow.
+function companyCard(j, i, c) {
+  const today = new Date().toISOString().slice(0, 10);
+  const redraw = () => document.getElementById("job-" + j.key)?.replaceWith(companyCard(j, i, c));
+  const move = async (to, note) => {
+    const r = await api("/api/mark", { keys: [j.key], status: to, note });
+    c.counts[j.status] = Math.max(0, (c.counts[j.status] || 0) - 1);
+    c.counts[to] = (c.counts[to] || 0) + 1;
+    j.status = to;
+    j.follow_up = r.follow_up;
+    refreshQueueCount();
+    return r;
+  };
+  const act = async (status, label) => {
+    const was = j.status, origin = document.activeElement;
+    try {
+      const r = await move(status);
+      if (status === "applied") { confetti(origin); return render(); }  // other jobs here can be snoozed now
+      redraw(); drawCompanyTiles();
+      toast(r.warning ? `${label}. ${r.warning}` : label, async () => { await move(was); redraw(); drawCompanyTiles(); }, TONES[status]);
+    } catch (e) { toast(e.message); }
+  };
+  const queueIt = (label = "Queue") => j.closed ? null : h("button", { class: "btn primary",
+    onclick: () => act("queued", `📌 Queued: ${j.title}. ${pick(QUEUED)}`) }, label);
+  const skipIt = () => h("button", { class: "btn", onclick: () => act("skipped", `Skipped: ${j.title}. ${pick(SKIPPED)}`) }, "Skip");
+  const posting = () => link(j.url, "Posting ↗");
+  const score = () => scoreButton(j, j.can_score, x => companyCard(x, i, c));
+  const actions = APPLIED.includes(j.status) ? [detailsButton(j), posting(),
+      j.has_package ? h("span", { class: "sent-chip", title: "What you sent is saved with this job" }, icon("clip", 13), "package saved") : null]
+    : j.status === "queued" ? [applyButton(j, true), tailorButton(j),
+      h("button", { class: "btn", onclick: () => act("applied") }, icon("check", 14), "I applied"),
+      snoozeButton(j, act), skipIt(), detailsButton(j), score()]
+    : j.status === "snoozed" ? [queueIt("Queue now"), applyButton(j, false), skipIt(), detailsButton(j), score()]
+    : j.status === "skipped" ? [queueIt(), applyButton(j, false), detailsButton(j), score()]
+    : [queueIt(), applyButton(j, false, () => act("queued", `📌 Queued and opened: ${j.title}. Submit it there.`)),
+      snoozeButton(j, act), j.closed ? null : skipIt(), detailsButton(j), score()];
+  return jobCard(j, actions, i, companyFacts(j, today), stageChip(j, today));
+}
+
+// Tiles across the top of a company's page: how many jobs at each status, jobs not acted on as one.
+function companyTiles(c) {
+  const open = (c.counts.new || 0) + (c.counts.shown || 0);
+  const order = ["applied", "screening", "interviewing", "offer", "queued", "snoozed", "rejected", "withdrawn", "skipped"];
+  const tiles = order.filter(s => c.counts[s]).map(s => [c.counts[s], s]);
+  return hero([open ? [open, "open to act on", "lead"] : null, ...tiles].filter(Boolean));
+}
+const companyView = { q: remembered("company.q", ""), every: false, page: 1 };
+let drawCompanyTiles = () => {};
+function openCompany(q, every = false) {
   jump.value = ""; jumpClose(); jump.blur();
-  const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
-  dialog.classList.remove("with-chat");
-  dialog.classList.add("co-page");
-  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
-  overlay.style.display = "flex";
-  try {
-    const c = await api("/api/company?q=" + encodeURIComponent(q) + (every ? "&all=1" : "")), w = c.watch, today = new Date().toISOString().slice(0, 10);
-    const watch = async b => {
-      b.disabled = true;
-      try {
-        await api("/api/suggestions/add", { company: c.company });
-        settings = await api("/api/settings");
-        toast(`Watching ${c.company}. Press “Check for new jobs” to see its roles.`);
-        openCompany(c.company);
-      } catch (e) { b.disabled = false; toast(e.message); }
-    };
-    fill(dialog,
-      h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, c.company),
-        h("button", { class: "btn", onclick: closeDetails }, "Close")),
-      h("div", { class: "small muted" }, Object.entries(c.counts).map(([s, n]) => `${n} ${STAGE_NAMES[s] ? STAGE_NAMES[s].toLowerCase() : s}`).join(" · ")),
-      c.contacts.length || c.find_referral ? knowLine(c, 10) : null,
-      w.watched ? null : h("div", { class: "warns" }, "Not watched: its board isn't on your watchlist, so new roles there aren't checked. ",
+  document.getElementById("overlay").style.display = "none";
+  Object.assign(companyView, { q, every, page: 1 });
+  remember("company.q", q);
+  tab = "company";
+  history.replaceState(null, "", "#company/" + encodeURIComponent(q));
+  render();
+}
+let jumpNext = false;  // `/` pressed on another tab: the box gets the keys once it's drawn
+// Draws the page with the search box at its top, keeping the cursor in the box if it's there.
+function putCompany(head, ...kids) {
+  const typing = document.activeElement === jump || jumpNext;
+  put(head, ...kids);
+  if (typing) jump.focus();
+  jumpNext = false;
+}
+async function renderCompany() {
+  const v = companyView, sub = "Everything tracked at one company, whatever its status.";
+  if (!v.q) {
+    jumpNext = true;  // nothing to read here yet: straight to the box
+    return putCompany(pagehead("Company", sub, jumpBox),
+      emptyState("Type a company's name in the search box above to see its jobs here."));
+  }
+  if (jumpNext) putCompany(pagehead("Company", sub, jumpBox));  // the box first, while the jobs load
+  let c;
+  try { c = await api("/api/company?q=" + encodeURIComponent(v.q) + (v.every ? "&all=1" : "")); }
+  catch (e) { return putCompany(pagehead("Company", sub, jumpBox), emptyState(e.message)); }
+  const w = c.watch;
+  const watch = async b => {
+    b.disabled = true;
+    try {
+      await api("/api/suggestions/add", { company: c.company });
+      settings = await api("/api/settings");
+      toast(`Watching ${c.company}. Press “Check for new jobs” to see its roles.`);
+      render();
+    } catch (e) { b.disabled = false; toast(e.message); }
+  };
+  const tiles = h("div", {}), list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
+  drawCompanyTiles = () => fill(tiles, companyTiles(c));
+  const draw = () => {
+    const pg = paged(c.jobs, v, c.company, draw);
+    fill(showing, pg.range ? `Showing ${pg.range}` : null);
+    fill(list, c.jobs.length ? pg.items.map((j, i) => companyCard(j, i, c))
+      : emptyState("Nothing to list here: every role is hidden by your filters or closed."));
+    fill(pager, pg.nav);
+  };
+  const more = [
+    c.more_open ? h("div", { class: "small muted" }, `${c.more_open} more open role${c.more_open === 1 ? "" : "s"} you haven't acted on: see Today`) : null,
+    c.left_out ? h("div", { class: "small muted" },
+      `${c.left_out} open role${c.left_out === 1 ? "" : "s"} your filters leave out (` +
+      Object.entries(c.left_out_by).map(([k, n]) => `${k} ${n}`).join(", ") + "). ",
+      h("button", { class: "btn ghost", onclick: () => openCompany(c.company, true),
+        title: "Settings → Display → Company page lists them every time" }, "Show them")) : null,
+    c.closed_unacted ? h("div", { class: "small muted" }, `${c.closed_unacted} closed posting${c.closed_unacted === 1 ? "" : "s"} you never acted on, not listed`) : null,
+  ].filter(Boolean);
+  putCompany(
+    pagehead(c.company, "Everything tracked here, whatever its status.", jumpBox),
+    layout([
+      tiles,
+      c.contacts.length || c.find_referral ? panel("People you know", peopleRow(c, 8)) : null,
+      w.watched ? null : panel("Not watched", h("div", { class: "warns" }, "Its board isn't on your watchlist, so new roles there aren't checked. "),
         w.suggested ? h("button", { class: "btn", onclick: e => watch(e.currentTarget),
           title: w.entry ? `Watch ${w.entry}` : "Look for its board by name and watch it" }, "Watch its board")
-          : w.entry ? `Add ${w.entry} in Settings.` : "Look for its board with Settings → Add a company."),
-      h("div", { class: "cjobs" }, c.jobs.map(j => companyJob(j, today))),
-      c.more_open ? h("div", { class: "small muted" }, `and ${c.more_open} more open roles you haven't acted on: see Today`) : null,
-      c.left_out ? h("div", { class: "small muted" },
-        `${c.left_out} open role${c.left_out === 1 ? "" : "s"} your filters leave out (` +
-        Object.entries(c.left_out_by).map(([k, n]) => `${k} ${n}`).join(", ") + "), not listed. ",
-        h("button", { class: "btn", onclick: () => openCompany(c.company, true),
-          title: "Settings → Display → Company page lists them every time" }, "Show them")) : null,
-      c.closed_unacted ? h("div", { class: "small muted" }, `${c.closed_unacted} closed posting${c.closed_unacted === 1 ? "" : "s"} you never acted on, not listed`) : null,
-      c.also.length ? h("div", { class: "small", style: "margin-top:10px" }, "Also matches: ",
-        c.also.map(n => h("button", { class: "chip toggle", onclick: () => openCompany(n) }, n))) : null);
-  } catch (e) { showError(dialog, e); }
+          : h("div", { class: "hint" }, w.entry ? `Add ${w.entry} in Settings.` : "Look for its board with Settings → Add a company.")),
+      more.length ? panel("Not listed", more) : null,
+      c.also.length ? panel("Also matches", h("div", { class: "chips" },
+        c.also.map(n => h("button", { class: "chip toggle", onclick: () => openCompany(n) }, n)))) : null,
+    ], [h("div", { class: "status-row" }, showing), list, pager]));
+  drawCompanyTiles();
+  draw();
+  watchPay(c.jobs);
 }
 
 let lastTab = null;
@@ -5377,7 +5498,7 @@ async function render() {
     if (tab === "settings") renderSettings();
     else if (!settings.exists || (!settings.companies.length && tab !== "applied")) renderWelcome();
     else await loading(document.querySelector(`#tabs button[data-tab="${tab}"]`),
-      { today: renderToday, interviews: renderInterviews, queue: renderQueue, applied: renderApplied, comps: renderComps, referrals: renderReferrals, skills: renderSkills,
+      { today: renderToday, interviews: renderInterviews, queue: renderQueue, applied: renderApplied, company: renderCompany, comps: renderComps, referrals: renderReferrals, skills: renderSkills,
         activity: renderActivity }[tab]);
   } catch (e) { showError(main, e); }
   refreshQueueCount();
@@ -5405,12 +5526,17 @@ async function loading(button, work, delay = 150) {
   }
 }
 
-function go(name) { tab = name; history.replaceState(null, "", "#" + name); render(); }
+function go(name) {
+  tab = name;
+  history.replaceState(null, "", "#" + name + (name === "company" && companyView.q ? "/" + encodeURIComponent(companyView.q) : ""));
+  render();
+}
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => go(b.dataset.tab);
-const TABS = ["today", "interviews", "queue", "applied", "comps", "referrals", "skills", "activity", "settings"];
+const TABS = ["today", "interviews", "queue", "applied", "company", "comps", "referrals", "skills", "activity", "settings"];
 window.addEventListener("hashchange", () => {
   const to = pageOfHash(location.hash, TABS);
   if (!to || !settings) return;
+  if (to.tab === "company" && to.sub && to.sub !== companyView.q) return openCompany(to.sub);
   if (to.tab !== tab) { tab = to.tab; render(); }
   else if (tab === "settings" && to.sub && renderSettings.show) renderSettings.show(to.sub, { card: to.card, hash: false });
 });
@@ -5436,7 +5562,9 @@ document.getElementById("fetchBtn").onclick = async () => {
   try { settings = await api("/api/settings"); }
   catch (e) { return showError(main, e); }
   applyDisplay(settings.display);
-  tab = pageOfHash(location.hash, TABS)?.tab || "today";
+  const start = pageOfHash(location.hash, TABS);
+  tab = start?.tab || "today";
+  if (tab === "company" && start.sub) companyView.q = start.sub;
   render();
   watchNotices();
 })();

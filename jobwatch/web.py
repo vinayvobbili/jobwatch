@@ -70,6 +70,7 @@ from .watch import (
     MANY_ROLES,
     Entry,
     build_digest,
+    entries_for,
     fetch_all,
     hidden,
     load_contacts,
@@ -877,8 +878,10 @@ class App:
             pay = self._pay(cfg, store, [(e.job, None) for e in d.entries], most=cfg.pay.today)
             history = advice.History(store, quiet=cfg.quiet)
             worth = comps.worth(cfg, store, [(e.job, e.fit) for e in d.entries])
+            open_now = store.in_progress()
             out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {}),
-                             "worth": worth[e.job.key], **self._advice(cfg, e, history, pay)}
+                             "worth": worth[e.job.key], "waiting_on": store.waiting_on(e.job, open_now),
+                             **self._advice(cfg, e, history, pay)}
                             for e in d.entries],
                    "rejected": d.rejected,
                    "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({}),
@@ -904,22 +907,40 @@ class App:
         """Applications sent today against the watchlist's pace (see watch.pace); null when it's off."""
         return {"pace": self._with_store(pace)}
 
+    def _cards(self, cfg, store, entries, most: int = 1000, line: bool = True) -> list[dict]:
+        """What a job card shows beyond _entry, for the Queue and a company's page: pay (looking up the first `most`
+        in the background), advice, the resume, why it has no score, and the applications it could wait for. `line`:
+        say where a job stands in the scorer's line, which reads every job through the filters (seconds)."""
+        resume = bool(cfg.resume and cfg.resume.is_file())
+        why = self.scorer.reasons(cfg, store) if line else {}
+        pay = self._pay(cfg, store, [(e.job, e.pay) for e in entries], most=most)
+        history = advice.History(store, quiet=cfg.quiet)
+        worth = comps.worth(cfg, store, [(e.job, e.fit) for e in entries])
+        can_tailor = tailor.ready(cfg.resume_kit)
+        open_now = store.in_progress()
+        # A job applied to is past advice.
+        return [{**self._entry(e), "worth": worth[e.job.key],
+                 "can_tailor": can_tailor, "tailor_setup": None if can_tailor else tailor.SETUP,
+                 "resume": self._resume_name(store, e.job),
+                 # A job added by hand can be scored once it has the posting's text.
+                 "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
+                 "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),
+                 "waiting_on": store.waiting_on(e.job, open_now),
+                 **pay.get(e.job.key, {}),
+                 **({"advice": None, "verdict": None} if e.record.get("status") in STAGES
+                    else self._advice(cfg, e, history, pay))} for e in entries]
+
     def get_queue(self, q) -> list[dict]:
+        return self._with_store(lambda cfg, store: self._cards(cfg, store, queue(cfg, store)))
+
+    def get_snoozed(self, q) -> list[dict]:
+        """The jobs waiting for an application at their company to end, and which applications those are."""
         def run(cfg, store):
-            resume = bool(cfg.resume and cfg.resume.is_file())
-            why = self.scorer.reasons(cfg, store)
-            # A job added by hand can be scored once it has the posting's text.
-            entries = queue(cfg, store)
-            pay = self._pay(cfg, store, [(e.job, e.pay) for e in entries])
-            history = advice.History(store, quiet=cfg.quiet)
-            worth = comps.worth(cfg, store, [(e.job, e.fit) for e in entries])
-            can_tailor = tailor.ready(cfg.resume_kit)
-            return [{**self._entry(e), "worth": worth[e.job.key],
-                     "can_tailor": can_tailor, "tailor_setup": None if can_tailor else tailor.SETUP,
-                     "resume": self._resume_name(store, e.job),
-                     "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
-                     "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),
-                     **pay.get(e.job.key, {}), **self._advice(cfg, e, history, pay)} for e in entries]
+            store.wake_snoozed()
+            open_now = store.in_progress()
+            return [{"key": j.key, "title": j.title, "company": j.display_company, "url": j.url,
+                     "back_by": rec["follow_up"], "waiting_on": store.waiting_on(j, open_now)}
+                    for j, rec in store.jobs(("snoozed",), include_closed=True)]
         return self._with_store(run)
 
     def get_jobs(self, q) -> list[dict]:
@@ -1084,13 +1105,20 @@ class App:
         return self._with_store(lambda cfg, store: company.search(store, text))
 
     def get_company(self, q) -> dict:
-        """One company's page: every tracked job there whatever its status (see company.view)."""
+        """One company's page: every tracked job there whatever its status (see company.view), each with what a job
+        card shows, as on the Queue. Warnings about a job you've acted on come down to it being a duplicate."""
         text, every = (q.get("q") or [""])[0], (q.get("all") or [""])[0] == "1" or None
 
         def run(cfg, store):
+            store.wake_snoozed()
             if not (v := company.view(cfg, store, text, every)):
                 raise ApiError(f"no tracked job is at a company matching {text!r}", HTTPStatus.NOT_FOUND)
-            return v
+            entries = entries_for(cfg, store, [store.find(j["key"]) for j in v["jobs"]])
+            for e in entries:
+                if e.record.get("status") not in IN_LINE:
+                    e.warnings = e.warnings[:1] if e.duplicate else []
+            cards = self._cards(cfg, store, entries, most=cfg.pay.today, line=False)
+            return {**v, "jobs": [{**card, **j} for card, j in zip(cards, v["jobs"], strict=True)]}
         return self._with_store(run)
 
     def post_posting(self, body) -> dict:
@@ -1223,7 +1251,8 @@ class App:
             same = dupes.check(store, full[0]) if status == "queued" else None
             if status == "queued":
                 self.score_in_background()  # queued jobs are scored first
-            return {"keys": full, "status": status, "warning": same.line if same else None}
+            return {"keys": full, "status": status, "warning": same.line if same else None,
+                    "follow_up": store.find(full[0])[1]["follow_up"]}
         return self._with_store(run)
 
     def post_score(self, body) -> dict:
@@ -1393,6 +1422,7 @@ ROUTES = {
     ("GET", "/api/job"): App.get_job,
     ("GET", "/api/companies"): App.get_companies,
     ("GET", "/api/company"): App.get_company,
+    ("GET", "/api/snoozed"): App.get_snoozed,
     ("POST", "/api/mark"): App.post_mark,
     ("GET", "/api/applications"): App.get_applications,
     ("GET", "/api/calendar"): App.get_calendar,

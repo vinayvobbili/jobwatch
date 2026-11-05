@@ -114,7 +114,7 @@ def _ranked(groups: dict[str, dict], by_name, by_board) -> list[tuple[int, dict]
 # Open applications, then queued jobs, the ones that ended, skipped ones, and last the roles not acted on.
 def _order(rec: dict) -> int:
     s = rec["status"]
-    return (0 if s in STAGES and s not in ENDED else 1 if s == "queued" else 2 if s in ENDED
+    return (0 if s in STAGES and s not in ENDED else 1 if s in ("queued", "snoozed") else 2 if s in ENDED
             else 3 if s == "skipped" else 4)
 
 
