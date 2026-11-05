@@ -144,6 +144,10 @@ def test_a_title_that_says_remote_is_a_remote_job_in_the_us(title, remote):
     ("We are not open to remote work for this role.", None),
     ("Remote is not an option.", None),
     ("Five days a week in our Austin office.", None),
+    ("Reports to: Director\nLocation: Remote US, Only\nCompensation: $150,000", "Location: Remote US"),
+    ("A 100% remote work environment since 2015.", "100% remote work"),
+    ("Location: Remote - Oregon", None),
+    ("This is not 100% remote work.", None),
 ])
 def test_remote_offered_in_the_text_passes_the_place_rules(text, offer):
     f = Filters(locations=HOME, home_state="CO")
@@ -153,6 +157,13 @@ def test_remote_offered_in_the_text_passes_the_place_rules(text, offer):
     # Only when remote is one of your places, and not for a job abroad
     assert remote_offered(austin, Filters(locations=["Denver"])) is None
     assert remote_offered(job(description=text, locations=["London, UK"]), f) is None
+
+
+def test_a_place_that_is_only_the_country_passes_when_the_text_says_remote():
+    f = Filters(locations=HOME, home_state="CO")
+    country = dict(locations=["United States of America"])
+    assert reject_reason(job(description="Location: Remote US, Only", **country), f) is None
+    assert reject_reason(job(description="In our office daily.", **country), f) == "location"
 
 
 def test_remote_only_in_other_states_is_left_out_for_a_home_state():

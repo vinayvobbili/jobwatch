@@ -270,7 +270,10 @@ _REMOTE_OFFER = re.compile(
     r"|remote (?:candidates|applicants) (?:will |may |would )?(?:also )?(?:be )?considered"
     r"|(?:will|would|may) (?:also )?consider (?:fully )?remote"
     r"|open to (?:fully )?remote(?: candidates| applicants| work)?"
-    r"|remote (?:work )?(?:is )?(?:also )?(?:an option|possible|negotiable)", re.I)
+    r"|remote (?:work )?(?:is )?(?:also )?(?:an option|possible|negotiable)"
+    # A place that's just a country ("United States"), with the real answer in the text.
+    r"|location\s*:\s*remote[\s,-]*(?:us|usa|u\.s\.|united states)\b"
+    r"|100% remote work\b", re.I)
 _NOT = re.compile(r"\b(?:not|no|never|isn't|aren't|won't|cannot|can't)\b[^.;\n]{0,25}$", re.I)
 
 
