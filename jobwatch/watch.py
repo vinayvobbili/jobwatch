@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import sys
 import time
@@ -731,12 +732,25 @@ NO_TEXT = ("no_text", "No posting text: add a link to the company's posting or p
 MANY_ROLES = ("many_roles", "Not scored: a post listing several roles; watch the company's board to score each one")
 
 
+_ROLE_WORD = re.compile(r"\b(?:engineer|developer|manager|scientist|designer|architect|analyst|researcher|recruiter"
+                        r"|strategist|consultant)s?\b", re.I)
+_LEAD_WORD = re.compile(r"\b(?:lead|head|director|vp|cto|chief)\b", re.I)
+
+
+def names_one_role(title: str) -> bool:
+    """Does a post's title name one role? "Staff Engineers (Python)" and "Senior or Lead Data Engineer" do;
+    "Designer + iOS Developer", "Engineering & Data Science" (a department) and "Multiple roles" don't."""
+    roles = len(_ROLE_WORD.findall(title))
+    return roles == 1 or (roles == 0 and bool(_LEAD_WORD.search(title)))
+
+
 def scorable(job: Job) -> bool:
-    """Can this job be fit-scored? Not a post from a thread of many companies' posts (HN's Who is hiring): it
-    lists several roles, places and links, and scored as one posting they all turn into must-haves ("Located
-    in SF (Hybrid)"), so its score would say nothing. Its company's board, once watched, has each role."""
+    """Can this job be fit-scored? Not a post from a thread of many companies' posts (HN's Who is hiring) that
+    lists several roles: scored as one posting, their places and asks all turn into must-haves ("Located in SF
+    (Hybrid)"), so its score would say nothing. Its company's board, once watched, has each role. A post for
+    one role reads like any other posting, and small companies that post only there are scored with it."""
     src = sources.SOURCES.get(job.source)
-    return not (src and src.many_companies)
+    return not (src and src.many_companies) or names_one_role(job.title)
 
 
 def _ordinal(n: int) -> str:

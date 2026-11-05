@@ -259,6 +259,40 @@ def test_a_post_listing_several_roles_isnt_scored(resume_watchlist, monkeypatch)
     store.close()
 
 
+@pytest.mark.parametrize("title", ["Platform Engineer", "Site Reliability Engineer (L5)", "Mobile Developer, iOS",
+                                   "Senior and Staff Data Engineers", "Senior or Lead Data Engineer",
+                                   "Lead Engineer", "Engineering Manager", "Head of Engineering"])
+def test_a_title_naming_one_role(title):
+    assert watch.names_one_role(title)
+
+
+@pytest.mark.parametrize("title", ["Platform Engineer; Data Scientist", "Designer + iOS Developer",
+                                   "Software Engineer & Data Scientist", "Engineering & Product",
+                                   "Software Engineering", "Multiple roles", "Open roles (see the post)"])
+def test_a_title_naming_several_roles_or_none(title):
+    assert not watch.names_one_role(title)
+
+
+def test_a_post_for_one_role_is_scored(resume_watchlist, monkeypatch):
+    asked = []
+
+    def fake(jobs, resume, backend, cache_dir, workers=1, progress=None, prompts=None, model="", keychain="",
+             batch=False, key_command=""):
+        asked.extend(j.key for j in jobs)
+        return {j.key: FIT for j in jobs}, {}
+
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    cfg, store = _fetched(resume_watchlist)
+    post = Job("hn", "whoishiring", "9000202", "Platform Engineer", "https://acmerobotics.example/careers",
+               company_name="Acme Robotics", locations=["United States (Remote)"], remote=True,
+               description="Acme Robotics | Platform Engineer | United States (Remote)\nWe run robots on Python.")
+    store.sync("hn", "whoishiring", [post])
+    assert post.key in [e.job.key for e in watch.unscored(cfg, store)]
+    watch.build_digest(cfg, store, score_top=10)
+    assert post.key in asked
+    store.close()
+
+
 def test_a_score_saved_for_a_post_before_is_left_out(resume_watchlist, scored):
     cfg, store = _fetched(resume_watchlist)
     post = _post(store)
