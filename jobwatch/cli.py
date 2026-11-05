@@ -493,7 +493,10 @@ def _pairs(d: dict, prefix: str = "") -> list[dict]:
 def _answers(path: Path) -> list[dict]:
     """A YAML or JSON file of form answers: {question: answer, ...} (sections nested or not) or
     [{question, answer}, ...]."""
-    raw = yaml.safe_load(path.expanduser().read_text(encoding="utf-8"))
+    try:
+        raw = yaml.safe_load(path.expanduser().read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise ValueError(f"{path}: not valid YAML, put quotes around a question with a colon in it ({e})") from None
     if isinstance(raw, dict):
         return _pairs(raw)
     if isinstance(raw, list):

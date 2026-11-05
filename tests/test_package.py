@@ -69,6 +69,15 @@ def test_answers_and_note(pkg):
         pkg.write(answers="Why us? The product.")
 
 
+def test_an_answers_file_with_an_unquoted_colon_says_what_to_fix(tmp_path):
+    f = tmp_path / "answers.yaml"
+    f.write_text("Any agreements, such as: a non-compete?: No\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="put quotes around a question with a colon"):
+        cli._answers(f)
+    f.write_text('"Any agreements, such as: a non-compete?": No\n', encoding="utf-8")
+    assert cli._answers(f) == [{"question": "Any agreements, such as: a non-compete?", "answer": "No"}]
+
+
 def test_applying_saves_the_posting_as_it_read_then(tmp_path, web):
     from jobwatch.store import Store
 
