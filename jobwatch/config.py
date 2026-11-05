@@ -62,6 +62,22 @@ class Imap:
     keychain: str = ""
     senders: tuple[str, ...] = ALERT_SENDERS  # FROM searches: an address or a domain
     days: int = 3                             # emails from the last N days
+    every: timedelta | None = None            # the page reads it this often too, between checks; None: only with them
+
+
+MAIL_LEAST = timedelta(minutes=15)  # alerts.imap.every's floor: alerts come a few times a day, not by the minute
+
+
+def _mail_every(raw, path: Path) -> timedelta | None:
+    """alerts.imap.every: "2h", "90m"; unset, 0 or off: the mailbox is read with each check for new jobs only."""
+    if raw is None or raw is False or str(raw).strip().lower() in _OFF:
+        return None
+    every = duration(raw) if not isinstance(raw, bool) else None
+    if every is None:
+        raise ConfigError(f"{path}: alerts.imap.every looks like 2h or 90m (or off), got {raw!r}")
+    if every and every < MAIL_LEAST:
+        raise ConfigError(f"{path}: alerts.imap.every must be at least 15m, got {raw!r}")
+    return every or None
 
 
 def _imap(raw, path: Path) -> Imap | None:
@@ -84,7 +100,7 @@ def _imap(raw, path: Path) -> Imap | None:
                     folder=str(raw.get("folder", "INBOX")), password_env=str(raw.get("password_env", "")),
                     keychain=str(raw.get("keychain", "")),
                     senders=tuple(str(s) for s in ([senders] if isinstance(senders, str) else senders)),
-                    days=int(raw.get("days", 3)))
+                    days=int(raw.get("days", 3)), every=_mail_every(raw.get("every"), path))
     except (TypeError, ValueError) as e:
         raise ConfigError(f"{path}: alerts.imap: {e}") from None
 

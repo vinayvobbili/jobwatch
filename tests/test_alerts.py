@@ -8,12 +8,13 @@ import io
 import json
 import re
 import subprocess
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from jobwatch import alerts, cli, config, sources, watch
+from jobwatch import web as ui
 from jobwatch.filters import Filters, reject_reason
 from jobwatch.store import Store
 from jobwatch.watch import build_digest, fetch_all
@@ -684,6 +685,57 @@ def test_every_check_reads_the_mailbox_too(tmp_path, watchlist, web, monkeypatch
     r = fetch_all(cfg, store, mail=FakeIMAP)
     assert r.boards == 3 and r.emails is None and "JOBWATCH_IMAP_PASSWORD" in r.errors[watch.MAILBOX]
     assert config.load(watchlist).imap is None and fetch_all(config.load(watchlist), store).emails is None
+
+
+def test_how_often_the_mailbox_is_read_alone(tmp_path, watchlist):
+    path = tmp_path / "w.yaml"
+    base = watchlist.read_text() + IMAP_WATCHLIST + "    password_env: X\n"
+    path.write_text(base)
+    assert config.load(path).imap.every is None  # with each check only, unless set
+    for every, want in (("2h", timedelta(hours=2)), ("90m", timedelta(minutes=90)), ("off", None), ("0", None)):
+        path.write_text(base + f"    every: {every}\n")
+        assert config.load(path).imap.every == want
+    for every, error in (("5m", "at least 15m"), ("soon", "looks like 2h")):
+        path.write_text(base + f"    every: {every}\n")
+        with pytest.raises(config.ConfigError, match=error):
+            config.load(path)
+
+
+def test_the_page_reads_the_mailbox_between_checks(tmp_path, watchlist, web, monkeypatch):
+    """alerts.imap.every: the emails' jobs come in without asking any board, and it doesn't count as a check, so the
+    boards' schedule stays as it is."""
+    path = tmp_path / "w.yaml"
+    path.write_text(f"{watchlist.read_text()}{IMAP_WATCHLIST}    password_env: JOBWATCH_IMAP_PASSWORD\n    every: 2h\n")
+    monkeypatch.setenv("JOBWATCH_IMAP_PASSWORD", "not-a-real-password")
+    monkeypatch.setattr(alerts.imaplib, "IMAP4_SSL", FakeIMAP)
+    monkeypatch.setattr(alerts, "intake", functools.partial(alerts.intake, follow=False))  # no links read
+    monkeypatch.setattr(ui, "fetch_all", lambda *a, **k: pytest.fail("checked the boards"))
+    refresher = ui.Refresher(ui.App(path, background=False))
+    start = datetime.now(timezone.utc)
+    assert refresher.mail_due(start)  # none read yet
+    assert refresher.read_mail(start) > 0
+    assert not refresher.mail_due(start + timedelta(hours=1, minutes=59))
+    assert refresher.mail_due(start + timedelta(hours=2))
+    assert Store(config.load(path).state).last_fetch() is None  # not a check
+
+
+def test_a_check_counts_as_a_read_of_the_mailbox(tmp_path, watchlist, web, monkeypatch):
+    path = tmp_path / "w.yaml"
+    path.write_text(f"{watchlist.read_text()}{IMAP_WATCHLIST}    password_env: JOBWATCH_IMAP_PASSWORD\n    every: 2h\n")
+    monkeypatch.setenv("JOBWATCH_IMAP_PASSWORD", "not-a-real-password")
+    monkeypatch.setattr(alerts.imaplib, "IMAP4_SSL", FakeIMAP)
+    monkeypatch.setattr(alerts, "intake", functools.partial(alerts.intake, follow=False))
+    refresher = ui.Refresher(ui.App(path, background=False))
+    refresher.fetch()
+    assert not refresher.mail_due()
+    assert refresher.mail_due(datetime.now(timezone.utc) + timedelta(hours=2))
+
+
+def test_without_every_the_mailbox_waits_for_a_check(tmp_path, watchlist):
+    path = tmp_path / "w.yaml"
+    path.write_text(watchlist.read_text() + IMAP_WATCHLIST + "    password_env: JOBWATCH_IMAP_PASSWORD\n")
+    assert not ui.Refresher(ui.App(path, background=False)).mail_due()
+    assert not ui.Refresher(ui.App(watchlist, background=False)).mail_due()  # no mailbox at all
 
 
 def test_imap_password_from_the_keychain(monkeypatch):

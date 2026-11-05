@@ -163,6 +163,45 @@ def offline_warning(b: Board) -> str:
             f"company's careers site to the watchlist, {{board: {b.entry}, careers: https://...}}")
 
 
+def _read_mailbox(cfg: Config, store: Store, report: FetchReport, mail, page, by: str) -> None:
+    """The job-alert emails in the mailbox, into `report` and the Activity log, then a look for alert jobs' postings."""
+    if cfg.imap:
+        try:
+            got = alerts.intake(cfg, store, alerts.imap_messages(cfg.imap, connect=mail))
+        except alerts.AlertError as e:
+            report.errors[MAILBOX] = str(e)
+            store.log("mail", f"Couldn't read job-alert emails from {cfg.imap.host}", ok=False, detail=[str(e)], by=by,
+                      notable=True)
+        else:
+            report.emails = got.emails
+            report.new += [f.key for f in got.found if f.result == "new"]  # intake marks their duplicates
+            fresh = [f for f in got.found if f.result == "new"]
+            yours = for_you(cfg, [f.job for f in fresh if f.job])
+            store.log("mail", f"Read {plural(got.emails, 'job-alert email')}: {found_line(len(yours))}",
+                      detail=[*[f"New: {j.display_company}: {j.title}" for j in yours][:ACTIVITY_LINES],
+                              f"From {cfg.imap.host}: {plural(len(got.found), 'job')}, {len(fresh)} new, "
+                              f"{len(fresh) - len(yours)} hidden by your filters"],
+                      by=by)
+    # Jobs that came in from alerts with no posting text are looked for again on their companies' boards (a few
+    # a run, none more than once a day), so the page can score them.
+    try:
+        filled = alerts.backfill(cfg, store, page)
+    except Exception as e:  # a better copy of a job is a nicety: it never fails a check
+        report.warnings["alerts.backfill"] = str(e)
+    else:
+        if filled.filled:
+            store.log("mail", f"Found {plural(len(filled.filled), 'alert job')} on the company's own board",
+                      detail=[f"{j.display_company}: {j.title}" for j in filled.filled][:ACTIVITY_LINES], by=by)
+
+
+def read_mail(cfg: Config, store: Store, page=None, mail=None, by: str = "") -> FetchReport:
+    """Only the mailbox, between checks for new jobs (alerts.imap.every): no board is asked, and it doesn't count as
+    a check, so the boards' schedule is unchanged."""
+    report = FetchReport()
+    _read_mailbox(cfg, store, report, mail, page, by)
+    return report
+
+
 def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, mail=None,
               reread: tuple[str, ...] = (), by: str = "", every_board: bool = False) -> FetchReport:
     """Pull the boards in the watchlist that are due (see boards_due; every_board: all of them) and record what is
@@ -250,33 +289,7 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
                 except Exception as e:  # a suggestion is a hint: it never fails a check
                     report.warnings[b.entry] = f"companies to watch not noted: {e}"
     checked = len(report.new)  # the boards' new jobs; the mailbox's come next
-    if cfg.imap:
-        try:
-            got = alerts.intake(cfg, store, alerts.imap_messages(cfg.imap, connect=mail))
-        except alerts.AlertError as e:
-            report.errors[MAILBOX] = str(e)
-            store.log("mail", f"Couldn't read job-alert emails from {cfg.imap.host}", ok=False, detail=[str(e)], by=by,
-                      notable=True)
-        else:
-            report.emails = got.emails
-            report.new += [f.key for f in got.found if f.result == "new"]  # intake marks their duplicates
-            fresh = [f for f in got.found if f.result == "new"]
-            yours = for_you(cfg, [f.job for f in fresh if f.job])
-            store.log("mail", f"Read {plural(got.emails, 'job-alert email')}: {found_line(len(yours))}",
-                      detail=[*[f"New: {j.display_company}: {j.title}" for j in yours][:ACTIVITY_LINES],
-                              f"From {cfg.imap.host}: {plural(len(got.found), 'job')}, {len(fresh)} new, "
-                              f"{len(fresh) - len(yours)} hidden by your filters"],
-                      by=by)
-    # Jobs that came in from alerts with no posting text are looked for again on their companies' boards (a few
-    # a run, none more than once a day), so the page can score them.
-    try:
-        filled = alerts.backfill(cfg, store, page)
-    except Exception as e:  # a better copy of a job is a nicety: it never fails a check
-        report.warnings["alerts.backfill"] = str(e)
-    else:
-        if filled.filled:
-            store.log("mail", f"Found {plural(len(filled.filled), 'alert job')} on the company's own board",
-                      detail=[f"{j.display_company}: {j.title}" for j in filled.filled][:ACTIVITY_LINES], by=by)
+    _read_mailbox(cfg, store, report, mail, page, by)
     # Queued jobs, open applications and Today's alert and hand-added jobs are checked to still be posted (a few a
     # run, none more than once a day): a posting taken down leaves Today, as a watched board's jobs do.
     try:

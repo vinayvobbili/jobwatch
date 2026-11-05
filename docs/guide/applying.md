@@ -198,6 +198,7 @@ alerts:
     # password_env: JOBWATCH_IMAP_PASSWORD   # or this, instead of keychain
     # folder: INBOX
     # days: 3                      # alerts from the last 3 days
+    # every: 2h                    # the page reads it this often too, between checks for new jobs
     # senders: [jobalerts-noreply@linkedin.com, builtin.com, jobalert.indeed.com]
 ```
 

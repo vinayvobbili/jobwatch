@@ -76,6 +76,7 @@ from .watch import (
     pace,
     plural,
     queue,
+    read_mail,
     save_job,
     scorable,
     score_entries,
@@ -245,6 +246,7 @@ class Refresher:
         self.tried: datetime | None = None   # when the last scheduled check started
         self.error = ""                      # why the last scheduled check failed, until one works
         self.lca_tried: datetime | None = None  # when the LCA data was last refreshed (or tried)
+        self.mail_read: datetime | None = None  # when the page last read the mailbox, alone or in a check
 
     @property
     def running(self) -> bool:
@@ -260,6 +262,7 @@ class Refresher:
             current = self._current
         if not mine:
             return current.result()
+        self.mail_read = datetime.now(timezone.utc)  # a check reads the mailbox too
         try:
             with self.app.lock:
                 out = self.app._with_store(lambda cfg, store: self._fetch(cfg, store, by))
@@ -278,6 +281,27 @@ class Refresher:
         r = fetch_all(cfg, store, by=by)
         return {"boards": r.boards, "jobs": r.jobs, "new": len(r.new), "errors": r.errors, "warnings": r.warnings,
                 "summary": report.fetch_summary(r)}
+
+    def mail_due(self, now: datetime | None = None) -> bool:
+        """Whether the mailbox is due a read of its own (alerts.imap.every): none since that long ago, alone or in a
+        check, and no check running now, since that reads it anyway. A failed read waits the same interval."""
+        now = now or datetime.now(timezone.utc)
+        if not self.app.path.is_file() or self.running:
+            return False
+        try:
+            cfg = self.app._cfg()
+        except ConfigError:
+            return False
+        every = cfg.imap.every if cfg.imap else None
+        return bool(every) and (self.mail_read is None or now - self.mail_read >= every)
+
+    def read_mail(self, now: datetime | None = None, by: str = "schedule") -> int:
+        """Read the mailbox alone, for the jobs that came in by email since; how many are new. Their scores follow."""
+        self.mail_read = now or datetime.now(timezone.utc)
+        with self.app.lock:
+            found = self.app._with_store(lambda cfg, store: read_mail(cfg, store, by=by))
+        self.app.score_in_background()
+        return len(found.new)
 
     def due(self, now: datetime | None = None) -> bool:
         """Whether a scheduled check is due: fetch_every is on, there are boards, and the last check is older
@@ -342,6 +366,11 @@ class Refresher:
             except Exception as e:  # never take the page down: say why, and try again later
                 self.error = f"{type(e).__name__}: {e}"
                 print(f"jobwatch: scheduled check for new jobs failed: {self.error}", file=sys.stderr)
+            try:
+                if self.mail_due():
+                    self.read_mail()
+            except Exception as e:  # the same: the next read is a while off, and the next check reads it too
+                print(f"jobwatch: reading job-alert emails failed: {type(e).__name__}: {e}", file=sys.stderr)
             self.refresh_lca()
             self._stop.wait(self.tick)
 
