@@ -1436,7 +1436,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("key")
     p.add_argument("files", nargs="*", type=Path)
     p.add_argument("--kind", choices=["resume", "letter", "other"], help="default: guessed from the file name")
-    p.add_argument("--answers", type=Path, metavar="FILE", help="YAML or JSON: question: answer pairs")
+    p.add_argument("--answers", type=Path, metavar="FILE",
+                   help="YAML or JSON: question: answer pairs; replaces the answers already kept, so include them all")
     p.add_argument("--message", type=Path, metavar="FILE", help="a cover letter or message you pasted in, as text")
     p.set_defaults(func=cmd_attach)
 
