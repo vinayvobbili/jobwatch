@@ -83,6 +83,24 @@ def test_audio_is_forwarded_as_the_openai_audio_api_and_the_words_come_back(stt,
         speech.transcribe(b"")
 
 
+def test_transcribe_command_prints_the_words_and_how_they_were_said(stt, tmp_path, capsys):
+    from jobwatch import cli
+
+    memo = tmp_path / "practice.m4a"
+    memo.write_bytes(b"fake-m4a")
+    stt.answer = (200, {"text": "Um, at Initech I, um, rebuilt the queue.", "duration": 3.0, "segments": []})
+    cli.main(["transcribe", str(memo)])
+    out, err = capsys.readouterr()
+    assert out.strip() == "Um, at Initech I, um, rebuilt the queue."
+    assert "3 seconds, 8 words, 160 words a minute; um x2" in err and "To change:" in err
+    assert b'filename="practice.m4a"' in stt.sent[0][2] and b"Content-Type: audio/mp4" in stt.sent[0][2]
+    stt.answer = (503, {"error": {"message": "memory is short"}})
+    with pytest.raises(SystemExit, match="jobwatch: "):
+        cli.main(["transcribe", str(memo)])
+    with pytest.raises(SystemExit, match="no such recording"):
+        cli.main(["transcribe", str(tmp_path / "missing.webm")])
+
+
 def test_the_speech_url_follows_the_local_model_server(monkeypatch):
     monkeypatch.delenv("LOCAL_STT_URL", raising=False)
     monkeypatch.setenv("LOCAL_LLM_URL", "http://127.0.0.1:9999/v1/")

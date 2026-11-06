@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import os
 import re
 import sys
@@ -47,6 +48,7 @@ from . import (
     rolekinds,
     scorestats,
     sources,
+    speech,
     stories,
     storyfind,
     suggest,
@@ -1027,6 +1029,25 @@ def cmd_rehearse(args):
         webbrowser.open(out.resolve().as_uri())
 
 
+def cmd_transcribe(args):
+    """A recording of a practice answer (a voice memo, say) as text, through the local speech-to-text server, with
+    how it was delivered: length against the 60 to 90 second target, words a minute and filler words."""
+    path = Path(args.audio).expanduser()
+    if not path.is_file():
+        raise SystemExit(f"jobwatch: no such recording: {path}")
+    kind = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    try:
+        said = speech.transcribe(path.read_bytes(), kind, path.name)
+    except speech.SpeechUnavailable as e:
+        raise SystemExit(f"jobwatch: {e}") from None
+    print(said["text"])
+    row = mock.delivery({"question": args.question or "", "answer": said["text"], "seconds": said["duration"]})
+    pace = f", {row['wpm']} words a minute" if row["wpm"] is not None else ""
+    fillers = ", ".join(f"{w} x{n}" for w, n in row["fillers"].items()) or "no filler words"
+    print(f"\n{row['seconds']:g} seconds, {row['words']} words{pace}; {fillers}"
+          + (f"\nTo change: {row['flag']}" if row["flag"] else ""), file=sys.stderr)
+
+
 def cmd_skills(args, cfg, store):
     _write(learn.markdown(learn.gather(cfg, store, args.timeline), include_covered=args.all), args.out)
 
@@ -1493,6 +1514,12 @@ def build_parser() -> argparse.ArgumentParser:
                                                   "<name>-rehearse.html)")
     p.add_argument("--no-open", action="store_true", help="write the page without opening it")
     p.set_defaults(func=cmd_rehearse, needs_config=False)
+
+    p = sub.add_parser("transcribe", help="a recorded practice answer as text, through the local speech-to-text "
+                                          "server, with its length, pace and filler words")
+    p.add_argument("audio", type=Path, help="the recording (webm, m4a, mp3, wav, ogg)")
+    p.add_argument("--question", help="the question it answers, for the record")
+    p.set_defaults(func=cmd_transcribe, needs_config=False)
 
     p = sub.add_parser("skills", help="skills your matching jobs ask for that your resume doesn't show, and "
                                       "courses and certifications to learn them")
