@@ -96,7 +96,7 @@ def test_there_is_no_key_source_when_the_keychain_has_no_item_or_is_not_a_mac(mo
 def ready_here(monkeypatch, **over):
     """Everything present, unless overridden."""
     things = {"_installed": lambda m: True, "_agy_supported": lambda: True, "find_agy": lambda: "/bin/agy",
-              "apple_silicon": lambda: True, "key_source": lambda *a: "environment"}
+              "local_server_up": lambda: True, "key_source": lambda *a: "environment"}
     things.update(over)
     for name, fn in things.items():
         monkeypatch.setattr(ai, name, fn)
@@ -156,20 +156,11 @@ def test_without_the_scoring_add_on_claude_and_agy_ask_to_install_it(monkeypatch
     assert s["local"]["ready"]
 
 
-def test_local_needs_apple_silicon(monkeypatch):
-    ready_here(monkeypatch, apple_silicon=lambda: False)
+def test_local_asks_for_a_model_server_when_none_answers(monkeypatch):
+    ready_here(monkeypatch, local_server_up=lambda: False)
     s = ai.status()
     assert not s["local"]["ready"]
-    assert s["local"]["possible"] is False
-    assert s["local"]["steps"] == [{"text": "Needs a Mac with Apple Silicon (M1 or later)"}]
-
-
-def test_local_asks_for_the_on_device_add_on_when_mlx_is_missing(monkeypatch):
-    ready_here(monkeypatch, _installed=lambda m: m != "mlx_lm")
-    s = ai.status()
-    assert not s["local"]["ready"]
-    assert s["local"]["steps"][0]["command"] == ai.INSTALL_LOCAL
-    assert s["local"]["possible"] is True
+    assert s["local"]["steps"] == [{"text": ai.LOCAL_STEP}] and "LOCAL_LLM_URL" in ai.LOCAL_STEP
 
 
 # save_key

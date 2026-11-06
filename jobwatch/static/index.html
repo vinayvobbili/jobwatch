@@ -4650,7 +4650,7 @@ function chatCard(s) {
   const c = s.chat || {}, d = s.defaults.chat;
   const backend = choice([["", "Same as fit scores"], ["claude", "Claude API (needs ANTHROPIC_API_KEY)"],
     ["local", "On this Mac (Apple Silicon)"]], c.backend);
-  const claude = textInput(c.claude_model, d.claude_model), local = textInput(c.local_model, d.local_model);
+  const claude = textInput(c.claude_model, d.claude_model);
   const tokens = numInput(c.max_tokens, d.max_tokens, { min: 1, max: 64000, step: 100 });
   const turns = numInput(c.max_turns, d.max_turns, { min: 1, max: 200 });
   const prompt = promptFold({ name: "chat prompt", about: "what the assistant is told before every question: its " +
@@ -4659,12 +4659,11 @@ function chatCard(s) {
     h("div", { class: "fields" },
       field("Runs on", backend, "Claude gets your question, resume and the jobs; this Mac keeps them here."),
       field("Claude model", claude, "When it runs on Claude."),
-      field("Model on this Mac", local, "An MLX model; the first answer waits for it to load."),
       field("Longest reply", tokens, "In tokens, about ¾ of a word each."),
       field("Messages sent", turns, "The latest messages of a conversation sent with each question.")),
     prompt.fold);
   el.classList.add("full");
-  el.values = () => merged(c, { backend: backend.value || null, claude_model: textOf(claude), local_model: textOf(local),
+  el.values = () => merged(c, { backend: backend.value || null, claude_model: textOf(claude),
     max_tokens: numberOf(tokens), max_turns: numberOf(turns), prompt: prompt.changed() ? prompt.text.value : null });
   return el;
 }

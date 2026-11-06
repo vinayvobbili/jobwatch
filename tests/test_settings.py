@@ -37,15 +37,14 @@ def write(path, **sections):
 def test_the_defaults_are_the_values_once_fixed_in_the_code(watchlist):
     cfg = config.load(watchlist)
     assert cfg.chat == Chat(backend="local")
-    assert (cfg.chat.claude_model, cfg.chat.local_model) == ("claude-sonnet-5-5", "mlx-community/Qwen3.5-9B-MLX-4bit")
+    assert (cfg.chat.claude_model, cfg.chat.local_model) == ("claude-sonnet-5-5", "")  # the server picks its own
     assert (cfg.chat.max_tokens, cfg.chat.max_turns, cfg.chat.prompt) == (1500, 24, "")
-    assert cfg.chat.model == "mlx-community/Qwen3.5-9B-MLX-4bit"
+    assert cfg.chat.model == ""
     assert (cfg.backend, cfg.score_model, cfg.score_top) == ("local", "", 0)
     assert (cfg.pay.ask_over, cfg.pay.round, cfg.pay.today) == (10, 5000, 15)
     assert (cfg.suggest.half_life, cfg.suggest.limit, cfg.learn_jobs) == (30, 10, 5)
     d = config.defaults()
-    assert d["chat"] == {"claude_model": "claude-sonnet-5-5", "local_model": "mlx-community/Qwen3.5-9B-MLX-4bit",
-                         "max_tokens": 1500, "max_turns": 24}
+    assert d["chat"] == {"claude_model": "claude-sonnet-5-5", "local_model": "", "max_tokens": 1500, "max_turns": 24}
     assert d["pay"] == {"levels": False, "region": "", "ask_over": 10, "round": 5000, "today": 15}
     assert d["suggestions"] == {"half_life": 30, "limit": 10, "auto_watch": False} and d["learning"]["jobs"] == 5
     assert d["scoring"] == {"backend": "local", "top": 0} and d["fetch_every"] == "6h"
@@ -173,8 +172,8 @@ def test_the_chat_uses_its_settings(watchlist, web, fake_model):
     assert "Today's matching jobs" in fake_model["system"]  # {context} filled in
     assert fake_model["system"].endswith("Keep it to three lines.")
     assert [m["content"] for m in fake_model["messages"]] == ["message 4", "message 5", "message 6"]
-    assert info["model"] == "mlx-community/Tiny-Test-4bit" and info["local"] is True
-    assert app.get_chat({}) == chat.where("local", "mlx-community/Tiny-Test-4bit")
+    assert info["model"] == "local model" and info["local"] is True  # a leftover chat.local_model isn't shown
+    assert app.get_chat({}) == chat.where("local")
 
 
 def test_the_page_has_a_card_for_each_section(server):
@@ -188,4 +187,5 @@ def test_the_page_has_a_card_for_each_section(server):
 
 def test_chat_where_names_the_model():
     assert chat.where("claude", "claude-test-model")["model"] == "claude-test-model"
-    assert chat.where("claude")["model"] == Chat.claude_model and chat.where("local")["model"] == Chat.local_model
+    assert chat.where("claude")["model"] == Chat.claude_model
+    assert chat.where("local", "mlx-community/Tiny-Test-4bit")["model"] == "local model"  # whatever the server runs

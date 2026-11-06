@@ -1,7 +1,5 @@
-"""Fit scores worked out as jobs come in: the page's background scorer, `jobwatch score`, and the model gate
-that keeps a chat reply ahead of both."""
+"""Fit scores worked out as jobs come in: the page's background scorer and `jobwatch score`."""
 
-import sys
 import threading
 import time
 from datetime import timedelta
@@ -162,61 +160,6 @@ def test_a_kick_while_scoring_runs_again(resume_watchlist, monkeypatch):
     assert len(calls) == 3 and app.scorer.status()["running"] is False
 
 
-def test_background_scoring_waits_for_a_chat_reply():
-    gate, order = score.ModelGate(), []
-    in_chat, chat_done = threading.Event(), threading.Event()
-
-    def chat():
-        with gate.foreground():
-            in_chat.set()
-            time.sleep(0.05)
-            order.append("chat")
-        chat_done.set()
-
-    def background():
-        in_chat.wait(5)
-        with gate.background():
-            order.append("score")
-
-    threads = [threading.Thread(target=chat), threading.Thread(target=background)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(5)
-    assert order == ["chat", "score"]
-
-
-def test_a_waiting_chat_goes_before_the_next_background_job():
-    gate, order = score.ModelGate(), []
-    scoring, chat_waiting = threading.Event(), threading.Event()
-
-    def first_job():
-        with gate.background():
-            scoring.set()
-            chat_waiting.wait(5)
-            time.sleep(0.05)  # let the chat thread block on the gate
-            order.append("job 1")
-
-    def chat():
-        scoring.wait(5)
-        chat_waiting.set()
-        with gate.foreground():
-            order.append("chat")
-
-    def second_job():
-        scoring.wait(5)
-        time.sleep(0.02)
-        with gate.background():
-            order.append("job 2")
-
-    threads = [threading.Thread(target=f) for f in (first_job, chat, second_job)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(5)
-    assert order == ["job 1", "chat", "job 2"]
-
-
 def test_score_command(resume_watchlist, scored, capsys):
     asked, _ = scored
     cli.main(["-c", str(resume_watchlist), "fetch"])
@@ -229,67 +172,16 @@ def test_score_command(resume_watchlist, scored, capsys):
     assert "Every job on Today has a fit score." in capsys.readouterr().out
 
 
-@pytest.fixture
-def local_model(monkeypatch):
-    """A stand-in for the loaded on-device model: counts loads, and unloads through score.unload_local_models."""
-    loads = []
-
-    class Backends:  # what shortlist_ai.backends has once it's loaded a model
-        class _load_local_generator:
-            @staticmethod
-            def cache_clear():
-                loads.append("unload")
-
-    monkeypatch.setitem(sys.modules, "shortlist_ai.backends", Backends)
-    monkeypatch.setattr(score, "LOCAL", score.ModelGate())
-    monkeypatch.setattr("jobwatch.web.LOCAL", score.LOCAL)
-    return loads
-
-
-def test_nothing_to_score_loads_no_model_and_leaves_no_thread_or_timer(watchlist, web, local_model, monkeypatch):
+def test_nothing_to_score_calls_no_model_and_leaves_no_thread_or_timer(watchlist, web, monkeypatch):
     """A page with no resume (or every job scored) starts without touching the model and goes quiet."""
     called = []
     monkeypatch.setattr(watch, "score_jobs", lambda *a, **k: called.append(a) or ({}, {}))
     app = App(watchlist, background=True)
     app.post_fetch({})
     app.scorer.wait(10)
-    assert called == [] and local_model == []
-    assert app.scorer._thread is None and app.scorer._rest is None and score.LOCAL._timer is None
+    assert called == []
+    assert app.scorer._thread is None and app.scorer._rest is None
     assert not [t for t in threading.enumerate() if t.name == "jobwatch-scorer"]
-
-
-def test_the_model_is_let_go_after_the_idle_time_and_not_before(monkeypatch):
-    gate, unloads = score.ModelGate(idle_after=0.15), []
-    monkeypatch.setattr(score, "unload_local_models", lambda: unloads.append(1))
-    with gate.background():
-        pass
-    time.sleep(0.05)
-    assert unloads == []
-    with gate.foreground():  # used again: the clock starts over
-        time.sleep(0.2)
-    assert unloads == []  # busy for longer than the idle time, and not idle meanwhile
-    time.sleep(0.4)
-    assert unloads == [1]
-    time.sleep(0.4)
-    assert unloads == [1]  # unloaded once, and no timer left to unload again
-    assert gate._timer is None or not gate._timer.is_alive()
-
-
-def test_a_gate_with_no_idle_time_keeps_the_model_and_never_starts_a_timer():
-    gate = score.ModelGate()
-    with gate.background():
-        pass
-    assert gate._timer is None
-
-
-def test_unloading_forgets_every_loaded_model(local_model):
-    cleared = []
-    score.UNLOADERS.append(lambda: cleared.append("chat"))
-    try:
-        score.unload_local_models()
-    finally:
-        score.UNLOADERS.pop()
-    assert local_model == ["unload"] and cleared == ["chat"]
 
 
 def test_scored_jobs_are_not_scored_again_by_later_runs(resume_watchlist, scored):

@@ -29,7 +29,7 @@ from .filters import (
     title_ok,
 )
 from .models import Job
-from .score import ScoringUnavailable, brief, collecting_usage, paused_until, resume_id, score_jobs, turn
+from .score import ScoringUnavailable, brief, collecting_usage, paused_until, resume_id, score_jobs
 from .store import MANUAL, STAGES, Store
 from .text import local_salary, names_one_role
 
@@ -1012,8 +1012,7 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
     for entry in cfg.score_fallback:  # in order; a backend that can't score (or fails a job) leaves it to the next
         name = fallback_entry(entry)[0]
         try:
-            with turn(name, background):
-                more, more_errors = _step(cfg, store, rest, name, fallback_model(cfg, entry), progress=progress)
+            more, more_errors = _step(cfg, store, rest, name, fallback_model(cfg, entry), progress=progress)
         except ScoringUnavailable as e:
             more, more_errors = {}, {j.key: str(e) for j in rest}
         for key, r in more.items():
@@ -1155,10 +1154,9 @@ def compare_scores(cfg: Config, picks: list[tuple[Job, dict]], backend: str, mod
     """These jobs scored again with another backend or model (or prompts to try in place of the watchlist's), to
     see how its scores line up with the stored ones before trusting them side by side (filters.min_fit is one
     cut-off for both). Nothing is stored. batch: Claude through the Message Batches API, at half price."""
-    with turn(backend):
-        return score_jobs([job for job, _ in picks], cfg.resume, backend, cfg.cache, workers=cfg.score_workers,
-                          progress=progress, prompts=cfg.prompts if prompts is None else prompts, model=model,
-                          keychain=cfg.api_keychain, batch=batch, key_command=cfg.api_key_command)
+    return score_jobs([job for job, _ in picks], cfg.resume, backend, cfg.cache, workers=cfg.score_workers,
+                      progress=progress, prompts=cfg.prompts if prompts is None else prompts, model=model,
+                      keychain=cfg.api_keychain, batch=batch, key_command=cfg.api_key_command)
 
 
 def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,

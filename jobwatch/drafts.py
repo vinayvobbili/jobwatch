@@ -2,7 +2,7 @@
 the ask it probes, and an answer outline built only from your stories (stories.py) and your resume.
 
 It runs with the chat's backend and model (config.Chat):
-- local: the on-device MLX model. Nothing leaves the machine.
+- local: the shared local model server (LOCAL_LLM_URL). Nothing leaves the machine.
 - claude: Anthropic's API. The posting, your resume and your stories go to Anthropic.
 
 The model is asked for JSON, and the code then keeps only what it can stand behind, because a prep sheet is

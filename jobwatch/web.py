@@ -67,7 +67,7 @@ from .config import ConfigError
 from .filters import KINDS
 from .package import Package
 from .rounds import ROUNDS
-from .score import LOCAL, ScoringUnavailable, brief, prompt_info, resume_id, turn
+from .score import ScoringUnavailable, brief, prompt_info, resume_id
 from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
@@ -110,11 +110,11 @@ class ApiError(Exception):
 class Scorer:
     """Scores queued and Today's jobs in the background, queued first, one at a time, so fit scores are there
     when you look. It runs when the page starts, after each check for new jobs and after a new resume, and
-    saves each score as it lands. A chat reply or a Score fit click goes first (see score.ModelGate).
+    saves each score as it lands. A chat reply or a Score fit click doesn't wait for it: the local model server
+    queues every caller.
 
     It works in batches (scoring.batch jobs), then rests (scoring.rest minutes) so a long line of jobs doesn't
-    keep the computer busy for hours, and the model leaves memory once it's idle (scoring.unload_after). With
-    nothing left to score it stops: no thread, no timer, and the model isn't loaded until a job needs it."""
+    keep the computer busy for hours. With nothing left to score it stops: no thread, no timer."""
 
     def __init__(self, app: App):
         self.app = app
@@ -206,9 +206,8 @@ class Scorer:
             self.current = (f"{len(group)} jobs through Claude's Batches API (half price)" if batch and len(group) > 1
                             else f"{e.job.display_company}: {e.job.title}")
             self.current_key = e.job.key
-            with turn(cfg.backend, background=True):
-                scored, errors = score_entries(cfg, store, group, progress=lambda m: None, background=True,
-                                               by="background", batch=batch)
+            scored, errors = score_entries(cfg, store, group, progress=lambda m: None, background=True,
+                                           by="background", batch=batch)
         finally:
             store.close()
         self.done += scored
@@ -558,7 +557,6 @@ class App:
         if not self.path.is_file():
             raise ApiError("No watchlist yet. Add companies in Settings first.", HTTPStatus.CONFLICT)
         cfg = config.load(self.path)
-        LOCAL.idle_after = cfg.unload_after * 60 or None  # how long the local model stays loaded unused
         return cfg
 
     def _with_store(self, fn):
@@ -1314,8 +1312,7 @@ class App:
             rid = resume_id(cfg.resume, cfg.prompts)
             if cached := store.score(job.key, rid):
                 return cached
-            with turn(cfg.backend):  # ahead of background scoring
-                results, errors = score_with_fallback(cfg, store, [job])
+            results, errors = score_with_fallback(cfg, store, [job])
             if job.key not in results:
                 raise ApiError(errors.get(job.key, "scoring failed"), HTTPStatus.BAD_GATEWAY)
             store.save_score(job.key, rid, results[job.key])
@@ -1371,8 +1368,7 @@ class App:
                 entry = next((e for e in scoring_line(cfg, store) if key in e.keys), None) or \
                     Entry(job, record, 0.0, [])
                 one = replace(cfg, backend=backend, score_model=model, score_fallback=(), score_daily=0)
-                with turn(backend):  # ahead of background scoring
-                    _, errors = score_entries(one, store, [entry], progress=lambda m: None, by="rescore")
+                _, errors = score_entries(one, store, [entry], progress=lambda m: None, by="rescore")
                 return entry, errors.get(job.key)
             entry, error = self._with_store(run)
             if error or not entry.fit:

@@ -55,11 +55,9 @@ scoring:
   auto: true                              # the page scores every new match in the background
   # batch: 10                             # ...this many jobs in a row, then a rest (0: no rests)
   # rest: 10                              # ...of this many minutes
-  # unload_after: 5                       # minutes idle before the local model leaves memory (0: keep it)
 chat:                                     # Ask jobwatch; leave any of these out for its default
   backend: local                          # claude or local; default: scoring.backend
   claude_model: claude-sonnet-5-5
-  local_model: mlx-community/Qwen3.5-9B-MLX-4bit
   max_tokens: 1500                        # the longest reply
   max_turns: 24                           # the latest messages of a conversation sent with each question
   # prompt: ...                           # its instructions (Settings > Chat); must keep {today} and {context}

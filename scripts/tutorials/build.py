@@ -43,7 +43,7 @@ INSTALL = """<span class="p">$</span> pipx install jobwatch          <span class
 
 <span class="c"># optional extras</span>
 <span class="p">$</span> pip install 'jobwatch[score]'       <span class="c"># fit scores with Claude's API</span>
-<span class="p">$</span> pip install 'jobwatch[local]'       <span class="c"># fit scores on this Mac</span>
+<span class="p">$</span> pip install 'jobwatch[local]'       <span class="c"># fit scores, local model</span>
 <span class="p">$</span> pip install 'jobwatch[mcp]'         <span class="c"># MCP server for Claude</span>
 
 <span class="p">$</span> jobwatch ui

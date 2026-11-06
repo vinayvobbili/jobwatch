@@ -206,7 +206,7 @@ class Chat:
     """chat in the watchlist: the assistant's model and how long it goes on (see chat.py)."""
     backend: str = ""          # claude or local; unset: scoring.backend's (load fills it in)
     claude_model: str = "claude-sonnet-5-5"  # quick, conversational replies; fit scores keep their own model
-    local_model: str = "mlx-community/Qwen3.5-9B-MLX-4bit"  # shortlist-ai's local model: one download serves both
+    local_model: str = ""      # chat.local_model: read and ignored (the local model server runs whichever model it has)
     max_tokens: int = 1500     # the longest reply
     max_turns: int = 24        # the most recent messages of a conversation sent with each question
     prompt: str = ""           # the edited system prompt; unset: chat.SYSTEM
@@ -560,7 +560,7 @@ class Config:
     score_batch: int = 10      # scoring.batch: jobs the page scores in a row before it rests (0: no rests)
     score_batch_api: bool = False  # scoring.batch_api: the page scores with Claude through the Batches API (half price)
     score_rest: int = 10       # scoring.rest: minutes it rests between batches
-    unload_after: int = 5      # scoring.unload_after: minutes idle before the local model leaves memory (0: never)
+    unload_after: int = 5      # scoring.unload_after: read and ignored (the local model server unloads when idle)
     prompts: dict[str, str] = field(default_factory=dict)  # scoring.prompts: the edited fit-score prompts
     chat: Chat = field(default_factory=lambda: Chat(backend="local"))
     prep: Prep = field(default_factory=Prep)
@@ -1091,7 +1091,7 @@ keywords:
 # Optional fit scoring with shortlist-ai (pip install 'jobwatch[score]').
 # resume: ~/Documents/resume.pdf
 scoring:
-  backend: claude        # claude (ANTHROPIC_API_KEY), local (Apple Silicon: jobwatch[local]) or agy (Antigravity CLI)
+  backend: claude        # claude (ANTHROPIC_API_KEY), local (a model server: LOCAL_LLM_URL) or agy (Antigravity CLI)
   top: 0                 # score this many of the most relevant new jobs per digest
   # model: ""            # the model fit scores use; leave out for shortlist-ai's own for the backend
   # keychain: anthropic  # macOS keychain item holding the API key, when ANTHROPIC_API_KEY isn't set (chat too)
@@ -1105,14 +1105,12 @@ scoring:
   # auto: true          # `jobwatch ui` scores every new match in the background (default: on for local)
   # batch: 10            # ...this many jobs in a row, then rests (0: no rests)
   # rest: 10             # ...for this many minutes
-  # unload_after: 5      # minutes idle before the local model leaves memory (0: keep it loaded)
   # prompts: {}          # edited fit-score prompts, by name (Settings > Fit score prompt; see --show-prompts)
 
 # The assistant (`jobwatch ask`, Ask jobwatch on the page). Leave a setting out for its default.
 # chat:
 #   backend: local                                  # claude or local; default: scoring.backend
 #   claude_model: claude-sonnet-5-5
-#   local_model: mlx-community/Qwen3.5-9B-MLX-4bit
 #   max_tokens: 1500                                # the longest reply
 #   max_turns: 24                                   # the latest messages sent with each question
 #   # prompt: |                                     # its instructions (Settings > Chat); keep {today} and {context}

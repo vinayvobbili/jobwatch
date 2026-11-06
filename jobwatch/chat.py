@@ -2,7 +2,9 @@
 `scoring.backend`).
 
 - claude: Anthropic's API (ANTHROPIC_API_KEY). What you ask, your resume and the job data go to Anthropic.
-- local: the same on-device MLX model shortlist-ai uses (pip install 'jobwatch[local]'). Nothing leaves the machine.
+- local: the shared local model server (any OpenAI-compatible one, at LOCAL_LLM_URL, by default
+  http://127.0.0.1:8010/v1) that fit scores use too. It loads the model and queues every caller; nothing leaves
+  the machine.
 
 The models, the longest reply, how much of the conversation is sent and the instructions (SYSTEM, or an edited
 `chat.prompt`) are settings: see config.Chat.
@@ -13,20 +15,26 @@ it can't change anything, apply, or send anything.
 
 from __future__ import annotations
 
+import http.client
+import json
 import os
-import time
+import urllib.parse
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date
-from functools import lru_cache
 
 from . import learn, report
 from .config import Chat, Config
 from .resume import resume_text
-from .score import LOCAL, UNLOADERS, load_api_key, resume_id
+from .score import load_api_key, resume_id
 from .store import Store
 from .watch import MANY_ROLES, build_digest, scorable
 
 MAX_MESSAGE = 8000
+LOCAL_URL = "http://127.0.0.1:8010/v1"  # the shared local model server, unless LOCAL_LLM_URL says otherwise
+LOCAL_CONNECT_TIMEOUT = 3  # seconds to reach the server
+LOCAL_CHECK_TIMEOUT = 2  # seconds for it to answer GET /models, which never loads the model
+LOCAL_READ_TIMEOUT = 900  # seconds between bytes of a reply: the request may wait in the server's queue
 
 SYSTEM = """You are the assistant inside jobwatch, a job-search tool running on the user's own computer. \
 Help them decide which jobs to pursue, understand a posting, prepare an application or interview, and keep up \
@@ -53,7 +61,7 @@ def where(backend: str, model: str = "") -> dict:
     """What the page shows about where messages go."""
     if backend == "claude":
         return {"backend": "claude", "model": model or Chat.claude_model, "label": "Claude", "local": False}
-    return {"backend": "local", "model": model or Chat.local_model, "label": "On this computer", "local": True}
+    return {"backend": "local", "model": "local model", "label": "On this computer", "local": True}
 
 
 def check(backend: str, keychain: str = "", key_command: str = ""):
@@ -71,11 +79,8 @@ def check(backend: str, keychain: str = "", key_command: str = ""):
             raise ChatUnavailable("set ANTHROPIC_API_KEY before `jobwatch ui` to chat with Claude, "
                                   "or switch the chat to the local model (Settings > Chat)")
     elif backend == "local":
-        try:
-            import mlx_lm  # noqa: F401
-        except ImportError:
-            raise ChatUnavailable("chat on this computer needs Apple Silicon and: "
-                                  "pip install 'jobwatch[local]'") from None
+        with _local_call("/models", read_timeout=LOCAL_CHECK_TIMEOUT):  # never loads the model
+            pass
     else:
         raise ChatUnavailable(f"unknown chat backend {backend!r}")
 
@@ -175,20 +180,17 @@ def start(cfg: Config, store: Store, messages: list[dict], key: str | None = Non
 def reply(backend: str, system: str, messages: list[dict], model: str = "",
           max_tokens: int = Chat.max_tokens) -> Iterator[str | dict]:
     """The answer, in pieces as the model writes them, then a dict of what the model reports about the reply
-    (input_tokens, output_tokens and, on this computer, tokens_per_sec, peak_memory_gb and waited_seconds).
-    A {"status"} dict before the text says what the reply is waiting for. model: the backend's default unless set."""
+    (input_tokens, output_tokens). model: Claude's model, the default unless set; the local server picks its own."""
     if backend == "claude":
         return _claude(system, messages, model or Chat.claude_model, max_tokens)
-    return _local(system, messages, model or Chat.local_model, max_tokens)
+    return _local(system, messages, max_tokens)
 
 
 def stats_line(stats: dict) -> str:
     """ "412 tokens out · 28 tokens/s · 3,210 in", from what the model reports (see reply)."""
     parts = [f"{stats['output_tokens']:,} tokens out" if stats.get("output_tokens") else "",
              f"{stats['tokens_per_sec']:g} tokens/s" if stats.get("tokens_per_sec") else "",
-             f"{stats['input_tokens']:,} in" if stats.get("input_tokens") else "",
-             f"{stats['peak_memory_gb']:g} GB peak" if stats.get("peak_memory_gb") else "",
-             f"waited {stats['waited_seconds']:g}s for a fit score" if stats.get("waited_seconds") else ""]
+             f"{stats['input_tokens']:,} in" if stats.get("input_tokens") else ""]
     return " · ".join(p for p in parts if p)
 
 
@@ -210,32 +212,73 @@ def _claude(system: str, messages: list[dict], model: str, max_tokens: int) -> I
         yield {"input_tokens": usage.input_tokens + cached, "output_tokens": usage.output_tokens}
 
 
-@lru_cache(maxsize=1)
-def _local_model(name: str):
-    import mlx_lm
-
-    return mlx_lm.load(name)
+def local_url() -> str:
+    """Where the shared local model server listens: LOCAL_LLM_URL, else LOCAL_URL."""
+    return (os.environ.get("LOCAL_LLM_URL") or LOCAL_URL).rstrip("/")
 
 
-UNLOADERS.append(_local_model.cache_clear)  # the model goes when the page has been idle (see score.ModelGate)
+def _error_message(resp: http.client.HTTPResponse) -> str:
+    """What the server says went wrong: its JSON error message (OpenAI's {"error": {"message": ...}}, or a bare
+    {"error": "..."}), else the status line."""
+    try:
+        body = json.loads(resp.read().decode("utf-8", "replace"))
+        err = body.get("error", body) if isinstance(body, dict) else body
+        message = err.get("message") if isinstance(err, dict) else err
+    except (ValueError, OSError):
+        message = None
+    return f"the local model server said {resp.status}: {message or resp.reason}"
 
 
-def _local(system: str, messages: list[dict], name: str, max_tokens: int) -> Iterator[str | dict]:
-    import mlx_lm
+@contextmanager
+def _local_call(path: str, body: dict | None = None, read_timeout: float = LOCAL_READ_TIMEOUT):
+    """The server's reply to a GET, or a POST of `body`, or ChatUnavailable. Connecting gives up quickly; each read
+    waits up to `read_timeout`, because a request may sit in the server's queue behind other programs'."""
+    base = local_url()
+    parts = urllib.parse.urlsplit(base + path)
+    cls = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
+    conn = cls(parts.hostname, parts.port, timeout=LOCAL_CONNECT_TIMEOUT)
+    try:
+        try:
+            conn.connect()
+            conn.sock.settimeout(read_timeout)
+            conn.request("POST" if body is not None else "GET", parts.path,
+                         body=json.dumps(body).encode() if body is not None else None,
+                         headers={"Content-Type": "application/json"})
+            resp = conn.getresponse()
+        except (OSError, http.client.HTTPException) as e:
+            raise ChatUnavailable(f"no local model server at {base} (start an OpenAI-compatible server there, "
+                                  "or set LOCAL_LLM_URL)") from e
+        if resp.status >= 400:
+            raise ChatUnavailable(_error_message(resp))
+        yield resp
+    finally:
+        conn.close()
 
-    if LOCAL.busy:
-        yield {"status": "Waiting for a fit score to finish"}
-    asked = time.monotonic()
-    with LOCAL.foreground():  # background fit scoring gives way after the job it's on
-        waited = time.monotonic() - asked
-        model, tokenizer = _local_model(name)
-        prompt = tokenizer.apply_chat_template([{"role": "system", "content": system}, *messages],
-                                               add_generation_prompt=True, tokenize=False, enable_thinking=False)
-        last = None
-        for last in mlx_lm.stream_generate(model, tokenizer, prompt, max_tokens=max_tokens):
-            if last.text:
-                yield last.text
-        if last:
-            yield {"input_tokens": last.prompt_tokens, "output_tokens": last.generation_tokens,
-                   "tokens_per_sec": round(last.generation_tps, 1), "peak_memory_gb": round(last.peak_memory, 1),
-                   **({"waited_seconds": round(waited, 1)} if waited >= 1 else {})}
+
+def _local(system: str, messages: list[dict], max_tokens: int) -> Iterator[str | dict]:
+    """The reply from the shared local model server (LOCAL_LLM_URL), which loads the model, queues every caller and
+    ignores `model`: nothing here is specific to one model."""
+    body = {"model": "local", "messages": [{"role": "system", "content": system}, *messages],
+            "max_tokens": max_tokens, "stream": True, "stream_options": {"include_usage": True}}
+    usage = {}
+    with _local_call("/chat/completions", body) as resp:
+        try:
+            for raw in resp:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                chunk = json.loads(data)
+                if chunk.get("error"):  # the server gave up mid-stream
+                    err = chunk["error"]
+                    raise ChatUnavailable(err.get("message") if isinstance(err, dict) else str(err))
+                usage = chunk.get("usage") or usage
+                for choice in chunk.get("choices") or ():
+                    if text := (choice.get("delta") or {}).get("content"):
+                        yield text
+        except (OSError, http.client.HTTPException) as e:  # a dropped connection or a read that timed out
+            raise ChatUnavailable(f"the local model server stopped answering: {e}") from e
+    if usage:
+        yield {"input_tokens": usage.get("prompt_tokens", 0), "output_tokens": usage.get("completion_tokens", 0)}

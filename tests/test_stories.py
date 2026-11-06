@@ -147,7 +147,7 @@ def test_good_drafts_cite_real_stories(setup, fake_model):
     assert len(python["outline"]) == 3  # 10,000 is on the resume: a number from either counts
     assert mentor["outline"] == ["Started a weekly design review", "Mentored two junior engineers"]
     assert k8s["no_story"] and k8s["angle"].startswith("Closest is") and k8s["stories"] == []
-    assert s.draft_note.startswith("Drafted by mlx-community/") and "from 2 stories and your resume" in s.draft_note
+    assert s.draft_note.startswith("Drafted by local model") and "from 2 stories and your resume" in s.draft_note
     assert "Taken out" not in s.draft_note and s.expect == prep.SCREEN_QUESTIONS  # kept for the fallback
     assert prep.to_dict(s)["drafted"] == s.drafted
 
@@ -234,10 +234,11 @@ def test_without_a_model_the_sheet_still_comes(setup, fake_model, monkeypatch):
     assert prep.build(cfg, store, key).drafted == [] and fake_model["calls"] == 0  # not asked for: never called
 
     def unavailable(backend, keychain="", key_command=""):
-        raise chat.ChatUnavailable("chat on this computer needs Apple Silicon and: pip install 'jobwatch[local]'")
+        raise chat.ChatUnavailable("no local model server at http://127.0.0.1:8010/v1 (start an OpenAI-compatible "
+                                   "server there, or set LOCAL_LLM_URL)")
     monkeypatch.setattr(chat, "check", unavailable)
     s = prep.build(cfg, store, key, draft=True)
-    assert s.drafted == [] and s.draft_note.startswith("Not drafted: chat on this computer needs")
+    assert s.drafted == [] and s.draft_note.startswith("Not drafted: no local model server")
     assert s.expect == prep.SCREEN_QUESTIONS and fake_model["calls"] == 0
 
     def broken(backend, system, messages, **kw):

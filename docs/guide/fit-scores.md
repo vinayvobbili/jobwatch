@@ -32,13 +32,13 @@ While `jobwatch ui` runs, it scores every matching job in the background, one at
 queued first (they're the ones you're about to apply to), then Today's, most relevant first. It runs when
 the page starts, after each "Check for new jobs", when you queue a job, and after you add a new resume. Today shows
 how many are left, and a button brings in the new scores when you're ready (the cards don't move on their
-own). A chat reply or a "Score fit" click goes first; background scoring waits for it. It's on by default
+own). The local model server queues a chat reply or a "Score fit" click with the background scoring. It's on by default
 with `scoring.backend: local`. With `claude` every score is a paid API call, so turn it on with
 `scoring.auto: true`. `jobwatch score [--limit N]` does the same in the terminal.
 
-The page is meant to sit close to idle. With nothing left to score it runs no scoring thread and doesn't load
-the model; the on-device model (several GB) loads when a job needs it and leaves memory after
-`scoring.unload_after` minutes unused (default 5; 0 keeps it loaded). A long line of jobs is scored in batches:
+The page is meant to sit close to idle. With nothing left to score it runs no scoring thread. The local model
+(several GB) lives in the shared local model server, not in jobwatch: the server loads it when a request comes
+and unloads it when idle (`scoring.unload_after` is ignored now). A long line of jobs is scored in batches:
 `scoring.batch` jobs in a row (default 10; 0 for no rests), then a rest of `scoring.rest` minutes (default 10)
 before the next batch; a new check for jobs or resume starts the next batch at once. `jobwatch service install`
 runs the page at a lower priority (nice 10, low-priority disk), so scoring stays out of your way; run it again

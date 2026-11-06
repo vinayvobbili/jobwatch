@@ -3,7 +3,7 @@
 - claude: Anthropic's API, billed per use. Needs jobwatch[score] and an API key: ANTHROPIC_API_KEY, or a macOS
   keychain item named by scoring.keychain (save_key puts one there), or the output of scoring.key_command.
 - agy: Google's Antigravity CLI, on its subscription's quota. Fit scores only. Needs jobwatch[score] and agy.
-- local: the on-device MLX model (Apple Silicon). Needs jobwatch[local]. Nothing leaves the computer.
+- local: the shared local model server (any OpenAI-compatible one, at LOCAL_LLM_URL). Nothing leaves the computer.
 
 status() only looks: no model is called and no key is read. test() makes one small call to the model.
 """
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import platform
 import re
 import shutil
 import subprocess
@@ -28,7 +27,8 @@ _KEY = re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}")
 _ITEM = re.compile(r"[A-Za-z0-9._-]{1,64}")
 
 INSTALL_SCORE = "pip install 'jobwatch[score]'"
-INSTALL_LOCAL = "pip install 'jobwatch[local]'"
+LOCAL_STEP = ("Run any OpenAI-compatible local model server (vllm-mlx serve, mlx_lm.server, LM Studio), "
+              "and set LOCAL_LLM_URL if it isn't at http://127.0.0.1:8010/v1")
 AGY_DOCS = "https://antigravity.google/docs/cli"
 KEYS_PAGE = "https://console.anthropic.com/settings/keys"
 
@@ -44,8 +44,15 @@ def find_agy() -> str | None:
     return None
 
 
-def apple_silicon() -> bool:
-    return sys.platform == "darwin" and platform.machine() == "arm64"
+def local_server_up() -> bool:
+    """Whether anything answers GET /models at LOCAL_LLM_URL (see chat.local_url). That never loads the model."""
+    from .chat import ChatUnavailable, check
+
+    try:
+        check("local")
+    except ChatUnavailable:
+        return False
+    return True
 
 
 def _installed(module: str) -> bool:
@@ -107,12 +114,8 @@ def status(keychain: str = "", key_command: str = "") -> dict:
     agy = find_agy()
     if not agy:
         agy_steps.append(_step("Install the Antigravity CLI and sign in once with `agy`", link=AGY_DOCS))
-    silicon = apple_silicon()
-    if not silicon:
-        local_steps.append(_step("Needs a Mac with Apple Silicon (M1 or later)"))
-    elif not _installed("mlx_lm"):
-        local_steps.append(_step("Install the on-device add-on (downloads a ~6 GB model on first use)",
-                                 INSTALL_LOCAL))
+    if not local_server_up():
+        local_steps.append(_step(LOCAL_STEP))
     return {
         "claude": {"label": "Claude API", "ready": not claude_steps, "steps": claude_steps,
                    "key": key, "keychain": keychain or KEYCHAIN,
@@ -123,7 +126,6 @@ def status(keychain: str = "", key_command: str = "") -> dict:
                 "about": "Claude and Gemini models on your Google AI subscription's quota, no per-use bill. "
                          "Postings and your resume go to Google. Fit scores only, about 35 seconds a job."},
         "local": {"label": "On this Mac", "ready": not local_steps, "steps": local_steps,
-                  "possible": silicon,
                   "about": "Free and private: nothing leaves this computer. Smaller model, slower, and the "
                            "Mac is busy while it scores."},
     }
@@ -189,7 +191,7 @@ def choices(chain: list[tuple[str, str]], ready: dict[str, bool], defaults: dict
 def test(backend: str, model: str = "", keychain: str = "", key_command: str = "") -> dict:
     """One small call to the model: {"ok": True, "seconds": ..., "model": ...} or {"ok": False, "error": ...}.
     The local model loads first (a minute or more the first time)."""
-    from .score import load_api_key, turn
+    from .score import load_api_key
 
     if backend not in BACKENDS:
         return {"ok": False, "error": f"unknown backend {backend!r}"}
@@ -209,8 +211,7 @@ def test(backend: str, model: str = "", keychain: str = "", key_command: str = "
         engine = get_backend(backend, model or None)
         if backend == "agy":
             engine.executable = find_agy() or "agy"
-        with turn(backend):
-            reply = engine.structured("Answer with ok set to true.", [{"type": "text", "text": "Ping."}], Ping)
+        reply = engine.structured("Answer with ok set to true.", [{"type": "text", "text": "Ping."}], Ping)
     except Exception as e:  # what the model or its client raised, for the page to show
         return {"ok": False, "error": f"{type(e).__name__}: {e}"[:400]}
     return {"ok": bool(reply.ok), "seconds": round(time.monotonic() - start, 1),
