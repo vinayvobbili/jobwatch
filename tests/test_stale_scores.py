@@ -1,5 +1,5 @@
-"""A score made by an older scorer stands in (marked stale) until the job is scored afresh: it still hides a poor
-fit and orders Today, but the job stays in the scorer's line, a hidden one too (else it would stay hidden)."""
+"""A score made by an older scorer stays (marked stale) until it's scored again when asked (`jobwatch score
+--rescore`, --redo-kept): it still hides a poor fit and orders Today, and nothing scores it again on its own."""
 
 from types import SimpleNamespace
 
@@ -60,11 +60,11 @@ def test_a_stale_score_hides_ranks_and_is_marked(env):
     assert rejected["fit"] == 1
     assert [(e.job.key, e.fit["score"], e.fit.get("stale")) for e in sorted(entries, key=watch._rank)] == \
         [(ACME, 90, True), (GLOBEX, 80, True)]
-    assert "(old score, rescoring)" in report.to_markdown(watch.build_digest(cfg, store, score_top=0))
+    assert "(old score)" in report.to_markdown(watch.build_digest(cfg, store, score_top=0))
     assert watch.hidden(cfg, store)["by"]["fit"] == 1
-    # still in the scorer's line, with their old score deciding the order; the hidden one too, last
-    assert [e.job.key for e in watch.unscored(cfg, store)] == [ACME, GLOBEX, INITECH]
-    assert watch.unscored_reasons(cfg, store)[ACME]["code"] == "queued"
+    # never scored again on its own: only when asked, best first, the hidden one too
+    assert watch.unscored(cfg, store) == []
+    assert [e.job.key for e in watch.rescore_line(cfg, store)] == [ACME, GLOBEX, INITECH]
     assert store.score(ACME, rid) is None
 
 
@@ -89,8 +89,8 @@ def test_another_resume_or_other_prompts_are_not_used(env):
 
 def test_old_scores_can_be_kept_as_current(env):
     """`jobwatch score --keep-old`: after a scorer change that doesn't change what scores mean, the scores of the
-    scorer in use just before stay (its day kept, marked kept_from) and those jobs leave the scorer's line. A
-    score from a scorer replaced before that stays set aside, so its job is still scored again."""
+    scorer in use just before stay (its day kept, marked kept_from) and are current. A score from a scorer
+    replaced before that stays set aside (stale), until it's asked to be scored again."""
     cfg, store, rid = env
     family = resume_family(rid)
     store.save_score(INITECH, family + ":scorer-00000000", fit(65))  # from a scorer replaced on purpose
@@ -102,13 +102,16 @@ def test_old_scores_can_be_kept_as_current(env):
     assert store.keep_old_scores(rid) == (1, "11111111")
     assert store.score(ACME, rid)["score"] == 90 and store.score(ACME, rid)["kept_from"].endswith("scorer-11111111")
     assert store.score(GLOBEX, rid)["score"] == 70 and store.score(INITECH, rid) is None
-    assert [e.job.key for e in watch.unscored(cfg, store) if e.job.key in (ACME, INITECH)] == [INITECH]
+    assert [e.job.key for e in watch.unscored(cfg, store) if e.job.key in (ACME, INITECH)] == []
+    assert INITECH in [e.job.key for e in watch.rescore_line(cfg, store)]  # the stale one, when asked
     assert store.keep_old_scores(rid) == (0, "11111111")             # nothing more to keep
     assert store.keep_old_scores(rid, "00000000") == (1, "00000000")  # unless that scorer is named
-    # --redo-kept: the kept ones go back in line (their old score shows, stale), the fresh one stays
-    assert sorted(store.drop_kept_scores(rid)) == sorted([ACME, INITECH])
+    # --redo-kept: the kept ones are asked for again (their old score shows, stale), the fresh one stays
+    dropped = set(store.drop_kept_scores(rid))
+    assert dropped == {ACME, INITECH}
     assert store.score(GLOBEX, rid)["score"] == 70 and store.score(ACME, rid) is None
-    assert {ACME, INITECH} <= {e.job.key for e in watch.unscored(cfg, store)}
+    assert not {ACME, INITECH} & {e.job.key for e in watch.unscored(cfg, store)}
+    assert {ACME, INITECH} <= {e.job.key for e in watch.unscored(cfg, store, again=dropped)}
 
 
 def test_scores_with_requirements_left_unjudged_are_dropped_to_score_again(env):

@@ -191,6 +191,13 @@ def _pay(raw, path: Path) -> Pay:
 
 BACKENDS = ("claude", "local", "agy")  # Anthropic's API, the on-device model (Apple Silicon), or Google's agy CLI
 CHAT_BACKENDS = ("claude", "local")  # what the assistant can run on (agy only scores)
+
+
+def fallback_entry(entry: str) -> tuple[str, str]:
+    """A scoring.fallback entry's (backend, model): "agy" is ("agy", ""), "agy:gemini-3.8-flash-medium" names the
+    model, so one backend can be tried again with another model (its own quota) before the next backend."""
+    backend, _, model = entry.partition(":")
+    return backend.strip(), model.strip()
 CHAT_PLACEHOLDERS = ("today", "context")  # what chat.prompt must keep: today's date, and the data it reads
 
 
@@ -902,10 +909,19 @@ def load(explicit: str | Path | None = None) -> Config:
     fallback = scoring.get("fallback") or []
     fallback = [fallback] if isinstance(fallback, str) else fallback
     others = ", ".join(b for b in BACKENDS if b != backend)
+    main_model = str(scoring.get("model") or "").strip()
+
+    def same_as_main(entry: str) -> bool:
+        b, m = fallback_entry(entry)
+        return b == backend and (not m or m == main_model)
+
     if (not isinstance(fallback, list) or any(not isinstance(b, str) for b in fallback)
-            or any(b not in BACKENDS or b == backend for b in fallback) or len(set(fallback)) != len(fallback)):
-        raise ConfigError(f"{path}: scoring.fallback is a backend other than scoring.backend ({others}), or a list "
-                          f"of them in the order to try, or left out, got {scoring.get('fallback')!r}")
+            or any(fallback_entry(b)[0] not in BACKENDS or same_as_main(b) for b in fallback)
+            or len({fallback_entry(b) for b in fallback}) != len(fallback)):
+        raise ConfigError(f"{path}: scoring.fallback is a backend other than scoring.backend ({others}), or a "
+                          f"backend:model (agy:gemini-3.8-flash-medium, even scoring.backend's with another model), or "
+                          f"a list of them in the order to try, or left out, got {scoring.get('fallback')!r}")
+    fallback = [":".join(p for p in fallback_entry(b) if p) for b in fallback]
     learning = raw.get("learning") or {}
     timeline = str(learning.get("timeline", "quarter"))
     if timeline not in TIMELINES:
@@ -1083,6 +1099,8 @@ scoring:
   # fallback: [agy, local]  # other backends, tried in order, when this can't score (no key, no credit) or is at...
   # daily: 40            # ...the most jobs it scores a day (0: no limit); the fallback's are scored again later
   # agy_model: claude-sonnet-5-5-medium  # agy's model as a fallback (`agy models`); as backend: `model`
+  # An entry can name its model, so one backend is tried again on another model's quota first:
+  #   backend: agy, model: claude-sonnet-5-5-medium, fallback: [agy:gemini-3.8-flash-medium, local]
   # workers: 4           # Claude calls at once (the local model takes one at a time)
   # auto: true          # `jobwatch ui` scores every new match in the background (default: on for local)
   # batch: 10            # ...this many jobs in a row, then rests (0: no rests)

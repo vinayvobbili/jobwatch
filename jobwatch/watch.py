@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 
 from . import alerts, dupes, lca, levels, linkedin, sources, suggest
-from .config import UNKNOWN_SOURCE, Board, Config
+from .config import UNKNOWN_SOURCE, Board, Config, fallback_entry
 from .contacts import Contacts, company_key
 from .filters import (
     KINDS,
@@ -29,7 +29,7 @@ from .filters import (
     title_ok,
 )
 from .models import Job
-from .score import ScoringUnavailable, brief, collecting_usage, resume_id, score_jobs, turn
+from .score import ScoringUnavailable, brief, collecting_usage, paused_until, resume_id, score_jobs, turn
 from .store import MANUAL, STAGES, Store
 from .text import local_salary, names_one_role
 
@@ -857,6 +857,13 @@ def _fits(store: Store, rid: str) -> dict[str, dict]:
     return {**store.stale_scores(rid), **store.scores(rid)}
 
 
+def job_fit(cfg: Config, store: Store, key: str) -> dict | None:
+    """One job's fit score as the page shows it: the current one, else an older scorer's (marked "stale")."""
+    if not (cfg.resume and cfg.resume.is_file()):
+        return None
+    return _fits(store, resume_id(cfg.resume, cfg.prompts)).get(key)
+
+
 def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
               redo_passes: bool = False) -> tuple[list[Entry], dict[str, int]]:
     """Jobs with these statuses that pass the filters, with stored fit scores for the current resume, and
@@ -902,17 +909,18 @@ def failed_scores(cfg: Config, store: Store) -> dict[str, str]:
     return store.score_failures(resume_id(cfg.resume, cfg.prompts), cfg.score_model, SCORE_RETRY)
 
 
-def unscored(cfg: Config, store: Store, skip: set[str] = frozenset()) -> list[Entry]:
-    """Queued and Today's jobs with no fit score for the current resume, in the scorer's order (see
-    scoring_line). Keys in `skip`, and ones that failed lately (see failed_scores), are left out."""
+def unscored(cfg: Config, store: Store, skip: set[str] = frozenset(), again: set[str] = frozenset()) -> list[Entry]:
+    """Queued and Today's jobs with no fit score, in the scorer's order (see scoring_line). Keys in `skip`, and
+    ones that failed lately (see failed_scores), are left out. `again`: jobs asked to be scored again (`score
+    --redo-kept`, `--incomplete`), in line even with an older scorer's score showing."""
     if not (cfg.resume and cfg.resume.is_file()):
         return []
     limit = at_daily_limit(cfg, store)
     if limit and not cfg.score_fallback:
         return []  # nothing can score until tomorrow
     skip = {*skip, *failed_scores(cfg, store)}
-    return [e for e in scoring_line(cfg, store)
-            if (_scorable(e) or (not limit and _provisional(e))) and e.job.key not in skip]
+    return [e for e in scoring_line(cfg, store) if e.job.key not in skip and (
+        _scorable(e) or (e.job.key in again and scorable(e.job) and bool(e.job.description.strip())))]
 
 
 def made_elsewhere(cfg: Config, fit: dict | None) -> bool:
@@ -925,11 +933,12 @@ def made_elsewhere(cfg: Config, fit: dict | None) -> bool:
 
 
 def rescore_line(cfg: Config, store: Store, at_least: float = 0) -> list[Entry]:
-    """Queued and Today's jobs whose score another model made (see made_elsewhere), scoring at least `at_least`,
-    best first: `jobwatch score --rescore` scores them again with the backend in use."""
+    """Queued and Today's jobs whose score another model or an older scorer made (see made_elsewhere; stale),
+    scoring at least `at_least`, best first: `jobwatch score --rescore` scores them again with the backend in use.
+    Nothing else scores a job twice."""
     if not (cfg.resume and cfg.resume.is_file()):
         return []
-    line = [e for e in scoring_line(cfg, store) if made_elsewhere(cfg, e.fit) and not e.fit.get("stale")
+    line = [e for e in scoring_line(cfg, store) if (made_elsewhere(cfg, e.fit) or (e.fit and e.fit.get("stale")))
             and e.fit["score"] >= at_least and scorable(e.job) and e.job.description.strip()]
     return sorted(line, key=lambda e: -e.fit["score"])
 
@@ -954,14 +963,10 @@ def scoring_line(cfg: Config, store: Store) -> list[Entry]:
 
 
 def _scorable(e: Entry) -> bool:
-    """Without a current fit score (a stale one doesn't count), scorable, and with a posting's text to score
-    (a job from an alert email may have only its title)."""
-    return (e.fit is None or bool(e.fit.get("stale"))) and scorable(e.job) and bool(e.job.description.strip())
-
-
-def _provisional(e: Entry) -> bool:
-    """Scored by the fallback (scoring.fallback): scored again with the backend when it can."""
-    return bool(e.fit and e.fit.get("fallback")) and scorable(e.job) and bool(e.job.description.strip())
+    """Without any fit score, scorable, and with a posting's text to score (a job from an alert email may have
+    only its title). A score is never made again on its own: one from a fallback or an older scorer stays, saying
+    who made it, until `jobwatch score --rescore` (every score made again is paid for again)."""
+    return e.fit is None and scorable(e.job) and bool(e.job.description.strip())
 
 
 DAILY_LIMIT = "daily limit"  # the start of a fallback score's reason when the backend was at scoring.daily
@@ -993,9 +998,7 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
     first = jobs[:room]
     if first:
         try:
-            results, errors = _score_jobs(store, first, cfg.resume, cfg.backend, cfg.cache, workers=cfg.score_workers,
-                                         progress=progress, prompts=cfg.prompts, model=cfg.score_model,
-                                         keychain=cfg.api_keychain, batch=batch, key_command=cfg.api_key_command)
+            results, errors = _step(cfg, store, first, cfg.backend, cfg.score_model, progress=progress, batch=batch)
         except ScoringUnavailable as e:
             if not cfg.score_fallback:
                 raise
@@ -1006,26 +1009,57 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
     rest = [j for j in jobs if j.key not in results]
     if not (rest and cfg.score_fallback):
         return results, errors
-    for name in cfg.score_fallback:  # in order; a backend that can't score (or fails a job) leaves it to the next
+    for entry in cfg.score_fallback:  # in order; a backend that can't score (or fails a job) leaves it to the next
+        name = fallback_entry(entry)[0]
         try:
             with turn(name, background):
-                more, more_errors = _score_jobs(store, rest, cfg.resume, name, cfg.cache, workers=cfg.score_workers,
-                                               progress=progress, prompts=cfg.prompts, keychain=cfg.api_keychain,
-                                               model=fallback_model(cfg, name), key_command=cfg.api_key_command)
+                more, more_errors = _step(cfg, store, rest, name, fallback_model(cfg, entry), progress=progress)
         except ScoringUnavailable as e:
             more, more_errors = {}, {j.key: str(e) for j in rest}
         for key, r in more.items():
             results[key] = {**r, "fallback": errors.pop(key, f"{cfg.backend} didn't score it")}
-        errors.update({k: f"{errors[k]}; {name}: {v}" if k in errors else v for k, v in more_errors.items()})
+        errors.update({k: f"{errors[k]}; {entry}: {v}" if k in errors else v for k, v in more_errors.items()})
         rest = [j for j in rest if j.key not in results]
         if not rest:
             break
     return results, errors
 
 
-def fallback_model(cfg: Config, backend: str) -> str:
-    """The model a fallback backend scores with: agy's is scoring.agy_model; the others use shortlist-ai's own."""
-    return cfg.agy_model if backend == "agy" else ""
+def scorer_id(backend: str, model: str) -> str:
+    """A scoring chain step's name in the store (Store.scorers_down) and on Settings' chain: "agy:gemini-...",
+    "claude:" for a backend on its default model."""
+    return f"{backend}:{model}"
+
+
+def _step(cfg: Config, store: Store, jobs: list[Job], backend: str, model: str, progress=None, batch: bool = False):
+    """One step of the scoring chain: skipped, with no call, while it's paused (out of credit or quota: see
+    score.paused_until), else tried; a run where it couldn't score any job for such a reason pauses it, and one
+    that scores any job ends a pause. ScoringUnavailable when it can't score at all."""
+    sid = scorer_id(backend, model)
+    if pause := store.scorers_down().get(sid):
+        until = datetime.fromisoformat(pause["until"]).astimezone().strftime("%a %-I:%M %p")
+        raise ScoringUnavailable(f"{backend} {pause['reason']}, paused until {until}")
+    try:
+        results, errors = _score_jobs(store, jobs, cfg.resume, backend, cfg.cache, workers=cfg.score_workers,
+                                      progress=progress, prompts=cfg.prompts, model=model, keychain=cfg.api_keychain,
+                                      batch=batch, key_command=cfg.api_key_command)
+    except ScoringUnavailable as e:
+        if found := paused_until(str(e)):
+            store.set_scorer_down(sid, *found)
+        raise
+    if results:
+        store.clear_scorer_down(sid)
+    elif errors and (found := [p for err in errors.values() if (p := paused_until(err))]) and \
+            len(found) == len(errors):
+        store.set_scorer_down(sid, *found[0])
+    return results, errors
+
+
+def fallback_model(cfg: Config, entry: str) -> str:
+    """The model a scoring.fallback entry scores with: the one it names (agy:gemini-3.8-flash-medium), else agy's
+    is scoring.agy_model and the others use shortlist-ai's own."""
+    backend, model = fallback_entry(entry)
+    return model or (cfg.agy_model if backend == "agy" else "")
 
 
 def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Callable[[str], None] | None = None,

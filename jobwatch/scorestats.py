@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from .config import BACKENDS, Config
+from .config import BACKENDS, Config, fallback_entry
 from .store import Store
 
 # USD per million tokens (input, output) by Claude model id: Anthropic's list prices (docs, October 2026). A model
@@ -57,8 +57,10 @@ def default_model(backend: str) -> str:
     return {"claude": backends.CLAUDE_MODEL, "local": backends.LOCAL_MODEL, "agy": backends.AGY_MODEL}.get(backend, "")
 
 
-def _model(cfg: Config, backend: str) -> dict:
-    set_by = cfg.score_model if backend == cfg.backend else cfg.agy_model if backend == "agy" else ""
+def _model(cfg: Config, entry: str, main: bool = False) -> dict:
+    """The backend and model of scoring.backend (main) or a scoring.fallback entry (agy, agy:gemini-...)."""
+    backend, named = fallback_entry(entry)
+    set_by = cfg.score_model if main else named or (cfg.agy_model if backend == "agy" else "")
     return {"backend": backend, "model": set_by or default_model(backend), "default": not set_by}
 
 
@@ -101,9 +103,9 @@ def summary(cfg: Config, store: Store, scoring: dict | None = None, today: date 
     average = sum(c for _, c in priced) / recorded_jobs if recorded_jobs else None
     this_month = [r for r in everything if r["day"] >= month.isoformat()]
     used = store.score_usage(cfg.backend, today)
-    chain = [cfg.backend, *cfg.score_fallback]
+    chain = [cfg.backend, *(fallback_entry(e)[0] for e in cfg.score_fallback)]
     return {
-        "backend": _model(cfg, cfg.backend), "fallback": [_model(cfg, b) for b in cfg.score_fallback],
+        "backend": _model(cfg, cfg.backend, main=True), "fallback": [_model(cfg, e) for e in cfg.score_fallback],
         "daily": cfg.score_daily or None, "used_today": used,
         "left_today": max(cfg.score_daily - used, 0) if cfg.score_daily else None,
         "batch_api": cfg.score_batch_api, "auto": cfg.auto_score, "scoring": scoring,

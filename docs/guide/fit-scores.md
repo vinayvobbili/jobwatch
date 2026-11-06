@@ -15,10 +15,18 @@ jobs are scored with [shortlist-ai](https://github.com/vinayvobbili/shortlist-ai
 2. It judges each requirement against your resume, with quotes it checks against the resume text.
 3. It lists the must-haves the resume doesn't show.
 
-Scores are stored per resume file content, so each job is scored once, and again only after you edit your
-resume. The local backend takes a minute or two per job, so keep `top` small. On the page, a tag under each
-score says who made it: "Claude API", "local model", or "local, for now" when the local model stood in for
-Claude (over `scoring.daily`, or Claude failed) and Claude will score it again.
+Each job is scored once. jobwatch never scores a job again on its own, since every score made again costs
+again: after a fallback stood in, after you switch models, or after you edit your resume, the score stays,
+saying who made it, until you ask. The local backend takes a minute or two per job, so keep `top` small. On the
+page, a tag under each score names the model and where it ran: "Sonnet 5.5 · API", "Sonnet 5.5 · agy",
+"Gemini 3.8 Flash · agy", "Qwen3.5-9B · local". A score from an older scorer (your resume or the prompts
+changed since) is dimmed and says "old score".
+
+To score a job again, hover its score and press the small ↻ button: a dialog lists the models it can be scored
+with (your scoring chain first, then agy's other models, Claude's and this Mac's), with what each costs. The
+job is scored in the background with the one you pick, and its new score takes the old one's place on the page
+when it's done (the page hears it from jobwatch over Server-Sent Events, `/events`). `jobwatch score --rescore`
+does it for many jobs at once.
 
 While `jobwatch ui` runs, it scores every matching job in the background, one at a time: the jobs you've
 queued first (they're the ones you're about to apply to), then Today's, most relevant first. It runs when
@@ -68,20 +76,31 @@ it uses your subscription's quota. `agy` can't run the chat, which stays on `cla
 
 To score with Claude and keep other backends for when it can't, set `scoring.fallback: local`, or a list tried
 in order, `scoring.fallback: [agy, local]` (Claude, then agy, then the local model; `scoring.agy_model` is the
-model agy uses as a fallback). Without a key, out of credit or with the API down, the next backend scores the
-job, and a backend that fails moves it on to the one after. The score says so ("fallback", and which backend
-made it) and gets scored again by Claude later (after 3 days for a failure), or by `jobwatch score --rescore`. `scoring.daily: 40` caps the jobs the
-page scores with Claude a day; past it the fallback scores them (or, with no fallback, they wait for
-tomorrow), and Claude takes them up the next day. A fallback score never hides a job from scoring by
-`min_fit`. The cap holds back background scoring only: `jobwatch score` scores what you ask, and counts it.
-After switching backend or model, `jobwatch score --rescore 50` scores Today's and queued jobs again, best
-first, where another model made the score and it's at least 50.
+model agy uses as a fallback). Without a key, out of credit, out of quota or with the API down, the next
+backend scores the job, and a backend that fails moves it on to the one after. The score says so ("fallback",
+and which model made it) and stays: it's scored again only when you ask (the ↻ button, or `jobwatch score
+--rescore`). `scoring.daily: 40` caps the jobs the page scores with the main backend a day; past it the
+fallback scores them (or, with no fallback, they wait for tomorrow). The cap holds back background scoring
+only: `jobwatch score` scores what you ask, and counts it. After switching backend or model, `jobwatch score
+--rescore 50` scores Today's and queued jobs again, best first, where another model or an older scorer made the
+score and it's at least 50.
 
-A new shortlist-ai (a release, or its prompts or scoring code changed) is another scorer: its scores start
-afresh, and until a job is scored again its old score shows as "old score, rescoring". When the change doesn't
+A fallback entry can name its model, so one backend is tried on another model first. agy keeps a separate
+quota per model family, so when its Claude models run out its Gemini ones still answer:
+
+```yaml
+scoring:
+  backend: agy
+  model: claude-sonnet-5-5-medium
+  daily: 150                                       # then Flash, keeping Sonnet's quota for other work
+  fallback: [agy:gemini-3.8-flash-medium, local]   # agy's Gemini, then this Mac
+```
+
+A new shortlist-ai (a release, or its prompts or scoring code changed) is another scorer: new jobs are scored
+by it, and a job scored before shows its old score as "old score" until you score it again. When the change doesn't
 change what a score means (a prompt reordered for caching, say), `jobwatch score --keep-old` keeps the scores
 of the scorer in use just before as current instead (`--keep-old ID` names another), so only new jobs are
-scored by the new scorer. Scores from scorers replaced before that stay set aside and are scored again. If
+scored by the new scorer. Scores from scorers replaced before that stay as old scores. If
 the change turns out to move scores after all (`--compare` shows it), `jobwatch score --redo-kept --batch-api`
 scores the kept ones again with the new scorer, at half price.
 
@@ -124,6 +143,6 @@ Settings → **Fit score prompt** shows what the model is told: each of shortlis
 resume, turning a posting into requirements, judging each requirement, counting years), each in a box you can
 edit, with "Reset to default". Only the edited ones are saved, as `scoring.prompts` in the watchlist. The two
 request templates must keep their `{placeholders}`; saving says so if one is missing. An edited prompt
-changes scores from then on: scores made with other prompts are set aside and Today's jobs are scored again,
-and putting the prompts back brings the old scores back. `jobwatch score --show-prompts` prints them.
+changes scores from then on: new jobs are scored with it, scores made with other prompts show as old scores
+until you score them again, and putting the prompts back brings the old scores back. `jobwatch score --show-prompts` prints them.
 Editing needs a shortlist-ai that takes edited prompts; with an older one they show read-only.

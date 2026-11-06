@@ -302,6 +302,37 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .scorer { display: inline-block; margin-top: 4px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px;
   white-space: nowrap; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .scorer.local { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+/* Rescore: a small round button on the ring's edge, shown on hover; a ring being scored again spins its rim */
+.ring { position: relative; }
+.rescore-btn { position: absolute; right: -6px; top: -6px; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; padding: 0; cursor: pointer; color: var(--accent);
+  background: var(--panel-solid); border: 1px solid var(--line); box-shadow: 0 4px 12px -4px rgba(0, 0, 0, .35);
+  opacity: 0; transform: scale(.8); transition: opacity .15s, transform .15s, color .15s; }
+.fitbox:hover .rescore-btn, .rescore-btn:focus-visible { opacity: 1; transform: scale(1); }
+.rescore-btn:hover { color: #fff; background: var(--grad); border-color: transparent; transform: scale(1.1) rotate(90deg); }
+.fitbox.rescoring .ring { animation: rescore-pulse 1.4s ease-in-out infinite; }
+.fitbox.rescoring .ring::after { content: ""; position: absolute; inset: -4px; border-radius: 50%;
+  border: 2px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent-2);
+  animation: spin .9s linear infinite; }
+.fitbox.rescoring .rescore-btn { display: none; }
+@keyframes rescore-pulse { 50% { opacity: .55; } }
+.rescore-shade { z-index: 30; align-items: center; }
+.rescore-dialog { max-width: 520px; }
+.rescore-list { display: grid; gap: 8px; margin-top: 12px; max-height: 55vh; overflow-y: auto; padding: 2px; }
+.rescore-pick { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; text-align: left;
+  font: inherit; color: var(--text); background: var(--panel-solid); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 12px; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.rescore-pick:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--accent); }
+.rescore-pick.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel-solid)); }
+.rescore-pick:disabled { opacity: .45; cursor: not-allowed; }
+.rescore-pick .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); }
+.rescore-pick.on .dot { border-color: var(--accent); background: radial-gradient(var(--accent) 45%, transparent 50%); }
+.rescore-pick .tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.rescore-pick .cost { font-size: 11px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.rescore-pick .cost.claude { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.rescore-pick .cost.agy { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.rescore-pick .cost.local { color: var(--good); background: color-mix(in srgb, var(--good) 12%, transparent); }
 .advice { font-size: 13px; margin-top: 6px; display: flex; gap: 6px; align-items: baseline; }
 .advice svg { flex: none; align-self: center; }
 .advice.queue b, .advice.queue svg { color: var(--good); } .advice.skip b, .advice.skip svg { color: var(--bad); }
@@ -671,6 +702,26 @@ table.use th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
 .ai-chain .link.off .ico { display: none; }
 .ai-chain .then { color: var(--accent); display: inline-flex; }
 .ai-chain .link .n { font-size: 11px; font-weight: 800; opacity: .8; }
+/* a chain step: its number, backend, model menu and ← → × tools; a paused one (out of credit or quota) is dimmed */
+.ai-chain .step { cursor: default; padding: 4px 6px 4px 12px; }
+.ai-chain .step:hover { transform: none; }
+.ai-chain .step-model, .ai-chain .step-add { width: auto; font-size: 12.5px; padding: 3px 8px; border-radius: 999px;
+  background: var(--panel-solid); color: var(--text); border: 1px solid var(--line); cursor: pointer; }
+.ai-chain .step.main .step-model { background: rgba(255, 255, 255, .18); color: #fff; border-color: rgba(255, 255, 255, .35); }
+.ai-chain .step.main .step-model option { color: var(--text); background: var(--panel-solid); }
+.ai-chain .step-add { border-style: dashed; color: var(--accent); font-weight: 600; }
+.ai-chain .step-tools { display: inline-flex; gap: 2px; margin-left: 2px; }
+.ai-chain .step-btn { width: 22px; height: 22px; border-radius: 50%; border: 0; display: grid; place-items: center;
+  padding: 0; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; color: inherit;
+  background: color-mix(in srgb, currentColor 10%, transparent); transition: background .15s, transform .15s; }
+.ai-chain .step-btn:hover:not(:disabled) { background: color-mix(in srgb, currentColor 22%, transparent); transform: scale(1.1); }
+.ai-chain .step-btn:disabled { opacity: .3; cursor: default; }
+.ai-chain .step.paused { border-style: dashed; opacity: .75; }
+.ai-chain .step.main.paused { background: linear-gradient(135deg, #8a8ca3, #a5a3b8); }
+.ai-chain .pause-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700;
+  padding: 1px 8px; border-radius: 999px; color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+.ai-chain .step.main .pause-tag { color: #fff; background: rgba(0, 0, 0, .2); }
+label.check.off { opacity: .55; cursor: not-allowed; }
 .onboard > .card { max-width: 760px; margin-bottom: 16px; }
 .onboard details { margin: 12px 0; }
 .onboard summary { cursor: pointer; font-weight: 600; }
@@ -1153,6 +1204,7 @@ const ICONS = {
   pencil: "M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
   check: "M20 6 9 17l-5-5",
   arrow: "M5 12h14M13 5l7 7-7 7",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
   inbox: "M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z",
   sparkle: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 15v5M16.5 17.5h5M5 3v4M3 5h4",
   lock: "M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V7a4 4 0 0 1 8 0v4",
@@ -1428,24 +1480,117 @@ function scorerLabel(by) {
   const [backend, ...rest] = by.split(":"), model = rest.join(":");
   return backend === "local" ? `${model.split("/").pop()} (local)` : model || backend;
 }
-function fitBox(fit) {
+// key: the job's, for its Rescore button and so a new score from /events can take this one's place
+function fitBox(fit, key) {
   if (!fit) return null;
   const s = Math.round(fit.score);
-  return h("div", { class: "fitbox" + (fit.stale ? " stale" : ""),
-                    title: `Fit ${s}/100` + (fit.stale ? " (old score, rescoring)" : "") +
-                      (fit.scored_by ? `, scored by ${scorerLabel(fit.scored_by)}` : "") },
-    h("div", { class: `ring ${fitClass(s)}`, style: `--p:${s}` }, h("span", {}, s)),
-    h("small", {}, fit.stale ? "old score, rescoring" : `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`),
+  return h("div", { class: "fitbox" + (fit.stale ? " stale" : "") + (key && RESCORING.has(key) ? " rescoring" : ""),
+                    "data-fit": key || null,
+                    title: `Fit ${s}/100` + (fit.stale ? " (old score: `jobwatch score --rescore` makes it again)" : "") +
+                      (fit.scored_by ? `, scored by ${scorerLabel(fit.scored_by)}` : "") +
+                      (fit.fallback ? ` as a fallback (${fit.fallback})` : "") },
+    h("div", { class: `ring ${fitClass(s)}`, style: `--p:${s}` }, h("span", {}, s),
+      key ? rescoreButton(key) : null),
+    h("small", {}, fit.stale ? "old score" : `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`),
     scorerTag(fit));
 }
-// Under the ring: whether Claude's API or the model on this computer made the score ("local, for now" when it
-// stands in for Claude, which scores it again).
+
+// Rescore: a small button on the ring opens a dialog of the models the score can be made again with (the scoring
+// chain first). The job is scored in the background; its new score arrives on /events and takes the ring's place.
+const RESCORING = new Set();  // jobs being scored again: their ring spins until the event comes
+function rescoreButton(key) {
+  const b = h("button", { type: "button", class: "rescore-btn", title: "Score again with a model you pick",
+    "aria-label": "Score again" }, icon("refresh", 12));
+  b.onclick = e => { e.stopPropagation(); openRescore(key); };
+  return b;
+}
+async function openRescore(key) {
+  const shade = h("div", { class: "overlay rescore-shade", style: "display:flex" });
+  const box = h("div", { class: "dialog rescore-dialog", role: "dialog", "aria-modal": "true",
+    "aria-label": "Score again" }, h("p", { class: "muted" }, "Loading the models…"));
+  const close = () => { shade.remove(); document.removeEventListener("keydown", esc); };
+  const esc = e => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  shade.onclick = e => { if (e.target === shade) close(); };
+  document.addEventListener("keydown", esc);
+  shade.append(box);
+  document.body.append(shade);
+  let d;
+  try { d = await api(`/api/rescore?key=${encodeURIComponent(key)}`); }
+  catch (e) { fill(box, h("p", { class: "small error" }, e.message)); return; }
+  const where = { claude: "API", agy: "agy", local: "local" };
+  let picked = d.choices.find(c => c.ready && `${c.backend}:${c.model}` !== d.scored_by) || d.choices.find(c => c.ready);
+  const list = h("div", { class: "rescore-list", role: "radiogroup", "aria-label": "Model" });
+  const draw = () => fill(list, d.choices.map(c => {
+    const on = picked === c, now = `${c.backend}:${c.model}` === d.scored_by;
+    const row = h("button", { type: "button", class: "rescore-pick" + (on ? " on" : ""), role: "radio",
+      "aria-checked": String(on), disabled: !c.ready, title: c.ready ? c.model : `${c.backend} isn't set up here` },
+      h("span", { class: "dot" }),
+      h("span", { class: "who" }, h("b", {}, shortModel(c.model)), h("span", { class: "muted small" }, ` · ${where[c.backend]}`)),
+      h("span", { class: "tags" },
+        c.role ? h("span", { class: "chip" }, c.role) : null,
+        now ? h("span", { class: "chip on" }, "scored this") : null,
+        h("span", { class: "cost " + c.backend }, c.cost)));
+    row.onclick = () => { picked = c; draw(); };
+    return row;
+  }));
+  draw();
+  const go = h("button", { class: "btn primary", type: "button" }, icon("refresh", 13), "Score again");
+  const msg = h("span", { class: "small muted", role: "status" });
+  go.disabled = d.running || !picked;
+  if (d.running) msg.textContent = "Already being scored again.";
+  go.onclick = async () => {
+    go.disabled = true; msg.className = "small muted"; msg.textContent = "Starting…";
+    try {
+      await api("/api/rescore", { key, backend: picked.backend, model: picked.model });
+      RESCORING.add(key);
+      document.querySelectorAll(`[data-fit="${CSS.escape(key)}"]`).forEach(el => el.classList.add("rescoring"));
+      close();
+      toast(`Scoring again with ${shortModel(picked.model)} (${where[picked.backend]}): the score updates when it's done`);
+    } catch (e) { msg.className = "small error"; msg.textContent = e.message; go.disabled = false; }
+  };
+  fill(box,
+    h("div", { class: "row", style: "align-items:center" }, h("h2", { style: "flex:1;margin:0" }, "Score again"),
+      h("button", { class: "btn ghost", type: "button", "aria-label": "Close", onclick: close }, icon("x", 14))),
+    h("p", { class: "small muted" }, d.scored_by ? `Scored now by ${scorerLabel(d.scored_by)}${d.stale ? " (an older scorer)" : ""}. ` +
+      "Pick the model to score it again with; the new score replaces it." : "Pick the model to score it with."),
+    list,
+    h("div", { class: "row", style: "margin-top:14px;align-items:center" }, go, msg));
+}
+// /events: a rescore's new score (or why it failed) takes the place of the job's rings on the page
+function listenForEvents() {
+  if (typeof EventSource === "undefined") return;
+  const es = new EventSource(`/events?t=${encodeURIComponent(TOKEN)}`);
+  es.addEventListener("score", e => {
+    const d = JSON.parse(e.data);
+    RESCORING.delete(d.key);
+    for (const k of d.keys || [d.key])
+      document.querySelectorAll(`[data-fit="${CSS.escape(k)}"]`).forEach(el => el.replaceWith(fitBox(d.fit, k)));
+    toast(`New score: ${Math.round(d.fit.score)} by ${scorerLabel(d.fit.scored_by || "")}`, null, "win");
+  });
+  es.addEventListener("score-failed", e => {
+    const d = JSON.parse(e.data);
+    RESCORING.delete(d.key);
+    document.querySelectorAll(`[data-fit="${CSS.escape(d.key)}"]`).forEach(el => el.classList.remove("rescoring"));
+    toast(`Scoring again failed: ${d.error}`);
+  });
+}
+// Under the ring: the model that made the score and where it ran ("Sonnet 5.5 · agy", "Qwen3.5-9B · local"). A score
+// is never made again on its own, a fallback's included: `jobwatch score --rescore` does that when asked.
 function scorerTag(fit) {
   if (!fit.scored_by) return null;
-  const local = fit.scored_by.startsWith("local:"), agy = fit.scored_by.startsWith("agy:");
-  return h("span", { class: "scorer" + (local || agy ? " local" : "") },
-    local ? (fit.fallback ? "local, for now" : "local model")
-      : agy ? (fit.fallback ? "agy, for now" : "agy") : "Claude API");
+  const [backend, ...rest] = fit.scored_by.split(":"), model = rest.join(":");
+  const where = backend === "claude" ? "API" : backend;
+  return h("span", { class: "scorer" + (backend === "claude" ? "" : " local") },
+    model ? `${shortModel(model)} · ${where}` : backend === "claude" ? "Claude API" : backend);
+}
+// A model id as people say it: claude-sonnet-5-5-medium is "Sonnet 5.5", gemini-3.8-flash-medium "Gemini 3.8 Flash",
+// mlx-community/Qwen3.5-9B-MLX-4bit "Qwen3.5-9B"; anything else as it is.
+function shortModel(model) {
+  const m = model.split("/").pop(), cap = w => w.charAt(0).toUpperCase() + w.slice(1);
+  let x;
+  if ((x = m.match(/^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?!\d)/))) return `${cap(x[1])} ${x[2]}${x[3] ? "." + x[3] : ""}`;
+  if ((x = m.match(/^gemini-([\d.]+)-([a-z]+)/))) return `Gemini ${x[1]} ${cap(x[2])}`;
+  return m.replace(/-MLX.*$/i, "");
 }
 
 // Queue it or skip it, and why (advice.py). A queued job only shows a reason to hold off.
@@ -1616,7 +1761,7 @@ function jobCard(job, actions, i = 0, above = null, stage = null) {
     verdictLine(job),
     above ? h("div", { class: "jc-note" }, above) : null,
     h("div", { class: "row jc-foot" }, actions),
-    fitBox(job.fit) || noFitBox(job));
+    fitBox(job.fit, job.key) || noFitBox(job));
 }
 
 // The same opening (or maybe) as a job already applied to, queued or skipped: flagged, never hidden.
@@ -1804,7 +1949,7 @@ async function openDetails(key) {
     dialog.classList.add("with-chat");
     fill(dialog,
       h("div", {},
-        h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, j.title), fitBox(j.fit) || noFitBox(j),
+        h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, j.title), fitBox(j.fit, j.key) || noFitBox(j),
           h("button", { class: "btn", onclick: closeDetails }, "Close")),
         h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
         detailsFacts(j),
@@ -3394,37 +3539,93 @@ function onboardCompanies(ctx) {
 
 // Where the AI runs (fit scores; the chat and title suggestions too, except on agy): each choice with what it
 // still needs on this computer (from /api/ai), a test call, and for Claude an API key kept in the macOS keychain.
-// The fallbacks are tried in AI_ORDER when the chosen one can't score. values() gives scoring's backend and fallback.
+// Below the tiles, the scoring chain: the steps tried in order, each a backend and its model (one backend can be in
+// it twice, on two models: agy's Sonnet, then agy's Gemini). The first scores; the rest are tried when the one
+// before can't. ← and → move a step (moving one to the front makes it the one that scores first), × takes it out,
+// and "Add a step" puts one at the end. values() gives scoring's backend, model and fallback.
 const AI_ORDER = ["claude", "agy", "local"];
 function aiSetup(s) {
-  const scoring = s.scoring || {}, on = new Set([].concat(scoring.fallback || []));
-  // the chosen one lives in a select that isn't shown, so Settings can read and watch it like any other input
-  const backend = choice(AI_ORDER.map(b => [b, AI_LOOK[b].name]), scoring.backend || s.defaults.scoring.backend);
-  const pick = b => { if (backend.value === b) return; backend.value = b; backend.dispatchEvent(new Event("change")); };
+  const scoring = s.scoring || {};
+  // a step is {b, m}: m "" is the backend's default model; agy_model (agy as a bare fallback) becomes its step's model
+  const steps = [{ b: scoring.backend || s.defaults.scoring.backend, m: scoring.model || "" },
+    ...[].concat(scoring.fallback || []).map(e => {
+      const [b, ...m] = e.split(":");
+      return { b, m: m.join(":") || (b === "agy" ? scoring.agy_model || "" : "") };
+    })];
+  // the first step's backend lives in a select that isn't shown, so Settings can read and watch it like any other input
+  const backend = choice(AI_ORDER.map(b => [b, AI_LOOK[b].name]), steps[0].b);
+  const sync = () => {
+    if (backend.value !== steps[0].b) { backend.value = steps[0].b; backend.dispatchEvent(new Event("change")); }
+    else draw();
+  };
+  const same = (x, y) => x.b === y.b && (x.m || def(x.b)) === (y.m || def(y.b));
+  // a tile picked: its backend's first step goes to the front, or a new step on its default model
+  const pick = b => {
+    const at = steps.findIndex(st => st.b === b);
+    steps.unshift(at >= 0 ? steps.splice(at, 1)[0] : { b, m: "" });
+    sync();
+  };
   const tiles = h("div", { class: "ai-tiles", role: "radiogroup", "aria-label": "Where fit scores run" });
   const chain = h("div", { class: "ai-chain" });
   let info = null;
   const ready = b => !info || info[b].ready;
+  const def = b => (info && info[b] && info[b].default_model) || "";
+  const models = b => (info && info[b] && info[b].models) || [];
 
-  const drawChain = () => {
-    const rest = AI_ORDER.filter(b => b !== backend.value);
-    let n = 1;
-    const link = (b, main) => {
-      const used = main || on.has(b);
-      const el = h("button", { type: "button", class: "link" + (main ? " main" : used ? "" : " off"),
-        title: main ? "Tried first: pick another tile to change it" : used ? "Click to skip it" : "Click to try it next",
-        "aria-pressed": String(used) },
-        used ? h("span", { class: "n" }, String(n++)) : null, AI_LOOK[b].name,
-        !main && used && !ready(b) ? h("span", { class: "n" }, "· not set up") : null, used ? icon("check", 12) : null);
-      if (!main) el.onclick = () => { on.has(b) ? on.delete(b) : on.add(b); drawChain(); };
-      return el;
+  const modelMenu = st => {
+    const known = models(st.b);
+    const opts = [["", `default${def(st.b) ? ` (${shortModel(def(st.b))})` : ""}`],
+      ...known.map(m => [m.id, m.name === m.id ? shortModel(m.id) : m.name])];
+    if (st.m && !known.some(m => m.id === st.m)) opts.push([st.m, shortModel(st.m)]);
+    const sel = h("select", { class: "step-model", "aria-label": `${AI_LOOK[st.b].name} model` },
+      opts.map(([v, label]) => h("option", { value: v }, label)));
+    sel.value = st.m;
+    sel.onchange = () => {
+      const was = st.m;
+      st.m = sel.value;
+      if (steps.filter(x => same(x, st)).length > 1) { st.m = was; sel.value = was; toast("That one's in the chain already"); }
+      else drawChain();
     };
-    const used = rest.filter(b => on.has(b)), skipped = rest.filter(b => !on.has(b));
-    fill(chain, h("div", { class: "title" }, "If it can't score, try the next one"),
-      [backend.value, ...used].map((b, i) => [i ? h("span", { class: "then" }, icon("arrow", 14)) : null, link(b, i === 0)]),
-      skipped.length ? [h("span", { class: "muted small" }, "skipped:"), skipped.map(b => link(b, false))] : null,
-      h("div", { class: "cap" }, "When the first has no key, no credit or no quota left. Those jobs are scored again by " +
-        "the first one later. The chat and title suggestions use Claude or this Mac (Settings › Chat)."));
+    return sel;
+  };
+  const drawChain = () => {
+    const step = (st, i) => {
+      const move = (to, label, glyph) => {
+        const b = h("button", { type: "button", class: "step-btn", title: label, "aria-label": label }, glyph);
+        b.disabled = to < 0 || to >= steps.length;
+        b.onclick = () => { steps.splice(to, 0, steps.splice(i, 1)[0]); sync(); };
+        return b;
+      };
+      const drop = h("button", { type: "button", class: "step-btn", title: "Take it out", "aria-label": "Take it out" },
+        icon("x", 11));
+      drop.disabled = steps.length === 1;
+      drop.onclick = () => { steps.splice(i, 1); sync(); };
+      // paused (out of credit or quota): kept in its place, dimmed, skipped until the time it's tried again
+      const p = info && info.paused && info.paused[`${st.b}:${st.m}`];
+      const back = p && new Date(p.until).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+      return h("div", { class: "link step" + (i ? "" : " main") + (p ? " paused" : ""),
+        title: p ? `Skipped: ${p.reason} since ${new Date(p.since).toLocaleString()}; tried again ${back}`
+          : i ? "Tried when the one before can't score" : "Scores first" },
+        h("span", { class: "n" }, String(i + 1)), AI_LOOK[st.b].name, modelMenu(st),
+        !ready(st.b) ? h("span", { class: "n" }, "· not set up") : null,
+        p ? h("span", { class: "pause-tag" }, icon("clock", 11), `${p.reason} · back ${back}`) : null,
+        h("span", { class: "step-tools" }, move(i - 1, "Try it earlier", "←"), move(i + 1, "Try it later", "→"), drop));
+    };
+    // what can be added: each backend on its default, and agy's other models
+    const addable = [...AI_ORDER.map(b => ({ b, m: "" })), ...models("agy").map(m => ({ b: "agy", m: m.id }))]
+      .filter(c => !steps.some(st => same(st, c)));
+    const add = addable.length ? h("select", { class: "step-add", "aria-label": "Add a step" },
+      h("option", { value: "" }, "+ Add a step…"),
+      addable.map((c, k) => h("option", { value: String(k) },
+        `${AI_LOOK[c.b].name}${c.m ? ` · ${shortModel(c.m)}` : def(c.b) ? ` · ${shortModel(def(c.b))}` : ""}`))) : null;
+    if (add) add.onchange = () => { if (add.value !== "") { steps.push(addable[Number(add.value)]); drawChain(); } };
+    fill(chain, h("div", { class: "title" }, "Scores with the first; if it can't, tries the next"),
+      steps.map((st, i) => [i ? h("span", { class: "then" }, icon("arrow", 14)) : null, step(st, i)]),
+      add,
+      h("div", { class: "cap" }, "When one has no key, no credit or no quota left, the next one scores. ← → change the " +
+        "order (the first one scores first); one backend can be in it twice on two models. Each score says which " +
+        "model made it, and none is made again on its own (the ↻ on a score, or `jobwatch score --rescore`). The " +
+        "chat and title suggestions use Claude or this Mac (Settings › Chat)."));
   };
 
   const keyForm = st => {
@@ -3444,7 +3645,7 @@ function aiSetup(s) {
     return h("div", { class: "ai-key" }, h("div", { class: "pair" }, key, save), msg,
       h("div", { class: "help" }, `Kept in your macOS keychain (${st.keychain}), never in the settings file.`));
   };
-  const steps = (b, st) => {
+  const setupSteps = (b, st) => {
     const items = st.steps.map(p => h("li", {}, h("div", {}, p.text,
       p.link ? [" ", h("a", { href: p.link, target: "_blank", rel: "noopener" }, "Open ↗")] : null,
       p.command ? h("div", { class: "cmd" }, h("code", {}, p.command), copyButton(() => p.command)) : null)));
@@ -3466,8 +3667,7 @@ function aiSetup(s) {
       test.disabled = true; result.className = "muted";
       result.textContent = b === "local" ? "Loading the model (a minute or more the first time)…" : "Asking the model…";
       try {
-        const r = await api("/api/ai/test", { backend: b,
-          model: b === backend.value ? scoring.model || "" : b === "agy" ? scoring.agy_model || "" : "" });
+        const r = await api("/api/ai/test", { backend: b, model: (steps.find(st => st.b === b) || {}).m || "" });
         result.className = r.ok ? "done-ok" : "error";
         result.textContent = r.ok ? `Answered in ${r.seconds}s · ${r.model.split("/").pop()}` : r.error;
       } catch (e) { result.className = "error"; result.textContent = e.message; }
@@ -3490,7 +3690,7 @@ function aiSetup(s) {
         h("div", {}, h("div", { class: "name" }, AI_LOOK[b].name), h("div", { class: "muted small" }, AI_LOOK[b].tag)), state),
       meters(b),
       h("div", { class: "about" }, st ? st.about : ""),
-      st ? steps(b, st) : null,
+      st ? setupSteps(b, st) : null,
       key,
       h("div", { class: "foot" }, test, result));
     // a click on the tile picks it; one on its buttons, links or the key box doesn't
@@ -3504,11 +3704,18 @@ function aiSetup(s) {
     catch (e) { fill(tiles, h("p", { class: "small error" }, e.message)); return; }
     draw();
   };
-  backend.addEventListener("change", draw);
+  backend.addEventListener("change", () => {  // set elsewhere too (onboarding): the chain's front follows it
+    if (steps[0].b !== backend.value) {
+      const at = steps.findIndex(st => st.b === backend.value);
+      steps.unshift(at >= 0 ? steps.splice(at, 1)[0] : { b: backend.value, m: "" });
+    }
+    draw();
+  });
   draw(); refresh();
   return { el: h("div", {}, tiles, chain), select: backend,
-    values: () => ({ backend: backend.value, keychain: scoring.keychain || null,  // a key saved here names its item
-      fallback: AI_ORDER.filter(b => b !== backend.value && on.has(b)) }) };
+    values: () => ({ backend: steps[0].b, model: steps[0].m || null, agy_model: null,  // agy_model: in its step now
+      keychain: scoring.keychain || null,  // a key saved here names its item
+      fallback: steps.slice(1).map(st => st.m ? `${st.b}:${st.m}` : st.b) }) };
 }
 // How each choice looks: its tile's name, tagline and icon, and the meters (3 is best: better scores, cheaper,
 // more private, quicker).
@@ -4578,7 +4785,8 @@ function usageBody(d) {
   const tiles = h("div", { class: "use-tiles" },
     h("div", { class: "stat use-main" }, h("div", { class: "num" }, name(d.backend)),
       h("div", { class: "lbl" }, d.backend.model || "shortlist-ai's own model")),
-    h("div", { class: "stat" }, h("div", { class: "num" }, d.fallback.length ? d.fallback.map(name).join(" → ") : "none"),
+    h("div", { class: "stat" }, h("div", { class: "num" }, d.fallback.length ? d.fallback.map(b =>
+      b.default ? name(b) : `${name(b)} · ${shortModel(b.model)}`).join(" → ") : "none"),
       h("div", { class: "lbl" }, d.fallback.length ? "fallbacks, in order" : "no fallback")),
     h("div", { class: "stat" }, h("div", { class: "num" }, cap ? `${d.used_today} of ${cap}` : `${d.used_today} today`),
       h("div", { class: "lbl" }, cap ? `daily cap with ${name(d.backend)}` : "no daily cap"),
@@ -5030,19 +5238,26 @@ function renderSettings() {
   // itself (on for the local model unless set).
   const scoring = s.scoring || {};
   const aiS = aiSetup(s), backend = aiS.select;
-  const scoreModel = textInput(scoring.model, "default"), agyModel = textInput(scoring.agy_model, "default");
   const autoDefault = () => backend.value === "local";
   const auto = checkLine(scoring.auto ?? autoDefault(), "Score new jobs by themselves while the page is open");
   backend.addEventListener("change", () => { if (scoring.auto === undefined) auto.box.checked = autoDefault(); });
   // Claude only: the page's scores go through the Message Batches API, half price, landing in minutes to hours.
+  // With another backend first it shows, switched off, saying why (hidden, it looked like a setting left off).
   const batchApi = checkLine(scoring.batch_api, "Half price: score with Claude through the Batches API (scores land in minutes to hours)");
-  const showBatch = () => { batchApi.el.hidden = backend.value !== "claude"; };
+  const batchWhy = h("span", { class: "muted small" });
+  batchApi.el.append(batchWhy);
+  const showBatch = () => {
+    const claude = backend.value === "claude";
+    batchApi.box.disabled = !claude;
+    if (!claude) batchApi.box.checked = false;
+    batchApi.el.classList.toggle("off", !claude);
+    batchWhy.textContent = claude ? "" : " · only when Claude API scores first";
+  };
   backend.addEventListener("change", showBatch); showBatch();
   const top = numInput(scoring.top, D.scoring.top);
   const prompts = fitPromptsCard(s.fit_prompts);
   const scoringValues = () => {
-    const out = merged(scoring, { ...aiS.values(), model: textOf(scoreModel), agy_model: textOf(agyModel),
-      top: numberOf(top), auto: auto.box.checked === autoDefault() ? null : auto.box.checked,
+    const out = merged(scoring, { ...aiS.values(), top: numberOf(top), auto: auto.box.checked === autoDefault() ? null : auto.box.checked,
       batch_api: backend.value === "claude" && batchApi.box.checked ? true : null });
     if (prompts && prompts.editable) {  // otherwise the watchlist's are kept as they are
       const edited = prompts.edited();
@@ -5147,8 +5362,6 @@ function renderSettings() {
         "They need the scoring add-on: pip install 'jobwatch[score]'."),
       aiS.el,
       h("div", { class: "fields" },
-        field("Model", scoreModel, "Blank: shortlist-ai's own for where it runs."),
-        field("agy model", agyModel, "When agy scores: e.g. claude-sonnet-5-5-medium; `agy models` lists them."),
         field("Score per digest", top, "jobwatch digest scores this many new jobs; 0 none.")),
       auto.el, batchApi.el),
     setCard("people", "People you know", "optional",
@@ -5539,6 +5752,7 @@ function go(name) {
   render();
 }
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => go(b.dataset.tab);
+listenForEvents();
 const TABS = ["today", "interviews", "queue", "applied", "company", "comps", "referrals", "skills", "activity", "settings"];
 window.addEventListener("hashchange", () => {
   const to = pageOfHash(location.hash, TABS);

@@ -3,13 +3,14 @@
 The server listens on 127.0.0.1. Every API call must carry the token embedded in the page it served, and a
 Host header naming this machine, so other websites open in the browser can't read or change anything. The
 exceptions are the calendar feed and the prep sheets folder, whose addresses hold a secret instead (a calendar
-app, or a sheet opened in a tab of its own, can't send the token), and company logos, whose addresses hold the
-token (an <img> can't send it as a header).
+app, or a sheet opened in a tab of its own, can't send the token), and company logos and the page's event stream
+(/events), whose addresses hold the token (an <img> or an EventSource can't send it as a header).
 """
 
 from __future__ import annotations
 
 import json
+import queue as queue_mod
 import re
 import secrets
 import socketserver
@@ -18,6 +19,7 @@ import threading
 import time
 import webbrowser
 from concurrent.futures import Future
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -72,8 +74,10 @@ from .watch import (
     Entry,
     build_digest,
     entries_for,
+    fallback_model,
     fetch_all,
     hidden,
+    job_fit,
     load_contacts,
     pace,
     plural,
@@ -83,6 +87,7 @@ from .watch import (
     scorable,
     score_entries,
     score_with_fallback,
+    scoring_line,
     set_link,
     unscored,
     unscored_reason,
@@ -91,6 +96,7 @@ from .watch import (
 )
 
 MAX_UPLOAD = 20 * 1024 * 1024
+EVENT_PING = 15  # seconds between keep-alive comments on /events
 IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background scorer works through
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 
@@ -500,6 +506,30 @@ class LogoLookup:
                 self._thread, self._todo = None, []
 
 
+class Events:
+    """What the page hears without asking (Server-Sent Events on /events): each open page has a queue, and publish
+    puts an event on every one. A page that goes away is dropped when its stream ends."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._queues: set[queue_mod.Queue] = set()
+
+    def subscribe(self) -> queue_mod.Queue:
+        q = queue_mod.Queue()
+        with self._lock:
+            self._queues.add(q)
+        return q
+
+    def unsubscribe(self, q: queue_mod.Queue):
+        with self._lock:
+            self._queues.discard(q)
+
+    def publish(self, kind: str, data: dict):
+        with self._lock:
+            for q in self._queues:
+                q.put((kind, data))
+
+
 class App:
     """The API behind the page. Each method takes the request's query or JSON body and returns JSON data.
     With `background`, fit scores are worked out behind the scenes (see Scorer), and so is expected pay (PayLookup).
@@ -509,6 +539,9 @@ class App:
         self.path = config_path
         self.lock = threading.Lock()  # one fetch or save at a time
         self.looking = threading.Lock()  # one look for suggested companies' boards at a time
+        self.events = Events()
+        self.rescoring: set[str] = set()  # jobs being scored again when asked (post_rescore), one run each
+        self._rescoring_lock = threading.Lock()
         self.scorer = Scorer(self)
         self.pay = PayLookup(self)
         self.logos = LogoLookup(self)
@@ -650,8 +683,23 @@ class App:
         return str(scoring.get(setting) or "").strip()
 
     def get_ai(self, q) -> dict:
-        """Where the AI can run on this computer: each choice, ready or what it still needs (see ai.py)."""
-        return ai.status(self._keychain(), self._keychain("key_command"))
+        """Where the AI can run on this computer: each choice, ready or what it still needs (see ai.py), with the
+        models Settings' scoring chain offers for it (`models`: id and name) and its default model."""
+        st = ai.status(self._keychain(), self._keychain("key_command"))
+        newest = {}  # each Claude family's newest model: PRICES lists the newest first
+        for m in scorestats.PRICES:
+            newest.setdefault(m.split("-")[1], m)
+        models = {"claude": [(m, m) for m in newest.values()],
+                  "agy": ai.agy_models() if st["agy"]["ready"] else [], "local": []}
+        for b, s in st.items():
+            s["default_model"] = scorestats.default_model(b)
+            s["models"] = [{"id": m, "name": name} for m, name in models.get(b, [])]
+        # the chain's steps paused now (out of credit or quota), by "backend:model": Settings shows them so
+        try:
+            st["paused"] = self._with_store(lambda cfg, store: store.scorers_down())
+        except ApiError:  # no watchlist yet
+            st["paused"] = {}
+        return st
 
     def post_ai_test(self, body) -> dict:
         """One small call to the chosen backend, to show it answers (the local model loads first)."""
@@ -1274,6 +1322,70 @@ class App:
             return results[job.key]
         return self._with_store(run)
 
+    def _choices(self, cfg) -> list[dict]:
+        st = ai.status(cfg.api_keychain, cfg.api_key_command)
+        defaults = {b: scorestats.default_model(b) for b in config.BACKENDS}
+        chain = [(cfg.backend, cfg.score_model),
+                 *((config.fallback_entry(e)[0], fallback_model(cfg, e)) for e in cfg.score_fallback)]
+        return ai.choices(chain, {b: s["ready"] for b, s in st.items()}, defaults)
+
+    def get_rescore(self, q) -> dict:
+        """The Rescore dialog for one job: who made its score, and the models it can be scored again with (see
+        ai.choices), the scoring chain first."""
+        def run(cfg, store):
+            job, _ = store.find((q.get("key") or [""])[0])
+            fit = job_fit(cfg, store, job.key) or {}
+            return {"key": job.key, "scored_by": fit.get("scored_by", ""), "stale": bool(fit.get("stale")),
+                    "running": job.key in self.rescoring, "choices": self._choices(cfg)}
+        return self._with_store(run)
+
+    def post_rescore(self, body) -> dict:
+        """Score one job again with the backend and model asked for, in the background (no fallback: the one asked
+        for, or a failure). The new score, or why it failed, comes as an event (`score`, `score-failed`)."""
+        def run(cfg, store):
+            job, _ = store.find(body.get("key") or "")
+            if not scorable(job) or not job.description.strip():
+                raise ApiError(MANY_ROLES[1] + "." if not scorable(job) else "This job has no posting text to score.")
+            if not (cfg.resume and cfg.resume.is_file()):
+                raise ApiError("Add your resume in Settings to score fit.")
+            pick = next((c for c in self._choices(cfg) if (c["backend"], c["model"]) ==
+                         (body.get("backend"), body.get("model"))), None)
+            if pick is None:  # only a model offered: what's sent goes on agy's command line
+                raise ApiError("pick one of the models offered")
+            if not pick["ready"]:
+                raise ApiError(f"{pick['backend']} isn't set up here (Settings › Where the AI runs)")
+            with self._rescoring_lock:
+                if job.key in self.rescoring:
+                    raise ApiError("It's being scored again already.", HTTPStatus.CONFLICT)
+                self.rescoring.add(job.key)
+            threading.Thread(target=self._rescore, args=(job.key, pick["backend"], pick["model"]),
+                             name="jobwatch-rescore", daemon=True).start()
+            return {"started": True, "key": job.key, "backend": pick["backend"], "model": pick["model"]}
+        return self._with_store(run)
+
+    def _rescore(self, key: str, backend: str, model: str):
+        """post_rescore's run: the score saved for the job and its same-title postings, then the event."""
+        try:
+            def run(cfg, store):
+                job, record = store.find(key)
+                entry = next((e for e in scoring_line(cfg, store) if key in e.keys), None) or \
+                    Entry(job, record, 0.0, [])
+                one = replace(cfg, backend=backend, score_model=model, score_fallback=(), score_daily=0)
+                with turn(backend):  # ahead of background scoring
+                    _, errors = score_entries(one, store, [entry], progress=lambda m: None, by="rescore")
+                return entry, errors.get(job.key)
+            entry, error = self._with_store(run)
+            if error or not entry.fit:
+                self.events.publish("score-failed", {"key": key, "error": error or "scoring failed"})
+            else:
+                self.events.publish("score", {"key": key, "keys": entry.keys, "fit": entry.fit})
+        except Exception as e:  # never lose a rescore silently: the page is waiting to hear
+            why = str(e) if isinstance(e, ApiError | ScoringUnavailable) else f"{type(e).__name__}: {e}"
+            self.events.publish("score-failed", {"key": key, "error": why})
+        finally:
+            with self._rescoring_lock:
+                self.rescoring.discard(key)
+
     def get_scoring(self, q) -> dict:
         """Background fit scoring: running, how many done and left, the job being scored, the last error."""
         return {**self.scorer.status(), "enabled": self.background}
@@ -1432,6 +1544,8 @@ ROUTES = {
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/snooze"): App.post_snooze,
     ("POST", "/api/score"): App.post_score,
+    ("GET", "/api/rescore"): App.get_rescore,
+    ("POST", "/api/rescore"): App.post_rescore,
     ("POST", "/api/posting"): App.post_posting,
     ("POST", "/api/pay"): App.post_pay,
     ("GET", "/api/scoring"): App.get_scoring,
@@ -1580,6 +1694,32 @@ def make_handler(app: App, token: str, port_ref: list[int]):
         def _json(self, status: int, data):
             self._send(status, json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
+        def _events(self):
+            """Server-Sent Events: what the page hears without asking (a rescore's new score, see App.post_rescore),
+            for as long as it stays open. A comment every EVENT_PING seconds finds out when the page has gone."""
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.close_connection = True
+            q = app.events.subscribe()
+            try:
+                self.wfile.write(b"retry: 3000\n\n")
+                self.wfile.flush()
+                while True:
+                    try:
+                        kind, data = q.get(timeout=EVENT_PING)
+                    except queue_mod.Empty:
+                        self.wfile.write(b": ping\n\n")
+                    else:
+                        self.wfile.write(f"event: {kind}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode())
+                    self.wfile.flush()
+            except OSError:  # the page went away
+                pass
+            finally:
+                app.events.unsubscribe(q)
+
         def _host_ok(self) -> bool:
             # Blocks DNS rebinding: a page on evil.example resolving to 127.0.0.1 still sends its own Host.
             # APP_HOST is as safe: browsers and macOS send every *.localhost name to this machine, never the web.
@@ -1621,6 +1761,11 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 if found is None:
                     return self._json(HTTPStatus.NOT_FOUND, {"error": "no logo"})
                 return self._send_logo(*found)
+            if method == "GET" and url.path == "/events":
+                # The page's EventSource can't send the token header: the token is in the address, as for logos.
+                if not secrets.compare_digest((parse_qs(url.query).get("t") or [""])[0], token):
+                    return self._json(HTTPStatus.FORBIDDEN, {"error": "missing or wrong token; reload the page"})
+                return self._events()
             if url.path.startswith("/ext/"):
                 return self._extension(method, url)
             if not url.path.startswith("/api/"):

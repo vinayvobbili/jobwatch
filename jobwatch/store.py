@@ -89,6 +89,12 @@ CREATE TABLE IF NOT EXISTS score_usage (
     jobs INTEGER NOT NULL,
     PRIMARY KEY (day, backend)
 );
+CREATE TABLE IF NOT EXISTS scorer_down (
+    scorer TEXT PRIMARY KEY,
+    reason TEXT NOT NULL,
+    since TEXT NOT NULL,
+    until TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS score_cost (
     day TEXT NOT NULL,
     backend TEXT NOT NULL,
@@ -833,6 +839,26 @@ class Store:
                 self.db.execute("INSERT INTO score_usage (day, backend, jobs) VALUES (?, ?, ?) ON CONFLICT (day, "
                                 "backend) DO UPDATE SET jobs = jobs + excluded.jobs",
                                 ((day or date.today()).isoformat(), backend, jobs))
+
+    def set_scorer_down(self, scorer: str, reason: str, until: datetime):
+        """A scoring chain step ("backend:model") that can't score until `until` (out of credit or quota): it's
+        skipped without a call until then, and Settings shows it paused, with why."""
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        with self.db:
+            self.db.execute("INSERT INTO scorer_down (scorer, reason, since, until) VALUES (?, ?, ?, ?) ON CONFLICT "
+                            "(scorer) DO UPDATE SET reason = excluded.reason, until = excluded.until",
+                            (scorer, reason, now, until.astimezone(timezone.utc).isoformat(timespec="seconds")))
+
+    def clear_scorer_down(self, scorer: str):
+        with self.db:
+            self.db.execute("DELETE FROM scorer_down WHERE scorer=?", (scorer,))
+
+    def scorers_down(self) -> dict[str, dict]:
+        """{scorer: {reason, since, until}} for the steps paused now; ones whose time is up are left out (and are
+        tried again)."""
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        return {r["scorer"]: {"reason": r["reason"], "since": r["since"], "until": r["until"]}
+                for r in self.db.execute("SELECT * FROM scorer_down WHERE until > ?", (now,))}
 
     def score_usage(self, backend: str, day: date | None = None) -> int:
         """Jobs scored with this backend on this local day (default today)."""

@@ -83,6 +83,20 @@ def test_an_account_the_api_refuses_is_unavailable_so_the_fallback_scores(shortl
         score_jobs([_job()], cv, "local", tmp_path)
 
 
+class BackendError(Exception):
+    """Named like shortlist-ai's: a model's failure, here on the resume every job's score needs."""
+
+
+def test_a_backend_failing_the_whole_run_is_unavailable_so_the_next_one_scores(shortlist, tmp_path, monkeypatch):
+    def fail(*a, **kw):
+        raise BackendError("agy (gemini-x) answered with nothing")
+    monkeypatch.setattr(sys.modules["shortlist_ai.pipeline"], "match_jobs", fail)
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    with pytest.raises(ScoringUnavailable, match=r"local couldn't score: agy \(gemini-x\) answered with nothing"):
+        score_jobs([_job()], cv, "local", tmp_path)
+
+
 def test_any_other_failure_of_a_run_is_raised_as_it_is(shortlist, tmp_path, monkeypatch):
     def broken(*a, **kw):
         raise KeyError("requirements")
@@ -329,7 +343,7 @@ def test_no_key_falls_back_marks_the_score_and_waits_before_trying_claude_again(
     store.close()
 
 
-def test_past_the_daily_limit_the_fallback_scores_and_claude_takes_it_up_later(scored, monkeypatch):
+def test_past_the_daily_limit_the_fallback_scores_and_its_score_stays_until_asked(scored, monkeypatch):
     cfg, rid, _ = scored
     cfg = _claude_first(cfg, score_daily=1)
     _backends(monkeypatch)
@@ -342,9 +356,96 @@ def test_past_the_daily_limit_the_fallback_scores_and_claude_takes_it_up_later(s
     late = store.score(second.job.key, rid)
     assert late["scored_by"] == "local:m" and late["fallback"].startswith(watch.DAILY_LIMIT)
     assert store.score_usage("claude") == 1 and watch.at_daily_limit(cfg, store)
-    assert second.job.key not in {x.job.key for x in watch.unscored(cfg, store)}  # at the limit: it waits
-    roomier = _claude_first(cfg, score_daily=5)  # tomorrow, as far as the limit goes
-    assert second.job.key in {x.job.key for x in watch.unscored(roomier, store)}  # no failure kept for it
+    assert second.job.key not in {x.job.key for x in watch.unscored(cfg, store)}
+    roomier = _claude_first(cfg, score_daily=5)  # tomorrow, as far as the limit goes: still not scored again
+    assert second.job.key not in {x.job.key for x in watch.unscored(roomier, store)}
+    assert second.job.key in {x.job.key for x in watch.rescore_line(roomier, store)}  # `score --rescore` only
+    store.close()
+
+
+@pytest.mark.parametrize("error, reason, hours", [
+    ("Claude's API is out of credit (console Billing: buy credits or turn on auto-reload)", "out of credit", 1),
+    ("Error code: 400 - Your credit balance is too low to access the Anthropic API.", "out of credit", 1),
+    ("agy's quota or rate limit (exit 1): error: Individual quota reached. Resets in 26h33m49s.", "out of quota",
+     26 + 33 / 60 + 49 / 3600),
+    ("RESOURCE_EXHAUSTED (code 429): try later", "out of quota", 1),
+    ("Claude's API refused the key: Error code: 401", "API key refused", 1),
+])
+def test_what_pauses_a_step_and_for_how_long(error, reason, hours):
+    from datetime import datetime, timezone
+    now = datetime(2026, 1, 5, 9, tzinfo=timezone.utc)
+    why, until = score.paused_until(error, now)
+    assert why == reason and abs((until - now).total_seconds() / 3600 - hours) < 1e-6
+    assert score.paused_until("ValueError: the model judged 3 of 5 requirements", now) is None
+
+
+def test_a_step_out_of_quota_is_paused_skipped_without_a_call_and_back_once_it_scores(scored, monkeypatch):
+    """agy's Sonnet out of quota pauses that step (until its reset); the next run skips it and goes straight to the
+    local model; once it scores again, it's no longer paused."""
+    from dataclasses import replace
+    cfg, rid, _ = scored
+    cfg = replace(cfg, backend="agy", score_model="sonnet", score_fallback=("local",))
+    calls, quota = [], {"out": True}
+
+    def fake(jobs, resume, backend, cache, model="", **kw):
+        calls.append(backend)
+        if backend == "agy" and quota["out"]:
+            return {}, {j.key: "agy's quota or rate limit: Individual quota reached. Resets in 2h0m0s." for j in jobs}
+        return {j.key: {"score": 50.0, "must_haves_met": 1, "must_haves_total": 1, "scored_by": f"{backend}:m"}
+                for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    first, second = watch.unscored(cfg, store)[:2]
+    watch.score_entries(cfg, store, [first], progress=lambda m: None)
+    assert calls == ["agy", "local"] and set(store.scorers_down()) == {"agy:sonnet"}
+    assert store.scorers_down()["agy:sonnet"]["reason"] == "out of quota"
+    watch.score_entries(cfg, store, [second], progress=lambda m: None)
+    assert calls == ["agy", "local", "local"]  # paused: no call to agy
+    assert "paused until" in store.score(second.job.key, rid)["fallback"]
+    quota["out"] = False
+    store.clear_scorer_down("agy:sonnet")  # as when its time is up
+    third = watch.unscored(cfg, store)[0]
+    watch.score_entries(cfg, store, [third], progress=lambda m: None)
+    assert calls[-1] == "agy" and store.scorers_down() == {}
+    store.close()
+
+
+def test_a_fallback_entry_can_name_its_model_even_the_backends_own(watchlist):
+    cfg = _set(watchlist, scoring={"backend": "agy", "model": "claude-sonnet-5-5-medium",
+                                   "fallback": ["agy: gemini-3.8-flash-medium", "local"]})
+    assert cfg.score_fallback == ("agy:gemini-3.8-flash-medium", "local")
+    assert watch.fallback_model(cfg, "agy:gemini-3.8-flash-medium") == "gemini-3.8-flash-medium"
+    assert watch.fallback_model(cfg, "local") == ""
+    for bad in (["agy"], ["agy:claude-sonnet-5-5-medium"], ["local", "local:"], ["gpt:x"]):
+        with pytest.raises(config.ConfigError, match=r"scoring\.fallback is a backend other than"):
+            _set(watchlist, scoring={"backend": "agy", "model": "claude-sonnet-5-5-medium", "fallback": bad})
+
+
+def test_the_chain_tries_one_backend_on_another_model_before_the_next(scored, monkeypatch):
+    """agy's Sonnet out of quota: agy's Gemini scores (a fallback score, saying which model), local isn't asked."""
+    from dataclasses import replace
+    cfg, rid, _ = scored
+    cfg = replace(cfg, backend="agy", score_model="claude-sonnet-5-5-medium",
+                  score_fallback=("agy:gemini-3.8-flash-medium", "local"))
+    calls = []
+
+    def fake(jobs, resume, backend, cache, model="", **kw):
+        calls.append((backend, model))
+        if model == "claude-sonnet-5-5-medium":
+            raise ScoringUnavailable("agy's quota or rate limit")
+        return {j.key: {"score": 55.0, "must_haves_met": 1, "must_haves_total": 1, "scored_by": f"{backend}:{model}"}
+                for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    e = watch.unscored(cfg, store)[0]
+    watch.score_entries(cfg, store, [e], progress=lambda m: None)
+    assert calls == [("agy", "claude-sonnet-5-5-medium"), ("agy", "gemini-3.8-flash-medium")]
+    fit = store.score(e.job.key, rid)
+    assert fit["scored_by"] == "agy:gemini-3.8-flash-medium" and fit["fallback"] == "agy's quota or rate limit"
     store.close()
 
 

@@ -92,7 +92,7 @@ def _line(e: Entry) -> list[str]:
                    + (f": {'; '.join(places[:4])}" if places else ""))
     if e.fit:
         f = e.fit
-        old = " (old score, rescoring)" if f.get("stale") else ""
+        old = " (old score)" if f.get("stale") else ""  # made again only by `jobwatch score --rescore`
         by = f" (scored by {scorer_label(f['scored_by'])})" if f.get("scored_by") else ""
         out.append(f"**Fit {f['score']:.0f}/100**{old}, must-haves {f['must_haves_met']}/{f['must_haves_total']}{by}. "
                    + (f"Gaps: {'; '.join(f['gaps'])}" if f["gaps"] else "No must-have gaps."))

@@ -25,6 +25,7 @@ from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .models import Job
@@ -379,9 +380,32 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
     except Exception as e:  # a batch is sent whole: the API refusing it fails the run, not one job
         if why := account_down(e):
             raise ScoringUnavailable(why) from e
+        if type(e).__name__ == "BackendError":  # the model failed on what every job needs (reading the resume)
+            raise ScoringUnavailable(f"{getattr(model, 'name', backend)} couldn't score: {e}") from e
         raise
     finally:
         tokens.note(len(out[0]) if out else 0)
+
+
+_QUOTA = re.compile(r"quota|rate.?limit|usage limit|resource_exhausted|too many requests|\b429\b", re.I)
+_RESETS = re.compile(r"resets? in\s+(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?", re.I)
+PAUSE = timedelta(hours=1)  # how long a step out of credit (or with no reset time given) is skipped before a retry
+
+
+def paused_until(error: str, now: datetime | None = None) -> tuple[str, datetime] | None:
+    """Whether a scoring failure means the step can't score for a while, and until when: out of credit or its key
+    refused (an hour: credit can be bought any time), or out of quota (until the reset the error names, else an
+    hour). None for a failure of one job."""
+    now = now or datetime.now(timezone.utc)
+    if "credit balance is too low" in error or "out of credit" in error:
+        return "out of credit", now + PAUSE
+    if "refused the key" in error:
+        return "API key refused", now + PAUSE
+    if _QUOTA.search(error):
+        m = _RESETS.search(error)
+        wait = timedelta(hours=int(m[1] or 0), minutes=int(m[2] or 0), seconds=int(m[3] or 0)) if m else PAUSE
+        return "out of quota", now + (wait or PAUSE)
+    return None
 
 
 def account_down(e: Exception) -> str:

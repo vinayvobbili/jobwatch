@@ -129,6 +129,63 @@ def status(keychain: str = "", key_command: str = "") -> dict:
     }
 
 
+_AGY_MODELS: tuple[float, list[tuple[str, str]]] = (0.0, [])
+AGY_MODELS_FOR = 3600  # seconds agy's model list is kept: it rarely changes, and asking takes a second or two
+
+
+def agy_models(timeout: float = 30) -> list[tuple[str, str]]:
+    """The models agy offers, as (id, name) the way `agy models` lists them; none when agy isn't here or doesn't
+    answer. Kept for AGY_MODELS_FOR."""
+    global _AGY_MODELS
+    when, models = _AGY_MODELS
+    if models and time.monotonic() - when < AGY_MODELS_FOR:
+        return models
+    if not (agy := find_agy()):
+        return []
+    try:
+        out = subprocess.run([agy, "models"], capture_output=True, text=True, timeout=timeout,
+                             stdin=subprocess.DEVNULL).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    models = [(m, name.strip() or m) for line in out.splitlines()
+              # an id, never something agy's command line would read as a flag
+              if "\t" in line and re.fullmatch(r"[A-Za-z0-9][\w.-]*", m := line.split("\t", 1)[0].strip())
+              for name in [line.split("\t", 1)[1]]]
+    _AGY_MODELS = (time.monotonic(), models)
+    return models
+
+
+COSTS = {"claude": "billed per job", "agy": "on your subscription's quota", "local": "free, on this Mac"}
+
+
+def choices(chain: list[tuple[str, str]], ready: dict[str, bool], defaults: dict[str, str]) -> list[dict]:
+    """What a fit score can be made again with: the scoring chain first ((backend, model): scoring.backend, then
+    scoring.fallback), then agy's other models, then Claude's and this Mac's default where the chain has none.
+    Each: backend, model, name, role (main, fallback or ""), cost, ready. ready: status()'s per backend;
+    defaults: each backend's default model."""
+    out, seen = [], set()
+
+    def add(backend: str, model: str, role: str = "", name: str = ""):
+        model = model or defaults.get(backend, "")
+        if (backend, model) in seen or not model:
+            return
+        seen.add((backend, model))
+        out.append({"backend": backend, "model": model, "name": name or model, "role": role,
+                    "cost": COSTS[backend], "ready": bool(ready.get(backend))})
+
+    for i, (backend, model) in enumerate(chain):
+        add(backend, model, "main" if i == 0 else "fallback")
+    if ready.get("agy"):
+        for model, name in agy_models():
+            add("agy", model, name=name)
+    for backend in ("claude", "local"):
+        add(backend, "")
+    names = dict(agy_models()) if ready.get("agy") else {}
+    for c in out:  # agy's own names for its models in the chain too
+        c["name"] = names.get(c["model"], c["name"]) if c["backend"] == "agy" else c["name"]
+    return out
+
+
 def test(backend: str, model: str = "", keychain: str = "", key_command: str = "") -> dict:
     """One small call to the model: {"ok": True, "seconds": ..., "model": ...} or {"ok": False, "error": ...}.
     The local model loads first (a minute or more the first time)."""

@@ -51,7 +51,7 @@ from . import (
     suggest,
     tailor,
 )
-from .config import BACKENDS, ConfigError, duration
+from .config import BACKENDS, ConfigError, duration, fallback_entry
 from .filters import KINDS, rejection
 from .rounds import ROUNDS
 from .score import AGY_WORKERS, ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
@@ -192,8 +192,10 @@ def cmd_score(args, cfg, store):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
     if args.backend or args.model:  # this run only; the watchlist keeps its own
         backend = args.backend or cfg.backend
-        cfg = replace(cfg, backend=backend, score_fallback=tuple(b for b in cfg.score_fallback if b != backend),
-                      score_model=args.model if args.model else "" if args.backend else cfg.score_model)
+        model = args.model if args.model else "" if args.backend else cfg.score_model
+        cfg = replace(cfg, backend=backend, score_model=model,  # a fallback the same as this run's scorer is dropped
+                      score_fallback=tuple(e for e in cfg.score_fallback
+                                           if fallback_entry(e) not in ((backend, ""), (backend, model))))
     # scoring.batch_api makes it the default, for the backend it was set for
     args.batch_api = args.batch_api or (cfg.score_batch_api and cfg.backend == "claude")
     if args.batch_api and cfg.backend != "claude":
@@ -219,7 +221,7 @@ def cmd_score(args, cfg, store):
         rid = resume_id(cfg.resume, cfg.prompts)
         dropped = set(store.drop_incomplete_scores(rid) if args.incomplete else store.drop_kept_scores(rid))
         what = "left requirements unjudged" if args.incomplete else "were kept from an earlier scorer"
-        todo = [e for e in unscored(cfg, store) if e.job.key in dropped]
+        todo = [e for e in unscored(cfg, store, again=dropped) if e.job.key in dropped]
         print(f"{len(dropped)} score{'s' * (len(dropped) != 1)} {what}; scoring {len(todo)} of them again (the "
               f"rest aren't on Today or queued: their old score shows until they're scored)." if dropped else
               f"No score {what}.", file=sys.stderr)
