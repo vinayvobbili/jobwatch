@@ -925,11 +925,21 @@ def unscored(cfg: Config, store: Store, skip: set[str] = frozenset(), again: set
 
 def made_elsewhere(cfg: Config, fit: dict | None) -> bool:
     """A score not made by the backend (and scoring.model, when set) now in use: by the other backend, as a
-    fallback, or before scores said who made them."""
+    fallback, or before scores said who made them. One by a scorer in scoring.same_as (the same model through
+    another backend, say) counts as the backend's own, made as a fallback or not."""
     if not fit:
         return False
-    backend, _, model = str(fit.get("scored_by") or "").partition(":")
+    by = str(fit.get("scored_by") or "")
+    if by in cfg.score_same_as:
+        return False
+    backend, _, model = by.partition(":")
     return backend != cfg.backend or bool(cfg.score_model and model != cfg.score_model) or bool(fit.get("fallback"))
+
+
+def counts_as_main(cfg: Config, entry: str) -> bool:
+    """A scoring.fallback entry whose scores count as the backend's own (scoring.same_as): `score --rescore` keeps
+    it, since what it makes is no stand-in."""
+    return scorer_id(fallback_entry(entry)[0], fallback_model(cfg, entry)) in cfg.score_same_as
 
 
 def rescore_line(cfg: Config, store: Store, at_least: float = 0) -> list[Entry]:

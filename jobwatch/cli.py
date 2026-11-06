@@ -67,6 +67,7 @@ from .watch import (
     check_postings,
     compare_picks,
     compare_scores,
+    counts_as_main,
     fetch_all,
     hidden,
     load_contacts,
@@ -214,7 +215,9 @@ def cmd_score(args, cfg, store):
         return
     cfg = replace(cfg, score_daily=0)  # scoring.daily holds back the page's background scoring, not what's asked for
     if args.rescore is not None:
-        cfg = replace(cfg, score_fallback=())  # the fallback would only put one stand-in score for another
+        # a fallback would only put one stand-in score for another, unless scoring.same_as counts its scores as
+        # the backend's own (the same model through the API while agy's quota is out, say)
+        cfg = replace(cfg, score_fallback=tuple(e for e in cfg.score_fallback if counts_as_main(cfg, e)))
         todo = rescore_line(cfg, store, args.rescore)
         if not todo:
             model = f" ({cfg.score_model})" if cfg.score_model else ""

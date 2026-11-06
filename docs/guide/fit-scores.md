@@ -96,6 +96,19 @@ scoring:
   fallback: [agy:gemini-3.8-flash-medium, local]   # agy's Gemini, then this Mac
 ```
 
+A score from another backend counts as another model's, even when it's the same model reached another way (agy's
+Sonnet and the API's). `scoring.same_as` names the scorers (backend:model) whose scores count as the main
+backend's own: `--rescore` leaves their scores alone, and keeps such a fallback, so while agy is out of quota it
+redoes Gemini's and the local model's scores through the API instead of waiting:
+
+```yaml
+scoring:
+  backend: agy
+  model: claude-sonnet-5-5-medium
+  fallback: [claude:claude-sonnet-5-5, agy:gemini-4-argon-medium, local]
+  same_as: claude:claude-sonnet-5-5               # the same Sonnet, through the API
+```
+
 A new shortlist-ai (a release, or its prompts or scoring code changed) is another scorer: new jobs are scored
 by it, and a job scored before shows its old score as "old score" until you score it again. When the change doesn't
 change what a score means (a prompt reordered for caching, say), `jobwatch score --keep-old` keeps the scores

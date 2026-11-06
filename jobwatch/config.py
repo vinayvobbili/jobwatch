@@ -552,6 +552,7 @@ class Config:
     api_keychain: str = ""     # scoring.keychain: macOS keychain item with the Anthropic API key (for Claude)
     api_key_command: str = ""  # scoring.key_command: a command that prints the key, in place of the keychain read
     score_fallback: tuple[str, ...] = ()  # scoring.fallback: backends tried in turn when this can't score
+    score_same_as: tuple[str, ...] = ()   # scoring.same_as: other scorers (backend:model) whose scores count as its own
     agy_model: str = ""        # scoring.agy_model: agy's model as a fallback (scoring.model as the backend)
     score_daily: int = 0       # scoring.daily: the most jobs the backend scores a day, then the fallback (0: no cap)
     score_workers: int = 4     # scoring.workers: Claude calls at once (the local model takes one at a time)
@@ -922,6 +923,13 @@ def load(explicit: str | Path | None = None) -> Config:
                           f"backend:model (agy:gemini-3.8-flash-medium, even scoring.backend's with another model), or "
                           f"a list of them in the order to try, or left out, got {scoring.get('fallback')!r}")
     fallback = [":".join(p for p in fallback_entry(b) if p) for b in fallback]
+    same_as = scoring.get("same_as") or []
+    same_as = [same_as] if isinstance(same_as, str) else same_as
+    if not isinstance(same_as, list) or any(not isinstance(s, str) or fallback_entry(s)[0] not in BACKENDS
+                                            or not fallback_entry(s)[1] for s in same_as):
+        raise ConfigError(f"{path}: scoring.same_as is a backend:model (claude:claude-sonnet-5-5) whose scores count "
+                          f"as scoring.backend's, or a list of them, got {scoring.get('same_as')!r}")
+    same_as = [":".join(fallback_entry(s)) for s in same_as]
     learning = raw.get("learning") or {}
     timeline = str(learning.get("timeline", "quarter"))
     if timeline not in TIMELINES:
@@ -972,6 +980,7 @@ def load(explicit: str | Path | None = None) -> Config:
         score_rest=_whole(scoring.get("rest", 10), "scoring.rest", path, "0 rests not at all"),
         unload_after=_whole(scoring.get("unload_after", 5), "scoring.unload_after", path, "0 keeps the model loaded"),
         api_keychain=str(scoring.get("keychain") or "").strip(), score_fallback=tuple(fallback),
+        score_same_as=tuple(same_as),
         api_key_command=str(scoring.get("key_command") or "").strip(),
         agy_model=str(scoring.get("agy_model") or "").strip(),
         score_daily=_whole(scoring.get("daily", 0), "scoring.daily", path, "0 sets no daily limit"),

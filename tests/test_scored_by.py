@@ -469,10 +469,44 @@ def test_at_the_limit_with_no_fallback_nothing_is_in_line(scored, monkeypatch):
     ({"score": 50, "scored_by": "claude:claude-sonnet-5-5"}, False),
     ({"score": 50, "scored_by": "claude:claude-opus-5"}, True),  # scoring.model names another
     ({"score": 50, "scored_by": "claude:claude-sonnet-5-5", "fallback": "x"}, True),
+    ({"score": 50, "scored_by": "agy:claude-sonnet-5-5-medium"}, False),                   # scoring.same_as
+    ({"score": 50, "scored_by": "agy:claude-sonnet-5-5-medium", "fallback": "x"}, False),  # as a fallback too
+    ({"score": 50, "scored_by": "agy:gemini-4-argon-medium"}, True),
 ])
 def test_made_elsewhere(watchlist, fit, elsewhere):
-    cfg = _set(watchlist, scoring={"backend": "claude", "model": "claude-sonnet-5-5"})
+    cfg = _set(watchlist, scoring={"backend": "claude", "model": "claude-sonnet-5-5",
+                                   "same_as": "agy:claude-sonnet-5-5-medium"})
     assert watch.made_elsewhere(cfg, fit) is elsewhere
+
+
+@pytest.mark.parametrize("same_as", ["agy", ["claude:"], [3], {"agy": "m"}, ["mystery:m"]])
+def test_same_as_names_backend_and_model(watchlist, same_as):
+    with pytest.raises(config.ConfigError, match=r"scoring\.same_as"):
+        _set(watchlist, scoring={"backend": "agy", "same_as": same_as})
+
+
+def test_rescore_keeps_a_fallback_that_counts_as_the_backend_while_the_backend_is_down(scored, monkeypatch, capsys):
+    cfg, rid, jobs = scored
+    store = Store(cfg.state)
+    for i, job in enumerate(jobs):  # 55, 65...: on Today, each made by the local model
+        store.save_score(job.key, rid, {"score": 55 + 10 * i, "must_haves_met": 1, "must_haves_total": 2,
+                                        "scored_by": "local:mlx-community/Qwen"})
+    store.close()
+    calls = _chain(monkeypatch, down=("agy",))
+    _set(cfg.path, scoring={"backend": "agy", "model": "m", "fallback": ["claude:m", "local"], "same_as": "claude:m"})
+    cli.main(["-c", str(cfg.path), "score", "--rescore", "50"])
+    assert "agy" in calls and "claude" in calls and "local" not in calls  # local, a stand-in, is left out
+    store = Store(cfg.state)
+    redone = [store.score(j.key, rid) for j in jobs if store.score(j.key, rid)["scored_by"] == "claude:m"]
+    assert redone and all(f["fallback"] for f in redone)
+    cfg = config.load(cfg.path)
+    assert not any(watch.made_elsewhere(cfg, f) for f in redone)  # so a later --rescore leaves them
+    store.close()
+    calls.clear()
+    _set(cfg.path, scoring={"backend": "agy", "model": "m", "fallback": ["claude:m", "local"]})
+    with pytest.raises(SystemExit, match="agy is down"):  # without same_as the fallback is a stand-in: wait for agy
+        cli.main(["-c", str(cfg.path), "score", "--rescore", "50"])
+    assert calls == ["agy"]
 
 
 def test_rescore_scores_other_models_jobs_again_best_first_past_the_daily_limit(scored, monkeypatch, capsys):
