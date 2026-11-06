@@ -9,14 +9,27 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from jobwatch import sources
+from jobwatch import models, sources
 
 NOW = datetime.now(timezone.utc)
 TOKEN = "test-token"
+# The saved alert emails (fixtures/alerts) were sent 10/5-10/23: their jobs' ages are counted from then
+ALERT_WEEK = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
 
 
 def iso(days_ago: int) -> str:
     return (NOW - timedelta(days=days_ago)).isoformat()
+
+
+@pytest.fixture
+def alert_week(monkeypatch):
+    """A job's age as of the week the saved alert emails were sent, so their jobs don't age past max_age_days
+    as the calendar moves on."""
+    class Then(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return ALERT_WEEK.astimezone(tz) if tz else ALERT_WEEK.replace(tzinfo=None)
+    monkeypatch.setattr(models, "datetime", Then)
 
 
 GREENHOUSE = {

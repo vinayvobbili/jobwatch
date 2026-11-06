@@ -57,6 +57,7 @@ def rows(store):
 
 # -- Recording
 
+@pytest.mark.usefixtures("alert_week")
 def test_alert_imports_note_unwatched_companies(web, watchlist):
     umbrella_board(web)
     cfg, store, _, _ = take(watchlist, ["linkedin.eml", "builtin.eml", "indeed.eml"])

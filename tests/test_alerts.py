@@ -20,6 +20,7 @@ from jobwatch.store import Store
 from jobwatch.watch import build_digest, fetch_all
 
 FIXTURES = Path(__file__).parent / "fixtures" / "alerts"
+pytestmark = pytest.mark.usefixtures("alert_week")
 PLACEHOLDERS = re.compile(r"TOKEN|TRACKING|VIEWER-ID|ALERT-ID|PREFERENCE-ID|MESSAGE-ID|SIGNATURE|REF-ID|MID-|EMAIL-ID|"
                           r"utm_|trk|gh_src|awstrack|google\.com/url", re.I)
 
