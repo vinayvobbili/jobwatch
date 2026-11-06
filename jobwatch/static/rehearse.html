@@ -311,8 +311,8 @@ function render() {
   let body = "";
   if (shown) {
     body = `<div class="answer"><h3>Say it in your own words${full ? "" : ": key points"}</h3>` +
-      (full ? `<p class="full">${esc(c.answer)}</p>`
-            : `<ul class="points">${points(c.answer).map((p, k) => `<li style="animation-delay:${k * 60}ms">${esc(p)}</li>`).join("")}</ul>`) +
+      (full ? `<p class="full">${esc(c.a)}</p>`
+            : `<ul class="points">${points(c.a).map((p, k) => `<li style="animation-delay:${k * 60}ms">${esc(p)}</li>`).join("")}</ul>`) +
       `<div class="actions" style="margin-top:12px"><button class="btn" id="full">${full ? "Key points" : "Full answer"}</button></div>
       ${clip ? `<audio controls src="${clip}"></audio>` : ""}
       <div class="rates"><button class="btn s" data-r="s">Smooth<kbd>1</kbd></button>

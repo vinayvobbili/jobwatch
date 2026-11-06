@@ -38,6 +38,13 @@ def test_cards_come_through_from_the_sheet(sheet):
     assert data["cards"][0]["a"].startswith("Latency. Each region")
 
 
+def test_page_reads_only_the_card_fields_it_is_given(sheet):
+    """The page once read c.answer from cards that carry only q and a, so showing an answer threw."""
+    keys = set(_cards(rehearse.write(sheet).read_text(encoding="utf-8"))["cards"][0])
+    used = set(re.findall(r"\bc\.([a-z]\w*)", rehearse.TEMPLATE.read_text(encoding="utf-8")))
+    assert used and used <= keys
+
+
 def test_unsafe_text_cannot_close_the_script_tag():
     cards = [drill.Card("Q </script><script>alert(1)</script>?", "A <!-- x --> & <b>y</b>.")]
     page = rehearse.build("Title </script> & <i>", cards)
