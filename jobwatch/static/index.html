@@ -1050,6 +1050,74 @@ details.fold > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; p
 .prep .mock-a { width: 100%; box-sizing: border-box; min-height: 110px; }
 .prep .mock-fb { margin-top: 10px; } .prep .mock-fb p { margin: 0 0 7px; }
 .prep .story-log { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+/* voice mock interview: a chat with the interviewer, a mic dock, then a report */
+.vm-log { display: flex; flex-direction: column; gap: 12px; margin: 14px 0; padding: 16px 14px; min-height: 240px;
+  max-height: min(52vh, 520px); overflow-y: auto; border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow);
+  background: radial-gradient(420px 220px at 0% 0%, var(--accent-soft), transparent 70%),
+    radial-gradient(380px 200px at 100% 100%, color-mix(in srgb, var(--accent-2) 14%, transparent), transparent 70%), var(--panel); }
+.vb { max-width: 86%; padding: 10px 14px; border-radius: 18px; line-height: 1.5; overflow-wrap: anywhere; animation: rise .3s both; }
+.vb.them { align-self: flex-start; background: var(--chip); border-bottom-left-radius: 5px; font-weight: 600; box-shadow: var(--shadow); }
+.vb .who { display: block; margin-bottom: 3px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
+.vb.me { align-self: flex-end; width: min(86%, 560px); color: #fff; background: var(--grad); border-bottom-right-radius: 5px;
+  box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--accent) 90%, transparent); }
+.vb.me .who { color: rgba(255, 255, 255, .8); }
+.vb.me textarea { min-height: 84px; color: #fff; background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .38); }
+.vb.me textarea::placeholder { color: rgba(255, 255, 255, .7); }
+.vb.me textarea:focus { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .28); }
+.vb.me .meta { margin-top: 6px; font-size: 12px; opacity: .88; }
+.vb.me .row .btn { color: #fff; background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .4); }
+.vb.me .row .btn:hover:not(:disabled) { background: rgba(255, 255, 255, .28); }
+.vb.sys { align-self: center; max-width: 92%; padding: 6px 12px; font-size: 13px; color: var(--muted); background: var(--chip); border-radius: 12px; }
+.vb.err { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.vb .dots span { display: inline-block; width: 6px; height: 6px; margin: 0 2px; border-radius: 50%; background: var(--accent); animation: blink 1.2s infinite; }
+.vb .dots span:nth-child(2) { animation-delay: .15s; } .vb .dots span:nth-child(3) { animation-delay: .3s; }
+.vm-dock { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--line);
+  border-radius: 18px; background: var(--panel); box-shadow: var(--shadow); }
+.mic { position: relative; flex: none; width: 64px; height: 64px; display: grid; place-items: center; padding: 0; border: 0;
+  border-radius: 50%; cursor: pointer; color: #fff; background: var(--grad);
+  box-shadow: 0 10px 24px -10px color-mix(in srgb, var(--accent) 90%, transparent); transition: transform .15s, box-shadow .15s; }
+.mic:hover:not(:disabled) { transform: translateY(-2px) scale(1.05); }
+.mic:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 3px; }
+.mic:disabled { opacity: .45; cursor: default; }
+.mic::before, .mic::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; pointer-events: none; }
+.mic:not(:disabled):not(.rec)::before { animation: mic-idle 2.8s ease-out infinite; }
+.mic.rec { background: linear-gradient(135deg, #ef4444, #f97316); box-shadow: 0 10px 28px -8px rgba(239, 68, 68, .75); }
+.mic.rec::before, .mic.rec::after { border-color: #ef4444; animation: mic-ring 1.5s ease-out infinite; }
+.mic.rec::after { animation-delay: .75s; }
+@keyframes mic-idle { from { transform: scale(.96); opacity: .45; } to { transform: scale(1.45); opacity: 0; } }
+@keyframes mic-ring { from { transform: scale(.95); opacity: .75; } to { transform: scale(1.75); opacity: 0; } }
+.vm-time { min-width: 62px; font: 650 22px/1 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+.vm-time.over { color: var(--warn); }
+.vm-hint { flex: 1 1 160px; font-size: 13px; color: var(--muted); }
+.vm-meter { display: flex; align-items: center; gap: 2px; flex: 1 1 140px; height: 34px; }
+.vm-meter i { flex: 1; max-width: 6px; height: 3px; border-radius: 3px; opacity: .45; transition: height .08s linear;
+  background: linear-gradient(var(--accent-2), var(--accent)); }
+.vr-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 12px 0; }
+.vr-tile { padding: 12px 14px; border-radius: 14px; color: #fff; background: var(--grad); box-shadow: var(--shadow-hover);
+  animation: rise .35s both; }
+.vr-tile b { display: block; font-size: 24px; line-height: 1.2; } .vr-tile small { opacity: .88; }
+.vr-tile.t2 { background: linear-gradient(135deg, #0ea5e9, #6366f1); } .vr-tile.t3 { background: linear-gradient(135deg, #10b981, #0ea5e9); }
+.vr-tile.t4 { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+.vr-card { margin: 0 0 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel);
+  animation: rise .35s both; transition: transform .15s, box-shadow .15s; }
+.vr-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.vr-card .q { font-weight: 650; }
+.vr-track { position: relative; height: 10px; margin: 14px 0 6px; border-radius: 6px; background: var(--chip); }
+.vr-zone { position: absolute; top: 0; bottom: 0; border-radius: 6px; background: color-mix(in srgb, var(--good) 32%, transparent); }
+.vr-dot { position: absolute; top: -3px; width: 16px; height: 16px; border-radius: 50%; transform: translateX(-50%);
+  background: var(--grad); border: 2px solid var(--panel-solid); box-shadow: 0 2px 6px rgba(0, 0, 0, .25); }
+.vr-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.vr-flag { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.vr-ok { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.vr-line { margin-top: 6px; font-size: 14px; } .vr-line b { color: var(--accent); }
+ol.vr-ops { list-style: none; margin: 8px 0; padding: 0; counter-reset: op; }
+ol.vr-ops li { position: relative; margin: 0 0 8px; padding: 8px 12px 8px 44px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel); counter-increment: op; animation: rise .35s both; }
+ol.vr-ops li::before { content: counter(op); position: absolute; left: 10px; top: 8px; width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 13px; background: var(--grad); }
+.vr-glow { margin: 12px 0; padding: 14px; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  background: linear-gradient(135deg, var(--accent-soft), transparent 70%); }
+@media (max-width: 600px) { .vb, .vb.me { max-width: 96%; width: auto; } .vb.me { width: 96%; } .vm-dock { gap: 10px; } .mic { width: 58px; height: 58px; } }
 @media print {
   body > *:not(#overlay) { display: none !important; }
   .overlay { position: static; background: none; backdrop-filter: none; padding: 0; display: block !important; }
@@ -1222,6 +1290,9 @@ const ICONS = {
   zap: "M13 2 3 14h9l-1 8 10-12h-9z",
   alert: "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01",
   pause: "M10 4H6v16h4zM18 4h-4v16h4z",
+  mic: "M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8",
+  volume: "M11 5 6 9H2v6h4l5 4zM19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07",
+  mute: "M11 5 6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6",
 };
 function icon(name, size = 15) {
   const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
@@ -2095,6 +2166,9 @@ async function openPrep(key, draft = false, questions = false) {
           "Find a story"),
         h("button", { class: "btn", onclick: () => openMock(key),
           title: "Practise the likely questions one at a time, with feedback on each answer" }, "Mock interview"),
+        h("button", { class: "btn", onclick: () => openMock(key, true),
+          title: "The same questions read aloud: answer out loud, then get a report on what you said and how" },
+          icon("mic", 14), " Voice interview"),
         copy, page, h("button", { class: "btn", onclick: () => print() }, "Print"),
         h("button", { class: "btn", onclick: closeDetails }, "Close")),
       h("h2", {}, `Prep: ${p.title}`),
@@ -2158,12 +2232,13 @@ async function openPrep(key, draft = false, questions = false) {
 }
 // A mock interview for one job: its likely questions one at a time, your answer, the chat model's feedback (streamed)
 // and a tightened answer built only from what you said and your stories, which you can keep on the prep sheet.
-async function openMock(key) {
+async function openMock(key, voice = false) {
   const dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
   dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
   let m;
   try { m = await api("/api/mock?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
+  if (voice) return openVoice(key, m);
   let n = 0, kept = 0, answered = 0, busy = null;
   const cut = t => { const f = [...t.matchAll(/^[\s#*_>]*tightened answer[\s*_:]*/gim)].pop(); return f ? t.slice(0, f.index) : t; };
   const top = (...more) => h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openPrep(key) }, "← Prep sheet"),
@@ -2225,7 +2300,8 @@ async function openMock(key) {
           n + 1 < m.questions.length ? "Next question" : "Finish")));
     };
     skip.onclick = next;
-    fill(dialog, h("div", { class: "prep" }, top(h("button", { class: "btn", onclick: done }, "End")),
+    fill(dialog, h("div", { class: "prep" }, top(h("button", { class: "btn", onclick: () => openVoice(key, m),
+        title: "Hear the questions and answer out loud" }, icon("mic", 14), " Voice mode"), h("button", { class: "btn", onclick: done }, "End")),
       h("h2", {}, "Mock interview"),
       h("div", { class: "small muted" }, `Question ${n + 1} of ${m.questions.length} · ${m.where.local ? "private, runs on this computer" : m.where.label + " (cloud)"}`),
       q.probes ? h("div", { class: "kind", style: "margin-top:10px" }, "Probes: " + q.probes) : null,
@@ -2234,6 +2310,265 @@ async function openMock(key) {
     box.focus();
   }
   m.questions.length ? ask() : done();
+}
+// The mock interview by voice, as a chat. The interviewer's question is read aloud (speechSynthesis; the speaker button
+// mutes it), you answer into the microphone (MediaRecorder; the mic button or space starts and stops) and the recording
+// goes to /api/mock/transcribe, the local speech-to-text server, and comes back as text you can correct. Never the
+// browser's SpeechRecognition, which sends audio to a cloud service. Nothing is kept as audio. The questions come one at
+// a time from /api/mock/next, so a follow-up model can choose them later. Finish gives the report (voiceReport).
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+async function openVoice(key, m, among = null) {
+  const dialog = document.getElementById("dialog");
+  dialog.classList.remove("with-chat");
+  const transcript = [];   // {question, answer, seconds}: a skipped question has no answer
+  const synth = window.speechSynthesis;
+  const canRecord = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  let current = null, rec = null, pending = null, working = true, voiceOn = remembered("mock.voice", "on") === "on", total = 0, over = false;
+  const log = h("div", { class: "vm-log", "aria-live": "polite" });
+  const mic = h("button", { class: "mic", type: "button", "aria-label": "Start answering", title: "Start and stop answering (space)" }, icon("mic", 28));
+  const time = h("div", { class: "vm-time" }, "0:00");
+  const levels = Array.from({ length: 28 }, () => h("i"));
+  const hint = h("div", { class: "vm-hint" });
+  const count = h("div", { class: "small muted" });
+  const replay = h("button", { class: "btn", type: "button" }, "Hear it again");
+  const typed = h("button", { class: "btn", type: "button" }, "Type instead");
+  const skip = h("button", { class: "btn", type: "button" }, "Skip");
+  const speaker = h("button", { class: "btn", type: "button" });
+  const finish = h("button", { class: "btn primary", type: "button" }, "Finish");
+  const alive = () => log.isConnected;
+  const bubble = (cls, ...kids) => { const b = h("div", { class: "vb " + cls }, ...kids); log.append(b); log.scrollTop = log.scrollHeight; return b; };
+  const note = (text, cls = "") => bubble("sys " + cls, text);
+  const say = text => { if (voiceOn && synth && text) { synth.cancel(); synth.speak(new SpeechSynthesisUtterance(text)); } };
+  function paint() {
+    const on = !!rec;
+    mic.classList.toggle("rec", on);
+    mic.disabled = !on && (!current || working);
+    mic.setAttribute("aria-label", on ? "Stop answering" : "Start answering");
+    for (const b of [replay, typed, skip]) b.disabled = !current || working || on;
+    finish.disabled = on;
+    fill(speaker, icon(voiceOn ? "volume" : "mute", 14), voiceOn ? " Voice on" : " Voice off");
+    hint.textContent = on ? "Recording. Press the mic again (or space) to stop." : working ? "Working…"
+      : current ? "Press the mic (or space) and answer out loud. Aim for 1:00 to 1:30." : over ? "That was the last question. Press Finish." : "";
+    count.textContent = total ? `Question ${Math.min(transcript.length + (current ? 1 : 0), total)} of ${total}` : "";
+  }
+  async function next() {
+    working = true; current = null; paint();
+    try {
+      const r = await api("/api/mock/next", { key, asked: transcript, among });
+      total = r.total;
+      if (!r.question) { over = true; working = false; note("That was the last question."); return paint(); }
+      current = r.question; working = false;
+      bubble("them", h("span", { class: "who" }, "Interviewer"), current.question);
+      say(current.question);
+    } catch (e) { working = false; note(e.message, "err"); }
+    paint();
+  }
+  function answerBubble(text, seconds, why) {
+    if (pending) pending.remove();
+    const box = h("textarea", { "aria-label": "Your answer: edit it if speech-to-text misheard", placeholder: "Type your answer" });
+    box.value = text;
+    const send = h("button", { class: "btn", type: "button" }, "Send answer");
+    const again = h("button", { class: "btn", type: "button" }, canRecord ? "Record again" : "Clear");
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const meta = h("div", { class: "meta" }, why || `${mmss(seconds)} · ${words} words · edit anything speech-to-text misheard`);
+    const b = pending = bubble("me", h("span", { class: "who" }, "You"), box, meta, h("div", { class: "row", style: "margin-top:8px" }, send, again));
+    again.onclick = () => { b.remove(); pending = null; if (!canRecord) typeAnswer(""); };
+    send.onclick = () => {
+      const answer = box.value.trim();
+      if (!answer) return toast("Say or type an answer first");
+      transcript.push({ question: current.question, answer, seconds });
+      b.replaceChildren(h("span", { class: "who" }, "You"), h("div", { style: "white-space:pre-wrap" }, answer), h("div", { class: "meta" }, seconds ? mmss(seconds) : "typed"));
+      pending = null;
+      next();
+    };
+    box.focus();
+  }
+  const typeAnswer = why => { if (current) answerBubble("", 0, why || "Typed, so it isn't timed."); };
+  async function startRec() {
+    if (!current || working || rec) return;
+    if (!canRecord) return typeAnswer("This browser can't record. Type your answer.");
+    if (synth) synth.cancel();
+    if (pending) { pending.remove(); pending = null; }
+    let stream;
+    working = true; paint();  // the browser may be asking for the microphone
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch { working = false; paint(); return typeAnswer("The microphone isn't available (allow it for this page), so type your answer."); }
+    working = false;
+    const chunks = [], mr = new MediaRecorder(stream), started = performance.now();
+    let ctx = null, analyser = null, buf = null;
+    rec = { stop: () => { if (mr.state !== "inactive") mr.stop(); }, discard: false };
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = ctx.createAnalyser(); analyser.fftSize = 512; buf = new Uint8Array(analyser.fftSize);
+      ctx.createMediaStreamSource(stream).connect(analyser);
+    } catch { analyser = null; }  // no level meter: the recording still works
+    const history = levels.map(() => 0);
+    const tick = setInterval(() => {
+      if (!alive()) { rec && (rec.discard = true); return rec && rec.stop(); }
+      const s = (performance.now() - started) / 1000;
+      time.textContent = mmss(s); time.classList.toggle("over", s > 90);
+      if (analyser) {
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0; for (const v of buf) sum += ((v - 128) / 128) ** 2;
+        history.push(Math.min(1, Math.sqrt(sum / buf.length) * 4)); history.shift();
+        levels.forEach((el, i) => { el.style.height = (3 + history[i] * 30) + "px"; el.style.opacity = .45 + history[i] * .55; });
+      }
+    }, 70);
+    mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    mr.onstop = () => {
+      clearInterval(tick);
+      stream.getTracks().forEach(t => t.stop());
+      if (ctx) ctx.close().catch(() => {});
+      const discard = rec && rec.discard, seconds = (performance.now() - started) / 1000;
+      rec = null;
+      levels.forEach(el => { el.style.height = ""; el.style.opacity = ""; });
+      time.classList.remove("over");
+      if (!discard && alive()) sendAudio(new Blob(chunks, { type: mr.mimeType || "audio/webm" }), seconds);
+      else if (alive()) paint();
+    };
+    mr.start();
+    paint();
+  }
+  async function sendAudio(blob, spoken) {
+    working = true; paint();
+    const wait = note("Transcribing on this computer…");
+    try {
+      const r = await api("/api/mock/transcribe?name=answer.webm", undefined, blob);
+      wait.remove(); working = false;
+      if (!alive()) return;
+      if (!r.text) typeAnswer("Nothing was picked up. Try again, or type your answer.");
+      else answerBubble(r.text, r.duration > 0 ? r.duration : spoken);
+    } catch (e) {
+      wait.remove(); working = false;
+      if (alive()) { note(e.message, "err"); typeAnswer("Typed, so it isn't timed."); }
+    }
+    paint();
+  }
+  const toggleMic = () => rec ? rec.stop() : startRec();
+  mic.onclick = toggleMic;
+  const onKey = e => {
+    if (!alive()) return document.removeEventListener("keydown", onKey);
+    if (e.code !== "Space" || e.repeat || e.ctrlKey || e.metaKey || e.altKey || /^(TEXTAREA|INPUT|BUTTON|SELECT|A)$/.test(e.target.tagName)) return;
+    e.preventDefault();
+    toggleMic();
+  };
+  document.addEventListener("keydown", onKey);
+  replay.onclick = () => current && say(current.question);
+  typed.onclick = () => typeAnswer("");
+  skip.onclick = () => {
+    if (!current) return;
+    if (synth) synth.cancel();
+    if (pending) { pending.remove(); pending = null; }
+    transcript.push({ question: current.question, answer: "", seconds: 0 });
+    next();
+  };
+  speaker.onclick = () => { voiceOn = !voiceOn; remember("mock.voice", voiceOn ? "on" : "off"); if (!voiceOn && synth) synth.cancel(); paint(); };
+  const leave = () => { if (rec) { rec.discard = true; rec.stop(); } if (synth) synth.cancel(); };
+  finish.onclick = () => {
+    const answers = transcript.filter(a => a.answer);
+    if (!answers.length) return toast("Answer at least one question first");
+    leave();
+    voiceReport(key, m, answers);
+  };
+  const back = h("button", { class: "btn ghost", onclick: () => { leave(); openPrep(key); } }, "← Prep sheet");
+  const typedMode = h("button", { class: "btn", onclick: () => { leave(); openMock(key); }, title: "Answer by typing, with feedback on each answer" }, "Typed mode");
+  fill(dialog, h("div", { class: "prep vm" },
+    h("div", { class: "row no-print" }, back, h("span", { style: "flex:1" }), typedMode, speaker, finish),
+    h("h2", {}, "Voice interview"),
+    h("div", { class: "small muted" }, (m.sheet ? `Questions from your prep sheet ${m.sheet} · ` : "") +
+      (m.where.local ? "private, runs on this computer" : `speech runs on this computer; the report goes to ${m.where.label} (cloud)`)),
+    log,
+    h("div", { class: "vm-dock" }, mic, time, h("div", { class: "vm-meter", "aria-hidden": "true" }, levels), hint),
+    h("div", { class: "row", style: "margin-top:10px" }, replay, typed, skip, h("span", { style: "flex:1" }), count)));
+  note("I'll ask each question out loud. Answer out loud too: press the mic (or space) to start and again to stop. " +
+    "You can correct the text before sending it, or type instead.");
+  paint();
+  next();
+}
+// The voice interview's report. Delivery (length, pace, filler words) is counted in code and shown at once; what you
+// said, against the posting and your reference answers, is the chat model's, vetted for invented numbers, and arrives
+// after. Saving it with the job is a choice.
+async function voiceReport(key, m, answers) {
+  const dialog = document.getElementById("dialog");
+  let d = null, content = null, why = "", failed = "", saved = false;
+  const out = h("div", {});
+  const top = (...more) => h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openPrep(key) }, "← Prep sheet"),
+    h("span", { style: "flex:1" }), ...more, h("button", { class: "btn", onclick: closeDetails }, "Close"));
+  const list = items => h("ul", {}, items.map(t => h("li", {}, t)));
+  function row(r, i) {
+    const scale = Math.max(120, Math.ceil(r.seconds / 30) * 30), c = content && content.answers[i] || {};
+    return h("div", { class: "vr-card", style: `animation-delay:${i * 50}ms` },
+      h("div", { class: "q" }, `${i + 1}. ${r.question}`),
+      r.length === "untimed" ? null : h("div", { class: "vr-track", title: `Target ${d.target[0]} to ${d.target[1]} seconds` },
+        h("div", { class: "vr-zone", style: `left:${d.target[0] / scale * 100}%;width:${(d.target[1] - d.target[0]) / scale * 100}%` }),
+        h("div", { class: "vr-dot", style: `left:${Math.min(100, r.seconds / scale * 100)}%` })),
+      h("div", { class: "vr-chips" },
+        r.length === "untimed" ? h("span", { class: "chip" }, "typed, not timed")
+          : h("span", { class: "chip " + (r.length === "ok" ? "vr-ok" : "vr-flag") }, `${mmss(r.seconds)} · ${r.length === "ok" ? "on target" : r.length === "short" ? "too short" : "too long"}`),
+        r.wpm ? h("span", { class: "chip" }, `${r.wpm} words a minute`) : null,
+        h("span", { class: "chip" }, `${r.words} words`),
+        h("span", { class: "chip " + (r.filler_count ? "vr-flag" : "vr-ok") },
+          r.filler_count ? "fillers: " + Object.entries(r.fillers).map(([w, n]) => `${w} ×${n}`).join(", ") : "no filler words")),
+      c.strong ? h("div", { class: "vr-line" }, h("b", {}, "Strong: "), c.strong) : null,
+      c.missing ? h("div", { class: "vr-line" }, h("b", {}, "Missing: "), c.missing) : null);
+  }
+  function draw() {
+    if (!d) return fill(out, h("div", { class: "muted" }, "Counting how you spoke…"));
+    const waiting = !content && !failed;
+    const again = d.practise.map(i => d.answers[i]);
+    const save = h("button", { class: "btn primary", disabled: !content || saved }, saved ? "Saved" : "Save transcripts and report to this job");
+    save.onclick = async () => {
+      try {
+        await api("/api/mock/report/save", { key, answers, report: { delivery: d, content, note: why } });
+        saved = true; toast("Saved with the job"); draw();
+      } catch (e) { toast(e.message); }
+    };
+    fill(out,
+      h("div", { class: "vr-tiles" },
+        h("div", { class: "vr-tile" }, h("b", {}, d.answers.length), h("small", {}, "answers given")),
+        h("div", { class: "vr-tile t2" }, h("b", {}, mmss(d.seconds)), h("small", {}, "speaking time")),
+        h("div", { class: "vr-tile t3" }, h("b", {}, d.wpm || "–"), h("small", {}, "words a minute (about 110 to 180 sounds natural)")),
+        h("div", { class: "vr-tile t4" }, h("b", {}, d.filler_count), h("small", {}, "filler words"))),
+      content ? [
+        h("div", { class: "vr-glow" }, h("h3", { style: "margin-top:0" }, "What landed"), list(content.landed.length ? content.landed : ["–"])),
+        h("h3", {}, "Gaps"), list(content.gaps.length ? content.gaps : ["–"]),
+        h("h3", {}, "Top opportunities to improve"),
+        h("ol", { class: "vr-ops" }, content.opportunities.map((t, i) => h("li", { style: `animation-delay:${i * 60}ms` }, t))),
+        why ? h("div", { class: "small muted" }, why) : null]
+        : h("div", { class: "vr-glow" }, waiting ? [h("span", { class: "vb" }, h("span", { class: "dots" }, h("span"), h("span"), h("span"))), ` Reading your answers (${m.where.label}: ${m.where.model})…`]
+          : `The written feedback isn't available: ${failed}. The delivery numbers below are still yours.`),
+      h("h3", {}, "How you delivered each answer"), d.answers.map(row),
+      h("h3", {}, "What to rehearse next"),
+      again.length ? [h("ul", {}, again.map(r => h("li", {}, h("b", {}, r.question), r.flag ? ` · ${r.flag}` : ""))),
+        h("button", { class: "btn primary", onclick: () => openVoice(key, m, again.map(r => r.question)) }, icon("mic", 14), " Practise these again")]
+        : h("p", { class: "muted" }, "Nothing stands out in how you delivered these. Read the opportunities above."),
+      h("div", { class: "row", style: "margin-top:16px" }, save, h("span", { class: "small muted" }, "Only the text is kept, never the audio.")));
+  }
+  fill(dialog, h("div", { class: "prep vm" }, top(), h("h2", {}, "Voice interview report"), out));
+  draw();
+  try {
+    const r = await fetch("/api/mock/report", { method: "POST", body: JSON.stringify({ key, answers }),
+      headers: { "X-Jobwatch-Token": TOKEN, "Content-Type": "application/json" } });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done: end } = await reader.read();
+      if (end) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const msg = JSON.parse(buf.slice(0, nl));
+        buf = buf.slice(nl + 1);
+        if (msg.info && msg.info.delivery) { d = msg.info.delivery; draw(); }
+        if (msg.stats && msg.stats.report) { content = msg.stats.report; why = msg.stats.note || ""; }
+        if (msg.error) failed = msg.error;
+      }
+    }
+  } catch (e) { failed = e.message; }
+  if (!d) return fill(out, h("div", { class: "msg bot err" }, failed || "No report."));
+  if (!content && !failed) failed = "the model sent nothing";
+  draw();
 }
 // A reply as the model writes it, without the ```story block it proposes (that becomes the card to check and save).
 function storyShown(text) {

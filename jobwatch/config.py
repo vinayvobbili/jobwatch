@@ -1092,7 +1092,8 @@ keywords:
 # resume: ~/Documents/resume.pdf
 scoring:
   backend: claude        # claude (ANTHROPIC_API_KEY), local (a model server: LOCAL_LLM_URL) or agy (Antigravity CLI)
-  top: 0                 # score this many of the most relevant new jobs per digest
+  # The voice mock interview turns speech into text at LOCAL_LLM_URL's /audio/transcriptions (or LOCAL_STT_URL).
+  top: 0                # score this many of the most relevant new jobs per digest
   # model: ""            # the model fit scores use; leave out for shortlist-ai's own for the backend
   # keychain: anthropic  # macOS keychain item holding the API key, when ANTHROPIC_API_KEY isn't set (chat too)
   # key_command: op read op://Private/Anthropic/credential  # or a command that prints the key, run in its place

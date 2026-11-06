@@ -17,11 +17,15 @@ from pathlib import Path
 from .models import Job
 
 MANIFEST = "package.json"   # {"answers": [{"question", "answer"}], "note": "...", "files": {name: {...}},
-                            #  "practised": [{"question", "answer", "improved", "saved"}]}
+                            #  "practised": [{"question", "answer", "improved", "saved"}],
+                            #  "sessions": [{"saved", "answers": [{"question", "answer", "seconds"}], "report"}]}
 POSTING = "posting.md"
 REMOVED = ".removed"        # files taken out of a package are moved here, not deleted
 MAX_FILE = 20 * 1024 * 1024
 MAX_TEXT = 20000
+MAX_SESSIONS = 20   # voice mock interviews kept per job
+MAX_ANSWERS = 40    # answers kept per session
+MAX_REPORT = 100000  # characters of a session's report, as JSON
 
 
 def _safe(text: str) -> str:
@@ -49,7 +53,7 @@ class Package:
         path = self.dir / MANIFEST
         m = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
         return {"answers": m.get("answers") or [], "note": m.get("note") or "", "files": m.get("files") or {},
-                "practised": m.get("practised") or []}
+                "practised": m.get("practised") or [], "sessions": m.get("sessions") or []}
 
     def data(self) -> dict:
         """Files (newest first), answers, note, and when the posting was saved."""
@@ -65,6 +69,10 @@ class Package:
     def practised(self) -> list[dict]:
         """The answers kept from mock interviews (see mock.py), oldest first."""
         return self._manifest()["practised"]
+
+    def sessions(self) -> list[dict]:
+        """The voice mock interviews kept (see mock.py): transcripts and report, oldest first."""
+        return self._manifest()["sessions"]
 
     def summary(self) -> dict:
         m = self._manifest()
@@ -158,6 +166,28 @@ class Package:
         m = self._manifest()
         m["practised"] = [p for p in m["practised"] if p["question"].lower() != question.lower()] + [
             {"question": question, "answer": answer, "improved": improved, "saved": date.today().isoformat()}]
+        self._save(m)
+
+    def keep_session(self, answers: list[dict], report: dict):
+        """Keep a voice mock interview: each answer's transcript (never the audio) and the report. The latest
+        MAX_SESSIONS are kept."""
+        if not isinstance(answers, list) or not answers or not all(isinstance(a, dict) for a in answers):
+            raise ValueError("a session needs its answers, as a list of {question, answer, seconds}")
+        if not isinstance(report, dict):
+            raise ValueError("a session needs its report")
+        if len(json.dumps(report, ensure_ascii=False)) > MAX_REPORT:
+            raise ValueError("that report is too large to keep")
+        kept = []
+        for a in answers[:MAX_ANSWERS]:
+            try:
+                seconds = round(max(0.0, float(a.get("seconds") or 0)), 1)
+            except (TypeError, ValueError):
+                seconds = 0.0
+            kept.append({"question": str(a.get("question") or "").strip()[:2000],
+                         "answer": str(a.get("answer") or "").strip()[:MAX_TEXT], "seconds": seconds})
+        m = self._manifest()
+        m["sessions"] = (m["sessions"] + [{"saved": datetime.now().astimezone().isoformat(timespec="seconds"),
+                                           "answers": kept, "report": report}])[-MAX_SESSIONS:]
         self._save(m)
 
     # -- for the chat

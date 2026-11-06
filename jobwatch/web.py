@@ -58,6 +58,7 @@ from . import (
     rolekinds,
     scorestats,
     sources,
+    speech,
     stories,
     storyfind,
     suggest,
@@ -1410,7 +1411,67 @@ class App:
         def run(cfg, store):
             session = mock.start(cfg, store, key)
             return {"key": session.key, "questions": session.questions, "where": session.where,
-                    "saved": store.package(session.key).practised()}
+                    "sheet": session.sheet, "saved": store.package(session.key).practised()}
+        return self._with_store(run)
+
+    def post_mock_next(self, body) -> dict:
+        """The next question of a voice session for a job (`key`), given the transcript so far (`asked`, each
+        {question, answer}) and, to practise some again, the questions to keep to (`among`): {question} or null
+        when it is over, and how many questions the session has."""
+        asked, among = body.get("asked") or [], body.get("among") or None
+        if not isinstance(asked, list) or not all(isinstance(a, dict) for a in asked):
+            raise ApiError("asked is a list of {question, answer}")
+        if among is not None and not (isinstance(among, list) and all(isinstance(q, str) for q in among)):
+            raise ApiError("among is a list of questions")
+
+        def run(cfg, store):
+            session = mock.start(cfg, store, str(body.get("key") or ""))
+            total = len([q for q in session.questions if not among or q["question"] in among])
+            return {"question": mock.next_question(session, asked, among), "total": total}
+        return self._with_store(run)
+
+    def mock_transcribe(self, audio: bytes, content_type: str, name: str) -> dict:
+        """{text, duration, segments} for one recording of a spoken answer, from the local speech-to-text server.
+        The audio is forwarded from memory and not kept. 503 when the server is down or busy: the page then lets
+        the answer be typed."""
+        if not audio:
+            raise ApiError("no audio was sent")
+        try:
+            return speech.transcribe(audio, content_type, name)
+        except speech.SpeechUnavailable as e:
+            raise ApiError(str(e), e.status) from None
+
+    def mock_report(self, body) -> tuple[dict, object]:
+        """({where the content comes from, delivery}, the report in pieces) for a voice session of a job (`key`):
+        its `answers`, each {question, answer, seconds}. Delivery is counted in code and is there even when the
+        model is not; the last piece reports {report, note}, the model's view after vetting."""
+        answers = body.get("answers")
+        if not isinstance(answers, list) or not all(isinstance(a, dict) for a in answers):
+            raise ApiError("send the answers, as a list of {question, answer, seconds}")
+        answers = [a for a in answers if str(a.get("answer") or "").strip()]
+        if not answers:
+            raise ApiError(mock.NO_ANSWERS)
+        delivery = mock.delivery_report(answers)
+
+        def run(cfg, store):
+            try:
+                session = mock.start(cfg, store, str(body.get("key") or ""))
+            except chat.ChatUnavailable as e:
+                unavailable = e
+
+                def down():
+                    raise unavailable
+                    yield
+                return {"delivery": delivery}, down()
+            return {**session.where, "delivery": delivery}, mock.report(session, answers)
+        return self._with_store(run)
+
+    def post_mock_report_save(self, body) -> dict:
+        """Keep a voice session (`answers`, `report`) with the job (`key`): only when the page asks."""
+        def run(cfg, store):
+            key = store.find(str(body.get("key") or ""))[0].key
+            mock.save_session(store, key, body.get("answers"), body.get("report"))
+            return {"sessions": len(store.package(key).sessions())}
         return self._with_store(run)
 
     def mock_feedback(self, body) -> tuple[dict, object]:
@@ -1551,6 +1612,8 @@ ROUTES = {
     ("GET", "/api/prep"): App.get_prep,
     ("GET", "/api/mock"): App.get_mock,
     ("POST", "/api/mock/save"): App.post_mock_save,
+    ("POST", "/api/mock/next"): App.post_mock_next,
+    ("POST", "/api/mock/report/save"): App.post_mock_report_save,
     ("GET", "/api/storyfind"): App.get_storyfind,
     ("POST", "/api/stories/add"): App.post_story,
     ("POST", "/api/tailor"): App.post_tailor,
@@ -1792,6 +1855,13 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
                     return self._stream(*app.mock_feedback(body))
+                elif method == "POST" and url.path == "/api/mock/report":
+                    body = json.loads(raw or b"{}")
+                    if not isinstance(body, dict):
+                        raise ApiError("send a JSON object")
+                    return self._stream(*app.mock_report(body))
+                elif method == "POST" and url.path == "/api/mock/transcribe":
+                    data = app.mock_transcribe(raw, self.headers.get("Content-Type", ""), arg("name"))
                 elif method == "POST" and url.path == "/api/storyfind":
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):
