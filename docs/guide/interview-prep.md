@@ -123,7 +123,17 @@ in, nor a follow-up line like `If they push: "…"`:
 jobwatch prep ~/prep/acme-sheet.html --drill ~/prep/acme-drill.mp4 --no-pause
 ```
 
-It needs `pip install 'jobwatch[video]'`, which brings [slidecast](https://pypi.org/project/slidecast/) with
+To practise out loud a few times instead of watching, `jobwatch rehearse ~/prep/acme-sheet.html` writes
+`acme-sheet-rehearse.html` next to the sheet (same cards as the drill) and opens it. One question at a time is read
+aloud by your browser's voice (you can turn that off), then a countdown (90 seconds, changeable) to answer it out
+loud, with an optional **Record me** that plays your answer back and keeps it in memory only. **Show the answer**
+gives the sheet's answer as a few short key points to say in your own words (a toggle shows it in full). Rate each
+card Smooth, OK or Shaky: shaky ones come back a few cards later, and Round 2 goes through the ones still shaky.
+Space starts and stops, 1/2/3 rate, the right arrow moves on. It is one local file with no server, and nothing is
+sent anywhere (it does not use the browser's speech recognition, which is a cloud service). `--no-open` writes
+it without opening it, `-o PATH` says where.
+
+The drill video needs `pip install 'jobwatch[video]'`, which brings [slidecast](https://pypi.org/project/slidecast/) with
 Kokoro voices that run on your Mac (Apple Silicon), and a browser to draw the slides (Chrome, or slidecast's
 Playwright extra). Nothing is sent anywhere. The first run fetches the voice model and a small English language
 model once.

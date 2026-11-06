@@ -42,6 +42,7 @@ from . import (
     profile,
     quiet,
     referrals,
+    rehearse,
     report,
     rolekinds,
     scorestats,
@@ -1018,6 +1019,14 @@ def cmd_prep(args, cfg, store):
         _write(prep.html(sheet, cfg.theme, cfg.width) if args.format == "html" else prep.markdown(sheet), args.out)
 
 
+def cmd_rehearse(args):
+    """A rehearsal page from a hand-written prep sheet, opened in the browser."""
+    out = rehearse.write(args.sheet, args.out)
+    print(f"wrote {out}", file=sys.stderr)
+    if not args.no_open:
+        webbrowser.open(out.resolve().as_uri())
+
+
 def cmd_skills(args, cfg, store):
     _write(learn.markdown(learn.gather(cfg, store, args.timeline), include_covered=args.all), args.out)
 
@@ -1476,6 +1485,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help=f"with --drill: seconds to answer each question (default {drill.PAUSE:g})")
     p.add_argument("--no-pause", action="store_true", help="with --drill: no pause, for a quick review")
     p.set_defaults(func=cmd_prep)
+
+    p = sub.add_parser("rehearse", help="practise a hand-written prep sheet's answers out loud in the browser: "
+                                        "each question read aloud, a countdown, an optional recording, key points")
+    p.add_argument("sheet", type=Path, help="the prep sheet, as HTML")
+    p.add_argument("-o", "--out", type=Path, help="where to write the page (default: next to the sheet, "
+                                                  "<name>-rehearse.html)")
+    p.add_argument("--no-open", action="store_true", help="write the page without opening it")
+    p.set_defaults(func=cmd_rehearse, needs_config=False)
 
     p = sub.add_parser("skills", help="skills your matching jobs ask for that your resume doesn't show, and "
                                       "courses and certifications to learn them")

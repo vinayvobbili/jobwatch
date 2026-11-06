@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rehearse: __TITLE__</title>
+<meta name="theme-color" content="#0e9f8e">
+<style>
+:root {
+  --bg: #f1f8f6; --glow-1: rgba(20, 184, 166, .18); --glow-2: rgba(251, 146, 60, .12);
+  --panel: rgba(255, 255, 255, .9); --panel-solid: #fff; --text: #10241f; --muted: #5b7068; --line: #d9e9e4;
+  --accent: #0e9f8e; --accent-2: #3b82f6; --accent-soft: rgba(14, 159, 142, .1);
+  --good: #0c9468; --warn: #c26d00; --bad: #d83450; --chip: #e7f2ee;
+  --shadow: 0 1px 2px rgba(16, 36, 31, .04), 0 12px 30px -18px rgba(16, 36, 31, .22);
+  --shadow-hover: 0 2px 4px rgba(16, 36, 31, .05), 0 22px 44px -22px rgba(14, 159, 142, .45);
+  --radius: 18px;
+  --grad: linear-gradient(135deg, #0e9f8e, #3b82f6);   /* filled surfaces carry white text in both themes */
+  --grad-good: linear-gradient(135deg, #10b981, #0e9f8e);
+  --grad-ok: linear-gradient(135deg, #3b82f6, #6366f1);
+  --grad-bad: linear-gradient(135deg, #fb923c, #ef4444);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #08130f; --glow-1: rgba(20, 184, 166, .2); --glow-2: rgba(251, 146, 60, .1);
+  --panel: rgba(16, 32, 27, .88); --panel-solid: #11221d; --text: #e6f4f0; --muted: #86a39a; --line: #1f3a32;
+  --accent: #2dd4bf; --accent-2: #60a5fa; --accent-soft: rgba(45, 212, 191, .13);
+  --good: #3ddc97; --warn: #fbbf24; --bad: #ff7a93; --chip: #162a24;
+  --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 14px 34px -20px rgba(0, 0, 0, .9);
+  --shadow-hover: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 48px -22px rgba(45, 212, 191, .4);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; color: var(--text);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  background: radial-gradient(1000px 520px at 6% -10%, var(--glow-1), transparent 62%),
+    radial-gradient(900px 520px at 104% -4%, var(--glow-2), transparent 60%), var(--bg);
+  background-attachment: fixed; -webkit-font-smoothing: antialiased; }
+button, select, input { font: inherit; color: inherit; }
+header { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-solid) 74%, transparent); backdrop-filter: saturate(1.5) blur(16px);
+  -webkit-backdrop-filter: saturate(1.5) blur(16px); }
+.bar, main { max-width: 980px; margin: 0 auto; padding-left: 16px; padding-right: 16px; }
+:root[data-width="wide"] .bar, :root[data-width="wide"] main { max-width: 1400px; }
+:root[data-width="full"] .bar, :root[data-width="full"] main { max-width: none; }
+.bar { padding-top: 10px; padding-bottom: 10px; display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.brand { font-weight: 800; font-size: 18px; letter-spacing: -.02em; }
+.brand b { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sheet { color: var(--muted); font-size: 14px; flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--chip); border-radius: 11px; }
+.seg button { border: 0; background: none; color: var(--muted); padding: 4px 10px; border-radius: 8px; cursor: pointer;
+  font-size: 13px; font-weight: 600; transition: color .15s, background .15s; }
+.seg button:hover { color: var(--text); }
+.seg button.on { color: var(--text); background: var(--panel-solid); box-shadow: 0 1px 3px rgba(16, 36, 31, .14); }
+main { padding-top: 22px; padding-bottom: 70px; }
+
+.stats { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px;
+  box-shadow: var(--shadow); animation: rise .5s cubic-bezier(.2, .7, .2, 1) both; }
+.stat .num { font-size: 26px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1;
+  font-variant-numeric: tabular-nums; }
+.stat .lbl { font-size: 12.5px; color: var(--muted); }
+.stat.lead { color: #fff; border-color: transparent; background: var(--grad); }
+.stat.lead .lbl { color: rgba(255, 255, 255, .85); }
+.stat.s, .stat.o, .stat.x { color: #fff; border-color: transparent; }
+.stat.s { background: var(--grad-good); } .stat.o { background: var(--grad-ok); } .stat.x { background: var(--grad-bad); }
+.stat.s .lbl, .stat.o .lbl, .stat.x .lbl { color: rgba(255, 255, 255, .85); }
+.stat:nth-child(2) { animation-delay: 50ms; } .stat:nth-child(3) { animation-delay: 100ms; }
+.stat:nth-child(4) { animation-delay: 150ms; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 26px 28px; transition: box-shadow .2s, transform .2s; animation: rise .45s cubic-bezier(.2, .7, .2, 1) both; }
+.card:hover { box-shadow: var(--shadow-hover); transform: translateY(-2px); }
+.badge { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: #fff; background: var(--grad); padding: 3px 11px; border-radius: 99px; }
+.badge.x { background: var(--grad-bad); } .badge.s { background: var(--grad-good); } .badge.o { background: var(--grad-ok); }
+.q { font-size: clamp(24px, 4.2vw, 40px); line-height: 1.22; letter-spacing: -.02em; font-weight: 750; margin: 14px 0 20px; }
+.stage { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.ring { position: relative; width: 120px; height: 120px; flex: none; }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 9; }
+.ring .track { stroke: var(--chip); }
+.ring .arc { stroke: url(#g); stroke-linecap: round; transition: stroke-dashoffset .25s linear; }
+.ring.low .arc { stroke: #ef4444; }
+.ring .t { position: absolute; inset: 0; display: grid; place-items: center; font-size: 28px; font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.ring.live { animation: pulse 2s ease-in-out infinite; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--panel-solid); border-radius: 12px; padding: 9px 16px; cursor: pointer;
+  font-weight: 650; transition: transform .15s, box-shadow .15s, border-color .15s; }
+.btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-hover); border-color: var(--accent); }
+.btn.go { color: #fff; border-color: transparent; background: var(--grad); }
+.btn.s { color: #fff; border-color: transparent; background: var(--grad-good); }
+.btn.o { color: #fff; border-color: transparent; background: var(--grad-ok); }
+.btn.x { color: #fff; border-color: transparent; background: var(--grad-bad); }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.btn kbd { font: 11px ui-monospace, monospace; opacity: .75; margin-left: 6px; padding: 1px 5px; border-radius: 5px;
+  background: rgba(127, 127, 127, .22); }
+.rec { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; color: var(--muted); }
+.rec.on { color: var(--bad); font-weight: 650; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+.rec.on .dot { background: var(--bad); animation: pulse 1s ease-in-out infinite; }
+audio { width: 100%; max-width: 420px; margin-top: 12px; }
+.answer { margin-top: 22px; padding-top: 18px; border-top: 1px dashed var(--line); animation: rise .4s both; }
+.answer h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.points { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.points li { background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 10px;
+  padding: 9px 14px; font-size: 18px; animation: rise .4s both; }
+.full { font-size: 17px; line-height: 1.6; white-space: pre-wrap; margin: 0; }
+.hint { color: var(--muted); font-size: 13px; margin-top: 18px; }
+.rates { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }
+.done { text-align: center; padding: 38px 20px; }
+.done h2 { font-size: 30px; margin: 10px 0 6px; letter-spacing: -.02em; }
+.done p { color: var(--muted); margin: 0 0 18px; }
+.opts { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-top: 18px; color: var(--muted);
+  font-size: 14px; }
+.opts label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.opts input[type=number] { width: 66px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-solid); }
+.note { color: var(--warn); font-size: 13px; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+@media (max-width: 640px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .card { padding: 20px 16px; }
+  .btn { flex: 1 1 auto; text-align: center; }
+  .ring { width: 100px; height: 100px; }
+  .btn kbd { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <div class="brand">job<b>watch</b> rehearse</div>
+  <div class="sheet" id="sheet"></div>
+  <div class="seg" id="theme" title="Theme"><button data-v="system">System</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div>
+  <div class="seg" id="width" title="Page width"><button data-v="standard">Standard</button><button data-v="wide">Wide</button><button data-v="full">Full</button></div>
+</div></header>
+<main>
+  <div class="stats" id="stats"></div>
+  <div id="view"></div>
+  <div class="opts">
+    <label>Seconds to answer <input type="number" id="secs" min="10" max="600" step="10"></label>
+    <label><input type="checkbox" id="speak"> Read the question aloud</label>
+    <label><input type="checkbox" id="record"> Record me</label>
+    <label><input type="checkbox" id="shuffle"> Shuffle</label>
+    <label><input type="checkbox" id="shaky"> Shaky first</label>
+  </div>
+  <div class="hint">Space starts and stops the answer, 1 Smooth, 2 OK, 3 Shaky, right arrow for the next card. Nothing leaves this page: the voice is your browser's, and a recording stays in memory until you move on.</div>
+</main>
+<script>
+const DATA = __CARDS__;
+const TITLE = DATA.title, CARDS = DATA.cards;
+const DEFAULT_SECONDS = __SECONDS__;
+const KEY = "jobwatch-rehearse:" + CARDS.map(c => c.q).join("|").slice(0, 200);
+const $ = id => document.getElementById(id);
+
+// Everything remembered in the browser goes through these: storage can be missing or blocked.
+function recall(name, fallback) {
+  try { const v = localStorage.getItem(name); return v === null ? fallback : JSON.parse(v); } catch { return fallback; }
+}
+function remember(name, value) { try { localStorage.setItem(name, JSON.stringify(value)); } catch { /* fine without */ } }
+
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+const display = Object.assign({ theme: "system", width: "standard" }, recall("jobwatch-rehearse:display", {}));
+function applyDisplay() {
+  const root = document.documentElement;
+  root.dataset.theme = display.theme === "system" ? (darkQuery.matches ? "dark" : "light") : display.theme;
+  root.dataset.width = display.width;
+  for (const group of ["theme", "width"])
+    for (const b of $(group).children) b.classList.toggle("on", b.dataset.v === display[group]);
+  remember("jobwatch-rehearse:display", display);
+}
+darkQuery.addEventListener("change", applyDisplay);
+for (const group of ["theme", "width"])
+  $(group).addEventListener("click", e => { if (e.target.dataset.v) { display[group] = e.target.dataset.v; applyDisplay(); } });
+applyDisplay();
+
+const prefs = Object.assign({ secs: DEFAULT_SECONDS, speak: true, record: false, shuffle: false, shaky: false },
+  recall("jobwatch-rehearse:prefs", {}));
+const ratings = recall(KEY, {});   // question text -> "s" | "o" | "x", from this and earlier runs
+const MARK = { s: "Smooth", o: "OK", x: "Shaky" };
+
+let queue = [], pos = 0, round = 1, phase = "ask", left = 0, timer = null, total = 0;
+let seen = new Set(), requeued = new Set();   // cards rated in this round, and shaky ones already brought back
+let full = false, recorder = null, chunks = [], clip = null, recNote = "";
+
+function shuffled(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+function arrange(ids) {
+  let out = prefs.shuffle ? shuffled(ids) : ids.slice();
+  if (prefs.shaky) out = [...out.filter(i => ratings[CARDS[i].q] === "x"), ...out.filter(i => ratings[CARDS[i].q] !== "x")];
+  return out;
+}
+function startRound(ids) {
+  stopEverything();
+  queue = arrange(ids); pos = 0; phase = "ask"; seen = new Set(); requeued = new Set(); total = queue.length; full = false;
+  render();
+}
+function counts() {
+  const n = { s: 0, o: 0, x: 0 };
+  for (const c of CARDS) if (ratings[c.q]) n[ratings[c.q]]++;
+  return n;
+}
+function say(text) {
+  try { speechSynthesis.cancel(); } catch { /* no voice here */ }
+  if (!prefs.speak || !("speechSynthesis" in window)) return;
+  try { speechSynthesis.speak(new SpeechSynthesisUtterance(text)); } catch { /* no voice here */ }
+}
+function points(text) { return text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean); }
+function mmss(s) { return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+function stopEverything() {
+  clearInterval(timer); timer = null;
+  try { speechSynthesis.cancel(); } catch { /* no voice here */ }
+  if (recorder && recorder.state !== "inactive") { recorder.onstop = null; recorder.stop(); }
+  if (recorder) recorder.stream.getTracks().forEach(t => t.stop());
+  recorder = null; dropClip();
+}
+function dropClip() { if (clip) URL.revokeObjectURL(clip); clip = null; }
+
+async function startAnswer() {
+  if (phase !== "ask") return;
+  say(CARDS[queue[pos]].q);
+  phase = "answering"; left = prefs.secs; recNote = "";
+  if (prefs.record) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorder = new MediaRecorder(stream); chunks = [];
+      recorder.ondataavailable = e => chunks.push(e.data);
+      recorder.onstop = () => { clip = URL.createObjectURL(new Blob(chunks, { type: recorder.mimeType })); render(); };
+      recorder.start();
+    } catch { recNote = "Couldn't use the microphone, so this answer isn't recorded."; recorder = null; }
+  }
+  timer = setInterval(() => { left--; if (left <= 0) stopAnswer(); else tick(); }, 1000);
+  render();
+}
+function stopAnswer() {
+  if (phase !== "answering") return;
+  clearInterval(timer); timer = null;
+  try { speechSynthesis.cancel(); } catch { /* no voice here */ }
+  phase = "shown";
+  if (recorder && recorder.state !== "inactive") recorder.stop();   // onstop shows the playback
+  if (recorder) recorder.stream.getTracks().forEach(t => t.stop());
+  render();
+}
+function rate(r) {
+  if (phase === "ask" || phase === "answering") return;
+  const i = queue[pos], q = CARDS[i].q;
+  ratings[q] = r; remember(KEY, ratings); seen.add(i);
+  if (r === "x" && !requeued.has(i)) {   // a shaky card comes back a few cards later in this round
+    requeued.add(i);
+    queue.splice(Math.min(pos + 4, queue.length), 0, i);
+  }
+  render();
+}
+function next() {
+  if (phase === "answering") return;
+  stopEverything();
+  pos++; phase = "ask"; full = false;
+  render();
+}
+function again() { startRound(CARDS.map((_, i) => i)); }
+
+function ring() {
+  const R = 52, C = 2 * Math.PI * R, frac = phase === "answering" ? left / prefs.secs : 1;
+  return `<div class="ring ${phase === "answering" ? "live" : ""} ${left <= 10 && phase === "answering" ? "low" : ""}" id="ring">
+    <svg viewBox="0 0 120 120"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0e9f8e"/><stop offset="1" stop-color="#3b82f6"/></linearGradient></defs>
+      <circle class="track" cx="60" cy="60" r="${R}"/>
+      <circle class="arc" cx="60" cy="60" r="${R}" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - frac)}"/></svg>
+    <div class="t" id="t">${mmss(phase === "answering" ? left : prefs.secs)}</div></div>`;
+}
+function tick() {
+  const r = $("ring"), R = 52, C = 2 * Math.PI * R;
+  if (!r) return;
+  r.querySelector(".arc").style.strokeDashoffset = C * (1 - left / prefs.secs);
+  $("t").textContent = mmss(left);
+  r.classList.toggle("low", left <= 10);
+}
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function renderStats() {
+  const n = counts(), shown = Math.min(pos + 1, queue.length);
+  $("stats").innerHTML =
+    `<div class="stat lead"><div class="num">${shown} of ${queue.length}</div><div class="lbl">card ${shown} of ${queue.length}, round ${round}</div></div>` +
+    `<div class="stat s"><div class="num">${n.s}</div><div class="lbl">Smooth</div></div>` +
+    `<div class="stat o"><div class="num">${n.o}</div><div class="lbl">OK</div></div>` +
+    `<div class="stat x"><div class="num">${n.x}</div><div class="lbl">Shaky</div></div>`;
+}
+function render() {
+  renderStats();
+  const view = $("view");
+  if (pos >= queue.length) {
+    const shaky = CARDS.map((_, i) => i).filter(i => ratings[CARDS[i].q] === "x");
+    view.innerHTML = `<div class="card done"><span class="badge ${shaky.length ? "x" : "s"}">Round ${round} done</span>
+      <h2>${shaky.length ? shaky.length + " still shaky" : "Every card is Smooth or OK"}</h2>
+      <p>${shaky.length ? "Round " + (round + 1) + " goes through just those." : "Nicely done. Come back tomorrow and run it again."}</p>
+      <div class="actions" style="justify-content:center">
+      ${shaky.length ? `<button class="btn go" id="r2">Round ${round + 1}</button>` : ""}
+      <button class="btn" id="all">Start over with all ${CARDS.length}</button></div></div>`;
+    if (shaky.length) $("r2").onclick = () => { round++; startRound(shaky); };
+    $("all").onclick = () => { round = 1; again(); };
+    return;
+  }
+  const i = queue[pos], c = CARDS[i], prior = ratings[c.q];
+  const shown = phase === "shown";
+  let body = "";
+  if (shown) {
+    body = `<div class="answer"><h3>Say it in your own words${full ? "" : ": key points"}</h3>` +
+      (full ? `<p class="full">${esc(c.answer)}</p>`
+            : `<ul class="points">${points(c.answer).map((p, k) => `<li style="animation-delay:${k * 60}ms">${esc(p)}</li>`).join("")}</ul>`) +
+      `<div class="actions" style="margin-top:12px"><button class="btn" id="full">${full ? "Key points" : "Full answer"}</button></div>
+      ${clip ? `<audio controls src="${clip}"></audio>` : ""}
+      <div class="rates"><button class="btn s" data-r="s">Smooth<kbd>1</kbd></button>
+      <button class="btn o" data-r="o">OK<kbd>2</kbd></button><button class="btn x" data-r="x">Shaky<kbd>3</kbd></button>
+      <button class="btn" id="next">Next<kbd>&rarr;</kbd></button></div></div>`;
+  }
+  view.innerHTML = `<div class="card" id="card">
+    <span class="badge ${prior || ""}">${prior ? "Last time: " + MARK[prior] : "Question " + (i + 1)}</span>
+    <div class="q">${esc(c.q)}</div>
+    <div class="stage">${ring()}<div>
+      <div class="actions">
+        ${phase === "ask" ? `<button class="btn go" id="start">Start answering<kbd>space</kbd></button>` : ""}
+        ${phase === "answering" ? `<button class="btn go" id="stop">Done, show the answer<kbd>space</kbd></button>` : ""}
+        <button class="btn" id="hear">Hear it again</button>
+        ${phase === "ask" ? `<button class="btn" id="skip">Skip<kbd>&rarr;</kbd></button>` : ""}
+      </div>
+      <div class="rec ${recorder ? "on" : ""}" style="margin-top:10px"><span class="dot"></span>${
+        recorder ? "Recording" : prefs.record ? "Will record your answer" : "Not recording"}</div>
+      ${recNote ? `<div class="note">${recNote}</div>` : ""}
+    </div></div>${body}</div>`;
+  if ($("start")) $("start").onclick = startAnswer;
+  if ($("stop")) $("stop").onclick = stopAnswer;
+  if ($("skip")) $("skip").onclick = next;
+  $("hear").onclick = () => say(c.q);
+  if (shown) {
+    $("full").onclick = () => { full = !full; render(); };
+    $("next").onclick = next;
+    for (const b of view.querySelectorAll("[data-r]")) b.onclick = () => rate(b.dataset.r);
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === " ") {
+    e.preventDefault();
+    if (phase === "ask") startAnswer(); else if (phase === "answering") stopAnswer();
+  } else if (e.key === "1") rate("s");
+  else if (e.key === "2") rate("o");
+  else if (e.key === "3") rate("x");
+  else if (e.key === "ArrowRight") next();
+});
+
+$("sheet").textContent = TITLE;
+for (const [id, key] of [["speak", "speak"], ["record", "record"], ["shuffle", "shuffle"], ["shaky", "shaky"]]) {
+  $(id).checked = !!prefs[key];
+  $(id).onchange = () => { prefs[key] = $(id).checked; remember("jobwatch-rehearse:prefs", prefs); };
+}
+$("secs").value = prefs.secs;
+$("secs").onchange = () => {
+  prefs.secs = Math.max(10, Math.min(600, parseInt($("secs").value, 10) || DEFAULT_SECONDS));
+  $("secs").value = prefs.secs; remember("jobwatch-rehearse:prefs", prefs);
+  if (phase === "ask") render();
+};
+$("shuffle").addEventListener("change", () => { if (phase === "ask" && pos === 0) startRound(CARDS.map((_, i) => i)); });
+$("shaky").addEventListener("change", () => { if (phase === "ask" && pos === 0) startRound(CARDS.map((_, i) => i)); });
+window.addEventListener("beforeunload", stopEverything);
+startRound(CARDS.map((_, i) => i));
+</script>
+</body>
+</html>
