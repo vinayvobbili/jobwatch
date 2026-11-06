@@ -376,8 +376,22 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
     try:
         out = model.run(run) if batch else run()
         return out
+    except Exception as e:  # a batch is sent whole: the API refusing it fails the run, not one job
+        if why := account_down(e):
+            raise ScoringUnavailable(why) from e
+        raise
     finally:
         tokens.note(len(out[0]) if out else 0)
+
+
+def account_down(e: Exception) -> str:
+    """Why the API won't score anything until its account is fixed (no credit left, a key it refuses), or "" for
+    a failure of this one run. That one is ScoringUnavailable, which scoring.fallback takes over from."""
+    if "credit balance is too low" in str(e):
+        return "Claude's API is out of credit (console Billing: buy credits or turn on auto-reload)"
+    if type(e).__name__ in ("AuthenticationError", "PermissionDeniedError"):
+        return f"Claude's API refused the key: {e}"
+    return ""
 
 
 # Where score_jobs leaves the Claude token usage of a run for whoever asked (see collecting_usage), so the callers'

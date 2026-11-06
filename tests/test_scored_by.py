@@ -60,6 +60,39 @@ def test_a_score_says_which_backend_and_model_made_it(shortlist, tmp_path):
     assert results["greenhouse:acme:1"]["scored_by"] == "local:mlx-community/Other-4bit"
 
 
+class BadRequestError(Exception):
+    """Named like the anthropic SDK's: what the API answers a whole batch with when the account has no credit."""
+
+
+class AuthenticationError(Exception):
+    pass
+
+
+@pytest.mark.parametrize("refusal, why", [
+    (BadRequestError("Error code: 400 - Your credit balance is too low to access the Anthropic API."), "out of credit"),
+    (AuthenticationError("Error code: 401 - invalid x-api-key"), "refused the key"),
+])
+def test_an_account_the_api_refuses_is_unavailable_so_the_fallback_scores(shortlist, tmp_path, monkeypatch,
+                                                                           refusal, why):
+    def refuse(*a, **kw):
+        raise refusal
+    monkeypatch.setattr(sys.modules["shortlist_ai.pipeline"], "match_jobs", refuse)
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    with pytest.raises(ScoringUnavailable, match=why):
+        score_jobs([_job()], cv, "local", tmp_path)
+
+
+def test_any_other_failure_of_a_run_is_raised_as_it_is(shortlist, tmp_path, monkeypatch):
+    def broken(*a, **kw):
+        raise KeyError("requirements")
+    monkeypatch.setattr(sys.modules["shortlist_ai.pipeline"], "match_jobs", broken)
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    with pytest.raises(KeyError):
+        score_jobs([_job()], cv, "local", tmp_path)
+
+
 def test_a_result_with_requirements_left_unjudged_is_a_failure(shortlist, tmp_path, monkeypatch):
     """The model gave no verdict for some requirements: each would count as not met, so it isn't a score."""
     flags = ["no assessment returned for 'python' (scored as not_met)", "missing must-have: python"]
