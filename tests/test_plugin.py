@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN, DESKTOP = ROOT / "plugin", ROOT / "desktop"
+# The full plugin: plugin/ on main, plugin-full/ on the directory branch (where plugin/ is the skills-only copy)
+PLUGIN = ROOT / "plugin-full" if (ROOT / "plugin-full").is_dir() else ROOT / "plugin"
+DESKTOP = ROOT / "desktop"
 VERSION = re.search(r'^version = "([^"]+)"', (ROOT / "pyproject.toml").read_text(), re.M).group(1)
 
 
@@ -94,8 +96,8 @@ def test_the_plugin_locks_the_server_it_runs():
     env = (PLUGIN / "pyproject.toml").read_text()
     assert f'version = "{VERSION}"' in env and f'dependencies = ["jobwatch=={VERSION}"]' in env
     assert "plugin/uv.lock" in (ROOT / ".gitignore").read_text().splitlines()
-    tracked = subprocess.run(["git", "ls-files", "plugin"], cwd=ROOT, capture_output=True, text=True).stdout
-    if "plugin/uv.lock" in tracked.split():
+    tracked = subprocess.run(["git", "ls-files", PLUGIN.name], cwd=ROOT, capture_output=True, text=True).stdout
+    if f"{PLUGIN.name}/uv.lock" in tracked.split():
         lock = PLUGIN / "uv.lock"
         assert f'name = "jobwatch"\nversion = "{VERSION}"\n' in lock.read_text()
         assert lock.stat().st_size <= 256 * 1024

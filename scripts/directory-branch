@@ -35,7 +35,6 @@ fi
 git -C "$work" add --force plugin/uv.lock
 git -C "$work" mv plugin plugin-full
 python3 scripts/skill_plugin.py "$work/plugin-full" "$work/plugin-skill/README.md" "$work/plugin" >/dev/null
-git -C "$work" rm -r --quiet plugin-skill
 git -C "$work" add plugin
 
 git -C "$work" commit --quiet -m "The Claude directory's skills-only plugin (plugin/) and the full plugin, its server locked (plugin-full/)"
