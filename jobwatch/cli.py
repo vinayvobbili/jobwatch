@@ -1674,8 +1674,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_company, read_only=True)
 
     p = sub.add_parser("search", help="tracked jobs, whatever status, with the text in their note, next step, "
-                       "source, title or company (any case): which application did that recruiter call about? "
-                       "Read-only")
+                       "source, title, company, key or link (any case): which application did that recruiter call "
+                       "about? Which job is req 4012345? Read-only")
     p.add_argument("text", nargs="+", help="what to look for, e.g. a recruiter's name or '$101/hr'")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_search, read_only=True)

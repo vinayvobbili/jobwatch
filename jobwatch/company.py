@@ -244,8 +244,8 @@ def _line(j: dict) -> list[str]:
 
 
 def mentions(store: Store, text: str) -> list[dict]:
-    """Every tracked job, whatever its status, open or closed, whose note, next step, via, title or company
-    contains the text (see Store.search): each as view() lists a job, plus its company."""
+    """Every tracked job, whatever its status, open or closed, whose note, next step, via, title, company, key or
+    link contains the text (see Store.search): each as view() lists a job, plus its company."""
     index, out = dupes.Index(store), []
     for job, rec in store.search(text):
         j = {**_job(store, job, rec, index), "company": job.display_company}
@@ -259,7 +259,7 @@ def mentions(store: Store, text: str) -> list[dict]:
 def mentions_text(found: list[dict], query: str) -> str:
     """`jobwatch search`: the jobs to read."""
     if not found:
-        return f"No tracked job has {query!r} in its note, next step, source, title or company."
+        return f"No tracked job has {query!r} in its note, next step, source, title, company, key or link."
     out = [f"{len(found)} job{'s' * (len(found) != 1)} mention{'s' * (len(found) == 1)} {query!r}:", ""]
     for j in found:
         out += _line({**j, "note": j["note_match"] or j["note"]})

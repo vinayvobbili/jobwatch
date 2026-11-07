@@ -46,6 +46,14 @@ def test_search_matches_note_next_step_via_title_and_company_in_any_case(tracked
     assert titles(tracked_search(tracked, "closed role")) == ["Closed Role"]  # closed postings too
 
 
+def test_search_finds_a_req_id_in_the_key_or_link(tracked):
+    """A req id from a posting's link finds the job, though no note or title has it."""
+    tracked.keep(Job(source="greenhouse", company="umbrella", id="R-4012345", title="Platform Engineer",
+                       url="https://umbrella.example/jobs/r-4012345/platform-engineer/"))
+    assert titles(tracked_search(tracked, "4012345")) == ["Platform Engineer"]
+    assert titles(tracked_search(tracked, "r-4012345/platform")) == ["Platform Engineer"]  # the link
+
+
 def test_search_takes_the_text_literally(tracked):
     assert titles(tracked_search(tracked, "$101/hr")) == ["Perception Engineer"]
     assert titles(tracked_search(tracked, "100%")) == ["Staff Engineer"]
