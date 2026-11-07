@@ -47,6 +47,32 @@ def test_a_bad_setting_leaves_the_file_alone(app, watchlist):
     assert not list(watchlist.parent.glob("*.new"))
 
 
+def test_a_save_with_the_current_file_version_goes_through(app, watchlist):
+    seen = app.get_settings({})["file_version"]
+    out = app.post_settings({"filters": {"titles": ["engineer"]}, "file_version": seen})
+    assert config.load(watchlist).filters.titles == ["engineer"]
+    assert out["file_version"] == app.get_settings({})["file_version"] != seen
+
+
+def test_a_save_from_a_stale_page_is_refused(app, watchlist):
+    seen = app.get_settings({})["file_version"]
+    raw = yaml.safe_load(watchlist.read_text())
+    raw["scoring"] = {"fallback": ["claude:globex-small"]}  # edited by hand after the page read
+    watchlist.write_text(yaml.dump(raw))
+    before = watchlist.read_text()
+    with pytest.raises(ApiError, match="changed since this page read it") as e:
+        app.post_settings({"scoring": {"fallback": ["claude:globex-small", "agy:initech-big"]}, "file_version": seen})
+    assert e.value.status == 409
+    assert watchlist.read_text() == before and not watchlist.with_name(watchlist.name + ".bak").exists()
+    # after reading again the same save goes through
+    app.post_settings({"filters": {"titles": ["engineer"]}, "file_version": app.get_settings({})["file_version"]})
+
+
+def test_a_save_without_a_file_version_still_goes_through(app, watchlist):
+    app.post_settings({"filters": {"titles": ["engineer"]}})
+    assert config.load(watchlist).filters.titles == ["engineer"]
+
+
 def test_display_settings(app, watchlist):
     cfg = config.load(watchlist)
     assert (cfg.theme, cfg.width) == ("system", "standard") and app.get_settings({})["display"] == {}
@@ -102,9 +128,11 @@ def test_details_show_the_fit_score(app, watchlist, web):
 def test_uploads(app, watchlist, web):
     csv = ("Notes:\n\nFirst Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
            "Ana,Li,,,Initech,Engineer,x\n")
-    assert app.upload("connections", "Connections.csv", csv.encode()) == {"connections": "Connections.csv",
-                                                                          "people": 1}
-    assert app.upload("resume", "My CV.PDF", b"%PDF-1.4") == {"resume": "resume.pdf"}
+    saved = app.upload("connections", "Connections.csv", csv.encode())
+    assert saved.pop("file_version") == app.get_settings({})["file_version"]
+    assert saved == {"connections": "Connections.csv", "people": 1}
+    assert app.upload("resume", "My CV.PDF", b"%PDF-1.4") | {"file_version": None} == {
+        "resume": "resume.pdf", "file_version": None}
     cfg = config.load(watchlist)
     assert cfg.resume == watchlist.parent / "resume.pdf" and cfg.connections.is_file()
     app.post_fetch({})

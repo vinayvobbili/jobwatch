@@ -229,6 +229,7 @@ def test_ui_upload_of_the_archive(tmp_path, watchlist, web):
 
     app = App(watchlist)
     r = app.upload("connections", "export.zip", make_archive(tmp_path).read_bytes())
+    assert r.pop("file_version")
     assert r == {"connections": "Connections.csv", "people": 4, "known": 4}
     app.post_fetch({})
     top = next(j for j in app.get_digest({})["jobs"] if j["key"] == "ashby:initech:c1")

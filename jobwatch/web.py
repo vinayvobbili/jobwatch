@@ -9,6 +9,7 @@ app, or a sheet opened in a tab of its own, can't send the token), and company l
 
 from __future__ import annotations
 
+import hashlib
 import json
 import queue as queue_mod
 import re
@@ -622,6 +623,11 @@ class App:
 
     # -- endpoints
 
+    def _file_version(self) -> str:
+        """Names the watchlist as it is on disk now (a hash of its bytes; a missing file has its own). A page sends
+        back the one it read, so a save can tell the file changed since (by hand, the CLI or another tab)."""
+        return hashlib.sha256(self.path.read_bytes() if self.path.is_file() else b"\0missing").hexdigest()
+
     def get_settings(self, q) -> dict:
         raw = (yaml.safe_load(self.path.read_text()) or {}) if self.path.is_file() else {}
         companies = []
@@ -636,6 +642,7 @@ class App:
         scoring = raw.get("scoring") or {}
         talk = raw.get("chat") if isinstance(raw.get("chat"), dict) else {}
         return {"path": str(self.path), "exists": self.path.is_file(), "version": __version__,
+                "file_version": self._file_version(),
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
                 "resume": raw.get("resume"), "connections": raw.get("connections"),
                 "resume_kit": raw.get("resume_kit"), "tailor_setup": tailor.SETUP,
@@ -672,9 +679,15 @@ class App:
         if isinstance(talk, dict) and str(talk.get("prompt") or "").strip() == chat.SYSTEM.strip():
             settings["chat"] = {k: v for k, v in talk.items() if k != "prompt"}  # only an edited one is kept
         with self.lock:
+            # file_version: what the page read. A page that read before the file changed would write old values back.
+            seen = body.get("file_version")
+            if seen is not None and seen != self._file_version():
+                raise ApiError("The watchlist changed since this page read it (by hand, the CLI or another tab). "
+                               "Nothing was saved: reload Settings and make the change again.", HTTPStatus.CONFLICT)
             cfg = config.save(self.path, settings)
+            file_version = self._file_version()
         self.score_in_background()  # new filters, resume or scoring setting: maybe more to score
-        return {"saved": str(cfg.path), "companies": len(cfg.boards)}
+        return {"saved": str(cfg.path), "companies": len(cfg.boards), "file_version": file_version}
 
     def _keychain(self, setting: str = "keychain") -> str:
         raw = (yaml.safe_load(self.path.read_text()) or {}) if self.path.is_file() else {}
@@ -718,7 +731,7 @@ class App:
             with self.lock:
                 config.save(self.path, {"scoring": {**scoring, "keychain": item}})
         self.score_in_background()
-        return {"keychain": item}
+        return {"keychain": item, "file_version": self._file_version()}
 
     # -- the browser extension (see autofill.py)
 
@@ -1557,9 +1570,10 @@ class App:
             extra = {"people": people}
         with self.lock:
             config.save(self.path, {kind: target.name})
+            file_version = self._file_version()
         if kind == "resume":
             self.score_in_background()  # scores belong to a resume: a new one is scored afresh
-        return {kind: target.name, **extra}
+        return {kind: target.name, **extra, "file_version": file_version}
 
 
 ROUTES = {

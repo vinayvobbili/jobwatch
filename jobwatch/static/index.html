@@ -1356,13 +1356,24 @@ function staleToken() {
   toast("jobwatch restarted: reloading the page…");
   setTimeout(() => location.reload(), 800);
 }
+// The watchlist file as /api/settings last gave it. Every save of settings sends it back, so a save from a page
+// that read before the file changed is refused instead of writing its old values over the change.
+let settingsFile = null;
 async function api(path, body, raw) {
   const opts = { method: body === undefined && !raw ? "GET" : "POST", headers: { "X-Jobwatch-Token": TOKEN } };
+  const saving = path === "/api/settings" && body !== undefined && !raw;
   if (raw) { opts.body = raw; }
-  else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
+  else if (body !== undefined) {
+    opts.body = JSON.stringify(saving && settingsFile ? { ...body, file_version: settingsFile } : body);
+    opts.headers["Content-Type"] = "application/json";
+  }
   const r = await fetch(path, opts);
   const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
   if (r.status === 403 && /wrong token/.test(data.error || "")) staleToken();
+  if (r.ok && data.file_version) settingsFile = data.file_version;  // settings, and the saves that write the file too
+  if (saving && r.status === 409) {  // the file changed since the page read it: read it again, then show why
+    try { settings = await api("/api/settings"); } catch { /* the next read will */ }
+  }
   if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
   return data;
 }
