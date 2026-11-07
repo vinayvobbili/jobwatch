@@ -18,6 +18,7 @@ FRESH = 3   # days: posted this recently, an application is among the first read
 CLOSE = 60  # a fit score under this isn't a close match: the verdict says skip it
 TURNED_DOWN = 2  # rejections from one company: past this, an application does more good somewhere new
 IN_PLAY = ("queued", "applied", "screening", "interviewing", "offer")
+TALKING = ("screening", "interviewing", "offer")  # they're talking to you: past rejections there aren't a no
 
 
 @dataclass
@@ -73,6 +74,12 @@ class History:
         """Other roles at the company that ended in a rejection, whenever."""
         return sum(1 for _, _, status in self._at(entry) if status == "rejected")
 
+    def talking(self, entry: Entry) -> str:
+        """The furthest stage of another role at the company where they're talking to you (screening,
+        interviewing, an offer), or "" when there's none: one that's likely closed (see in_play) doesn't count."""
+        live = [status for key, _, status in self._at(entry) if status in TALKING and key not in self.gone]
+        return max(live, key=TALKING.index, default="")
+
 
 def _k(n: int) -> str:
     return f"${n / 1000:.0f}K"
@@ -106,7 +113,8 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
         skip.append(("applied_before", f"you already applied to this opening on {d.day}"))
     if (n := history.applied_lately(entry)) >= BUSY:
         skip.append(("busy", f"you've applied to {plural(n, 'role')} at {company} this past week"))
-    if entry.record.get("status") not in STAGES and (n := history.turned_down(entry)) >= TURNED_DOWN:
+    if entry.record.get("status") not in STAGES and (n := history.turned_down(entry)) >= TURNED_DOWN \
+            and not history.talking(entry):  # an interview there now outweighs the old rejections
         skip.append(("turned_down", f"{company} has turned you down {n} times: this application does more good "
                                     "at a company that hasn't said no"))
     if top and floor and top < floor:
@@ -145,9 +153,10 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
     """The card's bottom line, in plain words: {"call": apply | stretch | hold | skip, "text"}. Skip for a hard
     reason (applied already, turned down there TURNED_DOWN times, under the pay floor, most must-haves missing,
     not a close match); hold off when
-    other roles at the company are already queued or in progress; go ahead (queue it from Today, apply once
-    queued), or go ahead as a stretch when must-haves are missing or the fit is only fair. None while the job has
-    no fit score and nothing else to go on."""
+    other roles at the company are already queued or in progress, or one is at screening or past it (ask the
+    recruiter there instead, and earlier rejections there don't count as turned down); go ahead (queue it from
+    Today, apply once queued), or go ahead as a stretch when must-haves are missing or the fit is only fair. None
+    while the job has no fit score and nothing else to go on."""
     fit, company = entry.fit, entry.job.display_company
     why = dict(zip(said.codes, said.reasons, strict=False)) if said else {}  # older advice may carry no codes
     hard = [c for c in ("applied_before", "turned_down", "under_floor", "must_haves")
@@ -166,6 +175,9 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
                                         f"applied to; {later}"}
     if "busy" in why:
         return {"call": "hold", "text": f"Hold off: {why['busy']}; {later}"}
+    if stage := history.talking(entry):  # a live process there: ask about this role in it, not cold
+        return {"call": "hold", "text": f"Hold off: another role at {company} is at {stage} now; ask your recruiter "
+                                        f"there about this one instead of applying cold, or {later}"}
     met, total = (fit.get("must_haves_met", 0), fit.get("must_haves_total", 0)) if fit else (0, 0)
     if total and met * 4 < total * 3:
         return {"call": "stretch", "text": f"{go}, but it's a stretch: it meets {met} of {total} must-haves."}

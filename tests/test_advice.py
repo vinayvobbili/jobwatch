@@ -85,6 +85,24 @@ def test_a_company_that_turned_you_down_twice_says_apply_somewhere_new(watchlist
     store.close()
 
 
+def test_an_interview_there_now_outweighs_old_rejections(watchlist):
+    """Turned down twice, but screening for a third role: not a no. Ask the recruiter about this one instead."""
+    cfg = cfg_with(watchlist)
+    store = Store(cfg.state)
+    long_ago, lately = (date.today() - timedelta(days=60)).isoformat(), (date.today() - timedelta(days=5)).isoformat()
+    for n in (1, 2):
+        save_job(store, company="Globex", title=f"Engineer {n}", status="rejected", applied=long_ago)
+    save_job(store, company="Globex", title="Engineer 3", status="screening", applied=lately)
+    e, history = entry(job(high=260000), fit(85)), History(store)
+    said = advise(cfg, e, history)
+    assert "turned_down" not in said.codes
+    assert verdict(e, history, said) == {
+        "call": "hold", "text": "Hold off: another role at Globex is at screening now; ask your recruiter there "
+                                "about this one instead of applying cold, or leave it, don't skip: this turns to "
+                                "Queue once one of those is settled or goes quiet."}
+    store.close()
+
+
 def test_the_bottom_line_says_apply_stretch_hold_or_skip(watchlist):
     cfg = cfg_with(watchlist)
     store = Store(cfg.state)
