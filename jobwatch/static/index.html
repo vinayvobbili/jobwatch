@@ -3447,9 +3447,10 @@ function spreadPicks(jobs, n) {
   for (const j of jobs) (seen.has(j.company) ? rest : (seen.add(j.company), first)).push(j);
   return [...first, ...rest].slice(0, n);
 }
-// The work wanted most (the watchlist's focus) leads whichever sort is picked; each part keeps that sort's order.
+// The work wanted most (the watchlist's focus) leads whichever sort is picked, a title hitting more focus patterns
+// first ("Cybersecurity AI" above "AI"); each part keeps that sort's order (sort is stable).
 function focusFirst(jobs) {
-  return [...jobs.filter(j => j.focus), ...jobs.filter(j => !j.focus)];
+  return [...jobs].sort((a, b) => (+b.focus || 0) - (+a.focus || 0));
 }
 // "Worth it": the Comps tab's weighted score (career, pay, fit, company health); cards show it while that order is on.
 let worthShown = false;

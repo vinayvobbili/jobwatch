@@ -648,12 +648,12 @@ console.log(JSON.stringify({
 def test_the_work_wanted_most_leads_whichever_sort_is_picked(tmp_path):
     js = tmp_path / "focus.js"
     js.write_text(page_function("focusFirst") + """
-const newest = [{ k: "a" }, { k: "b", focus: true }, { k: "c" }, { k: "d", focus: true }];
+const newest = [{ k: "a" }, { k: "b", focus: 1 }, { k: "c" }, { k: "d", focus: 1 }, { k: "e", focus: 2 }];
 console.log(JSON.stringify(focusFirst(newest).map(j => j.k)));
 """, encoding="utf-8")
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert json.loads(r.stdout) == ["b", "d", "a", "c"]  # each part keeps the sort's order
+    assert json.loads(r.stdout) == ["e", "b", "d", "a", "c"]  # more focus hits first; each part keeps the sort
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")

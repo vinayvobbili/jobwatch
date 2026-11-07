@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -127,8 +128,26 @@ def test_jobs_in_your_focus_come_first_scored_or_not(setup, tmp_path, monkeypatc
     d = watch.build_digest(cfg, store)
     # an unscored job in focus goes above a 90 outside it; the rest keep their order
     assert [e.job.key for e in d.entries] == ["lever:globex:aaaa-1111", "greenhouse:acme:101", "ashby:initech:c1"]
-    assert [e.focus for e in d.entries] == [True, False, False]
+    assert [e.focus for e in d.entries] == [1, 0, 0]
     assert watch.scoring_line(cfg, store)[0].job.key == "lever:globex:aaaa-1111"  # and is scored first
+
+
+def test_a_title_hitting_more_of_your_focus_ranks_higher(setup, tmp_path):
+    """Security and AI in one title leads a 90 that's AI only, though it scored lower: the work wanted most."""
+    cfg, store = setup
+    watch.fetch_all(cfg, store)
+    cfg.resume = tmp_path / "cv.pdf"
+    cfg.resume.write_bytes(b"resume")
+    titles = {e.job.key: e.job.title for e in watch.build_digest(cfg, store).entries}
+    two, one = "greenhouse:acme:101", "lever:globex:aaaa-1111"
+    cfg.focus = [r"\b(security|cyber\w*)\b", r"\bai\b"]
+    store.update(replace(store.find(two)[0], title="Cybersecurity AI Engineer"))
+    store.update(replace(store.find(one)[0], title="AI Engineer"))
+    for key, score in ((two, 66), (one, 90)):
+        store.save_score(key, watch.resume_id(cfg.resume),
+                         {"score": score, "must_haves_met": 5, "must_haves_total": 9, "gaps": [], "summary": ""})
+    d = watch.build_digest(cfg, store)
+    assert [(e.job.key, e.focus) for e in d.entries][:2] == [(two, 2), (one, 1)], titles
 
 
 def test_focus_patterns_are_checked_when_the_watchlist_loads(watchlist):

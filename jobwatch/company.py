@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 from . import contacts as people
 from . import dupes, report, suggest
 from .config import Config
-from .filters import KINDS, in_focus, rejection
+from .filters import KINDS, focus_hits, rejection
 from .models import Job
 from .package import Package
 from .score import resume_id
@@ -183,7 +183,7 @@ def view(cfg: Config, store: Store, text: str, every: bool | None = None) -> dic
     unacted = [r for r in mine if _order(r[1]) == 4 and not r[1].get("closed")]
     # A board's roles all arrive together when it's first watched: the latest posting leads, not the order they came
     unacted.sort(key=lambda r: (r[0].posted.isoformat() if r[0].posted else "", r[1]["first_seen"]), reverse=True)
-    unacted.sort(key=lambda r: not in_focus(r[0], cfg.focus))  # stable: the work wanted most (focus) first
+    unacted.sort(key=lambda r: -focus_hits(r[0], cfg.focus))  # stable: the work wanted most (focus) first
     every = cfg.company_view == "all" if every is None else every
     hide = {} if every else _left_out(cfg, store, unacted)
     open_ = [r for r in unacted if r[0].key not in hide]

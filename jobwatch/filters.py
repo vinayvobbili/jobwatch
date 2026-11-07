@@ -143,9 +143,10 @@ def remote_states(job: Job) -> list[str]:
     return list(dict.fromkeys(out))
 
 
-def in_focus(job: Job, focus: list[str]) -> bool:
-    """The job's title matches one of the watchlist's focus patterns (the work wanted most): it's listed first."""
-    return any(_any([p], job.title) for p in focus)
+def focus_hits(job: Job, focus: list[str]) -> int:
+    """How many of the watchlist's focus patterns (the work wanted most) the job's title matches: 0 is none.
+    The more it hits, the higher it's listed: "Cybersecurity AI Engineer" (security and AI) above "AI Engineer"."""
+    return sum(bool(_any([p], job.title)) for p in focus)
 
 
 def title_ok(title: str, f: Filters) -> bool:

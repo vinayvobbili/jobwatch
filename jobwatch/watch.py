@@ -17,7 +17,7 @@ from .filters import (
     KINDS,
     Filters,
     excluded_company,
-    in_focus,
+    focus_hits,
     office_nearby,
     place_rejection,
     red_flags,
@@ -373,7 +373,7 @@ class Entry:
     pay: object = None  # expected pay from Levels.fyi (levels.Estimate, PENDING, REFUSED or None; queue only)
     lca: lca.Estimate | None = None  # base pay filed for H-1B hires (queue only)
     duplicate: dupes.Match | None = None  # a job acted on that it's (maybe) the same opening as; also in warnings
-    focus: bool = False  # its title matches the watchlist's focus: the work wanted most, ranked first
+    focus: int = 0  # how many of the watchlist's focus patterns its title matches: the work wanted most, ranked first
 
     @property
     def keys(self) -> list[str]:
@@ -825,7 +825,7 @@ def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict
 
 def _rank(e: Entry):
     fit = e.fit["score"] if e.fit else -1
-    return (not e.focus, -fit, -e.relevance, e.job.age_days() if e.job.age_days() is not None else 10_000)
+    return (-e.focus, -fit, -e.relevance, e.job.age_days() if e.job.age_days() is not None else 10_000)
 
 
 PER_COMPANY = 2  # Today leads with at most this many jobs from one company
@@ -896,7 +896,7 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
         same = same or index.match(job, record)
         rel, hits = relevance(job, cfg.keywords)
         entries.append(e := Entry(job, record, rel, hits, fit=brief(fits.get(job.key)), duplicate=same,
-                                  focus=in_focus(job, cfg.focus)))
+                                  focus=focus_hits(job, cfg.focus)))
         if same:
             e.warnings.append(same.line)
     return entries, rejected

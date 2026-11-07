@@ -645,7 +645,8 @@ def _board(entry, path: Path, strict: bool = True) -> Board:
 
 def _focus(raw, path: Path) -> list[str]:
     """focus: title regexes for the work you want most ("security", "\\bai\\b"): a job whose title matches one
-    leads Today and the scoring line, ahead of better scores outside it."""
+    leads Today and the scoring line, ahead of better scores outside it; one that matches more leads one that
+    matches fewer."""
     focus = [raw] if isinstance(raw, str) else [str(x) for x in raw or []]
     for x in focus:
         try:
@@ -1094,7 +1095,7 @@ keywords:
   distributed systems: 1
 
 # The work you want most, as title regexes: these jobs lead Today and are scored first, ahead of better
-# scores outside them (the rest still show, after).
+# scores outside them (the rest still show, after). A title that matches more of them ranks higher.
 # focus: [security, '\\bml\\b', machine learning]
 
 # Optional fit scoring with shortlist-ai (pip install 'jobwatch[score]').
