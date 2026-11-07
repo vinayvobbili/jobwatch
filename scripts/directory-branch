@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Point the `directory` branch, which the Claude plugin directory and the marketplace install the plugin from,
-# at a release: that commit plus plugin/uv.lock, locked against PyPI. The lock (every package's exact version,
+# at a release: that commit with plugin/ as the directory's skills-only copy, and the full plugin in plugin-full/
+# with its uv.lock, locked against PyPI. The lock (every package's exact version,
 # source and hash) is what the directory's Verified badge asks for; main doesn't carry it, because it can only
 # be written once PyPI has the release. The release workflow runs this after the release is out. Nothing in it
 # names jobwatch: copy it to another package with a plugin/pyproject.toml as it is.
@@ -28,10 +29,15 @@ if (( size > LIMIT )); then
   exit 1
 fi
 
-# The skills-only copy the Claude directory lists (it takes a local MCP server only from Verified organizations).
-python3 scripts/skill_plugin.py "$work" >/dev/null
+# The Claude directory takes a local MCP server only from Verified organizations, so it lists a skills-only copy:
+# the full plugin moves to plugin-full/ (the marketplace installs it from there), and plugin/, the folder the
+# directory submission follows, becomes the copy scripts/skill_plugin.py builds.
+git -C "$work" add --force plugin/uv.lock
+git -C "$work" mv plugin plugin-full
+python3 scripts/skill_plugin.py "$work/plugin-full" "$work/plugin-skill/README.md" "$work/plugin" >/dev/null
+git -C "$work" rm -r --quiet plugin-skill
+git -C "$work" add plugin
 
-git -C "$work" add --force plugin/uv.lock plugin-skill
-git -C "$work" commit --quiet -m "Lock the plugin's server, and build the skills-only plugin, for the Claude directory"
+git -C "$work" commit --quiet -m "The Claude directory's skills-only plugin (plugin/) and the full plugin, its server locked (plugin-full/)"
 git -C "$work" push --quiet --force origin HEAD:refs/heads/directory
-echo "directory -> $(git -C "$work" rev-parse --short HEAD) ($(git rev-parse --short "$commit") + plugin/uv.lock, $size bytes, + plugin-skill)"
+echo "directory -> $(git -C "$work" rev-parse --short HEAD) ($(git rev-parse --short "$commit"): plugin/ skills only, plugin-full/ + uv.lock, $size bytes)"

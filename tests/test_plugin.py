@@ -28,12 +28,15 @@ def test_the_plugin_runs_the_released_server_pinned_to_this_version():
 
 def test_the_marketplace_installs_the_plugin_folder_as_released():
     """`/plugin marketplace add` reads the marketplace from main, but the plugin itself comes from the
-    `directory` branch, the same released copy the Claude directory lists. An https URL: `owner/repo` would
-    clone over SSH, which fails for anyone without a GitHub SSH key."""
+    `directory` branch's plugin-full/, the full plugin as released (its plugin/ is the Claude directory's
+    skills-only copy). An https URL: `owner/repo` would clone over SSH, which fails for anyone without a GitHub
+    SSH key."""
     market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text())
     assert [(p["name"], p["source"]) for p in market["plugins"]] == [
         ("jobwatch", {"source": "git-subdir", "url": "https://github.com/vinayvobbili/jobwatch.git",
-                      "path": "plugin", "ref": "directory"})]
+                      "path": "plugin-full", "ref": "directory"})]
+    script = (ROOT / "scripts" / "directory-branch").read_text()
+    assert "mv plugin plugin-full" in script
 
 
 def test_the_plugin_folder_has_what_the_directory_requires():
@@ -54,10 +57,9 @@ def test_the_skills_only_plugin_has_only_what_the_directory_takes_from_anyone(tm
     spec = importlib.util.spec_from_file_location("skill_plugin", ROOT / "scripts" / "skill_plugin.py")
     skill_plugin = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(skill_plugin)
-    shutil.copytree(PLUGIN, tmp_path / "plugin")
-    (tmp_path / "plugin" / "uv.lock").write_text("version = 1\n")  # on the directory branch it's there too
-    shutil.copytree(ROOT / "plugin-skill", tmp_path / "plugin-skill")
-    out = skill_plugin.build(tmp_path)
+    full_plugin = shutil.copytree(PLUGIN, tmp_path / "plugin-full")
+    (full_plugin / "uv.lock").write_text("version = 1\n")  # on the directory branch it's there too
+    out = skill_plugin.build(full_plugin, ROOT / "plugin-skill" / "README.md", tmp_path / "plugin")
     files = sorted(str(p.relative_to(out)) for p in out.rglob("*") if p.is_file())
     assert files == [".claude-plugin/plugin.json", "LICENSE", "README.md", "icon.png", "skills/jobwatch/LICENSE",
                      "skills/jobwatch/SKILL.md"]
@@ -69,7 +71,7 @@ def test_the_skills_only_plugin_has_only_what_the_directory_takes_from_anyone(tm
     assert "claude mcp add jobwatch" in (out / "README.md").read_text()  # how to add the tools
     # the full plugin would be refused: its server and its lock
     assert {"an MCP server", "pyproject.toml (file type)", "uv.lock (file type)"} <= set(skill_plugin.refused(
-        tmp_path / "plugin"))
+        full_plugin))
     assert "skill_plugin.py" in (ROOT / "scripts" / "directory-branch").read_text()
 
 
