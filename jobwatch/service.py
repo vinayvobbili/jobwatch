@@ -109,6 +109,20 @@ def uninstall() -> bool:
     return True
 
 
+def why_not_running(printed: str) -> dict:
+    """The job's own "job state" and "last exit reason" from `launchctl print` text (either may be missing), plus
+    a hint when macOS refused to start the program (code signing: often the virtualenv's Python changed)."""
+    why = {}
+    for key, name in (("job state", "job_state"), ("last exit reason", "exit_reason")):
+        m = re.search(rf"^\s*{key} = (.+?)\s*$", printed, re.M)
+        if m:
+            why[name] = m.group(1)
+    if why.get("exit_reason") == "OS_REASON_CODESIGNING" or why.get("job_state") == "spawn failed":
+        why["hint"] = ("macOS wouldn't start the program (often the virtualenv's Python changed since install): "
+                       "run `jobwatch service install` to register it again.")
+    return why
+
+
 def status() -> dict:
     _mac()
     path = plist_path()
@@ -123,4 +137,6 @@ def status() -> dict:
     pid = re.search(r"^\s*pid = (\d+)", r.stdout, re.M)
     info["running"] = bool(state and state.group(1) == "running")
     info["pid"] = int(pid.group(1)) if pid else None
+    if info["installed"] and not info["running"] and r.returncode == 0:
+        info.update(why_not_running(r.stdout))
     return info

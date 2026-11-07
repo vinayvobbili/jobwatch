@@ -70,3 +70,39 @@ def test_install_needs_a_watchlist_and_a_mac(launchd, tmp_path, monkeypatch):
     monkeypatch.setattr(service.sys, "platform", "linux")
     with pytest.raises(SystemExit, match="macOS"):
         cli.main(["service", "status"])
+
+
+SPAWN_FAILED = ("io.github.jobwatch.ui = {\n\tactive count = 0\n\tstate = not running\n"
+                "\tprogram = /opt/app/bin/python\n\tendpoints = {\n\t\tstate = active\n\t}\n"
+                "\tjob state = spawn failed\n\tlast exit reason = OS_REASON_CODESIGNING\n}\n")
+
+
+def test_why_not_running_reads_the_jobs_own_lines():
+    why = service.why_not_running(SPAWN_FAILED)
+    assert why["job_state"] == "spawn failed" and why["exit_reason"] == "OS_REASON_CODESIGNING"
+    assert "jobwatch service install" in why["hint"]
+    assert service.why_not_running("\tstate = waiting\n\tjob state = exited\n\tlast exit reason = exited: 1\n") == {
+        "job_state": "exited", "exit_reason": "exited: 1"}
+    assert service.why_not_running("") == {}
+
+
+def test_status_says_why_an_installed_job_is_not_running(tmp_path, monkeypatch, watchlist, capsys):
+    monkeypatch.setattr(service.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(service.sys, "platform", "darwin")
+    out = {"text": SPAWN_FAILED, "code": 0}
+
+    def run(cmd, **kwargs):
+        if cmd[1] == "print":
+            return subprocess.CompletedProcess(cmd, out["code"], out["text"], "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(service.subprocess, "run", run)
+    monkeypatch.setattr(service, "_wait_gone", lambda: None)
+    service.install(watchlist)
+    cli.main(["service", "status"])
+    shown = capsys.readouterr().out
+    assert "not running: see the log" in shown and "Job state: spawn failed" in shown
+    assert "OS_REASON_CODESIGNING" in shown and "jobwatch service install" in shown
+    out.update(text="", code=113)  # launchctl print fails: as before
+    cli.main(["service", "status"])
+    shown = capsys.readouterr().out
+    assert "not running: see the log" in shown and "Job state" not in shown and "register" not in shown

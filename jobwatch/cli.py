@@ -1170,6 +1170,11 @@ def cmd_service(args):
             else:
                 state = f"running (pid {s['pid']})" if s["running"] else "installed, not running: see the log"
                 print(f"{state}\n{s['url'] or ''}\nLog: {s['log']}")
+                for key, label in (("job_state", "Job state"), ("exit_reason", "Last exit reason")):
+                    if s.get(key):
+                        print(f"{label}: {s[key]}")
+                if s.get("hint"):
+                    print(s["hint"])
     except service.ServiceError as e:
         raise SystemExit(f"jobwatch: {e}") from None
 
