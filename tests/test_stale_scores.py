@@ -128,6 +128,16 @@ def test_scores_with_requirements_left_unjudged_are_dropped_to_score_again(env):
     assert ACME in [e.job.key for e in watch.unscored(cfg, store)]
 
 
+def test_a_stale_score_says_why_instead_of_a_place_in_line(env):
+    """A stale score is never in the background scorer's line, so it can't say "In line to score" (Today once
+    failed on it with list.index)."""
+    cfg, store, rid = env
+    store.save_score(ACME, resume_family(rid) + ":scorer-00000000", fit(90))
+    why = watch.unscored_reasons(cfg, store)
+    assert why[ACME] == {"code": "stale", "text": watch.STALE[1]}
+    assert {why[k]["text"][:-len(" · 1st of 2")] for k in (GLOBEX, INITECH)} == {"In line to score"}  # 2, not 3
+
+
 def test_a_fresh_score_wins(env):
     cfg, store, rid = env
     store.save_score(ACME, resume_family(rid) + ":scorer-00000000", fit(90))

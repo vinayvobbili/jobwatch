@@ -737,6 +737,7 @@ def set_link(store: Store, key: str, url: str, get=None) -> str:
 NO_RESUME = ("no_resume", "No resume to score against: add it in Settings (resume: in the watchlist)")
 NO_TEXT = ("no_text", "No posting text: add a link to the company's posting or paste it")
 MANY_ROLES = ("many_roles", "Not scored: a post listing several roles; watch the company's board to score each one")
+STALE = ("stale", "An older scorer's score: press ↻ or run `jobwatch score --rescore` to score it again")
 
 
 def scorable(job: Job) -> bool:
@@ -757,8 +758,9 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
     """Why each queued and Today's job has no fit score: {job key: {"code", "text"}}. Codes: no_resume, no_text (a job
     from an alert email may have only its title), failed (with the error), scoring (now), queued (in the
     background scorer's line: "3rd of 4"), stopped (background scoring stopped, and why), manual (background
-    scoring is off), same_role (another posting of the same role was scored before this one came in) and
-    many_roles (a post listing several roles, never scored: see scorable).
+    scoring is off), same_role (another posting of the same role was scored before this one came in),
+    many_roles (a post listing several roles, never scored: see scorable) and stale (an older scorer's score,
+    shown until it's scored again when asked: never in the line).
     `failed` (job key -> error), `current` (the key being scored) and `stopped` come from the page's background
     scorer; without them, a job is described by where it stands in the scorer's line."""
     failed = {**failed_scores(cfg, store), **(failed or {})}
@@ -801,6 +803,8 @@ def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str]
         return "manual", "Background scoring is off: press Score fit"
     if stopped:
         return "stopped", f"Background scoring stopped: {stopped}"
+    if e.job.key not in line:  # an older scorer's score (stale): kept until asked for again, never in the line
+        return STALE
     return "queued", f"In line to score · {_ordinal(line.index(e.job.key) + 1)} of {len(line)}"
 
 
