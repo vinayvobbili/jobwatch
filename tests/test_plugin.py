@@ -47,6 +47,32 @@ def test_the_plugin_folder_has_what_the_directory_requires():
     assert not (PLUGIN / "bin").exists()  # a top-level bin/ stops claude.ai and Cowork installing it
 
 
+def test_the_skills_only_plugin_has_only_what_the_directory_takes_from_anyone(tmp_path):
+    """The Claude directory takes a local MCP server, and files other than Markdown, text, JSON, YAML and images,
+    only from Verified organizations: its copy is the skill, license, icon and manifest, with no server."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("skill_plugin", ROOT / "scripts" / "skill_plugin.py")
+    skill_plugin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(skill_plugin)
+    shutil.copytree(PLUGIN, tmp_path / "plugin")
+    (tmp_path / "plugin" / "uv.lock").write_text("version = 1\n")  # on the directory branch it's there too
+    shutil.copytree(ROOT / "plugin-skill", tmp_path / "plugin-skill")
+    out = skill_plugin.build(tmp_path)
+    files = sorted(str(p.relative_to(out)) for p in out.rglob("*") if p.is_file())
+    assert files == [".claude-plugin/plugin.json", "LICENSE", "README.md", "icon.png", "skills/jobwatch/LICENSE",
+                     "skills/jobwatch/SKILL.md"]
+    assert skill_plugin.refused(out) == []
+    full = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text())
+    full.pop("userConfig")
+    assert json.loads((out / ".claude-plugin" / "plugin.json").read_text()) == full  # same name, version, listing
+    assert (out / "skills/jobwatch/SKILL.md").read_bytes() == (PLUGIN / "skills/jobwatch/SKILL.md").read_bytes()
+    assert "claude mcp add jobwatch" in (out / "README.md").read_text()  # how to add the tools
+    # the full plugin would be refused: its server and its lock
+    assert {"an MCP server", "pyproject.toml (file type)", "uv.lock (file type)"} <= set(skill_plugin.refused(
+        tmp_path / "plugin"))
+    assert "skill_plugin.py" in (ROOT / "scripts" / "directory-branch").read_text()
+
+
 def test_the_directory_branch_moves_only_with_a_release():
     """The Claude directory follows the `directory` branch; only the release workflow moves it, after the
     release (and its desktop extension) is out."""

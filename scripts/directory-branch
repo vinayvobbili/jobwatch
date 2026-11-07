@@ -28,7 +28,10 @@ if (( size > LIMIT )); then
   exit 1
 fi
 
-git -C "$work" add --force plugin/uv.lock
-git -C "$work" commit --quiet -m "Lock the plugin's server for the Claude directory"
+# The skills-only copy the Claude directory lists (it takes a local MCP server only from Verified organizations).
+python3 scripts/skill_plugin.py "$work" >/dev/null
+
+git -C "$work" add --force plugin/uv.lock plugin-skill
+git -C "$work" commit --quiet -m "Lock the plugin's server, and build the skills-only plugin, for the Claude directory"
 git -C "$work" push --quiet --force origin HEAD:refs/heads/directory
-echo "directory -> $(git -C "$work" rev-parse --short HEAD) ($(git rev-parse --short "$commit") + plugin/uv.lock, $size bytes)"
+echo "directory -> $(git -C "$work" rev-parse --short HEAD) ($(git rev-parse --short "$commit") + plugin/uv.lock, $size bytes, + plugin-skill)"

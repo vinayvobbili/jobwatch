@@ -11,7 +11,9 @@ on the user's computer. Nothing is sent anywhere except the job boards it reads.
 
 ## Setup (once)
 
-The jobwatch plugin starts the server for you in Claude Code (the Claude app's Code tab too) and Cowork. A
+The jobwatch plugin from the `vinayvobbili/jobwatch` marketplace starts the server for you in Claude Code (the
+Claude app's Code tab too) and Cowork. The jobwatch plugin in the Claude directory is this skill alone: there,
+the server is added once (below). A
 chat whose plugins run in the cloud has this skill but not the tools, because jobwatch's data is on the
 person's computer: say so, and suggest the Code tab, or the jobwatch desktop extension (a `.mcpb` file on
 github.com/vinayvobbili/jobwatch/releases) in a Claude Desktop with Settings → Extensions.
@@ -21,7 +23,14 @@ starts the server with `uvx`. Check with `uvx --version`. If it's missing, say t
 small tool from astral.sh, and offer to install it: `curl -LsSf https://astral.sh/uv/install.sh | sh` on a
 Mac or Linux (or `brew install uv`), `powershell -ExecutionPolicy ByPass -c "irm
 https://astral.sh/uv/install.ps1 | iex"` on Windows. Run it only once the person says yes; then they restart
-Claude so the plugin starts the server. If the `jobwatch` tools still aren't available, set it up by hand:
+Claude so the plugin starts the server. With the skill alone (no server in the plugin), offer to add the server
+once uv is there, and run it once the person says yes, then they restart Claude:
+
+```
+claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/.config/jobwatch/config.yaml -- uvx --from jobwatch jobwatch-mcp
+```
+
+If the `jobwatch` tools still aren't available, set it up by hand:
 
 ```
 pipx install 'jobwatch[mcp]'      # or: pip install 'jobwatch[mcp]'
