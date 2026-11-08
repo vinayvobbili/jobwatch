@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
-dependencies = ["pyyaml>=6", "mcp>=2.2"]
+dependencies = ["pyyaml>=6", "mcp>=2.2", "ruamel.yaml>=0.18"]
 keywords = ["jobs", "job-search", "job-tracker", "greenhouse", "lever", "ashby", "workable", "workday", "eightfold", "mcp", "resume", "llm"]
 classifiers = [
     "Programming Language :: Python :: 3",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import re
 from dataclasses import asdict, dataclass, field
@@ -10,6 +11,10 @@ from pathlib import Path
 from string import Formatter
 
 import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.scalarstring import LiteralScalarString
+from ruamel.yaml.util import load_yaml_guess_indent
 
 from . import GUIDE
 from .filters import Filters
@@ -809,31 +814,116 @@ def _near(learning: dict, filters: Filters) -> str:
                  and not re.search(r"[\\^$*+?()[\]{}|]", loc)), "")
 
 
-class _Dumper(yaml.SafeDumper):
-    """Writes text of several lines (an edited prompt) as a block, so the file stays readable and editable by hand."""
+HEADER = "# jobwatch watchlist, saved by jobwatch. Docs: https://github.com/vinayvobbili/jobwatch\n"
 
 
-_Dumper.add_representer(str, lambda dumper, s: dumper.represent_scalar(
-    "tag:yaml.org,2002:str", s, style="|" if "\n" in s else None))
+def _round_trip(text: str):
+    """A reader-writer for this file that keeps its comments, quotes and indentation (ruamel.yaml's round trip)."""
+    dash = (load_yaml_guess_indent(text)[2] or 0) if text.strip() else 0  # where list dashes sit under their key
+    rt = YAML()
+    rt.preserve_quotes = True
+    rt.width = 4096  # never re-wrap a long line
+    rt.indent(mapping=2, sequence=dash + 2, offset=dash)
+    return rt
+
+
+def _fresh(value):
+    """A new value as the round trip writes it: text of several lines (an edited prompt) as a block."""
+    if isinstance(value, dict):
+        return {k: _fresh(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_fresh(v) for v in value]
+    return LiteralScalarString(value) if isinstance(value, str) and "\n" in value else value
+
+
+def _same_scalar(old, new) -> bool:
+    return (old == new and isinstance(old, bool) == isinstance(new, bool)
+            and isinstance(old, str) == isinstance(new, str))
+
+
+def _merge(old, new):
+    """new, written into old's place: what didn't change keeps its comments and layout, and so does the rest
+    around what did."""
+    if isinstance(old, CommentedMap) and isinstance(new, dict):
+        for key in [k for k in old if k not in new]:
+            del old[key]
+        for key, value in new.items():
+            old[key] = _merge(old[key], value) if key in old else _fresh(value)
+        return old
+    if isinstance(old, CommentedSeq) and isinstance(new, list):
+        if old == new:
+            return old
+        seq, used = CommentedSeq(), set()
+        if old.fa.flow_style():  # [remote, Denver] stays on one line
+            seq.fa.set_flow_style()
+        for value in new:  # an item kept keeps its own comment; a new one comes as given
+            at = next((i for i, item in enumerate(old) if i not in used and item == value), None)
+            if at is None:
+                seq.append(_fresh(value))
+                continue
+            used.add(at)
+            seq.append(old[at])
+            if at in old.ca.items:  # after the append: append moves comments at or past its index on by one
+                seq.ca.items[len(seq) - 1] = old.ca.items[at]
+        seq.ca.comment = old.ca.comment
+        return seq
+    if not isinstance(new, (dict, list)) and _same_scalar(old, new):
+        return old
+    return _fresh(new)
+
+
+def _sections(rt, text: str) -> tuple[str, dict[str, str]]:
+    """The file's text before its first key (a header), and each top-level key's own lines, in order."""
+    data = rt.load(text) if text.strip() else None
+    if not isinstance(data, CommentedMap) or not data:
+        return text, {}
+    lines = text.splitlines(keepends=True)
+    starts = sorted((data.lc.key(key)[0], key) for key in data)
+    ends = [line for line, _ in starts[1:]] + [len(lines)]
+    return "".join(lines[:starts[0][0]]), {key: "".join(lines[start:end])
+                                           for (start, key), end in zip(starts, ends, strict=True)}
+
+
+def _means(section: str):
+    try:
+        return yaml.safe_load(section)
+    except yaml.YAMLError:
+        return section
+
+
+def _splice(rt, old_text: str, new_text: str) -> str:
+    """new_text, but each section that means what it did before keeps its old lines byte for byte, so a value
+    wrapped or quoted by hand (or by an older jobwatch) isn't rewritten when it didn't change."""
+    head, old = _sections(rt, old_text)
+    _, new = _sections(rt, new_text)
+    kept = [old[key] if key in old and _means(old[key]) == _means(section) else section for key, section in new.items()]
+    return head + "".join(s if s.endswith("\n") else s + "\n" for s in kept)
 
 
 def save(path: Path, settings: dict) -> Config:
     """Update the watchlist's settings (other keys, such as state, are kept) and write it.
 
     The new file is checked before it replaces the old one, which is kept as <name>.bak.
-    Comments in a hand-written file are not kept."""
+    Comments, quotes and indentation in a hand-written file are kept; only the changed values change."""
     unknown = set(settings) - set(SETTINGS)
     if unknown:
         raise ConfigError(f"unknown setting(s): {', '.join(sorted(unknown))}")
-    raw = (yaml.safe_load(path.read_text()) or {}) if path.is_file() else {}
+    old_text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    rt = _round_trip(old_text)
+    raw = rt.load(old_text) if old_text.strip() else None
+    if not isinstance(raw, CommentedMap):
+        raw = CommentedMap()
     for key, value in settings.items():
         if value in (None, "", [], {}):
             raw.pop(key, None)
         else:
-            raw[key] = value
+            raw[key] = _merge(raw[key], value) if key in raw else _fresh(value)
     path.parent.mkdir(parents=True, exist_ok=True)
-    text = "# jobwatch watchlist, saved by jobwatch. Docs: https://github.com/vinayvobbili/jobwatch\n" + \
-        yaml.dump(raw, Dumper=_Dumper, sort_keys=False, allow_unicode=True)
+    out = io.StringIO()
+    rt.dump(raw, out)
+    text = _splice(rt, old_text, out.getvalue()) if raw else out.getvalue()
+    if not old_text.lstrip().startswith("#"):
+        text = HEADER + text
     tmp = path.with_name(path.name + ".new")
     tmp.write_text(text, encoding="utf-8")
     try:
