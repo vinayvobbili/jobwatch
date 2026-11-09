@@ -624,6 +624,10 @@ class FakeIMAP:
         self.calls.append(("search", *criteria))
         return "OK", [b"1 2" if "linkedin" in criteria[-1] else b"2"]
 
+    def store(self, i, command, flags):
+        self.calls.append(("store", i, command, flags))
+        return "OK", [i]
+
     def fetch(self, i, what):
         self.calls.append(("fetch", i, what))
         name = {b"1": "linkedin.eml", b"2": "indeed.eml"}[i]
@@ -658,10 +662,25 @@ def test_imap_reads_without_marking_anything(tmp_path, watchlist, web, capsys, m
     assert ("login", "you@example.com", "not-a-real-password") in calls and calls[-1] == ("logout",)
     assert ("select", '"INBOX"', True) in calls  # read-only
     assert {c[2] for c in calls if c[0] == "fetch"} == {"(BODY.PEEK[])"}  # PEEK: nothing marked read
+    assert not [c for c in calls if c[0] == "store"]
     assert ("search", "SINCE", "05-Oct-2026", "FROM", '"jobalerts-noreply@linkedin.com"') in calls
     cli.main(["-c", str(path), "alerts", "--imap", "--no-follow"])
     out = capsys.readouterr()
     assert "Read 2 email(s)" in out.out and "not-a-real-password" not in out.out + out.err
+
+
+def test_mark_read_marks_each_alert_it_read_as_read(tmp_path, watchlist, monkeypatch):
+    path = tmp_path / "w.yaml"
+    path.write_text(watchlist.read_text() + IMAP_WATCHLIST + "    password_env: JOBWATCH_IMAP_PASSWORD\n"
+                    "    mark_read: true\n")
+    monkeypatch.setenv("JOBWATCH_IMAP_PASSWORD", "not-a-real-password")
+    cfg = config.load(path)
+    assert cfg.imap.mark_read and config.defaults()["alerts"]["imap"]["mark_read"] is False
+    msgs = alerts.imap_messages(cfg.imap, today=date(2026, 10, 8), connect=FakeIMAP)
+    calls = FakeIMAP.last.calls
+    assert len(msgs) == 2 and ("select", '"INBOX"', False) in calls  # read-write, to set the flag
+    assert [c[1:] for c in calls if c[0] == "store"] == [(b"1", "+FLAGS", "\\Seen"), (b"2", "+FLAGS", "\\Seen")]
+    assert {c[2] for c in calls if c[0] == "fetch"} == {"(BODY.PEEK[])"}  # flagged on purpose, not by the fetch
 
 
 def test_every_check_reads_the_mailbox_too(tmp_path, watchlist, web, monkeypatch):

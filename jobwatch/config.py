@@ -68,6 +68,7 @@ class Imap:
     senders: tuple[str, ...] = ALERT_SENDERS  # FROM searches: an address or a domain
     days: int = 3                             # emails from the last N days
     every: timedelta | None = None            # the page reads it this often too, between checks; None: only with them
+    mark_read: bool = False                   # mark the alert emails it read as read (off: the folder is read-only)
 
 
 MAIL_LEAST = timedelta(minutes=15)  # alerts.imap.every's floor: alerts come a few times a day, not by the minute
@@ -105,7 +106,8 @@ def _imap(raw, path: Path) -> Imap | None:
                     folder=str(raw.get("folder", "INBOX")), password_env=str(raw.get("password_env", "")),
                     keychain=str(raw.get("keychain", "")),
                     senders=tuple(str(s) for s in ([senders] if isinstance(senders, str) else senders)),
-                    days=int(raw.get("days", 3)), every=_mail_every(raw.get("every"), path))
+                    days=int(raw.get("days", 3)), every=_mail_every(raw.get("every"), path),
+                    mark_read=raw.get("mark_read") is True)
     except (TypeError, ValueError) as e:
         raise ConfigError(f"{path}: alerts.imap: {e}") from None
 
@@ -1112,7 +1114,7 @@ def defaults() -> dict:
             "applicant": {k: v for k, v in asdict(Applicant()).items() if v},
             "suggestions": asdict(Suggestions()),
             "alerts": {"imap": {"port": imap.port, "folder": imap.folder, "days": imap.days,
-                                "senders": list(imap.senders)}},
+                                "senders": list(imap.senders), "mark_read": imap.mark_read}},
             "fetch_every": "6h", "state": str(DEFAULT_STATE), "cache": str(DEFAULT_CACHE)}
 
 

@@ -187,7 +187,8 @@ scripts. In Claude, `import_job_alerts` takes the messages (their source, or jus
 
 jobwatch never asks for your email password. To read alerts straight from your mailbox instead, give it an
 IMAP account in the watchlist, with the password in an environment variable or the macOS keychain. It's off
-unless you set it. The mailbox is opened read-only, and messages are read without being marked read:
+unless you set it. Nothing is moved or deleted, and unless you set `mark_read` the mailbox is opened read-only
+and the alerts stay unread:
 
 ```yaml
 alerts:
@@ -200,6 +201,7 @@ alerts:
     # days: 3                      # alerts from the last 3 days
     # every: 2h                    # the page reads it this often too, between checks for new jobs
     # senders: [jobalerts-noreply@linkedin.com, builtin.com, jobalert.indeed.com]
+    # mark_read: true              # mark the alerts it read as read, so they don't sit unread
 ```
 
 ```
@@ -213,7 +215,7 @@ are still checked. `jobwatch hidden --since 6h --source manual` lists the alert 
 filters keep off Today, and why.
 
 A Gmail app password isn't limited to reading: it can read, send and delete all of the account's mail. jobwatch
-only opens the folder read-only, but that's jobwatch's doing, not the password's. Keep it in the keychain (run
+only reads the folder (and with `mark_read`, flags what it read), but that's jobwatch's doing, not the password's. Keep it in the keychain (run
 the `security` command in a terminal: it asks for the password, so it never lands in your shell history), and
 delete it in your Google account if you stop using jobwatch or think it got out.
 

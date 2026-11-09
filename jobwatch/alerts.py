@@ -1196,8 +1196,10 @@ _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
 
 
 def imap_messages(settings, today: date | None = None, connect=None) -> list[EmailMessage]:
-    """The alert emails from the last `days` days in the folder, from the configured senders. The folder is
-    opened read-only and messages are fetched with BODY.PEEK, so nothing is marked read, moved or deleted."""
+    """The alert emails from the last `days` days in the folder, from the configured senders. Messages are fetched
+    with BODY.PEEK and nothing is moved or deleted. With mark_read, each one fetched is then flagged \\Seen, so the
+    alerts jobwatch took don't sit unread; otherwise the folder is opened read-only. The search is by date, not by
+    unread, so a message marked read is still read again on the next run within `days`."""
     day = (today or date.today()) - timedelta(days=settings.days)
     since = f"{day.day:02d}-{_MONTHS[day.month - 1]}-{day.year}"
     password = imap_password(settings)
@@ -1210,7 +1212,7 @@ def imap_messages(settings, today: date | None = None, connect=None) -> list[Ema
             conn.login(settings.user, password)
         except imaplib.IMAP4.error:
             raise AlertError(f"{settings.host} didn't accept the login for {settings.user}") from None
-        status, _ = conn.select(f'"{settings.folder}"', readonly=True)
+        status, _ = conn.select(f'"{settings.folder}"', readonly=not settings.mark_read)
         if status != "OK":
             raise AlertError(f"no folder {settings.folder!r} on {settings.host}")
         ids: list[bytes] = []
@@ -1223,6 +1225,8 @@ def imap_messages(settings, today: date | None = None, connect=None) -> list[Ema
             raw = next((part[1] for part in data or [] if isinstance(part, tuple)), None)
             if status == "OK" and raw:
                 out.append(message(raw))
+                if settings.mark_read:
+                    conn.store(i, "+FLAGS", "\\Seen")
         return out
     finally:
         try:

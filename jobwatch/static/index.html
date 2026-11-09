@@ -5046,18 +5046,21 @@ function alertsCard(s) {
   const days = numInput(m.days, d.days, { min: 1 });
   const senders = areaInput(m.senders, d.senders.join("\n"));
   senders.rows = d.senders.length;
+  const markRead = checkLine(m.mark_read ?? d.mark_read, "Mark the alert emails read once jobwatch has read them");
   const el = setCard("alerts", "Job-alert emails", "LinkedIn, Built In, Indeed and others",
     h("p", { class: "small muted lead" }, "Save alert emails and run jobwatch alerts, or have it read them from your " +
-      "mailbox (IMAP): read-only, nothing is marked read. Off until a server is set."),
+      "mailbox (IMAP): nothing is moved or deleted, or marked read unless you tick that. Off until a server is set."),
     h("div", { class: "fields" },
       field("Server", host), field("User", user),
       field("Password variable", env, "An environment variable holding the password."),
       field("or keychain item", keychain, "A macOS keychain item holding it."),
       field("Port", port), field("Folder", folder), field("Days back", days, "Emails from the last few days."),
-      field("Senders", senders, "Whose emails are job alerts: an address or a domain, one per line.", "span3")));
+      field("Senders", senders, "Whose emails are job alerts: an address or a domain, one per line.", "span3"),
+      h("div", { class: "span3" }, markRead.el)));
   el.values = () => {
     const imap = merged(m, { host: textOf(host), user: textOf(user), password_env: textOf(env), keychain: textOf(keychain),
-      port: numberOf(port), folder: textOf(folder), days: numberOf(days), senders: unlines(senders.value) });
+      port: numberOf(port), folder: textOf(folder), days: numberOf(days), senders: unlines(senders.value),
+      mark_read: markRead.box.checked || null });
     return imap ? { imap } : null;
   };
   el.classList.add("full");
