@@ -115,6 +115,15 @@ def test_the_desktop_extension_runs_the_released_server_with_uv():
     assert not (DESKTOP / "server" / "lib").exists()  # the uv type installs dependencies; none are bundled
 
 
+def test_the_desktop_bundle_retries_past_a_cached_index_page():
+    """The release's bundle check waits for PyPI to serve the release, with uv's cache off: a cached index page
+    from before the upload would make every retry miss it (v0.9.0's five did)."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    job = workflow.split("\n  desktop-extension:\n", 1)[1].split("\n  directory-branch:\n", 1)[0]
+    step = job.split("- name: Build and check the bundle", 1)[1].split("- name:", 1)[0]
+    assert 'UV_NO_CACHE: "1"' in step and "sleep 60" in step
+
+
 @pytest.mark.skipif(not shutil.which("claude"), reason="needs Claude Code's `claude plugin validate`")
 def test_claude_code_validates_the_plugin_and_the_marketplace():
     for target in (PLUGIN, ROOT):

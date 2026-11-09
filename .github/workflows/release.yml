@@ -99,6 +99,10 @@ jobs:
       - name: Install uv
         run: pipx install uv
       - name: Build and check the bundle
+        # Without the cache: uv keeps PyPI's index page for up to 10 minutes, so a first try made before the
+        # release showed up there would make every retry miss it too (v0.9.0 failed all five that way).
+        env:
+          UV_NO_CACHE: "1"
         run: for try in 1 2 3 4 5; do scripts/build-mcpb && break; [ "$try" = 5 ] && exit 1; sleep 60; done
       - name: Add it to the release
         env:
