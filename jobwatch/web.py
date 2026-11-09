@@ -101,6 +101,9 @@ MAX_UPLOAD = 20 * 1024 * 1024
 EVENT_PING = 15  # seconds between keep-alive comments on /events
 IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background scorer works through
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
+# What the extension may offer beyond filling forms, named in /ext/ping: an extension paired with an older jobwatch
+# hides a button whose call that jobwatch doesn't have, instead of failing when it's pressed.
+EXT_FEATURES = ("posting",)
 
 
 class ApiError(Exception):
@@ -1918,7 +1921,7 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 raw = self.rfile.read(length) if length else b""
                 page = (parse_qs(url.query).get("url") or [""])[0]
                 if method == "GET" and url.path == "/ext/ping":
-                    data = {"ok": True, "version": __version__}
+                    data = {"ok": True, "version": __version__, "features": list(EXT_FEATURES)}
                 elif method == "GET" and url.path == "/ext/context":
                     data = app.ext_context(page)
                 elif method == "GET" and url.path == "/ext/resume":

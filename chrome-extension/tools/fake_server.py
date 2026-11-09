@@ -42,6 +42,7 @@ class State:
         self.requests: list[tuple[str, str]] = []
         self.token = TOKEN
         self.know_every_page = False  # live_check.py: every page is a known job, with a resume
+        self.features = ["posting"]  # /ext/ping's; an older jobwatch has none
         self.draft_answer = ""  # store_assets.py: a draft that reads like one; else it names the question
 
 
@@ -76,7 +77,7 @@ def _handler(state: State):
             page = parse_qs(url.query).get("url", [""])[0]
             known = state.know_every_page or "initech" in page
             if url.path == "/ext/ping":
-                self._json(200, {"ok": True, "version": "0.7.0"})
+                self._json(200, {"ok": True, "version": "0.7.0", "features": state.features})
             elif url.path == "/ext/context":
                 job = {"key": "ashby:initech/4f1c", "title": "Platform Engineer", "company": "Initech",
                        "status": "queued", "url": page} if known else None

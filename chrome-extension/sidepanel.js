@@ -17,6 +17,7 @@
   const pinned = Number(new URLSearchParams(location.search).get('tab')) || null;
   let tabId = pinned;
   let ready = false; // jobwatch is paired and answering
+  let features = []; // what that jobwatch offers beyond filling (/ext/ping): an older one has no posting call
   let state = null; // the last scan: { items, info, job }
   let busy = false;
 
@@ -58,6 +59,7 @@
     pair.textContent = 'Checking...';
     const s = await send({ type: 'status' });
     ready = !!(s.paired && s.reachable);
+    features = s.features || [];
     if (ready) {
       pair.className = 'good';
       pair.textContent = `Paired with jobwatch ${s.version}.`;
@@ -83,7 +85,7 @@
     }, () => {});
     return b;
   };
-  const actions = () => h('div', { class: 'actions' }, scanButton(), postingButton());
+  const actions = () => h('div', { class: 'actions' }, scanButton(), features.includes('posting') ? postingButton() : null);
 
   function idle(text) {
     state = null;

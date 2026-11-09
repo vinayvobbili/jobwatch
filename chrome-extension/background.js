@@ -69,7 +69,7 @@ async function status() {
   if (!s.token) return { paired: false };
   try {
     const p = await api('/ext/ping', { settings: s, timeout: 4000 });
-    return { paired: true, reachable: true, version: p.version };
+    return { paired: true, reachable: true, version: p.version, features: p.features || [] };
   } catch (e) {
     return { paired: true, reachable: false, error: e.message };
   }

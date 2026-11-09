@@ -44,7 +44,9 @@ One flat object, as the watchlist's `applicant:` section keeps it. Every field i
 
 ### `GET /ext/ping`
 
-`{"ok": true, "version": "0.9.0"}`. Used by the options page to test pairing.
+`{"ok": true, "version": "0.9.0", "features": ["posting"]}`. Used by the options page to test pairing. `features`
+names what jobwatch offers beyond filling: the side panel shows **Save this posting to jobwatch** only when it has
+`posting` (`POST /ext/posting`), so an older jobwatch, which sends no `features`, gets no button that would fail.
 
 ### `GET /ext/context?url=<the page's address>`
 

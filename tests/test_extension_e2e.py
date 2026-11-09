@@ -324,7 +324,26 @@ def test_the_panel_says_when_jobwatch_is_missing(stack, ext, panels):
         harness.pair(stack, stack.api_url, harness.TOKEN)
         panel.wait_for_function("() => document.getElementById('pair').textContent.includes('Paired with jobwatch')")
         panel.wait_for_selector("#scan")
+        assert panel.locator("#posting").count() == 1
     finally:
+        harness.pair(stack, stack.api_url, harness.TOKEN)
+        page.close()
+
+
+def test_an_older_jobwatch_without_the_posting_call_gets_no_posting_button(stack, ext, panels):
+    url = f"http://127.0.0.1:{stack.site_port}/generic.html"
+    page = open_form(stack, ext, url)
+    stack.server.features = []  # what jobwatch 0.8.0's /ext/ping says: no features
+    try:
+        harness.pair(stack, stack.api_url, "")
+        panel = harness.side_panel(stack, url)
+        panels.append(panel)
+        harness.pair(stack, stack.api_url, harness.TOKEN)
+        panel.wait_for_function("() => document.getElementById('pair').textContent.includes('Paired with jobwatch')")
+        panel.wait_for_selector("#scan")  # filling still works
+        assert panel.locator("#posting").count() == 0  # its call would fail on that jobwatch
+    finally:
+        stack.server.features = ["posting"]
         harness.pair(stack, stack.api_url, harness.TOKEN)
         page.close()
 
