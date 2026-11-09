@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "jobwatch: Application Filler",
   "short_name": "jobwatch",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Fills job application forms from your details and your earlier answers. You review every field and press Submit yourself.",
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "scripting", "storage", "sidePanel", "tabs"],
