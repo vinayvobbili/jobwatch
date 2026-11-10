@@ -12,8 +12,10 @@ browser draws the slides, so nothing is sent anywhere.
 
 from __future__ import annotations
 
+import base64
 import html as _html
 import importlib.util
+import mimetypes
 import re
 import shutil
 from dataclasses import dataclass
@@ -50,6 +52,7 @@ _CHROME = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 class Card:
     question: str
     answer: str              # spoken in full by the second voice, and shown in full while it's spoken
+    images: tuple[str, ...] = ()   # data: URIs of pictures shown beside the answer (a sheet's <img> in the answer)
 
 
 @dataclass(frozen=True)
@@ -107,11 +110,13 @@ class _Tables(HTMLParser):
     """The rows of a page's tables as (header cells, body rows), and its spoken answers: a question heading
     (<h3 class="q">) with the "say" block under it (<div class="say">), as its paragraphs. Text inside
     class="muted" is left out (on a hand-written sheet that's where sources and asides go, not what you'd
-    say), and so is a spoken paragraph with a class="fill" blank in it (a detail only you know, not filled in)."""
+    say), and so is a spoken paragraph with a class="fill" blank in it (a detail only you know, not filled in).
+    The <img> sources in a body row come with it, one list a row, so the slide can show what the answer points at."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.tables: list[tuple[list[str], list[list[str]]]] = []
+        self.tables: list[tuple[list[str], list[list[str]], list[list[str]]]] = []
+        self._shots: list[str] = []         # the img sources in the row being read
         self.spoken: list[tuple[str, list[str]]] = []
         self._cell: list[str] | None = None
         self._row: list[str] = []
@@ -141,9 +146,12 @@ class _Tables(HTMLParser):
         if "fill" in classes and self._para is not None:
             self._blank = True
         if tag == "table":
-            self.tables.append(([], []))
+            self.tables.append(([], [], []))
         elif tag == "tr":
-            self._row, self._head = [], False
+            self._row, self._head, self._shots = [], False, []
+        elif tag == "img" and self._cell is not None and not any(m for _, m in self._stack):
+            if src := dict(attrs).get("src"):
+                self._shots.append(src)
         elif tag in ("td", "th"):
             self._cell, self._head = [], self._head or tag == "th"
         elif tag == "br" and self._cell is not None:
@@ -171,11 +179,12 @@ class _Tables(HTMLParser):
             self._row.append(re.sub(r"\s+", " ", "".join(self._cell)).strip())
             self._cell = None
         elif tag == "tr" and self.tables and self._row:
-            head, rows = self.tables[-1]
+            head, rows, shots = self.tables[-1]
             if self._head and not head:
                 head.extend(self._row)
             else:
                 rows.append(self._row)
+                shots.append(self._shots)
         elif tag in ("title", "h1"):
             self._in_title = False
 
@@ -205,26 +214,43 @@ def _spoken(question: str, paras: list[str]) -> Card | None:
     return Card(q, answer) if q and answer else None
 
 
-def from_page(text: str) -> tuple[str, list[Card]]:
+def _embed(src: str, base: Path) -> str:
+    """An <img> source as a data: URI, so the slide carries its picture. A path is read from beside the sheet;
+    a data: URI is kept; anything else (a web address) is left out, as nothing here goes online."""
+    if src.startswith("data:"):
+        return src
+    if re.match(r"^[a-z][a-z0-9+.-]*:", src, re.I):
+        return ""
+    path = base / src
+    if not path.is_file():
+        raise SystemExit(f"the sheet shows {src}, but {path} isn't there")
+    kind = mimetypes.guess_type(path.name)[0] or "image/png"
+    return f"data:{kind};base64,{base64.b64encode(path.read_bytes()).decode()}"
+
+
+def from_page(text: str, base: Path | None = None) -> tuple[str, list[Card]]:
     """(title, cards) from a hand-written prep sheet's HTML: every table whose header has a "Question" column and
     an "Answer" column gives one card a row, then every spoken answer (a question heading with a say block; see
-    _Tables) one card. A question asked twice keeps its first answer."""
+    _Tables) one card. A question asked twice keeps its first answer. Pictures in a row (<img src>) go on its
+    card, found beside the sheet (base; the working folder when none is given)."""
     page = _Tables()
     page.feed(text)
+    base = base or Path.cwd()
     cards, seen = [], set()
-    for head, rows in page.tables:
+    for head, rows, shots in page.tables:
         low = [h.lower() for h in head]
         q = next((i for i, h in enumerate(low) if "question" in h), None)
         a = next((i for i, h in enumerate(low) if "answer" in h), None)
         if q is None or a is None:
             continue
-        for row in rows:
+        for row, srcs in zip(rows, shots, strict=True):
             if max(q, a) >= len(row):
                 continue
             question, answer = row[q], row[a].strip().strip("\"“”").strip()
             if question and answer and question.lower() not in seen:
                 seen.add(question.lower())
-                cards.append(Card(question, answer))
+                images = tuple(img for s in srcs if (img := _embed(s, base)))
+                cards.append(Card(question, answer, images))
     for question, paras in page.spoken:
         if (card := _spoken(question, paras)) and card.question.lower() not in seen:
             seen.add(card.question.lower())
@@ -251,16 +277,24 @@ ul{list-style:none;margin:0;padding:0}
 li{font-size:28px;line-height:1.35;margin:0 0 12px;padding-left:44px;position:relative;color:#33334d}
 li:before{content:"";position:absolute;left:0;top:6px;width:24px;height:24px;border-radius:8px;
 background:linear-gradient(135deg,var(--a),var(--b))}
+.card.wide{width:1220px;padding:30px 40px}.cols{display:flex;gap:30px;align-items:center}
+.cols ul{flex:1}.cols li{font-size:23px;line-height:1.35;margin:0 0 10px;padding-left:34px}
+.cols li:before{top:4px;width:20px;height:20px;border-radius:6px}
+.shots{width:640px;max-height:540px;display:flex;flex-direction:column;gap:12px}
+.shots:has(img+img){height:540px}.shots img+img,.shots img:has(+img){flex:1 1 0}
+.shots img{min-height:0;width:100%;object-fit:contain;background:#fff;border-radius:10px;
+box-shadow:0 6px 18px rgba(0,0,0,.25)}
 .bar{position:absolute;left:0;bottom:0;height:10px;background:rgba(255,255,255,.9);width:var(--p)}"""
 
 
-def _page(label: str, body: str, n: int = 0, total: int = 1) -> str:
-    """A slide: a white card on question n's gradient, with a bar along the bottom for how far along it is."""
+def _page(label: str, body: str, n: int = 0, total: int = 1, wide: bool = False) -> str:
+    """A slide: a white card on question n's gradient, with a bar along the bottom for how far along it is. A wide
+    card has room for pictures beside the text."""
     a, b = THEMES[n % len(THEMES)]
     return (f"<!doctype html><html><head><meta charset='utf-8'><style>{_CSS}</style></head>"
             f"<body style='--a:{a};--b:{b};--p:{100 * n / max(total, 1):.0f}%'>"
             "<div class='blob b1'></div><div class='blob b2'></div>"
-            f"<div class='card'><div class='pill'>{_html.escape(label)}</div>{body}</div>"
+            f"<div class='card{' wide' if wide else ''}'><div class='pill'>{_html.escape(label)}</div>{body}</div>"
             "<div class='bar'></div></body></html>")
 
 
@@ -283,8 +317,13 @@ def segments(cards: list[Card], title: str, pause: float = PAUSE) -> list[Segmen
         for i, part in enumerate(parts, 1):
             more = f" · {i} of {len(parts)}" if len(parts) > 1 else ""
             text = "".join(f"<li>{e(s)}</li>" for s in part)
-            out.append(Segment(_page(f"{label} · answer{more}", f"<p class='q'>{e(c.question)}</p><ul>{text}</ul>",
-                                     n, total), ANSWERER, " ".join(part), tail=TAIL if i == len(parts) else BETWEEN))
+            body = f"<p class='q'>{e(c.question)}</p><ul>{text}</ul>"
+            if c.images:  # the pictures the answer points at, beside it on every page
+                shots = "".join(f"<img src='{e(u)}'>" for u in c.images)
+                body = (f"<p class='q'>{e(c.question)}</p>"
+                        f"<div class='cols'><ul>{text}</ul><div class='shots'>{shots}</div></div>")
+            out.append(Segment(_page(f"{label} · answer{more}", body, n, total, wide=bool(c.images)),
+                               ANSWERER, " ".join(part), tail=TAIL if i == len(parts) else BETWEEN))
     return out
 
 

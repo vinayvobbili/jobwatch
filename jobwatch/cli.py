@@ -1005,7 +1005,7 @@ def cmd_drill(args, cfg, store):
     """A drill video, from a job's prep sheet or (KEY is a file) from a prep sheet written by hand."""
     page = Path(args.key).expanduser()
     if page.suffix.lower() in (".html", ".htm") and page.is_file():
-        title, cards = drill.from_page(page.read_text(encoding="utf-8"))
+        title, cards = drill.from_page(page.read_text(encoding="utf-8"), page.parent)  # pictures sit next to the sheet
         title = title or page.stem
     else:
         sheet = prep.build(cfg, store, args.key, draft=args.draft)

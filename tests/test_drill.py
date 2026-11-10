@@ -1,5 +1,6 @@
 """Drill videos: the cards a prep sheet gives, and the slides and lines that would go to slidecast."""
 
+import base64
 import importlib.machinery
 import re
 import sys
@@ -112,6 +113,40 @@ def test_segments_ask_hold_then_answer_in_two_voices():
     assert (answer.voice, answer.line) == (drill.ANSWERER, "Latency.")
     assert "<li>Latency.</li>" in answer.html
     assert f"--a:{drill.THEMES[1][0]}" in q.html and f"--a:{drill.THEMES[2][0]}" in segs[4].html  # own colours
+
+
+def test_pictures_in_a_row_are_carried_onto_its_answer_slides(tmp_path):
+    (tmp_path / "shots").mkdir()
+    (tmp_path / "shots" / "ledger.png").write_bytes(b"\x89PNG fake ledger")
+    (tmp_path / "shots" / "totals.png").write_bytes(b"\x89PNG fake totals")
+    page = ("<table><tr><th>Question</th><th>Answer</th></tr><tr><td>Walk me through the ledger.</td>"
+            "<td>It has two columns. <img src='shots/ledger.png'><img src='shots/totals.png'>"
+            "<span class='muted'><img src='shots/ignored.png'></span><img src='https://example.com/x.png'></td></tr>"
+            "<tr><td>And the rest?</td><td>No picture.</td></tr></table>")
+    _, cards = drill.from_page(page, tmp_path)
+    assert [len(c.images) for c in cards] == [2, 0]
+    assert cards[0].images[0] == "data:image/png;base64," + base64.b64encode(b"\x89PNG fake ledger").decode()
+    assert cards[0].answer == "It has two columns."  # the picture is not text
+    segs = drill.segments(cards, "Initech", pause=0)
+    shown, plain = segs[2], segs[4]
+    assert shown.html.count("<img src='data:image/png;base64,") == 2 and "card wide" in shown.html
+    assert "<img" not in plain.html and "card wide" not in plain.html
+    assert shown.line == "It has two columns."  # what's said doesn't change
+
+
+def test_a_picture_that_is_missing_says_where_it_looked(tmp_path):
+    page = ("<table><tr><th>Question</th><th>Answer</th></tr>"
+            "<tr><td>Q?</td><td>A. <img src='nope.png'></td></tr></table>")
+    with pytest.raises(SystemExit, match=r"nope\.png"):
+        drill.from_page(page, tmp_path)
+
+
+def test_pictures_are_found_in_the_working_folder_by_default(tmp_path, monkeypatch):
+    (tmp_path / "a.png").write_bytes(b"x")
+    monkeypatch.chdir(tmp_path)
+    _, cards = drill.from_page("<table><tr><th>Question</th><th>Answer</th></tr>"
+                               "<tr><td>Q?</td><td>A. <img src='a.png'></td></tr></table>")
+    assert len(cards[0].images) == 1
 
 
 def test_a_long_answer_turns_the_page_as_its_read():
@@ -243,6 +278,19 @@ def test_cli_drills_a_hand_written_sheet(watchlist, tmp_path, monkeypatch):
     assert len(got["segs"]) == 1 + 3 * 2 and got["segs"][2].hold == 65
     cli.main(["--config", str(watchlist), "prep", str(page), "--drill", str(tmp_path / "d.mp4"), "--no-pause"])
     assert len(got["segs"]) == 1 + 2 * 2
+
+
+def test_cli_finds_a_sheets_pictures_beside_it_from_any_folder(watchlist, tmp_path, monkeypatch):
+    (tmp_path / "prep" / "shots").mkdir(parents=True)
+    (tmp_path / "prep" / "shots" / "ledger.png").write_bytes(b"x")
+    page = tmp_path / "prep" / "sheet.html"
+    page.write_text("<table><tr><th>Question</th><th>Answer</th></tr>"
+                    "<tr><td>Q?</td><td>A. <img src='shots/ledger.png'></td></tr></table>")
+    got = {}
+    monkeypatch.setattr(drill, "render", lambda segs, out: got.update(segs=segs) or out)
+    monkeypatch.chdir(tmp_path)  # not the sheet's folder
+    cli.main(["--config", str(watchlist), "prep", str(page), "--drill", str(tmp_path / "d.mp4"), "--no-pause"])
+    assert "<img src='data:image/png;base64," in got["segs"][2].html
 
 
 def test_cli_drill_with_no_answers_says_what_to_do(watchlist, tmp_path, monkeypatch):
