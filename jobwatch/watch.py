@@ -16,6 +16,7 @@ from .contacts import Contacts, company_key
 from .filters import (
     KINDS,
     Filters,
+    company_note,
     excluded_company,
     focus_hits,
     office_nearby,
@@ -31,7 +32,7 @@ from .filters import (
 )
 from .models import Job
 from .score import ScoringUnavailable, brief, collecting_usage, paused_until, resume_id, score_jobs
-from .store import MANUAL, STAGES, Store
+from .store import ENDED, MANUAL, STAGES, Store
 from .text import local_salary, names_one_role
 
 
@@ -443,6 +444,7 @@ def entries_for(cfg: Config, store: Store, rows: list[tuple[Job, dict]], pay_bud
     contacts = load_contacts(cfg)
     reader = levels.Reader(store, pay_budget) if cfg.pay.levels else None
     index = dupes.Index(store)
+    applications = store.applications()
     filings = lca.Index.open(lca.cache_path(cfg))
     out = []
     for job, rec in rows:
@@ -453,6 +455,8 @@ def entries_for(cfg: Config, store: Store, rows: list[tuple[Job, dict]], pay_bud
         e.duplicate = index.match(job, rec)
         if e.duplicate:  # first: applying twice is the costliest mistake here
             e.warnings.insert(0, e.duplicate.line)
+        if history := company_history(job, applications):
+            e.warnings.insert(1 if e.duplicate else 0, history)
         if reader:
             e.pay = levels.expected(cfg, store, job, reader=reader)
             if warn := levels.below(e.pay, cfg.filters_for(job).min_salary):
@@ -462,6 +466,33 @@ def entries_for(cfg: Config, store: Store, rows: list[tuple[Job, dict]], pay_bud
     if filings:
         filings.close()
     return out
+
+
+def _month_day(stamp: str | None) -> str:
+    if not stamp:
+        return "?"
+    d = datetime.fromisoformat(stamp).astimezone().date() if "T" in stamp else date.fromisoformat(stamp[:10])
+    return f"{d.month}/{d.day}"
+
+
+def company_history(job: Job, applications: list[tuple[Job, dict]]) -> str | None:
+    """What the other applications at the job's company came to: "at Initech before: 3 rejected (9/16, 10/29,
+    11/1), 1 open (applied 10/30)". Rejected and withdrawn ones are dated by when they ended, open ones by when
+    they went out. None when there are none."""
+    mine = dupes.companies(job)
+    ended: dict[str, list[str]] = {}
+    open_ = []
+    for other, rec in sorted(applications, key=lambda r: r[1]["status_at"] or ""):
+        if other.key == job.key or not dupes.companies(other) & mine:
+            continue
+        if rec["status"] in ENDED:
+            ended.setdefault(rec["status"], []).append(_month_day(rec["status_at"]))
+        else:
+            open_.append(_month_day(rec["applied_at"]))
+    parts = [f"{len(days)} {status} ({', '.join(days)})" for status, days in ended.items()]
+    if open_:
+        parts.append(f"{len(open_)} open (applied {', '.join(open_)})")
+    return f"at {job.display_company} before: {', '.join(parts)}" if parts else None
 
 
 def warnings(job: Job, f: Filters) -> list[str]:
@@ -481,6 +512,8 @@ def warnings(job: Job, f: Filters) -> list[str]:
             where += f"; the posting offers remote by arrangement (\"{offer}\"): ask the recruiter about it"
         out.append(where)
     out += red_flags(job, f)
+    if note := company_note(job, f):
+        out.append(note)
     if staffing := staffing_firm(job):
         out.append(staffing)
     return out

@@ -57,6 +57,9 @@ class Filters:
     # regex -> why it matters, found in a posting's text: a warning on queued jobs, not a filter (boilerplate
     # can say "clearance" too). e.g. {"active (?:TS|top secret)": "clearance", "on-?site 5 days": "on-site"}
     flags: dict[str, str] = field(default_factory=dict)
+    # company -> a note shown as a warning on its jobs, by name like exclude_companies:
+    # {"Initech": "downgraded 11/1: no new applications or referral asks"}
+    company_notes: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> Filters:
@@ -66,6 +69,8 @@ class Filters:
             raise ValueError(f"unknown filter setting(s): {', '.join(sorted(unknown))}")
         if not isinstance(d.get("flags") or {}, dict):
             raise ValueError("filters.flags maps a pattern to why it matters, e.g. {'TS/SCI': clearance}")
+        if not isinstance(d.get("company_notes") or {}, dict):
+            raise ValueError("filters.company_notes maps a company to a note, e.g. {'Initech': 'no referral asks'}")
         # A pattern that doesn't compile ("c++") is refused when saved, rather than breaking every digest later.
         for key in ("titles", "exclude_titles", "exclude_text", "exclude_departments", "flags"):
             for p in d.get(key) or []:
@@ -171,6 +176,15 @@ def excluded_company(job: Job, names: list[str]) -> str | None:
         return None
     mine = companies(job)
     return next((n for n in names if company_key(str(n)) in mine), None)
+
+
+def company_note(job: Job, f: Filters) -> str | None:
+    """The filters.company_notes note for the job's company, as "Initech: no referral asks"; None if none."""
+    if not f.company_notes:
+        return None
+    mine = companies(job)
+    name = next((n for n in f.company_notes if company_key(str(n)) in mine), None)
+    return f"{name}: {f.company_notes[name]}" if name is not None else None
 
 
 def place_rejection(job: Job, f: Filters) -> str | None:

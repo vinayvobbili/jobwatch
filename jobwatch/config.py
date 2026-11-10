@@ -1156,7 +1156,9 @@ filters:
   min_salary: 150000                          # listed pay must reach this; jobs without pay still pass
   max_age_days: 30
   # min_fit: 70                                # hide jobs whose fit score is below this; unscored ones still show
-  # flags:                                     # not filters: warnings on queued jobs whose posting says this
+  # company_notes:                             # a note shown on a company's jobs
+  #   Initech: "downgraded 11/1: no new applications or referral asks"
+  # flags:                                   # not filters: warnings on queued jobs whose posting says this
   #   "active (TS|top secret)": clearance
 
 # Today (and `jobwatch digest`) lead with your best few matches; the rest are a click (or --all) away.
