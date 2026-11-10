@@ -73,6 +73,40 @@ def test_probe_tries_every_source_and_reports_open_roles():
     assert [(s, b) for s, b, _ in by_link] == [("lever", "globex")]
 
 
+def test_board_variants():
+    assert sources.board_variants("Initech") == ["initechinc", "initechhq", "initechlabs", "initechai", "initech.ai"]
+    assert "umbrella.ai" in sources.board_variants("Umbrella AI")
+    assert "hooliinc" in sources.board_variants("Hooli Corp")
+    assert "hoolicorpinc" in sources.board_variants("Hooli Corp")
+    assert sources.board_variants("") == []
+
+
+def test_probe_finds_a_board_named_with_a_company_suffix():
+    gh = {"https://boards-api.greenhouse.io/v1/boards/globexinc/jobs?content=true": GREENHOUSE}
+    ash = {"https://api.ashbyhq.com/posting-api/job-board/initechlabs?includeCompensation=true": ASHBY}
+    dotted = {"https://api.ashbyhq.com/posting-api/job-board/umbrella.ai?includeCompensation=true": ASHBY}
+    [(source, board, _)] = sources.probe("Globex", FakeWeb(gh))
+    assert (source, board) == ("greenhouse", "globexinc")
+    [(source, board, _)] = sources.probe("Initech", FakeWeb(ash))
+    assert (source, board) == ("ashby", "initechlabs")
+    [(source, board, _)] = sources.probe("Umbrella", FakeWeb(dotted))
+    assert (source, board) == ("ashby", "umbrella.ai")
+
+
+def test_probe_finds_a_board_under_the_brand_a_legal_name_goes_by(monkeypatch):
+    monkeypatch.setitem(sources._BRANDS, "hooliparent", ["hooli"])
+    web = FakeWeb({"https://api.lever.co/v0/postings/hooli?mode=json": LEVER})
+    [(source, board, _)] = sources.probe("Hooliparent", web)
+    assert (source, board) == ("lever", "hooli")
+
+
+def test_probe_leaves_workable_out_of_suffix_guesses():
+    web = FakeWeb({})
+    sources.probe("Globex", web)
+    assert not any("workable" in c and "globexinc" in c for c in web.calls)
+    assert any("greenhouse" in c and "globexinc" in c for c in web.calls)
+
+
 def test_probe_ignores_empty_boards():
     web = FakeWeb({"https://api.lever.co/v0/postings/ghost?mode=json": []})
     assert sources.probe("ghost", web) == []

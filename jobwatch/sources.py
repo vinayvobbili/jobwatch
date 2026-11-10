@@ -2258,6 +2258,22 @@ def board_names(company: str) -> list[str]:
     return [n for i, n in enumerate(names) if n and n not in names[:i]]
 
 
+_SUFFIXES = ("inc", "hq", "labs", "ai", ".ai")  # "Wiz" -> wizinc, "Clay" -> claylabs, "Mistral" -> mistral.ai
+_BRANDS = {"anysphere": ["cursor"]}  # a legal name whose board carries the product's: nothing to guess it from
+
+
+def board_variants(company: str) -> list[str]:
+    """Less likely board names, tried after board_names on the sources that can take the extra requests:
+    the brand a legal name goes by, and the name with a company-style suffix."""
+    words = re.findall(r"[a-z0-9]+", company.lower())
+    if not words:
+        return []
+    base = board_names(company)
+    stems = dict.fromkeys((words[0], "".join(words)))
+    names = [*_BRANDS.get(words[0], []), *(f"{w}{x}" for w in stems for x in _SUFFIXES)]
+    return [n for i, n in enumerate(names) if n not in base and n not in names[:i]]
+
+
 PROBE_CAP = 100  # open roles listed (not read) to show what a board is: a sample, not the count
 
 
@@ -2407,6 +2423,8 @@ def probe(company: str, get=None, page=None, limited: set[str] | None = None) ->
     # sitemap: a careers site's host, found from a link to its careers page or a job
     skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "sitemap", "hn")
     tries = [(s, n) for n in names for s in SOURCES if s not in skip]
+    guessable = [s for s in SOURCES if s not in (*skip, "workable")]  # Workable rate-limits extra guesses
+    tries += [(s, v) for v in board_variants(company) for s in guessable]
     tries += [("google", "google")] if "google" in names else []
     tries += [("amazon", "amazon")] if {"amazon", "aws"} & set(names) else []
     tries += [("hn", "whoishiring")] if _HN_NAMES & set(names) else []
