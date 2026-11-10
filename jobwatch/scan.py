@@ -63,10 +63,14 @@ def scan_one(cfg: Config, query: str, get=None, page=None) -> Scanned:
     if watched(cfg.boards, query):
         s.watched = True
         return s
+    limited: set[str] = set()
     try:
-        hits = sources.probe(query, get, page)
+        hits = sources.probe(query, get, page, limited)
     except sources.SourceError as e:
         s.error = str(e)
+        return s
+    if not any(sample for _, _, sample in hits) and limited:
+        s.error = "no board with open roles found" + sources.slow_down(limited)
         return s
     by_name = ":" not in query and "/" not in query  # a link or an entry names no company to check against
     boards = []

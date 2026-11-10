@@ -103,13 +103,15 @@ def cmd_init(args):
 
 
 def cmd_find(args):
+    limited = {query: set() for query in args.company}
     with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(sources.probe, args.company))
+        results = list(pool.map(lambda q: sources.probe(q, limited=limited[q]), args.company))
     for query, hits in zip(args.company, results, strict=True):
         if not hits:
-            print(f"{query}: no Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters, Avature, "
-                  "iCIMS or Jobvite board found. Give the link to their careers page or a job on it, to look for a "
-                  "board linked there; or the company may use another system.")
+            print(f"{query}: no Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Rippling, SmartRecruiters, "
+                  f"Avature, iCIMS or Jobvite board found{sources.slow_down(limited[query])}. Give the link to their "
+                  "careers page or a job on it, to look for a board linked there; or the company may use another "
+                  "system.")
         for source, board, jobs in hits:
             if not jobs:
                 print(f"{query}: {source}:{board}  (no open roles listed)  {sources.careers_url(source, board)}\n"

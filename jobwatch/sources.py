@@ -23,6 +23,7 @@ search API: each post is one job.
 
 from __future__ import annotations
 
+import contextvars
 import html
 import json
 import re
@@ -68,12 +69,28 @@ class Partial(SourceError):
 
 RETRIES = 5  # a board that says "slow down" (429) or "busy" (503) is asked again, waiting longer each time (~1 min)
 MAX_WAIT = 30
+# A lookup by a guessed name (probe) asks dozens of boards, most of them wrong guesses: one that says "slow down" is
+# asked once more after a short wait, not waited out, or a single `find` ran past ten minutes (11/10, "Hugging Face")
+PROBE_RETRIES, PROBE_WAIT = 1, 5
+_patience: contextvars.ContextVar[tuple[int, float]] = contextvars.ContextVar("patience", default=(RETRIES, MAX_WAIT))
 
 
-def _wait(e: urllib.error.HTTPError, attempt: int) -> float:
+def _impatient(fn):
+    """fn run as a lookup's guess: a rate-limited board gets PROBE_RETRIES, not RETRIES. Set in the thread that runs
+    it, since a thread pool's workers don't share the caller's context."""
+    def run(*args, **kwargs):
+        token = _patience.set((PROBE_RETRIES, PROBE_WAIT))
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            _patience.reset(token)
+    return run
+
+
+def _wait(e: urllib.error.HTTPError, attempt: int, most: float = MAX_WAIT) -> float:
     """Seconds to wait before asking again: the server's Retry-After if it gives one, else 2, 4, 8..."""
     after = (e.headers or {}).get("Retry-After", "")
-    return min(float(after) if after.strip().isdigit() else 2 ** (attempt + 1), MAX_WAIT)
+    return min(float(after) if after.strip().isdigit() else 2 ** (attempt + 1), most)
 
 
 def _read(url: str, timeout: float, body: dict | None, accept: str) -> bytes:
@@ -82,7 +99,8 @@ def _read(url: str, timeout: float, body: dict | None, accept: str) -> bytes:
     if body is not None:
         data, headers["Content-Type"] = json.dumps(body).encode(), "application/json"
     req = urllib.request.Request(url, data=data, headers=headers)
-    for attempt in range(RETRIES + 1):
+    retries, most = _patience.get()
+    for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return resp.read()
@@ -91,8 +109,8 @@ def _read(url: str, timeout: float, body: dict | None, accept: str) -> bytes:
                 raise NotFound(f"{url}: HTTP {e.code}") from None
             if e.code in (401, 403):
                 raise Refused(f"{url}: HTTP {e.code}") from None
-            if e.code in (429, 503) and attempt < RETRIES:
-                time.sleep(_wait(e, attempt))
+            if e.code in (429, 503) and attempt < retries:
+                time.sleep(_wait(e, attempt, most))
                 continue
             raise SourceError(f"{url}: HTTP {e.code}") from None
         except (urllib.error.URLError, TimeoutError) as e:
@@ -2284,6 +2302,7 @@ def probe_workday(tenant: str, get=None) -> list[tuple[str, list[Job]]]:
 
     Workday answers 200 for a site that exists, 404 when the tenant is in that data center but the site is
     named something else, and 422 when the tenant isn't there."""
+    @_impatient
     def at(pod):
         board = f"{tenant}.{pod}/External"
         try:
@@ -2338,9 +2357,10 @@ def boards_on_page(url: str, page=None) -> list[tuple[str, str]]:
     return found
 
 
-def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]:
+def probe(company: str, get=None, page=None, limited: set[str] | None = None) -> list[tuple[str, str, list[Job]]]:
     """Find a company's boards by trying likely board names on every source: (source, board, open roles).
-    A link to the company's own careers page is read for links to a board instead (`page` fetches it).
+    A link to the company's own careers page is read for links to a board instead (`page` fetches it). `limited`, when
+    given, gets the sources that said "slow down" to a guess (see slow_down).
 
     A guessed name can belong to a different company, so check a role or two before adding a board. Roles on
     a searched board (Workday, Eightfold, Avature, iCIMS, Jobvite, a sitemap) are listed, not read in full: a
@@ -2389,15 +2409,26 @@ def probe(company: str, get=None, page=None) -> list[tuple[str, str, list[Job]]]
     tries += [("amazon", "amazon")] if {"amazon", "aws"} & set(names) else []
     tries += [("hn", "whoishiring")] if _HN_NAMES & set(names) else []
 
+    limited = set() if limited is None else limited  # sources that said "slow down": no answer there, not a "no"
+
+    @_impatient
     def one(t):
         try:
             return t, _peek(*t, get)
-        except SourceError:  # not found, or that board is unreachable right now
+        except SourceError as e:  # not found, or that board is unreachable right now
+            if "HTTP 429" in str(e):
+                limited.add(t[0])
             return t, []
     with ThreadPoolExecutor(max_workers=8) as pool:
         hits = [(s, n, jobs) for (s, n), jobs in pool.map(one, tries) if jobs]
-        for found in pool.map(lambda n: probe_workday(n, get), [n for n in names if "-" not in n]):
+        for found in pool.map(_impatient(lambda n: probe_workday(n, get)), [n for n in names if "-" not in n]):
             hits += [("workday", board, jobs) for board, jobs in found]
-        for found in pool.map(lambda n: probe_avature(n, get), [n for n in names if "-" not in n]):
+        for found in pool.map(_impatient(lambda n: probe_avature(n, get)), [n for n in names if "-" not in n]):
             hits += [("avature", board, jobs) for board, jobs in found]
     return hits
+
+
+def slow_down(limited: set[str]) -> str:
+    """What to add to "no board found" when some sources said "slow down" (probe's `limited`): there may be one."""
+    return (f"; {', '.join(sorted(limited))} said to slow down (HTTP 429), so one may be there: try again later"
+            if limited else "")

@@ -32,8 +32,8 @@ def test_find(web, capsys):
     assert ("Globex: lever:globex  (2 open roles)  https://jobs.lever.co/globex\n"
             "    e.g. Machine Learning Engineer") in out
     assert "Acme: greenhouse:acme  (2 open roles, Acme)" in run(capsys, "find", "Acme").out
-    assert "Nobody: no Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters, Avature, iCIMS or " \
-        "Jobvite board found" in out
+    assert "Nobody: no Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Rippling, SmartRecruiters, Avature, " \
+        "iCIMS or Jobvite board found. Give" in out
 
 
 def test_find_add_watches_the_one_board_found(web, watchlist, capsys):
@@ -55,7 +55,7 @@ def test_hidden_says_what_the_filters_hide(web, watchlist, capsys):
 
 def test_find_a_board_with_no_roles_listed(capsys, monkeypatch):
     # a link names its board even when the site lists nothing, e.g. one that sends visitors to another careers site
-    monkeypatch.setattr(cli.sources, "probe", lambda q: [("icims", "jobs-initech.icims.com", [])])
+    monkeypatch.setattr(cli.sources, "probe", lambda q, limited=None: [("icims", "jobs-initech.icims.com", [])])
     out = run(capsys, "find", "https://jobs-initech.icims.com/jobs/search").out
     assert "icims:jobs-initech.icims.com  (no open roles listed)  https://jobs-initech.icims.com/jobs/search" in out
     assert "e.g." not in out and "careers page" in out

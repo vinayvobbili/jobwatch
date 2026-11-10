@@ -1,6 +1,6 @@
 import pytest
 
-from jobwatch import sources
+from jobwatch import cli, sources
 from tests.conftest import ASHBY, GREENHOUSE, LEVER, FakeWeb
 
 
@@ -116,6 +116,44 @@ def test_a_board_that_stays_rate_limited_fails(monkeypatch):
     with pytest.raises(sources.SourceError, match="HTTP 429"):
         sources.get_json("https://x.test/api")
     assert waits == [sources.MAX_WAIT] * sources.RETRIES
+
+
+def test_a_lookup_by_name_does_not_wait_out_a_rate_limited_guess(monkeypatch):
+    # `find` guesses dozens of boards; waiting each 429 out (5 tries, up to 30 s apiece) ran one past ten minutes
+    def urlopen(req, timeout):
+        raise _http_error(429, "999")
+
+    waits = []
+    monkeypatch.setattr(sources.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(sources.time, "sleep", waits.append)
+    guess = sources._impatient(lambda: sources.get_json("https://x.test/api"))
+    with pytest.raises(sources.SourceError, match="HTTP 429"):
+        guess()
+    assert waits == [sources.PROBE_WAIT] * sources.PROBE_RETRIES
+    waits.clear()
+    with pytest.raises(sources.SourceError):  # outside a lookup, a board is as patient as before
+        sources.get_json("https://x.test/api")
+    assert len(waits) == sources.RETRIES
+
+
+def test_probe_guesses_are_impatient(web, monkeypatch):
+    seen = []
+    monkeypatch.setattr(sources, "_peek", lambda *a, **k: seen.append(sources._patience.get()) or [])
+    sources.probe("Initech Labs")
+    assert seen and set(seen) == {(sources.PROBE_RETRIES, sources.PROBE_WAIT)}
+
+
+def test_a_source_that_said_slow_down_is_named_not_taken_for_a_no(web, monkeypatch, capsys):
+    def peek(source, board, get=None):
+        if source == "workable":
+            raise sources.SourceError(f"https://apply.workable.com/api/v1/widget/accounts/{board}: HTTP 429")
+        return []
+    monkeypatch.setattr(sources, "_peek", peek)
+    limited = set()
+    assert sources.probe("Initech Labs", limited=limited) == [] and limited == {"workable"}
+    assert sources.slow_down(set()) == ""
+    cli.main(["find", "Initech Labs"])
+    assert "Workable, Workday" in (out := capsys.readouterr().out) and "workable said to slow down (HTTP 429)" in out
 
 
 @pytest.mark.parametrize("url, expected", [
