@@ -39,6 +39,7 @@ class State:
     def __init__(self) -> None:
         self.submitted: list[dict] = []
         self.drafts: list[dict] = []
+        self.postings: list[dict] = []
         self.requests: list[tuple[str, str]] = []
         self.token = TOKEN
         self.know_every_page = False  # live_check.py: every page is a known job, with a resume
@@ -97,6 +98,11 @@ def _handler(state: State):
                 state.drafts.append(body)
                 answer = state.draft_answer or f"A drafted answer to: {body['question']}"
                 self._json(200, {"answer": answer, "model": "fake-model"})
+            elif self.path == "/ext/posting":
+                state.postings.append(body)
+                self._json(200, {"key": "greenhouse:initech/4001", "company": body.get("company") or "Initech",
+                                 "title": body.get("title") or "Platform Engineer", "added": False,
+                                 "has_text": True, "where": "queue", "said": "Filled in from Greenhouse; scoring now"})
             elif self.path == "/ext/submitted":
                 state.submitted.append(body)
                 self._json(200, {"key": "ashby:initech/4f1c", "status": "applied", "added": False})
