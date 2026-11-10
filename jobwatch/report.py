@@ -120,7 +120,7 @@ def _line(e: Entry) -> list[str]:
 BOARDS = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby", "workable": "Workable", "workday": "Workday",
           "eightfold": "Eightfold", "jibe": "Jibe", "rippling": "Rippling", "oracle": "Oracle Recruiting Cloud",
           "smartrecruiters": "SmartRecruiters", "avature": "Avature", "icims": "iCIMS",
-          "jobvite": "Jobvite"}
+          "jobvite": "Jobvite", "comeet": "Comeet"}
 
 
 def found_on(job: Job, via: str | None = None) -> str:

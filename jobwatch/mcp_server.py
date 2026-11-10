@@ -194,6 +194,8 @@ def find_board(
     An iCIMS careers site is icims:<company> (careers-<company>.icims.com), or the whole host for another
     (icims:jobs-acme.icims.com); a name finds one at careers-<name>.icims.com.
     A Jobvite careers site is jobvite:<company> (jobs.jobvite.com/<company>); a name finds one there.
+    A Comeet careers page is comeet:<company>/<uid> (comeet.com/jobs/initech/12.345); a link to it or a job on it
+    finds it, a name doesn't (the uid is only in the link).
     A careers site that lists its job pages in a sitemap (their pages carrying schema.org JobPosting markup) is
     sitemap:<host>, like sitemap:careers.example.com; a link to its careers page or a job on it finds it, a name
     doesn't.

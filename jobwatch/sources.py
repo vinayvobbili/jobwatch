@@ -1,5 +1,5 @@
 """Public job boards: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google, Amazon,
-Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite and any careers site with a job sitemap.
+Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, Comeet and any careers site with a job sitemap.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
@@ -15,6 +15,7 @@ are read from their public pages, as robots.txt allows.
 iCIMS careers sites list their roles a page at a time (the page for the site's iframe, which is plain HTML); the ones
 whose titles match are read from their job pages, each carrying schema.org JobPosting markup.
 Jobvite careers sites list every role on one page; the ones whose titles match are read from their job pages.
+Comeet careers pages carry every role, text included, as JSON in the page: one request reads a board.
 A careers site that links every posting in its sitemap (sitemap:careers.example.com) is listed from there, when
 its job pages carry schema.org JobPosting markup; the ones whose titles match are read from those pages.
 Hacker News' monthly "Ask HN: Who is hiring?" thread is a board of many companies' posts, read whole from HN's
@@ -1354,6 +1355,59 @@ def _jobvite_read(j: Job, get) -> Job:
     return j
 
 
+# -- Comeet: a careers page at comeet.com/jobs/<company>/<uid> carries every open role, with its text, as JSON in the
+# page itself (COMPANY_POSITIONS_DATA), so one request reads a whole board. Comeet's Careers API needs the company's
+# token, which only the company can hand out. The board is <company>/<uid> (cyera/17.008): the uid is in the
+# careers link and can't be guessed from a name.
+
+COMEET_PAGE = "https://www.comeet.com/jobs/{board}"
+_COMEET_BOARD = re.compile(r"[\w-]+/\w+\.\w+")
+_COMEET_DATA = re.compile(r"COMPANY_POSITIONS_DATA\s*=\s*")
+
+
+def _comeet_board(board: str) -> str:
+    if not _COMEET_BOARD.fullmatch(board):
+        raise SourceError(f"a Comeet board is a company's name and uid from comeet.com/jobs, like initech/12.345, "
+                          f"got {board!r}")
+    return board
+
+
+def parse_comeet(page: str, board: str) -> list[Job]:
+    """The roles a Comeet careers page carries as JSON, each with its text. Raises SourceError when it has none."""
+    m = _COMEET_DATA.search(page or "")
+    try:
+        data = json.JSONDecoder().raw_decode(page, m.end())[0] if m else None
+    except ValueError:
+        data = None
+    if not isinstance(data, list):
+        raise SourceError(f"{COMEET_PAGE.format(board=board)}: couldn't read the Comeet careers page (no positions)")
+    jobs = []
+    for p in data:
+        where = p.get("location") or {}
+        place = ", ".join(x for x in (where.get("city"), where.get("state"), where.get("country")) if x) \
+            or where.get("name") or ""
+        details = (p.get("custom_fields") or {}).get("details") or []
+        text = "\n\n".join(f"{d.get('name', '')}\n{html_to_text(d.get('value') or '')}".strip()
+                           for d in sorted(details, key=lambda d: d.get("order") or 0))
+        job = Job(
+            source="comeet", company=board, id=str(p.get("uid") or ""), title=(p.get("name") or "").strip(),
+            url=p.get("url_comeet_hosted_page") or p.get("url_active_page") or "",
+            company_name=p.get("company_name") or "", locations=split_locations(place),
+            remote=True if where.get("is_remote") or str(p.get("workplace_type") or "").lower() == "remote" else None,
+            department=p.get("department") or "", posted=_time(p.get("time_updated")), description=text,
+        )
+        _salary(job, text)
+        if job.id and job.title:
+            jobs.append(job)
+    return jobs
+
+
+def fetch_comeet(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """Every role on a Comeet careers page, in full: the page is one request."""
+    board = _comeet_board(board)
+    return parse_comeet((get or get_text)(COMEET_PAGE.format(board=board)), board)[:cap]
+
+
 # -- Sitemap: a careers site that lists its job pages in a sitemap, each carrying schema.org JobPosting markup.
 # The board is the site's host (sitemap:careers.example.com). A site's own search page can answer a crawler with
 # the same first few roles whatever it's asked, so the roles are listed from the sitemap its robots.txt names (else
@@ -1954,6 +2008,7 @@ SOURCES = {
     "avature": Source("avature", "", None, "https://{board}/SearchJobs", fetch_avature),
     "icims": Source("icims", "", None, "https://{host}/jobs/search", fetch_icims),
     "jobvite": Source("jobvite", "", None, JOBVITE_LIST, fetch_jobvite),
+    "comeet": Source("comeet", "", None, COMEET_PAGE, fetch_comeet),
     "sitemap": Source("sitemap", "", None, "https://{board}/", fetch_sitemap),
     "hn": Source("hn", "", None, "https://news.ycombinator.com/submitted?id=whoishiring", fetch_hn,
                  many_companies=True),
@@ -2091,6 +2146,9 @@ def detect(url: str) -> tuple[str, str] | None:
     if host == "jobs.jobvite.com":  # /<company>/jobs, /<company>/job/<id>, or the older /careers/<company>/jobs
         slug = parts[1:2] if parts[:1] == ["careers"] else parts[:1]
         return ("jobvite", slug[0]) if slug and slug[0] not in _JOBVITE_NOT_BOARDS | {"careers"} else None
+    if host in ("comeet.com", "comeet.co") and parts[:1] == ["jobs"]:  # /jobs/<company>/<uid>[/<slug>/<position uid>]
+        board = "/".join(parts[1:3])
+        return ("comeet", board) if _COMEET_BOARD.fullmatch(board) else None
     if board := _icims_board(url):  # any link on careers-<slug>.icims.com (or another iCIMS host)
         return "icims", board
     # Avature: acme.avature.net/<portal>, or a portal on the company's own domain, known by its page names
@@ -2150,6 +2208,8 @@ def _posting_id(source: str, url: str) -> str | None:
     if source == "jobvite":  # /<company>/job/<id>, with /apply after it for the apply form
         rest = parts[1:] if parts[:1] == ["careers"] else parts
         return rest[2] if len(rest) > 2 and rest[1] == "job" else None
+    if source == "comeet":  # /jobs/<company>/<uid>/<title-slug>/<position uid>
+        return parts[4] if len(parts) > 4 and parts[0] == "jobs" else None
     if source == "workable":
         for marker in ("j", "view"):
             if marker in parts[:-1]:
@@ -2421,7 +2481,8 @@ def probe(company: str, get=None, page=None, limited: set[str] | None = None) ->
     # oracle: a site's host is a pod code ("eeho.fa.us2") nobody can guess from the name, so it's found from a link;
     # avature: tried as name.avature.net/careers below; hn: one board, HN's Who is hiring ("Hacker News" finds it)
     # sitemap: a careers site's host, found from a link to its careers page or a job
-    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "sitemap", "hn")
+    # comeet: a board is <company>/<uid>, and the uid is only in a careers link
+    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "sitemap", "hn", "comeet")
     tries = [(s, n) for n in names for s in SOURCES if s not in skip]
     guessable = [s for s in SOURCES if s not in (*skip, "workable")]  # Workable rate-limits extra guesses
     tries += [(s, v) for v in board_variants(company) for s in guessable]
