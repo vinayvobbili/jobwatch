@@ -13,6 +13,7 @@ browser draws the slides, so nothing is sent anywhere.
 from __future__ import annotations
 
 import base64
+import gc
 import html as _html
 import importlib.util
 import mimetypes
@@ -376,14 +377,16 @@ def render(segs: list[Segment], out: Path, tts=None, renderer=None) -> Path:
         part.replace(out)
     finally:
         part.unlink(missing_ok=True)
+        del reel  # Kokoro's weights go with it, so the cache cleared next holds them too
         _free_gpu()
     return out
 
 
 def _free_gpu() -> None:
-    """Give MLX's buffer cache back. Kokoro runs in this process, and a long-lived one (`jobwatch ui`) would keep
-    ~5 GB of GPU memory after the video, leaving the shared local model server (local-llm) too little on a 16 GB
-    Mac: it ran out of GPU memory on a 3,000-token request."""
+    """Give MLX's buffer cache back. Kokoro runs in this process, and a long-lived one would keep ~5 GB of GPU
+    memory after the video, leaving the shared local model server (local-llm) too little on a 16 GB Mac: it ran
+    out of GPU memory on a 3,000-token request. Collected first, so arrays nothing holds any more are in the cache."""
     mx = sys.modules.get("mlx.core")
     if mx is not None:
+        gc.collect()
         mx.clear_cache()
