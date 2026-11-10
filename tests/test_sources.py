@@ -107,6 +107,58 @@ def test_probe_leaves_workable_out_of_suffix_guesses():
     assert any("greenhouse" in c and "globexinc" in c for c in web.calls)
 
 
+def test_board_long_shots():
+    assert sources.board_long_shots("Initech") == ["initech-ai", "initechcareers", "initech-com"]
+    assert sources.board_long_shots("GlobexAI") == ["globex-ai", "globexaicareers", "globexai-com"]
+    assert sources.board_long_shots("8AI") == ["eightai", "eight-ai", "8aicareers", "8ai-com"]
+    assert sources.board_long_shots("Umbrella AI")[0] == "umbrellaaicareers"  # umbrella-ai is a board name already
+    assert sources.board_long_shots("") == []
+
+
+def test_probe_finds_a_long_shot_board_name_only_where_a_guess_is_cheap():
+    ash = "https://api.ashbyhq.com/posting-api/job-board/{}?includeCompensation=true"
+    web = FakeWeb({ash.format("eightai"): ASHBY})
+    [(source, board, _)] = sources.probe("8AI", web)
+    assert (source, board) == ("ashby", "eightai")
+    web = FakeWeb({ash.format("hooli-com"): ASHBY})
+    [(source, board, _)] = sources.probe("Hooli", web)
+    assert (source, board) == ("ashby", "hooli-com")
+    long_shots = [c for c in web.calls if "hoolicareers" in c]
+    assert long_shots and all(any(h in c for h in ("greenhouse", "lever", "ashby", "gem", "recruitee"))
+                              for c in long_shots)
+
+
+def test_careers_hosts():
+    assert sources.careers_hosts("Initech Labs") == ["initechlabs.com", "initechlabs.ai", "initechlabs.io"]
+    assert sources.careers_hosts("globex.dev") == ["globex.dev", "globexdev.com", "globexdev.ai", "globexdev.io"]
+    assert sources.careers_hosts("") == []
+
+
+def test_probe_reads_the_companys_own_careers_page_when_no_board_name_fits():
+    from tests.test_comeet import PAGE as COMEET
+
+    web = FakeWeb({
+        "https://hooli.com/robots.txt": sources.SourceError("hooli.com: no such host"),  # no site there
+        "https://hooli.ai/robots.txt": "User-agent: *\nDisallow: /careers\n",
+        "https://hooli.ai/careers": '<a href="https://jobs.ashbyhq.com/hooli-xyz">never read</a>',
+        "https://hooli.ai/jobs": '<a href="https://jobs.lever.co/hooli-old">gone</a><iframe src="https://www.comeet'
+                                 '.com/jobs/hooli/12.345/careers/A1.B23"></iframe>',
+        "https://www.comeet.com/jobs/hooli/12.345": COMEET,
+    })
+    [(source, board, jobs)] = sources.probe("Hooli", web)
+    assert (source, board, len(jobs)) == ("comeet", "hooli/12.345", 2)
+    assert not any(c.startswith("https://hooli.com/") and "robots" not in c for c in web.calls)
+    assert "https://hooli.ai/careers" not in web.calls  # robots.txt closes it
+    assert not any("workable" in c for c in web.calls)  # found: Workable isn't guessed
+
+
+def test_a_workable_board_linked_from_the_careers_page_is_the_one_workable_guess():
+    web = FakeWeb({"https://initech.com/careers": '<a href="https://apply.workable.com/initech-co/">Jobs</a>'})
+    assert sources.probe("Initech", web) == []
+    assert [c for c in web.calls if "workable" in c] == [
+        "https://apply.workable.com/api/v1/widget/accounts/initech-co?details=true"]
+
+
 def test_probe_ignores_empty_boards():
     web = FakeWeb({"https://api.lever.co/v0/postings/ghost?mode=json": []})
     assert sources.probe("ghost", web) == []
@@ -171,10 +223,15 @@ def test_a_lookup_by_name_does_not_wait_out_a_rate_limited_guess(monkeypatch):
 
 
 def test_probe_guesses_are_impatient(web, monkeypatch):
-    seen = []
-    monkeypatch.setattr(sources, "_peek", lambda *a, **k: seen.append(sources._patience.get()) or [])
+    seen = {}
+
+    def peek(source, *args, **kwargs):
+        seen.setdefault(source, set()).add(sources._patience.get())
+        return []
+    monkeypatch.setattr(sources, "_peek", peek)
     sources.probe("Initech Labs")
-    assert seen and set(seen) == {(sources.PROBE_RETRIES, sources.PROBE_WAIT)}
+    assert seen.pop("workable") == {(0, 0)}  # its turns are the waiting: a 429 there isn't asked again
+    assert seen and set().union(*seen.values()) == {(sources.PROBE_RETRIES, sources.PROBE_WAIT)}
 
 
 def test_a_source_that_said_slow_down_is_named_not_taken_for_a_no(web, monkeypatch, capsys):
@@ -183,11 +240,49 @@ def test_a_source_that_said_slow_down_is_named_not_taken_for_a_no(web, monkeypat
             raise sources.SourceError(f"https://apply.workable.com/api/v1/widget/accounts/{board}: HTTP 429")
         return []
     monkeypatch.setattr(sources, "_peek", peek)
-    limited = set()
-    assert sources.probe("Initech Labs", limited=limited) == [] and limited == {"workable"}
-    assert sources.slow_down(set()) == ""
+    limited, untested = set(), set()
+    assert sources.probe("Initech Labs", limited=limited, untested=untested) == []
+    assert untested == {"workable"} and limited == set()  # Workable is paused by its turns, not left out
+    assert sources.untested_note(set()) == "" and sources.untested_note({"gem", "icims"}) == \
+        "untested (Gem, iCIMS rate-limited)"
+    cli.main(["find", "Initech Labs"])  # Workable is still paused: untested again, with no request
+    out = capsys.readouterr().out
+    assert out.startswith("Initech Labs: untested (Workable rate-limited): no board found on the others")
+    monkeypatch.setattr(sources, "_peek", lambda *a, **k: [])
+    monkeypatch.setattr(sources, "WORKABLE_TURNS", sources._Turns(gap=0, pause=60, most=30))
     cli.main(["find", "Initech Labs"])
-    assert "Workable, Workday" in (out := capsys.readouterr().out) and "workable said to slow down (HTTP 429)" in out
+    out = capsys.readouterr().out
+    assert "no Greenhouse, Lever, Ashby, Workable" in out and "untested" not in out
+
+
+def test_workable_is_guessed_last_and_once():
+    web = FakeWeb({})
+    assert sources.probe("Initech Labs", web) == []
+    workable = [u for u in web.calls if "workable" in u]
+    assert workable == ["https://apply.workable.com/api/v1/widget/accounts/initechlabs?details=true"]
+    assert web.calls[-1] == workable[0]  # after every other guess and the careers page
+    web = FakeWeb()
+    assert sources.probe("Globex", web)  # a board elsewhere: Workable isn't asked
+    assert not any("workable" in u for u in web.calls)
+
+
+def test_workable_guesses_take_turns_and_pause_after_a_429(monkeypatch):
+    clock, slept = [100.0], []
+    monkeypatch.setattr(sources.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(sources.time, "sleep", slept.append)
+    turns = sources._Turns(gap=2, pause=60, most=30)
+    assert turns.take() and turns.take() and slept == [2]  # the second waits its turn
+    turns.answered(refused=True)
+    assert not turns.take()  # paused: a minute off, too long to wait for
+    clock[0] += 61
+    assert turns.take()
+    turns.answered(refused=True)  # again: twice as long
+    clock[0] += 61
+    assert not turns.take()
+    clock[0] += 60
+    assert turns.take()
+    turns.answered(refused=False)
+    assert turns.strikes == 0
 
 
 @pytest.mark.parametrize("url, expected", [

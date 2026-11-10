@@ -104,14 +104,17 @@ def cmd_init(args):
 
 def cmd_find(args):
     limited: set[str] = set()  # one for every name: a source that said slow down isn't asked again
+    untested = {q: set() for q in args.company}  # each name's sources that gave no answer
     with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(lambda q: sources.probe(q, limited=limited), args.company))
+        results = list(pool.map(lambda q: sources.probe(q, limited=limited, untested=untested[q]), args.company))
     for query, hits in zip(args.company, results, strict=True):
-        if not hits:
-            print(f"{query}: no Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Rippling, SmartRecruiters, "
-                  f"Avature, iCIMS or Jobvite board found{sources.slow_down(limited)}. Give the link to their "
-                  "careers page or a job on it, to look for a board linked there; or the company may use another "
-                  "system.")
+        if not hits and untested[query]:
+            print(f"{query}: {sources.untested_note(untested[query])}: no board found on the others. Try again "
+                  "later, or give the link to their careers page or a job on it.")
+        elif not hits:
+            print(f"{query}: no {sources.GUESSED} found, nor one linked from a careers page on their site. Give the "
+                  "link to their careers page or a job on it, to look for a board linked there; or the company may "
+                  "use another system.")
         for source, board, jobs in hits:
             if not jobs:
                 print(f"{query}: {source}:{board}  (no open roles listed)  {sources.careers_url(source, board)}\n"
@@ -1225,7 +1228,8 @@ def _tracking(p: argparse.ArgumentParser):
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="jobwatch", description="Watch company job boards (Greenhouse, Lever, "
                                  "Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google Careers, Amazon, "
-                                 "Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, "
+                                 "Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, Comeet, Gem, "
+                                 "Recruitee, "
                                  "careers sites with a job sitemap, HN's Who is hiring, VC portfolio job boards) "
                                  "and get a ranked digest "
                                  "of new matches.")

@@ -137,6 +137,8 @@ def no_network(request, monkeypatch):
         raise AssertionError("tests must not use the network; use the `web` fixture")
 
     monkeypatch.setattr(sources.urllib.request, "urlopen", refuse)
+    # Workable's turns last the whole process: each test gets its own, without the wait between guesses
+    monkeypatch.setattr(sources, "WORKABLE_TURNS", sources._Turns(gap=0, pause=60, most=30))
 
 
 @pytest.fixture(autouse=True)

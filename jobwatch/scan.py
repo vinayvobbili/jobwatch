@@ -65,13 +65,14 @@ def scan_one(cfg: Config, query: str, get=None, page=None, limited: set[str] | N
         s.watched = True
         return s
     limited = set() if limited is None else limited
+    untested: set[str] = set()
     try:
-        hits = sources.probe(query, get, page, limited)
+        hits = sources.probe(query, get, page, limited, untested)
     except sources.SourceError as e:
         s.error = str(e)
         return s
-    if not any(sample for _, _, sample in hits) and limited:
-        s.error = "no board with open roles found" + sources.slow_down(limited)
+    if not any(sample for _, _, sample in hits) and untested:
+        s.error = f"{sources.untested_note(untested)}: no board with open roles on the others; try again later"
         return s
     by_name = ":" not in query and "/" not in query  # a link or an entry names no company to check against
     boards = []

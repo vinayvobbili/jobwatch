@@ -1,5 +1,6 @@
 """Public job boards: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google, Amazon,
-Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, Comeet, Gem and any careers site with a job sitemap.
+Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, Comeet, Gem, Recruitee and any careers site with a
+job sitemap.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
@@ -1383,7 +1384,45 @@ def parse_gem(data: list, board: str) -> list[Job]:
     return jobs
 
 
-# -- Comeet: a careers page at comeet.com/jobs/<company>/<uid> carries every open role, with its text, as JSON in the
+# -- Recruitee: a careers site at <company>.recruitee.com lists every open role, with its text, as public JSON
+# (/api/offers/). A posting's link names it by its slug (/o/<slug>), which is its id here.
+
+RECRUITEE_API = "https://{board}.recruitee.com/api/offers/"
+_RECRUITEE_NOT_BOARDS = {"www", "app", "api", "help", "blog", "careers", "support", "status"}
+
+
+def parse_recruitee(data: dict, board: str) -> list[Job]:
+    jobs = []
+    for o in data.get("offers") or []:
+        if not o.get("slug"):
+            continue
+        places = [", ".join(p for p in (loc.get("city") or loc.get("name"), loc.get("state"), loc.get("country")) if p)
+                  for loc in o.get("locations") or []] or [o.get("location") or ""]
+        text = "\n\n".join(html_to_text(o[k]) for k in ("description", "requirements") if o.get(k))
+        job = Job(
+            source="recruitee", company=board, id=o["slug"], title=(o.get("title") or "").strip(),
+            url=o.get("careers_url") or f"https://{board}.recruitee.com/o/{o['slug']}",
+            company_name=o.get("company_name") or "", locations=split_locations(*places),
+            remote=True if o.get("remote") is True else None, department=o.get("department") or "",
+            # "2026-09-22 13:43:34 UTC"
+            posted=_time(str(o.get("published_at") or o.get("created_at") or "").replace(" UTC", "Z")),
+            description=text,
+        )
+        pay = o.get("salary") or {}
+        if (per := pay_period(pay.get("period"))) and pay.get("min"):
+            try:
+                low, high = float(pay["min"]), float(pay.get("max") or pay["min"])
+                job.salary_min, job.salary_max = annual(low, per), annual(high, per)
+                job.currency = pay.get("currency") or "USD"
+            except (TypeError, ValueError):
+                _salary(job, text)
+        else:
+            _salary(job, text)
+        jobs.append(job)
+    return jobs
+
+
+# -- Comeet:a careers page at comeet.com/jobs/<company>/<uid> carries every open role, with its text, as JSON in the
 # page itself (COMPANY_POSITIONS_DATA), so one request reads a whole board. Comeet's Careers API needs the company's
 # token, which only the company can hand out. The board is <company>/<uid> (cyera/17.008): the uid is in the
 # careers link and can't be guessed from a name.
@@ -2316,6 +2355,7 @@ SOURCES = {
     "icims": Source("icims", "", None, "https://{host}/jobs/search", fetch_icims),
     "jobvite": Source("jobvite", "", None, JOBVITE_LIST, fetch_jobvite),
     "gem": Source("gem", "https://api.gem.com/job_board/v0/{board}/job_posts/", parse_gem, "https://jobs.gem.com/{board}"),
+    "recruitee": Source("recruitee", RECRUITEE_API, parse_recruitee, "https://{board}.recruitee.com/"),
     "comeet": Source("comeet", "", None, COMEET_PAGE, fetch_comeet),
     "sitemap": Source("sitemap", "", None, "https://{board}/", fetch_sitemap),
     "hn": Source("hn", "", None, "https://news.ycombinator.com/submitted?id=whoishiring", fetch_hn,
@@ -2461,6 +2501,8 @@ def detect(url: str) -> tuple[str, str] | None:
         return ("gem", parts[0]) if parts and re.fullmatch(r"[\w-]+", parts[0]) else None
     if host == "api.gem.com":  # /job_board/v0/<board>/job_posts/
         return ("gem", parts[2]) if parts[:2] == ["job_board", "v0"] and len(parts) > 2 else None
+    if (m := re.fullmatch(r"([\w-]+)\.recruitee\.com", host)) and m.group(1) not in _RECRUITEE_NOT_BOARDS:
+        return "recruitee", m.group(1)  # /, /o/<slug>, /api/offers/
     if host in ("comeet.com", "comeet.co") and parts[:1] == ["jobs"]:  # /jobs/<company>/<uid>[/<slug>/<position uid>]
         board = "/".join(parts[1:3])
         return ("comeet", board) if _COMEET_BOARD.fullmatch(board) else None
@@ -2525,6 +2567,8 @@ def _posting_id(source: str, url: str) -> str | None:
         return rest[2] if len(rest) > 2 and rest[1] == "job" else None
     if source == "gem":  # jobs.gem.com/<board>/<job id>
         return parts[1] if len(parts) > 1 and parsed.netloc.lower() == "jobs.gem.com" else None
+    if source == "recruitee":  # /o/<slug>, with /c/new after it for the apply form
+        return parts[1] if len(parts) > 1 and parts[0] == "o" else None
     if source == "comeet":  # /jobs/<company>/<uid>/<title-slug>/<position uid>
         return parts[4] if len(parts) > 4 and parts[0] == "jobs" else None
     if source == "workable":
@@ -2651,6 +2695,78 @@ def board_variants(company: str) -> list[str]:
     return [n for i, n in enumerate(names) if n not in base and n not in names[:i]]
 
 
+# Long shots go only to the sources where a wrong guess costs one small JSON answer (a 404)
+LONG_SHOT_SOURCES = ("greenhouse", "lever", "ashby", "gem", "recruitee")
+_DIGITS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+
+
+def board_long_shots(company: str) -> list[str]:
+    """Board names less likely still, tried after board_variants on LONG_SHOT_SOURCES, most likely first: the name
+    with its digits spelled out ("7 AI" -> sevenai), then the whole name with "-ai" ("StackAI" -> stack-ai,
+    "Hebbia" -> hebbia-ai), "careers" (xbowcareers) or "-com" (its domain as a slug: initech-com) after it."""
+    words = re.findall(r"[a-z0-9]+", company.lower())
+    if not words:
+        return []
+    whole = "".join(words)
+    spelled = re.sub(r"\d", lambda m: _DIGITS[int(m.group())], whole)
+    ai = (f"{spelled[:-2]}-ai" if len(spelled) > 4 else "") if spelled.endswith("ai") else f"{whole}-ai"
+    names = [spelled, ai, f"{whole}careers", f"{whole}-com"]
+    taken = {*board_names(company), *board_variants(company)}
+    return [n for i, n in enumerate(names) if n and n not in taken and n not in names[:i]]
+
+
+CAREERS_TLDS = (".com", ".ai", ".io")
+CAREERS_PATHS = ("/careers", "/jobs")
+CAREERS_TIMEOUT = 10  # seconds: a guessed host can be a parked domain that never answers
+_DOMAIN = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}")
+
+
+def careers_hosts(company: str) -> list[str]:
+    """Where a company's own site may be, to look for its careers page on: a name that is a domain ("acme.dev")
+    as it is, then the whole name at .com, .ai and .io."""
+    name = company.strip().lower()
+    words = re.findall(r"[a-z0-9]+", name)
+    hosts = [name] if _DOMAIN.fullmatch(name) else []
+    hosts += [f"{''.join(words)}{tld}" for tld in CAREERS_TLDS] if words else []
+    return list(dict.fromkeys(hosts))
+
+
+class _Turns:
+    """Guesses at one source from every lookup in this process, taken in turn: one at a time, `gap` seconds apart.
+    After the source says slow down (HTTP 429) none is made for `pause` seconds, twice that after the next 429, and
+    so on, until it answers again. A guess whose turn is more than `most` seconds off isn't made: the source is
+    untested for that company."""
+
+    def __init__(self, gap: float, pause: float, most: float):
+        self.gap, self.pause, self.most = gap, pause, most
+        self.lock = threading.Lock()
+        self.next = 0.0     # time.monotonic() when the next guess may go
+        self.strikes = 0    # 429s in a row
+
+    def take(self) -> bool:
+        """Wait for a guess's turn; False when it's too far off to wait for."""
+        with self.lock:
+            now = time.monotonic()
+            at = max(now, self.next)
+            if at - now > self.most:
+                return False
+            self.next = at + self.gap
+        if at > now:
+            time.sleep(at - now)
+        return True
+
+    def answered(self, refused: bool) -> None:
+        with self.lock:
+            if refused:
+                self.next = max(self.next, time.monotonic() + self.pause * 2 ** self.strikes)
+            self.strikes = self.strikes + 1 if refused else 0
+
+
+# Workable answered HTTP 429 to every request from one Mac for a whole day after a 95-company `find` (11/10), so
+# guessing a company's Workable board comes last (when no other board turned up), once, and takes its turn
+WORKABLE_TURNS = _Turns(gap=2.0, pause=60.0, most=30.0)
+
+
 PROBE_CAP = 100  # open roles listed (not read) to show what a board is: a sample, not the count
 
 
@@ -2750,12 +2866,17 @@ def boards_on_page(url: str, page=None) -> list[tuple[str, str]]:
     return found
 
 
-def probe(company: str, get=None, page=None, limited: set[str] | None = None) -> list[tuple[str, str, list[Job]]]:
+def probe(company: str, get=None, page=None, limited: set[str] | None = None,
+          untested: set[str] | None = None) -> list[tuple[str, str, list[Job]]]:
     """Find a company's boards by trying likely board names on every source: (source, board, open roles).
-    A link to the company's own careers page is read for links to a board instead (`page` fetches it). `limited`, when
-    given, gets the sources that said "slow down" to a guess (see slow_down), and a source already in it isn't asked:
+    A link to the company's own careers page is read for links to a board instead (`page` fetches it). With no board
+    under its name, the company's own careers page is looked for (see careers_hosts) and read for links to a board;
+    with none there either, its Workable board is guessed, once and in turn (see WORKABLE_TURNS).
+
+    `limited`, when given, gets the sources that said "slow down" to a guess, and a source already in it isn't asked:
     share one set across a list of companies, since every further guess at a source that said slow down keeps it
-    saying so (Workable refused this Mac outright after a 95-company scan).
+    saying so. `untested`, when given, gets the sources this company's guesses got no answer from (they said slow
+    down, or were asked too often already): "no board found" isn't a no there (see untested_note).
 
     A guessed name can belong to a different company, so check a role or two before adding a board. Roles on
     a searched board (Workday, Eightfold, Avature, iCIMS, Jobvite, a sitemap) are listed, not read in full: a
@@ -2799,36 +2920,92 @@ def probe(company: str, get=None, page=None, limited: set[str] | None = None) ->
     # avature: tried as name.avature.net/careers below; hn: one board, HN's Who is hiring ("Hacker News" finds it)
     # sitemap: a careers site's host, found from a link to its careers page or a job
     # comeet: a board is <company>/<uid>, and the uid is only in a careers link; vc: a fund's portfolio board
-    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "sitemap", "hn", "comeet", "vc")
-    tries = [(s, n) for n in names for s in SOURCES if s not in skip]
-    guessable = [s for s in SOURCES if s not in (*skip, "workable")]  # Workable rate-limits extra guesses
+    # workable: guessed last, once (see WORKABLE_TURNS)
+    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "sitemap", "hn", "comeet", "vc", "workable")
+    guessable = [s for s in SOURCES if s not in skip]
+    tries = [(s, n) for n in names for s in guessable]
     tries += [(s, v) for v in board_variants(company) for s in guessable]
+    tries += [(s, v) for v in board_long_shots(company) for s in LONG_SHOT_SOURCES]
     tries += [("google", "google")] if "google" in names else []
     tries += [("amazon", "amazon")] if {"amazon", "aws"} & set(names) else []
     tries += [("hn", "whoishiring")] if _HN_NAMES & set(names) else []
 
     limited = set() if limited is None else limited  # sources that said "slow down": no answer there, not a "no"
+    untested = set() if untested is None else untested
 
     @_impatient
-    def one(t):
-        if t[0] in limited:  # it said slow down, to this company's guess or another's
-            return t, []
+    def guess(source: str, board: str) -> list[Job]:
+        """The board's open roles; [] when it has none, isn't there, or didn't answer (`untested` then has it)."""
+        workable = source == "workable"
+        if (workable and not WORKABLE_TURNS.take()) or (not workable and source in limited):
+            untested.add(source)
+            return []
+        token = _patience.set((0, 0)) if workable else None  # its turns are the waiting: a 429 isn't asked again
         try:
-            return t, _peek(*t, get)
+            jobs = _peek(source, board, get)
+            refused = False
         except SourceError as e:  # not found, or that board is unreachable right now
-            if "HTTP 429" in str(e):
-                limited.add(t[0])
-            return t, []
+            jobs, refused = [], "HTTP 429" in str(e)
+            if refused:
+                untested.add(source)
+                if not workable:
+                    limited.add(source)
+        finally:
+            if token:
+                _patience.reset(token)
+        if workable:
+            WORKABLE_TURNS.answered(refused)
+        return jobs
+
     with ThreadPoolExecutor(max_workers=8) as pool:
-        hits = [(s, n, jobs) for (s, n), jobs in pool.map(one, tries) if jobs]
+        hits = [(s, n, jobs) for (s, n), jobs in zip(tries, pool.map(lambda t: guess(*t), tries), strict=True) if jobs]
         for found in pool.map(_impatient(lambda n: probe_workday(n, get)), [n for n in names if "-" not in n]):
             hits += [("workday", board, jobs) for board, jobs in found]
         for found in pool.map(_impatient(lambda n: probe_avature(n, get)), [n for n in names if "-" not in n]):
             hits += [("avature", board, jobs) for board, jobs in found]
-    return hits
+    if hits or not names:
+        return hits
+    # a test hands one fake web for boards and pages alike
+    read = page or get or (lambda url: get_text(url, CAREERS_TIMEOUT))
+    hits, linked = _careers_boards(company, read, guess)
+    if hits or "workable" in linked:
+        return hits
+    return [("workable", names[0], jobs)] if (jobs := guess("workable", names[0])) else []
 
 
-def slow_down(limited: set[str]) -> str:
-    """What to add to "no board found" when some sources said "slow down" (probe's `limited`): there may be one."""
-    return (f"; {', '.join(sorted(limited))} said to slow down (HTTP 429), so one may be there: try again later"
-            if limited else "")
+def _careers_boards(company: str, read, guess) -> tuple[list[tuple[str, str, list[Job]]], set[str]]:
+    """The boards with open roles that the company's own careers page links to (see careers_hosts): the first
+    page, /careers or /jobs, that links one, where robots.txt allows reading it. `read` fetches a page; `guess`
+    reads a board. Also the sources of every board those pages linked, open roles or none."""
+    linked: set[str] = set()
+    for host in careers_hosts(company):
+        try:
+            allows = _site_robots(host, read)[1]
+        except SourceError:  # no site there; or its robots.txt can't be read, which allows nothing
+            continue
+        for path in CAREERS_PATHS:
+            url = f"https://{host}{path}"
+            if not allows(url):
+                continue
+            try:
+                boards = [(s, b) for s, b in boards_on_page(url, read) if not SOURCES[s].many_companies
+                          and s not in ("google", "amazon")]  # a link to a big employer's jobs isn't theirs
+            except SourceError:
+                continue
+            linked |= {s for s, _ in boards}
+            if hits := [(s, b, jobs) for s, b in boards if (jobs := guess(s, b))]:
+                return hits, linked
+    return [], linked
+
+
+# What a lookup by name looks for, by name: every source with a board name to guess, and the company's own site
+GUESSED = ("Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Rippling, SmartRecruiters, Avature, iCIMS, "
+           "Jobvite, Gem or Recruitee board")
+_SHOWN = {"smartrecruiters": "SmartRecruiters", "icims": "iCIMS"}
+
+
+def untested_note(untested: set[str]) -> str:
+    """Why a lookup's "no board found" isn't a no, from probe's `untested`: "untested (Workable rate-limited)";
+    "" when every source answered."""
+    shown = sorted(_SHOWN.get(s, s.capitalize()) for s in untested)
+    return f"untested ({', '.join(shown)} rate-limited)" if shown else ""

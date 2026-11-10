@@ -77,7 +77,7 @@ def test_watched_companies_and_unknown_ones(web, watchlist):
 
 def test_a_source_that_said_slow_down_is_not_asked_again_for_the_rest_of_the_list(web, watchlist, monkeypatch):
     """A 95-company scan kept guessing at Workable after its first 429, and Workable then refused this Mac outright,
-    known boards too. One 429 now takes Workable out of the run; every company still says it may be there."""
+    known boards too. One 429 now pauses Workable's guesses; every company says plainly it went untested."""
     asked = []
 
     def peek(source, board, get=None):
@@ -89,7 +89,9 @@ def test_a_source_that_said_slow_down_is_not_asked_again_for_the_rest_of_the_lis
     found = scan.scan(config.load(watchlist), ["Vandelay Industries", "Prestige Worldwide", "Dunder Labs"],
                       workers=1)
     assert len(asked) == 1
-    assert [s.error for s in found] == ["no board with open roles found" + sources.slow_down({"workable"})] * 3
+    assert [s.error for s in found] == ["untested (Workable rate-limited): no board with open roles on the others; "
+                                        "try again later"] * 3
+    assert scan.progress_line(1, 3, found[0]).startswith("[1/3] Vandelay Industries: untested (Workable rate-limited)")
 
 
 def test_names_from_a_list():

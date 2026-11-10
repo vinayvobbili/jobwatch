@@ -20,6 +20,7 @@ companies:
   - {source: avature, board: careers.initech.example/careers, name: Initech}  # an Avature portal: host/portal
   - icims:initech                                       # careers-initech.icims.com (jobs-initech.icims.com: the host)
   - jobvite:initech                                     # jobs.jobvite.com/initech
+  - recruitee:initech                                   # initech.recruitee.com
   - sitemap:careers.example.com                         # a careers site whose sitemap links its job pages
   - hn:whoishiring                                      # HN's Who is hiring thread (whoishiring/3: last 3 months')
   - vc:jobs.example.vc                                  # a VC fund's portfolio job board (host of its jobs page)
