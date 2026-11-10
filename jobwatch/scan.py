@@ -57,13 +57,14 @@ def _read(cfg: Config, source: str, board: str, get=None) -> list[Job]:
     return sources.fetch(source, board, get, search=search_terms(f), wanted=lambda t: title_ok(t, f))
 
 
-def scan_one(cfg: Config, query: str, get=None, page=None) -> Scanned:
-    """One company: its boards found, read and judged (see the module's docstring)."""
+def scan_one(cfg: Config, query: str, get=None, page=None, limited: set[str] | None = None) -> Scanned:
+    """One company: its boards found, read and judged (see the module's docstring). `limited`: the sources that said
+    slow down, shared by a whole list so they aren't asked again (see sources.probe)."""
     s = Scanned(query)
     if watched(cfg.boards, query):
         s.watched = True
         return s
-    limited: set[str] = set()
+    limited = set() if limited is None else limited
     try:
         hits = sources.probe(query, get, page, limited)
     except sources.SourceError as e:
@@ -106,7 +107,8 @@ def scan(cfg: Config, queries: list[str], add: bool = False, least: int = 1, get
     finishes. add: watch each one's board that has `least` matching jobs and names no other company (the watchlist
     is rewritten as add_board does, the old one kept as .bak)."""
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(scan_one, cfg, q, get, page) for q in queries]
+        limited: set[str] = set()
+        futures = [pool.submit(scan_one, cfg, q, get, page, limited) for q in queries]
         for done, f in enumerate(as_completed(futures), 1):
             if progress:
                 progress(done, len(futures), f.result())

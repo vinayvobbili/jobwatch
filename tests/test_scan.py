@@ -3,7 +3,7 @@ suggestions.min_jobs matching jobs watched. No network: the boards are canned (t
 
 import pytest
 
-from jobwatch import cli, config, scan, suggest
+from jobwatch import cli, config, scan, sources, suggest
 from jobwatch.store import Store
 from jobwatch.watch import save_job
 
@@ -73,6 +73,23 @@ def test_watched_companies_and_unknown_ones(web, watchlist):
     acme, nobody = scan.scan(cfg, ["Acme", "Nobody Inc"])
     assert acme.watched and not any("acme" in c for c in web.calls)  # greenhouse:acme is on the watchlist
     assert not nobody.found and "no board with open roles found" in scan.text([nobody], 2, add=False)
+
+
+def test_a_source_that_said_slow_down_is_not_asked_again_for_the_rest_of_the_list(web, watchlist, monkeypatch):
+    """A 95-company scan kept guessing at Workable after its first 429, and Workable then refused this Mac outright,
+    known boards too. One 429 now takes Workable out of the run; every company still says it may be there."""
+    asked = []
+
+    def peek(source, board, get=None):
+        if source == "workable":
+            asked.append(board)
+            raise sources.SourceError(f"https://apply.workable.com/api/v1/widget/accounts/{board}: HTTP 429")
+        return []
+    monkeypatch.setattr(sources, "_peek", peek)
+    found = scan.scan(config.load(watchlist), ["Vandelay Industries", "Prestige Worldwide", "Dunder Labs"],
+                      workers=1)
+    assert len(asked) == 1
+    assert [s.error for s in found] == ["no board with open roles found" + sources.slow_down({"workable"})] * 3
 
 
 def test_names_from_a_list():

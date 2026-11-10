@@ -2360,7 +2360,9 @@ def boards_on_page(url: str, page=None) -> list[tuple[str, str]]:
 def probe(company: str, get=None, page=None, limited: set[str] | None = None) -> list[tuple[str, str, list[Job]]]:
     """Find a company's boards by trying likely board names on every source: (source, board, open roles).
     A link to the company's own careers page is read for links to a board instead (`page` fetches it). `limited`, when
-    given, gets the sources that said "slow down" to a guess (see slow_down).
+    given, gets the sources that said "slow down" to a guess (see slow_down), and a source already in it isn't asked:
+    share one set across a list of companies, since every further guess at a source that said slow down keeps it
+    saying so (Workable refused this Mac outright after a 95-company scan).
 
     A guessed name can belong to a different company, so check a role or two before adding a board. Roles on
     a searched board (Workday, Eightfold, Avature, iCIMS, Jobvite, a sitemap) are listed, not read in full: a
@@ -2413,6 +2415,8 @@ def probe(company: str, get=None, page=None, limited: set[str] | None = None) ->
 
     @_impatient
     def one(t):
+        if t[0] in limited:  # it said slow down, to this company's guess or another's
+            return t, []
         try:
             return t, _peek(*t, get)
         except SourceError as e:  # not found, or that board is unreachable right now
