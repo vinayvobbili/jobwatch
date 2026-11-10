@@ -544,7 +544,7 @@ def _link(url: str, label: str) -> str:
     """A link only for http(s) URLs: a javascript: or data: URL from a posting is shown as text."""
     if not re.match(r"https?://", url, re.I):
         return _e(label)
-    return f'<a href="{_e(url)}" rel="noopener noreferrer">{_e(label)}</a>'
+    return f'<a href="{_e(url)}" target="_blank" rel="noopener noreferrer">{_e(label)}</a>'
 
 
 def _ul(items: list[str]) -> str:

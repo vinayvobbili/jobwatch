@@ -209,6 +209,16 @@ def test_html_escapes_what_the_posting_says(setup):
     assert "href" not in page.split("<body>")[1]  # a javascript: link is text, not a link
 
 
+def test_the_sheet_header_links_the_posting_in_a_new_tab(setup):
+    cfg, store, _ = setup
+    store.sync("workday", "Globex", [Job("workday", "globex.wd1/Jobs", "R5", "Staff Engineer",
+                                         "https://globex.example.com/jobs/R5", company_name="Globex")])
+    job, _ = store.find("workday:globex.wd1/Jobs:R5")
+    store.set_status([job.key], "applied")
+    page = prep.html(prep.build(cfg, store, job.key))
+    assert '<a href="https://globex.example.com/jobs/R5" target="_blank" rel="noopener noreferrer">The posting' in page
+
+
 def test_cli_html(setup, capsys, tmp_path, monkeypatch):
     _, store, path = setup
     job = store.add("Initech", "Staff Detection Engineer (R0123456)")
