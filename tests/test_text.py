@@ -94,7 +94,7 @@ def test_pay_period(interval, period):
 
 
 def test_parse_salary_skips_a_monthly_range_and_finds_the_salary_after_it():
-    assert parse_salary("Stipend $3,000 - $4,000 per month. Salary $200,000 - $250,000.") == (200_000, 250_000)
+    assert parse_salary("Stipend $3,000 - $4,000 per month. Salary $175,000 - $250,000.") == (175_000, 250_000)
 
 
 @pytest.mark.parametrize("location, expected", [

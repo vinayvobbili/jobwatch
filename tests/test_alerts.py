@@ -45,7 +45,7 @@ PAGES = {
     "https://builtin.com/job/senior-data-engineer/9000002": posting_page(
         "Senior Data Engineer", "Hooli", "<p>Spark pipelines in <b>Python</b>.</p>", datePosted="2026-10-06",
         baseSalary={"@type": "MonetaryAmount", "currency": "USD",
-                    "value": {"minValue": 160000, "maxValue": 200000, "unitText": "YEAR"}},
+                    "value": {"minValue": 160000, "maxValue": 190000, "unitText": "YEAR"}},
         jobLocation={"@type": "Place", "address": {"addressLocality": "Denver", "addressRegion": "CO"}}),
     # A job site whose page links to the company's own posting (jobs.example.net has no robots.txt: all allowed)
     "https://jobs.example.net/job/12345": '<a href="https://jobs.lever.co/globex/aaaa-1111?lever-source=digest">'
@@ -206,7 +206,7 @@ def test_a_pay_line_reads_as_pay():
                         "$150,000 - $190,000 a year"]) == "$150,000 - $190,000 a year"
     assert alerts._pay(["Helping plants save $2 million a year"]) == ""
     assert alerts._pay(["$180K/yr - $240K/yr"]) == "$180K/yr - $240K/yr"  # LinkedIn's
-    assert alerts._pay(["Up to $200,000 a year"]) == "Up to $200,000 a year"  # short: kept to show
+    assert alerts._pay(["Up to $175,000 a year"]) == "Up to $175,000 a year"  # short: kept to show
 
 
 def test_an_hourly_alert_is_compared_as_a_year():
@@ -253,7 +253,7 @@ def test_builtin_plain_text_has_each_job_on_one_line():
     body = ("Find top Jobs at Built In\n\n| |\n\n"
             f"| Job Preferences Software Engineer, Remote [](https://x1.r.us-west-2.awstrack.me/L0/https:%2F%2F"
             "builtin.com%2Fprofile%2Fjob-preferences/1/M/S=0) |\n\n| |\n"
-            f"| Initech Corp Staff Software Engineer - SOC Platform (Ruby/Rails) Remote United States $200,000-$220,000"
+            f"| Initech Corp Staff Software Engineer - SOC Platform (Ruby/Rails) Remote United States $175,000-$220,000"
             f" []({_wrapped('/job/staff-software-engineer-soc-platform-ruby-rails/9000011')}) |\n"
             f"| Hooli Software Engineer Level 2 or 3 (AHT) In Office Denver, CO $91,800-$171,000"
             f" []({_wrapped('/job/software-engineer-level-2-or-3-aht/9000012')}) |\n"
@@ -263,7 +263,7 @@ def test_builtin_plain_text_has_each_job_on_one_line():
     found = alerts.parse(msg)
     assert [(a.title, a.company, a.location, a.pay, a.url) for a in found] == [
         ("Staff Software Engineer - SOC Platform (Ruby/Rails)", "Initech Corp", "Remote - United States",
-         "$200,000-$220,000", "https://builtin.com/job/staff-software-engineer-soc-platform-ruby-rails/9000011"),
+         "$175,000-$220,000", "https://builtin.com/job/staff-software-engineer-soc-platform-ruby-rails/9000011"),
         ("Software Engineer Level 2 or 3 (AHT)", "Hooli", "Denver, CO", "$91,800-$171,000",
          "https://builtin.com/job/software-engineer-level-2-or-3-aht/9000012"),
         ("Senior Data Engineer", "Globex", "Austin, TX (Hybrid)", "", "https://builtin.com/job/senior-data-engineer/9000013"),
@@ -340,7 +340,7 @@ def test_alerts_become_tracked_jobs(web, watchlist):
     hooli = jobs["Senior Data Engineer @ Hooli"]  # no board found: what the job site's page says
     assert hooli.how == "page" and hooli.key == "manual:hooli:senior-data-engineer"
     job, rec = store.find(hooli.key)
-    assert job.description == "Spark pipelines in Python." and job.pay() == "$160K–$200K" and job.posted
+    assert job.description == "Spark pipelines in Python." and job.pay() == "$160K–$190K" and job.posted
     assert rec["status"] == "new" and rec["via"] == "builtin-alert"
     umbrella = jobs["Field Engineer @ Umbrella LLC"]
     assert umbrella.how == "email" and store.find(umbrella.key)[0].locations == ["United States (Remote)"]

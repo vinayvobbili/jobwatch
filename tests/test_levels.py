@@ -103,9 +103,9 @@ def test_an_estimate_from_the_us_page_and_its_level_page(store):
 
 def test_the_ask_follows_pay_ask_over_and_round(store):
     posted = job(low=150_000, high=240_000)
-    e = levels.estimate(posted, Pay(levels=True, years=20, ask_over=20, round=10_000), None, reader(store))
-    assert e.ask == 200_000  # $160K base + 20% = $192K, rounded up to $10K
-    assert "Ask: 20% over the median base, rounded up to $10K: $200,000" in e.why
+    e = levels.estimate(posted, Pay(levels=True, years=20, ask_over=15, round=10_000), None, reader(store))
+    assert e.ask == 190_000  # $160K base + 15% = $184K, rounded up to $10K
+    assert "Ask: 15% over the median base, rounded up to $10K: $190,000" in e.why
     e = levels.estimate(posted, Pay(levels=True, years=20, ask_over=2.5, round=0), None, reader(store))
     assert e.ask == 164_000 and "Ask: 2.5% over the median base: $164,000" in e.why  # 0: not rounded
 
@@ -113,8 +113,8 @@ def test_the_ask_follows_pay_ask_over_and_round(store):
 def test_the_ask_stays_within_a_posted_range(store):
     e = levels.estimate(job(low=120_000, high=170_000), Pay(levels=True), None, reader(store))
     assert e.ask == 170_000 and any("capped at the posting's top" in w for w in e.why)
-    e = levels.estimate(job(low=200_000, high=260_000), Pay(levels=True), None, reader(store))
-    assert e.ask == 200_000 and any("raised to the posting's bottom" in w for w in e.why)
+    e = levels.estimate(job(low=190_000, high=260_000), Pay(levels=True), None, reader(store))
+    assert e.ask == 190_000 and any("raised to the posting's bottom" in w for w in e.why)
 
 
 def test_a_remote_job_uses_the_home_region_first(store):

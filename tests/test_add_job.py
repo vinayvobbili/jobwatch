@@ -94,12 +94,12 @@ def test_save_job_with_pasted_text(tmp_path, web):
         save_job(store, "https://www.linkedin.com/jobs/view/4000000001/", get=web)
     with pytest.raises(ValueError, match="can't read that link"):
         save_job(store, link, get=web)
-    job, read = save_job(store, link, "Initech", "Staff Engineer", "Build things.\nPay: $200,000 - $240,000",
+    job, read = save_job(store, link, "Initech", "Staff Engineer", "Build things.\nPay: $175,000 - $240,000",
                          get=web)
     assert not read and job.key == "manual:initech:staff-engineer" and job.url == link
     stored, rec = store.find(job.key)
     assert rec["status"] == "queued" and stored.description.startswith("Build things")
-    assert (stored.salary_min, stored.salary_max) == (200_000, 240_000)
+    assert (stored.salary_min, stored.salary_max) == (175_000, 240_000)
 
 
 def test_cli_add(watchlist, web, capsys):

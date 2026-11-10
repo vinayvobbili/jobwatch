@@ -16,7 +16,7 @@ FORM = "https://jobs.ashbyhq.com/initech/c1/application"
 def app(watchlist, web):
     raw = yaml.safe_load(watchlist.read_text())
     (watchlist.parent / "resume.txt").write_text("Jordan Rivera. Platform engineer. Python, Kubernetes.")
-    raw.update(resume="resume.txt", pay={"target": 180000, "target_max": 200000},
+    raw.update(resume="resume.txt", pay={"target": 180000, "target_max": 190000},
                applicant={"first_name": "Jordan", "last_name": "Rivera", "email": "jordan@example.com",
                           "work_authorized": True, "needs_sponsorship": False})
     watchlist.write_text(yaml.safe_dump(raw))
@@ -64,7 +64,7 @@ def test_context_for_an_application_page(app):
     assert got["job"]["key"] == "ashby:initech:c1" and got["job"]["company"] == "Initech"
     a = got["applicant"]
     assert (a["first_name"], a["work_authorized"], a["needs_sponsorship"]) == ("Jordan", "yes", "no")
-    assert a["salary"] == "180000-200000" and a["veteran"] == "decline"
+    assert a["salary"] == "180000-190000" and a["veteran"] == "decline"
     assert got["resume"] == {"name": "resume.txt", "type": "text/plain", "tailored": False}  # the default one
     assert got["can_tailor"] is False  # no resume-kit set up in this watchlist
     assert [(x["question"], x["answer"], x["company"]) for x in got["answers"]] == [

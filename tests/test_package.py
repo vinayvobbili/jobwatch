@@ -163,13 +163,13 @@ def test_chat_about_a_job_reads_what_was_sent(watchlist, web, monkeypatch):
 def test_command_line(watchlist, web, tmp_path, capsys):
     cv, answers, letter = tmp_path / "cv.pdf", tmp_path / "answers.yaml", tmp_path / "letter.txt"
     cv.write_bytes(b"%PDF")
-    answers.write_text("Why us?: Your agents platform\nSalary expectation: 200000\nLinks:\n  LinkedIn: no\n")
+    answers.write_text("Why us?: Your agents platform\nSalary expectation: 175000\nLinks:\n  LinkedIn: no\n")
     letter.write_text("Dear team,")
     cli.main(["-c", str(watchlist), "fetch"])
     cli.main(["-c", str(watchlist), "mark", "applied", "c1", "--attach", str(cv)])
     cli.main(["-c", str(watchlist), "attach", "c1", "--answers", str(answers), "--message", str(letter)])
     out = capsys.readouterr().out
-    assert "kept cv.pdf" in out and "Q: Salary expectation\nA: 200000" in out and "Dear team," in out
+    assert "kept cv.pdf" in out and "Q: Salary expectation\nA: 175000" in out and "Dear team," in out
     assert "Q: Links / LinkedIn\nA: No" in out  # a form's sections, flattened; YAML's no
     assert "Files: cv.pdf (resume" in out and "Posting as it read on" in out
     cli.main(["-c", str(watchlist), "package", "aaaa-1111"])

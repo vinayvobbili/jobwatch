@@ -411,7 +411,7 @@ _PAY_END = re.compile(r"\$\s?[\d,.]+\s*[kK]?(?:\s*(?:-|–|—|to)\s*\$?\s?[\d,.
 
 def _builtin_line(before: str, link: str) -> list[str] | None:
     """A Built In job squashed onto one line of plain text, before its link: "Acme Staff Engineer (Python)
-    Remote United States $200,000-$220,000". The title is the link's (/job/<title>/<id>): what comes before it
+    Remote United States $175,000-$220,000". The title is the link's (/job/<title>/<id>): what comes before it
     is the company, and what follows is where it's worked from, the place and the pay. None when the title
     isn't there."""
     text = re.sub(r"^[\s|]+|[\s\[\]()<|]+$", "", before)
@@ -462,7 +462,7 @@ _NOT_PAY = re.compile(r"\$\s?[\d,.]+\s*(?:[MB]\b|million|billion)", re.I)
 
 def _pay(lines: list[str]) -> str:
     """The card's pay: a line that reads as a salary or a rate ("$150K - $190K", "$75 an hour"), or a short
-    line with an amount ("Up to $200,000 a year"), not a sentence that mentions money ("$100M+ in energy
+    line with an amount ("Up to $175,000 a year"), not a sentence that mentions money ("$100M+ in energy
     savings")."""
     return next((x for x in lines[:8] if _PAY.search(x) and not _NOT_PAY.search(x)
                  and (parse_salary(x.replace("/yr", "")) or len(x) <= 60)), "")

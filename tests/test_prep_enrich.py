@@ -320,7 +320,7 @@ def test_the_page_shows_them():
     ("{target: 180K-210K}", (180000, 210000)),
     ("{target: '$180,000 to $210,000'}", (180000, 210000)),
     ("{target: 180000, target_max: 210000}", (180000, 210000)),
-    ("{target: 200000-200000}", (200000, 0)),
+    ("{target: 190000-190000}", (190000, 0)),
 ])
 def test_the_target_is_a_number_or_a_range(tmp_path, pay, want):
     cfg, store, _key, _ = make(tmp_path, pay=f"pay: {pay}\n")
@@ -339,7 +339,7 @@ def test_a_bad_target_range_is_refused(tmp_path, pay):
 
 @pytest.mark.parametrize("target, note", [
     ("120000-140000", "below the posted range"), ("160000-180000", "inside the posted range"),
-    ("200000-220000", "above the posted range"), ("140000-170000", "starts below the posted range"),
+    ("195000-220000", "above the posted range"), ("140000-170000", "starts below the posted range"),
     ("170000-210000", "reaches above the posted range"), ("140000-210000", "wider than the posted range")])
 def test_a_target_range_shows_and_sits_against_the_posted_range(tmp_path, target, note):
     cfg, store, key, _ = make(tmp_path, pay=f"pay: {{target: {target}, floor: {FLOOR}}}\n")

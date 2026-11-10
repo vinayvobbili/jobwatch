@@ -140,7 +140,7 @@ BOARDS = {
         job("workable", "umbrella", "Umbrella", "U1A2B3", "Senior Data Platform Engineer", ["Remote, United States"],
             170000, 210000, 4, APPLIED),
         job("workable", "umbrella", "Umbrella", "U0Z9Y8", "Senior Data Engineer", ["Remote, United States"],
-            160000, 200000, 14, GENERIC),
+            160000, 190000, 14, GENERIC),
     ],
     ("workday", "hooli.wd5/Careers"): [
         job("workday", "hooli.wd5/Careers", "Hooli", "R0104211", "Principal Engineer, Agents",
@@ -183,7 +183,7 @@ TRACK = {
 
 MORE_WATCHLIST = """\
 pay:
-  target: 200000-230000
+  target: 170000-230000
   floor: 175000
 connections: connections/Connections.csv
 stories: stories.yaml

@@ -27,7 +27,7 @@ def tracked(watchlist, tmp_path):
                                    ("Umbrella", "Architect", "rejected")]:
         store.add(company, title, status=status, applied="2026-10-01", location="Remote")
     for key, low, high in [("manual:acme:platform-engineer", 180000, 220000),
-                           ("manual:globex:data-lead", 150000, 200000)]:
+                           ("manual:globex:data-lead", 160000, 190000)]:
         job, _ = store.find(key)
         job.salary_min, job.salary_max = low, high
         store.update(job)
@@ -44,7 +44,7 @@ def test_amounts_are_read_as_dollars():
     assert comps.amount("$165K - $215K") == (165000, 215000)
     assert comps.amount("$150,000 to $180,000") == (150000, 180000)
     assert comps.amount("195K most likely their max") == (195000, 195000)
-    assert comps.amount("2 offers, 200K") == (200000, 200000)
+    assert comps.amount("2 offers, 190K") == (190000, 190000)
     assert comps.amount("1.2M") == (1_200_000, 1_200_000)
 
 
@@ -105,12 +105,12 @@ def test_applied_on_request_and_named_jobs(tracked):
 def test_a_tie_marks_neither_and_no_pay_marks_nothing(tracked):
     cfg = config.load(tracked)
     store = Store(cfg.state)
-    store.set_comp("acme", offered="200K")
-    store.set_comp("globex", offered="$200,000")
+    store.set_comp("acme", offered="190K")
+    store.set_comp("globex", offered="$190,000")
     store.set_comp("initech", offered="150K")
     assert sorted(comps.view(cfg, store)["best"]["offered"]) == ["manual:acme:platform-engineer",
                                                                  "manual:globex:data-lead"]
-    store.set_comp("initech", offered="200K")
+    store.set_comp("initech", offered="190K")
     assert comps.view(cfg, store)["best"]["offered"] == []  # all the same: nothing stands out
     store.close()
 
@@ -248,7 +248,7 @@ def test_the_suggestion_weighs_pay_fit_progress_and_health(tracked):
     tracked.write_text(tracked.read_text() + "pay:\n  target: 180000-210000\n")
     cfg = config.load(tracked)
     store = Store(cfg.state)
-    store.set_comp("initech", offered="200K")
+    store.set_comp("initech", offered="190K")
     store.set_health("Initech", listing="public", rating="4.2")
     store.set_health("Globex", layoffs="15% in March", headcount="shrinking", listing="private", raised="$12M")
     s = comps.view(cfg, store)["suggestion"]
@@ -256,7 +256,7 @@ def test_the_suggestion_weighs_pay_fit_progress_and_health(tracked):
     assert sum(s["weights"].values()) == pytest.approx(1)
     assert [r["company"] for r in s["ranking"]] == ["Initech", "Acme", "Globex"]
     initech, acme, globex = s["ranking"]
-    assert initech["parts"]["pay"]["input"] == "$200K offered vs your $180K-$210K target"
+    assert initech["parts"]["pay"]["input"] == "$190K offered vs your $180K-$210K target"
     assert initech["parts"]["progress"] == {"score": 100, "input": "offer", "known": True}
     assert initech["total"] == round(sum(comps.WEIGHTS[k] * p["score"] for k, p in initech["parts"].items()))
     # nothing known: neutral, and marked so it shows as "?", not a middling 50

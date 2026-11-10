@@ -143,7 +143,7 @@ def eightfold_web():
             "data": {"count": len(EF_POSITIONS), "positions": EF_POSITIONS[start:start + 10]}}
     for p in EF_POSITIONS:
         responses[f"{EF}/position_details?position_id={p['id']}&domain=globex.com"] = {"data": {
-            "jobDescription": "<p>Salary: $200,000 - $260,000 per year</p>",
+            "jobDescription": "<p>Salary: $175,000 - $260,000 per year</p>",
             "publicUrl": f"https://globex.eightfold.ai/careers/job/{p['id']}"}}
     return FakeWeb(responses)
 
@@ -158,7 +158,7 @@ def test_eightfold():
     assert lead.locations == ["Denver, CO, United States", "Remote, United States"]
     assert lead.remote is None  # remote_local names its places; they decide
     assert by_id["10"].remote is True and by_id["10"].locations == ["United States"]
-    assert (lead.salary_min, lead.url) == (200_000, "https://globex.eightfold.ai/careers/job/1")
+    assert (lead.salary_min, lead.url) == (175_000, "https://globex.eightfold.ai/careers/job/1")
     assert by_id["2"].description == "" and lead.posted.year == 2026
     assert lead.description.startswith("Work site: not stated\n")
 

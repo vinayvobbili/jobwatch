@@ -123,13 +123,13 @@ def test_goals_save_through_the_settings_page_and_keep_other_keys(watchlist):
     assert app.get_settings({})["goals"] == {}
     goals = {"about": "Ten years in tooling.", "company_kinds": ["tech", "consulting"], "roles": ["any"],
              "track": "ic", "horizon": "take risks for 3-5 years"}
-    app.post_settings({"goals": goals, "pay": {"target": "170000-200000", "floor": 150000},
+    app.post_settings({"goals": goals, "pay": {"target": "170000-190000", "floor": 150000},
                        "comps": {"weights": {"career": 50, "pay": 50, "fit": 0, "progress": 0, "health": 0}}})
     s = app.get_settings({})
     assert s["goals"] == goals and s["pay"]["floor"] == 150000 and s["state"] == "state.db"
     cfg = config.load(watchlist)
     assert cfg.goals.company_kinds == ("tech", "consulting") and cfg.goals.roles == ("any",) and cfg.goals.track == "ic"
-    assert (cfg.pay.target, cfg.pay.target_max, cfg.pay.floor) == (170000, 200000, 150000)
+    assert (cfg.pay.target, cfg.pay.target_max, cfg.pay.floor) == (170000, 190000, 150000)
     assert cfg.comps.weights["career"] == 0.5 and cfg.comps.weights["fit"] == 0
     with pytest.raises(config.ConfigError, match=r"goals\.track"):
         app.post_settings({"goals": {"track": "boss"}})
@@ -217,10 +217,10 @@ def test_the_pay_target_is_written_and_read_back(tmp_path):
     js = tmp_path / "target.js"
     js.write_text(page_function("targetText") + page_function("targetValues") + """
 console.log(JSON.stringify([targetText({}), targetText({ target: 180000 }),
-  targetText({ target: 170000, target_max: 200000 }), targetValues(" "), targetValues("180000"),
-  targetValues("170K-200K")]));
+  targetText({ target: 170000, target_max: 190000 }), targetValues(" "), targetValues("180000"),
+  targetValues("170K-190K")]));
 """, encoding="utf-8")
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert json.loads(r.stdout) == ["", "180000", "170000-200000", {"target": None, "target_max": None},
-                                    {"target": 180000, "target_max": None}, {"target": "170K-200K", "target_max": None}]
+    assert json.loads(r.stdout) == ["", "180000", "170000-190000", {"target": None, "target_max": None},
+                                    {"target": 180000, "target_max": None}, {"target": "170K-190K", "target_max": None}]

@@ -225,7 +225,7 @@ def test_lever_fills_and_records_after_the_thank_you_page(stack, ext, panels):
     assert page.input_value("input[name=email]") == "jordan@example.com"
     assert page.input_value("input[name=location]") == "Boulder, CO"
     assert page.input_value("input[name='urls[GitHub]']").startswith("https://github.com/")
-    assert page.input_value("input[name='cards[3]']") == "180K-200K"
+    assert page.input_value("input[name='cards[3]']") == "180K-190K"
     assert page.is_checked("input[name='cards[1]'][value=Yes]") and page.is_checked("input[name='cards[2]'][value=Yes]")
     assert page.input_value("select[name='eeo[gender]']") == "Decline to self-identify"
     assert page.input_value("select[name='eeo[veteran]']") == "I don't wish to answer"
@@ -238,7 +238,7 @@ def test_lever_fills_and_records_after_the_thank_you_page(stack, ext, panels):
     sent = stack.server.submitted[0]
     assert sent["url"].startswith(url.rsplit("/", 1)[0]) and sent["company"] == "Initech"
     assert sent["title"] == "Platform Engineer"
-    assert {"question": "What are your salary expectations?", "answer": "180K-200K"} in sent["answers"]
+    assert {"question": "What are your salary expectations?", "answer": "180K-190K"} in sent["answers"]
     # the page moved on to the thank-you address: the rows are for a form that's gone, so the panel asks for a rescan
     panel.wait_for_selector("#scan")
     assert panel.locator(".row").count() == 0 and "changed" in panel.locator(".empty .msg").inner_text()

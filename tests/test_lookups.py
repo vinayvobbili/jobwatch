@@ -168,14 +168,14 @@ def ashby_board(web, *jobs):
 
 def test_find_roles_lists_matching_titles_with_place_pay_and_day(web, capsys):
     ashby_board(web,
-                ("r1", "Agent Platform Engineer", "2026-09-01T00:00:00+00:00", "Pay range: $200,000 - $270,000 a year"),
+                ("r1", "Agent Platform Engineer", "2026-09-01T00:00:00+00:00", "Pay range: $175,000 - $270,000 a year"),
                 ("r2", "Senior AI Agent Engineer", "2026-10-01T00:00:00+00:00", "Great team."),
                 ("r3", "Account Executive", "2026-10-02T00:00:00+00:00", "Sell things."))
     cli.main(["find", "https://jobs.ashbyhq.com/globex", "--roles", "AGENT"])
     out = capsys.readouterr().out
     assert "ashby:globex  (3 open roles)" in out
     assert out.index("Senior AI Agent Engineer  (Remote · posted 2026-10-01)") < out.index(
-        "Agent Platform Engineer  (Remote · $200K–$270K · posted 2026-09-01)")  # newest first
+        "Agent Platform Engineer  (Remote · $175K–$270K · posted 2026-09-01)")  # newest first
     assert "Account Executive" not in out
     cli.main(["find", "https://jobs.ashbyhq.com/globex", "--roles", "pilot"])
     assert "No open role with 'pilot' in its title." in capsys.readouterr().out

@@ -42,7 +42,7 @@ GLOBEX = post(9000104, "Globex is hiring engineers to build our billing platform
 REMARK = post(9000105, "Great thread, thanks for posting it every month.")
 SEEKER = post(9000106, "Location: Denver<p>Remote: Yes<p>Willing to relocate: No<p>Technologies: Python")
 DELETED = {"type": "comment", "id": 9000107, "author": None, "text": None, "children": []}
-HOOLI = post(9000001, "Hooli | Staff Engineer | Remote | $200k-$250k", days_ago=31)
+HOOLI = post(9000001, "Hooli | Staff Engineer | Remote | $175k-$250k", days_ago=31)
 
 
 def thread(id_: int, title: str, posts: list[dict]) -> dict:

@@ -10,7 +10,7 @@ from jobwatch.store import Store
 from jobwatch.watch import Entry, save_job
 from jobwatch.web import App
 
-PAY = "pay: {target: 200000-240000, floor: 180000}\n"
+PAY = "pay: {target: 170000-240000, floor: 180000}\n"
 
 
 def cfg_with(watchlist, text=PAY):
@@ -36,7 +36,7 @@ def test_good_pay_a_strong_fit_and_someone_you_know_say_queue(watchlist):
     store = Store(cfg.state)
     said = advise(cfg, entry(job(low=190000, high=260000, days=1), fit(82), [{"name": "Pat Lee"}]), History(store))
     assert said.action == "queue"
-    assert said.reasons == ["the posted pay goes up to $260K, above your $200K–$240K target", "a strong fit (82/100)",
+    assert said.reasons == ["the posted pay goes up to $260K, above your $170K–$240K target", "a strong fit (82/100)",
                             "you know Pat Lee there: ask for a referral first", "posted yesterday, so it's read early"]
     assert said.line.startswith("Queue: the posted pay goes up to $260K")
     store.close()
@@ -60,9 +60,9 @@ def test_two_applications_there_this_week_say_skip_whatever_the_pay(watchlist):
                  applied=(today - timedelta(days=ago)).isoformat())
     said = advise(cfg, entry(job(high=260000), fit(80)), History(store))
     assert said == Advice("skip", ["you've applied to 2 roles at Globex this past week"],
-                          ["the posted pay goes up to $260K, above your $200K–$240K target", "a strong fit (80/100)"],
+                          ["the posted pay goes up to $260K, above your $170K–$240K target", "a strong fit (80/100)"],
                           ["busy"])
-    assert said.line.endswith("this past week (though the posted pay goes up to $260K, above your $200K–$240K target)")
+    assert said.line.endswith("this past week (though the posted pay goes up to $260K, above your $170K–$240K target)")
     assert advise(cfg, entry(job(company="Initech", high=260000)), History(store)).action == "queue"
     store.close()
 
@@ -114,7 +114,7 @@ def test_the_bottom_line_says_apply_stretch_hold_or_skip(watchlist):
     paid = dict(low=190000, high=260000)
     # On Today the next step is to queue it; once it's queued, to apply.
     assert call(entry(job(**paid), fit(88, 4, 4))) == {
-        "call": "apply", "text": "Queue it: the posted pay goes up to $260K, above your $200K–$240K target."}
+        "call": "apply", "text": "Queue it: the posted pay goes up to $260K, above your $170K–$240K target."}
     assert call(entry(job(**paid), fit(88, 4, 4), status="queued"))["text"].startswith("Apply: the posted pay")
     assert call(entry(job(**paid), fit(80, 1, 4))) == {  # most must-haves missing: advise says skip
         "call": "skip", "text": "Skip it: it meets 1 of 4 must-haves."}
@@ -161,9 +161,9 @@ def test_pay_under_the_floor_and_missing_must_haves_say_skip(watchlist):
     assert advise(cfg, entry(job()), History(store), low).reasons == [
         "Levels.fyi's median base for this level is $160K, under your floor"]
     assert advise(cfg, entry(job()), History(store), {"base": 230000, "ask": 245000}).reasons == [
-        "Levels.fyi suggests asking ~$245K base, above your $200K–$240K target"]
+        "Levels.fyi suggests asking ~$245K base, above your $170K–$240K target"]
     assert advise(cfg, entry(job(low=180000, high=230000)), History(store)).reasons == [
-        "the posted pay goes up to $230K, within your $200K–$240K target"]
+        "the posted pay goes up to $230K, within your $170K–$240K target"]
     assert advise(cfg, entry(job()), History(store), {"pending": True}) is None
     assert advise(cfg, entry(job(), fit(70, met=1, total=4)), History(store)).reasons == [
         "it meets 1 of 4 must-haves"]

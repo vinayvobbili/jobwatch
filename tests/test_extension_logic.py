@@ -84,10 +84,10 @@ console.log(JSON.stringify([f({json.dumps(long)}, 'text'), f('Tell us about your
 def test_values_come_from_the_applicants_details(tmp_path):
     got = run_js(tmp_path, """
 const d = { first_name: 'Jordan', last_name: 'Rivera', city: 'Boulder', state: 'CO', work_authorized: 'yes',
-  needs_sponsorship: 'no', gender: 'decline', salary: '180K-200K', phone: '' };
+  needs_sponsorship: 'no', gender: 'decline', salary: '180K-190K', phone: '' };
 console.log(JSON.stringify(['full_name', 'location', 'work_authorized', 'needs_sponsorship', 'gender', 'salary', 'phone']
   .map(k => JW.valueFor(k, d))));""")
-    assert got == ["Jordan Rivera", "Boulder, CO", "Yes", "No", "Decline to answer", "180K-200K", ""]
+    assert got == ["Jordan Rivera", "Boulder, CO", "Yes", "No", "Decline to answer", "180K-190K", ""]
 
 
 @needs_node

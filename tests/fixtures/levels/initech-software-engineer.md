@@ -11,7 +11,7 @@ Made up for tests: a page with totals only, no pay mix and no years.
 | --- | --- |
 | I1 | $110,000 |
 | I2 | $150,000 |
-| I3 | $200,000 |
+| I3 | $190,000 |
 | I4 | $260,000 |
 | I5 | $330,000 |
 

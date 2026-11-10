@@ -20,7 +20,7 @@ APPLICANT = {
     "phone": "+1 555 0100", "city": "Boulder", "state": "CO", "country": "United States", "postal_code": "80301",
     "linkedin": "https://www.linkedin.com/in/jordan-rivera-example", "github": "https://github.com/jordan-example",
     "website": "https://jordan.example.com", "work_authorized": "yes", "needs_sponsorship": "no", "relocate": "yes",
-    "notice_period": "2 weeks", "salary": "180K-200K", "gender": "decline", "race": "decline", "hispanic": "decline",
+    "notice_period": "2 weeks", "salary": "180K-190K", "gender": "decline", "race": "decline", "hispanic": "decline",
     "veteran": "decline", "disability": "decline",
 }
 
