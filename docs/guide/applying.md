@@ -96,6 +96,9 @@ jobwatch add "Umbrella" "Staff Engineer" --url https://www.linkedin.com/jobs/vie
 pbpaste | jobwatch add "Umbrella" "Staff Engineer" --text - --status queued     # the posting from the clipboard
 ```
 
+To only track a job, so it shows up in the digest and Today to judge later, add it with `--status new`: it
+goes in as a fresh find, the way a board fetch would, with no applied date. A job already tracked keeps its status.
+
 In the browser, press **Add a job** on the Queue page. Many job sites (LinkedIn's "Apply on company
 website", job-alert emails) link through to the company's own board: that link is the one to use.
 

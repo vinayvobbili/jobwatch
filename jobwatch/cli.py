@@ -1379,12 +1379,14 @@ def build_parser() -> argparse.ArgumentParser:
                        "`add <company> "
                        "<title>` for anything else, a LinkedIn link included (--url; LinkedIn's robots.txt doesn't "
                        "allow reading it, so jobwatch looks for the job on the company's own board). "
-                       "--status queued to consider it, else it's an application")
+                       "--status queued to consider it, --status new to just track it as a fresh find (it shows in the "
+                       "digest and Today, to judge later), else it's an application")
     p.add_argument("job", nargs="+", metavar="LINK | COMPANY TITLE")
     p.add_argument("--url", help="link to the posting, with a company and title")
     p.add_argument("--company", help="with a link: the company's name, when the board doesn't give it (Workday)")
     p.add_argument("--text", type=Path, metavar="FILE", help="the posting's text, to score it (- reads stdin)")
-    p.add_argument("--status", choices=("queued", *STAGES), default="applied")
+    p.add_argument("--status", choices=("new", "queued", *STAGES), default="applied",
+                   help="default applied; new: a fresh find, as a board fetch would add it, no applied date")
     p.add_argument("--location")
     _tracking(p)
     p.set_defaults(func=cmd_add)

@@ -714,8 +714,9 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
     job is kept with the LinkedIn link and the pasted text. Anything else (a company's own site) needs the
     company, the title and, to be scored, the posting's text pasted. An application already further along
     keeps its stage. When it's the same opening as a job already applied to, queued or skipped (see dupes.py),
-    that's recorded on it; dupes.check says which, to warn. A company whose board isn't in `boards` becomes a
-    suggestion to watch (see suggest.py)."""
+    that's recorded on it; dupes.check says which, to warn. Status "new" adds it as a fresh find, as a board fetch
+    would (in the digest, no day applied); a job already tracked keeps its status.
+    A company whose board isn't in `boards` becomes a suggestion to watch (see suggest.py)."""
     job, read = _save_job(store, link, company, title, text, status, note, applied, location, get, page, boards)
     dupes.record(store, [job])
     suggest.record(store, boards, job)
@@ -753,7 +754,10 @@ def _save_job(store: Store, link: str, company: str, title: str, text: str, stat
         job.company_name = company.strip()
     store.keep(job)
     _, rec = store.find(job.key)
-    if not (rec["status"] in STAGES and status not in STAGES):
+    if status == "new" and rec["status"] != "new":  # a fresh find never moves a job already shown or acted on
+        if note:
+            store.add_note(job.key, note)
+    elif not (rec["status"] in STAGES and status not in STAGES):
         store.set_status([job.key], status, note, on=applied)
     elif note:
         store.add_note(job.key, note)

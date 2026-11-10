@@ -112,6 +112,24 @@ def test_cli_add(watchlist, web, capsys):
         cli.main(["--config", str(watchlist), "add", "Initech"])
 
 
+def test_add_as_a_fresh_find(tmp_path):
+    store = Store(tmp_path / "jw.db")
+    job, _ = save_job(store, company="Initech", title="Staff Engineer", status="new", note="saw it on a forum")
+    _, rec = store.find(job.key)
+    assert rec["status"] == "new" and not rec.get("applied_at")
+    store.set_status([job.key], "queued")
+    assert store.find(job.key)[1]["status"] == "queued"
+
+
+def test_cli_add_new(watchlist, web, capsys):
+    cli.main(["--config", str(watchlist), "add", "Initech", "Staff Engineer", "--status", "new"])
+    assert "manual:initech:staff-engineer: new" in capsys.readouterr().out
+    cli.main(["--config", str(watchlist), "add", "https://job-boards.greenhouse.io/acme/jobs/101", "--status",
+              "queued"])
+    cli.main(["--config", str(watchlist), "add", "https://job-boards.greenhouse.io/acme/jobs/101", "--status", "new"])
+    assert "greenhouse:acme:101: new" in capsys.readouterr().out  # printed as asked; a tracked job keeps its status
+
+
 def test_web_add(watchlist, web):
     app = App(watchlist)
     got = app.post_add({"url": "https://job-boards.greenhouse.io/acme/jobs/101", "status": "queued"})

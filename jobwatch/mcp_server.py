@@ -473,7 +473,8 @@ def add_application(
         "a careers site's job page (JobPosting markup) or LinkedIn are read in full; "
         "any other link is just kept."))] = "",
     status: Annotated[str, Field(description=(
-        "applied (the default; only once the person has applied themselves), queued for one they're "
+        "applied (the default; only once the person has applied themselves), new to just track a job as a "
+        "fresh find to judge later (it shows in get_digest, nothing applied), queued for one they're "
         "considering, or a later stage such as interviewing."))] = "applied",
     applied_on: Annotated[str, Field(description="The day applied (YYYY-MM-DD), if not today.")] = "",
     note: Annotated[str | None, Field(description="A note: who referred them, how they found it...")] = None,
