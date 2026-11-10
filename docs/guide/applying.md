@@ -292,7 +292,8 @@ ranking) can name ones jobwatch has never seen. `jobwatch scan` checks them all 
 reads it the way a check does, and lists the jobs that pass your filters, companies with one first. `--add` watches
 each board with one of them (`--min N` for more): a list you picked is worth more than an alert's sample, where a
 single job is often a staffing firm's, so `suggestions.min_jobs` isn't used. A board whose roles name another
-company (one guessed from a shared name) is reported and never added.
+company (one guessed from a shared name) is reported and never added. A long list takes minutes: each company is
+said on stderr as it finishes (`[12/75] Hooli: lever:hooli, 3 matching`), and the report follows at the end.
 
 ```bash
 jobwatch scan Hooli Umbrella "Initech Labs"   # names, careers-page links or source:board entries

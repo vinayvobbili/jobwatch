@@ -13,7 +13,8 @@ added. Nothing is stored but the watchlist entries added; the next check reads t
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from . import config, linkedin, sources
@@ -88,13 +89,24 @@ def scan_one(cfg: Config, query: str, get=None, page=None) -> Scanned:
     return max(boards, key=lambda b: (not b.other, len(b.matching)), default=s)
 
 
+def progress_line(done: int, total: int, s: Scanned) -> str:
+    """One company as it finishes, for a long list (minutes) that would otherwise say nothing until the end."""
+    what = ("already watched" if s.watched else s.error or "no board found" if not s.found
+            else f"{s.entry}, another company's?" if s.other else f"{s.entry}, {len(s.matching)} matching")
+    return f"[{done}/{total}] {s.query}: {what}"
+
+
 def scan(cfg: Config, queries: list[str], add: bool = False, least: int = 1, get=None, page=None,
-         workers: int = 8) -> list[Scanned]:
-    """Every company in the list, in its order (see scan_one). add: watch each one's board that has `least`
-    matching jobs and names no other company (the watchlist is rewritten as add_board does, the old one kept as
-    .bak)."""
+         workers: int = 8, progress: Callable[[int, int, Scanned], None] | None = None) -> list[Scanned]:
+    """Every company in the list, in its order (see scan_one); progress(done, total, company) hears of each as it
+    finishes. add: watch each one's board that has `least` matching jobs and names no other company (the watchlist
+    is rewritten as add_board does, the old one kept as .bak)."""
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        found = list(pool.map(lambda q: scan_one(cfg, q, get, page), queries))
+        futures = [pool.submit(scan_one, cfg, q, get, page) for q in queries]
+        for done, f in enumerate(as_completed(futures), 1):
+            if progress:
+                progress(done, len(futures), f.result())
+        found = [f.result() for f in futures]
     if add:
         for s in found:
             if s.found and not s.other and len(s.matching) >= least \

@@ -147,7 +147,11 @@ def cmd_scan(args, cfg, store):
     queries = list(dict.fromkeys(queries))
     if not queries:
         raise SystemExit("Name the companies to scan, or give a file of them (one a line) with --file")
-    print(scan.text(scan.scan(cfg, queries, add=args.add, least=args.min), args.min, args.add))
+    # Each company to stderr as it finishes (a long list takes minutes); the report itself comes at the end
+    found = scan.scan(cfg, queries, add=args.add, least=args.min,
+                      progress=lambda done, total, s: print(scan.progress_line(done, total, s), file=sys.stderr,
+                                                            flush=True))
+    print(scan.text(found, args.min, args.add))
 
 
 def _roles(source: str, board: str, sample: list, text: str):

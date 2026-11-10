@@ -85,8 +85,12 @@ def test_the_command_reads_a_file(web, watchlist, tmp_path, capsys):
     names = tmp_path / "companies.txt"
     names.write_text("# from a post\nHooli\nNobody Inc\n")
     cli.main(["-c", str(watchlist), "scan", "--file", str(names)])
-    out = capsys.readouterr().out
+    out, err = capsys.readouterr()
     assert out.startswith("2 companies: 1 with a job that passes your filters")
+    # each company on stderr as it finishes, so a long list isn't silent for minutes
+    counters, said = zip(*(line.split(" ", 1) for line in err.splitlines()), strict=True)
+    assert counters == ("[1/2]", "[2/2]")  # in the order they finish, which threads decide
+    assert sorted(said) == ["Hooli: lever:hooli, 1 matching", "Nobody Inc: no board found"]
     assert out.index("Hooli: lever:hooli") < out.index("Nobody Inc:")  # matching ones first
     cli.main(["-c", str(watchlist), "scan", "Hooli", "--add", "--min", "2"])
     assert "0 added" in capsys.readouterr().out and "lever:hooli" not in watching(watchlist)
