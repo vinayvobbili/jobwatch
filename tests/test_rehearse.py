@@ -70,6 +70,16 @@ def test_page_talks_only_to_jobwatch_ui_and_never_to_cloud_speech(sheet):
     assert set(re.findall(r'post\("(/rehearse/\w+)', page)) == {"/rehearse/transcribe", "/rehearse/feedback"}
 
 
+def test_page_has_theme_and_width_controls_and_respects_reduced_motion():
+    page = rehearse.build("Initech", [drill.Card("Why?", "Because. Latency.")])
+    for group, choices in (("theme", ["system", "light", "dark"]), ("width", ["standard", "wide", "full"])):
+        seg = re.search(rf'<div class="seg" id="{group}"[^>]*>(.*?)</div>', page).group(1)
+        assert re.findall(r'data-v="(\w+)"', seg) == choices   # System first
+    assert ':root[data-theme="dark"]' in page and "prefers-color-scheme: dark" in page
+    assert "prefers-reduced-motion: reduce" in page
+    assert 'id="progress"' in page and 'class="title" id="sheet"' in page
+
+
 def test_page_script_parses(tmp_path):
     node = shutil.which("node")
     if not node:
