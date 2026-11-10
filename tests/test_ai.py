@@ -163,6 +163,44 @@ def test_local_asks_for_a_model_server_when_none_answers(monkeypatch):
     assert s["local"]["steps"] == [{"text": ai.LOCAL_STEP}] and "LOCAL_LLM_URL" in ai.LOCAL_STEP
 
 
+def old_shortlist(monkeypatch):
+    """A shortlist-ai from before the model server: its local backend loads the model in this process."""
+    made = []
+    backends = types.ModuleType("shortlist_ai.backends")
+    backends._load_local_generator = lambda name: made.append(name)
+    backends.get_backend = lambda *a: made.append(a)
+    package = types.ModuleType("shortlist_ai")
+    package.backends = backends
+    monkeypatch.setitem(sys.modules, "shortlist_ai", package)
+    monkeypatch.setitem(sys.modules, "shortlist_ai.backends", backends)
+    return made
+
+
+def test_a_shortlist_that_loads_the_local_model_in_process_is_refused(monkeypatch):
+    """jobwatch ui scored with the local backend in the background, and a shortlist-ai 0.2.0 loaded Qwen into the
+    ui's own process: 5 GB of GPU memory held for good, and the shared model server ran out beside it."""
+    from jobwatch import score
+
+    made = old_shortlist(monkeypatch)
+    assert "loads the local model into jobwatch's own process" in score.local_loads_in_process()
+    assert score.local_loads_in_process(types.SimpleNamespace()) == ""  # one that asks the server
+    pytest.importorskip("pydantic")
+    result = ai.test("local")
+    assert not result["ok"] and score.UPDATE_HINT in result["error"] and made == []  # refused before loading
+
+
+def test_the_local_backend_never_puts_a_model_library_in_this_process():
+    """Whatever shortlist-ai is installed: the local backend is refused or asks the server, and neither imports
+    mlx or torch here (a fresh interpreter, so nothing this test run imported counts)."""
+    pytest.importorskip("shortlist_ai")
+    code = ("import sys; from jobwatch import score\n"
+            "if not score.local_loads_in_process():\n"
+            "    from shortlist_ai.backends import get_backend; get_backend('local')\n"
+            "print(sorted(m for m in ('mlx.core', 'mlx_lm', 'torch') if m in sys.modules))")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout
+    assert out.strip() == "[]"
+
+
 # save_key
 
 

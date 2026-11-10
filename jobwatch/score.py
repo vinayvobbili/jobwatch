@@ -99,6 +99,19 @@ _FIXED_PROMPTS = (
 UPDATE_HINT = "pip install -U shortlist-ai"
 
 
+def local_loads_in_process(backends=None) -> str:
+    """Why the local backend can't be used, or "": a shortlist-ai from before the shared model server loads the
+    model into this process (mlx_lm.load, its _load_local_generator), and `jobwatch ui` is a long-running one: it
+    held ~5 GB of GPU memory from its first local score on, leaving the shared server (LOCAL_LLM_URL) too little to
+    run. So that kind is refused, never run."""
+    if backends is None:
+        from shortlist_ai import backends
+    if hasattr(backends, "_load_local_generator"):
+        return (f"this shortlist-ai loads the local model into jobwatch's own process instead of asking the local "
+                f"model server (LOCAL_LLM_URL): {UPDATE_HINT}")
+    return ""
+
+
 def _editable_prompts():
     """shortlist-ai's prompts by name ({name: Prompt}, see shortlist_ai.prompts), or None when it's missing or too
     old to take edited prompts."""
@@ -207,6 +220,8 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
         raise ScoringUnavailable(f"scoring.prompts: {problem}")
     edits = {"prompts": dict(prompts)} if prompts else {}  # none: works with a shortlist-ai from before prompts
     if backend == "claude" and (problem := load_api_key(keychain, key_command)):
+        raise ScoringUnavailable(problem)
+    if backend == "local" and (problem := local_loads_in_process()):
         raise ScoringUnavailable(problem)
 
     progress = progress or (lambda msg: None)

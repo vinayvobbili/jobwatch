@@ -191,7 +191,7 @@ def choices(chain: list[tuple[str, str]], ready: dict[str, bool], defaults: dict
 def test(backend: str, model: str = "", keychain: str = "", key_command: str = "") -> dict:
     """One small call to the model: {"ok": True, "seconds": ..., "model": ...} or {"ok": False, "error": ...}.
     The local model loads first (a minute or more the first time)."""
-    from .score import load_api_key
+    from .score import load_api_key, local_loads_in_process
 
     if backend not in BACKENDS:
         return {"ok": False, "error": f"unknown backend {backend!r}"}
@@ -205,6 +205,8 @@ def test(backend: str, model: str = "", keychain: str = "", key_command: str = "
         ok: bool
 
     if backend == "claude" and (problem := load_api_key(keychain, key_command)):
+        return {"ok": False, "error": problem}
+    if backend == "local" and (problem := local_loads_in_process()):
         return {"ok": False, "error": problem}
     start = time.monotonic()
     try:
