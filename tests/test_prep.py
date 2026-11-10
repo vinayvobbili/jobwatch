@@ -140,6 +140,7 @@ def test_sheet(setup):
     for text in ("# Prep: Staff Detection Engineer (R0123456), Initech", "Recruiter call Tuesday",
                  "  - You: Built Python", "**Why us?** Detection at scale.", "## Be ready to be honest about"):
         assert text in md, text
+    assert "**Stage:** screening  \n**Applied:**" in md and "  \n**Next step:** Recruiter" in md and " · **" not in md
     store.set_status([job.key], "interviewing")
     assert prep.build(cfg, store, job.key).expect == prep.INTERVIEW_QUESTIONS
 

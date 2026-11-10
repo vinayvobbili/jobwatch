@@ -386,7 +386,7 @@ def markdown(s: Sheet) -> str:
     track = [f"**Stage:** {s.status}"] + [f"**{label}:** {v}" for label, v in
                                          (("Applied", s.applied_at), ("Next step", s.next_step),
                                           ("Follow up", s.follow_up)) if v]
-    out.append(" · ".join(track))
+    out.append("  \n".join(track))  # one fact per line: the reader pauses after each
     if s.note:
         out += ["", "**Notes** (newest first):"] + [f"- {day + ': ' if day else ''}{text}"
                                                      for day, text in note_entries(s.note)]
