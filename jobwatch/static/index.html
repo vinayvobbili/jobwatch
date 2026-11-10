@@ -3802,7 +3802,7 @@ function onboardJobs(ctx) {
   };
   const howCtl = segmented(WORK_STYLES, how, v => { how = v; sync(); });
   sync();
-  const target = textInput(targetText(s.pay || {}), "e.g. 180000, or 170000-200000");
+  const target = textInput(targetText(s.pay || {}), "e.g. 180000, or 170000-190000");
   const keywords = new Set();
   const ideas = h("div", {});
   const chips = (title, list, add) => h("div", { class: "small", style: "margin-top:8px" }, title, " ",
@@ -3832,7 +3832,7 @@ function onboardJobs(ctx) {
       field("Job titles you want", titles, "One per line; a title must contain one."),
       field("How do you want to work?", h("div", { class: "stack" }, howCtl, country), null, "wide"),
       placesField,
-      field("Pay target (per year)", target, "What you'd like to be offered: a number, or a range like 170000-200000.")),
+      field("Pay target (per year)", target, "What you'd like to be offered: a number, or a range like 170000-190000.")),
     ideas,
     onboardActions(ctx, async () => {
       const locations = workLocations(how, placeLines(places.value));
@@ -4808,7 +4808,7 @@ function rankPicker(options, saved) {
   };
 }
 
-// The pay target as written ("180000" or "170000-200000"), and back: {target, target_max} for the watchlist.
+// The pay target as written ("180000" or "170000-190000"), and back: {target, target_max} for the watchlist.
 function targetText(p) { return p.target_max ? `${p.target}-${p.target_max}` : String(p.target ?? ""); }
 function targetValues(text) {
   const t = text.trim();
@@ -4913,11 +4913,11 @@ function mattersField(s) {
 // Settings' first card: goals, pay target and floor, and the Comps weights.
 function goalsCard(s) {
   const p = s.pay || {}, form = goalsForm(s), weights = weightSliders(s);
-  const target = textInput(targetText(p), "e.g. 180000, or 170000-200000"), floor = numInput(p.floor, "e.g. 150000", { step: 5000 });
+  const target = textInput(targetText(p), "e.g. 180000, or 170000-190000"), floor = numInput(p.floor, "e.g. 150000", { step: 5000 });
   const el = setCard("goals", "Your goals", "what you want next: it shapes how Comps scores a job's career value",
     form.aboutField, form.questions,
     h("div", { class: "fields" },
-      field("Pay target (per year)", target, "What you'd like to be offered: a number, or a range like 170000-200000. Comps scores pay against it."),
+      field("Pay target (per year)", target, "What you'd like to be offered: a number, or a range like 170000-190000. Comps scores pay against it."),
       field("Lowest you'd accept (private)", floor, "Private: kept in your watchlist file, never shown anywhere else on the page " +
         "and never sent to Claude.")),
     h("h3", { style: "margin-top:18px" }, "How Comps weighs a job", " ", h("span", { class: "hint" }, "each share of the whole")),

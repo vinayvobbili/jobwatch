@@ -267,7 +267,7 @@ def test_the_suggestion_weighs_pay_fit_progress_and_health(tracked):
     # layoffs -25, shrinking -10, thin funding -15 from 70
     assert globex["parts"]["health"] == {"score": 20, "input": "recent layoffs, shrinking headcount, "
                                                                 "thin funding ($12.0M raised)", "known": True}
-    # pay is the middle of the range posted ($150K-$200K): a band's top isn't what anyone is paid
+    # pay is the middle of the range posted ($160K-$190K): a band's top isn't what anyone is paid
     assert globex["reason"] == ("Posted pay $175K is 10% under your $180K-$210K target, but its health counts against "
                                 "it: recent layoffs, shrinking headcount, thin funding ($12.0M raised).")
     assert comps.suggestion_text(s).startswith("Suggestion (pay vs your $180K-$210K target; weights: career 25%, "
