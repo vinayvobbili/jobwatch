@@ -280,12 +280,24 @@ file aren't kept). On the page, the same list is on Today with **Add** and **Dis
 `list_suggested_boards` gives each company's `add_board` arguments, and `dismiss_suggested_board` drops one.
 
 To stop adding boards by hand, turn on `suggestions.auto_watch`. Each check then adds a company's board when you've
-applied there (and haven't heard no), it has an office near you (`filters.nearby_offices`), or it has two or more
-matching jobs. The board has to be proven first: one of the company's jobs links to it, or, for a board found under
+applied there (and haven't heard no), it has an office near you (`filters.nearby_offices`), or it has
+`suggestions.min_jobs` matching jobs (two unless set; one watches every company with a job you'd take). The board has to be proven first: one of the company's jobs links to it, or, for a board found under
 the company's name, one of its job titles (three words or more, level aside) is open there. A guess that isn't proven
 stays a suggestion, for you to judge. A link can show a careers site on the company's own domain, which no name would
 find. Up to 10 boards are added and 10 companies looked into per check, each at most once a week, so a long list joins
 over a few days. What was added shows on the Activity tab, and a dismissed company stays out.
+
+Alerts only bring a sample of each site's jobs, so a list of companies hiring (a post, an investor's portfolio, a
+ranking) can name ones jobwatch has never seen. `jobwatch scan` checks them all at once: it finds each one's board,
+reads it the way a check does, and lists the jobs that pass your filters, companies with one first. `--add` watches
+each board with one of them (`--min N` for more): a list you picked is worth more than an alert's sample, where a
+single job is often a staffing firm's, so `suggestions.min_jobs` isn't used. A board whose roles name another
+company (one guessed from a shared name) is reported and never added.
+
+```bash
+jobwatch scan Hooli Umbrella "Initech Labs"   # names, careers-page links or source:board entries
+jobwatch scan --file hiring.txt --add         # one a line, # for comments; - reads stdin
+```
 
 A board that has failed or come back empty for three checks over at least three days is said once on the Activity
 tab, in case the company moved to another job system; if every board fails at once, that's your network, and it counts

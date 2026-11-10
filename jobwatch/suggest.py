@@ -17,7 +17,8 @@ does; a dismissed one isn't suggested again.
 
 With suggestions.auto_watch on, each check does the accepting (see auto_watch): a board goes on the watchlist when
 one of the company's jobs is on it and the person has applied there, the company has an office near them, or it has
-several matching jobs. A board only guessed from the company's name never does: it can be another company's.
+suggestions.min_jobs matching jobs (2 unless set). A board only guessed from the company's name never does: it can be
+another company's.
 """
 
 from __future__ import annotations
@@ -40,7 +41,6 @@ from .store import ENDED, MANUAL, STAGES, Store
 # added by hand is queued unless told otherwise, filtered out or not.)
 ENGAGED = tuple(s for s in STAGES if s not in ENDED)
 
-AUTO_MIN_JOBS = 2  # matching jobs that make a company worth watching on their own
 AUTO_ADDS = 10     # boards added per check: a long list of suggestions joins the watchlist over a few days
 AUTO_LOOKS = 10    # companies looked into per check: looking one up can take dozens of requests
 AUTO_RETRY = timedelta(days=7)  # a company looked into isn't looked into again sooner
@@ -299,8 +299,8 @@ def find_job_board(store: Store, s: Suggestion, get=None, page=None):
 
 def worth_watching(cfg: Config, s: Suggestion) -> bool:
     """The rules for watching a company's board without being asked: an application in flight there, an office near
-    the person, or several matching jobs."""
-    return bool(s.engaged) or len(s.jobs) >= AUTO_MIN_JOBS or any(
+    the person, or suggestions.min_jobs matching jobs."""
+    return bool(s.engaged) or len(s.jobs) >= cfg.suggest.min_jobs or any(
         excluded_company(j, cfg.filters_for(j).nearby_offices) for j in s.jobs)
 
 
@@ -335,7 +335,7 @@ def why_watched(cfg: Config, s: Suggestion) -> str:
         return "you applied there"
     if any(excluded_company(j, cfg.filters_for(j).nearby_offices) for j in s.jobs):
         return "an office near you"
-    return f"{len(s.jobs)} matching jobs"
+    return f"{len(s.jobs)} matching job{'s' if len(s.jobs) != 1 else ''}"
 
 
 def text(found: list[Suggestion]) -> str:

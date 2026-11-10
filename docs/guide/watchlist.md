@@ -79,6 +79,7 @@ suggestions:                              # Companies to watch
   half_life: 30                           # days: a job this old counts half as much as today's
   limit: 10                               # how many companies are listed
   auto_watch: false                       # true: each check adds the boards that meet the rules
+  min_jobs: 2                             # matching jobs that make a company worth watching
 slow_boards:                              # a board this slow to read is read less often
   seconds: 120
   every_days: 2                           # 0: every board on every check

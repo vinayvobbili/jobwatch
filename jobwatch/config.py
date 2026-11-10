@@ -296,6 +296,7 @@ class Suggestions:
     half_life: int = 30  # days: a job that came in this long ago counts half as much as one that came in today
     limit: int = 10      # companies listed, and so the most looked for at once
     auto_watch: bool = False  # each check adds the boards that meet the rules (see suggest.auto_watch)
+    min_jobs: int = 2         # matching jobs that make a company worth watching on their own
 
 
 def _suggestions(raw, path: Path) -> Suggestions:
@@ -307,7 +308,9 @@ def _suggestions(raw, path: Path) -> Suggestions:
                            "days until a job counts half"),
         limit=_between(raw.get("limit", Suggestions.limit), "suggestions.limit", path, 1, 50,
                        "companies listed"),
-        auto_watch=raw.get("auto_watch", False))
+        auto_watch=raw.get("auto_watch", False),
+        min_jobs=_between(raw.get("min_jobs", Suggestions.min_jobs), "suggestions.min_jobs", path, 1, 20,
+                          "matching jobs that make a company worth watching"))
 
 
 @dataclass(frozen=True)
@@ -1262,7 +1265,8 @@ scoring:
 #   half_life: 30          # days: a job this old counts half as much as one from today
 #   limit: 10              # how many companies are listed
 #   auto_watch: false      # true: each check adds a board when one of the company's jobs is on it and you've
-#                          # applied there, it has an office near you, or it has 2+ matching jobs
+#                          # applied there, it has an office near you, or it has min_jobs matching jobs
+#   min_jobs: 2            # matching jobs that make a company worth watching on their own
 
 # A board this slow to read is read less often (0 days: every board on every check; `fetch --all` reads them all):
 # slow_boards:

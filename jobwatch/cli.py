@@ -46,6 +46,7 @@ from . import (
     rehearse,
     report,
     rolekinds,
+    scan,
     scorestats,
     sources,
     speech,
@@ -136,6 +137,17 @@ def _watch(args, query: str, boards: list[tuple[str, str]]):
     cfg = config.add_board(config.locate(args.config), f"{source}:{board}", name)
     print(f"    Watching {source}:{board}{f' as {name}' if name else ''} ({cfg.path}; the old file is kept as "
           f"{cfg.path.name}.bak): `jobwatch fetch` reads it.")
+
+
+def cmd_scan(args, cfg, store):
+    """`scan`: a list of companies checked once against the filters (see scan.py)."""
+    queries = list(args.company)
+    for path in args.file or ():
+        queries += scan.names((sys.stdin.read() if path == "-" else Path(path).read_text()).splitlines())
+    queries = list(dict.fromkeys(queries))
+    if not queries:
+        raise SystemExit("Name the companies to scan, or give a file of them (one a line) with --file")
+    print(scan.text(scan.scan(cfg, queries, add=args.add, least=args.min), args.min, args.add))
 
 
 def _roles(source: str, board: str, sample: list, text: str):
@@ -1225,6 +1237,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--add", action="store_true", help="watch the board found (the watchlist is rewritten, the old "
                    "one kept as .bak); with several found, give the one to add as source:board")
     p.set_defaults(func=cmd_find, needs_config=False)
+
+    p = sub.add_parser("scan", help="check a list of companies (a post naming who's hiring, an investor's "
+                       "portfolio) against your filters: each one's board, its jobs that pass, and with --add, "
+                       "watch the ones with any")
+    p.add_argument("company", nargs="*", help="company names, careers-page links or source:board entries")
+    p.add_argument("--file", action="append", metavar="FILE",
+                   help="a file of them, one a line (# starts a comment); - reads them from stdin")
+    p.add_argument("--add", action="store_true", help="watch each company's board that has --min matching jobs "
+                   "(the watchlist is rewritten, the old one kept as .bak)")
+    p.add_argument("--min", type=int, default=1, metavar="N", help="matching jobs that get a board added (default "
+                   "1: a list you picked is worth more than an alert's sample, which suggestions.min_jobs judges)")
+    p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("fetch", help="check every board and record new roles")
     p.add_argument("--reread", nargs="+", default=[], metavar="BOARD",
