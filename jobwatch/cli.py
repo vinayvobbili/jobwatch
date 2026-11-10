@@ -56,7 +56,7 @@ from . import (
     tailor,
 )
 from .config import BACKENDS, ConfigError, duration, fallback_entry
-from .filters import KINDS, rejection
+from .filters import KINDS, rejection, staffing_firm
 from .rounds import ROUNDS
 from .score import AGY_WORKERS, ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
 from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, STAGES, STATUSES, Store, day, day_start
@@ -442,6 +442,8 @@ def cmd_show(args, cfg, store):
         print(f"Link: {job.link_note}")
     if same := dupes.check(store, job.key):
         print(f"Check: {same.line}")
+    if staffing := staffing_firm(job):
+        print(f"Check: {staffing}")
     if (contacts := load_contacts(cfg)) and (known := contacts.at(job.display_company, job.company)):
         print(f"You know: {report.people(known, most=10)}")
     if home := store.candidate_home(job):

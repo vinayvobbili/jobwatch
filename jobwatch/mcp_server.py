@@ -41,6 +41,7 @@ from . import (
     tailor,
     watch,
 )
+from .filters import staffing_firm
 from .score import resume_id
 from .store import Store
 from .watch import build_digest, fetch_all, load_contacts, queue, save_job, set_link, unscored_reason, watched_name
@@ -356,10 +357,12 @@ def get_job(key: Key) -> dict:
     applied to, queued or skipped that this one is (maybe) the same opening as: key, title, status, date, why, strong (a
     shared req or posting id; false: the same title only, so check it's a different opening), reposted, and
     text, the warning to heed; null when there's none. Check it before drafting a referral request or an
-    application. pay_sources has one entry per pay source, in order: posted (the posting's range), levels
-    (Levels.fyi), lca (H-1B filings), recruiter (what set_comp kept), glassdoor (only what the person typed in:
-    never fetched) and ask (the base to ask for); each is {label, value, reason, blank, ...}: value is null when
-    the source has nothing, and reason says why (blank is TBD when it will be known later, none or off).
+    application. staffing_firm, when the posting is from a staffing or recruiting agency, is the warning to heed
+    (ask the client's name, and full-time vs contract); null otherwise. pay_sources has one entry per pay source,
+    in order: posted (the posting's range), levels (Levels.fyi), lca (H-1B filings), recruiter (what set_comp kept),
+    glassdoor (only what the person typed in: never fetched) and ask (the base to ask for); each is {label, value,
+    reason, blank, ...}: value is null when the source has nothing, and reason says why (blank is TBD when it will be
+    known later, none or off).
     lca_pay, once `jobwatch lca update` has been run, is the base pay the company filed for H-1B
     hires in titles like this one (median, 25th-75th percentile, count, wage levels, examples; U.S. DOL LCA
     disclosures): base only, not total compensation. Use it to tailor a resume or decide whether to apply; for
@@ -375,7 +378,7 @@ def get_job(key: Key) -> dict:
                 "link_note": job.link_note or None,
                 "pay": job.pay(), "pay_sources": paysources.as_dict(paysources.gather(cfg, store, job, result, est)),
                 "locations": job.places, "text": job.to_text(), **rec,
-                "duplicate_of": same.to_dict() if same else None, "fit": fit,
+                "duplicate_of": same.to_dict() if same else None, "staffing_firm": staffing_firm(job), "fit": fit,
                 "unscored_reason": None if fit else unscored_reason(cfg, store, job),
                 "contacts": known.at(job.display_company, job.company) if known else [],
                 "find_referral": contacts.linkedin_search(job.display_company),

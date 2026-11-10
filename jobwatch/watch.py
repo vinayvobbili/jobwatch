@@ -26,6 +26,7 @@ from .filters import (
     relevance,
     remote_offered,
     search_terms,
+    staffing_firm,
     title_ok,
 )
 from .models import Job
@@ -480,6 +481,8 @@ def warnings(job: Job, f: Filters) -> list[str]:
             where += f"; the posting offers remote by arrangement (\"{offer}\"): ask the recruiter about it"
         out.append(where)
     out += red_flags(job, f)
+    if staffing := staffing_firm(job):
+        out.append(staffing)
     return out
 
 

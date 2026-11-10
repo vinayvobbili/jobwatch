@@ -273,6 +273,34 @@ def red_flags(job: Job, f: Filters) -> list[str]:
     return out
 
 
+STAFFING_WARNING = "staffing firm: ask the client's name, and full-time vs contract (W-2, C2C)"
+
+# What only an agency's posting says: it speaks for a client, or names the contract terms agencies sell.
+_AGENCY_PHRASE = re.compile(
+    r"on behalf of (?:our|its|their) client|our client(?: is (?:seeking|looking|hiring)|,? an?\b)|"
+    r"\bc2c\b|corp(?:oration)?[- ]to[- ]corp(?:oration)?|\bw-?2 (?:contract|only|or c2c)|contract[- ]to[- ]hire|"
+    r"(?:we are|is) an? (?:\w+ ){0,2}(?:staffing|recruiting) (?:firm|agency|company)|"
+    r"\b(?:staffing|talent) solutions\b|\brecruiting firm\b|\bstaffing (?:firm|agency)\b", re.I)
+# Names that are an agency's alone, and ones (Talent, Solutions...) that any company might have.
+_AGENCY_NAME = re.compile(r"\b(?:staffing|recruiting|recruitment)(?: (?:group|inc\.?|llc|solutions))?$", re.I)
+_MAYBE_AGENCY_NAME = re.compile(r"\b(?:talent|consulting group|solutions)$", re.I)
+_CONTRACT_WORDS = re.compile(r"\bstaffing\b|\bcontract\b|\bclient\b", re.I)
+
+
+def staffing_firm(job: Job) -> str | None:
+    """The warning for a posting from a staffing or recruiting agency (never a filter: it stays visible), or None.
+    Sure signs: the text speaks for "our client", or says C2C, W2 contract, contract-to-hire, or that the company is
+    a staffing firm; or a name ending in Staffing/Recruiting. A name ending in Talent, Solutions or Consulting Group
+    counts only with the word staffing, contract or client in the text. One "contract" elsewhere, or a big
+    employer's "Talent Acquisition" team, says nothing."""
+    name = job.display_company.strip()
+    text = f"{job.title}\n{job.description}"
+    if _AGENCY_PHRASE.search(text) or _AGENCY_NAME.search(name) or \
+            (_MAYBE_AGENCY_NAME.search(name) and _CONTRACT_WORDS.search(text)):
+        return STAFFING_WARNING
+    return None
+
+
 def relevance(job: Job, keywords: dict[str, float]) -> tuple[float, list[str]]:
     """A cheap, explainable ranking: the weights of the keywords the posting mentions, doubled in the title.
 
