@@ -252,6 +252,19 @@ def test_kokoro_gets_the_security_words(fake_slidecast, tmp_path):
     assert fake_slidecast["reel"]["tts"].tts.kw == {"phonetic": drill.SAY}
 
 
+def test_render_gives_the_gpu_cache_back_even_when_stopped(fake_slidecast, monkeypatch, tmp_path):
+    cleared = []
+    mx = types.ModuleType("mlx.core")
+    mx.clear_cache = lambda: cleared.append(True)
+    monkeypatch.setitem(sys.modules, "mlx.core", mx)
+    segs = drill.segments([drill.Card("Q?", "A.")], "T", pause=0)
+    drill.render(segs, tmp_path / "a.mp4", tts=FakeTTS(), renderer=object())
+    fake_slidecast["stop"] = True
+    with pytest.raises(KeyboardInterrupt):
+        drill.render(segs, tmp_path / "b.mp4", tts=FakeTTS(), renderer=object())
+    assert cleared == [True, True]
+
+
 def test_a_render_stopped_part_way_keeps_the_last_good_video(fake_slidecast, tmp_path):
     out = tmp_path / "drill.mp4"
     out.write_bytes(b"last good video")

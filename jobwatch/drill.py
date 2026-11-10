@@ -18,6 +18,7 @@ import importlib.util
 import mimetypes
 import re
 import shutil
+import sys
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -375,4 +376,14 @@ def render(segs: list[Segment], out: Path, tts=None, renderer=None) -> Path:
         part.replace(out)
     finally:
         part.unlink(missing_ok=True)
+        _free_gpu()
     return out
+
+
+def _free_gpu() -> None:
+    """Give MLX's buffer cache back. Kokoro runs in this process, and a long-lived one (`jobwatch ui`) would keep
+    ~5 GB of GPU memory after the video, leaving the shared local model server (local-llm) too little on a 16 GB
+    Mac: it ran out of GPU memory on a 3,000-token request."""
+    mx = sys.modules.get("mlx.core")
+    if mx is not None:
+        mx.clear_cache()
