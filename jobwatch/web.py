@@ -49,6 +49,7 @@ from . import (
     learn,
     levels,
     logos,
+    logtail,
     mock,
     onboard,
     paysources,
@@ -931,6 +932,11 @@ class App:
                             "pay": self.pay.running}}
         return self._with_store(run)
 
+    def get_activity_logs(self, q) -> dict:
+        """The last lines of each log the watchlist names (ui.activity_logs), newest first. Nothing in the
+        request picks a file: only the configured ones are read."""
+        return {"logs": logtail.activity_logs(self._cfg().ui.activity_logs)}
+
     def get_checked(self, q) -> dict:
         """When the boards were last checked, and whether a check is running: see Refresher.status."""
         return self._with_store(self.refresher.status)
@@ -1601,6 +1607,7 @@ ROUTES = {
     ("POST", "/api/fetch"): App.post_fetch,
     ("GET", "/api/checked"): App.get_checked,
     ("GET", "/api/activity"): App.get_activity,
+    ("GET", "/api/activity-logs"): App.get_activity_logs,
     ("GET", "/api/digest"): App.get_digest,
     ("GET", "/api/hidden"): App.get_hidden,
     ("GET", "/api/queue"): App.get_queue,

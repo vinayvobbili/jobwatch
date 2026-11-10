@@ -330,6 +330,43 @@ def _slow_boards(raw, path: Path) -> SlowBoards:
                             "days between reads of a slow board"))
 
 
+@dataclass(frozen=True)
+class ActivityLog:
+    """One entry of ui.activity_logs: a text log (a program's, one line per event, often starting with a
+    date and time) that Activity shows beside jobwatch's own. Read only; `path` is expanded per user."""
+    name: str
+    path: Path
+
+
+@dataclass(frozen=True)
+class Ui:
+    """ui in the watchlist: activity_logs, other programs' log files Activity also shows (each last lines)."""
+    activity_logs: tuple[ActivityLog, ...] = ()
+
+
+def _ui(raw, path: Path) -> Ui:
+    raw = _section(raw, "ui", Ui, path, "{activity_logs: [{name: Globex watcher, path: ~/logs/globex.log}]}")
+    logs = raw.get("activity_logs", [])
+    example = "activity_logs: [{name: Globex watcher, path: ~/logs/globex.log}]"
+    if not isinstance(logs, list):
+        raise ConfigError(f"{path}: ui.activity_logs looks like {example}, got {logs!r}")
+    out: list[ActivityLog] = []
+    for entry in logs:
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{path}: ui.activity_logs entries look like {{name: Globex watcher, path: "
+                              f"~/logs/globex.log}}, got {entry!r}")
+        unknown = set(entry) - {"name", "path"}
+        if unknown:
+            raise ConfigError(f"{path}: unknown ui.activity_logs setting(s): {', '.join(sorted(unknown))}")
+        name, where = entry.get("name"), entry.get("path")
+        if not isinstance(name, str) or not name.strip() or not isinstance(where, str) or not where.strip():
+            raise ConfigError(f"{path}: each ui.activity_logs entry needs a name and a path, got {entry!r}")
+        if any(name.strip() == x.name for x in out):
+            raise ConfigError(f"{path}: ui.activity_logs names {name.strip()} twice")
+        out.append(ActivityLog(name.strip(), Path(os.path.expandvars(where)).expanduser()))
+    return Ui(tuple(out))
+
+
 # What the Comps suggestion weighs (see comps.py), as a share of its score, when the watchlist doesn't say.
 COMP_WEIGHTS = {"career": 0.25, "pay": 0.30, "fit": 0.20, "progress": 0.10, "health": 0.15}
 
@@ -580,6 +617,7 @@ class Config:
     learn_jobs: int = 5        # learning.jobs: example jobs listed with each skill
     suggest: Suggestions = field(default_factory=Suggestions)
     slow_boards: SlowBoards = field(default_factory=SlowBoards)
+    ui: Ui = field(default_factory=Ui)
     theme: str = "system"      # the page: see THEMES and WIDTHS
     width: str = "standard"
     today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
@@ -793,12 +831,12 @@ SETTINGS = ("companies", "filters", "keywords", "focus", "resume", "connections"
             "stories", "resume_kit", "scoring",
             "chat", "prep",
             "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
-            "slow_boards", "fetch_every")
+            "slow_boards", "ui", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
 # A company's page lists the open roles you haven't acted on that pass every filter Today uses (matches), or all
-# of them (all). Jobs you queued, applied to or skipped are listed either way.
+# of them (all). Postings you queued, applied to or skipped are listed either way.
 COMPANY_VIEWS = ("matches", "all")
 
 
@@ -1087,7 +1125,7 @@ def load(explicit: str | Path | None = None) -> Config:
         timeline=timeline, near=_near(learning, filters),
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
         suggest=_suggestions(raw.get("suggestions"), path),
-        slow_boards=_slow_boards(raw.get("slow_boards"), path),
+        slow_boards=_slow_boards(raw.get("slow_boards"), path), ui=_ui(raw.get("ui"), path),
         theme=theme, width=width, today=today, company_view=company_view,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
         quiet=_quiet(raw.get("quiet"), path),
@@ -1274,6 +1312,11 @@ scoring:
 # slow_boards:
 #   seconds: 120
 #   every_days: 2
+
+# Other programs' log files, shown on Activity beside jobwatch's own (the last 50 lines, newest first; read only):
+# ui:
+#   activity_logs:
+#     - {name: Globex watcher, path: "~/Library/Logs/globex-watcher.log"}
 
 # Skills to build:
 # learning:

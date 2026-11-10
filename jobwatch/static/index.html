@@ -847,6 +847,11 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .act details summary { cursor: pointer; }
 .act details ul { margin: 6px 0 0; padding-left: 18px; }
 .act details li { overflow-wrap: anywhere; }
+.act .src-badge { flex: none; align-self: center; font-size: 11.5px; font-weight: 700; padding: 2px 10px;
+  border-radius: 999px; color: #fff; background: var(--grad); letter-spacing: .02em; }
+.act .what.logline { font-weight: 500; font-variant-numeric: tabular-nums; }
+.quiet-note { color: var(--muted); text-align: center; padding: 22px 0; font-size: 14px; }
+.act .when.sec { width: 82px; }
 .now-line { display: flex; align-items: center; gap: 8px; font-size: 13.5px; margin: 4px 0; }
 .now-line .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none;
   animation: pulse 1.6s ease-in-out infinite; }
@@ -4770,7 +4775,7 @@ function companyFinder(has, add) {
               try { await add(hit, input.value.trim()); b.replaceWith(h("span", { class: "muted small" }, "added")); }
               catch (err) { b.disabled = false; b.replaceWith(h("span", { class: "error small" }, err.message)); }
             } }, "Add")))
-        : [h("div", { class: "muted small" }, "No Greenhouse, Lever, Ashby, Workday, Eightfold, Rippling, SmartRecruiters, Avature, iCIMS or Jobvite board found. Try a link to their " +
+        : [h("div", { class: "muted small" }, "No Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Rippling, SmartRecruiters, Avature, iCIMS, Jobvite, Gem or Recruitee board found, nor one linked from their own careers page. Try a link to their " +
             "careers page or one of their job postings. Some companies use other systems that jobwatch can't read yet.")]));
     } catch (e) { out.replaceChildren(h("div", { class: "error small" }, e.message)); }
     button.disabled = false;
@@ -5452,8 +5457,12 @@ function activityTick() {
 async function renderActivity() {
   // a notice not seen yet (a strong fit, say) opens the list it's in, not the one picked last time; the pick stays
   if (notices.list) { activityView.kind = notices.list; notices.list = null; }
-  if (!ACT_KINDS.some(([k]) => k === activityView.kind)) activityView.kind = ACT_KINDS[0][0];
-  const d = await api("/api/activity?kind=" + activityView.kind);
+  // other programs' logs the watchlist names (ui.activity_logs) get a chip each, beside jobwatch's own lists
+  const logs = (await api("/api/activity-logs")).logs;
+  const kinds = [...ACT_KINDS, ...logs.map(l => ["log:" + l.name, l.name])];
+  if (!kinds.some(([k]) => k === activityView.kind)) activityView.kind = ACT_KINDS[0][0];
+  const log = logs.find(l => "log:" + l.name === activityView.kind);
+  const d = await api("/api/activity?kind=" + (log ? ACT_KINDS[0][0] : activityView.kind));
   // what's worth a look and new since you last looked stands out; looking marks it seen (see watchNotices)
   // (what was new when the tab opened stays marked while it refreshes itself)
   if (!main.classList.contains("quiet")) activityView.seen = remembered("activity.seen", "0");
@@ -5467,14 +5476,14 @@ async function renderActivity() {
   const line = (text, idle) => h("div", { class: "now-line" + (idle ? " idle" : "") }, h("span", { class: "dot" }), text);
   const side = h("div", {},
     panel("Now", now.length ? now.map(t => line(t)) : line("Nothing running", true)),
-    panel("Show", segmented(ACT_KINDS, activityView.kind, k => {
+    panel("Show", segmented(kinds, activityView.kind, k => {
       activityView.kind = k;
       remember("activity.kind", k);
       render();
     })));
   const rows = [];
   let day = "";
-  for (const e of d.events) {
+  for (const e of log ? [] : d.events) {
     const at = new Date(e.at);
     const label = at.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
     if (label !== day) rows.push(h("div", { class: "acts-day" }, day = label));
@@ -5493,6 +5502,22 @@ async function renderActivity() {
       icon(ACT_ICON[e.kind] || "file", 16),
       h("div", { class: "body" }, h("div", { class: "what" }, e.text),
         ACT_BY[e.by] ? h("div", { class: "small muted" }, ACT_BY[e.by]) : null, more)));
+  }
+  if (log) {
+    // a log's last lines, newest first; a line with no time of its own sits under the day above it
+    if (!log.exists) rows.push(h("div", { class: "quiet-note" }, "No log yet"));
+    else if (!log.lines.length) rows.push(h("div", { class: "quiet-note" }, "Nothing in this log yet"));
+    for (const e of log.lines) {
+      const at = e.at ? new Date(e.at) : null;
+      const label = at ? at.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }) : day;
+      if (label && label !== day) rows.push(h("div", { class: "acts-day" }, day = label));
+      rows.push(h("div", { class: "act" },
+        h("span", { class: "when sec", title: at ? `${at.toLocaleString()} (${ago(at.toISOString())})` : null },
+          at ? at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" }) : ""),
+        icon("file", 16),
+        h("div", { class: "body" }, h("div", { class: "what logline" }, e.text)),
+        h("span", { class: "src-badge" }, log.name)));
+    }
   }
   put(pagehead("Activity", "What jobwatch has been doing: checking the boards, reading your job-alert emails, scoring jobs and looking up pay. It updates by itself."),
     layout(side, h("div", {}, rows.length ? rows
