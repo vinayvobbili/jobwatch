@@ -1,5 +1,5 @@
 """Public job boards: Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google, Amazon,
-Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, Comeet and any careers site with a job sitemap.
+Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, Comeet, Gem and any careers site with a job sitemap.
 
 Each publishes a company's open roles as JSON, without an API key: it's what their careers pages are built
 on. Google Careers publishes its roles as an XML feed for job sites instead. Greenhouse, Lever, Ashby and
@@ -1355,6 +1355,25 @@ def _jobvite_read(j: Job, get) -> Job:
     return j
 
 
+def parse_gem(data: list, board: str) -> list[Job]:
+    jobs = []
+    for j in data:
+        offices = [(o.get("location") or {}).get("name") or o.get("name") or "" for o in j.get("offices") or []]
+        kind = str(j.get("location_type") or "").lower()
+        job = Job(
+            source="gem", company=board, id=str(j["id"]), title=(j.get("title") or "").strip(),
+            url=j.get("absolute_url") or f"https://jobs.gem.com/{board}/{j['id']}",
+            locations=split_locations((j.get("location") or {}).get("name", ""), *offices),
+            remote=True if kind == "remote" else None,
+            department=((j.get("departments") or [{}])[0] or {}).get("name") or "",
+            posted=_time(j.get("first_published_at") or j.get("created_at")),
+            description=j.get("content_plain") or html_to_text(j.get("content") or ""),
+        )
+        _salary(job, job.description)
+        jobs.append(job)
+    return jobs
+
+
 # -- Comeet: a careers page at comeet.com/jobs/<company>/<uid> carries every open role, with its text, as JSON in the
 # page itself (COMPANY_POSITIONS_DATA), so one request reads a whole board. Comeet's Careers API needs the company's
 # token, which only the company can hand out. The board is <company>/<uid> (cyera/17.008): the uid is in the
@@ -2008,6 +2027,7 @@ SOURCES = {
     "avature": Source("avature", "", None, "https://{board}/SearchJobs", fetch_avature),
     "icims": Source("icims", "", None, "https://{host}/jobs/search", fetch_icims),
     "jobvite": Source("jobvite", "", None, JOBVITE_LIST, fetch_jobvite),
+    "gem": Source("gem", "https://api.gem.com/job_board/v0/{board}/job_posts/", parse_gem, "https://jobs.gem.com/{board}"),
     "comeet": Source("comeet", "", None, COMEET_PAGE, fetch_comeet),
     "sitemap": Source("sitemap", "", None, "https://{board}/", fetch_sitemap),
     "hn": Source("hn", "", None, "https://news.ycombinator.com/submitted?id=whoishiring", fetch_hn,
@@ -2146,6 +2166,10 @@ def detect(url: str) -> tuple[str, str] | None:
     if host == "jobs.jobvite.com":  # /<company>/jobs, /<company>/job/<id>, or the older /careers/<company>/jobs
         slug = parts[1:2] if parts[:1] == ["careers"] else parts[:1]
         return ("jobvite", slug[0]) if slug and slug[0] not in _JOBVITE_NOT_BOARDS | {"careers"} else None
+    if host == "jobs.gem.com":  # /<board>, /<board>/<job id>
+        return ("gem", parts[0]) if parts and re.fullmatch(r"[\w-]+", parts[0]) else None
+    if host == "api.gem.com":  # /job_board/v0/<board>/job_posts/
+        return ("gem", parts[2]) if parts[:2] == ["job_board", "v0"] and len(parts) > 2 else None
     if host in ("comeet.com", "comeet.co") and parts[:1] == ["jobs"]:  # /jobs/<company>/<uid>[/<slug>/<position uid>]
         board = "/".join(parts[1:3])
         return ("comeet", board) if _COMEET_BOARD.fullmatch(board) else None
@@ -2208,6 +2232,8 @@ def _posting_id(source: str, url: str) -> str | None:
     if source == "jobvite":  # /<company>/job/<id>, with /apply after it for the apply form
         rest = parts[1:] if parts[:1] == ["careers"] else parts
         return rest[2] if len(rest) > 2 and rest[1] == "job" else None
+    if source == "gem":  # jobs.gem.com/<board>/<job id>
+        return parts[1] if len(parts) > 1 and parsed.netloc.lower() == "jobs.gem.com" else None
     if source == "comeet":  # /jobs/<company>/<uid>/<title-slug>/<position uid>
         return parts[4] if len(parts) > 4 and parts[0] == "jobs" else None
     if source == "workable":
