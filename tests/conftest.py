@@ -203,7 +203,7 @@ def server(request, watchlist, web):
 
 def request(port, method, path, body=None, headers=None, host=None, raw=None, with_headers=False):
     """(status, body), or (status, body, headers). `raw` sends bytes as they are instead of JSON."""
-    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=60)  # a loaded Mac can take over 10s
     h = {"Host": host or f"127.0.0.1:{port}", **(headers or {})}
     conn.request(method, path, body=raw if raw is not None else json.dumps(body) if body is not None else None,
                  headers=h)
