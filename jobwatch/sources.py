@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import contextvars
 import html
+import http.client
 import json
 import re
 import threading
@@ -124,8 +125,8 @@ def _read(url: str, timeout: float, body: dict | None, accept: str, headers: dic
                 time.sleep(_wait(e, attempt, most))
                 continue
             raise SourceError(f"{url}: HTTP {e.code}") from None
-        except (urllib.error.URLError, TimeoutError) as e:
-            raise SourceError(f"{url}: {e}") from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
+            raise SourceError(f"{url}: {e}") from None  # a dropped connection (RemoteDisconnected) is one too
     raise SourceError(f"{url}: no answer")  # not reached: the last attempt returns or raises
 
 

@@ -87,3 +87,18 @@ def test_a_careers_page_links_to_the_board(rippling):
     hits = sources.probe("https://careers.acme.example/jobs", page=page)  # the Greenhouse board isn't there
     assert [(s, b, len(jobs)) for s, b, jobs in hits] == [("rippling", "acme-corp", 2)]
     assert sources.probe("https://careers.acme.example/nothing", page=lambda url: "<p>No jobs.</p>") == []
+
+
+def test_a_dropped_connection_counts_as_unreachable(monkeypatch):
+    """A careers page that hangs up (RemoteDisconnected) is a SourceError, never a crash, and probe goes on."""
+    import http.client
+
+    def hang_up(*args, **kwargs):
+        raise http.client.RemoteDisconnected("Remote end closed connection without response")
+
+    monkeypatch.setattr(sources.urllib.request, "urlopen", hang_up)
+    with pytest.raises(sources.SourceError):
+        sources.boards_on_page("https://careers.initech.example/jobs")
+    with pytest.raises(sources.SourceError):  # a link that can't be read says so, as before
+        sources.probe("https://careers.globex.example/jobs")
+    assert sources.probe("Initech") == []  # a name: every guess and its careers page fail, so no board
