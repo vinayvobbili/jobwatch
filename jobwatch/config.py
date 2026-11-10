@@ -368,6 +368,38 @@ def _ui(raw, path: Path) -> Ui:
     return Ui(tuple(out))
 
 
+INCOMING_SOURCES = ("texts", "whatsapp", "gmail", "linkedin")  # what jw-incoming (toolbelt) can poll
+
+
+@dataclass(frozen=True)
+class Incoming:
+    """incoming in the watchlist: which sources jw-incoming polls for new personal messages (sources: a true or
+    false for each of INCOMING_SOURCES; one left out is on) and the Gmail address it reads. jobwatch itself
+    never polls them: jw-incoming reads this section. The app password is in the Keychain, never here."""
+    sources: tuple[str, ...] = INCOMING_SOURCES  # the ones that are on
+    gmail_account: str = ""
+
+
+def _incoming(raw, path: Path) -> Incoming:
+    example = "{sources: {texts: true, whatsapp: true, gmail: true, linkedin: true}, gmail_account: you@example.com}"
+    raw = _section(raw, "incoming", Incoming, path, example)
+    sources = raw.get("sources", {})
+    if not isinstance(sources, dict):
+        raise ConfigError(f"{path}: incoming.sources looks like {{texts: true, whatsapp: true, gmail: true, "
+                          f"linkedin: true}}, got {sources!r}")
+    unknown = set(sources) - set(INCOMING_SOURCES)
+    if unknown:
+        raise ConfigError(f"{path}: unknown incoming.sources setting(s): {', '.join(sorted(map(str, unknown)))} "
+                          f"(sources are {', '.join(INCOMING_SOURCES)})")
+    for name, on in sources.items():
+        if not isinstance(on, bool):
+            raise ConfigError(f"{path}: incoming.sources.{name} is true or false, got {on!r}")
+    account = raw.get("gmail_account", "")
+    if not isinstance(account, str) or (account.strip() and "@" not in account):
+        raise ConfigError(f"{path}: incoming.gmail_account is an email address like you@example.com, got {account!r}")
+    return Incoming(tuple(n for n in INCOMING_SOURCES if sources.get(n, True)), account.strip())
+
+
 # What the Comps suggestion weighs (see comps.py), as a share of its score, when the watchlist doesn't say.
 COMP_WEIGHTS = {"career": 0.25, "pay": 0.30, "fit": 0.20, "progress": 0.10, "health": 0.15}
 
@@ -644,6 +676,7 @@ class Config:
     suggest: Suggestions = field(default_factory=Suggestions)
     slow_boards: SlowBoards = field(default_factory=SlowBoards)
     ui: Ui = field(default_factory=Ui)
+    incoming: Incoming = field(default_factory=Incoming)
     theme: str = "system"      # the page: see THEMES and WIDTHS
     width: str = "standard"
     today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
@@ -858,7 +891,7 @@ SETTINGS = ("companies", "filters", "keywords", "focus", "resume", "connections"
             "stories", "resume_kit", "scoring",
             "chat", "prep",
             "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
-            "slow_boards", "ui", "speech", "fetch_every")
+            "slow_boards", "ui", "incoming", "speech", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -1153,6 +1186,7 @@ def load(explicit: str | Path | None = None) -> Config:
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
         suggest=_suggestions(raw.get("suggestions"), path),
         slow_boards=_slow_boards(raw.get("slow_boards"), path), ui=_ui(raw.get("ui"), path),
+        incoming=_incoming(raw.get("incoming"), path),
         theme=theme, width=width, today=today, company_view=company_view,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
         quiet=_quiet(raw.get("quiet"), path), speech=_speech(raw.get("speech"), path),
@@ -1177,6 +1211,7 @@ def defaults() -> dict:
             "pace": asdict(Pace()),
             "calendar": asdict(Calendar()),
             "speech": asdict(Speech()),
+            "incoming": {"sources": dict.fromkeys(INCOMING_SOURCES, True), "gmail_account": ""},
             "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "target_max", "floor")},
             "comps": {"weights": dict(COMP_WEIGHTS)},
             "goals": {"track": Goals.track},
@@ -1350,6 +1385,12 @@ scoring:
 # ui:
 #   activity_logs:
 #     - {name: Globex watcher, path: "~/Library/Logs/globex-watcher.log"}
+
+# Which sources jw-incoming (toolbelt) polls for new personal messages; a source left out is on. The Gmail
+# app password is in the Keychain (`jw-incoming --set-password you@example.com`), never here:
+# incoming:
+#   sources: {texts: true, whatsapp: true, gmail: true, linkedin: true}
+#   gmail_account: you@example.com
 
 # Skills to build:
 # learning:

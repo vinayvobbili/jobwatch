@@ -2515,7 +2515,7 @@ async function voiceReport(key, m, answers) {
     const scale = Math.max(120, Math.ceil(r.seconds / 30) * 30), c = content && content.answers[i] || {};
     return h("div", { class: "vr-card", style: `animation-delay:${i * 50}ms` },
       h("div", { class: "q" }, `${i + 1}. ${r.question}`),
-      r.length === "untimed" ? null : h("div", { class: "vr-track", title: `Target ${d.target[0]} to ${d.target[1]} seconds` },
+      r.length === "untimed" ? null : h("div", { class: "vr-track", title: `Aim for ${d.target[0]} to ${d.target[1]} seconds` },
         h("div", { class: "vr-zone", style: `left:${d.target[0] / scale * 100}%;width:${(d.target[1] - d.target[0]) / scale * 100}%` }),
         h("div", { class: "vr-dot", style: `left:${Math.min(100, r.seconds / scale * 100)}%` })),
       h("div", { class: "vr-chips" },
@@ -3592,7 +3592,7 @@ async function renderToday() {
     h("div", { class: "hint", style: "margin-top:8px", title: "Only jobs with a fit score: ones not scored yet are left out" }, "Fit score"),
     segmented([[0, "Any"], [60, "60+"], [70, "70+"], [80, "80+"]], v.fit, k => { v.fit = k; drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "The top of the posted range; jobs that don't list pay still show" }, "Top of posted pay"),
-    segmented([[0, "Any"], [150000, "$150K+"], [200000, "$200K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,
+    segmented([[0, "Any"], [150000, "$150K+"], [175000, "$175K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,
       k => { v.pay = k; drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "Jobs with no posting date still show" }, "Posted within"),
     segmented([[0, "Any"], [1, "24h"], [3, "3d"], [7, "7d"], [14, "14d"]], v.posted,
@@ -4213,7 +4213,7 @@ const SET_GROUPS = [
   { id: "today", label: "Today & display", cards: ["today", "display"] },
   { id: "ai", label: "AI & fit scores", cards: ["resume", "usage", "prompts", "chat"] },
   { id: "people", label: "People & pay", cards: ["people", "pay"] },
-  { id: "alerts", label: "Alerts & skills", cards: ["alerts", "suggestions", "skills"] },
+  { id: "alerts", label: "Alerts & skills", cards: ["alerts", "incoming", "suggestions", "skills"] },
   { id: "apply", label: "Applying", cards: ["applicant", "tailor", "extension"] },
 ];
 // The sub tab a name points at: a tab id ("ai"), a card id ("pay") or a card's anchor ("set-pay"); null if none.
@@ -4721,6 +4721,7 @@ const SET_LOOK = {
   people: ["users", 40, "Who you know at companies"], usage: ["dollar", 35, "Which backend scores, and what it cost"],
   prompts: ["pencil", -20, "What the model is told"],
   chat: ["send", 30, "Ask jobwatch"], pay: ["dollar", -60, "Expected pay"], alerts: ["inbox", 10, "Job-alert emails"],
+  incoming: ["inbox", 80, "Texts, WhatsApp, Gmail and LinkedIn"],
   suggestions: ["plus", -10, "Companies worth watching"], skills: ["arrow", 55, "What to learn next"],
   display: ["refresh", -40, "Theme, width and files"],
   applicant: ["users", 70, "Your details for application forms"],
@@ -5069,6 +5070,31 @@ function alertsCard(s) {
     return imap ? { imap } : null;
   };
   el.classList.add("full");
+  return el;
+}
+
+// Which sources jw-incoming polls (incoming): a switch for each, and the Gmail address. The app password is never
+// here: it lives in the Keychain. card.values() gives incoming.
+const INCOMING_LABELS = { texts: "Texts (Messages)", whatsapp: "WhatsApp", gmail: "Gmail",
+  linkedin: "LinkedIn message emails (read from Gmail)" };
+function incomingCard(s) {
+  const cur = s.incoming || {}, d = s.defaults.incoming;
+  const boxes = Object.keys(d.sources).map(n => [n, checkLine((cur.sources || {})[n] ?? d.sources[n], INCOMING_LABELS[n] || n)]);
+  const account = textInput(cur.gmail_account, "e.g. you@example.com");
+  const el = setCard("incoming", "Incoming messages", "which sources jw-incoming polls",
+    h("p", { class: "small muted lead" }, "jw-incoming queues new texts, WhatsApp messages and Gmail for your agent to " +
+      "act on. A source switched off isn't polled at all. LinkedIn messages arrive as Gmail, so they need Gmail's address."),
+    h("div", { class: "fields" },
+      ...boxes.map(([, b]) => h("div", { class: "span3" }, b.el)),
+      field("Gmail address", account, "The mailbox jw-incoming reads (read only).", "span3"),
+      h("p", { class: "small muted span3" }, "The Gmail app password lives in the Keychain: set it in a terminal with " +
+        "`jw-incoming --set-password you@example.com`. It is never shown or typed here.")));
+  el.values = () => {
+    const off = boxes.some(([, b]) => !b.box.checked);
+    // all on is the default, left out; otherwise every source is written, so the file says what is on
+    const sources = off ? Object.fromEntries(boxes.map(([n, b]) => [n, b.box.checked])) : null;
+    return merged({ ...cur, sources: undefined }, { sources, gmail_account: textOf(account) });
+  };
   return el;
 }
 
@@ -5640,7 +5666,7 @@ function renderSettings() {
     return out;
   };
   const chatC = chatCard(s), payC = payCard(s), alertsC = alertsCard(s), goalsC = goalsCard(s);
-  const applicantC = applicantCard(s), extensionC = extensionCard();
+  const applicantC = applicantCard(s), extensionC = extensionCard(), incomingC = incomingCard(s);
   const resumeKit = textInput(s.resume_kit, "resume");
   const tailorC = setCard("tailor", "Tailor resumes", "optional",
     h("p", { class: "small muted lead" }, "The Tailor resume button on a queued job drafts a resume for it with resume-kit " +
@@ -5678,7 +5704,7 @@ function renderSettings() {
         learning: merged(learning, { timeline: timeline.value === D.learning.timeline && !learning.timeline ? null
           : timeline.value, near: textOf(near), jobs: numberOf(exampleJobs) }),
         display, pace: merged(pace, { daily: numberOf(daily), max: numberOf(most) }),
-        pay: merged(payC.values(), goalsC.payValues()), alerts: alertsC.values(),
+        pay: merged(payC.values(), goalsC.payValues()), alerts: alertsC.values(), incoming: incomingC.values(),
         goals: goalsC.goals(), comps: goalsC.weights(), applicant: applicantC.values(), resume_kit: textOf(resumeKit),
         suggestions: merged(sug, { half_life: numberOf(halfLife), limit: numberOf(sugLimit) }),
         fetch_every: every.value === everyNow && (s.fetch_every === null || s.fetch_every === undefined) ? null : every.value });
@@ -5749,6 +5775,7 @@ function renderSettings() {
     chatC,
     payC,
     alertsC,
+    incomingC,
     setCard("suggestions", "Companies to watch", "suggested from alerts, jobs you add and HN posts",
       h("div", { class: "fields" },
         field("Recent counts more", halfLife, "Days: a job this old counts half as much as today's."),

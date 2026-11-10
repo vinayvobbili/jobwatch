@@ -658,7 +658,8 @@ class App:
                 "display": raw.get("display") or {}, "pace": raw.get("pace") or {}, "pay": raw.get("pay") or {},
                 "alerts": raw.get("alerts") or {}, "goals": raw.get("goals") or {},
                 "applicant": raw.get("applicant") or {},
-                "suggestions": raw.get("suggestions") or {}, "comps": raw.get("comps") or {},
+                "suggestions": raw.get("suggestions") or {}, "incoming": raw.get("incoming") or {},
+                "comps": raw.get("comps") or {},
                 # where the history is kept: shown, changed only in the file (a new path starts an empty history)
                 "state": raw.get("state"), "cache": raw.get("cache"),
                 # what each setting left out is, for the page to show
