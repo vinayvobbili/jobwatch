@@ -4,7 +4,9 @@ The server listens on 127.0.0.1. Every API call must carry the token embedded in
 Host header naming this machine, so other websites open in the browser can't read or change anything. The
 exceptions are the calendar feed and the prep sheets folder, whose addresses hold a secret instead (a calendar
 app, or a sheet opened in a tab of its own, can't send the token), and company logos and the page's event stream
-(/events), whose addresses hold the token (an <img> or an EventSource can't send it as a header).
+(/events), whose addresses hold the token (an <img> or an EventSource can't send it as a header). The rehearsal
+page's mic (/rehearse/) takes no token either, since that page is a file: it only turns a recording into text and
+counts how it sounded, and answers no other site's page.
 """
 
 from __future__ import annotations
@@ -56,6 +58,7 @@ from . import (
     prep,
     quiet,
     referrals,
+    rehearse,
     report,
     rolekinds,
     scorestats,
@@ -1459,9 +1462,32 @@ class App:
         if not audio:
             raise ApiError("no audio was sent")
         try:
-            return speech.transcribe(audio, content_type, name)
+            return speech.transcribe(audio, content_type, name, self._speech_url())
         except speech.SpeechUnavailable as e:
             raise ApiError(str(e), e.status) from None
+
+    def _speech_url(self) -> str:
+        """Where a recording is transcribed: the watchlist's speech.url, else speech.speech_url's default."""
+        return speech.speech_url(config.load(self.path).speech.url if self.path.is_file() else "")
+
+    # -- the rehearsal page's mic (rehearse.py): a page opened from a file, so these take no token (see _rehearse)
+
+    def rehearse_status(self) -> dict:
+        """{endpoint, reachable}: where recordings go, and whether something listens there (no request is sent to
+        it, so no model loads), for the page to say what to start before you speak."""
+        url = self._speech_url()
+        return {"endpoint": url, "reachable": speech.reachable(url)}
+
+    def rehearse_feedback(self, body) -> dict:
+        """How one spoken try sounded (rehearse.feedback), from its `transcript`, the sheet's `answer`, the
+        `seconds` it ran and the transcription's `segments`."""
+        transcript, answer = body.get("transcript"), body.get("answer")
+        segments, seconds = body.get("segments") or [], body.get("seconds") or 0
+        if not isinstance(transcript, str) or not isinstance(answer, str):
+            raise ApiError("transcript and answer are text")
+        if not isinstance(segments, list) or isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+            raise ApiError("segments is a list and seconds a number")
+        return rehearse.feedback(transcript, answer, seconds, segments)
 
     def mock_report(self, body) -> tuple[dict, object]:
         """({where the content comes from, delivery}, the report in pieces) for a voice session of a job (`key`):
@@ -1678,8 +1704,72 @@ def make_handler(app: App, token: str, port_ref: list[int]):
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
+            self._cors_headers()
             self.end_headers()
             self.wfile.write(body)
+
+        def _cors_headers(self):
+            """For a /rehearse/ call from an allowed page (see _rehearse): let that page read the answer."""
+            if origin := getattr(self, "cors_origin", ""):
+                # Header names are case-insensitive: these are written in lower case, as HTTP/2 sends them.
+                self.send_header("access-control-allow-origin", origin)
+                self.send_header("vary", "origin")
+
+        def _rehearse_origin(self) -> str | None:
+            """The origin a /rehearse/ call may come from: none (a program on this computer), "null" (the rehearsal
+            page, opened from a file) or this server's own page; None for any other site's page."""
+            origin = self.headers.get("origin", "")  # the lookup ignores case
+            own = {f"http://{h}:{port_ref[0]}" for h in ("127.0.0.1", "localhost", APP_HOST)}
+            return origin if origin in ("", "null") or origin in own else None
+
+        def _rehearse(self, method: str, url):
+            """The rehearsal page's mic (rehearse.py). The page is a file, so it can't hold the token: these calls
+            only turn a recording into text and count how it sounded, and read nothing that's kept. Another site's
+            page can't call them (its origin is refused, and the Host check still stands)."""
+            origin = self._rehearse_origin()
+            if origin is None:
+                return self._json(HTTPStatus.FORBIDDEN, {"error": "only the rehearsal page can call this"})
+            self.cors_origin = origin
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > MAX_UPLOAD:
+                    raise ApiError("that recording is too long (20 MB at most)", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                raw = self.rfile.read(length) if length else b""
+                if method == "GET" and url.path == "/rehearse/status":
+                    data = app.rehearse_status()
+                elif method == "POST" and url.path == "/rehearse/transcribe":
+                    name = (parse_qs(url.query).get("name") or ["answer.webm"])[0]
+                    data = app.mock_transcribe(raw, self.headers.get("Content-Type", ""), name)
+                elif method == "POST" and url.path == "/rehearse/feedback":
+                    body = json.loads(raw or b"{}")
+                    if not isinstance(body, dict):
+                        raise ApiError("send a JSON object")
+                    data = app.rehearse_feedback(body)
+                else:
+                    raise ApiError("not found", HTTPStatus.NOT_FOUND)
+                self._json(HTTPStatus.OK, data)
+            except ApiError as e:
+                self._json(e.status, {"error": str(e)})
+            except (ConfigError, ValueError) as e:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
+            except Exception as e:
+                print(f"jobwatch ui: rehearse: {type(e).__name__}: {e}", file=sys.stderr)
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"{type(e).__name__}: {e}"})
+
+        def do_OPTIONS(self):
+            """The browser's check before the rehearsal page posts a recording (a CORS preflight): /rehearse/ only."""
+            origin = self._rehearse_origin() if self._host_ok() else None
+            if origin is None or not urlparse(self.path).path.startswith("/rehearse/"):
+                return self._json(HTTPStatus.FORBIDDEN, {"error": "not allowed"})
+            self.send_response(HTTPStatus.NO_CONTENT)
+            self.send_header("access-control-allow-origin", origin or "*")
+            self.send_header("access-control-allow-methods", "GET, POST")
+            self.send_header("access-control-allow-headers", "Content-Type")
+            self.send_header("access-control-allow-private-network", "true")
+            self.send_header("access-control-max-age", "600")
+            self.send_header("vary", "origin")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
         def _send_logo(self, body: bytes, ctype: str):
             """A logo or the app's icon: cached a day by the browser, and sandboxed (an SVG opened on its own can't
@@ -1851,6 +1941,8 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 return self._events()
             if url.path.startswith("/ext/"):
                 return self._extension(method, url)
+            if url.path.startswith("/rehearse/"):
+                return self._rehearse(method, url)
             if not url.path.startswith("/api/"):
                 return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
             if not secrets.compare_digest(self.headers.get("X-Jobwatch-Token", ""), token):

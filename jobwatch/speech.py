@@ -1,5 +1,6 @@
-"""Speech to text for the voice mock interview (mock.py): the recording the page made, sent to the shared local
-model server's OpenAI-style /audio/transcriptions, and the words that come back.
+"""Speech to text for the voice mock interview (mock.py) and the rehearsal page's mic (rehearse.py): the recording
+the page made, sent to the shared local model server's OpenAI-style /audio/transcriptions, and the words that come
+back. The watchlist's speech.url names another endpoint.
 
 The server is the one chat and fit scores use (chat.local_url, LOCAL_LLM_URL), so nothing leaves this computer.
 LOCAL_STT_URL names the endpoint itself when speech runs somewhere else. The audio is held in memory only while it
@@ -12,6 +13,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import socket
 import urllib.parse
 import uuid
 
@@ -33,9 +35,22 @@ class SpeechUnavailable(RuntimeError):
         self.status = status
 
 
-def speech_url() -> str:
-    """Where audio is sent: LOCAL_STT_URL, else the local model server's /audio/transcriptions."""
-    return (os.environ.get("LOCAL_STT_URL") or chat.local_url() + PATH).rstrip("/")
+def speech_url(configured: str = "") -> str:
+    """Where audio is sent: the watchlist's speech.url when given, else LOCAL_STT_URL, else the local model server's
+    /audio/transcriptions."""
+    return (configured or os.environ.get("LOCAL_STT_URL") or chat.local_url() + PATH).rstrip("/")
+
+
+def reachable(url: str, timeout: float = 1.0) -> bool:
+    """Whether something listens at the endpoint's host and port. Only a connection is opened: nothing is sent, so
+    no model is loaded to answer it."""
+    parts = urllib.parse.urlsplit(url)
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+        with socket.create_connection((parts.hostname or "", port), timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
 
 
 def _multipart(audio: bytes, name: str, content_type: str, fields: dict[str, str]) -> tuple[bytes, str]:
@@ -58,12 +73,16 @@ def _said(resp: http.client.HTTPResponse) -> str:
     return str(message or resp.reason)
 
 
-def transcribe(audio: bytes, content_type: str = "audio/webm", name: str = "answer.webm") -> dict:
-    """{text, duration, segments} for a recording (duration in seconds, 0 when the server doesn't say). Raises
-    SpeechUnavailable when the server is down or busy, or says no."""
+def transcribe(audio: bytes, content_type: str = "audio/webm", name: str = "answer.webm", url: str = "") -> dict:
+    """{text, duration, segments} for a recording (duration in seconds, 0 when the server doesn't say), sent to url
+    (the watchlist's speech.url) or speech_url()'s default. Raises SpeechUnavailable when the server is down or
+    busy, or says no."""
     if not audio:
         raise ValueError("no audio was sent")
-    url = speech_url()
+    if len(audio) > MAX_AUDIO:
+        raise SpeechUnavailable(f"that recording is too long to transcribe ({MAX_AUDIO // 1024 // 1024} MB at most)",
+                                413)
+    url = speech_url(url)
     parts = urllib.parse.urlsplit(url)
     cls = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
     body, ctype = _multipart(audio, os.path.basename(name) or "answer.webm", content_type or "audio/webm",

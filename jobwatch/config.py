@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import time, timedelta
 from pathlib import Path
 from string import Formatter
+from urllib.parse import urlsplit
 
 import yaml
 from ruamel.yaml import YAML
@@ -438,6 +439,31 @@ def _calendar(raw, path: Path) -> Calendar:
 
 
 @dataclass(frozen=True)
+class Speech:
+    """speech in the watchlist: url, the OpenAI-style speech-to-text endpoint (…/v1/audio/transcriptions) that a
+    spoken answer is sent to, from the voice mock interview and the rehearsal page's mic. Unset: LOCAL_STT_URL, else
+    the local model server's (see speech.speech_url). jobwatch never loads a speech model itself."""
+    url: str = ""
+
+
+def _speech(raw, path: Path) -> Speech:
+    raw = _section(raw, "speech", Speech, path, "{url: http://127.0.0.1:8010/v1/audio/transcriptions}")
+    url = raw.get("url", "")
+    if not url:
+        return Speech()
+    parts = urlsplit(url) if isinstance(url, str) else None
+    if (not parts or parts.scheme not in ("http", "https") or not parts.hostname
+            or not parts.path.rstrip("/").endswith("/audio/transcriptions") or parts.query or parts.fragment):
+        raise ConfigError(f"{path}: speech.url is an OpenAI-style speech-to-text endpoint, http(s)://host:port/v1/"
+                          f"audio/transcriptions, got {url!r}")
+    try:
+        parts.port  # noqa: B018  (a port that isn't a number raises here)
+    except ValueError:
+        raise ConfigError(f"{path}: speech.url has a port that isn't a number: {url!r}") from None
+    return Speech(url.rstrip("/"))
+
+
+@dataclass(frozen=True)
 class Quiet:
     """quiet in the watchlist: days without news (a stage change or a note) before an application counts as
     gone quiet, by stage; 0 never counts that stage. `long`: days after which a quiet one stops crowding the
@@ -625,6 +651,7 @@ class Config:
     pace: Pace = field(default_factory=Pace)
     calendar: Calendar = field(default_factory=Calendar)
     quiet: Quiet = field(default_factory=Quiet)
+    speech: Speech = field(default_factory=Speech)
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
     imap: Imap | None = None   # alerts.imap: read job-alert emails from a mailbox (off unless set)
@@ -831,7 +858,7 @@ SETTINGS = ("companies", "filters", "keywords", "focus", "resume", "connections"
             "stories", "resume_kit", "scoring",
             "chat", "prep",
             "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
-            "slow_boards", "ui", "fetch_every")
+            "slow_boards", "ui", "speech", "fetch_every")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -1128,7 +1155,7 @@ def load(explicit: str | Path | None = None) -> Config:
         slow_boards=_slow_boards(raw.get("slow_boards"), path), ui=_ui(raw.get("ui"), path),
         theme=theme, width=width, today=today, company_view=company_view,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
-        quiet=_quiet(raw.get("quiet"), path),
+        quiet=_quiet(raw.get("quiet"), path), speech=_speech(raw.get("speech"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
@@ -1149,6 +1176,7 @@ def defaults() -> dict:
             "display": {"theme": "system", "width": "standard", "today": Config.today, "company": "matches"},
             "pace": asdict(Pace()),
             "calendar": asdict(Calendar()),
+            "speech": asdict(Speech()),
             "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "target_max", "floor")},
             "comps": {"weights": dict(COMP_WEIGHTS)},
             "goals": {"track": Goals.track},
@@ -1268,6 +1296,11 @@ scoring:
 #   max_tokens: 4000                                # the longest draft
 #   # prompt: |                                     # the drafting instructions; keep {context}
 #   # sheets: ~/Documents/prep                      # prep sheets you wrote (acme-onsite.html), on Interviews
+
+# Where a spoken answer is turned into text (the voice mock interview, the rehearsal page's mic): an OpenAI-style
+# endpoint. Default: LOCAL_STT_URL, else the local model server's (LOCAL_LLM_URL) /audio/transcriptions.
+# speech:
+#   url: http://127.0.0.1:8010/v1/audio/transcriptions
 
 # Optional: tailor a resume to a job from its card with resume-kit (https://github.com/vinayvobbili/resume-kit).
 # Its `resume` command is found on PATH; name it here when it isn't.

@@ -133,6 +133,25 @@ Space starts and stops, 1/2/3 rate, the right arrow moves on. It is one local fi
 sent anywhere (it does not use the browser's speech recognition, which is a cloud service). `--no-open` writes
 it without opening it, `-o PATH` says where.
 
+**Say it** (or M) records you answering out loud and shows how it sounded, so the answer flows instead of being
+recited. It needs `jobwatch ui` running: the recording goes to it (at `http://jobwatch.localhost:8765`, or the
+address `--ui URL` gives) and from it only to your speech-to-text endpoint, and neither keeps it. The feedback is
+counted in code, with no model reading it: words a minute (110 to 180 sounds natural), filler words (um, uh, like,
+you know, sort of, basically), the length against 60 to 90 seconds for a story, whether the first sentence is a
+headline (short, and it says the point), which key terms of the sheet's answer you said or missed, and pauses of
+2 seconds or more when the transcription has timestamps. What you said shows beside the sheet's answer, and each
+try's numbers stay in your browser, so a card shows the trend across tries. If jobwatch ui or the speech server
+isn't running, the button says which to start before you speak.
+
+The endpoint is any OpenAI-style `/v1/audio/transcriptions` (the same one the voice mock interview uses). By
+default it is the local model server's (`LOCAL_LLM_URL`, or `LOCAL_STT_URL` for the endpoint itself); set it in the
+watchlist to name another:
+
+```yaml
+speech:
+  url: http://127.0.0.1:8010/v1/audio/transcriptions
+```
+
 The drill video needs `pip install 'jobwatch[video]'`, which brings [slidecast](https://pypi.org/project/slidecast/) with
 Kokoro voices that run on your Mac (Apple Silicon), and a browser to draw the slides (Chrome, or slidecast's
 Playwright extra). Nothing is sent anywhere. The first run fetches the voice model and a small English language

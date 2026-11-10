@@ -61,10 +61,13 @@ def test_card_text_that_looks_like_a_placeholder_stays_as_is():
     assert _cards(page)["cards"][0] == {"q": "What is __SECONDS__?", "a": "__TITLE__ __CARDS__."}
 
 
-def test_page_has_no_network_or_cloud_speech(sheet):
-    page = rehearse.write(sheet).read_text(encoding="utf-8")
-    assert "SpeechRecognition" not in page
-    assert not re.search(r"https?://|fetch\(|XMLHttpRequest", page)
+def test_page_talks_only_to_jobwatch_ui_and_never_to_cloud_speech(sheet):
+    page = rehearse.write(sheet, ui="http://jobwatch.localhost:9911/").read_text(encoding="utf-8")
+    assert "SpeechRecognition" not in page and "XMLHttpRequest" not in page
+    assert re.findall(r"https?://[^\s\"'<`]+", page) == ["http://jobwatch.localhost:9911"]
+    assert 'const UI = "http://jobwatch.localhost:9911";' in page
+    assert re.findall(r"fetch\(([^,)]*)", page) == ["UI + \"/rehearse/status\"", "UI + path"]
+    assert set(re.findall(r'post\("(/rehearse/\w+)', page)) == {"/rehearse/transcribe", "/rehearse/feedback"}
 
 
 def test_page_script_parses(tmp_path):
@@ -110,6 +113,13 @@ def test_command_opens_the_page_by_default(sheet, tmp_path, monkeypatch):
     out = tmp_path / "page.html"
     cli.main(["rehearse", str(sheet), "-o", str(out)])
     assert opened == [out.resolve().as_uri()]
+
+
+def test_command_points_the_mic_at_another_ui(sheet, monkeypatch):
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: None)
+    cli.main(["rehearse", str(sheet), "--no-open", "--ui", "http://127.0.0.1:9000"])
+    page = sheet.with_name("initech-sheet-rehearse.html").read_text(encoding="utf-8")
+    assert 'const UI = "http://127.0.0.1:9000";' in page
 
 
 def test_command_reports_a_bad_sheet(tmp_path, monkeypatch):

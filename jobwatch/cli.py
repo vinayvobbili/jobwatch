@@ -1049,7 +1049,7 @@ def cmd_prep(args, cfg, store):
 
 def cmd_rehearse(args):
     """A rehearsal page from a hand-written prep sheet, opened in the browser."""
-    out = rehearse.write(args.sheet, args.out)
+    out = rehearse.write(args.sheet, args.out, args.ui)
     print(f"wrote {out}", file=sys.stderr)
     if not args.no_open:
         webbrowser.open(out.resolve().as_uri())
@@ -1558,6 +1558,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--out", type=Path, help="where to write the page (default: next to the sheet, "
                                                   "<name>-rehearse.html)")
     p.add_argument("--no-open", action="store_true", help="write the page without opening it")
+    p.add_argument("--ui", default=rehearse.UI, metavar="URL",
+                   help=f"`jobwatch ui`'s address, which the page's mic sends recordings to for feedback "
+                        f"(default {rehearse.UI})")
     p.set_defaults(func=cmd_rehearse, needs_config=False)
 
     p = sub.add_parser("transcribe", help="a recorded practice answer as text, through the local speech-to-text "
