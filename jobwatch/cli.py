@@ -1226,7 +1226,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="jobwatch", description="Watch company job boards (Greenhouse, Lever, "
                                  "Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google Careers, Amazon, "
                                  "Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, "
-                                 "careers sites with a job sitemap, HN's Who is hiring) and get a ranked digest "
+                                 "careers sites with a job sitemap, HN's Who is hiring, VC portfolio job boards) "
+                                 "and get a ranked digest "
                                  "of new matches.")
     ap.add_argument("--version", action="version", version=f"jobwatch {__version__}")
     ap.add_argument("-c", "--config", help="watchlist file (default: ./jobwatch.yaml, $JOBWATCH_CONFIG, "

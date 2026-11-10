@@ -128,6 +128,8 @@ def found_on(job: Job, via: str | None = None) -> str:
     Lever board", "an Indeed job-alert email (not found on the company's board)", or "added by hand"."""
     if job.source == "hn":
         board = "Hacker News' \"Who is hiring?\" thread"
+    elif job.source == "vc":
+        board = f"the {job.company.split('/')[0]} VC portfolio board"
     elif job.source == "google":
         board = "Google Careers"
     elif job.source == "amazon":

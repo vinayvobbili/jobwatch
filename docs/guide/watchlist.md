@@ -22,6 +22,7 @@ companies:
   - jobvite:initech                                     # jobs.jobvite.com/initech
   - sitemap:careers.example.com                         # a careers site whose sitemap links its job pages
   - hn:whoishiring                                      # HN's Who is hiring thread (whoishiring/3: last 3 months')
+  - vc:jobs.example.vc                                  # a VC fund's portfolio job board (host of its jobs page)
 
 filters:
   titles: ["engineer", "architect"]       # regexes; the title must match one
@@ -34,7 +35,7 @@ filters:
   home_state: CO                          # leave out remote roles open only in other states (or "Colorado")
   min_salary: 190000                      # the top of a listed range must reach this
   require_salary: false                   # true: drop postings without pay
-  max_age_days: 30                        # for jobs added by hand, from alerts or HN: a board's are open while listed
+  max_age_days: 30                        # for jobs added by hand, from alerts, HN or a VC board: a board's are open while listed
   min_fit: 70                             # hide jobs whose fit score is below this; unscored jobs still show
   flags:                                  # not filters: a warning on queued jobs whose posting says this
     "active (TS|top secret)": clearance
@@ -201,6 +202,30 @@ an edited one is read again. Replies, remarks and job seekers' posts aren't jobs
 so a post written in sentences may come out as "Open roles (see the post)". Posts aren't fit-scored: one lists
 several roles, places and links, which a score would read as one job's must-haves; watch the company's board to
 score each role.
+
+## VC portfolio job boards
+
+A venture fund's portfolio board lists the open roles at all its companies, often hundreds of them, on one
+page. `vc:<host>` watches one, read like HN's thread: each job comes in under its own company, and the board
+its link is on (the company's Greenhouse, Lever, Ashby... posting) is noted with it, so a company whose jobs pass
+your filters shows up under [Companies to watch](applying.md#companies-to-watch) with that board. Give the host
+of the fund's jobs page (`vc:jobs.example.vc`, its list at `/jobs`), or host/path when the list is elsewhere
+(`vc:example.vc/portfolio/jobs/`).
+
+```yaml
+companies:
+  - vc:jobs.example.vc                     # a Consider or Getro board
+  - vc:example.vc/portfolio/jobs/          # a fund's own page, its list not at /jobs
+```
+
+Boards built on Consider are read from the search API their page uses, newest first; Getro boards and a fund's
+own Next.js page are searched for your title words, or read a page at a time when the list is numbered. A board
+is thousands of roles, so it's a feeder of new ones: each check reads the newest (up to 10 pages, stopping at
+roles older than the newest one already kept), and keeps the ones posted in the last 14 days whose titles have
+your title words. A role that passes your filters is read in full from its own posting when that's on a board
+jobwatch reads, so it can be scored; else it's kept as listed. A role missing from a later read hasn't closed
+(the board lists only its newest): `max_age_days` hides old ones, and a queued one is checked at its own
+posting. robots.txt is read first.
 
 ## How locations match
 

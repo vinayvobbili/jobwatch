@@ -19,7 +19,8 @@ Comeet careers pages carry every role, text included, as JSON in the page: one r
 A careers site that links every posting in its sitemap (sitemap:careers.example.com) is listed from there, when
 its job pages carry schema.org JobPosting markup; the ones whose titles match are read from those pages.
 Hacker News' monthly "Ask HN: Who is hiring?" thread is a board of many companies' posts, read whole from HN's
-search API: each post is one job.
+search API: each post is one job. A VC fund's portfolio job board (Consider, Getro, or the fund's own page) is
+another board of many companies' jobs, read newest first.
 """
 
 from __future__ import annotations
@@ -94,16 +95,24 @@ def _wait(e: urllib.error.HTTPError, attempt: int, most: float = MAX_WAIT) -> fl
     return min(float(after) if after.strip().isdigit() else 2 ** (attempt + 1), most)
 
 
-def _read(url: str, timeout: float, body: dict | None, accept: str) -> bytes:
-    headers = {"User-Agent": USER_AGENT, "Accept": accept}
+def _read(url: str, timeout: float, body: dict | None, accept: str, headers: dict | None = None,
+          cookies: dict | None = None) -> bytes:
+    """`cookies`, when given, are sent with the request and take the ones the answer sets (see _Visit)."""
+    headers = {"User-Agent": USER_AGENT, "Accept": accept, **(headers or {})}
     data = None
     if body is not None:
         data, headers["Content-Type"] = json.dumps(body).encode(), "application/json"
+    if cookies:
+        headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
     req = urllib.request.Request(url, data=data, headers=headers)
     retries, most = _patience.get()
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if cookies is not None:
+                    for c in resp.headers.get_all("Set-Cookie") or []:
+                        name, _, value = c.split(";", 1)[0].partition("=")
+                        cookies[name.strip()] = value.strip()
                 return resp.read()
         except urllib.error.HTTPError as e:
             if e.code in (404, 410):  # 410: iCIMS's answer for a job that has closed
@@ -1965,6 +1974,281 @@ def fetch_hn(board: str, get=None, search=(), wanted=None, known=None, cap=SEARC
     return jobs
 
 
+# -- VC portfolio job boards: a fund's board lists the open roles at its portfolio companies (hundreds of them,
+# thousands of roles). It's read as a feeder, the way HN's thread is: each job names its own company, and the
+# company's own board its link is on (the Greenhouse, Lever, Ashby... posting it applies through) is noted with it,
+# not watched, so a company whose jobs pass the filters shows up under Companies to watch with that board. The
+# board is the host of the fund's jobs page (vc:jobs.example.vc, its list at /jobs), or host/path when the list is
+# elsewhere (vc:example.vc/portfolio/jobs/). What the page is built on says how it's read:
+# - Consider: the page hands its visitor a session and a CSRF token, with which its search API answers in JSON,
+#   CONSIDER_SIZE roles a page, newest first (the board's featured roles ahead of the rest).
+# - Getro: its JSON API is closed to crawlers by robots.txt, so its list page is searched for each title term
+#   (?q=), and the page carries the newest matches as JSON (Next.js data).
+# - The fund's own Next.js page: the roles come in the page's React data. A list that's numbered (?page=2) is
+#   read a page at a time, newest first, else it's searched for each title term (?q=).
+# A list read newest first stops at a page of roles older than the newest one kept before (or VC_NEW_DAYS), or
+# after VC_PAGES pages: one board is thousands of roles, and it's new ones a feeder is for, so only the roles
+# posted within VC_NEW_DAYS whose titles have a title term's words are kept, and a role missing from a read
+# hasn't closed (Source.newest_first). New ones whose titles pass `wanted` are read in full from their own
+# posting when it's on a board jobwatch reads (VC_READS a check; a board that says slow down isn't asked again
+# that check), else kept as listed. robots.txt is read first.
+
+VC_PAGES = 10        # pages of a list read newest first, at most a check
+VC_NEW_DAYS = 14     # store.REPOST_DAYS: a role new to the store and older than that would be taken as reposted today
+VC_SLACK = timedelta(days=2)  # a list read newest first isn't strictly in order: featured roles come first
+VC_READS = 40        # new roles read in full from their own postings a check; the rest wait for the next
+VC_WORKERS = 2
+CONSIDER_SIZE = 100
+_VC_BOARD = re.compile(r"([\w-]+(?:\.[\w-]+)+)(/[\w./-]*)?")
+_VC_NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
+_VC_FLIGHT = re.compile(r'self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)')
+_VC_CONSIDER = re.compile(r'"csrfToken"\s*:\s*"([^"]+)"\s*,\s*"board"\s*:\s*(\{[^{}]*\})')
+_VC_OBJECT = re.compile(r'\{"(?:id|_id|jobId|title)"')
+_VC_PAGED = re.compile(r'[?&]page=2\b|"pageCount"\s*:\s*\d')
+_VC_TRACKING = re.compile(r"utm_|lever-source", re.I)  # a link's query parameters that only say where it was seen
+
+
+def _vc_board(board: str) -> tuple[str, str]:
+    """(host, the link to its list of jobs) for a board like jobs.example.vc or example.vc/portfolio/jobs/."""
+    m = _VC_BOARD.fullmatch(board.strip())
+    if not m:
+        raise SourceError(f"a VC portfolio board is the host of its jobs page, like jobs.example.vc (host/path when "
+                          f"the list isn't at /jobs), got {board!r}")
+    host = m.group(1).lower()
+    return host, f"https://{host}{m.group(2) or '/jobs'}"
+
+
+class _Visit:
+    """One site read as a browser reads it: the cookies its pages set go back with each later request (a Consider
+    board's search answers only a visitor its page gave a session). `get` (tests) answers instead."""
+
+    def __init__(self, get=None):
+        self.get, self.cookies = get, {}
+
+    def text(self, url: str) -> str:
+        if self.get:
+            return self.get(url)
+        return _read(url, 30, None, "text/html,application/xhtml+xml,*/*", cookies=self.cookies).decode(
+            "utf-8", "replace")
+
+    def post(self, url: str, body: dict, headers: dict) -> dict:
+        if self.get:
+            return self.get(url, body=body)
+        raw = _read(url, 30, body, "application/json", headers, self.cookies)
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise SourceError(f"{url}: {e}") from None
+
+
+def _vc_flight(page: str) -> str:
+    """A Next.js page's React data: the strings it pushes to self.__next_f, joined."""
+    out = []
+    for s in _VC_FLIGHT.findall(page):
+        try:
+            out.append(json.loads(s))
+        except json.JSONDecodeError:
+            continue
+    return "".join(out)
+
+
+def _vc_link(d: dict) -> str:
+    return str(d.get("applyUrl") or d.get("apply_url") or d.get("url") or "")
+
+
+def _vc_objects(data: str) -> list[dict]:
+    """The roles in a page's React data: each object with a title and a link."""
+    found, decoder, end = [], json.JSONDecoder(), 0
+    for m in _VC_OBJECT.finditer(data):
+        if m.start() < end:  # inside a role already read
+            continue
+        try:
+            obj, stop = decoder.raw_decode(data, m.start())
+        except ValueError:
+            continue
+        if isinstance(obj, dict) and obj.get("title") and _vc_link(obj):
+            found.append(obj)
+            end = stop
+    return found
+
+
+def _vc_getro(page: str) -> list[dict] | None:
+    """The roles a Getro board's page carries (its Next.js data); None when it isn't one."""
+    m = _VC_NEXT_DATA.search(page)
+    try:
+        jobs = json.loads(m.group(1))["props"]["pageProps"]["initialState"]["jobs"] if m else None
+    except (ValueError, KeyError, TypeError):
+        return None
+    return jobs.get("found") or [] if isinstance(jobs, dict) else None
+
+
+def _vc_posted(d: dict) -> datetime | None:
+    value = d.get("createdAt") or d.get("posted_at") or d.get("postedAt") or d.get("timeStamp")
+    if isinstance(value, (int, float)) and value < 1e11:  # Getro: seconds since the epoch
+        return datetime.fromtimestamp(value, timezone.utc)
+    return _time(value)
+
+
+def _vc_pay(d: dict) -> tuple[int, int, str] | None:
+    """(yearly min, max, currency) from a role's pay, as each kind of board writes it."""
+    s = d.get("salary") if isinstance(d.get("salary"), dict) else {}
+    low, high, cur, per = s.get("minValue", s.get("min")), s.get("maxValue", s.get("max")), s.get("currency"), \
+        s.get("period")
+    if low is None:  # a16z's page
+        low, high, cur, per = d.get("salary_min"), d.get("salary_max"), d.get("salary_currency"), d.get("salary_period")
+    if low is None and d.get("compensationAmountMinCents"):  # Getro
+        low, high = d["compensationAmountMinCents"] / 100, (d.get("compensationAmountMaxCents") or 0) / 100
+        cur, per = d.get("compensationCurrency"), d.get("compensationPeriod")
+    cur, per = (x.get("value") if isinstance(x, dict) else x for x in (cur, per))
+    if not isinstance(low, (int, float)) or low <= 0:
+        return None
+    high = high if isinstance(high, (int, float)) and high >= low else low
+    per = pay_period(per or "") or ("hour" if low < 1000 else "year")
+    return annual(low, per), annual(high, per), str(cur or "USD").upper()
+
+
+def _vc_job(d: dict, board: str) -> Job | None:
+    """One role as a portfolio board lists it, or None when it doesn't name its company or link."""
+    org = d.get("organization") if isinstance(d.get("organization"), dict) else {}
+    company = " ".join(str(d.get("companyName") or d.get("company_name") or org.get("name") or "").split())
+    title = " ".join(str(d.get("title") or "").split())
+    link = _vc_link(d)
+    pid = d.get("id") or d.get("_id") or (f"{d.get('companySlug') or company}-{d['jobId']}" if d.get("jobId") else "")
+    if not (company and title and link.startswith("http") and pid):
+        return None
+    p = urlparse(link)
+    query = "&".join(q for q in p.query.split("&") if q and not _VC_TRACKING.match(q))
+    found = detect(link)
+    work = str(d.get("workMode") or d.get("workplace_type") or "").lower()
+    departments = d.get("departments") or d.get("functions") or []
+    job = Job(source="vc", company=board, id=re.sub(r"[^\w.-]+", "-", str(pid)).strip("-"), title=title,
+              url=p._replace(query=query, fragment="").geturl(), company_name=company,
+              locations=split_locations(*[str(x) for x in d.get("locations") or [] if x]),
+              remote=True if d.get("remote") is True or work == "remote" else None,
+              department=str(departments[0] if departments else d.get("department") or ""),
+              posted=_vc_posted(d), boards=[f"{found[0]}:{found[1]}"] if found else [])
+    if pay := _vc_pay(d):
+        job.salary_min, job.salary_max, job.currency = pay
+    return job
+
+
+def _vc_pages(url: str, first: str, visit: _Visit, read: Callable[[str], str], allowed: Callable[[str], None],
+              search):
+    """The roles a board lists, a page at a time: (rows, whether the list is newest first), its first page read.
+    `allowed` raises when robots.txt doesn't allow a link; `read` checks it first."""
+    host = urlparse(url).netloc
+    if m := _VC_CONSIDER.search(first):
+        token, which = m.group(1), json.loads(m.group(2))
+        api, sequence = f"https://{host}/api-boards/search-jobs", None
+        allowed(api)
+        for _ in range(VC_PAGES):
+            meta = {"size": CONSIDER_SIZE, **({"sequence": sequence} if sequence else {})}
+            d = visit.post(api, {"meta": meta, "board": which, "query": {}, "grouped": False},
+                           {"x-csrf-token": token}) or {}
+            yield d.get("jobs") or [], True
+            sequence = (d.get("meta") or {}).get("sequence")
+            if not d.get("jobs") or not sequence:
+                return
+        return
+    join = "&" if "?" in url else "?"
+    if (rows := _vc_getro(first)) is not None:
+        yield rows, False
+        for term in search:
+            yield _vc_getro(read(f"{url}{join}q={quote(term)}")) or [], False
+        return
+    flight = _vc_flight(first)
+    if not (rows := _vc_objects(flight)):
+        raise SourceError(f"{url}: no jobs found on that page (jobwatch reads Consider and Getro boards, and a "
+                          f"fund's own Next.js page listing jobs)")
+    paged = bool(_VC_PAGED.search(first) or _VC_PAGED.search(flight))
+    yield rows, paged
+    for n in range(2, VC_PAGES + 1) if paged else ():
+        yield _vc_objects(_vc_flight(read(f"{url}{join}page={n}"))), True
+    for term in () if paged else search:
+        yield _vc_objects(_vc_flight(read(f"{url}{join}q={quote(term)}"))), False
+
+
+def _vc_read(j: Job, get, limited: set[str]) -> Job | None:
+    """A role filled in from its own posting, on a board jobwatch reads; None when that board says it has closed.
+    One whose board said slow down (now or earlier this check) is kept as listed."""
+    found = detect(j.url)
+    if not found or found[0] in limited:
+        return j
+    try:
+        posted = _impatient(posting)(j.url, get)
+    except NotFound:
+        return None
+    except SourceError as e:
+        if "HTTP 429" in str(e):
+            limited.add(found[0])
+        return j
+    if posted:
+        j.description = posted.description
+        j.department = j.department or posted.department
+        j.locations = j.locations or posted.locations
+        j.remote = j.remote or posted.remote
+        j.posted = j.posted or posted.posted
+        if j.salary_min is None:
+            j.salary_min, j.salary_max, j.currency = posted.salary_min, posted.salary_max, posted.currency
+    return j
+
+
+def fetch_vc(board: str, get=None, search=(), wanted=None, known=None, cap=SEARCH_CAP) -> list[Job]:
+    """The newest roles on a VC fund's portfolio job board whose titles have one of the `search` terms' words (all
+    of them, with no terms), each under its own company; the new ones whose titles pass `wanted` read in full from
+    their own postings. A role in `known` read before is kept as it was. Raises Partial when the board stopped
+    answering partway."""
+    host, url = _vc_board(board)
+    visit, known = _Visit(get), known or {}
+    _, allows = _site_robots(host, visit.text)
+
+    def allowed(link: str) -> None:
+        if not allows(link):
+            raise SourceError(f"{host}'s robots.txt doesn't allow reading {link}")
+
+    def read(link: str) -> str:
+        allowed(link)
+        return visit.text(link)
+
+    now = datetime.now(timezone.utc)
+    oldest = now - timedelta(days=VC_NEW_DAYS)
+    newest = max((j.posted for j in known.values() if j.posted), default=None)
+    since = max(oldest, newest - VC_SLACK) if newest else oldest
+    jobs: dict[str, Job] = {}
+    stopped = None
+    try:
+        for rows, in_order in _vc_pages(url, read(url), visit, read, allowed, search):
+            for r in rows:
+                j = _vc_job(r, board)
+                if not j or j.key in jobs or (search and not _title_has(j.title, search)) or \
+                        (j.key not in known and j.posted and j.posted < oldest):
+                    continue
+                jobs[j.key] = j
+            if in_order and rows and all((t := _vc_posted(r)) and t < since for r in rows):
+                break
+    except SourceError as e:
+        if not jobs or isinstance(e, Refused):
+            raise
+        stopped = e
+    limited: set[str] = set()
+    reads = iter(range(VC_READS))
+    lock = threading.Lock()
+
+    def one(j: Job) -> Job | None:
+        if (old := known.get(j.key)) and old.description:
+            return old
+        if wanted is None or not wanted(j.title):
+            return j
+        with lock:
+            if next(reads, None) is None:
+                return j
+        return _vc_read(j, get, limited)
+    out = [j for j in _details(list(jobs.values())[:cap], one, VC_WORKERS) if j]
+    if stopped:
+        raise Partial(f"{host} stopped answering: {stopped}", out)
+    return out
+
+
 @dataclass(frozen=True)
 class Hosted:
     """How to tell that a board's own job pages are up, for a source whose pages a company can switch off while
@@ -1999,9 +2283,13 @@ class Source:
     careers: str                   # public job-board page, formatted with board= (or the parts of it)
     search: Callable[..., list[Job]] | None = None  # a searched source's fetch: (board, get, search, wanted, known)
     hosted: Hosted | None = None   # how to tell its hosted job pages are up, when a company can switch them off
-    # A thread of many companies' posts (HN's Who is hiring), not one company's board: each job names its own
-    # company, and the thread is read whole, not searched.
+    # A thread of many companies' posts (HN's Who is hiring) or a VC fund's portfolio board, not one company's
+    # board: each job names its own company.
     many_companies: bool = False
+    # Each job is a post that can name several roles (HN's), not one posting: see watch.scorable.
+    posts: bool = False
+    # Read newest first, only partway (a VC portfolio board): a job missing from a read hasn't closed.
+    newest_first: bool = False
 
 
 SOURCES = {
@@ -2031,7 +2319,8 @@ SOURCES = {
     "comeet": Source("comeet", "", None, COMEET_PAGE, fetch_comeet),
     "sitemap": Source("sitemap", "", None, "https://{board}/", fetch_sitemap),
     "hn": Source("hn", "", None, "https://news.ycombinator.com/submitted?id=whoishiring", fetch_hn,
-                 many_companies=True),
+                 many_companies=True, posts=True),
+    "vc": Source("vc", "", None, "https://{board}", fetch_vc, many_companies=True, newest_first=True),
 }
 
 
@@ -2061,6 +2350,8 @@ def careers_url(source: str, board: str) -> str:
         return SOURCES[source].careers.format(pod=pod, site=site)
     if source == "icims":
         return SOURCES[source].careers.format(host=_icims_host(board))
+    if source == "vc":
+        return _vc_board(board)[1]
     return SOURCES[source].careers.format(board=board)
 
 
@@ -2507,8 +2798,8 @@ def probe(company: str, get=None, page=None, limited: set[str] | None = None) ->
     # oracle: a site's host is a pod code ("eeho.fa.us2") nobody can guess from the name, so it's found from a link;
     # avature: tried as name.avature.net/careers below; hn: one board, HN's Who is hiring ("Hacker News" finds it)
     # sitemap: a careers site's host, found from a link to its careers page or a job
-    # comeet: a board is <company>/<uid>, and the uid is only in a careers link
-    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "sitemap", "hn", "comeet")
+    # comeet: a board is <company>/<uid>, and the uid is only in a careers link; vc: a fund's portfolio board
+    skip = ("workday", "jibe", "google", "amazon", "oracle", "avature", "sitemap", "hn", "comeet", "vc")
     tries = [(s, n) for n in names for s in SOURCES if s not in skip]
     guessable = [s for s in SOURCES if s not in (*skip, "workable")]  # Workable rate-limits extra guesses
     tries += [(s, v) for v in board_variants(company) for s in guessable]

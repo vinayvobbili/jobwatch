@@ -236,7 +236,7 @@ def kept_open(job: Job) -> bool:
     """A job on a company's own board: each check of its board (or, for a board not watched, the daily posting
     check) closes it once it's taken down, so it's open while it shows, however old (one open for months is an
     evergreen req, still hiring). max_age_days doesn't hide these, only a job added by hand or from an alert's
-    link, and an HN post: jobwatch can't always tell those are still up."""
+    link, an HN post and a VC portfolio board's job: jobwatch can't always tell those are still up."""
     src = sources.SOURCES.get(job.source)
     return bool(src) and not src.many_companies
 

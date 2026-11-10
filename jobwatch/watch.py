@@ -280,7 +280,8 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
                 report.warnings[b.entry] = offline_warning(b)
             report.boards += 1
             report.jobs += len(jobs)
-            keys = set(found := store.sync(b.source, b.board, jobs, close_missing=b.entry not in partial))
+            keys = set(found := store.sync(b.source, b.board, jobs,
+                                           close_missing=b.entry not in partial and not src.newest_first))
             report.new += found
             new += [j for j in jobs if j.key in keys]
             if src.many_companies and keys:
@@ -604,6 +605,13 @@ def still_open(job: Job, get=None, page=None, boards: dict | None = None,
             return sources.posting(job.posting_url or job.url, get, hosts=(job.company,)) is not None
         except sources.NotFound:
             return False
+    if job.source == "vc":  # a portfolio board lists only its newest roles: the company's own posting says
+        if not sources.detect(job.url):
+            return None
+        try:
+            return sources.posting(job.url, get) is not None or None
+        except sources.NotFound:
+            return False
     if job.source in sources.SOURCES:
         return job.id in _open_ids(job, get, boards)
     if not job.url or linkedin.job_id(job.url):
@@ -780,9 +788,10 @@ def scorable(job: Job) -> bool:
     """Can this job be fit-scored? Not a post from a thread of many companies' posts (HN's Who is hiring) that
     lists several roles: scored as one posting, their places and asks all turn into must-haves ("Located in SF
     (Hybrid)"), so its score would say nothing. Its company's board, once watched, has each role. A post for
-    one role reads like any other posting, and small companies that post only there are scored with it."""
+    one role reads like any other posting, and small companies that post only there are scored with it. A VC
+    portfolio board's job is one posting, scored like any other."""
     src = sources.SOURCES.get(job.source)
-    return not (src and src.many_companies) or names_one_role(job.title)
+    return not (src and src.posts) or names_one_role(job.title)
 
 
 def _ordinal(n: int) -> str:

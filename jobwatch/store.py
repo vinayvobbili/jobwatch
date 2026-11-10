@@ -46,7 +46,7 @@ MANUAL = "manual"  # the source of applications added by hand (found elsewhere, 
 # A post for one role is scored, so its score counts. one_role is names_one_role, added to each connection.
 _SCORED = ("key NOT IN (SELECT key FROM jobs WHERE source IN ({}) "
            "AND NOT one_role(json_extract(data, '$.title')))").format(
-    ", ".join(f"'{s.name}'" for s in SOURCES.values() if s.many_companies) or "''")
+    ", ".join(f"'{s.name}'" for s in SOURCES.values() if s.posts) or "''")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (

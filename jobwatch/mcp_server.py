@@ -51,8 +51,9 @@ server = MCPServer(
     instructions=(
         "Watches company job boards (Greenhouse, Lever, Ashby, Workable, Workday, Eightfold, Jibe, Rippling, "
         "Google Careers, Amazon, Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, "
-        "careers sites with a job sitemap) and Hacker News' monthly \"Ask HN: Who is hiring?\" thread (one job "
-        "per company's post) from a watchlist file. "
+        "careers sites with a job sitemap), Hacker News' monthly \"Ask HN: Who is hiring?\" thread (one job "
+        "per company's post) and VC funds' portfolio job boards (each job under its own company) from a watchlist "
+        "file. "
         "find_board looks up a company's board (by name, or a job or careers page link), add_board puts it on the "
         "watchlist, list_boards and remove_board manage the rest. list_suggested_boards lists companies whose jobs "
         "keep coming in from alerts, add_application or HN posts while their board isn't watched, with what to pass "
@@ -202,6 +203,8 @@ def find_board(
     doesn't.
     Hacker News' "Who is hiring?" thread is one board, hn:whoishiring (hn:whoishiring/N: the last N months'),
     found by "Hacker News" or the news.ycombinator.com/submitted?id=whoishiring link.
+    A VC fund's portfolio job board (Consider, Getro, or the fund's own page) isn't found here: pass add_board
+    vc:<host of its jobs page>, like vc:jobs.example.vc (vc:host/path when the list isn't at /jobs).
     Use it before add_board; to track one job from its link, use add_application instead."""
     try:
         found = sources.probe(company)
