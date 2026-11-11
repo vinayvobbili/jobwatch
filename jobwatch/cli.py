@@ -234,7 +234,8 @@ def cmd_score(args, cfg, store):
               f"No scores from scorer {scorer} to keep." if scorer else
               "No scores from an earlier scorer to keep.")
         return
-    cfg = replace(cfg, score_daily=0)  # scoring.daily holds back the page's background scoring, not what's asked for
+    # scoring.daily and scoring.per_company hold back the page's background scoring, not what's asked for
+    cfg = replace(cfg, score_daily=0, score_per_company=0)
     if args.rescore is not None:
         # a fallback would only put one stand-in score for another, unless scoring.same_as counts its scores as
         # the backend's own (the same model through the API while agy's quota is out, say)

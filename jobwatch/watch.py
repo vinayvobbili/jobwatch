@@ -807,7 +807,8 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
     """Why each queued and Today's job has no fit score: {job key: {"code", "text"}}. Codes: no_resume, no_text (a job
     from an alert email may have only its title), failed (with the error), scoring (now), queued (in the
     background scorer's line: "3rd of 4"), stopped (background scoring stopped, and why), manual (background
-    scoring is off), same_role (another posting of the same role was scored before this one came in),
+    scoring is off), company_cap (its company is at scoring.per_company for today: press Score fit, or tomorrow),
+    same_role (another posting of the same role was scored before this one came in),
     many_roles (a post listing several roles, never scored: see scorable) and stale (an older scorer's score,
     shown until it's scored again when asked: never in the line).
     `failed` (job key -> error), `current` (the key being scored) and `stopped` come from the page's background
@@ -816,10 +817,11 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
     has_resume = bool(cfg.resume and cfg.resume.is_file())
     fits = store.scores(resume_id(cfg.resume, cfg.prompts)) if has_resume else {}
     groups = scoring_line(cfg, store)  # the scorer's order
-    line =[e.job.key for e in groups if _scorable(e) and e.job.key not in failed and e.job.key != current]
+    line = [e.job.key for e in groups if _scorable(e) and e.job.key not in failed and e.job.key != current]
+    line, capped = _split_capped(cfg, store, groups, line)
     out: dict[str, dict] = {}
     for e in groups:
-        head = _why_unscored(e, has_resume, cfg.auto_score, failed, current, stopped, line)
+        head = _why_unscored(e, has_resume, cfg.auto_score, failed, current, stopped, line, capped)
         for job in (e.job, *e.same_title):
             if job.key in fits:
                 continue
@@ -834,7 +836,7 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
 
 
 def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str], current: str, stopped: str,
-                  line: list[str]) -> tuple[str, str] | None:
+                  line: list[str], capped: dict[str, str] | None = None) -> tuple[str, str] | None:
     """Why a group's first posting (the one scored for all of them) has no fit score; None when it has one."""
     if e.fit is not None and not e.fit.get("stale"):
         return None
@@ -852,6 +854,8 @@ def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str]
         return "manual", "Background scoring is off: press Score fit"
     if stopped:
         return "stopped", f"Background scoring stopped: {stopped}"
+    if capped and e.job.key in capped:
+        return "company_cap", capped[e.job.key]
     if e.job.key not in line:  # an older scorer's score (stale): kept until asked for again, never in the line
         return STALE
     return "queued", f"In line to score · {_ordinal(line.index(e.job.key) + 1)} of {len(line)}"
@@ -972,8 +976,38 @@ def unscored(cfg: Config, store: Store, skip: set[str] = frozenset(), again: set
     if limit and not cfg.score_fallback:
         return []  # nothing can score until tomorrow
     skip = {*skip, *failed_scores(cfg, store)}
-    return [e for e in scoring_line(cfg, store) if e.job.key not in skip and (
+    todo = [e for e in scoring_line(cfg, store) if e.job.key not in skip and (
         _scorable(e) or (e.job.key in again and scorable(e.job) and bool(e.job.description.strip())))]
+    kept, _ = _split_capped(cfg, store, todo, [e.job.key for e in todo])
+    return [e for e in todo if e.job.key in set(kept)]
+
+
+def _company(e: Entry) -> str:
+    return e.job.display_company.strip().lower()
+
+
+def _split_capped(cfg: Config, store: Store, entries: list[Entry], line: list[str]
+                  ) -> tuple[list[str], dict[str, str]]:
+    """The keys in `line` (in order) that fit under scoring.per_company today, and {key: reason} for the rest: a
+    company's jobs past the cap wait for tomorrow (pressing Score fit still scores them). Counts what the
+    background scorer scored for the company today (Store.company_usage). No cap: the line as it is."""
+    cap = cfg.score_per_company
+    if not cap:
+        return line, {}
+    used = store.company_usage()
+    wanted = set(line)
+    kept, capped = [], {}
+    for e in entries:
+        if e.job.key not in wanted:
+            continue
+        c = _company(e)
+        if used.get(c, 0) >= cap:
+            capped[e.job.key] = (f"{e.job.display_company} hit today's cap of {cap} background scores: press Score "
+                                 "fit, or it's scored tomorrow")
+        else:
+            used[c] = used.get(c, 0) + 1
+            kept.append(e.job.key)
+    return kept, capped
 
 
 def made_elsewhere(cfg: Config, fit: dict | None) -> bool:
@@ -1138,6 +1172,8 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Cal
     for e in entries:
         if e.job.key in results:
             fit = results[e.job.key]
+            if background:  # counts toward scoring.per_company; a score asked for by hand doesn't
+                store.add_company_usage(_company(e), 1)
             for key in e.keys:
                 store.save_score(key, rid, fit)
             if fit.get("fallback") and not _only_limit(fit["fallback"]):

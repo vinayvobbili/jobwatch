@@ -81,7 +81,10 @@ backend scores the job, and a backend that fails moves it on to the one after. T
 and which model made it) and stays: it's scored again only when you ask (the ↻ button, or `jobwatch score
 --rescore`). `scoring.daily: 40` caps the jobs the page scores with the main backend a day; past it the
 fallback scores them (or, with no fallback, they wait for tomorrow). The cap holds back background scoring
-only: `jobwatch score` scores what you ask, and counts it. After switching backend or model, `jobwatch score
+only: `jobwatch score` scores what you ask, and counts it. `scoring.per_company: 25` caps the jobs the page
+scores from one company a day, so one big board can't fill the line; the company's other jobs say so
+("hit today's cap"), wait for tomorrow, and score at once when you press Score fit (0, the default, sets no cap;
+Settings has it too). After switching backend or model, `jobwatch score
 --rescore 50` scores Today's and queued jobs again, best first, where another model or an older scorer made the
 score and it's at least 50.
 

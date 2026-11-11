@@ -5655,10 +5655,12 @@ function renderSettings() {
   };
   backend.addEventListener("change", showBatch); showBatch();
   const top = numInput(scoring.top, D.scoring.top);
+  const perCompany = numInput(scoring.per_company, 0);
   const prompts = fitPromptsCard(s.fit_prompts);
   const scoringValues = () => {
     const out = merged(scoring, { ...aiS.values(), top: numberOf(top), auto: auto.box.checked === autoDefault() ? null : auto.box.checked,
-      batch_api: backend.value === "claude" && batchApi.box.checked ? true : null });
+      batch_api: backend.value === "claude" && batchApi.box.checked ? true : null,
+      per_company: numberOf(perCompany) || null });
     if (prompts && prompts.editable) {  // otherwise the watchlist's are kept as they are
       const edited = prompts.edited();
       if (Object.keys(edited).length) out.prompts = edited; else delete out.prompts;
@@ -5762,7 +5764,9 @@ function renderSettings() {
         "They need the scoring add-on: pip install 'jobwatch[score]'."),
       aiS.el,
       h("div", { class: "fields" },
-        field("Score per digest", top, "jobwatch digest scores this many new jobs; 0 none.")),
+        field("Score per digest", top, "jobwatch digest scores this many new jobs; 0 none."),
+        field("Per company a day", perCompany, "The most jobs from one company the page scores by itself a day; " +
+          "Score fit still scores any. 0: no cap.")),
       auto.el, batchApi.el),
     setCard("people", "People you know", "optional",
       uploadField("connections", ".zip,.csv", s.connections, "On LinkedIn: Settings → Data privacy → Get a copy of your " +

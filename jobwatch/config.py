@@ -660,7 +660,8 @@ class Config:
     score_same_as: tuple[str, ...] = ()   # scoring.same_as: other scorers (backend:model) whose scores count as its own
     agy_model: str = ""        # scoring.agy_model: agy's model as a fallback (scoring.model as the backend)
     score_daily: int = 0       # scoring.daily: the most jobs the backend scores a day, then the fallback (0: no cap)
-    score_workers: int = 4     # scoring.workers: Claude calls at once (the local model takes one at a time)
+    score_per_company: int = 0  # scoring.per_company: the most jobs from one company scored in the background a day
+    score_workers: int = 4    # scoring.workers: Claude calls at once (the local model takes one at a time)
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
     score_batch: int = 10      # scoring.batch: jobs the page scores in a row before it rests (0: no rests)
@@ -1178,6 +1179,8 @@ def load(explicit: str | Path | None = None) -> Config:
         api_key_command=str(scoring.get("key_command") or "").strip(),
         agy_model=str(scoring.get("agy_model") or "").strip(),
         score_daily=_whole(scoring.get("daily", 0), "scoring.daily", path, "0 sets no daily limit"),
+        score_per_company=_whole(scoring.get("per_company", 0), "scoring.per_company", path,
+                                 "0 sets no cap per company"),
         score_workers=max(1, _whole(scoring.get("workers", 4), "scoring.workers", path, "1 makes one call at a time")),
         chat=_chat(raw.get("chat"), backend, path, str(scoring.get("keychain") or "").strip(),
                    str(scoring.get("key_command") or "").strip()),
@@ -1307,6 +1310,7 @@ scoring:
   # key_command: op read op://Private/Anthropic/credential  # or a command that prints the key, run in its place
   # fallback: [agy, local]  # other backends, tried in order, when this can't score (no key, no credit) or is at...
   # daily: 40            # ...the most jobs it scores a day (0: no limit); the fallback's are scored again later
+  # per_company: 25      # the most jobs from one company the page scores a day (0: no cap); the rest wait for tomorrow
   # agy_model: claude-sonnet-5-5-medium  # agy's model as a fallback (`agy models`); as backend: `model`
   # An entry can name its model, so one backend is tried again on another model's quota first:
   #   backend: agy, model: claude-sonnet-5-5-medium, fallback: [agy:gemini-3.8-flash-medium, local]

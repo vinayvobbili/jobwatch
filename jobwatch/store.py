@@ -89,6 +89,12 @@ CREATE TABLE IF NOT EXISTS score_usage (
     jobs INTEGER NOT NULL,
     PRIMARY KEY (day, backend)
 );
+CREATE TABLE IF NOT EXISTS company_usage (
+    day TEXT NOT NULL,
+    company TEXT NOT NULL,
+    jobs INTEGER NOT NULL,
+    PRIMARY KEY (day, company)
+);
 CREATE TABLE IF NOT EXISTS scorer_down (
     scorer TEXT PRIMARY KEY,
     reason TEXT NOT NULL,
@@ -865,6 +871,20 @@ class Store:
         row = self.db.execute("SELECT jobs FROM score_usage WHERE day=? AND backend=?",
                               ((day or date.today()).isoformat(), backend)).fetchone()
         return row["jobs"] if row else 0
+
+    def add_company_usage(self, company: str, jobs: int, day: date | None = None):
+        """Count jobs of this company the background scorer scored on this local day (default today), for
+        scoring.per_company."""
+        if jobs:
+            with self.db:
+                self.db.execute("INSERT INTO company_usage (day, company, jobs) VALUES (?, ?, ?) ON CONFLICT (day, "
+                                "company) DO UPDATE SET jobs = jobs + excluded.jobs",
+                                ((day or date.today()).isoformat(), company, jobs))
+
+    def company_usage(self, day: date | None = None) -> dict[str, int]:
+        """{company: jobs the background scorer scored} on this local day (default today)."""
+        return {r["company"]: r["jobs"] for r in self.db.execute(
+            "SELECT company, jobs FROM company_usage WHERE day=?", ((day or date.today()).isoformat(),))}
 
     def add_score_cost(self, backend: str, model: str, batch: bool, jobs: int, input_tokens: int, output_tokens: int,
                        cache_write_tokens: int = 0, cache_read_tokens: int = 0, day: date | None = None):
