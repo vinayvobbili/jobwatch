@@ -129,7 +129,13 @@ To test one on jobs you have already scored, without saving anything:
 jobwatch score --compare 20 --backend acme --model some-model-id
 ```
 
-Settings shows such a step in the chain (and keeps it), but adding one is done in the watchlist file.
+Or set it up in Settings, with no file editing and no shell: **Settings → AI & fit scores → Cloud providers**.
+Pick a preset (OpenRouter, Groq, Google AI Studio, or Custom for any other OpenAI-compatible API) to fill in the base URL, name it, paste the key
+(it goes to the macOS keychain item `jobwatch-<name>` and is never shown again), pick a model from the list the API
+gives (or type its id), press **Test** (OK, auth failed or rate limited), then **Add to chain** and Save. The step
+appears in the chain above, where ← → reorder it. **Remove** takes the provider out of the watchlist and leaves
+its keychain item alone. Without a macOS keychain, the card says to set `ACME_API_KEY` (for a provider named
+`acme`) before starting jobwatch.
 
 A score from another backend counts as another model's, even when it's the same model reached another way (agy's
 Sonnet and the API's). `scoring.same_as` names the scorers (backend:model) whose scores count as the main

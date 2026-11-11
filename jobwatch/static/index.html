@@ -698,6 +698,35 @@ table.use th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
   cursor: pointer; transition: transform .12s; }
 .ai-chain .link:hover { transform: translateY(-1px); }
 .ai-chain .link.main { background: var(--grad); color: #fff; border-color: transparent; cursor: default; transform: none; }
+
+/* Settings › Cloud providers: a tile per OpenAI-compatible API (key, model, test, chain), then the add form */
+.prov-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 14px; margin: 0 0 14px; }
+.prov { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px;
+  border: 1.5px solid var(--line); background: var(--panel-solid); overflow: hidden;
+  transition: transform .14s, box-shadow .14s; animation: rise .5s cubic-bezier(.2, .7, .2, 1) both;
+  animation-delay: calc(var(--i, 0) * 60ms); }
+.prov::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--grad); }
+.prov::after { content: ""; position: absolute; width: 180px; height: 180px; right: -70px; top: -90px; border-radius: 50%;
+  background: radial-gradient(closest-side, var(--glow-1), transparent); pointer-events: none; }
+.prov:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(84, 87, 240, .14); }
+.prov .top { display: flex; align-items: center; gap: 10px; position: relative; z-index: 1; }
+.prov .orb { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--grad); color: #fff; }
+.prov .name { font-weight: 700; font-size: 15px; }
+.prov .url { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.prov .state { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 700;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.prov .state.ready { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); }
+.prov .state.setup { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.prov .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; position: relative; z-index: 1; }
+.prov .lbl { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 3px; }
+.prov .row-btns { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+.prov .row-btns .spacer { flex: 1; }
+.prov .help { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.prov .env { font-size: 12px; padding: 1px 6px; border-radius: 6px; background: var(--chip); }
+.prov-add { display: grid; gap: 10px; padding: 16px; border-radius: 16px; background: var(--accent-soft); margin-top: 6px; }
+.prov-add .title { font-weight: 700; font-size: 13.5px; }
+.prov-add .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 10px; }
 .ai-chain .link.off { border-style: dashed; border-color: var(--muted); color: var(--muted); opacity: .7; }
 .ai-chain .link.off .ico { display: none; }
 .ai-chain .then { color: var(--accent); display: inline-flex; }
@@ -4067,10 +4096,147 @@ function aiSetup(s) {
     draw();
   });
   draw(); refresh();
-  return { el: h("div", {}, tiles, chain), select: backend,
+  // for the Cloud providers card: put a step at the end of the chain, take a removed provider's steps out, and
+  // look again at what's ready (a provider just got its key)
+  const addStep = (b, m) => {
+    if (steps.some(st => same(st, { b, m }))) { toast("That one's in the chain already"); return false; }
+    steps.push({ b, m }); drawChain(); return true;
+  };
+  const drop = name => { for (let i = steps.length - 1; i > 0; i--) if (steps[i].b === name) steps.splice(i, 1); sync(); };
+  return { el: h("div", {}, tiles, chain), select: backend, addStep, drop, refresh,
+    inChain: name => steps.some(st => st.b === name),
     values: () => ({ backend: steps[0].b, model: steps[0].m || null, agy_model: null,  // agy_model: in its step now
       keychain: scoring.keychain || null,  // a key saved here names its item
       fallback: steps.slice(1).map(st => st.m ? `${st.b}:${st.m}` : st.b) }) };
+}
+// Settings › Cloud providers: OpenAI-compatible APIs (scoring.providers) set up without touching the watchlist file.
+// Each provider gets its key (saved to the macOS keychain, never shown again), a model (listed by the API, or typed),
+// a one-call test and "Add to chain", which puts a name:model step in the chain editor above (Save keeps it).
+// Adding and removing a provider write the watchlist at once; the key never comes back from the server.
+function providersCard(s, aiS) {
+  const list = h("div", { class: "prov-list" }), add = h("div", { class: "prov-add" });
+  const scoring = s.scoring || (s.scoring = {});
+  let info = { presets: [], providers: [], keychain: true };
+  // the server's scoring section replaces the page's, in place: the Save at the bottom merges into this object
+  const take = r => { for (const k of Object.keys(scoring)) delete scoring[k]; Object.assign(scoring, r.scoring); };
+
+  const tile = (p, i) => {
+    const m = h("input", { type: "text", placeholder: "model id, e.g. the one the provider lists", autocomplete: "off",
+      spellcheck: "false", "aria-label": `${p.name} model` });
+    m.value = (scoring.fallback || []).concat(scoring.backend === p.name ? [`${p.name}:${scoring.model || ""}`] : [])
+      .map(e => e.split(":")).filter(([b]) => b === p.name).map(([, ...id]) => id.join(":"))[0] || "";
+    const picker = h("select", { "aria-label": `${p.name} models` }), found = h("span", { class: "help" });
+    picker.hidden = true;
+    picker.onchange = () => { if (picker.value) m.value = picker.value; };
+    const load = h("button", { class: "btn", type: "button" }, icon("refresh", 13), "Load models");
+    load.onclick = async () => {
+      load.disabled = true; found.className = "help"; found.textContent = "Asking the API…";
+      try {
+        const r = await api("/api/ai/providers/models", { name: p.name });
+        fill(picker, h("option", { value: "" }, `${r.models.length} models: pick one…`),
+          r.models.map(id => h("option", { value: id }, id)));
+        picker.hidden = false; found.textContent = "";
+      } catch (e) { found.className = "help error"; found.textContent = e.message + " You can type the model's id instead."; }
+      load.disabled = false;
+    };
+    const result = h("span", { role: "status" });
+    const test = h("button", { class: "btn", type: "button" }, icon("sparkle", 13), "Test");
+    test.onclick = async () => {
+      if (!m.value.trim()) { result.className = "error"; result.textContent = "Pick or type a model first."; return; }
+      test.disabled = true; result.className = "muted"; result.textContent = "Asking the model…";
+      try {
+        const r = await api("/api/ai/providers/test", { name: p.name, model: m.value.trim() });
+        result.className = r.status === "ok" ? "done-ok" : "error";
+        result.textContent = r.status === "ok" ? `OK, answered in ${r.seconds}s`
+          : r.status === "auth" ? "Auth failed: the key was refused"
+            : r.status === "rate" ? "Rate limited: the key works, but it's out of quota for now" : r.message;
+      } catch (e) { result.className = "error"; result.textContent = e.message; }
+      test.disabled = false;
+    };
+    const put = h("button", { class: "btn primary", type: "button" }, icon("plus", 13), "Add to chain");
+    put.onclick = () => {
+      if (!m.value.trim()) { toast("Pick or type a model first"); return; }
+      if (aiS.addStep(p.name, m.value.trim())) toast(`Added ${p.name}:${m.value.trim()} to the chain. Press Save to keep it.`);
+    };
+    const drop = h("button", { class: "btn ghost", type: "button", title: "Take this provider out of the settings" },
+      icon("x", 13), "Remove");
+    drop.onclick = async () => {
+      if (!confirm(`Remove ${p.name} and its steps in the chain? Its key stays in your keychain (${p.item}).`)) return;
+      drop.disabled = true;
+      try {
+        take(await api("/api/ai/providers/remove", { name: p.name }));
+        aiS.drop(p.name); await draw(); aiS.refresh();
+        toast(`Removed ${p.name}. Its key is still in your keychain (${p.item}); delete it in Keychain Access if you want it gone.`);
+      } catch (e) { toast(e.message); drop.disabled = false; }
+    };
+    // the key: a password box that saves to the keychain and forgets what was typed
+    let keyBox;
+    if (!info.keychain) {
+      keyBox = h("div", { class: "help" }, icon("lock", 12), ` This computer has no macOS keychain. Set the `,
+        h("code", { class: "env" }, p.env), ` environment variable to the key before starting jobwatch${p.key ? " (it is set now)" : ""}.`);
+    } else {
+      const key = h("input", { type: "password", placeholder: "Paste the API key", autocomplete: "off",
+        "aria-label": `${p.name} API key` });
+      const msg = h("span", { class: "help", role: "status" });
+      const save = h("button", { class: "btn", type: "button" }, icon("lock", 13), p.key ? "Replace" : "Save key");
+      save.onclick = async () => {
+        save.disabled = true; msg.className = "help"; msg.textContent = "Saving to your keychain…";
+        try {
+          await api("/api/ai/providers/key", { name: p.name, key: key.value });
+          key.value = ""; await draw(); aiS.refresh();
+        } catch (e) { msg.className = "help error"; msg.textContent = e.message; save.disabled = false; }
+      };
+      keyBox = h("div", {}, h("div", { class: "lbl" }, "API key"), h("div", { class: "pair" }, key, save), msg,
+        h("div", { class: "help" }, p.key === "environment" ? `Also set in the environment (${p.env}), which is read first. `
+          : "", `Kept in your macOS keychain (${p.item}), never in the settings file. Once saved it is not shown again.`));
+    }
+    return h("div", { class: "prov", style: `--i:${i}` },
+      h("div", { class: "top" }, h("span", { class: "orb" }, icon("cloud", 20)),
+        h("div", {}, h("div", { class: "name" }, p.name), h("div", { class: "url" }, p.url)),
+        p.key ? h("span", { class: "state ready" }, icon("check", 12), "Key saved")
+          : h("span", { class: "state setup" }, "No key yet")),
+      keyBox,
+      h("div", {}, h("div", { class: "lbl" }, "Model"), m,
+        h("div", { class: "row-btns", style: "margin-top:6px" }, load, picker, found)),
+      h("div", { class: "row-btns" }, test, result),
+      h("div", { class: "row-btns" }, put, h("span", { class: "spacer" }), drop));
+  };
+
+  const draw = async () => {
+    try { info = await api("/api/ai/providers"); }
+    catch (e) { fill(list, h("p", { class: "small error" }, e.message)); return; }
+    fill(list, info.providers.length ? info.providers.map(tile)
+      : h("p", { class: "small muted" }, "No cloud provider yet. Add one below: a free tier is enough for fit scores."));
+  };
+
+  // the add form: a preset fills in the base url (Custom leaves it for you), then the name it goes by
+  const preset = h("select", { "aria-label": "Provider" }), name = textInput("", "acme"), url = textInput("", "https://api.example.com/v1");
+  const fillFrom = () => {
+    const p = info.presets.find(x => x.id === preset.value) || {};
+    name.value = p.name || ""; url.value = p.url || "";
+  };
+  preset.onchange = fillFrom;
+  const go = h("button", { class: "btn primary", type: "button" }, icon("plus", 13), "Add provider");
+  go.onclick = async () => {
+    go.disabled = true;
+    try {
+      take(await api("/api/ai/providers/add", { name: name.value, url: url.value }));
+      name.value = ""; url.value = ""; await draw(); aiS.refresh();
+      toast("Provider added. Paste its key to finish.");
+    } catch (e) { toast(e.message); }
+    go.disabled = false;
+  };
+  fill(add, h("div", { class: "title" }, "Add a provider"),
+    h("div", { class: "fields" }, field("Provider", preset), field("Name", name, "Lowercase letters, digits and dashes. It becomes the step's name in the chain (name:model) and the keychain item jobwatch-<name>."),
+      field("Base URL", url, "The API's /v1 base: jobwatch adds /chat/completions and /models.")),
+    h("div", { class: "row-btns" }, go),
+    h("div", { class: "help" }, "Any API that speaks the OpenAI chat protocol works. Your postings and resume go to the provider you pick."));
+  api("/api/ai/providers").then(r => {
+    info = r; fill(preset, [h("option", { value: "" }, "Pick a provider…"), r.presets.map(p => h("option", { value: p.id }, p.label))]);
+  }).catch(() => { /* draw() shows the error */ });
+  draw();
+  return h("div", {}, list, add,
+    h("p", { class: "small muted" }, "Its key stays in your keychain (jobwatch-<name>); removing a provider here leaves that item alone."));
 }
 // How each choice looks: its tile's name, tagline and icon, and the meters (3 is best: better scores, cheaper,
 // more private, quicker).
@@ -4214,7 +4380,7 @@ function remember(key, value) {
 const SET_GROUPS = [
   { id: "search", label: "Your search", cards: ["goals", "companies", "filters", "keywords"] },
   { id: "today", label: "Today & display", cards: ["today", "display"] },
-  { id: "ai", label: "AI & fit scores", cards: ["resume", "usage", "prompts", "chat"] },
+  { id: "ai", label: "AI & fit scores", cards: ["resume", "providers", "usage", "prompts", "chat"] },
   { id: "people", label: "People & pay", cards: ["people", "pay"] },
   { id: "alerts", label: "Alerts & skills", cards: ["alerts", "incoming", "suggestions", "skills"] },
   { id: "apply", label: "Applying", cards: ["applicant", "tailor", "extension"] },
@@ -4723,6 +4889,7 @@ const SET_LOOK = {
   today: ["calendar", -50, "How much Today shows and your pace"], resume: ["file", 15, "Your resume and fit scores"],
   people: ["users", 40, "Who you know at companies"], usage: ["dollar", 35, "Which backend scores, and what it cost"],
   prompts: ["pencil", -20, "What the model is told"],
+  providers: ["cloud", 75, "A free or paid API (OpenRouter, Groq, Google or any OpenAI-compatible one) for fit scores"],
   chat: ["send", 30, "Ask jobwatch"], pay: ["dollar", -60, "Expected pay"], alerts: ["inbox", 10, "Job-alert emails"],
   incoming: ["inbox", 80, "Texts, WhatsApp, Gmail and LinkedIn"],
   suggestions: ["plus", -10, "Companies worth watching"], skills: ["arrow", 55, "What to learn next"],
@@ -5770,6 +5937,7 @@ function renderSettings() {
         field("Per company a day", perCompany, "The most jobs from one company the page scores by itself a day; " +
           "Score fit still scores any. 0: no cap.")),
       auto.el, batchApi.el),
+    setCard("providers", "Cloud providers", null, providersCard(s, aiS)),
     setCard("people", "People you know", "optional",
       uploadField("connections", ".zip,.csv", s.connections, "On LinkedIn: Settings → Data privacy → Get a copy of your " +
         "data. Upload the archive (.zip) LinkedIn emails you, and each job shows who you know there, the people you " +

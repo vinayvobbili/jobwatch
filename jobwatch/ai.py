@@ -244,15 +244,17 @@ def test(backend: str, model: str = "", keychain: str = "", key_command: str = "
             "model": getattr(engine, "model", model)}
 
 
-def save_key(key: str, keychain: str = "") -> str:
-    """Put an Anthropic API key in the macOS keychain item `keychain` (KEYCHAIN when unset), replacing one there,
-    and use it from now on in this process. Returns the item's name. The key goes to `security` on its input, not
-    its command line, so other processes can't see it; it is never written to the settings file or logged."""
+def save_key(key: str, keychain: str = "", env: str = "ANTHROPIC_API_KEY", pattern=_KEY) -> str:
+    """Put an API key in the macOS keychain item `keychain` (KEYCHAIN when unset), replacing one there, and use it
+    from now on in this process (as `env`). Anthropic's by default; a scoring.providers API passes its own `env`
+    and a `pattern` its keys match. Returns the item's name. The key goes to `security` on its input, not its
+    command line, so other processes can't see it; it is never written to the settings file or logged."""
     key, keychain = key.strip(), (keychain or KEYCHAIN).strip()
     if sys.platform != "darwin":
-        raise ValueError("the keychain is macOS only: set ANTHROPIC_API_KEY before starting jobwatch instead")
-    if not _KEY.fullmatch(key):
-        raise ValueError("that doesn't look like an Anthropic API key (they start with sk-ant-)")
+        raise ValueError(f"the keychain is macOS only: set {env} before starting jobwatch instead")
+    if not pattern.fullmatch(key):
+        raise ValueError("that doesn't look like an Anthropic API key (they start with sk-ant-)"
+                         if pattern is _KEY else "that doesn't look like an API key")
     if not _ITEM.fullmatch(keychain):
         raise ValueError("a keychain item name is letters, digits, dots, dashes and underscores")
     account = os.environ.get("USER") or "jobwatch"
@@ -265,5 +267,5 @@ def save_key(key: str, keychain: str = "") -> str:
         raise ValueError(f"couldn't reach the keychain: {type(e).__name__}") from None
     if done.returncode or "error" in (done.stderr or "").lower():
         raise ValueError("the keychain didn't take the key: " + (done.stderr or "").replace(key, "…").strip()[:200])
-    os.environ["ANTHROPIC_API_KEY"] = key
+    os.environ[env] = key
     return keychain

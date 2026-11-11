@@ -57,6 +57,7 @@ from . import (
     paysources,
     prep,
     prepedit,
+    providers,
     quiet,
     referrals,
     rehearse,
@@ -74,7 +75,7 @@ from .config import ConfigError
 from .filters import KINDS
 from .package import Package
 from .rounds import ROUNDS
-from .score import ScoringUnavailable, brief, prompt_info, resume_id
+from .score import Provider, ScoringUnavailable, brief, prompt_info, provider_key, resume_id
 from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
@@ -747,6 +748,87 @@ class App:
                 config.save(self.path, {"scoring": {**scoring, "keychain": item}})
         self.score_in_background()
         return {"keychain": item, "file_version": self._file_version()}
+
+    # -- cloud providers (scoring.providers, see providers.py): none of these returns or logs a key
+
+    def _scoring(self) -> dict:
+        raw = (yaml.safe_load(self.path.read_text()) or {}) if self.path.is_file() else {}
+        return dict(raw.get("scoring")) if isinstance(raw.get("scoring"), dict) else {}
+
+    def _provider(self, body) -> Provider:
+        name = str(body.get("name") or "").strip()
+        try:
+            cfg = self._cfg()
+        except ConfigError as e:
+            raise ApiError(str(e)) from None
+        if not (p := cfg.provider(name)):
+            raise ApiError(f"there is no provider named {name!r}: add it first", HTTPStatus.NOT_FOUND)
+        return p
+
+    def _provider_key(self, p: Provider) -> str:
+        key, problem = provider_key(p)
+        if not key:
+            raise ApiError(problem or f"no API key for {p.name}")
+        return key
+
+    def _save_scoring(self, scoring: dict) -> dict:
+        with self.lock:
+            try:
+                config.save(self.path, {"scoring": scoring})
+            except ConfigError as e:
+                raise ApiError(str(e)) from None
+            return {"scoring": self._scoring(), "file_version": self._file_version()}
+
+    def get_providers(self, q) -> dict:
+        """The presets, the providers set up (key: "environment", "keychain" or "" for none; never the key) and
+        whether this computer has a keychain to save one in."""
+        try:
+            have = self._cfg().score_providers
+        except (ApiError, ConfigError):  # no watchlist yet
+            have = ()
+        return {"presets": list(providers.PRESETS), "keychain": sys.platform == "darwin",
+                "providers": [{"name": p.name, "url": p.url, "env": p.env, "item": p.item,
+                               "key": ai.provider_status(p, True)["key"]} for p in have]}
+
+    def post_provider_add(self, body) -> dict:
+        try:
+            scoring = providers.add(self._scoring(), str(body.get("name") or ""), str(body.get("url") or ""))
+        except ValueError as e:
+            raise ApiError(str(e)) from None
+        return self._save_scoring(scoring)
+
+    def post_provider_remove(self, body) -> dict:
+        """Takes the provider and its chain steps out of the watchlist. Its keychain item is left alone."""
+        name = str(body.get("name") or "").strip()
+        try:
+            scoring = providers.remove(self._scoring(), name)
+        except ValueError as e:
+            raise ApiError(str(e)) from None
+        return self._save_scoring(scoring)
+
+    def post_provider_key(self, body) -> dict:
+        """Keeps the provider's key in its keychain item (jobwatch-<name>). Answers only that it was saved."""
+        p = self._provider(body)
+        try:
+            ai.save_key(str(body.get("key") or ""), p.item, env=p.env, pattern=providers.KEY)
+        except ValueError as e:
+            raise ApiError(str(e)) from None
+        self.score_in_background()
+        return {"saved": True, "item": p.item}
+
+    def post_provider_models(self, body) -> dict:
+        p = self._provider(body)
+        try:
+            return {"models": providers.models(p, self._provider_key(p))}
+        except providers.ProviderError as e:
+            raise ApiError(str(e)) from None
+
+    def post_provider_test(self, body) -> dict:
+        p = self._provider(body)
+        model = str(body.get("model") or "").strip()
+        if not model:
+            raise ApiError("pick or type a model first")
+        return providers.check(p, self._provider_key(p), model)
 
     # -- the browser extension (see autofill.py)
 
@@ -1649,6 +1731,12 @@ ROUTES = {
     ("GET", "/api/ai"): App.get_ai,
     ("POST", "/api/ai/test"): App.post_ai_test,
     ("POST", "/api/ai/key"): App.post_ai_key,
+    ("GET", "/api/ai/providers"): App.get_providers,
+    ("POST", "/api/ai/providers/add"): App.post_provider_add,
+    ("POST", "/api/ai/providers/remove"): App.post_provider_remove,
+    ("POST", "/api/ai/providers/key"): App.post_provider_key,
+    ("POST", "/api/ai/providers/models"): App.post_provider_models,
+    ("POST", "/api/ai/providers/test"): App.post_provider_test,
     ("GET", "/api/extension"): App.get_extension,
     ("POST", "/api/extension/token"): App.post_extension_token,
     ("GET", "/api/onboarding"): App.get_onboarding,
