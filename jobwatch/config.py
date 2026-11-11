@@ -537,7 +537,7 @@ def _prompts(raw, path: Path) -> dict[str, str]:
 
 
 _PROVIDER_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
-_PROVIDER_KEYS = {"url", "keychain", "workers", "response_format"}
+_PROVIDER_KEYS = {"url", "keychain", "workers", "response_format", "account_url"}
 
 
 def _providers(raw, path: Path) -> tuple[Provider, ...]:
@@ -568,7 +568,10 @@ def _providers(raw, path: Path) -> tuple[Provider, ...]:
             raise ConfigError(f"{where}.response_format is json_schema, json_object or none, got {response_format!r}")
         workers = _whole(block.get("workers", 2), f"scoring.providers.{name}.workers", path,
                          "1 makes one call at a time")
-        out.append(Provider(name, url, keychain, max(1, workers), response_format))
+        account = str(block.get("account_url") or "").strip()
+        if account and (urlsplit(account).scheme not in ("http", "https") or not urlsplit(account).hostname):
+            raise ConfigError(f"{where}.account_url is an http(s) address, got {account!r}")
+        out.append(Provider(name, url, keychain, max(1, workers), response_format, account))
     return tuple(out)
 
 

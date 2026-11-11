@@ -21,12 +21,28 @@ TIMEOUT = 30  # seconds for one call
 
 # Where the page's picker starts: the base url each hosted API documents. "name" is the suggested provider name.
 PRESETS = (
-    {"id": "openrouter", "label": "OpenRouter", "name": "openrouter", "url": "https://openrouter.ai/api/v1"},
-    {"id": "groq", "label": "Groq", "name": "groq", "url": "https://api.groq.com/openai/v1"},
+    {"id": "openrouter", "label": "OpenRouter", "name": "openrouter", "url": "https://openrouter.ai/api/v1",
+     "links": [{"label": "Keys", "url": "https://openrouter.ai/settings/keys"},
+               {"label": "Credits & usage", "url": "https://openrouter.ai/settings/credits"}]},
+    {"id": "groq", "label": "Groq", "name": "groq", "url": "https://api.groq.com/openai/v1",
+     "links": [{"label": "Keys", "url": "https://console.groq.com/keys"},
+               {"label": "Usage", "url": "https://console.groq.com/settings/usage"}]},
     {"id": "google", "label": "Google AI Studio (OpenAI-compatible)", "name": "google",
-     "url": "https://generativelanguage.googleapis.com/v1beta/openai"},
-    {"id": "custom", "label": "Custom (any OpenAI-compatible API)", "name": "", "url": ""},
+     "url": "https://generativelanguage.googleapis.com/v1beta/openai",
+     "links": [{"label": "Keys", "url": "https://aistudio.google.com/apikey"},
+               {"label": "Usage", "url": "https://aistudio.google.com/usage"}]},
+    {"id": "custom", "label": "Custom (any OpenAI-compatible API)", "name": "", "url": "", "links": []},
 )
+
+
+def links(p: Provider) -> list[dict]:
+    """The account pages to link from a provider's card: its preset's when its base url matches one, plus an
+    "Account" link when the provider sets account_url."""
+    url = p.url.rstrip("/")
+    out = [dict(link) for preset in PRESETS if preset["url"] and preset["url"] == url for link in preset["links"]]
+    if p.account_url:
+        out.append({"label": "Account", "url": p.account_url})
+    return out
 
 
 class ProviderError(Exception):
@@ -59,15 +75,108 @@ def _call(url: str, key: str, body: dict | None = None) -> dict:
         raise ProviderError("error", "the API's answer wasn't JSON") from None
 
 
-def models(p: Provider, key: str) -> list[str]:
-    """The model ids the provider lists at {url}/models, sorted ("models/" prefixes dropped: Google's list has them
-    and its chat endpoint doesn't take them)."""
+def models(p: Provider, key: str) -> list[dict]:
+    """The models the provider lists at {url}/models, sorted by id, as {"id", "context", "free"} ("models/" prefixes
+    dropped: Google's list has them and its chat endpoint doesn't take them). context is the window in tokens (0 when
+    not stated); free is True for a ":free" id or a listed price of zero (OpenRouter's pricing)."""
     data = _call(f"{p.url}/models", key)
     rows = data.get("data") if isinstance(data, dict) else None
-    ids = {str(m["id"]).removeprefix("models/") for m in rows or [] if isinstance(m, dict) and m.get("id")}
-    if not ids:
+    found: dict[str, dict] = {}
+    for m in rows or []:
+        if isinstance(m, dict) and m.get("id"):
+            mid = str(m["id"]).removeprefix("models/")
+            found[mid] = {"id": mid, "context": _tokens(m.get("context_length")),
+                          "free": _is_free(mid, m.get("pricing"))}
+    if not found:
         raise ProviderError("error", "the API listed no models: type the model's id instead")
-    return sorted(ids)
+    return [found[i] for i in sorted(found)]
+
+
+# -- sorting the list into what is worth trying for fit scoring (a judgment over a long posting and a resume, as JSON)
+
+LARGE_B = 100  # billions of parameters (total, for a mixture of experts): most accurate
+MEDIUM_B = 30  # from here up to LARGE_B: balanced; under it: small
+# Names that mark a model that can't do the job: embedders, rerankers, safety and guard models, reward models,
+# vision, video, speech and image models, and code models.
+_NOT_FOR_SCORING = re.compile(
+    r"embed|retriever|rerank|guard|safety|topic-control|reward|detector|vision|video|cosmos|diffusion|whisper"
+    r"|speech|(?<!de)code|starcoder|(?<![a-z0-9])(?:vlm|vl|asr|tts|ocr)(?![a-z0-9])")
+_PREFERRED = re.compile(r"instruct|chat|reason|think|(?<![a-z0-9])(?:it|r1)(?![a-z0-9])")
+# 70b, 1.5b, 1t; 8x22b (experts x size); 30b-a3b and 550b-a55b (total, active); a12b alone (active only)
+_SIZE = re.compile(r"(?<![a-z0-9.])(?:(\d+)x)?(\d+(?:\.\d+)?)([bt])(?![a-z0-9])")
+_ACTIVE = re.compile(r"(?<![a-z0-9])a(\d+(?:\.\d+)?)b(?![a-z0-9])")
+GROUPS = (
+    ("large", f"Large: most accurate ({LARGE_B}B+ or big MoE)"),
+    ("medium", f"Medium: balanced ({MEDIUM_B}–{LARGE_B}B)"),
+    ("small", f"Small: fast, likely no better than a local model (under {MEDIUM_B}B)"),
+    ("unknown", "Size not stated"),
+    ("skip", "Not for fit scoring"),
+)
+
+
+def _tokens(value) -> int:
+    try:
+        return max(int(float(value)), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_free(mid: str, pricing) -> bool:
+    if mid.endswith(":free"):
+        return True
+    if isinstance(pricing, dict) and pricing.get("prompt") is not None and pricing.get("completion") is not None:
+        try:
+            return float(pricing["prompt"]) == 0 and float(pricing["completion"]) == 0
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
+def not_for_scoring(model_id: str) -> bool:
+    """True for an id that names an embedder, a guard/safety/reward model, vision/video/speech or a code model."""
+    return bool(_NOT_FOR_SCORING.search(model_id.lower().rpartition("/")[2]))
+
+
+def size_billions(model_id: str) -> float | None:
+    """Parameters in billions parsed from the id: the total for a mixture of experts (8x22b is 176, 30b-a3b is 30),
+    the active count when only that is stated (a12b), None when the id says nothing."""
+    name = model_id.lower().removesuffix(":free").rpartition("/")[2]
+    for count, size, unit in _SIZE.findall(name):
+        b = float(size) * (1000 if unit == "t" else 1) * (int(count) if count else 1)
+        return b
+    active = _ACTIVE.search(name)
+    return float(active.group(1)) if active else None
+
+
+def _group_of(model_id: str) -> str:
+    if not_for_scoring(model_id):
+        return "skip"
+    b = size_billions(model_id)
+    return "unknown" if b is None else "large" if b >= LARGE_B else "medium" if b >= MEDIUM_B else "small"
+
+
+def _detail(m: dict) -> str:
+    ctx = m.get("context") or 0
+    parts = (["free"] if m.get("free") else []) + (
+        [f"{ctx / 1_000_000:.3g}M ctx" if ctx >= 1_000_000 else f"{round(ctx / 1000)}K ctx"] if ctx else [])
+    return " · ".join(parts)
+
+
+def group_models(entries: list[dict], free_only: bool = False) -> dict:
+    """The models as the picker's groups, in GROUPS order, empty ones left out: {"groups": [{"id", "label", "models":
+    [{"id", "detail", "free"}]}], "count", "free" (how many are free, so the page can offer the filter)}. Inside a
+    group instruct/reasoning models come first, then larger before smaller. free_only keeps only the free ones."""
+    free = sum(1 for m in entries if m.get("free"))
+    kept = [m for m in entries if m.get("free") or not free_only]
+    buckets: dict[str, list[tuple]] = {gid: [] for gid, _ in GROUPS}
+    for m in kept:
+        mid = m["id"]
+        b = size_billions(mid)
+        row = {"id": mid, "detail": _detail(m), "free": bool(m.get("free"))}
+        buckets[_group_of(mid)].append(((not _PREFERRED.search(mid.lower()), -(b or 0), mid), row))
+    groups = [{"id": gid, "label": label, "models": [row for _, row in sorted(buckets[gid], key=lambda t: t[0])]}
+              for gid, label in GROUPS if buckets[gid]]
+    return {"groups": groups, "count": len(kept), "free": free}
 
 
 def check(p: Provider, key: str, model: str) -> dict:

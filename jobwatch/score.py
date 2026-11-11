@@ -57,6 +57,7 @@ class Provider:
     keychain: str = ""             # unset: jobwatch-<name>
     workers: int = 2               # calls at once: free tiers allow few
     response_format: str = "json_schema"  # or json_object / none, for an API that rejects strict schemas
+    account_url: str = ""          # the provider's account page, linked from its card in Settings
 
     @property
     def item(self) -> str:

@@ -723,6 +723,13 @@ table.use th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
 .prov .row-btns { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
 .prov .row-btns .spacer { flex: 1; }
 .prov .help { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.prov .links { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 2px; font-size: 12px; font-weight: 600; }
+.prov .links a { color: var(--accent); text-decoration: none; }
+.prov .links a:hover { text-decoration: underline; }
+.prov .pick { display: grid; gap: 6px; margin-top: 6px; position: relative; z-index: 1; }
+.prov .pick[hidden] { display: none; }
+.prov .pick label { display: inline-flex; align-items: center; gap: 4px; }
+.prov .pick select { max-width: 100%; }
 .prov .env { font-size: 12px; padding: 1px 6px; border-radius: 6px; background: var(--chip); }
 .prov-add { display: grid; gap: 10px; padding: 16px; border-radius: 16px; background: var(--accent-soft); margin-top: 6px; }
 .prov-add .title { font-weight: 700; font-size: 13.5px; }
@@ -4125,18 +4132,43 @@ function providersCard(s, aiS) {
       spellcheck: "false", "aria-label": `${p.name} model` });
     m.value = (scoring.fallback || []).concat(scoring.backend === p.name ? [`${p.name}:${scoring.model || ""}`] : [])
       .map(e => e.split(":")).filter(([b]) => b === p.name).map(([, ...id]) => id.join(":"))[0] || "";
+    // The list comes grouped by the server (providers.group_models): large to small, then the ones that can't score.
     const picker = h("select", { "aria-label": `${p.name} models` }), found = h("span", { class: "help" });
-    picker.hidden = true;
+    const search = h("input", { type: "search", placeholder: "Filter by name…", autocomplete: "off", spellcheck: "false",
+      "aria-label": `Filter ${p.name} models` });
+    const freeBox = h("input", { type: "checkbox" }), skipBox = h("input", { type: "checkbox" });
+    const freeLbl = h("label", {}, freeBox, " Free only"), skipLbl = h("label", {}, skipBox, " ");
+    const pick = h("div", { class: "pick", hidden: true }, search, picker,
+      h("div", { class: "row-btns" }, freeLbl, skipLbl),
+      h("div", { class: "help" }, "Larger models usually score closer to Claude; anything under ~10B is unlikely to beat a local model."));
+    let listed = null;
+    const drawPicker = () => {
+      const q = search.value.trim().toLowerCase();
+      const groups = listed.groups.filter(g => g.id !== "skip" || skipBox.checked).map(g => ({ ...g,
+        models: g.models.filter(x => !q || x.id.toLowerCase().includes(q)) })).filter(g => g.models.length);
+      const n = groups.reduce((a, g) => a + g.models.length, 0);
+      fill(picker, h("option", { value: "" }, `${n} model${n === 1 ? "" : "s"}: pick one…`),
+        groups.map(g => h("optgroup", { label: `${g.label} (${g.models.length})` },
+          g.models.map(x => h("option", { value: x.id }, x.detail ? `${x.id} · ${x.detail}` : x.id)))));
+    };
+    const skipped = () => (listed.groups.find(g => g.id === "skip") || { models: [] }).models.length;
+    const loadList = async () => {
+      listed = await api("/api/ai/providers/models", { name: p.name, free: freeBox.checked });
+      freeLbl.hidden = !listed.free && !freeBox.checked;
+      skipLbl.hidden = !skipped(); fill(skipLbl, skipBox, ` Show ${skipped()} not for fit scoring (embedding, safety, vision, code…)`);
+      drawPicker(); pick.hidden = false;
+    };
     picker.onchange = () => { if (picker.value) m.value = picker.value; };
+    search.oninput = () => listed && drawPicker();
+    skipBox.onchange = () => listed && drawPicker();
+    freeBox.onchange = async () => {
+      try { await loadList(); } catch (e) { found.className = "help error"; found.textContent = e.message; }
+    };
     const load = h("button", { class: "btn", type: "button" }, icon("refresh", 13), "Load models");
     load.onclick = async () => {
       load.disabled = true; found.className = "help"; found.textContent = "Asking the API…";
-      try {
-        const r = await api("/api/ai/providers/models", { name: p.name });
-        fill(picker, h("option", { value: "" }, `${r.models.length} models: pick one…`),
-          r.models.map(id => h("option", { value: id }, id)));
-        picker.hidden = false; found.textContent = "";
-      } catch (e) { found.className = "help error"; found.textContent = e.message + " You can type the model's id instead."; }
+      try { await loadList(); found.textContent = ""; }
+      catch (e) { found.className = "help error"; found.textContent = e.message + " You can type the model's id instead."; }
       load.disabled = false;
     };
     const result = h("span", { role: "status" });
@@ -4192,12 +4224,14 @@ function providersCard(s, aiS) {
     }
     return h("div", { class: "prov", style: `--i:${i}` },
       h("div", { class: "top" }, h("span", { class: "orb" }, icon("cloud", 20)),
-        h("div", {}, h("div", { class: "name" }, p.name), h("div", { class: "url" }, p.url)),
+        h("div", {}, h("div", { class: "name" }, p.name), h("div", { class: "url" }, p.url),
+          (p.links || []).length ? h("div", { class: "links" }, p.links.map(l =>
+            h("a", { href: l.url, target: "_blank", rel: "noopener" }, l.label, " ↗"))) : null),
         p.key ? h("span", { class: "state ready" }, icon("check", 12), "Key saved")
           : h("span", { class: "state setup" }, "No key yet")),
       keyBox,
       h("div", {}, h("div", { class: "lbl" }, "Model"), m,
-        h("div", { class: "row-btns", style: "margin-top:6px" }, load, picker, found)),
+        h("div", { class: "row-btns", style: "margin-top:6px" }, load, found), pick),
       h("div", { class: "row-btns" }, test, result),
       h("div", { class: "row-btns" }, put, h("span", { class: "spacer" }), drop));
   };

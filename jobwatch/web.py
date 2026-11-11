@@ -788,7 +788,7 @@ class App:
             have = ()
         return {"presets": list(providers.PRESETS), "keychain": sys.platform == "darwin",
                 "providers": [{"name": p.name, "url": p.url, "env": p.env, "item": p.item,
-                               "key": ai.provider_status(p, True)["key"]} for p in have]}
+                               "key": ai.provider_status(p, True)["key"], "links": providers.links(p)} for p in have]}
 
     def post_provider_add(self, body) -> dict:
         try:
@@ -819,7 +819,7 @@ class App:
     def post_provider_models(self, body) -> dict:
         p = self._provider(body)
         try:
-            return {"models": providers.models(p, self._provider_key(p))}
+            return providers.group_models(providers.models(p, self._provider_key(p)), bool(body.get("free")))
         except providers.ProviderError as e:
             raise ApiError(str(e)) from None
 

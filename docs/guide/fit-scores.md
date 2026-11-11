@@ -113,6 +113,7 @@ scoring:
       keychain: jobwatch-acme             # macOS keychain item with its key (default: jobwatch-<name>)
       # workers: 2                        # calls at once; free tiers allow few
       # response_format: json_schema      # json_object or none, if the API rejects strict schemas
+      # account_url: https://example.com/account   # shown as an "Account" link on the provider's card in Settings
   backend: claude
   fallback: [acme:some-model-id, local]   # the model id as the provider lists it
 ```
