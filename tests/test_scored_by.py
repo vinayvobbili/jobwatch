@@ -782,7 +782,7 @@ def test_providers_are_backends_by_name_and_need_a_model(watchlist):
     cfg = _set(watchlist, scoring={"backend": "claude", "providers": {"acme": ACME},
                                    "fallback": ["acme:vendor/model-x", "local"]})
     p = cfg.provider("acme")
-    assert (p.url, p.item, p.env, p.workers) == ("https://api.example.com/v1", "jobwatch-acme", "ACME_API_KEY", 2)
+    assert (p.url, p.item, p.env, p.workers) == ("https://api.example.com/v1", "jobwatch-acme", "ACME_API_KEY", 1)
     assert cfg.score_fallback == ("acme:vendor/model-x", "local") and "acme" in cfg.backends
     assert config.fallback_entry("acme:vendor/model-x") == ("acme", "vendor/model-x")
     assert config.load(watchlist).provider("claude") is None
@@ -855,14 +855,29 @@ def test_a_provider_without_a_model_is_unavailable(shortlist, tmp_path, monkeypa
     ("BackendError: The acme API at https://api.example.com/v1 answered 429: Too many requests", "out of quota"),
     ("BackendError: The acme API at https://api.example.com/v1 answered 503: overloaded", "unavailable"),
     ("BackendError: The acme API at https://api.example.com/v1 refused the key (401): bad key", "API key refused"),
+    ("BackendError: The acme API at https://api.example.com/v1 refused the model vendor/gone (404): Function 'f': "
+     "Not found", "model not served"),
 ])
 def test_a_providers_rate_limit_server_error_or_refused_key_pauses_the_step(error, reason):
     found = score.paused_until(error)
     assert found and found[0].startswith(reason)
 
 
+def test_calls_at_once_is_held_to_what_the_backend_allows():
+    acme = score.Provider("acme", "https://api.example.com/v1")
+    assert acme.workers == 1  # free tiers rate-limit hard: a provider scores one at a time unless told otherwise
+    assert score.calls_at_once("acme", 4, acme) == 1
+    assert score.calls_at_once("acme", 4, score.Provider("acme", "https://x/v1", workers=2)) == 2
+    assert score.calls_at_once("claude", 4) == 4
+    assert score.calls_at_once("local", 4) == 1
+    assert score.calls_at_once("agy", 9) == score.AGY_WORKERS
+    assert score.calls_at_once("claude", 0) == 1
+
+
 @pytest.mark.parametrize("error", [
     "BackendError: The acme API at https://api.example.com/v1 (m) answered with nothing",
+    "BackendError: The acme model m's output didn't validate at 32768 tokens (ran out of output tokens "
+    "(finish_reason length) before answering): x",
     "BackendError: Local model output didn't validate at 4096 tokens (not the expected JSON): x",
     "BackendError: The acme API at https://api.example.com/v1 answered 400: bad request",
 ])

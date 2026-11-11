@@ -59,7 +59,7 @@ from . import (
 from .config import BACKENDS, ConfigError, duration, fallback_entry
 from .filters import KINDS, rejection, staffing_firm
 from .rounds import ROUNDS
-from .score import AGY_WORKERS, ScoringUnavailable, check_prompts, prompt_info, resume_id, scorer_label
+from .score import ScoringUnavailable, calls_at_once, check_prompts, prompt_info, resume_id, scorer_label
 from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, STAGES, STATUSES, Store, day, day_start
 from .watch import (
     CHECKED,
@@ -267,8 +267,7 @@ def cmd_score(args, cfg, store):
         return
     # Groups of scoring.workers jobs scored at once (Claude), so stopping keeps every group done; --batch-api sends
     # them all, half price, and a stopped run collects its batch next time.
-    size = (len(todo) if args.batch_api else 1 if cfg.backend == "local"
-            else min(cfg.score_workers, AGY_WORKERS) if cfg.backend == "agy" else cfg.score_workers)
+    size = len(todo) if args.batch_api else calls_at_once(cfg.backend, cfg.score_workers, cfg.provider(cfg.backend))
     if args.batch_api:
         print(f"Scoring {len(todo)} jobs through Claude's Message Batches API (half price; each batch takes minutes, "
               "at most a day). Stopping is safe: the next run collects what was sent.", file=sys.stderr)
@@ -350,7 +349,8 @@ def _compare(args, cfg, store):
         print(f"{len(big)} off by 10 or more"
               + (f", {sum(n > o and o < cut for o, n in big)} of them over-scoring a job stored below min_fit {cut}"
                  if cut else "") + f"; {len(picks) - len(diffs)} failed")
-    print(f"{took / len(picks):.1f} seconds a job ({took:.0f} in all, {cfg.score_workers} at once)")
+    print(f"{took / len(picks):.1f} seconds a job ({took:.0f} in all, "
+          f"{calls_at_once(cfg.backend, cfg.score_workers, cfg.provider(cfg.backend))} at once)")
 
 
 def _cost(cfg, store):

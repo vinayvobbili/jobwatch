@@ -55,7 +55,7 @@ class Provider:
     name: str
     url: str
     keychain: str = ""             # unset: jobwatch-<name>
-    workers: int = 2               # calls at once: free tiers allow few
+    workers: int = 1               # calls at once: free tiers rate-limit hard
     response_format: str = "json_schema"  # or json_object / none, for an API that rejects strict schemas
     account_url: str = ""          # the provider's account page, linked from its card in Settings
 
@@ -211,6 +211,17 @@ def brief(fit: dict | None) -> dict | None:
     return {k: v for k, v in fit.items() if k != "requirements"} if fit else fit
 
 
+def calls_at_once(backend: str, workers: int, provider: Provider | None = None) -> int:
+    """How many model calls run together: scoring.workers, held to what the backend allows (the local model and a
+    provider's own workers: setting, agy's few)."""
+    workers = max(1, workers)
+    if backend == "local":
+        return 1
+    if backend == "agy":
+        return min(workers, AGY_WORKERS)
+    return min(workers, provider.workers) if provider else workers
+
+
 def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, workers: int = 1,
                progress: Callable[[str], None] | None = None,
                prompts: Mapping[str, str] | None = None, model: str = "",
@@ -257,8 +268,7 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
         raise ScoringUnavailable(f"unknown scoring backend {backend!r}: a provider is defined in scoring.providers")
 
     progress = progress or (lambda msg: None)
-    workers = (1 if backend == "local" else min(max(1, workers), AGY_WORKERS) if backend == "agy"
-               else min(max(1, workers), provider.workers) if provider else max(1, workers))
+    workers = calls_at_once(backend, workers, provider)
     tokens = _Tokens(None, backend, batch)
     if batch:
         from shortlist_ai.batch import BatchBackend
@@ -358,6 +368,8 @@ def paused_until(error: str, now: datetime | None = None) -> tuple[str, datetime
         return "out of credit", now + PAUSE
     if "refused the key" in error:
         return "API key refused", now + PAUSE
+    if "refused the model" in error:  # a model the API no longer serves (a 404): no job will score with it
+        return "model not served", now + PAUSE
     if _QUOTA.search(error):
         m = _RESETS.search(error)
         wait = timedelta(hours=int(m[1] or 0), minutes=int(m[2] or 0), seconds=int(m[3] or 0)) if m else PAUSE

@@ -566,7 +566,7 @@ def _providers(raw, path: Path) -> tuple[Provider, ...]:
         response_format = str(block.get("response_format") or "json_schema")
         if response_format not in ("json_schema", "json_object", "none"):
             raise ConfigError(f"{where}.response_format is json_schema, json_object or none, got {response_format!r}")
-        workers = _whole(block.get("workers", 2), f"scoring.providers.{name}.workers", path,
+        workers = _whole(block.get("workers", 1), f"scoring.providers.{name}.workers", path,
                          "1 makes one call at a time")
         account = str(block.get("account_url") or "").strip()
         if account and (urlsplit(account).scheme not in ("http", "https") or not urlsplit(account).hostname):
