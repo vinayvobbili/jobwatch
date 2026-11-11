@@ -10,17 +10,18 @@
   "homepage": "https://github.com/vinayvobbili/jobwatch",
   "repository": "https://github.com/vinayvobbili/jobwatch",
   "license": "MIT",
-  "keywords": ["jobs", "job-search", "job-tracker", "applications", "interview-prep", "greenhouse", "lever", "workday"],
+  "keywords": [
+    "jobs",
+    "job-search",
+    "job-tracker",
+    "applications",
+    "interview-prep",
+    "greenhouse",
+    "lever",
+    "workday"
+  ],
   "icon": "./icon.png",
   "documentationUrl": "https://github.com/vinayvobbili/jobwatch/tree/main/docs/guide",
   "supportUrl": "https://github.com/vinayvobbili/jobwatch/issues",
-  "privacyPolicyUrl": "https://github.com/vinayvobbili/jobwatch/blob/main/plugin/README.md#your-data",
-  "userConfig": {
-    "watchlist": {
-      "type": "string",
-      "title": "Watchlist file",
-      "description": "The YAML file that lists the companies to watch. It's created the first time you add a company; point this at an existing one to keep using it.",
-      "default": "~/.config/jobwatch/config.yaml"
-    }
-  }
+  "privacyPolicyUrl": "https://github.com/vinayvobbili/jobwatch/blob/main/plugin/README.md#your-data"
 }
