@@ -161,7 +161,8 @@ def test_page_has_a_skills_tab(server):
 def test_page_has_an_activity_tab(server):
     """What jobwatch did in the background is a tab of its own, read from /api/activity."""
     page = request(server, "GET", "/")[1].decode()
-    assert '<button data-tab="activity">Activity<span id="actcount"></span></button>' in page
+    assert '<button data-tab="activity">Activity</button>' in page  # no unseen count: it pulled for attention
+    assert "actcount" not in page
     assert "activity: renderActivity" in page and "watchNotices();" in page
     # one list at a time: the boards, the emails, then scoring (with pay and logos), which there's most of, then
     # prep sheet saves and drill renders

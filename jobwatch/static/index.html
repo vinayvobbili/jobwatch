@@ -1206,7 +1206,7 @@ ol.vr-ops li::before { content: counter(op); position: absolute; left: 10px; top
       <button data-tab="comps">Comps</button>
       <button data-tab="referrals">Referrals</button>
       <button data-tab="skills">Skills</button>
-      <button data-tab="activity">Activity<span id="actcount"></span></button>
+      <button data-tab="activity">Activity</button>
       <button data-tab="settings">Settings</button>
     </nav>
     <span class="spacer"></span>
@@ -5494,7 +5494,6 @@ async function renderActivity() {
   if (!main.classList.contains("quiet")) activityView.seen = remembered("activity.seen", "0");
   const seen = activityView.seen, newest = d.events.find(e => e.notable)?.at;
   if (newest && newest > remembered("activity.seen", "0")) remember("activity.seen", newest);
-  showNoticeCount(0);
   const s = d.now.score;
   const now = [d.now.boards && "Checking the boards for new jobs",
     s.running && `Scoring ${s.current || "jobs"}` + (s.left ? ` · ${s.left} left` : ""),
@@ -5866,8 +5865,8 @@ async function refreshQueueCount() {
 
 // -- notices: what's worth a look (a new strong fit for a job Today shows, the mailbox couldn't be read, no board
 // could be read, scoring stopped; the server marks them notable: see watch.news). The page asks every minute, on any tab: one that comes in
-// while it's open shows as a toast, and the ones not seen yet as a count on the Activity tab and in the browser
-// tab's title. Opening Activity marks them seen. "Seen" is the newest one's time, kept per browser; the first
+// while it's open shows as a toast; no count on the Activity tab or the browser tab's title, since they pulled for
+// attention they don't need. Opening Activity marks them seen. "Seen" is the newest one's time, kept per browser; the first
 // time on a browser, what came before counts as seen (it's all on the tab).
 const notices = { newest: null, timer: null, list: null };
 async function watchNotices() {
@@ -5881,16 +5880,11 @@ async function watchNotices() {
       const fresh = notices.newest === null ? [] : unseen.filter(e => e.at > notices.newest);
       notices.newest = d.events[0]?.at ?? notices.newest ?? "0";
       notices.list = unseen.length ? actListFor(unseen[0].kind) : null;
-      showNoticeCount(unseen.length);
       if (fresh.length) toast(fresh.length === 1 ? `Worth a look: ${fresh[0].text}` : `${fresh.length} things worth a look`,
         () => go("activity"), "win", "Show");
     }
   } catch { /* the page may be restarting: try again next minute */ }
   notices.timer = setTimeout(watchNotices, 60000);
-}
-function showNoticeCount(n) {
-  // The count stays on the Activity tab only: in the browser tab's title it pulled for attention it doesn't need.
-  document.getElementById("actcount").replaceChildren(n ? h("span", { class: "count", title: "worth a look" }, n) : "");
 }
 
 // -- find a company: any status, open or closed. The box in the header suggests matches as you type; `/` focuses it.
