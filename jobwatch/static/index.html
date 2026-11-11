@@ -5885,8 +5885,8 @@ async function watchNotices() {
   notices.timer = setTimeout(watchNotices, 60000);
 }
 function showNoticeCount(n) {
+  // The count stays on the Activity tab only: in the browser tab's title it pulled for attention it doesn't need.
   document.getElementById("actcount").replaceChildren(n ? h("span", { class: "count", title: "worth a look" }, n) : "");
-  document.title = n ? `(${n}) jobwatch` : "jobwatch";
 }
 
 // -- find a company: any status, open or closed. The box in the header suggests matches as you type; `/` focuses it.
