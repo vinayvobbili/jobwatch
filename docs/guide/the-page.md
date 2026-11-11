@@ -130,7 +130,7 @@ field) and posted day, without adding the board to your watchlist.
 
 `find` prints a line like `Globex: greenhouse:globex (627 open roles)`. For a Workday company it tries
 the usual site names; if that finds nothing, paste a job link from their careers site (it has
-`myworkdayjobs.com` in it) and `find` reads the board from it: `workday:nvidia.wd5/NVIDIAExternalCareerSite`.
+`myworkdayjobs.com` in it) and `find` reads the board from it: `workday:initech.wd5/InitechCareers`.
 An Oracle Recruiting Cloud site is found the same way, from a job link with `oraclecloud.com/hcmUI/CandidateExperience`
 in it: `oracle:eeho.fa.us2/CX_45001`.
 A company's own careers page works too (`jobwatch find https://careers.acme.com/jobs`): `find` reads it for
