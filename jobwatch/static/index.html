@@ -5464,11 +5464,11 @@ async function renderSkills() {
 // -- activity: what jobwatch has been doing (checking the boards, reading job-alert mail, scoring, pay), newest
 // first, and what it's doing now. It asks again every 10 seconds while it's open; details left open stay open.
 // One list at a time (the kinds each shows), so the hundreds of jobs scored don't bury the board checks and emails.
-const ACT_KINDS = [["boards", "Job Boards"], ["mail", "Gmail"], ["score,pay,logos", "Scored"]];
+const ACT_KINDS = [["boards", "Job Boards"], ["mail", "Gmail"], ["score,pay,logos", "Scored"], ["prep", "Prep sheets"]];
 // the list an event's kind is shown in ("score" → "score,pay,logos"), so a notice opens Activity where it is
 function actListFor(kind) { return (ACT_KINDS.find(([k]) => k.split(",").includes(kind)) || ACT_KINDS[0])[0]; }
 const activityView = { kind: remembered("activity.kind", "boards"), open: new Set(), timer: null, seen: "0" };
-const ACT_ICON = { boards: "refresh", mail: "inbox", score: "sparkle", pay: "dollar", logos: "cloud" };
+const ACT_ICON = { boards: "refresh", mail: "inbox", score: "sparkle", pay: "dollar", logos: "cloud", prep: "file" };
 // what started it, said only when it was you: the schedule and the background are what jobwatch always does
 const ACT_BY = { page: "You pressed Check for new jobs" };
 

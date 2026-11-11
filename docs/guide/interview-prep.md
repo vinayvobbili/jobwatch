@@ -157,6 +157,42 @@ Kokoro voices that run on your Mac (Apple Silicon), and a browser to draw the sl
 Playwright extra). Nothing is sent anywhere. The first run fetches the voice model and a small English language
 model once.
 
+## Edit a sheet in the browser
+
+A sheet you wrote (`prep.sheets` in the watchlist) opens from the Interviews tab with its own page. If it loads the
+`player.js` and `theme.css` that sit beside it, the bar at the top right gets an **Edit** pill, only when the sheet
+is opened through `jobwatch ui` (a sheet opened from a file has no server to save to). Edit makes the text in table
+cells, list items and paragraphs editable (Enter is a line break, Cmd+B and Cmd+I work, a paste is plain text); tables,
+rows, headings, the header line, the video and the bar stay as they are. A changed cell gets a faint highlight.
+**Save** writes the changes, **Cancel** (or Escape) throws them away, and leaving the page with unsaved edits asks first.
+
+Save sends only the changed elements, each by its place among the sheet's `td`, `li` and `p` elements in document
+order (the page can't send what it shows, since `player.js` adds to it), and jobwatch changes those elements in the
+file. Only inline formatting is kept (`b`, `i`, `em`, `strong`, `br`, `code`, `span` with a class, and `a` with an
+http, https or mailto link); scripts, event handlers, styles and every other tag are stripped. The old file is kept as
+`<name>.html.bak` (one version back), and a save is refused if the file no longer says what the page loaded.
+
+After a save:
+
+- the sheet's `-rehearse.html` page is built again, if it has one;
+- `scripts/prep_blocks.py --check` runs when the sheet's folder has a `scripts/` beside it (the repo the sheets live in),
+  and anything it finds shows on the page as a toast; it never blocks the save;
+- if the sheet has a `-drill.mp4`, a new one is rendered in the background: one at a time at `nice -n 15`, starting
+  20 seconds after the last save, so a run of edits becomes one render (a save during a render queues one more). It is
+  written beside the old video and replaces it when done, and slidecast reuses the clips of the cards that didn't change.
+  Set slidecast's cache cap for these renders (a launchd-run `jobwatch ui` doesn't read your shell's variables):
+
+  ```yaml
+  prep:
+    sheets: ~/prep
+    cache_max: 15G      # passed to the render as SLIDECAST_CACHE_MAX; unset: slidecast's own default
+  ```
+
+- the save and each render show on the Activity tab under **Prep sheets**, and a render that didn't finish says so.
+
+A sheet's page runs its scripts in a sandbox with no access to jobwatch's own page, and is trusted with the secret in its
+address (the same one that lets it be read), not the page's token.
+
 ## Find a story
 
 A prep sheet shows where you're thin: an ask with nothing close on your resume, a drafted question with "no story

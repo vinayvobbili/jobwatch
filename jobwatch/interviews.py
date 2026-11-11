@@ -28,11 +28,14 @@ AHEAD = 14  # days ahead the tab lists
 SHEET_TYPES = (".html", ".htm")
 # What the page serves from the sheets folder: the sheets, and what a sheet shows from next to it.
 FILE_TYPES = {".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css",
+              ".js": "text/javascript; charset=utf-8",
               ".mp4": "video/mp4", ".webm": "video/webm", ".m4a": "audio/mp4", ".mp3": "audio/mpeg",
               ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
               ".webp": "image/webp", ".svg": "image/svg+xml", ".pdf": "application/pdf"}
-# A sheet stays unable to run scripts, but its links may open a normal tab: a site opened from it isn't sandboxed.
-SHEET_POLICY = "sandbox allow-popups allow-popups-to-escape-sandbox"
+# A sheet's own scripts (player.js: the theme pills, video keys, the Edit pill) run, but it stays in an opaque origin
+# (no allow-same-origin): it can't read this page, its token or its storage. Modals are allowed for the browser's
+# "leave with unsaved edits?" question. Its links may open a normal tab: a site opened from it isn't sandboxed.
+SHEET_POLICY = "sandbox allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox"
 _WEB_LINK = re.compile(r"""<a\b(?![^>]*\btarget\s*=)(?=[^>]*\bhref\s*=\s*["']?https?:)""", re.I)
 
 

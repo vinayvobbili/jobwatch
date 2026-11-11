@@ -276,6 +276,7 @@ class Prep:
     max_tokens: int = 4000     # the longest draft: eight or so questions with outlines, as JSON
     prompt: str = ""           # the edited instructions; unset: drafts.PROMPT
     sheets: Path | None = None  # a folder of prep sheets you wrote (acme-onsite.html), linked from Interviews
+    cache_max: str = ""        # slidecast's clip cache cap when an edit re-renders a drill video (12G, 800M)
 
 
 def _prep(raw, path: Path) -> Prep:
@@ -285,10 +286,13 @@ def _prep(raw, path: Path) -> Prep:
         raise ConfigError(f"{path}: prep.prompt is the drafting instructions, as text, got {prompt!r:.80}")
     if not isinstance(raw.get("sheets", ""), str):
         raise ConfigError(f"{path}: prep.sheets is a folder, got {raw['sheets']!r}")
+    cache_max = str(raw.get("cache_max") or "").strip()
+    if cache_max and not re.fullmatch(r"\d+[GgMm]?", cache_max):
+        raise ConfigError(f"{path}: prep.cache_max is a size like 15G or 800M, got {cache_max!r}")
     return Prep(max_tokens=_between(raw.get("max_tokens", Prep.max_tokens), "prep.max_tokens", path, 500, 64000,
                                     "the longest draft, in tokens"),
                 prompt=_template(prompt, "prep.prompt", PREP_PLACEHOLDERS, path) if prompt.strip() else "",
-                sheets=_path(raw["sheets"], path.parent) if raw.get("sheets") else None)
+                sheets=_path(raw["sheets"], path.parent) if raw.get("sheets") else None, cache_max=cache_max)
 
 
 @dataclass(frozen=True)
@@ -1335,6 +1339,7 @@ scoring:
 #   max_tokens: 4000                                # the longest draft
 #   # prompt: |                                     # the drafting instructions; keep {context}
 #   # sheets: ~/Documents/prep                      # prep sheets you wrote (acme-onsite.html), on Interviews
+#   # cache_max: 15G                                # slidecast's clip cache cap when an edit re-renders a drill video
 
 # Where a spoken answer is turned into text (the voice mock interview, the rehearsal page's mic): an OpenAI-style
 # endpoint. Default: LOCAL_STT_URL, else the local model server's (LOCAL_LLM_URL) /audio/transcriptions.

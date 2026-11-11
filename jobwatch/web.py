@@ -56,6 +56,7 @@ from . import (
     onboard,
     paysources,
     prep,
+    prepedit,
     quiet,
     referrals,
     rehearse,
@@ -102,6 +103,7 @@ from .watch import (
 )
 
 MAX_UPLOAD = 20 * 1024 * 1024
+PREP_SAVE_MAX = 2 * 1024 * 1024  # the edits to one prep sheet
 EVENT_PING = 15  # seconds between keep-alive comments on /events
 IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background scorer works through
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
@@ -552,6 +554,7 @@ class App:
         self._rescoring_lock = threading.Lock()
         self.scorer = Scorer(self)
         self.pay = PayLookup(self)
+        self.drills = prepedit.DrillQueue(lambda sheet, cap: prepedit.render_drill(sheet, cap, self.path), self.log)
         self.logos = LogoLookup(self)
         self.refresher = Refresher(self)
         self.background = background
@@ -1065,6 +1068,30 @@ class App:
                 return interviews.sheet_file(cfg.prep.sheets, name)
             except FileNotFoundError:
                 return None
+        return self._with_store(run)
+
+    def prep_save(self, secret: str, body: dict) -> dict:
+        """Edits to a prep sheet from its own page (see prepedit.py): body is {sheet, edits: [{key, html}]}. The
+        file is written with the old one kept as .bak; then the rehearse page is rebuilt, prep_blocks --check is
+        read, and the drill video (when there is one) is queued to be rendered again."""
+        def run(cfg, store):
+            if not secrets.compare_digest(secret, store.secret("prep")):
+                raise ApiError("not found", HTTPStatus.NOT_FOUND)
+            try:
+                path = prepedit.save(cfg.prep.sheets, body.get("sheet"), body.get("edits"))
+            except prepedit.EditError as e:
+                raise ApiError(str(e)) from None
+            n = len(body["edits"])
+            why = prepedit.rebuild_rehearse(path)
+            problems = prepedit.check_blocks(path)
+            store.log("prep", f"Saved {plural(n, 'edit')} to {path.name}", detail=problems, by="page")
+            if why:
+                store.log("prep", f"The rehearse page for {path.name} was not rebuilt", ok=False, detail=[why],
+                          by="page")
+            queued = self.drills.kick(path, cfg.prep.cache_max)
+            rebuilt = path.with_name(f"{path.stem}-rehearse.html").is_file() and not why
+            return {"saved": n, "rehearse": rebuilt, "problems": ([why] if why else []) + problems,
+                    "drill": queued, "applied": {str(e["key"]): prepedit.sanitize(e["html"]) for e in body["edits"]}}
         return self._with_store(run)
 
     def logo(self, name: str) -> tuple[bytes, str] | None:
@@ -1757,10 +1784,39 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 print(f"jobwatch ui: rehearse: {type(e).__name__}: {e}", file=sys.stderr)
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"{type(e).__name__}: {e}"})
 
+        def _prep_save(self, url):
+            """A prep sheet's Edit pill saving (prepedit.py): POST /prep/<secret>/_save. A sheet is sandboxed, so its
+            page has no token and an origin of "null"; the secret in its address stands in for the token, as it does
+            for reading the sheet. Another site's page is refused by its origin (and the Host check still stands)."""
+            origin = self._rehearse_origin()
+            if origin is None:
+                return self._json(HTTPStatus.FORBIDDEN, {"error": "only a prep sheet can call this"})
+            self.cors_origin = origin
+            secret, _, name = url.path[len("/prep/"):].partition("/")
+            if name != "_save":
+                return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                if length > PREP_SAVE_MAX:
+                    raise ApiError("that is too much to save at once", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
+                body = json.loads(self.rfile.read(length) if length else b"{}")
+                if not isinstance(body, dict):
+                    raise ApiError("send a JSON object")
+                self._json(HTTPStatus.OK, app.prep_save(secret, body))
+            except ApiError as e:
+                self._json(e.status, {"error": str(e)})
+            except (ConfigError, ValueError) as e:
+                self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
+            except Exception as e:
+                print(f"jobwatch ui: prep save: {type(e).__name__}: {e}", file=sys.stderr)
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": f"{type(e).__name__}: {e}"})
+
         def do_OPTIONS(self):
-            """The browser's check before the rehearsal page posts a recording (a CORS preflight): /rehearse/ only."""
+            """The browser's check before the rehearsal page posts a recording or a prep sheet its edits (a CORS
+            preflight): /rehearse/ and /prep/ only."""
             origin = self._rehearse_origin() if self._host_ok() else None
-            if origin is None or not urlparse(self.path).path.startswith("/rehearse/"):
+            path = urlparse(self.path).path
+            if origin is None or not path.startswith(("/rehearse/", "/prep/")):
                 return self._json(HTTPStatus.FORBIDDEN, {"error": "not allowed"})
             self.send_response(HTTPStatus.NO_CONTENT)
             self.send_header("access-control-allow-origin", origin or "*")
@@ -1921,6 +1977,8 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 if found[1].startswith("text/html"):
                     return self._send_file(*found, policy=interviews.SHEET_POLICY, edit=interviews.new_tab_links)
                 return self._send_file(*found)
+            if method == "POST" and url.path.startswith("/prep/"):
+                return self._prep_save(url)
             if method == "GET" and (ctype := APP_FILES.get(url.path.lstrip("/"))):
                 # The page's own icons and manifest, for the tab and for installing it as an app: no token (the
                 # browser fetches them on its own), nothing personal in them.

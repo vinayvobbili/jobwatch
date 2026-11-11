@@ -104,6 +104,8 @@ def test_only_files_directly_in_the_sheets_folder_are_served(tmp_path):
     assert interviews.sheet_file(folder, "acme-onsite.html") == ((folder / "acme-onsite.html").resolve(),
                                                                 "text/html; charset=utf-8")
     assert interviews.sheet_file(folder, "prep.css")[1] == "text/css"  # what a sheet links to, next to it
+    (folder / "player.js").write_text("// the sheet's script")
+    assert interviews.sheet_file(folder, "player.js")[1].startswith("text/javascript")
     (folder / "inside").mkdir()
     (folder / "inside" / "x.html").write_text("x")
     (tmp_path / "outside.html").write_text("x")
@@ -182,7 +184,7 @@ def test_the_sheets_folder_is_served_sandboxed_with_byte_ranges(server, watchlis
     base = App(watchlist).get_interviews({})["sheets_base"]
     status, body, headers = request(server, "GET", base + "acme-onsite.html", with_headers=True)
     assert status == 200 and b"hi" in body and headers["Content-Security-Policy"] == interviews.SHEET_POLICY
-    assert "allow-scripts" not in interviews.SHEET_POLICY and "allow-same-origin" not in interviews.SHEET_POLICY
+    assert "allow-scripts" in interviews.SHEET_POLICY and "allow-same-origin" not in interviews.SHEET_POLICY
     status, body, headers = request(server, "GET", base + "prep.css", with_headers=True)
     assert body == b"body { color: red }" and headers["Content-Security-Policy"] == "sandbox"
     status, body, headers = request(server, "GET", base + "acme-drill.mp4", headers={"Range": "bytes=10-19"},
