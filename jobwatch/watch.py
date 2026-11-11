@@ -1138,7 +1138,7 @@ def _step(cfg: Config, store: Store, jobs: list[Job], backend: str, model: str, 
     try:
         results, errors = _score_jobs(store, jobs, cfg.resume, backend, cfg.cache, workers=cfg.score_workers,
                                       progress=progress, prompts=cfg.prompts, model=model, keychain=cfg.api_keychain,
-                                      batch=batch, key_command=cfg.api_key_command)
+                                      batch=batch, key_command=cfg.api_key_command, **_provider_kwarg(cfg, backend))
     except ScoringUnavailable as e:
         if found := paused_until(str(e)):
             store.set_scorer_down(sid, *found)
@@ -1149,6 +1149,12 @@ def _step(cfg: Config, store: Store, jobs: list[Job], backend: str, model: str, 
             len(found) == len(errors):
         store.set_scorer_down(sid, *found[0])
     return results, errors
+
+
+def _provider_kwarg(cfg: Config, backend: str) -> dict:
+    """score_jobs' provider=, for a backend that is a scoring.providers entry (the built-in ones need none)."""
+    provider = cfg.provider(backend)
+    return {"provider": provider} if provider else {}
 
 
 def fallback_model(cfg: Config, entry: str) -> str:
@@ -1255,7 +1261,8 @@ def compare_scores(cfg: Config, picks: list[tuple[Job, dict]], backend: str, mod
     cut-off for both). Nothing is stored. batch: Claude through the Message Batches API, at half price."""
     return score_jobs([job for job, _ in picks], cfg.resume, backend, cfg.cache, workers=cfg.score_workers,
                       progress=progress, prompts=cfg.prompts if prompts is None else prompts, model=model,
-                      keychain=cfg.api_keychain, batch=batch, key_command=cfg.api_key_command)
+                      keychain=cfg.api_keychain, batch=batch, key_command=cfg.api_key_command,
+                      **_provider_kwarg(cfg, backend))
 
 
 def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_top: int | None = None,

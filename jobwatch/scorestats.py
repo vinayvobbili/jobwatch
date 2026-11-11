@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from .config import BACKENDS, Config, fallback_entry
+from .config import Config, fallback_entry
 from .store import Store
 
 # USD per million tokens (input, output) by Claude model id: Anthropic's list prices (docs, October 2026). A model
@@ -89,7 +89,7 @@ def summary(cfg: Config, store: Store, scoring: dict | None = None, today: date 
     today = today or date.today()
     month = today.replace(day=1)
     week = today - timedelta(days=6)
-    counts = {b: {"today": 0, "week": 0, "month": 0} for b in BACKENDS}
+    counts = {b: {"today": 0, "week": 0, "month": 0} for b in cfg.backends}
     for day, scored_by in store.scored_by_day(min(month, week)):
         who = scored_by.partition(":")[0]
         if who not in counts:
@@ -110,7 +110,7 @@ def summary(cfg: Config, store: Store, scoring: dict | None = None, today: date 
         "left_today": max(cfg.score_daily - used, 0) if cfg.score_daily else None,
         "batch_api": cfg.score_batch_api, "auto": cfg.auto_score, "scoring": scoring,
         "backends": [{"backend": b, "role": "main" if b == cfg.backend else "fallback" if b in chain else "unused",
-                      **counts[b], "cost": COVERED.get(b)} for b in BACKENDS],
+                      **counts[b], "cost": COVERED.get(b)} for b in cfg.backends],
         "claude": {**claude_cost(this_month, counts["claude"]["month"], average),
                    "average_usd": round(average, 4) if average is not None else None,
                    "since": month.isoformat()},

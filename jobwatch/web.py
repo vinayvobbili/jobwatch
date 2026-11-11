@@ -708,7 +708,11 @@ class App:
     def get_ai(self, q) -> dict:
         """Where the AI can run on this computer: each choice, ready or what it still needs (see ai.py), with the
         models Settings' scoring chain offers for it (`models`: id and name) and its default model."""
-        st = ai.status(self._keychain(), self._keychain("key_command"))
+        try:
+            providers = self._with_store(lambda cfg, store: cfg.score_providers)
+        except ApiError:  # no watchlist yet
+            providers = ()
+        st = ai.status(self._keychain(), self._keychain("key_command"), providers)
         newest = {}  # each Claude family's newest model: PRICES lists the newest first
         for m in scorestats.PRICES:
             newest.setdefault(m.split("-")[1], m)
@@ -1374,8 +1378,8 @@ class App:
         return self._with_store(run)
 
     def _choices(self, cfg) -> list[dict]:
-        st = ai.status(cfg.api_keychain, cfg.api_key_command)
-        defaults = {b: scorestats.default_model(b) for b in config.BACKENDS}
+        st = ai.status(cfg.api_keychain, cfg.api_key_command, cfg.score_providers)
+        defaults = {b: scorestats.default_model(b) for b in cfg.backends}
         chain = [(cfg.backend, cfg.score_model),
                  *((config.fallback_entry(e)[0], fallback_model(cfg, e)) for e in cfg.score_fallback)]
         return ai.choices(chain, {b: s["ready"] for b, s in st.items()}, defaults)

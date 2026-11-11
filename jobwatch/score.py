@@ -23,6 +23,7 @@ from collections.abc import Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -45,6 +46,26 @@ class ScoringUnavailable(RuntimeError):
 
 
 AGY_WORKERS = 3  # agy starts a CLI process per call, on the subscription's quota: a few at once, no more
+
+
+@dataclass(frozen=True)
+class Provider:
+    """A hosted OpenAI-compatible API that fit scores can run on (scoring.providers): its name is the backend in
+    scoring.fallback entries (acme:<model>), url its /v1 base, keychain the macOS item with its API key."""
+    name: str
+    url: str
+    keychain: str = ""             # unset: jobwatch-<name>
+    workers: int = 2               # calls at once: free tiers allow few
+    response_format: str = "json_schema"  # or json_object / none, for an API that rejects strict schemas
+
+    @property
+    def item(self) -> str:
+        return self.keychain or f"jobwatch-{self.name}"
+
+    @property
+    def env(self) -> str:
+        """The environment variable that holds its key (read first, and filled from the keychain)."""
+        return re.sub(r"\W", "_", self.name).upper() + "_API_KEY"
 
 
 def scorer_id() -> str:
@@ -193,7 +214,7 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
                progress: Callable[[str], None] | None = None,
                prompts: Mapping[str, str] | None = None, model: str = "",
                keychain: str = "", batch: bool = False,
-               key_command: str = "") -> tuple[dict[str, dict], dict[str, str]]:
+               key_command: str = "", provider: Provider | None = None) -> tuple[dict[str, dict], dict[str, str]]:
     """({job key: result}, {job key: error}). A result has score, must_haves_met/total, gaps, summary,
     requirements (see requirement_rows; results saved before it have none) and scored_by ("backend:model").
     prompts: the edited ones (scoring.prompts) in place of shortlist-ai's own; results belong under
@@ -201,7 +222,8 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
     keychain: the macOS keychain item with the Anthropic API key, for Claude (scoring.keychain); key_command: a
     command that prints it instead (scoring.key_command).
     workers: model calls at once (scoring.workers), for Claude; the local model takes one at a time.
-    batch: Claude through the Message Batches API, half price, waiting for each batch (minutes, at most a day)."""
+    batch: Claude through the Message Batches API, half price, waiting for each batch (minutes, at most a day).
+    provider: the scoring.providers entry that `backend` names (an OpenAI-compatible API; `model` is required)."""
     try:
         from shortlist_ai.backends import get_backend
         from shortlist_ai.extract import Cache, extract_job
@@ -223,9 +245,19 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
         raise ScoringUnavailable(problem)
     if backend == "local" and (problem := local_loads_in_process()):
         raise ScoringUnavailable(problem)
+    if provider:
+        key, problem = provider_key(provider)
+        if problem:
+            raise ScoringUnavailable(problem)
+        if not model:
+            raise ScoringUnavailable(f"{provider.name} needs a model: write {provider.name}:<model> in "
+                                     f"scoring.fallback (or set scoring.model when it is scoring.backend)")
+    elif backend not in ("claude", "local", "agy"):
+        raise ScoringUnavailable(f"unknown scoring backend {backend!r}: a provider is defined in scoring.providers")
 
     progress = progress or (lambda msg: None)
-    workers = 1 if backend == "local" else min(max(1, workers), AGY_WORKERS) if backend == "agy" else max(1, workers)
+    workers = (1 if backend == "local" else min(max(1, workers), AGY_WORKERS) if backend == "agy"
+               else min(max(1, workers), provider.workers) if provider else max(1, workers))
     tokens = _Tokens(None, backend, batch)
     if batch:
         from shortlist_ai.batch import BatchBackend
@@ -236,6 +268,14 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
                 tokens.note()
 
         model = BatchBackend(cache_dir / "batch", **({"model": model} if model else {}), notify=said)
+    elif provider:
+        try:
+            from shortlist_ai.backends import OpenAIBackend
+        except ImportError:
+            raise ScoringUnavailable(f"{provider.name} needs a newer shortlist-ai: {UPDATE_HINT}") from None
+        model = OpenAIBackend(model, provider.url, key, provider=provider.name,
+                              response_format=provider.response_format)
+        model.name = provider.name  # scored_by says "acme:<model>", like any backend's
     else:
         model = get_backend(backend, model) if model else get_backend(backend)
         if backend == "agy":
@@ -303,7 +343,9 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
 
 _QUOTA = re.compile(r"quota|rate.?limit|usage limit|resource_exhausted|too many requests|\b429\b", re.I)
 _RESETS = re.compile(r"resets? in\s+(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?", re.I)
+_DOWN = re.compile(r"API at \S+ answered 5\d\d\b")  # a provider's own 5xx (shortlist-ai's OpenAIBackend words it so)
 PAUSE = timedelta(hours=1)  # how long a step out of credit (or with no reset time given) is skipped before a retry
+PAUSE_DOWN = timedelta(minutes=10)  # a provider answering 5xx: usually brief
 
 
 def paused_until(error: str, now: datetime | None = None) -> tuple[str, datetime] | None:
@@ -319,6 +361,8 @@ def paused_until(error: str, now: datetime | None = None) -> tuple[str, datetime
         m = _RESETS.search(error)
         wait = timedelta(hours=int(m[1] or 0), minutes=int(m[2] or 0), seconds=int(m[3] or 0)) if m else PAUSE
         return "out of quota", now + (wait or PAUSE)
+    if _DOWN.search(error):
+        return "unavailable (server error)", now + PAUSE_DOWN
     return None
 
 
@@ -388,7 +432,8 @@ def _note_usage(model, backend: str, batch: bool, jobs: int):
 def scorer_label(scored_by: str) -> str:
     """Who made a score, for people: "claude-sonnet-5-5", or "Qwen3.5-9B-MLX-4bit (local)"."""
     backend, _, model = scored_by.partition(":")
-    return f"{model.rsplit('/', 1)[-1]} ({backend})" if backend in ("local", "agy") else model or backend
+    named = backend in ("local", "agy") or (backend != "claude" and model)  # a provider's too
+    return f"{model.rsplit('/', 1)[-1]} ({backend})" if named else model or backend
 
 
 def load_api_key(keychain: str, command: str = "") -> str | None:
@@ -406,16 +451,36 @@ def load_api_key(keychain: str, command: str = "") -> str | None:
             return _key_from_command(command)
     if not keychain:
         return None
+    key, problem = keychain_key(keychain, "scoring.keychain")
+    if key:
+        os.environ["ANTHROPIC_API_KEY"] = key
+    return problem
+
+
+def keychain_key(item: str, setting: str) -> tuple[str, str | None]:
+    """(the key in the macOS keychain item `item`, None) or ("", why there isn't one); `setting` names where the
+    item was configured, for the message. The key is returned to the caller only: never printed or logged."""
     try:
-        r = subprocess.run(["security", "find-generic-password", "-s", keychain, "-w"],
+        r = subprocess.run(["security", "find-generic-password", "-s", item, "-w"],
                            capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as e:
-        return f"couldn't read the keychain item {keychain!r} (scoring.keychain): {type(e).__name__}"
+        return "", f"couldn't read the keychain item {item!r} ({setting}): {type(e).__name__}"
     if r.returncode or not r.stdout.strip():
-        return (f"no API key in the keychain item {keychain!r} (scoring.keychain): add one with "
-                f"`security add-generic-password -s {keychain} -a \"$USER\" -w`")
-    os.environ["ANTHROPIC_API_KEY"] = r.stdout.strip()
-    return None
+        return "", (f"no API key in the keychain item {item!r} ({setting}): add one with "
+                    f"`security add-generic-password -s {item} -a \"$USER\" -w`")
+    return r.stdout.strip(), None
+
+
+def provider_key(provider: Provider) -> tuple[str, str | None]:
+    """(a provider's API key, None) or ("", why there isn't one): the environment variable first (ACME_API_KEY for
+    a provider named acme), else the macOS keychain item, kept in this process's environment so the keychain is
+    asked once. Never printed or logged."""
+    if key := os.environ.get(provider.env, "").strip():
+        return key, None
+    key, problem = keychain_key(provider.item, f"scoring.providers.{provider.name}.keychain")
+    if key:
+        os.environ[provider.env] = key
+    return key, problem
 
 
 KEY_COMMAND_WAIT = 120  # seconds: the command may be waiting for the person's approval

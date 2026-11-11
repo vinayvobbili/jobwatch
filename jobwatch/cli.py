@@ -217,6 +217,9 @@ def cmd_score(args, cfg, store):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
     if args.backend or args.model:  # this run only; the watchlist keeps its own
         backend = args.backend or cfg.backend
+        if backend not in cfg.backends:
+            raise ConfigError(f"--backend {backend}: not one of {', '.join(cfg.backends)} "
+                              "(an API is a provider under scoring.providers)")
         model = args.model if args.model else "" if args.backend else cfg.score_model
         cfg = replace(cfg, backend=backend, score_model=model,  # a fallback the same as this run's scorer is dropped
                       score_fallback=tuple(e for e in cfg.score_fallback
@@ -1295,8 +1298,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=None, metavar="N", help="stop after N jobs")
     p.add_argument("--show-prompts", action="store_true",
                    help="print the prompts scoring sends (edited ones from scoring.prompts) and stop")
-    p.add_argument("--backend", choices=BACKENDS, default=None,
-                   help="score with this backend this time (default: scoring.backend in the watchlist)")
+    p.add_argument("--backend", default=None, metavar="BACKEND",
+                   help=f"score with this backend this time ({', '.join(BACKENDS)}, or a provider from "
+                   "scoring.providers; default: scoring.backend in the watchlist)")
     p.add_argument("--model", default=None, help="score with this model this time (default: scoring.model, or "
                    "shortlist-ai's own for the backend)")
     p.add_argument("--rescore", type=float, nargs="?", const=0, default=None, metavar="MIN",
@@ -1305,7 +1309,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--compare", type=int, default=0, metavar="N",
                    help="score N already-scored jobs again (lowest to highest score) with --backend/--model and "
                    "show the old and new scores side by side; nothing is saved")
-    p.add_argument("--stored-by", choices=BACKENDS, default=None,
+    p.add_argument("--stored-by", default=None, metavar="BACKEND",
                    help="with --compare: only jobs this backend scored (say, Claude's scores as the reference)")
     p.add_argument("--prompts", type=Path, default=None, metavar="FILE",
                    help="with --compare: edited prompts to try (YAML, name: text, as --show-prompts names them), "

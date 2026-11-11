@@ -3905,7 +3905,10 @@ function aiSetup(s) {
       return { b, m: m.join(":") || (b === "agy" ? scoring.agy_model || "" : "") };
     })];
   // the first step's backend lives in a select that isn't shown, so Settings can read and watch it like any other input
-  const backend = choice(AI_ORDER.map(b => [b, AI_LOOK[b].name]), steps[0].b);
+  // an API from scoring.providers has no tile: it can be in the chain (set in the watchlist file), not added here
+  const look = b => AI_LOOK[b] || { name: b };
+  const backend = choice([...AI_ORDER, ...(AI_ORDER.includes(steps[0].b) ? [] : [steps[0].b])]
+    .map(b => [b, look(b).name]), steps[0].b);
   const sync = () => {
     if (backend.value !== steps[0].b) { backend.value = steps[0].b; backend.dispatchEvent(new Event("change")); }
     else draw();
@@ -3920,7 +3923,7 @@ function aiSetup(s) {
   const tiles = h("div", { class: "ai-tiles", role: "radiogroup", "aria-label": "Where fit scores run" });
   const chain = h("div", { class: "ai-chain" });
   let info = null;
-  const ready = b => !info || info[b].ready;
+  const ready = b => !info || !info[b] || info[b].ready;
   const def = b => (info && info[b] && info[b].default_model) || "";
   const models = b => (info && info[b] && info[b].models) || [];
 
@@ -3929,7 +3932,7 @@ function aiSetup(s) {
     const opts = [["", `default${def(st.b) ? ` (${shortModel(def(st.b))})` : ""}`],
       ...known.map(m => [m.id, m.name === m.id ? shortModel(m.id) : m.name])];
     if (st.m && !known.some(m => m.id === st.m)) opts.push([st.m, shortModel(st.m)]);
-    const sel = h("select", { class: "step-model", "aria-label": `${AI_LOOK[st.b].name} model` },
+    const sel = h("select", { class: "step-model", "aria-label": `${look(st.b).name} model` },
       opts.map(([v, label]) => h("option", { value: v }, label)));
     sel.value = st.m;
     sel.onchange = () => {
@@ -3958,7 +3961,7 @@ function aiSetup(s) {
       return h("div", { class: "link step" + (i ? "" : " main") + (p ? " paused" : ""),
         title: p ? `Skipped: ${p.reason} since ${new Date(p.since).toLocaleString()}; tried again ${back}`
           : i ? "Tried when the one before can't score" : "Scores first" },
-        h("span", { class: "n" }, String(i + 1)), AI_LOOK[st.b].name, modelMenu(st),
+        h("span", { class: "n" }, String(i + 1)), look(st.b).name, modelMenu(st),
         !ready(st.b) ? h("span", { class: "n" }, "· not set up") : null,
         p ? h("span", { class: "pause-tag" }, icon("clock", 11), `${p.reason} · back ${back}`) : null,
         h("span", { class: "step-tools" }, move(i - 1, "Try it earlier", "←"), move(i + 1, "Try it later", "→"), drop));

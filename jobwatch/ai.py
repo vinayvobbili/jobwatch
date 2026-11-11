@@ -93,9 +93,32 @@ def _step(text: str, command: str = "", link: str = "") -> dict:
     return {"text": text, **({"command": command} if command else {}), **({"link": link} if link else {})}
 
 
-def status(keychain: str = "", key_command: str = "") -> dict:
+def _in_keychain(item: str) -> bool:
+    if sys.platform != "darwin":
+        return False
+    try:
+        return subprocess.run(["security", "find-generic-password", "-s", item],
+                              capture_output=True, timeout=30).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def provider_status(p, scoring: bool) -> dict:
+    """A scoring.providers API like status() lists the built-in choices; the key is only looked for, never read."""
+    key = "environment" if os.environ.get(p.env) else "keychain" if _in_keychain(p.item) else ""
+    steps = [] if scoring else [_step("Install the scoring add-on", INSTALL_SCORE)]
+    if not key:
+        steps.append(_step(f"Put the {p.name} API key in your macOS keychain (or set {p.env})",
+                           f'security add-generic-password -s {p.item} -a "$USER" -w'))
+    return {"label": p.name, "ready": not steps, "steps": steps, "key": key, "keychain": p.item,
+            "can_save_key": False,
+            "about": f"An OpenAI-compatible API at {p.url}. Postings and your resume go to that provider."}
+
+
+def status(keychain: str = "", key_command: str = "", providers=()) -> dict:
     """Each choice: ready or not, what's still needed (steps, with a command to run or a page to open), and what
-    it means for the user's data and bill. keychain: scoring.keychain; key_command: scoring.key_command."""
+    it means for the user's data and bill. keychain: scoring.keychain; key_command: scoring.key_command;
+    providers: scoring.providers, listed after the built-in choices."""
     scoring = _installed("shortlist_ai")
     claude_steps, agy_steps, local_steps = [], [], []
     if not scoring:
@@ -117,6 +140,7 @@ def status(keychain: str = "", key_command: str = "") -> dict:
     if not local_server_up():
         local_steps.append(_step(LOCAL_STEP))
     return {
+        **{p.name: provider_status(p, scoring) for p in providers},
         "claude": {"label": "Claude API", "ready": not claude_steps, "steps": claude_steps,
                    "key": key, "keychain": keychain or KEYCHAIN,
                    "can_save_key": sys.platform == "darwin" and not key_command,  # the command's key isn't ours
@@ -173,7 +197,7 @@ def choices(chain: list[tuple[str, str]], ready: dict[str, bool], defaults: dict
             return
         seen.add((backend, model))
         out.append({"backend": backend, "model": model, "name": name or model, "role": role,
-                    "cost": COSTS[backend], "ready": bool(ready.get(backend))})
+                    "cost": COSTS.get(backend, "on that API's own limits"), "ready": bool(ready.get(backend))})
 
     for i, (backend, model) in enumerate(chain):
         add(backend, model, "main" if i == 0 else "fallback")

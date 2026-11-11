@@ -99,6 +99,38 @@ scoring:
   fallback: [agy:gemini-3.8-flash-medium, local]   # agy's Gemini, then this Mac
 ```
 
+### Any OpenAI-compatible API (a free cloud tier, say)
+
+`scoring.providers` defines an API by name; the name is then a backend in `scoring.fallback` entries (and
+`scoring.backend`), always with its model, `name:model`. One block works for any hosted API that speaks the
+OpenAI chat-completions protocol (a free cloud tier, Google's Gemini OpenAI-compatible endpoint, Groq):
+
+```yaml
+scoring:
+  providers:
+    acme:
+      url: https://api.example.com/v1     # the API's base: jobwatch adds /chat/completions
+      keychain: jobwatch-acme             # macOS keychain item with its key (default: jobwatch-<name>)
+      # workers: 2                        # calls at once; free tiers allow few
+      # response_format: json_schema      # json_object or none, if the API rejects strict schemas
+  backend: claude
+  fallback: [acme:some-model-id, local]   # the model id as the provider lists it
+```
+
+Put the key in the keychain with `security add-generic-password -s jobwatch-acme -a "$USER" -w` (it asks for the
+key; `ACME_API_KEY` in the environment works too and is read first). It is sent as `Authorization: Bearer <key>`
+and never printed or logged. A 429 or quota error, a 5xx, or a refused key pauses that step (10 minutes for a
+5xx, otherwise until its reset or an hour) and the next entry scores; an empty or unreadable answer is a failed
+score, not a score. The postings and your resume go to that provider.
+
+To test one on jobs you have already scored, without saving anything:
+
+```
+jobwatch score --compare 20 --backend acme --model some-model-id
+```
+
+Settings shows such a step in the chain (and keeps it), but adding one is done in the watchlist file.
+
 A score from another backend counts as another model's, even when it's the same model reached another way (agy's
 Sonnet and the API's). `scoring.same_as` names the scorers (backend:model) whose scores count as the main
 backend's own: `--rescore` leaves their scores alone, and keeps such a fallback, so while agy is out of quota it

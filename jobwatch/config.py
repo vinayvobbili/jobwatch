@@ -19,7 +19,7 @@ from ruamel.yaml.util import load_yaml_guess_indent
 
 from . import GUIDE
 from .filters import Filters
-from .score import check_prompts
+from .score import Provider, check_prompts
 from .sources import SOURCES
 
 DEFAULT_PATHS = (Path("jobwatch.yaml"), Path.home() / ".config" / "jobwatch" / "config.yaml")
@@ -536,6 +536,42 @@ def _prompts(raw, path: Path) -> dict[str, str]:
     return dict(raw)
 
 
+_PROVIDER_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}")
+_PROVIDER_KEYS = {"url", "keychain", "workers", "response_format"}
+
+
+def _providers(raw, path: Path) -> tuple[Provider, ...]:
+    """scoring.providers: {name: {url, keychain, workers, response_format}} for OpenAI-compatible APIs. A name is
+    then a backend in scoring.backend and scoring.fallback entries (acme:<model>); it can't be a built-in one."""
+    if not raw:
+        return ()
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path}: scoring.providers maps a provider's name to its url (and keychain), "
+                          f"got {raw!r:.80}")
+    out = []
+    for name, block in raw.items():
+        where = f"{path}: scoring.providers.{name}"
+        if not isinstance(name, str) or not _PROVIDER_NAME.fullmatch(name) or name in BACKENDS:
+            raise ConfigError(f"{path}: a provider's name is lowercase letters, digits, dashes and underscores, "
+                              f"and not {', '.join(BACKENDS)}, got {name!r}")
+        if not isinstance(block, dict) or set(block) - _PROVIDER_KEYS or not str(block.get("url") or "").strip():
+            raise ConfigError(f"{where} is a block with url (the API's /v1 base) and optionally keychain, workers "
+                              f"and response_format, got {block!r:.80}")
+        url = str(block["url"]).strip().rstrip("/")
+        if urlsplit(url).scheme not in ("http", "https") or not urlsplit(url).hostname:
+            raise ConfigError(f"{where}.url is an http(s) address, got {url!r}")
+        keychain = str(block.get("keychain") or "").strip()
+        if keychain and not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", keychain):
+            raise ConfigError(f"{where}.keychain is letters, digits, dots, dashes and underscores, got {keychain!r}")
+        response_format = str(block.get("response_format") or "json_schema")
+        if response_format not in ("json_schema", "json_object", "none"):
+            raise ConfigError(f"{where}.response_format is json_schema, json_object or none, got {response_format!r}")
+        workers = _whole(block.get("workers", 2), f"scoring.providers.{name}.workers", path,
+                         "1 makes one call at a time")
+        out.append(Provider(name, url, keychain, max(1, workers), response_format))
+    return tuple(out)
+
+
 # What you want next, which the Comps suggestion's career part scores jobs against (see comps._career).
 GOAL_KINDS = ("tech", "consulting", "enterprise")  # kinds of company, as Comps keeps them
 GOAL_ROLES = ("product", "customer", "internal")   # what the job builds, as Comps keeps it
@@ -657,6 +693,7 @@ class Config:
     stories: Path | None = None      # your projects, for drafted interview answers (see stories.py)
     resume_kit: str = ""             # resume-kit's command to tailor a resume (see tailor.py); unset: `resume`
     backend: str = "local"
+    score_providers: tuple[Provider, ...] = ()  # scoring.providers: OpenAI-compatible APIs, each a backend by its name
     score_model: str = ""      # scoring.model: the model fit scores use; unset: shortlist-ai's for the backend
     api_keychain: str = ""     # scoring.keychain: macOS keychain item with the Anthropic API key (for Claude)
     api_key_command: str = ""  # scoring.key_command: a command that prints the key, in place of the keychain read
@@ -708,6 +745,15 @@ class Config:
     board_filters: dict[tuple[str, str], Filters] = field(default_factory=dict)
     # (title regexes, filters) per tracks: entry: a kind of job judged by other rules wherever it comes from
     tracks: list[tuple[list[str], Filters]] = field(default_factory=list)
+
+    @property
+    def backends(self) -> tuple[str, ...]:
+        """Every scoring backend this watchlist can use: the built-in ones, then its scoring.providers."""
+        return (*BACKENDS, *(p.name for p in self.score_providers))
+
+    def provider(self, backend: str) -> Provider | None:
+        """The scoring.providers entry that is this backend, if it is one."""
+        return next((p for p in self.score_providers if p.name == backend), None)
 
     def filters_for(self, job) -> Filters:
         """The filters a job is judged by: its board's own (a watchlist entry's filters:), else the first track
@@ -1093,9 +1139,13 @@ def load(explicit: str | Path | None = None) -> Config:
     except (TypeError, ValueError) as e:
         raise ConfigError(f"{path}: {e}") from None
     scoring = raw.get("scoring") or {}
+    providers = _providers(scoring.get("providers"), path)
+    known = (*BACKENDS, *(p.name for p in providers))
     backend = scoring.get("backend") or "local"
-    if backend not in BACKENDS:
-        raise ConfigError(f"{path}: scoring.backend must be one of {', '.join(BACKENDS)}, got {backend!r}")
+    if backend not in known:
+        raise ConfigError(f"{path}: scoring.backend must be one of {', '.join(known)}, got {backend!r}")
+    if backend in (p.name for p in providers) and not str(scoring.get("model") or "").strip():
+        raise ConfigError(f"{path}: scoring.backend {backend} is an API from scoring.providers: set scoring.model")
     # On by default only for the on-device model: with Claude every score is a paid API call.
     auto_score = scoring.get("auto", backend == "local")
     if not isinstance(auto_score, bool):
@@ -1108,7 +1158,7 @@ def load(explicit: str | Path | None = None) -> Config:
                           f"not {backend}")
     fallback = scoring.get("fallback") or []
     fallback = [fallback] if isinstance(fallback, str) else fallback
-    others = ", ".join(b for b in BACKENDS if b != backend)
+    others = ", ".join(b for b in known if b != backend)
     main_model = str(scoring.get("model") or "").strip()
 
     def same_as_main(entry: str) -> bool:
@@ -1116,15 +1166,19 @@ def load(explicit: str | Path | None = None) -> Config:
         return b == backend and (not m or m == main_model)
 
     if (not isinstance(fallback, list) or any(not isinstance(b, str) for b in fallback)
-            or any(fallback_entry(b)[0] not in BACKENDS or same_as_main(b) for b in fallback)
+            or any(fallback_entry(b)[0] not in known or same_as_main(b) for b in fallback)
             or len({fallback_entry(b) for b in fallback}) != len(fallback)):
         raise ConfigError(f"{path}: scoring.fallback is a backend other than scoring.backend ({others}), or a "
                           f"backend:model (agy:gemini-3.8-flash-medium, even scoring.backend's with another model), or "
                           f"a list of them in the order to try, or left out, got {scoring.get('fallback')!r}")
+    named = {p.name for p in providers}
+    if bare := [b for b in fallback if fallback_entry(b)[0] in named and not fallback_entry(b)[1]]:
+        raise ConfigError(f"{path}: scoring.fallback entry {bare[0]!r} is an API from scoring.providers: "
+                          f"name its model, as {bare[0]}:<model>")
     fallback = [":".join(p for p in fallback_entry(b) if p) for b in fallback]
     same_as = scoring.get("same_as") or []
     same_as = [same_as] if isinstance(same_as, str) else same_as
-    if not isinstance(same_as, list) or any(not isinstance(s, str) or fallback_entry(s)[0] not in BACKENDS
+    if not isinstance(same_as, list) or any(not isinstance(s, str) or fallback_entry(s)[0] not in known
                                             or not fallback_entry(s)[1] for s in same_as):
         raise ConfigError(f"{path}: scoring.same_as is a backend:model (claude:claude-sonnet-5-5) whose scores count "
                           f"as scoring.backend's, or a list of them, got {scoring.get('same_as')!r}")
@@ -1171,7 +1225,7 @@ def load(explicit: str | Path | None = None) -> Config:
         employer=[s for e in employer if (s := str(e).strip())],
         stories=_path(raw["stories"], base) if raw.get("stories") else None,
         resume_kit=_command(raw.get("resume_kit"), path),
-        backend=backend, score_model=str(scoring.get("model") or "").strip(),
+        backend=backend, score_providers=providers, score_model=str(scoring.get("model") or "").strip(),
         score_top=_whole(scoring.get("top", 0), "scoring.top", path, "0 scores none when the digest is made"),
         auto_score=auto_score, prompts=_prompts(scoring.get("prompts"), path),
         score_batch=_whole(scoring.get("batch", 10), "scoring.batch", path, "0 scores everything in one go"),
@@ -1318,6 +1372,9 @@ scoring:
   # agy_model: claude-sonnet-5-5-medium  # agy's model as a fallback (`agy models`); as backend: `model`
   # An entry can name its model, so one backend is tried again on another model's quota first:
   #   backend: agy, model: claude-sonnet-5-5-medium, fallback: [agy:gemini-3.8-flash-medium, local]
+  # An OpenAI-compatible API (a free tier, say) is a provider; its name is then a backend in fallback entries:
+  #   providers: {acme: {url: "https://api.example.com/v1", keychain: jobwatch-acme}}
+  #   fallback: [acme:<model>, local]
   # workers: 4           # Claude calls at once (the local model takes one at a time)
   # auto: true          # `jobwatch ui` scores every new match in the background (default: on for local)
   # batch: 10            # ...this many jobs in a row, then rests (0: no rests)

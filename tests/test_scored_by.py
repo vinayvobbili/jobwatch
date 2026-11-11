@@ -768,3 +768,153 @@ def test_a_fallback_score_is_marked_and_rescore_redoes_it_with_the_primary(score
     assert fit["scored_by"] == "agy:m" and fit["fallback"] == "claude is down"
     assert watch.made_elsewhere(cfg, fit) and e.job.key in {x.job.key for x in watch.rescore_line(cfg, store)}
     store.close()
+
+
+# An OpenAI-compatible API as a backend (scoring.providers)
+
+ACME = {"url": "https://api.example.com/v1/", "keychain": "jobwatch-acme"}
+
+
+def test_providers_are_backends_by_name_and_need_a_model(watchlist):
+    cfg = _set(watchlist, scoring={"backend": "claude", "providers": {"acme": ACME},
+                                   "fallback": ["acme:vendor/model-x", "local"]})
+    p = cfg.provider("acme")
+    assert (p.url, p.item, p.env, p.workers) == ("https://api.example.com/v1", "jobwatch-acme", "ACME_API_KEY", 2)
+    assert cfg.score_fallback == ("acme:vendor/model-x", "local") and "acme" in cfg.backends
+    assert config.fallback_entry("acme:vendor/model-x") == ("acme", "vendor/model-x")
+    assert config.load(watchlist).provider("claude") is None
+    assert _set(watchlist, scoring={"providers": {"acme": {"url": "http://localhost:1/v1"}}}).provider("acme").item \
+        == "jobwatch-acme"
+
+
+@pytest.mark.parametrize("scoring, why", [
+    ({"providers": {"acme": ACME}, "fallback": ["acme"]}, "name its model"),
+    ({"providers": {"acme": ACME}, "backend": "acme"}, "set scoring.model"),
+    ({"providers": {"claude": ACME}}, "not claude"),
+    ({"providers": {"acme": {"url": "ftp://x"}}}, "http"),
+    ({"providers": {"acme": {"keychain": "k"}}}, "url"),
+    ({"providers": {"acme": {**ACME, "response_format": "xml"}}}, "response_format"),
+    ({"fallback": ["acme:m"]}, "scoring.fallback"),
+])
+def test_a_bad_provider_setup_is_refused(watchlist, scoring, why):
+    with pytest.raises(config.ConfigError, match=why):
+        _set(watchlist, scoring=scoring)
+
+
+def _acme_shortlist(monkeypatch, shortlist, made):
+    class OpenAIBackend:
+        def __init__(self, model, url, api_key, provider="openai", response_format="json_schema"):
+            self.model, self.name = model, "openai"
+            made.append((model, url, api_key, provider, response_format))
+    monkeypatch.setattr(sys.modules["shortlist_ai.backends"], "OpenAIBackend", OpenAIBackend, raising=False)
+
+
+def test_a_provider_scores_with_its_key_from_the_environment_and_says_who(shortlist, tmp_path, monkeypatch):
+    made = []
+    _acme_shortlist(monkeypatch, shortlist, made)
+    monkeypatch.setenv("ACME_API_KEY", "test-key-1")
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    provider = score.Provider("acme", "https://api.example.com/v1", "jobwatch-acme")
+    results, _ = score_jobs([_job()], cv, "acme", tmp_path, model="vendor/model-x", provider=provider)
+    assert made == [("vendor/model-x", "https://api.example.com/v1", "test-key-1", "acme", "json_schema")]
+    assert results["greenhouse:acme:1"]["scored_by"] == "acme:vendor/model-x"
+
+
+def test_a_provider_key_is_read_from_the_keychain_once_and_never_shown(shortlist, tmp_path, monkeypatch):
+    made, asked = [], []
+    _acme_shortlist(monkeypatch, shortlist, made)
+    monkeypatch.delenv("ACME_API_KEY", raising=False)
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    provider = score.Provider("acme", "https://api.example.com/v1")
+    monkeypatch.setattr(subprocess, "run", lambda argv, **k: asked.append(argv) or SimpleNamespace(
+        returncode=0, stdout="test-key-2\n", stderr=""))
+    score_jobs([_job()], cv, "acme", tmp_path, model="m", provider=provider)
+    score_jobs([_job()], cv, "acme", tmp_path, model="m", provider=provider)
+    assert asked == [["security", "find-generic-password", "-s", "jobwatch-acme", "-w"]]  # the default item, once
+    assert [m[2] for m in made] == ["test-key-2", "test-key-2"]
+    monkeypatch.delenv("ACME_API_KEY")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=44, stdout="", stderr=""))
+    with pytest.raises(ScoringUnavailable, match="no API key in the keychain item 'jobwatch-acme'"):
+        score_jobs([_job()], cv, "acme", tmp_path, model="m", provider=provider)
+
+
+def test_a_provider_without_a_model_is_unavailable(shortlist, tmp_path, monkeypatch):
+    monkeypatch.setenv("ACME_API_KEY", "test-key-3")
+    cv = tmp_path / "cv.md"
+    cv.write_text("Dana")
+    with pytest.raises(ScoringUnavailable, match=r"acme needs a model: write acme:<model>"):
+        score_jobs([_job()], cv, "acme", tmp_path, provider=score.Provider("acme", "https://api.example.com/v1"))
+
+
+@pytest.mark.parametrize("error, reason", [
+    ("BackendError: The acme API at https://api.example.com/v1 answered 429: Too many requests", "out of quota"),
+    ("BackendError: The acme API at https://api.example.com/v1 answered 503: overloaded", "unavailable"),
+    ("BackendError: The acme API at https://api.example.com/v1 refused the key (401): bad key", "API key refused"),
+])
+def test_a_providers_rate_limit_server_error_or_refused_key_pauses_the_step(error, reason):
+    found = score.paused_until(error)
+    assert found and found[0].startswith(reason)
+
+
+@pytest.mark.parametrize("error", [
+    "BackendError: The acme API at https://api.example.com/v1 (m) answered with nothing",
+    "BackendError: Local model output didn't validate at 4096 tokens (not the expected JSON): x",
+    "BackendError: The acme API at https://api.example.com/v1 answered 400: bad request",
+])
+def test_an_empty_or_unreadable_answer_fails_the_job_without_pausing_the_step(error):
+    assert score.paused_until(error) is None
+
+
+def test_a_providers_429_moves_the_chain_to_the_next_fallback(scored, monkeypatch):
+    from dataclasses import replace
+    cfg, _, _ = scored
+    provider = score.Provider("acme", "https://api.example.com/v1")
+    cfg = replace(cfg, backend="claude", score_providers=(provider,), score_fallback=("acme:m1", "local"))
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    jobs = [e.job for e in watch.unscored(cfg, store)[:1]]
+    calls = []
+
+    def fake(jobs, resume, backend, cache, model="", **kw):
+        calls.append((backend, model, kw.get("provider")))
+        if backend == "claude":
+            raise ScoringUnavailable("claude is down")
+        if backend == "acme":
+            return {}, {j.key: "BackendError: The acme API at https://api.example.com/v1 answered 429: slow down"
+                        for j in jobs}
+        return {j.key: {"score": 50.0, "must_haves_met": 1, "must_haves_total": 1, "scored_by": "local:m"}
+                for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    results, errors = watch.score_with_fallback(cfg, store, jobs)
+    assert calls == [("claude", "", None), ("acme", "m1", provider), ("local", "", None)] and not errors
+    assert {r["scored_by"] for r in results.values()} == {"local:m"}
+    assert store.scorers_down()["acme:m1"]["reason"] == "out of quota"
+    watch.score_with_fallback(cfg, store, jobs)  # paused: no second call to acme
+    assert [c[0] for c in calls].count("acme") == 1
+    store.close()
+
+
+def test_score_compare_runs_a_provider_and_saves_nothing(scored, monkeypatch, capsys):
+    from dataclasses import replace
+    cfg, rid, jobs = scored
+    raw = yaml.safe_load(cfg.path.read_text())
+    cfg.path.write_text(yaml.safe_dump({**raw, "scoring": {**raw.get("scoring", {}), "providers": {"acme": ACME}}}))
+    calls = []
+
+    def fake(jobs, resume, backend, cache, **kw):
+        calls.append((backend, kw.get("model"), kw.get("provider")))
+        return {j.key: {"score": 60.0, "must_haves_met": 2, "must_haves_total": 2,
+                        "scored_by": f"{backend}:{kw.get('model')}"} for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    cli.main(["-c", str(cfg.path), "score", "--compare", "2", "--backend", "acme", "--model", "vendor/model-x"])
+    out = capsys.readouterr()
+    assert calls == [("acme", "vendor/model-x", replace(config.load(cfg.path).provider("acme")))]
+    assert "nothing is saved" in out.err and "new by: model-x (acme)" in out.out
+    store = Store(cfg.state)
+    assert {k: f["score"] for k, f in store.scores(rid).items()} == {j.key: 10 * i for i, j in enumerate(jobs, 1)}
+    store.close()
+    with pytest.raises(SystemExit, match="--backend nope"):
+        cli.main(["-c", str(cfg.path), "score", "--compare", "2", "--backend", "nope"])
