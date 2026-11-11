@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -319,9 +320,11 @@ def _compare(args, cfg, store):
     print(f"Scoring {len(picks)} jobs again with {cfg.backend}{f' ({cfg.score_model})' if cfg.score_model else ''}"
           + (f" and the prompts in {args.prompts}" if prompts else "")
           + (" (paid API calls)" if cfg.backend == "claude" else "") + "; nothing is saved.", file=sys.stderr)
+    started = time.monotonic()
     results, errors = compare_scores(cfg, picks, cfg.backend, cfg.score_model, prompts=prompts,
                                      progress=lambda m: print(f"  {m}", file=sys.stderr), batch=args.batch_api)
-    cut, diffs, flips = cfg.filters.min_fit or 0, [], 0
+    took = time.monotonic() - started
+    cut, diffs, flips, pairs = cfg.filters.min_fit or 0, [], 0, []
     print(f"{'stored':>6} {'new':>4} {'diff':>5}  job")
     for job, old in picks:
         new = results.get(job.key)
@@ -331,6 +334,7 @@ def _compare(args, cfg, store):
             continue
         diff = new["score"] - old["score"]
         diffs.append(diff)
+        pairs.append((old["score"], new["score"]))
         crossed = cut and (old["score"] >= cut) != (new["score"] >= cut)
         flips += bool(crossed)
         print(f"{old['score']:6.0f} {new['score']:4.0f} {diff:+5.0f}  {job.display_company}: {job.title}"
@@ -342,6 +346,11 @@ def _compare(args, cfg, store):
         print(f"{len(diffs)} compared: mean difference {sum(diffs) / len(diffs):+.1f}, mean size "
               f"{sum(map(abs, diffs)) / len(diffs):.1f}, largest {max(diffs, key=abs):+.0f}"
               + (f", {flips} on the other side of min_fit {cut}" if cut else ""))
+        big = [(o, n) for o, n in pairs if abs(n - o) >= 10]
+        print(f"{len(big)} off by 10 or more"
+              + (f", {sum(n > o and o < cut for o, n in big)} of them over-scoring a job stored below min_fit {cut}"
+                 if cut else "") + f"; {len(picks) - len(diffs)} failed")
+    print(f"{took / len(picks):.1f} seconds a job ({took:.0f} in all, {cfg.score_workers} at once)")
 
 
 def _cost(cfg, store):

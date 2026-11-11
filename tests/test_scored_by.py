@@ -260,6 +260,9 @@ def test_score_compare_shows_both_scores_and_saves_nothing(scored, monkeypatch, 
     assert "paid API calls" in out.err and "nothing is saved" in out.err
     assert "    10   60   +50" in out.out and "other side of min_fit 50" in out.out
     assert "Stored scores by: Qwen (local); new by: claude-sonnet-5-5" in out.out
+    # the picks are stored 10 and 50: 60 is +50 off the first (below min_fit) and only +10 off the second
+    assert "2 off by 10 or more, 1 of them over-scoring a job stored below min_fit 50; 0 failed" in out.out
+    assert " seconds a job (" in out.out
     store = Store(cfg.state)
     assert {k: f["score"] for k, f in store.scores(rid).items()} == {j.key: 10 * i for i, j in enumerate(jobs, 1)}
     store.close()
