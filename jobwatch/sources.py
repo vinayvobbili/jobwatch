@@ -1599,6 +1599,8 @@ def _sitemap_places(data: dict) -> list[str]:
                 places.append(str(a))
                 continue
             country = a.get("addressCountry")
+            if isinstance(country, dict):  # {"@type": "Country", "name": "US"}
+                country = country.get("name")
             country = "" if str(country).lower() in ("united states of america", "united states", "us", "usa") \
                 else country
             city = a.get("addressLocality") or ""

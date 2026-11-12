@@ -933,3 +933,9 @@ def test_alerts_backfill_command(web, watchlist, capsys):
     assert "Looked for 0 job(s)" in capsys.readouterr().out
     cli.main(["--config", str(watchlist), "alerts", "--backfill", "--again"])  # ...unless asked again
     assert "Looked for 1 job(s)" in capsys.readouterr().out and not store.find(missing)[0].description
+
+
+def test_sitemap_places_reads_a_country_written_as_an_object():
+    data = {"jobLocation": {"@type": "Place", "address": {
+        "addressCountry": {"@type": "Country", "name": "US"}, "addressLocality": "Remote", "addressRegion": "OR,US"}}}
+    assert sources._sitemap_places(data)
