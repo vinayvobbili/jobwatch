@@ -50,7 +50,10 @@ after, then `find_board` and `add_board` for each company, which creates the fil
    careers page), then `add_board` with the entry it found. `list_suggested_boards` names companies whose jobs
    keep arriving while their board isn't watched.
 2. **Check for new jobs.** `fetch_jobs` reads every board. If the user gets job-alert emails (LinkedIn,
-   Indeed, Built In), fetch them with a mail connector and pass them to `import_job_alerts`.
+   Indeed, Built In), fetch them with a mail connector and pass them to `import_job_alerts`. A LinkedIn or
+   Indeed job list the user has open in Chrome ("Jobs based on your preferences", "Jobs for you", a search)
+   goes to `import_job_list`: run the extractor (`jobwatch import-list --script`) on the tab with the browser's
+   JavaScript tool, then pass its records; it reports how many jobwatch already had and tracks the rest.
 3. **Show what's new.** `get_digest` ranks the new matches. Show the top few, not the whole list, each with
    why it fits and anything to check first (pay, location).
 4. **Queue and apply.** `mark_job` with `queued` for the ones the user picks; `list_queued_jobs` lists them

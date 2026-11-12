@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- A made-up Indeed search results page in the shape job-lists.js reads: div.job_seen_beacon cards with a [data-jk]
+     title link, the company and place by data-testid, a salary snippet on some, fields missing on others, and a
+     "Next Page" link that loads another page. Every name, place and number is invented. -->
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<ul id="results">
+  <li>
+    <div class="job_seen_beacon">
+      <h2 class="jobTitle"><a data-jk="a1b2c3d4e5f60001" href="/rc/clk?jk=a1b2c3d4e5f60001"><span title="Senior Platform Engineer">Senior Platform Engineer</span></a></h2>
+      <div class="company_location">
+        <span data-testid="company-name">Initech</span>
+        <div data-testid="text-location">Boulder, CO 80301</div>
+      </div>
+      <div class="metadata salary-snippet-container"><div data-testid="attribute_snippet_testid">$120,000 - $180,000 a year</div></div>
+      <span data-testid="myJobsStateDate">Posted 3 days ago</span>
+    </div>
+  </li>
+  <li>
+    <div class="job_seen_beacon">
+      <h2 class="jobTitle"><a data-jk="a1b2c3d4e5f60002" href="/rc/clk?jk=a1b2c3d4e5f60002"><span>new</span> <span title="Security Engineer">Security Engineer</span></a></h2>
+      <span data-testid="company-name">Globex</span>
+      <div data-testid="text-location">Remote</div>
+      <span class="date">Just posted</span>
+    </div>
+  </li>
+  <li>
+    <div class="job_seen_beacon">
+      <h2 class="jobTitle"><a data-jk="a1b2c3d4e5f60003" href="/rc/clk?jk=a1b2c3d4e5f60003"><span title="Data Analyst">Data Analyst</span></a></h2>
+      <span data-testid="company-name">Umbrella Corp</span>
+    </div>
+  </li>
+  <li>
+    <!-- a sponsored card: a link with the job key and no beacon around it -->
+    <a data-jk="a1b2c3d4e5f60004" href="/pagead/clk?jk=a1b2c3d4e5f60004"><h2>Cloud Engineer</h2></a>
+    <span data-testid="company-name">Hooli</span>
+    <div data-testid="text-location">Denver, CO</div>
+    <div>$60 an hour</div>
+  </li>
+  <li><div class="job_seen_beacon"><span data-testid="company-name">No Title Inc</span></div></li>
+</ul>
+<nav>
+  <a aria-label="1" aria-current="page" href="/jobs?q=engineer&amp;l=Boulder%2C+CO">1</a>
+  <a aria-label="2" href="/jobs?q=engineer&amp;l=Boulder%2C+CO&amp;start=10">2</a>
+  <a data-testid="pagination-page-next" aria-label="Next Page" href="/jobs?q=engineer&amp;l=Boulder%2C+CO&amp;start=10">Next</a>
+</nav>
+</body>
+</html>

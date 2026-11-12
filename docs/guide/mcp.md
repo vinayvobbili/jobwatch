@@ -6,7 +6,7 @@
 
 - **Watchlist:** `find_board`, `list_boards`, `add_board`, `remove_board`, `list_suggested_boards`,
   `dismiss_suggested_board`
-- **New jobs:** `fetch_jobs`, `import_job_alerts`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
+- **New jobs:** `fetch_jobs`, `import_job_alerts`, `import_job_list`, `get_digest`, `get_job`, `list_jobs`, `list_skill_gaps`
 - **Applying:** `mark_job`, `list_queued_jobs`, `check_postings`, `add_application`, `list_applications`,
   `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`), `get_company`,
   `tailor_resume` (with [resume-kit](https://github.com/vinayvobbili/resume-kit): a resume built for one job and

@@ -407,11 +407,13 @@ class Store:
             self.db.execute("UPDATE jobs SET via=COALESCE(via, ?) WHERE key=?", (via or None, key))
 
     def textless_alert_jobs(self) -> list[tuple[Job, dict]]:
-        """(job, record) pairs of the open jobs added from a job-alert email (via ends in "-alert") that are
-        still kept as emailed, with no posting text. Oldest tried first (never tried first); the record has
-        tried_at, when the backfill (alerts.backfill) last looked for the job on its company's board."""
+        """(job, record) pairs of the open jobs added from a job-alert email (via ends in "-alert") or a list of
+        jobs LinkedIn showed (via ends in "-list") that are still kept as emailed or listed, with no posting text.
+        Oldest tried first (never tried first); the record has tried_at, when the backfill (alerts.backfill) last
+        looked for the job on its company's board."""
         rows = self.db.execute("SELECT j.*, t.tried_at FROM jobs j LEFT JOIN backfill_tried t ON t.key=j.key "
-                               "WHERE j.source=? AND j.closed IS NULL AND j.via LIKE '%-alert' "
+                               "WHERE j.source=? AND j.closed IS NULL AND (j.via LIKE '%-alert' OR j.via LIKE "
+                               "'%-list') "
                                "ORDER BY t.tried_at IS NOT NULL, t.tried_at, j.first_seen DESC", (MANUAL,))
         out = []
         for r in rows:

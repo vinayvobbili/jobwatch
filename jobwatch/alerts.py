@@ -856,11 +856,15 @@ class _Tracked:
     def match(self, company: str, title: str, url: str = "") -> str | None:
         if url and (key := self.links.get(clean_link(url))):
             return key
-        return next((k for t, k in self.names.get(linkedin._bare(company), []) if linkedin.same_words(t, title)),
-                    None)
+        # The same words, or the same once punctuation and seniority's spelling are set aside ("Sr." and "Senior")
+        key = dupes.title_key(title)
+        return next((k for t, k in self.names.get(linkedin._bare(company), [])
+                     if linkedin.same_words(t, title) or (key[0] and dupes.title_key(t) == key)), None)
 
 
-LABELS = {"linkedin-alert": "LinkedIn", "builtin-alert": "Built In", "indeed-alert": "Indeed"}
+LABELS = {"linkedin-alert": "LinkedIn", "builtin-alert": "Built In", "indeed-alert": "Indeed",
+          # a list of jobs the site showed the person (joblist.py)
+          "linkedin-list": "LinkedIn job list", "indeed-list": "Indeed job list"}
 
 
 class _Resolver:
@@ -927,6 +931,8 @@ class _Resolver:
         elif a.site == "linkedin":  # never read: linkedin.com's robots.txt disallows every page
             f.notes.append("linkedin.com's robots.txt doesn't allow reading the posting: the email's details "
                            "are used")
+        elif a.url and any((h := urlparse(a.url).netloc.lower()) == u or h.endswith(f".{u}") for u in UNREAD_SITES):
+            f.notes.append(f"{urlparse(a.url).netloc} is never read: the job's details as given are used")
         elif a.url:
             if self.robots.allowed(a.url):
                 self._read_page(f)
@@ -978,59 +984,77 @@ def intake(cfg, store: Store, messages: list[EmailMessage], follow: bool = True,
     alert's links are redirects with no job id: they're resolved (redirect, default resolve_redirect) to the
     posting's link, which keys the job; with follow=False, or when that fails, the job is skipped."""
     result = Intake(emails=len(messages), dry_run=dry_run)
-    tracked = _Tracked(store)
-    acted = dupes.Index(store)
-    resolver = _Resolver(cfg.boards, page, store)
-    seen: dict[str, Found] = {}
+    taker = Taker(cfg, store, result, follow=follow, dry_run=dry_run, page=page, redirect=redirect)
     for msg in messages:
         alerts = parse(msg)
         if not alerts:
             result.empty.append(str(msg.get("Subject") or "(no subject)"))
         for a in alerts:
-            f = Found(a, email_job(a), how="email")
-            result.found.append(f)
-            if indeed_redirect(a.url):
-                if reason := _unredirect(f, (redirect or resolve_redirect) if follow else None):
-                    if reason == NOT_A_POSTING:  # not a job after all
-                        result.found.pop()
-                    else:
-                        f.result, f.reason = "skipped", reason
-                    continue
-            same =f"{linkedin._bare(a.company)}|{' '.join(sorted(linkedin._words(a.title)))}"
-            if twin := seen.get(a.url) or seen.get(same):  # a job in two alerts (LinkedIn's and Indeed's)
-                f.job, f.how, f.result, f.reason = twin.job, twin.how, "duplicate", twin.reason
-                continue
-            seen[a.url] = seen[same] = f
-            known = tracked.match(a.company, a.title, a.url)
-            if not known:
-                f.reason = reject_reason(f.job, cfg.filters_for(f.job))
-                # Only jobs worth a look are followed (the rest stay as emailed), and jobs that fail only on what
-                # the email didn't say: MyGreenhouse's name no place or pay, and the posting does
-                if follow and (f.reason is None or _unsaid(f.job, cfg.filters_for(f.job))):
-                    resolver.resolve(f)  # can find it on a watched board, with filters of its own
-                    f.reason = reject_reason(f.job, cfg.filters_for(f.job))
-                # The same job, already tracked from its board (or from another alert, under another name)
-                known = (f.job.key if store.has(f.job.key) else None) or (
-                    f.how in ("board", "posting") and tracked.match(f.job.display_company, f.job.title, f.job.url))
-            if known:
-                emailed = f.job
-                f.result, f.job = "known", tracked.jobs.get(known) or store.find(known)[0]
-                # A job tracked from an earlier email, which this one says is remote (its alert searched only
-                # remote jobs)
-                if f.job.source == MANUAL and emailed.remote and not f.job.remote:
-                    f.job.remote = True
-                    if not dry_run:
-                        store.update(f.job)
-                f.reason = reject_reason(f.job, cfg.filters_for(f.job))
-                continue
-            f.result = "new"
-            f.same = acted.match(f.job)
-            if not dry_run:
-                _record(store, f)
-                # A company whose board isn't watched: a suggestion to watch it (see suggest.py)
-                suggest.record(store, cfg.boards, f.job, resolver.looked(f.alert.company))
-            tracked.add(f.job)
+            taker.take(a)
     return result
+
+
+class Taker:
+    """Takes jobs in one at a time, as intake does for an email's: a job already tracked is left alone (it's
+    "known"), a new one is looked for where the application goes and tracked. every=True follows every new job,
+    not only the ones that pass the filters: for a list of jobs the person was shown (see joblist.py), where the
+    filters decide what the digest shows, not what's tracked."""
+
+    def __init__(self, cfg, store: Store, result: Intake, follow: bool = True, dry_run: bool = False, page=None,
+                 redirect=None, every: bool = False):
+        self.cfg, self.store, self.result = cfg, store, result
+        self.follow, self.dry_run, self.redirect, self.every = follow, dry_run, redirect, every
+        self.tracked = _Tracked(store)
+        self.acted = dupes.Index(store)
+        self.resolver = _Resolver(cfg.boards, page, store)
+        self.seen: dict[str, Found] = {}
+
+    def take(self, a: Alert) -> Found | None:
+        cfg, store, tracked, dry_run = self.cfg, self.store, self.tracked, self.dry_run
+        f = Found(a, email_job(a), how="email")
+        self.result.found.append(f)
+        if indeed_redirect(a.url):
+            if reason := _unredirect(f, (self.redirect or resolve_redirect) if self.follow else None):
+                if reason == NOT_A_POSTING:  # not a job after all
+                    self.result.found.pop()
+                    return None
+                f.result, f.reason = "skipped", reason
+                return f
+        same = f"{linkedin._bare(a.company)}|{' '.join(sorted(linkedin._words(a.title)))}"
+        if twin := self.seen.get(a.url) or self.seen.get(same):  # a job in two alerts (LinkedIn's and Indeed's)
+            f.job, f.how, f.result, f.reason = twin.job, twin.how, "duplicate", twin.reason
+            return f
+        self.seen[a.url] = self.seen[same] = f
+        known = tracked.match(a.company, a.title, a.url)
+        if not known:
+            f.reason = reject_reason(f.job, cfg.filters_for(f.job))
+            # Only jobs worth a look are followed (the rest stay as emailed), and jobs that fail only on what
+            # the email didn't say: MyGreenhouse's name no place or pay, and the posting does
+            if self.follow and (self.every or f.reason is None or _unsaid(f.job, cfg.filters_for(f.job))):
+                self.resolver.resolve(f)  # can find it on a watched board, with filters of its own
+                f.reason = reject_reason(f.job, cfg.filters_for(f.job))
+            # The same job, already tracked from its board (or from another alert, under another name)
+            known = (f.job.key if store.has(f.job.key) else None) or (
+                f.how in ("board", "posting") and tracked.match(f.job.display_company, f.job.title, f.job.url))
+        if known:
+            emailed = f.job
+            f.result, f.job = "known", tracked.jobs.get(known) or store.find(known)[0]
+            # A job tracked from an earlier email, which this one says is remote (its alert searched only
+            # remote jobs)
+            if f.job.source == MANUAL and emailed.remote and not f.job.remote:
+                f.job.remote = True
+                if not dry_run:
+                    store.update(f.job)
+            f.reason = reject_reason(f.job, cfg.filters_for(f.job))
+            return f
+        f.result = "new"
+        f.same = self.acted.match(f.job)
+        if not dry_run:
+            _record(store, f)
+            # A company whose board isn't watched: a suggestion to watch it (see suggest.py)
+            suggest.record(store, cfg.boards, f.job, self.resolver.looked(f.alert.company))
+        tracked.add(f.job)
+        return f
 
 
 NOT_A_POSTING = "the Indeed redirect doesn't lead to a posting"  # a footer link (settings, legal), not a job
@@ -1058,7 +1082,8 @@ def _record(store: Store, f: Found):
         store.set_duplicate(f.job.key, f.same.other.key)
     if f.how in ("board", "posting") and f.alert.url and f.alert.url != f.job.url:
         label = LABELS.get(f.alert.via, f.alert.via.removesuffix("-alert"))
-        store.add_note(f.job.key, f"From a {label} job alert: {f.alert.url}")
+        what = "" if f.alert.via.endswith("-list") else " job alert"
+        store.add_note(f.job.key, f"From a {label}{what}: {f.alert.url}")
 
 
 BACKFILL_CAP = 25  # jobs looked for per run: each costs a few requests, and the rest wait for the next run

@@ -47,6 +47,7 @@ from . import (
     dupes,
     ics,
     interviews,
+    joblist,
     lca,
     learn,
     levels,
@@ -110,7 +111,7 @@ IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background 
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 # What the extension may offer beyond filling forms, named in /ext/ping: an extension paired with an older jobwatch
 # hides a button whose call that jobwatch doesn't have, instead of failing when it's pressed.
-EXT_FEATURES = ("posting",)
+EXT_FEATURES = ("posting", "import-list")
 
 
 class ApiError(Exception):
@@ -890,6 +891,18 @@ class App:
         if got["has_text"]:
             self.score_in_background()  # it has text to score now
         return got
+
+    def ext_import_list(self, body) -> dict:
+        """The jobs on a LinkedIn or Indeed list page the extension read (see joblist.py): counts and coverage per
+        site, the jobs added and the ones it couldn't place."""
+        recs = joblist.records(body.get("records"))
+        r = self._with_store(lambda cfg, store: joblist.take(cfg, store, recs))
+        if any(s.outcome in ("added", "unplaced") for s in r.seen):
+            self.score_in_background()
+        d = r.to_dict()
+        return {**{k: v for k, v in d.items() if k != "jobs"}, "summary": joblist.summary(r),
+                "added": [j for j in d["jobs"] if j["outcome"] == "added"],
+                "unplaced": [j for j in d["jobs"] if j["outcome"] == "unplaced"]}
 
     def get_onboarding(self, q) -> dict:
         """Whether first-run onboarding can offer "Suggest titles from my resume": ready, or why not, and where the
@@ -2176,12 +2189,14 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     data = app.ext_context(page)
                 elif method == "GET" and url.path == "/ext/resume":
                     return self._send(HTTPStatus.OK, *app.ext_resume(page))
-                elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/posting", "/ext/tailor"):
+                elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/posting", "/ext/tailor",
+                                                       "/ext/import-list"):
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
                     data = {"/ext/draft": app.ext_draft, "/ext/submitted": app.ext_submitted,
-                            "/ext/posting": app.ext_posting, "/ext/tailor": app.ext_tailor}[url.path](body)
+                            "/ext/posting": app.ext_posting, "/ext/tailor": app.ext_tailor,
+                            "/ext/import-list": app.ext_import_list}[url.path](body)
                 else:
                     raise ApiError("not found", HTTPStatus.NOT_FOUND)
                 self._json(HTTPStatus.OK, data)

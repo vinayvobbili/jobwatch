@@ -143,7 +143,8 @@ def found_on(job: Job, via: str | None = None) -> str:
     if not via:
         return board or "added by hand (a link or `jobwatch add`)"
     sender = LABELS.get(via, via.removesuffix("-alert").replace("-", " ").title())
-    email = f"{'an' if sender[0] in 'AEIOU' else 'a'} {sender} job-alert email"
+    email = f"{'an' if sender[0] in 'AEIOU' else 'a'} {sender}" + ("" if via.endswith("-list") else
+                                                                    " job-alert email")
     return f"{email}, matched to {board}" if board else f"{email} (not found on the company's board)"
 
 

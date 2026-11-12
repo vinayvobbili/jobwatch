@@ -33,6 +33,7 @@ from . import (
     dupes,
     ics,
     inbox,
+    joblist,
     lca,
     learn,
     levels,
@@ -745,6 +746,28 @@ def cmd_alerts(args, cfg, store):
         print(alerts.summary(r, every=args.all))
 
 
+def cmd_import_list(args):
+    if args.script:  # needs no watchlist: it's for the browser
+        print(joblist.script(), end="")
+        return
+    cfg = config.load(args.config)
+    if args.history:
+        runs = joblist.history(cfg, args.source)
+        print(json.dumps(runs, indent=2, ensure_ascii=False) if args.format == "json" else joblist.history_text(runs))
+        return
+    if not args.file:
+        raise ValueError("give the list's records: a JSON file from the extractor (`jobwatch import-list --script` "
+                         "prints it), or - to read stdin")
+    raw = sys.stdin.read() if args.file == "-" else Path(args.file).expanduser().read_text(encoding="utf-8")
+    recs = joblist.records(raw)
+    store = Store(cfg.state)
+    try:
+        r = joblist.take(cfg, store, recs, dry_run=args.dry_run, follow=not args.no_follow)
+    finally:
+        store.close()
+    print(json.dumps(r.to_dict(), indent=2, ensure_ascii=False) if args.format == "json" else joblist.summary(r))
+
+
 def cmd_inbox(args, cfg, store):
     if not args.emails:
         raise ValueError("give the emails about your applications: .eml or .mbox files, a folder of them, or - to "
@@ -1443,6 +1466,27 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true", help="list every new job, also the ones your filters leave out")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_alerts)
+
+    p = sub.add_parser("import-list", help="take in a LinkedIn or Indeed job list you had open (\"Jobs based on your "
+                       "preferences\", \"Jobs for you\", a search): how many jobwatch already tracked (its coverage, "
+                       "per site), and the rest tracked from the company's own board. jobwatch never fetches "
+                       "linkedin.com or indeed.com",
+                       description="Take in the jobs on a LinkedIn or Indeed job list page, read in your own browser "
+                       "by the extractor (`--script` prints it; the extension's Import this list button runs it too): "
+                       "JSON records {source, id, title, company, location, pay, posted}. Each job already tracked "
+                       "(its link on the site, or its company and title) is counted; each new one is looked for on "
+                       "the company's own board and tracked from there as new, whatever your filters say (they "
+                       "decide what Today shows); one not found there is tracked from the list's text and listed as "
+                       "couldn't place. Each company counts toward `jobwatch suggest`. Every run is kept, for "
+                       "--history.")
+    p.add_argument("file", nargs="?", metavar="FILE | -", help="the extractor's JSON, or - for stdin")
+    p.add_argument("--script", action="store_true", help="print the extractor (JavaScript) to run on the list's page")
+    p.add_argument("--history", action="store_true", help="each run's counts and coverage per site, and the trend")
+    p.add_argument("--source", metavar="SITE", help="with --history: only this site's runs (linkedin, indeed)")
+    p.add_argument("--dry-run", action="store_true", help="show what would be tracked, and record nothing")
+    p.add_argument("--no-follow", action="store_true", help="look for no boards: track each new job as listed")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_import_list, needs_config=False)
 
     p = sub.add_parser("inbox", help="status updates from application emails (confirmations, rejections, interview "
                        "invitations, assignments, offers): proposes each application's new status and note; records "

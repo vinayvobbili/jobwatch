@@ -1,0 +1,76 @@
+<!doctype html>
+<!-- A made-up LinkedIn job list in the shape job-lists.js reads: cards whose componentkey names the job id, each in
+     the page twice (a bare copy first), a results column that scrolls and renders more cards as it nears its end,
+     and Next, which swaps the next page's cards in place. Every name, place and number is invented. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  #results { height: 300px; overflow-y: auto; border: 1px solid #ccc; }
+  .card { height: 140px; border-bottom: 1px solid #eee; }
+  .card p { margin: 0; }
+  .ghost { display: none; }
+</style>
+</head>
+<body>
+<div id="results"><div id="list"></div></div>
+<nav id="pages">
+  <button aria-label="Page 1" aria-current="true">1</button>
+  <button aria-label="Page 2">2</button>
+  <button id="next" aria-label="View next page">Next</button>
+</nav>
+<script>
+  const PAGES = [
+    [
+      ['4100000001', ['Senior Platform Engineer  (Verified job)', 'Senior Platform Engineer ', 'Initech', 'Boulder, CO (Hybrid)', '$120K/yr - $180K/yr', '401(k) benefit', 'Posted 9 minutes ago', '9 minutes ago', '·', 'Be an early applicant']],
+      ['4100000002', ['Security Automation Engineer (Verified job)', 'Security Automation Engineer', 'Globex Corporation', 'United States (Remote)', '1 connection works here', 'Saved']],
+      ['4100000003', ['Staff Data Engineer', 'Staff Data Engineer', 'Umbrella LLC', 'Denver, CO', 'Viewed']],
+      ['4100000004', ['Sr. Cloud Engineer', 'Sr. Cloud Engineer', 'Hooli', 'Remote', 'Reposted 2 days ago']],
+      ['4100000005', ['Detection Engineer', 'Detection Engineer', 'Vandelay Industries', 'Boulder, CO', '$120K/yr', 'Easy Apply']],
+    ],
+    [
+      ['4100000006', ['AI Engineer', 'AI Engineer', 'Soylent', 'Fort Collins, CO', '3 days ago']],
+      ['4100000002', ['Security Automation Engineer', 'Security Automation Engineer', 'Globex Corporation', 'United States (Remote)']],
+    ],
+  ];
+  const RENDER_FIRST = 3; // the rest render as the column nears its end, as LinkedIn's do
+  let page = 0;
+  let shown = 0;
+
+  function card(id, lines, ghost) {
+    const el = document.createElement('div');
+    el.setAttribute('componentkey', `job-card-component-ref-${id}`);
+    el.className = ghost ? 'ghost' : 'card';
+    el.innerHTML = (ghost ? lines.slice(0, 1) : lines).map((l) => `<p>${l}</p>`).join('');
+    return el;
+  }
+
+  function render(upTo) {
+    const list = document.getElementById('list');
+    for (; shown < Math.min(upTo, PAGES[page].length); shown += 1) {
+      const [id, lines] = PAGES[page][shown];
+      list.append(card(id, lines, true), card(id, lines, false));
+    }
+  }
+
+  document.getElementById('results').addEventListener('scroll', (e) => {
+    const box = e.target;
+    if (box.scrollTop + box.clientHeight >= box.scrollHeight - 50) setTimeout(() => render(shown + 2), 100);
+  });
+
+  document.getElementById('next').addEventListener('click', () => {
+    if (page + 1 >= PAGES.length) return;
+    setTimeout(() => {
+      page += 1;
+      shown = 0;
+      document.getElementById('list').replaceChildren();
+      document.getElementById('results').scrollTop = 0;
+      render(RENDER_FIRST);
+      if (page + 1 >= PAGES.length) document.getElementById('next').disabled = true;
+    }, 300);
+  });
+
+  render(RENDER_FIRST);
+</script>
+</body>
+</html>

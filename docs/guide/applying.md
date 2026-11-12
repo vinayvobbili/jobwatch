@@ -222,6 +222,38 @@ only reads the folder (and with `mark_read`, flags what it read), but that's job
 the `security` command in a terminal: it asks for the password, so it never lands in your shell history), and
 delete it in your Google account if you stop using jobwatch or think it got out.
 
+## Job lists you're shown
+
+Alert emails carry a site's top few matches; its lists ("Jobs based on your preferences", "Jobs that match your
+profile" and searches on LinkedIn, "Jobs for you" and searches on Indeed) show many more. `jobwatch import-list`
+takes such a list, read in your own browser (jobwatch never fetches linkedin.com or indeed.com), and tells you how
+many of its jobs jobwatch already had: its coverage. The rest are tracked.
+
+The list is read by the extractor, a script that runs on the page you have open:
+
+- **The browser extension:** on the list's tab, open the side panel and press **Import this list**. It scrolls each
+  page to its end, reads the cards, goes on to the next page (up to ten), and shows what jobwatch made of them.
+- **An assistant driving Chrome:** `jobwatch import-list --script` prints the extractor. Run its text followed by
+  `await JWList.readAll()` on the list's tab (every page of a LinkedIn list in one call; on Indeed, where each page
+  loads anew, `await JWList.readPage()` a page at a time, going to the link `JWList.next()` gives), then pass the
+  records to the MCP tool `import_job_list`, or save them and run:
+
+```
+jobwatch import-list list.json --dry-run   # what would happen, nothing recorded
+jobwatch import-list list.json             # or - for stdin
+jobwatch import-list --history             # each run, and coverage per site over the last week and overall
+```
+
+Each record is `{source, id, title, company, location, pay, posted}`. A job already tracked (its link on the site, or
+the same company and title, "Sr." and "Senior" alike) is counted. Each new one is looked for on the company's own
+board, as an alert's job is, and tracked from there as new, whatever your filters say: they decide what Today shows,
+not what's tracked. One that isn't found there (no board under the company's name, or not that title on it) is
+tracked from the list's text and listed as couldn't place; watch its company's board and `jobwatch alerts --backfill
+--again` fills it in. Every company seen counts toward [Companies to watch](#companies-to-watch).
+
+Coverage is per site, and leaves out jobs an earlier import added, so a list imported twice doesn't count as caught
+the second time. Each run is kept in `import-list.jsonl` next to the database.
+
 ## Status updates from application emails
 
 The emails that tell you how an application is going (a "thank you for applying" confirmation, a rejection, an
