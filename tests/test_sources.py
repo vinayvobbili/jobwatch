@@ -74,7 +74,9 @@ def test_probe_tries_every_source_and_reports_open_roles():
 
 
 def test_board_variants():
-    assert sources.board_variants("Initech") == ["initechinc", "initechhq", "initechlabs", "initechai", "initech.ai"]
+    assert sources.board_variants("Initech") == ["initechinc", "initechhq", "initechlabs", "initechai", "initech.ai",
+                                                 "initechsecurity"]  # "Initech" finds the board "Initech Security" has
+    assert "initechsecurity" not in sources.board_variants("Initech Security")
     assert "umbrella.ai" in sources.board_variants("Umbrella AI")
     assert "hooliinc" in sources.board_variants("Hooli Corp")
     assert "hoolicorpinc" in sources.board_variants("Hooli Corp")

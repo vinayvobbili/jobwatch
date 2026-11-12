@@ -2682,7 +2682,8 @@ def board_names(company: str) -> list[str]:
     return [n for i, n in enumerate(names) if n and n not in names[:i]]
 
 
-_SUFFIXES = ("inc", "hq", "labs", "ai", ".ai")  # "Wiz" -> wizinc, "Clay" -> claylabs, "Mistral" -> mistral.ai
+# "Wiz" -> wizinc, "Clay" -> claylabs, "Mistral" -> mistral.ai, "Initech" -> initechsecurity
+_SUFFIXES = ("inc", "hq", "labs", "ai", ".ai", "security")
 _BRANDS = {"anysphere": ["cursor"]}  # a legal name whose board carries the product's: nothing to guess it from
 
 
