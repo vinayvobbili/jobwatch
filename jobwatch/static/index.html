@@ -455,6 +455,17 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
   background: none; cursor: pointer; padding: 3px 8px; border-radius: 8px; font-family: inherit; }
 .sent-chip:hover { background: var(--chip); color: var(--text); }
 .sent-chip.empty-pkg { color: var(--accent); }
+/* the bell on an application: a one-off Apple Reminders reminder, asked for in a small popover */
+.bell-wrap { position: relative; display: inline-flex; }
+.bell-wrap .btn { transition: transform .15s, color .15s; }
+.bell-wrap .btn:hover { transform: translateY(-1px) rotate(-12deg); color: var(--accent); }
+.bell-pop { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; width: min(300px, 86vw); display: grid; gap: 8px;
+  padding: 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel-solid);
+  box-shadow: var(--shadow-hover); animation: bell-pop .18s ease-out; }
+.bell-pop::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; border-radius: 14px 14px 0 0; background: var(--grad); }
+.bell-pop label { font-size: 12px; color: var(--muted); }
+.bell-pop .row { display: flex; gap: 6px; justify-content: flex-end; }
+@keyframes bell-pop { from { opacity: 0; transform: translateY(6px) scale(.97); } }
 .quiet-bar { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--chip); font-size: 13.5px; }
 .quiet-bar .why { color: var(--muted); }
 .quiet-bar .acts { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
@@ -1353,6 +1364,7 @@ const ICONS = {
   zap: "M13 2 3 14h9l-1 8 10-12h-9z",
   alert: "M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01",
   pause: "M10 4H6v16h4zM18 4h-4v16h4z",
+  bell: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0",
   mic: "M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8",
   volume: "M11 5 6 9H2v6h4l5 4zM19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07",
   mute: "M11 5 6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6",
@@ -4715,7 +4727,7 @@ function appRow(a, d) {
     h("td", { class: "next-cell" }, nextLine(a, d.today) || h("span", { class: "muted" }, "—"),
       a.quiet ? h("div", { class: "muted small" }, `quiet ${a.quiet.days} days`) : null),
     h("td", { class: "col-sent" }, sentChip(a)),
-    h("td", { class: "acts nowrap" },
+    h("td", { class: "acts nowrap" }, d.reminders ? bellButton(a) : null,
       h("button", { class: "btn ghost", onclick: edit, title: "Edit next step, follow-up and notes" }, icon("pencil", 13)),
       h("button", { class: "btn ghost", onclick: () => openDetails(a.key), title: "Details" },
         h("span", { class: "label" }, "Details"), icon("arrow", 13))));
@@ -4786,7 +4798,7 @@ function appCard(a, d, i = 0) {
       a.quiet ? quietBar(a, d) : null,
       h("div", { class: "app-foot" },
         h("span", { class: "when" }, a.applied_at ? `Applied ${fmtDay(a.applied_at, d.today)} · ${relDay(a.applied_at, d.today)}` : ""),
-        h("div", { class: "acts" }, sentChip(a),
+        h("div", { class: "acts" }, sentChip(a), d.reminders ? bellButton(a) : null,
           h("button", { class: "btn ghost", onclick: edit }, icon("pencil", 13), "Edit"),
           h("button", { class: "btn ghost", onclick: () => openDetails(a.key) }, "Details", icon("arrow", 13))))));
   const edit = () => {
@@ -4801,6 +4813,39 @@ function appCard(a, d, i = 0) {
   };
   view();
   return card;
+}
+
+// The bell on an application card (only when the watchlist has follow_ups: reminders): a popover for a one-off
+// Apple Reminders reminder, with a title ("Company: "), a day and time and an optional note.
+function bellButton(a) {
+  const wrap = h("span", { class: "bell-wrap" });
+  const close = () => { wrap.querySelector(".bell-pop")?.remove(); document.removeEventListener("click", away, true); };
+  const away = e => { if (!wrap.contains(e.target)) close(); };
+  const open = () => {
+    if (wrap.querySelector(".bell-pop")) return close();
+    const title = h("input", { type: "text" }); title.value = `${a.company}: `;
+    const soon = new Date(Date.now() + 86400000), pad = n => String(n).padStart(2, "0");
+    const when = h("input", { type: "datetime-local" });
+    when.value = `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}T09:00`;
+    const note = h("textarea", { rows: 2, placeholder: "Optional note" });
+    const save = async () => {
+      try {
+        await api("/api/remind", { key: a.key, title: title.value, due: when.value, note: note.value });
+        close(); toast(`Reminder set for ${when.value.replace("T", " ")}: ${title.value.trim()}`);
+      } catch (e) { toast(e.message); }
+    };
+    title.onkeydown = e => { if (e.key === "Enter") save(); if (e.key === "Escape") close(); };
+    wrap.append(h("div", { class: "bell-pop", role: "dialog", "aria-label": "Remind me" },
+      h("div", {}, h("label", {}, "Title"), title), h("div", {}, h("label", {}, "When"), when),
+      h("div", {}, h("label", {}, "Note"), note),
+      h("div", { class: "row" }, h("button", { class: "btn", onclick: close }, "Cancel"),
+        h("button", { class: "btn primary", onclick: save }, "Remind me"))));
+    document.addEventListener("click", away, true);
+    title.focus(); title.setSelectionRange(title.value.length, title.value.length);
+  };
+  wrap.append(h("button", { class: "btn ghost", onclick: open, title: "Remind me about this (Apple Reminders)",
+    "aria-label": "Remind me" }, icon("bell", 14)));
+  return wrap;
 }
 
 // Under a quiet application: how long, what to do next (never done for you), and one-click ways to do it.
