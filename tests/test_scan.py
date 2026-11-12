@@ -128,3 +128,38 @@ def test_min_jobs_drives_auto_watch_too(web, watchlist):
     assert [s.entry for s in got] == ["lever:hooli"] and suggest.why_watched(cfg, got[0]) == "1 matching job"
     with pytest.raises(config.ConfigError, match=r"suggestions\.min_jobs must be a whole number from 1 to 20"):
         config.save(watchlist, {"suggestions": {"min_jobs": 0}})
+
+
+AGENCY, COLLEGE = "a staffing or recruiting agency", "a college or university"
+UNWATCHABLE = {"Globex Staffing LLC": AGENCY, "TalentBridge": AGENCY, "Initech (agency)": AGENCY,
+               "Boulder Valley College": COLLEGE, "University of Springfield": COLLEGE,
+               "Umbrella": "on suggestions.never_watch"}
+
+
+def test_auto_watch_leaves_agencies_colleges_and_never_watch_alone(web, watchlist, capsys):
+    web.responses[HOOLI] = [lever_job("Senior Data Platform Engineer")]
+    watchlist.write_text(watchlist.read_text()
+                         + "suggestions: {auto_watch: true, min_jobs: 1, never_watch: [Umbrella]}\n")
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    for name in [*UNWATCHABLE, "Hooli"]:
+        save_job(store, company=name, title="Senior Data Platform Engineer", status="new", location="Remote",
+                 boards=cfg.boards)
+    found = {s.name: s for s in suggest.suggestions(cfg, store, limit=0)}
+    assert {n: suggest.unwatchable(cfg, found[n]) for n in UNWATCHABLE} == UNWATCHABLE
+    assert suggest.unwatchable(cfg, found["Hooli"]) is None
+    p = suggest.auto_preview(cfg, store)
+    assert {r["company"]: r["why"] for r in p["excluded"]} == UNWATCHABLE
+    assert [r["company"] for r in p["ready"] + p["to_check"] + p["no_board"]] == ["Hooli"]
+    assert suggest.auto_preview(cfg, store, min_jobs=2)["excluded"] == []  # one job each: not worth it at 2 anyway
+    _, got = suggest.auto_watch(cfg, store)
+    assert [s.name for s in got] == ["Hooli"]
+    cli.main(["-c", str(watchlist), "suggest", "--preview-auto", "--min-jobs", "1"])
+    out = capsys.readouterr().out
+    assert "auto_watch with min_jobs 1: 0 companies worth watching" in out and "6 are left out" in out
+    # Applied there: watched all the same
+    save_job(store, company="Globex Staffing LLC", title="Data Engineer", status="applied", boards=cfg.boards)
+    s = next(s for s in suggest.suggestions(cfg, store, limit=0) if s.name == "Globex Staffing LLC")
+    assert suggest.worth_watching(cfg, s)
+    with pytest.raises(config.ConfigError, match="never_watch is a list of company names"):
+        config.save(watchlist, {"suggestions": {"never_watch": "Umbrella"}})

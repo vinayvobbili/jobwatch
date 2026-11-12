@@ -322,6 +322,19 @@ stays a suggestion, for you to judge. A link can show a careers site on the comp
 find. Up to 10 boards are added and 10 companies looked into per check, each at most once a week, so a long list joins
 over a few days. What was added shows on the Activity tab, and a dismissed company stays out.
 
+Staffing and recruiting agencies and colleges are never watched this way (unless you applied there): an agency's
+jobs are its clients', and a college's board is mostly campus jobs. They're told by the name ("Staffing",
+"Recruiting", "Talent", "(agency)", "University", "College"...), by an industry the jobs name, or by an agency's
+posting text; `suggestions.never_watch: [Globex Staffing]` adds names. Before lowering `min_jobs`, see what it would
+do, with nothing added or looked up:
+
+```
+jobwatch suggest --preview-auto --min-jobs 1
+```
+
+It lists the companies it would watch by where their board stands (proven: added over the next checks; guessed or
+not looked for yet: looked into, a few each check; none found), and the ones it leaves out, with why.
+
 Alerts only bring a sample of each site's jobs, so a list of companies hiring (a post, an investor's portfolio, a
 ranking) can name ones jobwatch has never seen. `jobwatch scan` checks them all at once: it finds each one's board,
 reads it the way a check does, and lists the jobs that pass your filters, companies with one first. `--add` watches

@@ -302,12 +302,16 @@ class Suggestions:
     limit: int = 10      # companies listed, and so the most looked for at once
     auto_watch: bool = False  # each check adds the boards that meet the rules (see suggest.auto_watch)
     min_jobs: int = 2         # matching jobs that make a company worth watching on their own
+    never_watch: tuple[str, ...] = ()  # companies auto_watch leaves alone (agencies and colleges it tells itself)
 
 
 def _suggestions(raw, path: Path) -> Suggestions:
     raw = _section(raw, "suggestions", Suggestions, path, "{half_life: 30, limit: 10}")
     if not isinstance(raw.get("auto_watch", False), bool):
         raise ConfigError(f"{path}: suggestions.auto_watch is true or false, got {raw['auto_watch']!r}")
+    never = raw.get("never_watch") or []
+    if not isinstance(never, list) or not all(isinstance(n, str) and n.strip() for n in never):
+        raise ConfigError(f"{path}: suggestions.never_watch is a list of company names, got {never!r:.80}")
     return Suggestions(
         half_life=_between(raw.get("half_life", Suggestions.half_life), "suggestions.half_life", path, 1, 3650,
                            "days until a job counts half"),
@@ -315,7 +319,8 @@ def _suggestions(raw, path: Path) -> Suggestions:
                        "companies listed"),
         auto_watch=raw.get("auto_watch", False),
         min_jobs=_between(raw.get("min_jobs", Suggestions.min_jobs), "suggestions.min_jobs", path, 1, 20,
-                          "matching jobs that make a company worth watching"))
+                          "matching jobs that make a company worth watching"),
+        never_watch=tuple(n.strip() for n in never))
 
 
 @dataclass(frozen=True)
@@ -1443,7 +1448,10 @@ scoring:
 #   limit: 10              # how many companies are listed
 #   auto_watch: false      # true: each check adds a board when one of the company's jobs is on it and you've
 #                          # applied there, it has an office near you, or it has min_jobs matching jobs
-#   min_jobs: 2            # matching jobs that make a company worth watching on their own
+#   min_jobs: 2            # matching jobs that make a company worth watching on their own (1: any matching job;
+#                          # `jobwatch suggest --preview-auto --min-jobs 1` shows what that would add)
+#   never_watch: [Globex Staffing]  # companies auto_watch leaves alone; staffing and recruiting agencies and
+#                          # colleges are left alone anyway, unless you applied there
 
 # A board this slow to read is read less often (0 days: every board on every check; `fetch --all` reads them all):
 # slow_boards:

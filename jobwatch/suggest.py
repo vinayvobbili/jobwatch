@@ -17,20 +17,23 @@ does; a dismissed one isn't suggested again.
 
 With suggestions.auto_watch on, each check does the accepting (see auto_watch): a board goes on the watchlist when
 one of the company's jobs is on it and the person has applied there, the company has an office near them, or it has
-suggestions.min_jobs matching jobs (2 unless set). A board only guessed from the company's name never does: it can be
-another company's.
+suggestions.min_jobs matching jobs (2 unless set; 1 watches every company with a matching job). A board only guessed
+from the company's name never does: it can be another company's. Nor does a staffing or recruiting agency's, a
+college's, or one on suggestions.never_watch, unless the person applied there (see unwatchable). `jobwatch suggest
+--preview-auto` shows what a min_jobs would do, adding nothing.
 """
 
 from __future__ import annotations
 
+import re
 import shlex
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 from . import config, dupes, linkedin, sources
 from .config import Board, Config
-from .filters import excluded_company, reject_reason
+from .filters import excluded_company, reject_reason, staffing_firm
 from .models import Job
 from .store import ENDED, MANUAL, STAGES, Store
 
@@ -297,11 +300,87 @@ def find_job_board(store: Store, s: Suggestion, get=None, page=None):
         store.set_unwatched_board(s.company, s.entry, s.found_by)
 
 
+# Companies whose boards aren't watched without being asked, however many of their jobs come in: staffing and
+# recruiting agencies (their jobs are a client's, posted again under their name) and colleges and universities (a
+# board of campus jobs). Told by the name, by an industry the jobs name, or (agencies) by the jobs' text.
+_AGENCY_NAME = re.compile(r"\b(?:staff\w*|recruit(?:ing|ment|ers?)|headhunt\w*|personnel|placements?|"
+                          r"search (?:group|partners|firm)|workforce (?:solutions|group)|"
+                          r"employment (?:agency|services)|\w*talent\w*|teksystems|insight global|"
+                          r"robert half|randstad|adecco|kforce|apex systems|aerotek|kelly services|manpower\w*|hays|"
+                          r"michael page|motion recruitment|jobot|"
+                          r"collabera|beacon hill|harnham|hired)\b|\(agency\)", re.I)
+_COLLEGE_NAME = re.compile(r"\b(?:universit(?:y|ies)|colleges?|community college|school district|public schools|"
+                           r"academy|polytechnic|institute of technology)\b", re.I)
+_AGENCY_INDUSTRY = re.compile(r"\bstaffing (?:and|&) recruiting\b|\bstaffing agency\b", re.I)
+_COLLEGE_INDUSTRY = re.compile(r"\bhigher education\b", re.I)
+
+
+def unwatchable(cfg: Config, s: Suggestion) -> str | None:
+    """Why auto_watch leaves a company's board alone whatever its jobs: on suggestions.never_watch, a staffing or
+    recruiting agency, or a college or university. None: it may be watched."""
+    if any(linkedin.same_company(n, s.name) for n in cfg.suggest.never_watch):
+        return "on suggestions.never_watch"
+    industries = " ".join(j.department or "" for j in [*s.jobs, *s.engaged])
+    if _AGENCY_NAME.search(s.name) or _AGENCY_INDUSTRY.search(industries) or any(
+            staffing_firm(j) for j in s.jobs):
+        return "a staffing or recruiting agency"
+    if _COLLEGE_NAME.search(s.name) or _COLLEGE_INDUSTRY.search(industries):
+        return "a college or university"
+    return None
+
+
 def worth_watching(cfg: Config, s: Suggestion) -> bool:
     """The rules for watching a company's board without being asked: an application in flight there, an office near
-    the person, or suggestions.min_jobs matching jobs."""
+    the person, or suggestions.min_jobs matching jobs; never an agency's or a college's (see unwatchable), unless
+    the person applied there."""
+    if not s.engaged and unwatchable(cfg, s):
+        return False
     return bool(s.engaged) or len(s.jobs) >= cfg.suggest.min_jobs or any(
         excluded_company(j, cfg.filters_for(j).nearby_offices) for j in s.jobs)
+
+
+def auto_preview(cfg: Config, store: Store, min_jobs: int | None = None, now: datetime | None = None) -> dict:
+    """What auto_watch would do with suggestions.min_jobs at `min_jobs` (default: as set), with nothing read from the
+    web and nothing added: the companies it would watch, by where their board stands. ready: a board one of their
+    jobs is on (added at the next check, AUTO_ADDS a check); to_check: a board guessed from the name, or not looked
+    for yet (a check looks, AUTO_LOOKS companies a time, and adds the board only when one of their titles is on it);
+    no_board: looked for, and none found. excluded: the ones unwatchable leaves out, with why."""
+    if min_jobs is not None:
+        cfg = replace(cfg, suggest=replace(cfg.suggest, min_jobs=min_jobs))
+    out: dict = {"min_jobs": cfg.suggest.min_jobs, "ready": [], "to_check": [], "no_board": [], "excluded": []}
+    for s in suggestions(cfg, store, limit=0, now=now):
+        if watched(cfg.boards, s.name, s.entry or ""):
+            continue
+        if not s.engaged and (why := unwatchable(cfg, s)):
+            if len(s.jobs) >= cfg.suggest.min_jobs:
+                out["excluded"].append({"company": s.name, "why": why, "matching_jobs": len(s.jobs)})
+            continue
+        if not worth_watching(cfg, s):
+            continue
+        item = {"company": s.name, "matching_jobs": len(s.jobs), "board": s.entry or None}
+        group = ("ready" if s.entry and s.found_by == "posting" else "no_board" if s.entry == "" else "to_check")
+        out[group].append(item)
+    return out
+
+
+def preview_text(p: dict, sample: int = 15) -> str:
+    groups = (("ready", "would be added (one of their jobs is on the board)"),
+              ("to_check", "would be looked into (board guessed from the name, or not looked for yet)"),
+              ("no_board", "have no board found"), ("excluded", "are left out"))
+    n = sum(len(p[g]) for g in ("ready", "to_check", "no_board"))
+    out = [f"auto_watch with min_jobs {p['min_jobs']}: {n} compan{'y' if n == 1 else 'ies'} worth watching, nothing "
+           "added (a preview)."]
+    for g, label in groups:
+        rows = p[g]
+        if not rows:
+            continue
+        out.append(f"\n{len(rows)} {label}:")
+        for r in rows[:sample]:
+            out.append(f"  {r['company']}" + (f"  ({r['why']})" if g == "excluded" else
+                                              f"  {r['board']}" if r.get("board") else ""))
+        if len(rows) > sample:
+            out.append(f"  ... and {len(rows) - sample} more (--format json lists them)")
+    return "\n".join(out)
 
 
 def auto_watch(cfg: Config, store: Store, get=None, page=None,

@@ -798,6 +798,10 @@ def cmd_suggest(args, cfg, store):
         print(f"{suggest.dismiss(store, which).name} won't be suggested again.")
     if args.add or args.dismiss:
         return
+    if args.preview_auto:
+        p = suggest.auto_preview(cfg, store, args.min_jobs)
+        print(json.dumps(p, indent=2, ensure_ascii=False) if args.format == "json" else suggest.preview_text(p))
+        return
     if args.rescan:
         n = suggest.rescan(cfg, store)
         if args.format != "json":
@@ -1523,6 +1527,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-lookup", action="store_true", help="look for no boards: list what's known")
     p.add_argument("--rescan", action="store_true", help="first note the companies of the HN posts already kept "
                    "that pass your filters (still open; nothing is read from the web)")
+    p.add_argument("--preview-auto", action="store_true", help="what suggestions.auto_watch would watch, by where "
+                   "each board stands, and the agencies and colleges it leaves out; nothing is added or looked up")
+    p.add_argument("--min-jobs", type=int, default=None, metavar="N", help="with --preview-auto: as if "
+                   "suggestions.min_jobs were N (1: any matching job)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_suggest)
 

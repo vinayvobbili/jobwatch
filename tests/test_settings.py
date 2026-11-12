@@ -46,7 +46,7 @@ def test_the_defaults_are_the_values_once_fixed_in_the_code(watchlist):
     d = config.defaults()
     assert d["chat"] == {"claude_model": "claude-sonnet-5-5", "local_model": "", "max_tokens": 1500, "max_turns": 24}
     assert d["pay"] == {"levels": False, "region": "", "ask_over": 10, "round": 5000, "today": 15}
-    assert d["suggestions"] == {"half_life": 30, "limit": 10, "auto_watch": False, "min_jobs": 2}
+    assert d["suggestions"] == {"half_life": 30, "limit": 10, "auto_watch": False, "min_jobs": 2, "never_watch": ()}
     assert d["learning"]["jobs"] == 5
     assert d["scoring"] == {"backend": "local", "top": 0} and d["fetch_every"] == "6h"
     assert d["alerts"]["imap"]["senders"] == list(config.ALERT_SENDERS)
