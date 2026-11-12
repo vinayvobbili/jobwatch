@@ -880,8 +880,19 @@ def cmd_backup(args, cfg, store):
 
 
 def cmd_snooze(args, cfg, store):
+    """Every name is tried: one that is ambiguous or not open is reported, the rest still snooze, and the exit
+    status is nonzero at the end."""
+    failed = 0
     for k in args.keys:
-        print(f"{k}: follow up {store.snooze(k, args.days)}")
+        try:
+            print(f"{k}: follow up {store.snooze(k, args.days)}")
+        except (KeyError, ValueError) as e:
+            if len(args.keys) == 1:
+                raise  # main() words it
+            print(f"jobwatch: {e.args[0] if isinstance(e, KeyError) else e}", file=sys.stderr)
+            failed += 1
+    if failed:
+        raise SystemExit(1)
 
 
 def cmd_calendar(args, cfg, store):

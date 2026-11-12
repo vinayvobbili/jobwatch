@@ -22,6 +22,7 @@ from .text import names_one_role, parse_salary
 # queued: to apply to next. After applying: applied, then screening, interviewing, offer, or it ends.
 STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdrawn")
 ENDED = ("rejected", "withdrawn")
+OPEN = ("applied", "screening", "interviewing")
 IN_PROGRESS = tuple(s for s in STAGES if s not in ENDED)
 # snoozed: wanted, but waiting for the application in progress at its company to end. It's queued again then, or
 # after SNOOZE_DAYS (its follow_up day), since many companies never say no (wake_snoozed).
@@ -510,14 +511,20 @@ class Store:
         return self.db.execute(f"SELECT COUNT(*) FROM jobs WHERE applied_at=? AND status IN "
                                f"({','.join('?' * len(STAGES))})", (day(on), *STAGES)).fetchone()[0]
 
-    def find(self, key: str) -> tuple[Job, dict]:
+    def find(self, key: str, prefer_open: bool = False) -> tuple[Job, dict]:
         """A job by its full key, by a unique ending of it (the posting id is enough), or else by its company's
         name or part of it, in any case, when that names one job: the one queued or applied to there, or the only
-        one there at all."""
+        one there at all. prefer_open: when a company still names several jobs, the one open application (applied,
+        screening or interviewing) among them wins."""
         rows = self.db.execute("SELECT * FROM jobs WHERE key=? OR key LIKE ?", (key, f"%{key}")).fetchall()
         exact = [r for r in rows if r["key"] == key]
         rows = exact or rows
-        if not rows and len(rows := self._at_company(key)) > 1:
+        by_company = not rows
+        if by_company:
+            rows = self._at_company(key)
+            if prefer_open and len(live := [r for r in rows if r["status"] in OPEN]) == 1:
+                rows = live
+        if by_company and len(rows) > 1:
             listed = "\n".join(f"  {r['key']}  {self._label(r)}" for r in rows[:10])
             more = f"\n  and {len(rows) - 10} more" if len(rows) > 10 else ""
             raise KeyError(f"{key!r} matches {len(rows)} jobs; give the key of one:\n{listed}{more}")
@@ -687,7 +694,7 @@ class Store:
         """Push an open application's follow-up day `days` out from today, leaving its stage alone, and note it
         ("Snoozed 7 days": quiet.py doesn't count that line as news, so a snoozed application stays quiet).
         Returns the new day."""
-        job, rec = self.find(key)
+        job, rec = self.find(key, prefer_open=True)
         if rec["status"] not in STAGES or rec["status"] in ENDED:
             raise ValueError(f"{job.key} isn't an open application ({rec['status']})")
         if days < 1:

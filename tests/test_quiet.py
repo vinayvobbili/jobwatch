@@ -132,6 +132,39 @@ def test_snooze_refuses_what_is_not_open(store):
         store.snooze(put(store, "Initech", "Data Engineer"), 0)
 
 
+def test_snooze_by_company_picks_the_one_open_application(store):
+    closed = put(store, "Initech", "Data Engineer", "rejected")
+    live = put(store, "Initech", "Platform Engineer", "screening")
+    assert store.snooze("initech", 7) == "2026-10-21"
+    assert store.find(live)[1]["follow_up"] == "2026-10-21"
+    assert store.find(closed)[1]["follow_up"] is None
+
+
+def test_snooze_by_company_still_asks_when_two_are_open(store):
+    put(store, "Globex", "Data Engineer", "applied")
+    put(store, "Globex", "Platform Engineer", "interviewing")
+    with pytest.raises(KeyError, match="matches 2 jobs; give the key of one"):
+        store.snooze("globex")
+
+
+def test_cli_snooze_carries_on_past_an_ambiguous_name_and_exits_nonzero(watchlist, tmp_path, capsys):
+    s = Store(tmp_path / "state.db")
+    put(s, "Globex", "Data Engineer", "applied")
+    put(s, "Globex", "Platform Engineer", "interviewing")
+    put(s, "Initech", "Old Role", "rejected")
+    put(s, "Initech", "New Role", "applied")
+    umbrella = put(s, "Umbrella", "Security Engineer", "applied")
+    s.close()
+    with pytest.raises(SystemExit) as e:
+        cli.main(["-c", str(watchlist), "snooze", "initech", "globex", "umbrella"])
+    assert e.value.code == 1
+    cap = capsys.readouterr()
+    assert "initech: follow up 2026-10-21" in cap.out and "umbrella: follow up 2026-10-21" in cap.out
+    assert "'globex' matches 2 jobs; give the key of one:" in cap.err
+    s = Store(tmp_path / "state.db")
+    assert s.find(umbrella)[1]["follow_up"] == "2026-10-21"
+
+
 def test_long_quiet_follow_ups_sort_below_the_fresh_ones(store):
     stale = put(store, "Initech", "Old", news="2026-08-01", follow_up="2026-08-15")
     fresh = put(store, "Globex", "Fresh", news="2026-10-10", follow_up="2026-10-12")
