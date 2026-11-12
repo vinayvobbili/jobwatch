@@ -22,7 +22,7 @@ def test_the_store_zip_holds_only_what_the_browser_loads(tmp_path):
     assert target.name == f"jobwatch-extension-{package.package_version()}.zip"
     names = set(zipfile.ZipFile(target).namelist())
     assert {"manifest.json", "background.js", "logic.js", "page.js", "sidepanel.js", "sidepanel.html",
-            "options.html",
+            "options.html", "job-lists.js",
             "icons/icon128.png", "THIRD_PARTY_NOTICES"} <= names
     assert not any(n.startswith(("demo/", "tools/")) or n.endswith(".md") for n in names)
 

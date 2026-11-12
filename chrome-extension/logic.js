@@ -311,6 +311,18 @@
     return host === 'localhost' || host === '127.0.0.1' ? 'none' : 'site';
   }
 
+  /** The job site whose list of jobs this address shows, for "Import this list" (job-lists.js reads it): 'linkedin'
+   * on LinkedIn's jobs pages (a search, "Jobs based on your preferences"), 'indeed' on Indeed's home page ("Jobs for
+   * you") and its searches, else ''. */
+  function listMode(url) {
+    const u = urlOf(url);
+    if (!u) return '';
+    const host = u.hostname.toLowerCase();
+    if (LINKEDIN_HOST.test(host)) return /^\/jobs(\/|$)/.test(u.pathname) && !/^\/jobs\/view\//.test(u.pathname) ? 'linkedin' : '';
+    if (/(^|\.)indeed\.com$/.test(host)) return /^\/(?:$|jobs\/?$|q-|m\/jobs)/.test(u.pathname) ? 'indeed' : '';
+    return '';
+  }
+
   /** Whether a button, by its accessible label and its text, is LinkedIn's offsite Apply button (it opens the
    * company's site). Never Easy Apply, which applies on LinkedIn; anything else is not it. */
   function isOffsiteApply(b) {
@@ -348,7 +360,7 @@
 
   const JW = { formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
-    linkedinJobId, postingMode, isOffsiteApply, isEasyApply, sameCompany, tidyText };
+    linkedinJobId, postingMode, listMode, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;
   root.JW = JW;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -40,6 +40,7 @@ async function handle(msg, tabId, sender) {
     case 'fill': return fill(tabId, msg.items);
     case 'draft': return draft(tabId, msg.question, msg.words, msg.others);
     case 'posting': return posting(tabId);
+    case 'importList': return importList(tabId);
     case 'tailor': return tailor(tabId);
     case 'captured': return captured(tabId, msg, sender);
     case 'looksSubmitted': return record(tabId);
@@ -260,6 +261,83 @@ async function posting(tabId) {
   if (last && Date.now() - last.at < LINKEDIN_MAX_MS) body.linkedin = last.id;
   const r = await api('/ext/posting', { method: 'POST', body, settings });
   return { stage: 'done', ...r, link: `${settings.serverUrl}/#${r.where}` };
+}
+
+// --- a job site's list of jobs ----------------------------------------------------------------------
+
+const LIST_MAX_PAGES = 10;
+const LIST_IMPORT_TIMEOUT_MS = 10 * 60 * 1000; // jobwatch looks for each new job's company board: minutes for a long list
+const PAGE_LOAD_MS = 30 * 1000;
+
+function listProgress(tabId, text) {
+  chrome.runtime.sendMessage({ type: 'listProgress', tabId, text }).catch(() => {});
+}
+
+/** Wait for a tab to finish loading the page it was sent to. */
+function loaded(tabId) {
+  return new Promise((resolve) => {
+    const done = (ok) => {
+      chrome.tabs.onUpdated.removeListener(on);
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const on = (id, change) => { if (id === tabId && change.status === 'complete') done(true); };
+    const timer = setTimeout(() => done(false), PAGE_LOAD_MS);
+    chrome.tabs.onUpdated.addListener(on);
+  });
+}
+
+/**
+ * "Import this list": reads the jobs on the LinkedIn or Indeed list in this tab (job-lists.js), page after page up to
+ * LIST_MAX_PAGES, and sends them to jobwatch, which counts the ones it had and tracks the rest. Only the cards' title,
+ * company, place, pay and age go, with each job's id on the site; the person pressed the button. LinkedIn swaps its
+ * pages in place; Indeed loads each one, and the next is read once it has loaded (if Chrome stops the reading there,
+ * what was read so far is sent).
+ */
+async function importList(tabId) {
+  const settings = await pairedSettings();
+  const source = JW.listMode(await tabUrl(tabId));
+  if (!source) throw new Expected('Open a job list on LinkedIn (Jobs, a search) or Indeed (Jobs for you, a search), then try again.');
+  const byId = new Map();
+  const run = async (func) => {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['job-lists.js'] });
+    const [r] = await chrome.scripting.executeScript({ target: { tabId }, func, args: [source] });
+    return r.result;
+  };
+  let stopped = '';
+  for (let page = 1; page <= LIST_MAX_PAGES; page += 1) {
+    let records;
+    try {
+      records = await run((src) => globalThis.JWList.readPage({ source: src }));
+    } catch {
+      if (page === 1) throw new Expected("This page can't be read. Click the jobwatch icon on the list's tab, and try again.");
+      stopped = `Chrome stopped the reading on page ${page}: click the jobwatch icon there and import again to read on.`;
+      break;
+    }
+    for (const r of records || []) if (!byId.has(r.id)) byId.set(r.id, r);
+    listProgress(tabId, `Read page ${page}: ${byId.size} job${byId.size === 1 ? '' : 's'} so far.`);
+    if (page === LIST_MAX_PAGES) break;
+    let moved;
+    try {
+      moved = await run((src) => globalThis.JWList.next({ source: src }));
+    } catch {
+      break;
+    }
+    if (typeof moved === 'string') {
+      const waiting = loaded(tabId);
+      await chrome.tabs.update(tabId, { url: moved });
+      if (!(await waiting)) {
+        stopped = `Page ${page + 1} didn't load: what was read so far is imported.`;
+        break;
+      }
+    } else if (moved !== true) {
+      break;
+    }
+  }
+  if (!byId.size) throw new Expected('No jobs found on this page. Open the list itself (not one job), and try again.');
+  listProgress(tabId, `Looking for the ${byId.size} jobs on their companies' own boards. This can take a few minutes.`);
+  const r = await api('/ext/import-list', { method: 'POST', body: { records: [...byId.values()] }, settings, timeout: LIST_IMPORT_TIMEOUT_MS });
+  return { ...r, stopped, link: `${settings.serverUrl}/#today` };
 }
 
 // --- recording the application ---------------------------------------------------------------------

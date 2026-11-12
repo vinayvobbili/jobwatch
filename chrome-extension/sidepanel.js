@@ -20,6 +20,7 @@
   let features = []; // what that jobwatch offers beyond filling (/ext/ping): an older one has no posting call
   let state = null; // the last scan: { items, info, job }
   let busy = false;
+  let importing = null; // the tab whose job list is being imported: its progress shows
 
   try {
     const theme = localStorage.getItem('theme');
@@ -85,7 +86,16 @@
     }, () => {});
     return b;
   };
-  const actions = () => h('div', { class: 'actions' }, scanButton(), features.includes('posting') ? postingButton() : null);
+  // On a LinkedIn or Indeed list of jobs: send every page's jobs to jobwatch, to see which it had and track the rest.
+  const importButton = () => {
+    const b = h('button', { id: 'import-list', class: 'ghost', textContent: 'Import this list', onclick: importList, hidden: true });
+    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+      if (tab && JW.listMode(tab.url)) b.hidden = false;
+    }, () => {});
+    return b;
+  };
+  const actions = () => h('div', { class: 'actions' }, scanButton(), features.includes('posting') ? postingButton() : null,
+    features.includes('import-list') ? importButton() : null);
 
   function idle(text) {
     state = null;
@@ -221,6 +231,48 @@
     posted(r);
   }
 
+  const SITE = { linkedin: 'LinkedIn', indeed: 'Indeed' };
+  const pct = (x) => (x == null ? '-' : `${Math.round(x * 100)}%`);
+
+  /** What Import this list did: per site, how many jobwatch had (its coverage), what it added, what it couldn't place. */
+  function imported(r) {
+    $('where').textContent = 'Job list imported';
+    const sites = Object.entries(r.by_source || {}).map(([src, c]) => h('div', { class: 'row' },
+      h('div', { class: 'q', textContent: `${SITE[src] || src}: ${c.seen} jobs` }),
+      h('span', { class: 'badge details', textContent: `Coverage ${pct(c.coverage)}` }),
+      h('div', { class: 'meta', textContent: `${c.tracked + c.earlier} already tracked${c.earlier ? ` (${c.earlier} by an earlier import)` : ''}, ${c.added} added from the company's board, ${c.unplaced} couldn't place.` })));
+    const unplaced = (r.unplaced || []).map((j, i) => h('div', { class: 'row', style: `animation-delay:${Math.min(i, 12) * 25}ms` },
+      h('div', { class: 'q', textContent: `${j.company}: ${j.title}` }),
+      h('div', { class: 'meta', textContent: [j.location, j.why].filter(Boolean).join(' · ') })));
+    view(h('div', { class: 'scroll' },
+      r.stopped ? h('div', { class: 'note', textContent: r.stopped }) : null,
+      h('div', { class: 'rows' }, sites),
+      unplaced.length ? h('div', { class: 'note', textContent: "Couldn't place these on their company's board. They're tracked from the list; watch the company's board in jobwatch and they're filled in." }) : null,
+      unplaced.length ? h('div', { class: 'rows' }, unplaced) : null),
+    h('footer', {}, h('span', { class: 'count', textContent: `${(r.added || []).length} added` }),
+      h('a', { class: 'go linkbtn', href: r.link, target: '_blank', rel: 'noopener', textContent: 'See them in jobwatch' })));
+  }
+
+  async function importList() {
+    if (busy) return;
+    if (!tabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = tab && tab.id;
+    }
+    if (!tabId) return failed('No tab to read. Open a job list on LinkedIn or Indeed and try again.');
+    busy = true;
+    const readId = tabId;
+    importing = readId;
+    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: 'Reading the list...' }),
+      h('div', { id: 'progress', class: 'msg small', textContent: 'Each page is scrolled to its end, then the next one is opened.' })));
+    const r = await send({ type: 'importList', tabId: readId });
+    busy = false;
+    importing = null;
+    if (readId !== tabId) return;
+    if (!r.ok) return failed(r.error);
+    imported(r);
+  }
+
   async function draft(item, btn) {
     btn.disabled = true;
     btn.textContent = 'Drafting...';
@@ -317,6 +369,7 @@
   chrome.runtime.onMessage.addListener((msg, sender) => {
     if (msg && msg.type === 'formChanged' && sender.tab && sender.tab.id === tabId) stepChanged();
     if (msg && msg.type === 'toast' && (!tabId || msg.tabId === tabId)) toast(msg.text, msg.ok);
+    if (msg && msg.type === 'listProgress' && msg.tabId === importing && $('progress')) $('progress').textContent = msg.text;
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings && !busy && !state) init();

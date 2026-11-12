@@ -5,8 +5,14 @@ in the side panel that opens. The side panel itself shows only what the extensio
 It reads the form's questions, their answer options and the values already in the fields, the page's address, and the
 company and job title shown on the page.
 
-**LinkedIn:** it reads nothing from LinkedIn's pages: no title, company, description or page data. From a LinkedIn
-tab it takes only the address, for the job's number. When you press **Open the company's posting**, it presses
+**LinkedIn and Indeed job lists:** only when you press **Import this list** on a LinkedIn or Indeed list of jobs (a
+search, "Jobs based on your preferences", "Jobs for you"), it reads each job card on that list: the job's number on the
+site, its title, company, place, pay and how long ago it was posted. It scrolls the list to its end and presses its
+Next button (or opens its next page), up to ten pages, and sends those cards to your own jobwatch. Nothing else on
+those pages is read, and nothing is sent anywhere else.
+
+**LinkedIn job pages:** apart from a list you import, it reads nothing from LinkedIn's pages: no title, company,
+description or page data. From a LinkedIn tab it takes only the address, for the job's number. When you press **Open the company's posting**, it presses
 LinkedIn's Apply button (the one that opens the company's own site, never Easy Apply or anything that submits), and
 then gives the address of the tab that opens, with the job's number, to your own jobwatch. For that it uses the `tabs`
 permission, to see the address of that one new tab (opened within two minutes of the press) and of the active tab.
@@ -22,7 +28,7 @@ nothing else; the form's own site receives them only when you press its Submit b
 `localhost`). The extension sends it the page's address, the text of a question you ask it to draft together with your
 other written answers on that form (so a draft doesn't repeat them), and, after you submit an application, the
 questions and answers on the form (not your name, contact details or voluntary self-identification answers), the
-company and job title, and the name of the resume file. What jobwatch does with a draft request, such as which language
+company and job title, and the name of the resume file; and the job cards of a list you import. What jobwatch does with a draft request, such as which language
 model it asks, is set in jobwatch, not in the extension. The extension's authors run no server and receive nothing.
 
 **What it stores:**

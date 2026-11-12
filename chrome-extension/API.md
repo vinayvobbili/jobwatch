@@ -44,7 +44,7 @@ One flat object, as the watchlist's `applicant:` section keeps it. Every field i
 
 ### `GET /ext/ping`
 
-`{"ok": true, "version": "0.9.0", "features": ["posting"]}`. Used by the options page to test pairing. `features`
+`{"ok": true, "version": "0.9.0", "features": ["posting", "import-list"]}`. Used by the options page to test pairing. `features`
 names what jobwatch offers beyond filling: the side panel shows **Save this posting to jobwatch** only when it has
 `posting` (`POST /ext/posting`), so an older jobwatch, which sends no `features`, gets no button that would fail.
 
@@ -109,6 +109,23 @@ Sent after the person submits the form.
 application already further along keeps its stage), the answers are kept in its package, and the resume it
 named is attached to the package. A page jobwatch doesn't know yet is added from its link, with `company` and
 `title` from the page when the link can't be read; `added` says so.
+
+### `POST /ext/import-list`
+
+Sent when the person presses **Import this list** on a LinkedIn or Indeed list of jobs (only shown when `/ext/ping`'s
+`features` has `import-list`). The extension reads the list's cards with `job-lists.js`, page after page (up to ten),
+and sends them all at once:
+
+```json
+{"records": [{"source": "linkedin", "id": "4100000001", "title": "Platform Engineer", "company": "Initech",
+              "location": "Boulder, CO (Hybrid)", "pay": "$120K/yr - $180K/yr", "posted": "2 days ago"}]}
+```
+
+jobwatch counts the jobs it already tracks and looks for each new one on the company's own board (see
+`jobwatch import-list`); that can take a few minutes for a long list. → the counts overall and per site
+(`seen`, `tracked`, `earlier`, `added`, `unplaced`, `coverage` from 0 to 1, `by_source`), `summary` (the text
+`jobwatch import-list` prints), and `added` and `unplaced`: the jobs, each with `company`, `title`, `location`, `key`
+and, for unplaced ones, `why`. No records: `400`.
 
 ### `POST /ext/posting`
 

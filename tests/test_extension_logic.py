@@ -24,7 +24,7 @@ def run_js(tmp_path, body: str):
 @needs_node
 def test_every_script_parses():
     """A syntax error in a content script gives a panel that never opens, with no test failing elsewhere."""
-    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js"):
+    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "job-lists.js"):
         r = subprocess.run(["node", "--check", str(EXT / name)], capture_output=True, text=True)
         assert r.returncode == 0, f"{name}: {r.stderr}"
 
@@ -207,6 +207,25 @@ def test_linkedin_addresses_and_what_the_posting_action_does_on_them(tmp_path):
     }
     got = run_js(tmp_path, f"const urls = {json.dumps(list(urls))};\nconsole.log(JSON.stringify(urls.map(u => [JW.linkedinJobId(u), JW.postingMode(u)])));")
     assert got == [list(v) for v in urls.values()]
+
+
+@needs_node
+def test_the_job_lists_import_this_list_reads(tmp_path):
+    urls = {
+        "https://www.linkedin.com/jobs/collections/recommended/": "linkedin",
+        "https://www.linkedin.com/jobs/search/?keywords=sre&currentJobId=3900000777": "linkedin",
+        "https://www.linkedin.com/jobs/": "linkedin",
+        "https://www.linkedin.com/jobs/view/3900000123/": "",
+        "https://www.linkedin.com/feed/": "",
+        "https://www.indeed.com/": "indeed",
+        "https://www.indeed.com/jobs?q=engineer&l=Boulder%2C+CO": "indeed",
+        "https://www.indeed.com/q-engineer-jobs.html": "indeed",
+        "https://www.indeed.com/viewjob?jk=a1b2c3d4e5f60001": "",
+        "https://jobs.lever.co/globex/aaaa-1111": "",
+        "": "",
+    }
+    got = run_js(tmp_path, f"const urls = {json.dumps(list(urls))};\nconsole.log(JSON.stringify(urls.map(u => JW.listMode(u))));")
+    assert got == list(urls.values())
 
 
 @needs_node
