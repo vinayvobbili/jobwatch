@@ -24,7 +24,7 @@ def run_js(tmp_path, body: str):
 @needs_node
 def test_every_script_parses():
     """A syntax error in a content script gives a panel that never opens, with no test failing elsewhere."""
-    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "job-lists.js"):
+    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "job-lists.js", "passive.js"):
         r = subprocess.run(["node", "--check", str(EXT / name)], capture_output=True, text=True)
         assert r.returncode == 0, f"{name}: {r.stderr}"
 
@@ -35,7 +35,9 @@ def test_the_manifest_asks_for_little():
     # "tabs" only to see the address of the tab LinkedIn's Apply button opens (background.js, openCompany)
     assert sorted(manifest["permissions"]) == ["activeTab", "scripting", "sidePanel", "storage", "tabs"]
     assert sorted(manifest["host_permissions"]) == ["http://127.0.0.1/*", "http://localhost/*"]
-    assert "content_scripts" not in manifest  # nothing runs on a page until the person clicks
+    # the only thing that runs unprompted: passive mode's card note-taker, on the two job sites and nowhere else
+    assert [(c["matches"], c["js"]) for c in manifest["content_scripts"]] == [
+        (["https://www.linkedin.com/*", "https://*.indeed.com/*"], ["logic.js", "job-lists.js", "passive.js"])]
     assert "default_popup" not in manifest["action"]  # the toolbar button opens the side panel instead
     for name in (manifest["background"]["service_worker"], manifest["side_panel"]["default_path"],
                  manifest["options_page"], *manifest["icons"].values()):

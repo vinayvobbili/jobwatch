@@ -9,9 +9,10 @@
  *  - JWList.readPage(): the current page (its results scrolled to the end first: cards render as they scroll into
  *    view). JWList.next(): moves to the next page. true: the next page is on screen (LinkedIn swaps it in place);
  *    a link: go there and read again (Indeed loads a new page, which ends this script); false: no next page.
- *  - JWList.readAll({ maxPages: 10 }): every page, while next() stays on this page (LinkedIn), each job once;
- *    JWList.lastRun.nextUrl is the link to go to when a page had to be loaded (Indeed). About 5-10 seconds a page.
- *  - JWList.readList(document): the cards as they are now, with no scrolling.
+ *  - JWList.readAll({ maxPages: 4 }): every page, while next() stays on this page (LinkedIn), each job once;
+ *    JWList.lastRun.nextUrl is the link to go to when a page had to be loaded (Indeed). Paced like a person skimming (PACING): about a minute a page.
+ *  - JWList.readList(document): the cards as they are now, with no scrolling
+ *    (passive.js uses it while the person browses).
  * The site is told from the page's address; pass { source } to say it.
  *
  * Who runs it:
@@ -35,12 +36,32 @@
   const VERIFIED = /\s*(?:\((?:verified job|verified)\)|with verification)\s*$/i;
   const PAY = /^\$\s?[\d,.]+\s*[KkMm]?(?:\s*(?:\/\s*|an? |per )(?:yr|year|hr|hour|mo|month|week|day))?(?:\s*(?:[-–—]|to)\s*\$\s?[\d,.]+\s*[KkMm]?(?:\s*(?:\/\s*|an? |per )(?:yr|year|hr|hour|mo|month|week|day))?)?/;
   const POSTED = /\b(\d+\+?\s+(?:second|minute|hour|day|week|month|year)s?\s+ago|just now|just posted|today)\b/i;
-  const SCROLL_PAUSE_MS = 350; // for cards scrolled into view to render
+  // How a person skims, not how a script scrolls: every wait is a random draw from its [min, max] (ms), so a run of
+  // pages doesn't look like a machine on the person's logged-in account. One place for all of it; opts.pacing
+  // overrides single entries, opts.sleep / opts.random replace the clock and the dice (tests).
+  const PACING = {
+    scrollMs: [1500, 4000], // between scroll steps
+    stepFrac: [0.6, 0.9], // each step scrolls this share of the visible height
+    nextMs: [4000, 9000], // before pressing Next (or opening the next page)
+    settleMs: [800, 1600], // after a new page's cards are there
+    pollMs: 300, // how often to look for the new page's cards (not a human-visible pause)
+  };
+  const DEFAULT_MAX_PAGES = 4; // lists are sorted by relevance: later pages matter less
   const STEADY_ROUNDS = 3; // at the bottom with no new card this many times running: the page is all there
-  const MAX_SCROLLS = 60;
+  const MAX_SCROLLS = 40;
   const NEXT_WAIT_MS = 15000; // for the next page's cards after Next is pressed
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  /** The clock and dice of one call: its pacing (defaults plus opts.pacing), a sleep, and a draw from [min, max]. */
+  function pacer(opts) {
+    const pacing = { ...PACING, ...((opts && opts.pacing) || {}) };
+    const random = (opts && opts.random) || Math.random;
+    return {
+      pacing,
+      sleep: (opts && opts.sleep) || sleep,
+      between: ([lo, hi]) => lo + random() * (hi - lo),
+    };
+  }
   const squash = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const cleanTitle = (line) => squash(line).replace(VERIFIED, '').trim();
   const linesOf = (text) => String(text || '').split('\n').map(squash).filter((s) => s && s !== '·');
@@ -172,11 +193,12 @@
   async function readPage(opts) {
     const doc = (opts && opts.doc) || document;
     const box = scroller(doc, opts);
+    const clock = pacer(opts);
     let steady = 0;
     let seen = -1;
     for (let i = 0; i < MAX_SCROLLS && steady < STEADY_ROUNDS; i += 1) {
-      box.scrollTop = Math.min(box.scrollTop + Math.max(box.clientHeight * 0.8, 300), box.scrollHeight);
-      await sleep(SCROLL_PAUSE_MS);
+      box.scrollTop = Math.min(box.scrollTop + Math.max(box.clientHeight * clock.between(clock.pacing.stepFrac), 300), box.scrollHeight);
+      await clock.sleep(clock.between(clock.pacing.scrollMs));
       const n = readList(doc, opts).length;
       const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
       steady = atEnd && n === seen ? steady + 1 : 0;
@@ -212,17 +234,19 @@
     const site = SITES[sourceOf(opts)];
     const button = findNext(doc);
     if (!button) return false;
+    const clock = pacer(opts);
+    await clock.sleep(clock.between(clock.pacing.nextMs)); // a person looks the page over before turning it
     const href = button.getAttribute('href');
     if (!site.spa && href && !href.startsWith('#') && !/^javascript:/i.test(href)) {
       return new URL(href, root.location ? root.location.href : 'https://example.com/').href;
     }
     const before = new Set(site.cards(doc).map(([id]) => id));
     button.click();
-    for (let waited = 0; waited < NEXT_WAIT_MS; waited += 300) {
-      await sleep(300);
+    for (let waited = 0; waited < NEXT_WAIT_MS; waited += clock.pacing.pollMs) {
+      await clock.sleep(clock.pacing.pollMs);
       const now = site.cards(doc).map(([id]) => id);
       if (now.length && now.some((id) => !before.has(id))) {
-        await sleep(SCROLL_PAUSE_MS);
+        await clock.sleep(clock.between(clock.pacing.settleMs));
         return true;
       }
     }
@@ -232,7 +256,7 @@
   /** Every page while they're swapped in place, up to maxPages, each job once. onProgress({ page, jobs }) after
    * each page. lastRun: { pages, jobs, nextUrl: the next page's link, when it has to be loaded }. */
   async function readAll(opts) {
-    const { maxPages = 10, onProgress = null } = opts || {};
+    const { maxPages = DEFAULT_MAX_PAGES, onProgress = null } = opts || {};
     const byId = new Map();
     let page = 0;
     let moved = false;
@@ -254,7 +278,7 @@
     return [...byId.values()];
   }
 
-  const api = { parseLinkedIn, parseIndeed, readList, readPage, next, readAll, findNext, cleanTitle, sourceOf, lastRun: null };
+  const api = { parseLinkedIn, parseIndeed, readList, readPage, next, readAll, findNext, cleanTitle, sourceOf, PACING, DEFAULT_MAX_PAGES, lastRun: null };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JWList = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -70,11 +70,14 @@ Nothing leaves your computer except to jobwatch, which runs on it. See [PRIVACY.
 ## For developers
 
 ```
-manifest.json       Manifest V3: activeTab, scripting, storage, sidePanel, and http://127.0.0.1 / localhost
+manifest.json       Manifest V3: activeTab, scripting, storage, sidePanel, tabs, http://127.0.0.1 / localhost, and
+                    a content script on linkedin.com / indeed.com job lists (passive mode)
 background.js       service worker; the only code that talks to jobwatch (API.md); opens the side panel when the
                     icon is clicked; keeps pending submissions per tab
 logic.js            classification, matching, option picking, the review plan; no DOM, tested with node
 page.js             content script per frame: scan, fill, read company and title, watch for the person's submit
+job-lists.js        reads LinkedIn / Indeed job lists, paced like a person (PACING); a copy ships in jobwatch/static
+passive.js          content script on LinkedIn and Indeed: notes the job cards seen while browsing (passive mode)
 sidepanel.*         the review panel in Chrome's side panel: pairing status, scan, rows, fill, drafts, results
 options.*           the options page (server, token, theme and width)
 demo/               fixture forms imitating Greenhouse, Lever and Ashby, and a generic one

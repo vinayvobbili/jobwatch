@@ -20,6 +20,7 @@
   let features = []; // what that jobwatch offers beyond filling (/ext/ping): an older one has no posting call
   let state = null; // the last scan: { items, info, job }
   let busy = false;
+  let listRefresh = null; // re-reads the import-list settings block when passive mode notes a job
   let importing = null; // the tab whose job list is being imported: its progress shows
 
   try {
@@ -94,8 +95,36 @@
     }, () => {});
     return b;
   };
+  // Import-list settings: how many pages the button reads, and passive mode (jobs seen while browsing, imported
+  // on request). Both are kept in chrome.storage.local; passive.js and background.js read them from there.
+  const listOptions = () => {
+    const pages = h('input', { id: 'list-pages', type: 'number', min: '1', max: '10', step: '1', value: '4', title: 'Pages Import this list reads (1-10)' });
+    const on = h('input', { id: 'passive-on', type: 'checkbox', checked: true });
+    const seen = h('button', { id: 'passive-import', class: 'ghost', hidden: true, onclick: importSeen });
+    const refresh = async () => {
+      const s = await chrome.storage.local.get(['listPages', 'passiveOn', 'passiveSeen']);
+      if (document.activeElement !== pages) pages.value = String(s.listPages || 4);
+      on.checked = s.passiveOn !== false;
+      const n = Object.keys(s.passiveSeen || {}).length;
+      seen.hidden = !n;
+      seen.textContent = `${n} job${n === 1 ? '' : 's'} seen while browsing: Import`;
+    };
+    pages.addEventListener('change', () => {
+      const n = Math.min(10, Math.max(1, Math.round(Number(pages.value)) || 4));
+      pages.value = String(n);
+      chrome.storage.local.set({ listPages: n });
+    });
+    on.addEventListener('change', () => chrome.storage.local.set({ passiveOn: on.checked }));
+    refresh();
+    listRefresh = refresh;
+    return h('div', { class: 'list-options' },
+      h('label', {}, 'Pages to read ', pages),
+      h('label', { title: 'Keeps the jobs shown on LinkedIn and Indeed lists while you browse, on this computer, until you press Import.' },
+        on, ' Note jobs while I browse'),
+      seen);
+  };
   const actions = () => h('div', { class: 'actions' }, scanButton(), features.includes('posting') ? postingButton() : null,
-    features.includes('import-list') ? importButton() : null);
+    features.includes('import-list') ? importButton() : null, features.includes('import-list') ? listOptions() : null);
 
   function idle(text) {
     state = null;
@@ -273,6 +302,18 @@
     imported(r);
   }
 
+  /** Import the jobs passive mode noted while browsing (nothing is read from any page now). */
+  async function importSeen() {
+    if (busy) return;
+    busy = true;
+    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: 'Sending the jobs you saw to jobwatch...' }),
+      h('div', { class: 'msg small', textContent: 'Looking for each on its company\'s own board. This can take a few minutes.' })));
+    const r = await send({ type: 'importPassive' });
+    busy = false;
+    if (!r.ok) return failed(r.error);
+    imported(r);
+  }
+
   async function draft(item, btn) {
     btn.disabled = true;
     btn.textContent = 'Drafting...';
@@ -373,6 +414,7 @@
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings && !busy && !state) init();
+    if (area === 'local' && changes.passiveSeen && listRefresh && $('passive-import')) listRefresh();
   });
 
   $('options').addEventListener('click', (e) => {

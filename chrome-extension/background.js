@@ -6,9 +6,11 @@
  * jobwatch only once the page looks like a finished submission.
  */
 import './logic.js';
+import './passive.js';
 import { ApiError, api, getSettings, toBase64 } from './lib.js';
 
 const JW = globalThis.JW;
+const JWPassive = globalThis.JWPassive;
 const PENDING_MAX_MS = 30 * 60 * 1000;
 const TAILOR_TIMEOUT_MS = 6 * 60 * 1000; // resume-kit drafts, then renders the PDF: a minute or two, up to its own limits
 const pendingKey = (tabId) => `pending:${tabId}`;
@@ -41,6 +43,8 @@ async function handle(msg, tabId, sender) {
     case 'draft': return draft(tabId, msg.question, msg.words, msg.others);
     case 'posting': return posting(tabId);
     case 'importList': return importList(tabId);
+    case 'passiveSeen': return sender.tab ? passiveSeen(msg.records) : {};
+    case 'importPassive': return importPassive();
     case 'tailor': return tailor(tabId);
     case 'captured': return captured(tabId, msg, sender);
     case 'looksSubmitted': return record(tabId);
@@ -265,7 +269,9 @@ async function posting(tabId) {
 
 // --- a job site's list of jobs ----------------------------------------------------------------------
 
-const LIST_MAX_PAGES = 10;
+const LIST_PAGES_KEY = 'listPages'; // chrome.storage.local: how many pages "Import this list" reads (the panel sets it)
+const LIST_PAGES_DEFAULT = 4; // lists are sorted by relevance: later pages matter less
+const LIST_PAGES_MAX = 10;
 const LIST_IMPORT_TIMEOUT_MS = 10 * 60 * 1000; // jobwatch looks for each new job's company board: minutes for a long list
 const PAGE_LOAD_MS = 30 * 1000;
 
@@ -296,6 +302,7 @@ function loaded(tabId) {
  */
 async function importList(tabId) {
   const settings = await pairedSettings();
+  const maxPages = await listPages();
   const source = JW.listMode(await tabUrl(tabId));
   if (!source) throw new Expected('Open a job list on LinkedIn (Jobs, a search) or Indeed (Jobs for you, a search), then try again.');
   const byId = new Map();
@@ -305,7 +312,7 @@ async function importList(tabId) {
     return r.result;
   };
   let stopped = '';
-  for (let page = 1; page <= LIST_MAX_PAGES; page += 1) {
+  for (let page = 1; page <= maxPages; page += 1) {
     let records;
     try {
       records = await run((src) => globalThis.JWList.readPage({ source: src }));
@@ -316,7 +323,7 @@ async function importList(tabId) {
     }
     for (const r of records || []) if (!byId.has(r.id)) byId.set(r.id, r);
     listProgress(tabId, `Read page ${page}: ${byId.size} job${byId.size === 1 ? '' : 's'} so far.`);
-    if (page === LIST_MAX_PAGES) break;
+    if (page === maxPages) break;
     let moved;
     try {
       moved = await run((src) => globalThis.JWList.next({ source: src }));
@@ -338,6 +345,43 @@ async function importList(tabId) {
   listProgress(tabId, `Looking for the ${byId.size} jobs on their companies' own boards. This can take a few minutes.`);
   const r = await api('/ext/import-list', { method: 'POST', body: { records: [...byId.values()] }, settings, timeout: LIST_IMPORT_TIMEOUT_MS });
   return { ...r, stopped, link: `${settings.serverUrl}/#today` };
+}
+
+/** The pages to read, as the person set them in the panel: a whole number from 1 to 10, else the default. */
+async function listPages() {
+  const n = Math.round(Number((await chrome.storage.local.get(LIST_PAGES_KEY))[LIST_PAGES_KEY]));
+  return n >= 1 ? Math.min(n, LIST_PAGES_MAX) : LIST_PAGES_DEFAULT;
+}
+
+// --- passive mode: cards seen while browsing (passive.js), kept here until Import ----------------------------
+
+let passiveQueue = Promise.resolve(); // tabs report at once: one write at a time, or two would overwrite each other
+
+function passiveSeen(records) {
+  const work = passiveQueue.then(async () => {
+    const { store, added } = JWPassive.merge((await chrome.storage.local.get(JWPassive.KEY))[JWPassive.KEY], records, Date.now());
+    if (added) await chrome.storage.local.set({ [JWPassive.KEY]: store });
+  });
+  passiveQueue = work.catch(() => {});
+  return work;
+}
+
+/** "N jobs seen while browsing - Import": sends the kept cards through the same call as Import this list, then
+ * forgets exactly the ones sent (cards seen meanwhile stay). Kept if jobwatch can't take them. */
+async function importPassive() {
+  const settings = await pairedSettings();
+  const kept = (await chrome.storage.local.get(JWPassive.KEY))[JWPassive.KEY] || {};
+  const sent = JWPassive.records(kept);
+  if (!sent.length) throw new Expected('No jobs seen while browsing yet.');
+  const r = await api('/ext/import-list', { method: 'POST', body: { records: sent }, settings, timeout: LIST_IMPORT_TIMEOUT_MS });
+  const work = passiveQueue.then(async () => {
+    const now = (await chrome.storage.local.get(JWPassive.KEY))[JWPassive.KEY] || {};
+    for (const rec of sent) delete now[JWPassive.keyOf(rec)];
+    await chrome.storage.local.set({ [JWPassive.KEY]: now });
+  });
+  passiveQueue = work.catch(() => {});
+  await work;
+  return { ...r, stopped: '', link: `${settings.serverUrl}/#today` };
 }
 
 // --- recording the application ---------------------------------------------------------------------
