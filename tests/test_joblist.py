@@ -109,6 +109,28 @@ def test_a_list_seen_again_counts_earlier_imports_apart(setup):
         "Vandelay Industries"
 
 
+def test_a_job_kept_as_listed_moves_onto_its_board_when_a_later_import_finds_it(setup, web):
+    """"Data Analyst" isn't on Hooli's board the first time; once it is (or the matching is looser), importing the
+    list again gives the tracked entry the board's posting, without a second entry."""
+    cfg, store = setup
+    first = joblist.take(cfg, store, joblist.records(LIST))
+    key = next(s.key for s in first.seen if s.record.id == "4100000004")
+    assert not store.find(key)[0].description
+    hooli_board(web, "Platform Engineer", "Data Analyst")
+    dry = joblist.take(cfg, store, joblist.records(LIST), dry_run=True)
+    assert dry.counts()["upgraded"] == 1 and not store.find(key)[0].description
+    assert "1 job(s) an earlier import kept as listed would be moved" in joblist.summary(dry)
+    before = len(list(store.jobs(include_closed=True)))
+    r = joblist.take(cfg, store, joblist.records(LIST))
+    mine = next(s for s in r.seen if s.record.id == "4100000004")
+    assert mine.outcome == "earlier" and mine.upgraded and mine.board == "greenhouse:hooli"
+    kept, record = store.find(key)
+    assert kept.description == "Build things." and "greenhouse" in kept.url and record["via"] == "linkedin-list"
+    assert len(list(store.jobs(include_closed=True))) == before
+    # the one with no board anywhere is still said to be unplaced
+    assert "Vandelay Industries: Detection Engineer  no board found" in joblist.summary(r)
+
+
 def test_a_dry_run_records_nothing(setup):
     cfg, store = setup
     r = joblist.take(cfg, store, joblist.records(LIST), dry_run=True)

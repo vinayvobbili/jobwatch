@@ -36,8 +36,8 @@ from datetime import datetime, timedelta, timezone
 from importlib import resources
 from pathlib import Path
 
-from . import alerts, suggest
-from .store import Store
+from . import alerts, linkedin, sources, suggest
+from .store import MANUAL, Store
 
 HISTORY = "import-list.jsonl"
 LOOKUP_WORKERS = 6  # companies whose boards are looked for at once
@@ -98,7 +98,7 @@ def records(data) -> list[Record]:
             raise ValueError(f"a record's source is a site's name (linkedin, indeed), got {source!r}")
         jid = str(raw.get("id") or raw.get("linkedin_id") or raw.get("jk") or "").strip()
         r = Record(title=_VERIFIED.sub("", " ".join(str(raw.get("title") or "").split())),
-                   company=" ".join(str(raw.get("company") or "").split()),
+                   company=linkedin.unrated(" ".join(str(raw.get("company") or "").split())),
                    location=" ".join(str(raw.get("location") or "").split()), pay=str(raw.get("pay") or "").strip(),
                    posted=str(raw.get("posted") or "").strip(), id=re.sub(r"[^\w-]", "", jid), source=source)
         if not (r.title and r.company) or (r.id and (r.source, r.id) in ids):
@@ -117,16 +117,18 @@ class Seen:
     board: str = ""     # added: the board it's on; unplaced: the boards looked on, if any
     why: str = ""       # unplaced: no board found under its name, or not on that board
     filtered: str | None = None  # why the filters leave it out of the digest; None: it's in
+    upgraded: bool = False  # earlier: kept as listed by an earlier import, now found on its board (board says which)
 
     def to_dict(self) -> dict:
         return {**self.record.to_dict(), "outcome": self.outcome, "key": self.key, "board": self.board or None,
-                "why": self.why or None, "filtered": self.filtered}
+                "why": self.why or None, "filtered": self.filtered, "upgraded": self.upgraded}
 
 
 def _counts(seen: list[Seen]) -> dict:
     n = {o: sum(s.outcome == o for s in seen) for o in ("tracked", "earlier", "added", "unplaced")}
     base = n["tracked"] + n["added"] + n["unplaced"]
-    return {"seen": sum(n.values()), **n, "coverage": round(n["tracked"] / base, 4) if base else None}
+    return {"seen": sum(n.values()), **n, "coverage": round(n["tracked"] / base, 4) if base else None,
+            "upgraded": sum(s.upgraded for s in seen)}
 
 
 @dataclass
@@ -170,7 +172,10 @@ def take(cfg, store: Store, recs: list[Record], dry_run: bool = False, page=None
     taker = alerts.Taker(cfg, store, alerts.Intake(), follow=follow, dry_run=dry_run, page=page, every=True)
     # The companies of the jobs not tracked yet have their boards looked for at once: the slow part
     if follow:
-        missing = list(dict.fromkeys(r.company for r in recs if not taker.tracked.match(r.company, r.title, r.url)))
+        def wants_board(r: Record) -> bool:
+            key = taker.tracked.match(r.company, r.title, r.url)
+            return not key or ((_via(store, key) or "").endswith("-list") and _textless(taker.tracked.jobs[key]))
+        missing = list(dict.fromkeys(r.company for r in recs if wants_board(r)))
         with ThreadPoolExecutor(max_workers=LOOKUP_WORKERS) as pool:
             list(pool.map(_quietly(taker.resolver.company_boards), missing))
     for r in recs:
@@ -181,21 +186,46 @@ def take(cfg, store: Store, recs: list[Record], dry_run: bool = False, page=None
         if f.result == "duplicate":
             s.outcome = "repeated"
         elif f.result == "known":
-            s.outcome = "earlier" if (_via(store, f.key) or "").endswith("-list") else "tracked"
+            via_list = (_via(store, f.key) or "").endswith("-list")
+            s.outcome = "earlier" if via_list else "tracked"
+            if via_list and follow and _textless(f.job):  # kept as listed before: look for it on its board again
+                found = _on_board(taker, r)
+                if found:
+                    s.upgraded, s.board = True, f"{found.source}:{found.company}"
+                    if not dry_run:
+                        alerts.fill_from_board(store, f.job, found)
+                else:
+                    s.why = _why(taker, r)
             if not dry_run:  # it counts toward watching the company's board, as when it first came in
                 suggest.record(store, cfg.boards, f.job, taker.resolver.looked(r.company))
         elif f.how == "email":
             s.outcome = "unplaced"
             boards = taker.resolver.looked(r.company)
             s.board = ", ".join(f"{src}:{b}" for src, b, _ in boards or [])
-            s.why = ("not looked for" if boards is None else "no board found under its name" if not boards
-                     else "not on its board")
+            s.why = _why(taker, r)
         else:
             s.outcome, s.board = "added", f"{f.job.source}:{f.job.company}"
         result.seen.append(s)
     if not dry_run:
         append_history(cfg, result)
     return result
+
+
+def _textless(job) -> bool:
+    return job.source == MANUAL and not job.description.strip()
+
+
+def _on_board(taker, r: Record):
+    try:
+        return taker.resolver.on_board(r.title, r.company, r.location)
+    except sources.SourceError:
+        return None
+
+
+def _why(taker, r: Record) -> str:
+    boards = taker.resolver.looked(r.company)
+    return "not looked for" if boards is None else "no board found under its name" if not boards \
+        else "not on its board"
 
 
 def _quietly(fn):
@@ -261,6 +291,10 @@ def summary(r: Result) -> str:
         if base := c["tracked"] + c["added"] + c["unplaced"]:
             out.append(f"  Coverage: {_pct(c['coverage'])} ({c['tracked']} of {base} were tracked before this "
                        "import" + ("; earlier imports aside" if c["earlier"] else "") + ").")
+        if c["upgraded"]:
+            were = "would be" if r.dry_run else "were"
+            out.append(f"  {c['upgraded']} job(s) an earlier import kept as listed {were} moved onto their "
+                       "company's board.")
     if not r.seen:
         out.append("No jobs in the list.")
     if added := [s for s in r.seen if s.outcome == "added"]:
@@ -273,6 +307,10 @@ def summary(r: Result) -> str:
         out += [f"  {s.record.company}: {s.record.title}" + (f" ({s.record.location})" if s.record.location else "")
                 + f"  {s.why}" + (f" ({s.board})" if s.board else "")
                 + (f"  `{s.key}`" if s.key and not r.dry_run else "") for s in unplaced]
+    if still := [s for s in r.seen if s.outcome == "earlier" and s.why]:
+        out.append("Kept as listed by an earlier import, still not found on a board:")
+        out += [f"  {s.record.company}: {s.record.title}  {s.why}" + (f" ({s.board})" if s.board else "")
+                for s in still]
     return "\n".join(out)
 
 

@@ -451,6 +451,9 @@ class Alert:
     via: str = ""      # where it was found: linkedin-alert, builtin-alert, indeed-alert, <site>-alert
     remote: bool = False  # the alert's search was for remote jobs only, whatever each card says
 
+    def __post_init__(self):
+        self.company = linkedin.unrated(self.company)  # Indeed puts the star rating after the name
+
 
 _PAY = re.compile(r"\$\s?\d")
 _PLACE = re.compile(r",\s*[A-Z]{2}\b|\b(?:remote|hybrid|on-?site|united states|usa|anywhere)\b", re.I)
@@ -1113,7 +1116,7 @@ def backfill(cfg, store: Store, page=None, limit: int = BACKFILL_CAP, dry_run: b
             continue
         result.tried += 1
         try:
-            found = resolver.on_board(job.title, job.display_company, "")
+            found = resolver.on_board(job.title, job.display_company, ", ".join(job.locations))
         except sources.SourceError:
             found = None
         if dry_run:
@@ -1122,12 +1125,18 @@ def backfill(cfg, store: Store, page=None, limit: int = BACKFILL_CAP, dry_run: b
             continue
         store.set_backfill_tried(job.key)
         if found:
-            if job.url and clean_link(job.url) != clean_link(found.url):
-                store.add_note(job.key, f"Posting found on the company's board; the alert's link was {job.url}")
-            store.set_url(job.key, board_link(found))
-            store.set_description(job.key, found.description, found)
+            fill_from_board(store, job, found)
             result.filled.append(found)
     return result
+
+
+def fill_from_board(store: Store, job: Job, found: Job):
+    """Give a job tracked from an alert or list its posting as found on the company's board: the board's link,
+    text, pay and places. The job keeps its key, status and notes."""
+    if job.url and clean_link(job.url) != clean_link(found.url):
+        store.add_note(job.key, f"Posting found on the company's board; the alert's link was {job.url}")
+    store.set_url(job.key, board_link(found))
+    store.set_description(job.key, found.description, found)
 
 
 def board_link(job: Job) -> str:

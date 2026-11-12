@@ -121,7 +121,7 @@ def record(store: Store, boards: list[Board], job: Job, found: list[tuple] | Non
     """Note a job that came in from an alert, `add` or an HN post, when its company's board isn't watched. found:
     the boards already looked for under the company's name ((source, board, ...) each; empty: none found), or
     None when nobody looked. at: when it came in (default now). Returns whether it's newly noted."""
-    name, on = job.display_company, posted_on(job)
+    name, on = linkedin.unrated(job.display_company), posted_on(job)
     if not company_id(name) or any(watched(boards, name, e) for e in on or [""]):
         return False
     if on:

@@ -99,3 +99,78 @@ def test_a_linkedin_job_not_on_a_board_is_kept_with_its_link(tmp_path, guarded):
 def test_a_linkedin_job_cant_be_checked():
     job = Job(source="manual", company="umbrella", id="field-engineer", title="Field Engineer", url=LINK)
     assert still_open(job, no_linkedin(FakeWeb({})), no_linkedin(FakeWeb({}))) is None
+
+
+def test_titles_a_board_spells_a_little_differently():
+    tier = linkedin.title_tier
+    assert tier("Sr. Security Engineer", "Sr. Security Engineer") == 0
+    assert tier("Senior Security Engineer", "Senior Security Engineer, DeFi") == 1
+    # a bracket on one site is a dash on the other, and the board adds a place
+    assert tier("Staff Security Engineer (Blue Team)", "Staff Security Engineer - Blue Team (US)") == 2
+    assert tier("Sr. Platform Security Engineer", "Senior Platform Security Engineer - Remote") == 2
+    assert tier("Security Engineer", "Staff Software Engineer") is None
+    assert tier("Senior Security Engineer", "Senior Security Analyst Intern") is None
+
+
+def test_a_sitemaps_title_with_the_place_after_it_is_worth_reading():
+    assert linkedin.could_be("Security Engineer 5 Cloud Architecture And Tooling Remote United States",
+                             "Security Engineer 5 - Cloud Architecture and Tooling")
+    assert not linkedin.could_be("Security Engineer 5 Remote United States", "Staff Security Engineer - Cloud")
+
+
+def test_a_star_rating_after_a_company_name_is_not_part_of_it():
+    from jobwatch import alerts, joblist
+    assert linkedin.unrated("Initech 3.9") == "Initech" and linkedin.unrated("Globex 5G") == "Globex 5G"
+    assert linkedin.unrated("Studio 2000") == "Studio 2000" and linkedin.same_company("Umbrella 2.2", "Umbrella")
+    assert alerts.Alert("Engineer", "Initech 3.9").company == "Initech"
+    assert joblist.records([{"title": "Engineer", "company": "Globex  4.1", "id": "1"}])[0].company == "Globex"
+
+
+def test_a_board_is_searched_by_the_titles_words_without_punctuation():
+    assert linkedin.search_terms("Cyber - Senior Consultant, AI Data Security (Hybrid)") \
+        == ["Cyber Senior Consultant AI Data Security", "Cyber Consultant AI Data Security"]
+    assert linkedin.search_terms("Security Engineer") == ["Security Engineer"]
+
+
+def posting(title, *places, key="1"):
+    return Job(source="greenhouse", company="globex", id=key, title=title, url="https://example.com/" + key,
+               locations=list(places), description="Text.")
+
+
+def test_the_exact_title_wins_over_a_close_one():
+    found = {j.key: (linkedin.title_tier(j.title, "Systems Engineer"), j) for j in (
+        posting("Systems Engineer", key="1"), posting("Distributed Systems Engineer (Data Platform)", key="2"))}
+    assert linkedin._pick(found).id == "1"
+
+
+def test_one_title_posted_per_place_picks_the_place_asked_for():
+    def pick(location, *jobs):
+        return linkedin._pick({j.key: (0, j) for j in jobs}, location)
+    boulder = posting("Application Security Engineer", "Denver, CO", "Boulder, CO", key="1")
+    remote = posting("Application Security Engineer", "Remote (United States)", key="2")
+    uk = posting("Application Security Engineer", "Remote - United Kingdom", key="3")
+    assert pick("Boulder, CO (Hybrid)", boulder, remote, uk).id == "1"
+    assert pick("United States (Remote)", boulder, remote, uk).id == "2"
+    # two postings in the same places can't be told apart: two openings, neither picked
+    assert pick("United States (Remote)", posting("Lead Engineer", "Remote - US", key="4"),
+                posting("Lead Engineer", "Remote - US", key="5")) is None
+    # the same words outside brackets: what's in the brackets tells
+    assert linkedin._pick({j.key: (0, j) for j in (posting("Cybersecurity Engineer (IT Security)", key="6"),
+                                                   posting("Cybersecurity Engineer (Research)", key="7"))},
+                          "", "Cybersecurity Engineer (Research)").id == "7"
+    # different titles tie: neither
+    assert linkedin._pick({"a": (1, posting("Senior Security Engineer, DeFi", key="a")),
+                           "b": (1, posting("Senior Security Engineer, Cloud", key="b"))}) is None
+
+
+def test_a_job_whose_board_has_several_places_is_found_by_its_place(monkeypatch):
+    def role(i, place):
+        return {**GREENHOUSE["jobs"][0], "id": i, "title": f"Staff Security Engineer - Blue Team ({place[:2]})",
+                "location": {"name": f"{place} Remote"}, "offices": []}
+    board = {"jobs": [role(201, "US"), role(202, "UK")], "meta": {"total": 2}}
+    monkeypatch.setattr(sources, "get_text", no_linkedin(FakeWeb({})))
+    monkeypatch.setattr(sources, "get_json", no_linkedin(FakeWeb({
+        **RESPONSES, sources.SOURCES["greenhouse"].api.format(board="acme"): board})))
+    p = linkedin.Posting(id="1", title="Staff Security Engineer (Blue Team)", company="Acme Inc.",
+                         location="US (Remote)", description="")
+    assert linkedin.on_board(p).key == "greenhouse:acme:201"
