@@ -3,10 +3,10 @@ LinkedIn's ("Jobs based on your preferences", "Jobs that match your profile", a 
 ("Jobs for you", a search's results).
 
 jobwatch never fetches linkedin.com or indeed.com. The list comes from the person's own browser: the extension's
-"Import this list" button, or an assistant that runs the extractor (job-lists.js, printed by `jobwatch import-list
---script`) on the page in Chrome. Each record is {source, id, title, company, location, pay, posted}: source is the
-site (linkedin, indeed), id its own job id (LinkedIn's job id, Indeed's job key). A record with linkedin_id (the
-first extractor's) is a LinkedIn one.
+"Read the jobs on this list" button, or an assistant that runs the extractor (job-lists.js, printed by
+`jobwatch import-list --script`) on the page in Chrome. Each record is
+{source, id, title, company, location, pay, posted}: source is the site (linkedin, indeed), id its own job id
+(LinkedIn's job id, Indeed's job key). A record with linkedin_id (the first extractor's) is a LinkedIn one.
 
 Each job is taken in the way an alert email's is (see alerts.py), with via "<source>-list":
 
