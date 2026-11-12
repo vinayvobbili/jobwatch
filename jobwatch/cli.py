@@ -46,6 +46,7 @@ from . import (
     quiet,
     referrals,
     rehearse,
+    reminders,
     report,
     rolekinds,
     scan,
@@ -516,6 +517,7 @@ def cmd_mark(args, cfg, store):
         if args.status == "queued" and (same := dupes.check(store, k)):  # queued all the same: the person decides
             print(f"  Check: {same.line}")
         _attach(store.package(k), getattr(args, "attach", None) or [])
+    reminders.refresh(cfg, store, keys)
 
 
 def _attach(pkg, files: list[Path], kind: str | None = None):
@@ -580,6 +582,7 @@ def cmd_add(args, cfg, store):
     store.track(job.key, next_step=args.next, follow_up=args.follow_up, round=args.round)
     if args.add_note:
         store.add_note(job.key, args.add_note)
+    reminders.refresh(cfg, store, [job.key])
     how = "read from the link" if read else "with the posting's text" if text.strip() else ""
     print(f"{job.key}: {args.status}" + (f" ({job.display_company}, {job.title}; {how})" if how else ""))
     if same := dupes.check(store, job.key):
@@ -909,17 +912,31 @@ def cmd_backup(args, cfg, store):
 def cmd_snooze(args, cfg, store):
     """Every name is tried: one that is ambiguous or not open is reported, the rest still snooze, and the exit
     status is nonzero at the end."""
-    failed = 0
+    failed, snoozed = 0, []
     for k in args.keys:
         try:
             print(f"{k}: follow up {store.snooze(k, args.days)}")
+            snoozed.append(k)
         except (KeyError, ValueError) as e:
             if len(args.keys) == 1:
                 raise  # main() words it
             print(f"jobwatch: {e.args[0] if isinstance(e, KeyError) else e}", file=sys.stderr)
             failed += 1
+    reminders.refresh(cfg, store, snoozed)
     if failed:
         raise SystemExit(1)
+
+
+def cmd_reminders(args, cfg, store):
+    if not reminders.enabled(cfg):
+        raise ValueError("follow-up reminders are off: add `follow_ups: reminders` to the watchlist "
+                         "(macOS only)")
+    try:
+        done = reminders.sync(cfg, store)
+    except reminders.RemindersError as e:
+        raise ValueError(str(e)) from None
+    print(f"Reminders: {done['created']} created, {done['moved']} moved, {done['completed']} completed, "
+          f"{done['kept']} already right")
 
 
 def cmd_calendar(args, cfg, store):
@@ -1587,6 +1604,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("keys", nargs="+", metavar="KEY", help="the application: its key, posting id or company")
     p.add_argument("--days", type=int, default=7, help="days from today (default 7)")
     p.set_defaults(func=cmd_snooze)
+
+    p = sub.add_parser("reminders", help="follow-ups in Apple Reminders (follow_ups: reminders in the watchlist)")
+    p.add_argument("action", choices=["sync"], help="sync: make Reminders match every follow-up day now "
+                   "(creates, moves and completes jobwatch's own reminders only; safe to repeat)")
+    p.set_defaults(func=cmd_reminders)
 
     p = sub.add_parser("attach", help="keep what you sent with an application: the resume, a cover letter, the "
                                       "form's answers (copies, so later edits don't change them)")

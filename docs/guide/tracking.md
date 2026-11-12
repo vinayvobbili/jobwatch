@@ -106,6 +106,32 @@ calendar:
   remind: 30    # 0 (the default): no reminder
 ```
 
+## Follow-ups in Apple Reminders
+
+On a Mac, jobwatch can keep each follow-up day in the Reminders app. It is off until you ask, in the watchlist:
+
+```yaml
+follow_ups: reminders    # off (the default) or reminders; macOS only
+```
+
+Each open application (applied, screening, interviewing, offer) with a follow-up day then has one reminder,
+"Follow up: Initech — Platform Engineer", due that day at 9:00 with an alert. Its notes hold the next step, the
+posting's link and a line `jobwatch:<key>`, which is how jobwatch finds it again. When the day changes (the
+`--follow-up` of `jobwatch mark`, `jobwatch snooze`, the Applications page, the MCP `mark_job`) the reminder moves; when
+the day is cleared or the application is rejected or withdrawn it is completed. A reminder you complete yourself
+stays completed for that day. jobwatch never touches a reminder it didn't make.
+
+```
+jobwatch reminders sync    # make Reminders match every follow-up now (also done when `jobwatch ui` starts); safe to repeat
+```
+
+With this on, each application on the Applications page has a bell: it asks for a title (starting with the company),
+a day and time and an optional note, and adds a one-off reminder with the posting's link. A sync leaves those alone.
+
+The first time, macOS asks whether to let your terminal (or the app running jobwatch) control Reminders. If you
+said no, turn it on under System Settings > Privacy & Security > Automation. A failure never stops what you were
+doing: jobwatch prints one line saying so, once.
+
 ## Interviews
 
 The **Interviews** tab in `jobwatch ui` lists the interviews and calls coming up: today's first (the tab shows

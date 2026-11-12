@@ -529,6 +529,19 @@ def _quiet(raw, path: Path) -> Quiet:
                     for k in Quiet.__dataclass_fields__})
 
 
+FOLLOW_UPS = ("off", "reminders")
+
+
+def _follow_ups(raw, path: Path) -> str:
+    """follow_ups: where follow-up days go besides jobwatch's own pages: off (the default) or reminders."""
+    text = "off" if raw is None or raw is False else str(raw).strip().lower()
+    if text in _OFF:
+        return "off"
+    if text not in FOLLOW_UPS:
+        raise ConfigError(f"{path}: follow_ups must be one of {', '.join(FOLLOW_UPS)}, got {raw!r}")
+    return text
+
+
 def _prompts(raw, path: Path) -> dict[str, str]:
     """scoring.prompts: {name: text} for the fit-score prompts that were edited; one left out is shortlist-ai's own.
     Checked by the installed shortlist-ai, when it takes edited prompts (see score.check_prompts)."""
@@ -734,6 +747,7 @@ class Config:
     pace: Pace = field(default_factory=Pace)
     calendar: Calendar = field(default_factory=Calendar)
     quiet: Quiet = field(default_factory=Quiet)
+    follow_ups: str = "off"    # follow_ups: reminders puts each follow-up day in Apple Reminders (see reminders.py)
     speech: Speech = field(default_factory=Speech)
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
@@ -950,7 +964,7 @@ SETTINGS = ("companies", "filters", "keywords", "focus", "resume", "connections"
             "stories", "resume_kit", "scoring",
             "chat", "prep",
             "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
-            "slow_boards", "ui", "incoming", "speech", "fetch_every")
+            "slow_boards", "ui", "incoming", "speech", "fetch_every", "follow_ups")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -1258,7 +1272,8 @@ def load(explicit: str | Path | None = None) -> Config:
         incoming=_incoming(raw.get("incoming"), path),
         theme=theme, width=width, today=today, company_view=company_view,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
-        quiet=_quiet(raw.get("quiet"), path), speech=_speech(raw.get("speech"), path),
+        quiet=_quiet(raw.get("quiet"), path), follow_ups=_follow_ups(raw.get("follow_ups"), path),
+        speech=_speech(raw.get("speech"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
         imap=_imap(alerts.get("imap"), path), pay=_pay(raw.get("pay"), path),
@@ -1354,6 +1369,11 @@ filters:
 #   screening: 14
 #   interviewing: 10
 #   long: 45
+
+# follow_ups: reminders keeps one Apple Reminders reminder per open application's follow-up day (9:00, with
+# an alert), moved or completed as the day changes (macOS only; the first run asks to control Reminders).
+# `jobwatch reminders sync` makes Reminders match. Off by default.
+# follow_ups: reminders
 
 # Relevance: keyword -> weight. Title hits count double. Prefix "re:" for a regex.
 keywords:

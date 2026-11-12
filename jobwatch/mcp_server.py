@@ -34,6 +34,7 @@ from . import (
     profile,
     quiet,
     referrals,
+    reminders,
     report,
     sources,
     stories,
@@ -443,7 +444,7 @@ def mark_job(
     For a job jobwatch doesn't track yet, use add_application.
     Queuing a job that's (maybe) the same opening as one applied to or queued still queues it, and the reply
     ends with the warning: tell the person."""
-    _, store = _open()
+    cfg, store = _open()
     said = ""
     try:
         job, rec = store.find(key)
@@ -458,6 +459,7 @@ def mark_job(
             said = f" ({set_link(store, job.key, url)})"
         if add_note:
             store.add_note(job.key, add_note)
+        reminders.refresh(cfg, store, [job.key])
         same = dupes.check(store, job.key) if status == "queued" else None
         return f"{job.key}: {status or rec['status']}{said}" + (f". Check: {same.line}" if same else "")
     finally:
@@ -506,6 +508,7 @@ def add_application(
         job, read = save_job(store, url, company or watched_name(cfg, url), title, text, status=status, note=note,
                              applied=applied_on or None, boards=cfg.boards)
         store.track(job.key, next_step=next_step, follow_up=follow_up)
+        reminders.refresh(cfg, store, [job.key])
         same = dupes.check(store, job.key)
         return f"{job.key}: {status} ({job.display_company}, {job.title}; " \
                f"{'read from the link' if read else 'text given' if text.strip() else 'title only'})" + \

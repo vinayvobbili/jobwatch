@@ -62,6 +62,7 @@ from . import (
     quiet,
     referrals,
     rehearse,
+    reminders,
     report,
     rolekinds,
     scorestats,
@@ -564,6 +565,13 @@ class App:
     def score_in_background(self):
         if self.background:
             self.scorer.kick()
+
+    def sync_reminders(self):
+        """Make Reminders match the follow-up days (when follow_ups: reminders); never raises."""
+        try:
+            self._with_store(lambda cfg, store: reminders.sync_quietly(cfg, store))
+        except ApiError:
+            pass
 
     # -- helpers
 
@@ -1134,7 +1142,8 @@ class App:
         def run(cfg, store):
             rows = store.applications()
             found = quiet.find(rows, cfg.quiet, known=load_contacts(cfg))
-            return {"stages": STAGES, "today": date.today().isoformat(), "applications": [
+            return {"stages": STAGES, "today": date.today().isoformat(), "reminders": reminders.enabled(cfg),
+                    "applications": [
                 {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
                  "manual": j.source == MANUAL, "due": report.due(rec), "quiet": found.get(j.key),
                  "snoozed_until": quiet.snoozed_until(rec),
@@ -1233,6 +1242,7 @@ class App:
                 raise ApiError(f"couldn't read that posting: {e}") from None
             store.track(job.key, next_step=body.get("next_step"), follow_up=body.get("follow_up"),
                         round=body.get("round"))
+            reminders.refresh(cfg, store, [job.key])
             return {"key": job.key, "company": job.display_company, "title": job.title, "read": read}
         return self._with_store(run)
 
@@ -1252,7 +1262,27 @@ class App:
                         follow_up=body.get("follow_up"), applied=body.get("applied_at"), round=round_id)
             if body.get("add_note"):
                 store.add_note(key, body["add_note"])
+            reminders.refresh(cfg, store, [key])
             return {"key": key}
+        return self._with_store(run)
+
+    def post_remind(self, body) -> dict:
+        """A one-off reminder from an application's bell: title, due (YYYY-MM-DDTHH:MM, this computer's time) and an
+        optional note; the posting's link is added to the note. Not a follow-up day, so a sync leaves it alone."""
+        def run(cfg, store):
+            if not reminders.enabled(cfg):
+                raise ApiError("Reminders are off: set follow_ups: reminders in the watchlist (macOS only)")
+            job, _ = store.find(body.get("key") or "")
+            try:
+                due = datetime.fromisoformat(str(body.get("due") or ""))
+            except ValueError:
+                raise ApiError("give the day and time as YYYY-MM-DDTHH:MM") from None
+            notes = "\n".join(x for x in (str(body.get("note") or "").strip(), job.url) if x)
+            try:
+                made = reminders.add_once(str(body.get("title") or ""), due, notes)
+            except reminders.RemindersError as e:
+                raise ApiError(str(e)) from None
+            return {"key": job.key, **made}
         return self._with_store(run)
 
     def post_snooze(self, body) -> dict:
@@ -1263,9 +1293,11 @@ class App:
 
         def run(cfg, store):
             try:
-                return {"follow_up": store.snooze(body.get("key") or "", days)}
+                until = store.snooze(body.get("key") or "", days)
             except ValueError as e:
                 raise ApiError(str(e)) from None
+            reminders.refresh(cfg, store, [body.get("key") or ""])
+            return {"follow_up": until}
         return self._with_store(run)
 
     def get_job(self, q) -> dict:
@@ -1784,6 +1816,7 @@ ROUTES = {
     ("POST", "/api/add"): App.post_add,
     ("POST", "/api/track"): App.post_track,
     ("POST", "/api/snooze"): App.post_snooze,
+    ("POST", "/api/remind"): App.post_remind,
     ("POST", "/api/score"): App.post_score,
     ("GET", "/api/rescore"): App.get_rescore,
     ("POST", "/api/rescore"): App.post_rescore,
@@ -2245,5 +2278,6 @@ def serve(config_path: Path, port: int = 8765, open_browser: bool = True, token:
         threading.Timer(0.3, webbrowser.open, (url,)).start()
     if config_path.is_file():
         app.score_in_background()  # catch up on jobs fetched while the page was down
+        threading.Thread(target=app.sync_reminders, daemon=True).start()  # follow-ups still match Reminders
     app.refresher.start()  # checks at once if the last check is older than fetch_every
     return server
