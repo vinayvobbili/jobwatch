@@ -86,7 +86,34 @@ def test_a_note_is_news_but_a_snooze_is_not(store):
     assert assess(store, key) is None  # news 6 days ago
     key = put(store, "Initech", "Data Engineer", news="2026-08-01")
     store.snooze(key, 7)
-    assert assess(store, key)["since"] == "2026-08-01"
+    assert assess(store, key) is None  # asleep until 2026-10-21
+    _, rec = store.find(key)
+    later = quiet.assess(store.find(key)[0], rec, RULES, date(2026, 10, 21))
+    assert later["since"] == "2026-08-01"  # the snooze wasn't news: quiet again from its day
+
+
+def test_a_snoozed_application_waits_for_its_day_in_the_apps_list_and_the_cli(store):
+    key = put(store, "Initech", "Old Role", news="2026-08-01", follow_up="2026-08-15")
+    other = put(store, "Acme Robotics", "Controls Engineer", news="2026-08-01")
+    store.snooze(key, 30)
+    _, rec = store.find(key)
+    assert quiet.snoozed_until(rec) == "2026-11-13"
+    assert quiet.snoozed_until(rec, date(2026, 11, 13)) is None  # its day has come
+    assert set(quiet.find(store.applications(), RULES, TODAY)) == {other}
+    assert [j.key for j, _ in quiet.order(store.applications(), {}, TODAY)] == [other, key]
+    out = report.applications_markdown(store.applications(), "2026-10-14")
+    assert "1 snoozed." in out and "**Snoozed** until 2026-11-13" in out
+    # moving the follow-up by hand, a newer note, or ending the application ends the snooze
+    store.track(key, follow_up="2026-10-20")
+    assert quiet.snoozed_until(store.find(key)[1]) is None
+    store.snooze(key, 30)
+    store.add_note(key, "recruiter replied")
+    assert quiet.snoozed_until(store.find(key)[1]) is None
+    store.snooze(key, 30)
+    store.set_status([key], "rejected")
+    assert quiet.snoozed_until(store.find(key)[1]) is None
+
+
 
 
 def test_applied_counts_from_the_day_applied_not_the_day_it_was_added(store):
@@ -259,6 +286,9 @@ def test_web_applications_carry_quiet_and_the_page_actions_work(watchlist, seede
     assert d["applications"][0]["quiet"]["advice"] == quiet.NUDGE
 
     assert app.post_snooze({"key": seeded["quiet"], "days": 3}) == {"follow_up": "2026-10-17"}
+    d = {a["key"]: a for a in app.get_applications({})["applications"]}
+    assert d[seeded["quiet"]]["snoozed_until"] == "2026-10-17" and d[seeded["quiet"]]["quiet"] is None
+    assert d[seeded["stale"]]["snoozed_until"] is None and d[seeded["stale"]]["quiet"]
     app.post_track({"key": seeded["quiet"], "add_note": "emailed the recruiter"})
     app.post_track({"key": seeded["stale"], "status": "withdrawn"})
     d = {a["key"]: a for a in app.get_applications({})["applications"]}

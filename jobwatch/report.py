@@ -8,6 +8,7 @@ from datetime import date
 from . import lca, levels
 from .alerts import LABELS
 from .models import Job
+from .quiet import snoozed_until
 from .score import scorer_label
 from .sources import candidate_home
 from .store import ENDED, STAGES
@@ -207,6 +208,8 @@ def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None
            + (f". **{late} to follow up on now.**" if late else "."), ""]
     if gone := len(quiet or {}):
         out[-2] += f" {gone} gone quiet (`jobwatch quiet`)."
+    if asleep := sum(bool(snoozed_until(rec)) for _, rec in rows):
+        out[-2] += f" {asleep} snoozed."
     for job, rec in rows:
         title = f"[{job.title}]({job.url})" if job.url else job.title
         facts = [f"**{rec['status']}**", f"applied {rec['applied_at']}" if rec.get("applied_at") else "",
@@ -217,6 +220,8 @@ def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None
             out.append(("**Due:** " if due(rec, today) else "Next: ") + (rec.get("next_step") or "follow up") + when)
         if q := (quiet or {}).get(job.key):
             out.append(quiet_line(q))
+        if until := snoozed_until(rec):
+            out.append(f"**Snoozed** until {until}: not counted as quiet before then.")
         if rec.get("note"):
             out.append(f"Note: {rec['note']}")
         if home := (homes or {}).get(job.key) or candidate_home(job.url):

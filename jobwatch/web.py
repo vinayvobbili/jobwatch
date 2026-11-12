@@ -1137,6 +1137,7 @@ class App:
             return {"stages": STAGES, "today": date.today().isoformat(), "applications": [
                 {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
                  "manual": j.source == MANUAL, "due": report.due(rec), "quiet": found.get(j.key),
+                 "snoozed_until": quiet.snoozed_until(rec),
                  "package": Package(store.packages, j.key).summary(),
                  **{k: rec.get(k) for k in ("status", "status_at", "applied_at", "next_step", "round", "follow_up",
                                             "note", "closed")}}

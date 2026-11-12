@@ -460,6 +460,27 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .quiet-bar .acts { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 .quiet-bar input { flex: 1; min-width: 180px; }
 .section.quiet h3 { color: var(--muted); }
+.section.live h3 { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.section.live .n { background: var(--grad); color: #fff; }
+/* the live-first filter, and the Snoozed and Closed folds that stay shut until you want them */
+.live-filter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.live-filter .seg-ctl { flex: none; }
+.live-filter .seg-ctl button .c { margin-left: 6px; font-size: 12px; opacity: .65; font-variant-numeric: tabular-nums; }
+.fold { margin-top: 26px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel-solid);
+  overflow: hidden; animation: rise .5s cubic-bezier(.2, .7, .2, 1) both; }
+.fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+  background: linear-gradient(135deg, var(--accent-soft), transparent 70%); transition: background .15s; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: "▸"; transition: transform .2s; color: var(--accent); }
+.fold[open] > summary::before { transform: rotate(90deg); }
+.fold > summary:hover { color: var(--text); }
+.fold > summary .n { font-size: 12px; color: var(--chip-text); background: var(--chip); border-radius: 999px; padding: 0 8px; }
+.fold > summary .hint { margin-left: auto; font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 12.5px; }
+.fold .fold-body { padding: 4px 16px 16px; }
+.fold.snoozed > summary { background: linear-gradient(135deg, rgba(14, 165, 233, .12), transparent 70%); }
+.badge.snooze { background: linear-gradient(135deg, #0ea5e9, #6366f1); color: #fff; text-transform: none;
+  letter-spacing: 0; }
 
 /* what you sent: the job page's record of an application */
 .sent { margin-top: 14px; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px;
@@ -4401,7 +4422,22 @@ function daysAgo(day, today) {
 const freshDue = a => a.due && !(a.quiet && a.quiet.long);
 
 // The status filter ("due" is Follow up now, "quiet" is Gone quiet), the search, cards or a table, and the table's sort.
-const appView = { stage: "", q: "", view: remembered("apps.view", "cards"), sort: "next", dir: 1, page: 1 };
+const appView = { stage: "", q: "", view: remembered("apps.view", "cards"), sort: "next", dir: 1, page: 1,
+  live: ["all", "live", "waiting"].includes(remembered("apps.live", "all")) ? remembered("apps.live", "all") : "all",
+  open: {} };  // live: the All / Live / Waiting choice, kept per browser; open: which folds the person opened
+
+// Where an application sits, live first: due (follow up now), live (screening, interviewing, offer), quiet, waiting
+// (applied), snoozed (asleep until its day, see quiet.snoozed_until) and closed (rejected, withdrawn).
+function appGroup(a) {
+  return isEndedStatus(a.status) ? "closed" : a.snoozed_until ? "snoozed" : freshDue(a) ? "due"
+    : ["screening", "interviewing", "offer"].includes(a.status) ? "live" : a.quiet ? "quiet" : "waiting";
+}
+
+// The All / Live / Waiting choice: Live is screening, interviewing and offer; Waiting is applied with a follow-up ahead.
+function appLiveMatch(a, choice, today) {
+  return choice === "live" ? ["screening", "interviewing", "offer"].includes(a.status)
+    : choice === "waiting" ? a.status === "applied" && !!a.follow_up && a.follow_up > today : true;
+}
 
 // A per-browser preference; storage can be blocked (private windows), so it's never required.
 function remembered(key, fallback) {
@@ -4536,6 +4572,14 @@ async function renderApplied() {
   const week = all.filter(a => !isEnded(a) && a.follow_up && a.follow_up <= addDays(d.today, 7)).length;
   const dueCount = all.filter(freshDue).length;
   const quietCount = all.filter(a => a.quiet).length;
+  const snoozedCount = all.filter(a => appGroup(a) === "snoozed").length;
+  const closedCount = all.filter(isEnded).length;
+  const liveFilter = h("div", { class: "live-filter" });
+  const drawLive = () => fill(liveFilter,
+    segmented([["all", "All"], ["live", `Live ${all.filter(a => appLiveMatch(a, "live", d.today) && !isEnded(a)).length}`],
+      ["waiting", `Waiting ${all.filter(a => appLiveMatch(a, "waiting", d.today)).length}`]], appView.live,
+      v => { appView.live = v; remember("apps.live", v); draw(); }),
+    h("span", { class: "small muted" }, "Live: screening, interviewing, offer. Waiting: applied, follow-up ahead."));
   const addArea = h("div", {}), body = h("div", {}), showing = h("div", { class: "showing" }), pager = h("div", {});
   const filters = h("div", { class: "status-filter", role: "group", "aria-label": "Filter by status" });
   const search = h("input", { type: "search", placeholder: "Search companies, roles, notes" });
@@ -4550,6 +4594,7 @@ async function renderApplied() {
   const drawFilters = () => fill(filters,
     [["", "All", all.length, null], dueCount ? ["due", "Follow up now", dueCount, "var(--warn)"] : null,
       quietCount ? ["quiet", "Gone quiet", quietCount, "var(--muted)"] : null,
+      snoozedCount ? ["snoozed", "Snoozed", snoozedCount, "#0ea5e9"] : null,
       ...d.stages.filter(s => counts[s]).map(s => [s, STAGE_NAMES[s], counts[s], `var(--s-${s})`])].filter(Boolean)
       .map(([s, label, n, color]) => h("button", { class: "sf" + (appView.stage === s ? " on" : ""),
         style: color ? `--sc:${color}` : null, "aria-pressed": appView.stage === s ? "true" : "false",
@@ -4560,47 +4605,64 @@ async function renderApplied() {
   const draw = () => {
     const q = appView.q.trim().toLowerCase();
     const apps = all.filter(a => (!appView.stage || (appView.stage === "due" ? freshDue(a) : appView.stage === "quiet" ? a.quiet
-      : a.status === appView.stage)) &&
+      : appView.stage === "snoozed" ? appGroup(a) === "snoozed" : a.status === appView.stage)) &&
+      appLiveMatch(a, appView.live, d.today) &&
       (!q || `${a.company} ${a.title} ${a.note || ""} ${a.next_step || ""}`.toLowerCase().includes(q)));
     const table = appView.view === "table";
-    // Cards come grouped (due, in progress, ended) and the table sorted; a page is a slice of that order.
-    const inQuiet = a => a.quiet && !freshDue(a), inOpen = a => !freshDue(a) && !inQuiet(a) && !isEnded(a);
-    const ordered = table ? sortApps(apps, d) : [...apps.filter(freshDue), ...apps.filter(inQuiet),
-      ...apps.filter(inOpen), ...apps.filter(isEnded)];
-    const pg = paged(ordered, appView, JSON.stringify([appView.stage, q, appView.view, appView.sort, appView.dir]), draw);
+    // Cards come grouped live first (due, live, quiet, waiting) with the snoozed and closed ones folded away below;
+    // the table is sorted, and a page is a slice of that order.
+    const g = name => apps.filter(a => appGroup(a) === name);
+    const ordered = table ? sortApps(apps, d) : [...g("due"), ...g("live"), ...g("quiet"), ...g("waiting")];
+    const pg = paged(ordered, appView, JSON.stringify([appView.stage, appView.live, q, appView.view, appView.sort, appView.dir]), draw);
     const page = pg.items;
-    const due = page.filter(freshDue), quiet = page.filter(inQuiet), ended = page.filter(isEnded), open = page.filter(inOpen);
-    const whole = { due: apps.filter(freshDue).length, quiet: apps.filter(inQuiet).length, open: apps.filter(inOpen).length,
-      ended: apps.filter(isEnded).length };
+    const inPage = name => page.filter(a => appGroup(a) === name);
+    const snoozed = g("snoozed"), closed = g("closed");
+    // A fold opens by itself when what you picked or searched for is inside it.
+    const wanted = name => appView.open[name] || appView.stage === name || (name === "closed" && isEndedStatus(appView.stage))
+      || (q && (name === "closed" ? closed : snoozed).length > 0);
     let i = 0;
     const group = (title, list, cls, n) => list.length
       ? [section(title, n, cls), h("div", { class: "grid-cards" }, list.map(a => appCard(a, d, i++)))] : null;
+    // A collapsed section: its cards are built only when it is opened (73 closed ones would slow every redraw).
+    const fold = (name, title, list, hint) => {
+      if (!list.length) return null;
+      const body = h("div", { class: "fold-body" }), el = h("details", { class: "fold " + name },
+        h("summary", {}, title, h("span", { class: "n" }, list.length), hint ? h("span", { class: "hint" }, hint) : null), body);
+      const build = () => { if (!body.childNodes.length) fill(body, h("div", { class: "grid-cards" }, list.map(a => appCard(a, d, 0)))); };
+      el.addEventListener("toggle", () => { appView.open[name] = el.open; if (el.open) build(); });
+      if (wanted(name)) { el.open = true; build(); }
+      return el;
+    };
+    const nextWake = snoozed.map(a => a.snoozed_until).sort()[0];
     fill(showing, (apps.length === all.length ? `${all.length} applications` : `Showing ${apps.length} of ${all.length}`) +
       (pg.range ? ` · ${pg.range}` : ""),
       apps.length !== all.length ? h("button", { class: "btn ghost", onclick: () => {
-        appView.stage = ""; appView.q = ""; search.value = ""; redraw(); } }, "Clear filters") : null,
+        appView.stage = ""; appView.q = ""; appView.live = "all"; remember("apps.live", "all"); search.value = ""; drawLive(); redraw(); } }, "Clear filters") : null,
       h("span", { class: "spacer" }),
       segmented([["cards", "Cards"], ["table", "Table"]], appView.view, v => { appView.view = v; remember("apps.view", v); draw(); }));
     fill(body, all.length ? null : emptyState("No applications yet. Mark a queued job “I applied”, or add one you " +
         "applied to somewhere else. The first one is the hardest."),
       all.length && !apps.length ? emptyState("No applications match.", appView.q.trim() ? elsewhere(appView.q) : null) : null,
       !apps.length ? null : table ? appTable(page, d, draw)
-        : [group("Follow up now", due, "hot", whole.due), group("Gone quiet", quiet, "quiet", whole.quiet),
-          group("In progress", open, null, whole.open),
-          group("Ended", ended, null, whole.ended)]);
+        : [group("Follow up now", inPage("due"), "hot", g("due").length), group("Live", inPage("live"), "live", g("live").length),
+          group("Gone quiet", inPage("quiet"), "quiet", g("quiet").length),
+          group("Waiting to hear", inPage("waiting"), null, g("waiting").length),
+          fold("snoozed", "Snoozed", snoozed, nextWake ? `next back ${fmtDay(nextWake, d.today)}` : ""),
+          fold("closed", "Closed", closed, "rejected and withdrawn")]);
     fill(pager, pg.nav);
   };
 
   put(
-    pagehead("Applications", "Where each one stands and what to do next. Follow-ups come to the top on their day.",
+    pagehead("Applications", "What needs you and what is live come first. Snoozed and closed ones are folded away below.",
       h("button", { class: "btn ghost", onclick: () => { location.href = `webcal://${location.host}${feed}`; },
         title: "Subscribe your calendar app to your follow-up days and interviews. jobwatch gives your calendar app nothing but this link, which only works on this computer." },
         icon("calendar", 14), "Add to calendar"),
       h("button", { class: "btn primary", onclick: () => fill(addArea, addForm(d)) }, icon("plus", 14), "Add an application")),
     layout([
-      hero([[all.length, "applications", "lead"], [talking, "in conversation"],
-        [dueCount, "follow-ups due", dueCount ? "warn" : ""], [week, "follow-ups this week"],
-        quietCount ? [quietCount, "gone quiet"] : null].filter(Boolean)),
+      hero([[talking, "live now", "lead"], [dueCount, "follow-ups due", dueCount ? "warn" : ""],
+        [week, "follow-ups this week"], quietCount ? [quietCount, "gone quiet"] : null,
+        snoozedCount ? [snoozedCount, "snoozed"] : null,
+        [all.length - closedCount, "open applications"]].filter(Boolean)),
       all.length ? h("div", { class: "pipeline panel" }, h("h4", {}, "Pipeline"),
         h("div", { class: "bar-track" }, d.stages.filter(s => counts[s]).map((s, n) =>
           h("button", { class: "seg", style: `flex:${counts[s]};--sc:var(--s-${s});animation-delay:${n * 90}ms`,
@@ -4608,7 +4670,8 @@ async function renderApplied() {
             onclick: () => pick(s) }))),
         h("div", { style: "margin-top:10px" }, stages)) : null,
       panel(null, search),
-    ], [addArea, all.length ? filters : null, showing, body, pager]));
+    ], [addArea, all.length ? liveFilter : null, all.length ? filters : null, showing, body, pager]));
+  drawLive();
   drawFilters();
   draw();
 }
@@ -4708,7 +4771,9 @@ function appCard(a, d, i = 0) {
   const stage = stageSelect(a.status, d.stages);
   stage.className = "stage";
   stage.onchange = () => changeStage(a, d, stage);
-  const facts = [a.pay ? h("span", { class: "pay" }, a.pay) : null, a.closed ? "posting closed" : null].filter(Boolean);
+  const facts = [a.snoozed_until ? h("span", { class: "badge snooze", title: "Not counted as quiet until then" },
+      `Snoozed until ${fmtDay(a.snoozed_until, d.today)}`) : null,
+    a.pay ? h("span", { class: "pay" }, a.pay) : null, a.closed ? "posting closed" : null].filter(Boolean);
   const view = () => fill(card,
     monogram(a.company),
     h("div", {},

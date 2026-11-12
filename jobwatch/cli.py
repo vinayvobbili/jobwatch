@@ -864,7 +864,7 @@ def cmd_offices(args, cfg, store):
 def cmd_applications(args, cfg, store):
     rows = store.applications()
     found = quiet.find(rows, cfg.quiet, known=load_contacts(cfg))
-    rows, more = quiet.order(rows, found), ""
+    rows, more = quiet.order(rows, found), ""  # snoozed ones sit below the live ones, and aren't quiet (quiet.find)
     if args.due:
         rows = [r for r in rows if report.due(r[1])]
         stale = [r for r in rows if found.get(r[0].key, {}).get("long")]

@@ -670,3 +670,29 @@ console.log(JSON.stringify(["score", "pay", "mail", "boards", "something-else"].
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     assert "notices.list = unseen.length ? actListFor(unseen[0].kind) : null;" in page
     assert "if (notices.list) { activityView.kind = notices.list; notices.list = null; }" in page
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_applications_sort_into_live_first_groups_and_the_filter(tmp_path):
+    """Snoozed and closed ones leave the lists that need you; Live and Waiting narrow what is left."""
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    fresh_due = re.search(r"^const freshDue = .*;$", page, re.M).group(0)
+    js = tmp_path / "apps.js"
+    js.write_text(fresh_due + "\n" + page_function("isEndedStatus") + "\n" + page_function("appGroup") + "\n"
+                  + page_function("appLiveMatch") + """
+const out = [
+  { status: "interviewing" }, { status: "interviewing", due: true }, { status: "applied", quiet: { long: false } },
+  { status: "applied", quiet: { long: true }, due: true }, { status: "applied" },
+  { status: "applied", quiet: { long: false }, snoozed_until: "2026-12-01" }, { status: "rejected" },
+  { status: "withdrawn", snoozed_until: "2026-12-01" },
+].map(appGroup);
+const today = "2026-11-12", wait = { status: "applied", follow_up: "2026-11-20" };
+out.push([appLiveMatch({ status: "screening" }, "live", today), appLiveMatch(wait, "live", today),
+  appLiveMatch(wait, "waiting", today), appLiveMatch({ status: "applied", follow_up: "2026-11-12" }, "waiting", today),
+  appLiveMatch({ status: "applied" }, "waiting", today), appLiveMatch({ status: "rejected" }, "all", today)]);
+console.log(JSON.stringify(out));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["live", "due", "quiet", "quiet", "waiting", "snoozed", "closed", "closed",
+                                    [True, False, True, False, False, True]]
