@@ -314,19 +314,32 @@ def summary(r: Result) -> str:
     return "\n".join(out)
 
 
+def _utc(stamp: str) -> datetime:
+    at = datetime.fromisoformat(stamp)
+    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)  # an old row with no offset is UTC too
+
+
+def _local_when(stamp: str) -> str:
+    """A stored run time (UTC) as this computer's clock reads it."""
+    try:
+        return _utc(stamp).astimezone().strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return stamp[:16].replace("T", " ")
+
+
 def history_text(runs: list[dict], now: datetime | None = None) -> str:
     """Each run's counts and coverage, then each site's last week and whole history, jobs weighed alike."""
     if not runs:
         return "No lists imported yet: `jobwatch import-list FILE` takes one in."
     out = ["When              Site      Seen  Tracked  Earlier  Added  Unplaced  Coverage"]
     for h in runs[-40:]:
-        out.append(f"{h['at'][:16].replace('T', ' '):<16}  {_name(h['source']):<8}  {h['seen']:>4}  "
+        out.append(f"{_local_when(h['at']):<16}  {_name(h['source']):<8}  {h['seen']:>4}  "
                    f"{h['tracked']:>7}  {h['earlier']:>7}  {h['added']:>5}  {h['unplaced']:>8}  "
                    f"{_pct(h['coverage']):>8}")
     now = now or datetime.now(timezone.utc)
     for src in dict.fromkeys(h["source"] for h in runs):
         mine = [h for h in runs if h["source"] == src]
-        week = [h for h in mine if datetime.fromisoformat(h["at"]) >= now - timedelta(days=7)]
+        week = [h for h in mine if _utc(h["at"]) >= now - timedelta(days=7)]
         for label, rows in (("last 7 days", week), ("all runs", mine)):
             own = sum(h["tracked"] for h in rows)
             base = own + sum(h["added"] + h["unplaced"] for h in rows)

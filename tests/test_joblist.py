@@ -199,3 +199,19 @@ def test_the_extension_imports_a_list_with_its_token(server, web):
     assert [j["company"] for j in got["unplaced"]] == ["Vandelay Industries"] and "Coverage: 0%" in got["summary"]
     status, data = request(server, "POST", "/ext/import-list", {"records": "nope"}, headers=ok)
     assert status == 400
+
+
+def test_history_shows_local_time_and_reads_old_rows(monkeypatch):
+    import time
+    from datetime import datetime, timezone
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        row = {"source": "linkedin", "seen": 3, "tracked": 2, "earlier": 0, "added": 1, "unplaced": 0,
+               "coverage": 0.67}
+        runs = [{"at": "2026-11-12T22:35:10+00:00", **row}, {"at": "2026-11-12T22:35:10", **row}]
+        text = joblist.history_text(runs, now=datetime(2026, 11, 13, tzinfo=timezone.utc))
+        assert text.count("2026-11-12 17:35") == 2 and "22:35" not in text
+    finally:
+        monkeypatch.undo()
+        time.tzset()
