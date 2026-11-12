@@ -49,7 +49,7 @@ def canned_chat(text: str = CANNED):
     def reply(backend, system, messages, **settings):
         for word in text.split(" "):
             yield word + " "
-    chat.check = lambda backend, keychain="": None
+    chat.check = lambda backend, keychain="", key_command="": None
     chat.reply = reply
 
 
@@ -238,14 +238,18 @@ def demo(config: Path, out: Path, reply: str = CANNED):
         page.get_by_role("button", name="Details").nth(1).click(timeout=5000)
         page.wait_for_timeout(900)
         page.screenshot(path=out / "applied-details.png")
-        page.get_by_role("button", name="Prep sheet").first.click(timeout=5000)
-        page.wait_for_timeout(1200)
-        page.screenshot(path=out / "prep.png")
-        page.get_by_role("heading", name="They'll likely ask").scroll_into_view_if_needed()
-        page.evaluate("document.evaluate(\"//h3[contains(., 'honest')]\", document, null, 9, null)"
-                      ".singleNodeValue?.scrollIntoView({block: 'start'})")
-        page.wait_for_timeout(500)
-        page.screenshot(path=out / "prep-questions.png")
+        with page.expect_popup() as opened:  # "Prep sheet ↗" opens the sheet in a new tab
+            page.get_by_text("Prep sheet ↗").first.click(timeout=5000)
+        sheet = opened.value
+        sheet.wait_for_selector("h2:has-text(\"They'll likely ask\")", timeout=15000)
+        sheet.wait_for_timeout(1200)
+        sheet.screenshot(path=out / "prep.png")
+        sheet.get_by_role("heading", name="They'll likely ask").scroll_into_view_if_needed()
+        sheet.evaluate("document.evaluate(\"//h3[contains(., 'honest')]\", document, null, 9, null)"
+                       ".singleNodeValue?.scrollIntoView({block: 'start'})")
+        sheet.wait_for_timeout(500)
+        sheet.screenshot(path=out / "prep-questions.png")
+        sheet.close()
         for e in errors:
             print("page error:", e)
         browser.close()
