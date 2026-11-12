@@ -26,10 +26,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // The toolbar button opens the side panel. Handling the click ourselves (rather than setPanelBehavior's
 // openPanelOnActionClick) is what makes the grant of activeTab certain: onClicked is "executing an action".
-// sidePanel.open must be called straight away, while the click's user gesture is still alive.
+// sidePanel.open must be called straight away, while the click's user gesture is still alive: setOptions is sent
+// first and not awaited (Chrome handles them in order), because awaiting it would let the gesture lapse.
+// Each tab gets its own panel page, pinned to that tab (sidepanel.html?tab=<id>); the window-wide default is
+// disabled, so a tab where the icon wasn't clicked shows no panel instead of another tab's.
 chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.setOptions({ tabId: tab.id, path: `sidepanel.html?tab=${tab.id}`, enabled: true }).catch(() => {});
   chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
 });
+chrome.sidePanel.setOptions({ enabled: false }).catch(() => {});
 
 chrome.tabs.onRemoved.addListener((tabId) => chrome.storage.session.remove([pendingKey(tabId), ctxKey(tabId)]));
 
@@ -43,6 +48,7 @@ async function handle(msg, tabId, sender) {
     case 'draft': return draft(tabId, msg.question, msg.words, msg.others);
     case 'posting': return posting(tabId);
     case 'importList': return importList(tabId);
+    case 'importState': return { running: listImport };
     case 'passiveSeen': return sender.tab ? passiveSeen(msg.records) : {};
     case 'importPassive': return importPassive();
     case 'tailor': return tailor(tabId);
@@ -269,11 +275,12 @@ async function posting(tabId) {
 
 // --- a job site's list of jobs ----------------------------------------------------------------------
 
-const LIST_PAGES_KEY = 'listPages'; // chrome.storage.local: how many pages "Import this list" reads (the panel sets it)
+const LIST_PAGES_KEY = 'listPages'; // chrome.storage.local: how many pages "Read the jobs on this list" reads (the panel sets it)
 const LIST_PAGES_DEFAULT = 4; // lists are sorted by relevance: later pages matter less
 const LIST_PAGES_MAX = 10;
 const LIST_IMPORT_TIMEOUT_MS = 10 * 60 * 1000; // jobwatch looks for each new job's company board: minutes for a long list
 const PAGE_LOAD_MS = 30 * 1000;
+let listImport = null; // { tabId, source }: the one list import running, so a panel on another tab can say so
 
 function listProgress(tabId, text) {
   chrome.runtime.sendMessage({ type: 'listProgress', tabId, text }).catch(() => {});
@@ -294,7 +301,7 @@ function loaded(tabId) {
 }
 
 /**
- * "Import this list": reads the jobs on the LinkedIn or Indeed list in this tab (job-lists.js), page after page up to
+ * "Read the jobs on this list": reads the jobs on the LinkedIn or Indeed list in this tab (job-lists.js), page after page up to
  * LIST_MAX_PAGES, and sends them to jobwatch, which counts the ones it had and tracks the rest. Only the cards' title,
  * company, place, pay and age go, with each job's id on the site; the person pressed the button. LinkedIn swaps its
  * pages in place; Indeed loads each one, and the next is read once it has loaded (if Chrome stops the reading there,
@@ -305,6 +312,16 @@ async function importList(tabId) {
   const maxPages = await listPages();
   const source = JW.listMode(await tabUrl(tabId));
   if (!source) throw new Expected('Open a job list on LinkedIn (Jobs, a search) or Indeed (Jobs for you, a search), then try again.');
+  if (listImport) throw new Expected(JW.importOnOtherTab(listImport, tabId) || 'An import is already running on this tab. Wait for it to finish.');
+  listImport = { tabId, source };
+  try {
+    return await readAndImport(tabId, source, settings, maxPages);
+  } finally {
+    listImport = null;
+  }
+}
+
+async function readAndImport(tabId, source, settings, maxPages) {
   const byId = new Map();
   const run = async (func) => {
     await chrome.scripting.executeScript({ target: { tabId }, files: ['job-lists.js'] });
@@ -366,7 +383,7 @@ function passiveSeen(records) {
   return work;
 }
 
-/** "N jobs seen while browsing - Import": sends the kept cards through the same call as Import this list, then
+/** "Read the N jobs seen while browsing": sends the kept cards through the same call as Read the jobs on this list, then
  * forgets exactly the ones sent (cards seen meanwhile stay). Kept if jobwatch can't take them. */
 async function importPassive() {
   const settings = await pairedSettings();

@@ -16,7 +16,7 @@
  * The site is told from the page's address; pass { source } to say it.
  *
  * Who runs it:
- *  - The extension's "Import this list" button injects this file, then calls readPage and next page by page.
+ *  - The extension's "Read the jobs on this list" button injects this file, then calls readPage and next page by page.
  *  - A Claude session runs this file's text followed by `await JWList.readAll()` through Chrome's javascript tool
  *    on the list's tab (on Indeed: `await JWList.readPage()`, then navigate to `JWList.next()`'s link and run it
  *    again, page by page), and passes the records to `jobwatch import-list` or the MCP tool import_job_list.

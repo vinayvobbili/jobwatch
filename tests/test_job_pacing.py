@@ -1,5 +1,5 @@
 # ruff: noqa: E501  (JavaScript cases as one-liners)
-"""Import this list pages like a person (job-lists.js PACING) and passive mode keeps each seen job once
+"""Read the jobs on this list pages like a person (job-lists.js PACING) and passive mode keeps each seen job once
 (chrome-extension/passive.js), both run with node against made-up data."""
 
 import json

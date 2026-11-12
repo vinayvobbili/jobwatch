@@ -34,8 +34,10 @@ has no standalone mode.
 ## What you see
 
 The review lives in Chrome's side panel, docked beside the page like Claude's, so it never covers the form. At the top
-it says whether it is paired with jobwatch. It works on the tab you are looking at: switch tabs, or let the tab load
-another page, and the rows are dropped with a note to scan again, so a row never fills a form that is gone. A
+it says whether it is paired with jobwatch. Each tab has its own panel, opened by clicking the icon on that tab: switch
+to another tab and its panel (or none) shows, not this one. Let the tab load another page and the rows are dropped
+with a note to scan again, so a row never fills a form that is gone. Only one list import runs at a time; on another
+tab, Read the jobs on this list says one is already running and names its site. A
 multi-step form that swaps its next step in place (the address stays the same) is noticed too: the panel reads the
 new step by itself. If a page
 was not opened with the icon (Chrome only lets the extension touch a tab after you click its icon there), click the

@@ -311,7 +311,7 @@
     return host === 'localhost' || host === '127.0.0.1' ? 'none' : 'site';
   }
 
-  /** The job site whose list of jobs this address shows, for "Import this list" (job-lists.js reads it): 'linkedin'
+  /** The job site whose list of jobs this address shows, for "Read the jobs on this list" (job-lists.js reads it): 'linkedin'
    * on LinkedIn's jobs pages (a search, "Jobs based on your preferences"), 'indeed' on Indeed's home page ("Jobs for
    * you") and its searches, else ''. */
   function listMode(url) {
@@ -321,6 +321,14 @@
     if (LINKEDIN_HOST.test(host)) return /^\/jobs(\/|$)/.test(u.pathname) && !/^\/jobs\/view\//.test(u.pathname) ? 'linkedin' : '';
     if (/(^|\.)indeed\.com$/.test(host)) return /^\/(?:$|jobs\/?$|q-|m\/jobs)/.test(u.pathname) ? 'indeed' : '';
     return '';
+  }
+
+  /** What a panel on `tabId` says when a list import (`running`: { tabId, source }, or null) is already under way on
+   * another tab, naming its site: only one runs at a time. '' when none is, or it is this tab's own. */
+  function importOnOtherTab(running, tabId) {
+    if (!running || running.tabId === tabId) return '';
+    const site = { linkedin: 'LinkedIn', indeed: 'Indeed' }[running.source] || 'a job site';
+    return `An import is already running on another tab (${site}). Wait for it to finish, then import here.`;
   }
 
   /** Whether a button, by its accessible label and its text, is LinkedIn's offsite Apply button (it opens the
@@ -360,7 +368,7 @@
 
   const JW = { formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
-    linkedinJobId, postingMode, listMode, isOffsiteApply, isEasyApply, sameCompany, tidyText };
+    linkedinJobId, postingMode, listMode, importOnOtherTab, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;
   root.JW = JW;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

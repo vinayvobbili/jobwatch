@@ -112,7 +112,7 @@ named is attached to the package. A page jobwatch doesn't know yet is added from
 
 ### `POST /ext/import-list`
 
-Sent when the person presses **Import this list** on a LinkedIn or Indeed list of jobs (only shown when `/ext/ping`'s
+Sent when the person presses **Read the jobs on this list** on a LinkedIn or Indeed list of jobs (only shown when `/ext/ping`'s
 `features` has `import-list`). The extension reads the list's cards with `job-lists.js`, page after page (up to ten),
 and sends them all at once:
 

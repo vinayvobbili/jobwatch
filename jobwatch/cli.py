@@ -1476,7 +1476,8 @@ def build_parser() -> argparse.ArgumentParser:
                        "per site), and the rest tracked from the company's own board. jobwatch never fetches "
                        "linkedin.com or indeed.com",
                        description="Take in the jobs on a LinkedIn or Indeed job list page, read in your own browser "
-                       "by the extractor (`--script` prints it; the extension's Import this list button runs it too): "
+                       "by the extractor (`--script` prints it; the extension's Read the jobs on this list button "
+                       "runs it too): "
                        "JSON records {source, id, title, company, location, pay, posted}. Each job already tracked "
                        "(its link on the site, or its company and title) is counted; each new one is looked for on "
                        "the company's own board and tracked from there as new, whatever your filters say (they "

@@ -231,7 +231,7 @@ many of its jobs jobwatch already had: its coverage. The rest are tracked.
 
 The list is read by the extractor, a script that runs on the page you have open:
 
-- **The browser extension:** on the list's tab, open the side panel and press **Import this list**. It scrolls each
+- **The browser extension:** on the list's tab, open the side panel and press **Read the jobs on this list**. It scrolls each
   page to its end, reads the cards, goes on to the next page (up to ten), and shows what jobwatch made of them.
 - **An assistant driving Chrome:** `jobwatch import-list --script` prints the extractor. Run its text followed by
   `await JWList.readAll()` on the list's tab (every page of a LinkedIn list in one call; on Indeed, where each page

@@ -13,6 +13,9 @@
   const send = (msg) => chrome.runtime.sendMessage(msg);
   const $ = (id) => document.getElementById(id);
 
+  // This panel's tab: the one it was opened for (background.js pins each tab's panel with ?tab=), else the active one.
+  const myTab = async () => (tabId ? chrome.tabs.get(tabId) : (await chrome.tabs.query({ active: true, currentWindow: true }))[0]);
+
   const SOURCE = { details: 'Your details', past: 'Past answer', draft: 'Draft', resume: 'Resume', none: 'Not found' };
   const pinned = Number(new URLSearchParams(location.search).get('tab')) || null;
   let tabId = pinned;
@@ -20,6 +23,7 @@
   let features = []; // what that jobwatch offers beyond filling (/ext/ping): an older one has no posting call
   let state = null; // the last scan: { items, info, job }
   let busy = false;
+  let idleText = ''; // what idle() last said, shown again when the tab loads another page
   let listRefresh = null; // re-reads the import-list settings block when passive mode notes a job
   let importing = null; // the tab whose job list is being imported: its progress shows
 
@@ -82,23 +86,30 @@
   const POSTING = { linkedin: "Open the company's posting", site: 'Save this posting to jobwatch' };
   const postingButton = () => {
     const b = h('button', { id: 'posting', class: 'ghost', textContent: POSTING.site, onclick: savePosting });
-    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      if (JW.postingMode(pinned || !tab ? '' : tab.url) === 'linkedin') b.textContent = POSTING.linkedin;
+    myTab().then((tab) => {
+      if (tab && JW.postingMode(tab.url) === 'linkedin') b.textContent = POSTING.linkedin;
     }, () => {});
     return b;
   };
   // On a LinkedIn or Indeed list of jobs: send every page's jobs to jobwatch, to see which it had and track the rest.
   const importButton = () => {
-    const b = h('button', { id: 'import-list', class: 'ghost', textContent: 'Import this list', onclick: importList, hidden: true });
-    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      if (tab && JW.listMode(tab.url)) b.hidden = false;
+    const b = h('button', { id: 'import-list', class: 'ghost', textContent: 'Read the jobs on this list', onclick: importList, hidden: true });
+    const note = h('div', { id: 'import-busy', class: 'msg small', hidden: true });
+    myTab().then(async (tab) => {
+      if (!tab || !JW.listMode(tab.url)) return;
+      b.hidden = false;
+      const { running } = await send({ type: 'importState' });
+      const elsewhere = JW.importOnOtherTab(running, tab.id);
+      b.disabled = !!elsewhere;
+      note.hidden = !elsewhere;
+      note.textContent = elsewhere;
     }, () => {});
-    return b;
+    return [b, note];
   };
   // Import-list settings: how many pages the button reads, and passive mode (jobs seen while browsing, imported
   // on request). Both are kept in chrome.storage.local; passive.js and background.js read them from there.
   const listOptions = () => {
-    const pages = h('input', { id: 'list-pages', type: 'number', min: '1', max: '10', step: '1', value: '4', title: 'Pages Import this list reads (1-10)' });
+    const pages = h('input', { id: 'list-pages', type: 'number', min: '1', max: '10', step: '1', value: '4', title: 'Pages read from a list (1-10)' });
     const on = h('input', { id: 'passive-on', type: 'checkbox', checked: true });
     const seen = h('button', { id: 'passive-import', class: 'ghost', hidden: true, onclick: importSeen });
     const refresh = async () => {
@@ -107,7 +118,7 @@
       on.checked = s.passiveOn !== false;
       const n = Object.keys(s.passiveSeen || {}).length;
       seen.hidden = !n;
-      seen.textContent = `${n} job${n === 1 ? '' : 's'} seen while browsing: Import`;
+      seen.textContent = `Read the ${n} job${n === 1 ? '' : 's'} seen while browsing`;
     };
     pages.addEventListener('change', () => {
       const n = Math.min(10, Math.max(1, Math.round(Number(pages.value)) || 4));
@@ -128,6 +139,7 @@
 
   function idle(text) {
     state = null;
+    idleText = text;
     $('where').textContent = '';
     if (!ready) {
       view(h('div', { class: 'empty' }, h('div', { textContent: 'Nothing to fill from until jobwatch is running.' }),
@@ -263,7 +275,7 @@
   const SITE = { linkedin: 'LinkedIn', indeed: 'Indeed' };
   const pct = (x) => (x == null ? '-' : `${Math.round(x * 100)}%`);
 
-  /** What Import this list did: per site, how many jobwatch had (its coverage), what it added, what it couldn't place. */
+  /** What Read the jobs on this list did: per site, how many jobwatch had (its coverage), what it added, what it couldn't place. */
   function imported(r) {
     $('where').textContent = 'Job list imported';
     const sites = Object.entries(r.by_source || {}).map(([src, c]) => h('div', { class: 'row' },
@@ -391,6 +403,8 @@
   }
   chrome.tabs.onUpdated.addListener((id, change) => {
     if (id === tabId && (change.status === 'loading' || change.url)) tabChanged();
+    // idle, with buttons (Read the jobs on this list, the posting action) chosen for the page that was there before
+    else if (id === tabId && change.status === 'complete' && !state && !busy && idleText) idle(idleText);
   });
   chrome.tabs.onRemoved.addListener((id) => {
     if (id === tabId) idle('Open a job application in this tab, then press Fill this application.');

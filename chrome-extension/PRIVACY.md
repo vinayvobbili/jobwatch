@@ -5,7 +5,7 @@ in the side panel that opens. The side panel itself shows only what the extensio
 It reads the form's questions, their answer options and the values already in the fields, the page's address, and the
 company and job title shown on the page.
 
-**LinkedIn and Indeed job lists:** only when you press **Import this list** on a LinkedIn or Indeed list of jobs (a
+**LinkedIn and Indeed job lists:** only when you press **Read the jobs on this list** on a LinkedIn or Indeed list of jobs (a
 search, "Jobs based on your preferences", "Jobs for you"), it reads each job card on that list: the job's number on the
 site, its title, company, place, pay and how long ago it was posted. It scrolls the list to its end and presses its
 Next button (or opens its next page), at a human pace with random pauses of a few seconds, up to the number of pages

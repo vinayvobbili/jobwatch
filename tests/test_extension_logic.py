@@ -231,6 +231,27 @@ def test_the_job_lists_import_this_list_reads(tmp_path):
 
 
 @needs_node
+def test_a_second_list_import_on_another_tab_is_named_not_started(tmp_path):
+    got = run_js(tmp_path, """
+const msg = (running, tab) => JW.importOnOtherTab(running, tab);
+console.log(JSON.stringify([msg(null, 7), msg({ tabId: 7, source: 'linkedin' }, 7), msg({ tabId: 7, source: 'linkedin' }, 9),
+  msg({ tabId: 7, source: 'indeed' }, 9), msg({ tabId: 7, source: 'other' }, 9)]));""")
+    assert got[:2] == ["", ""]
+    assert "already running on another tab (LinkedIn)" in got[2]
+    assert "(Indeed)" in got[3]
+    assert "(a job site)" in got[4]
+
+
+def test_each_tab_gets_its_own_side_panel():
+    """The toolbar click enables a panel pinned to its tab, before opening it in the same gesture; the default is off."""
+    src = (EXT / "background.js").read_text(encoding="utf-8")
+    assert "setOptions({ tabId: tab.id, path: `sidepanel.html?tab=${tab.id}`, enabled: true })" in src
+    assert src.index("setOptions({ tabId: tab.id") < src.index("sidePanel.open({ tabId: tab.id })")
+    assert "chrome.sidePanel.setOptions({ enabled: false })" in src
+    assert "await chrome.sidePanel.setOptions" not in src  # awaiting would let the click's user gesture lapse
+
+
+@needs_node
 def test_only_the_offsite_apply_button_is_pressed(tmp_path):
     """Easy Apply applies on LinkedIn, and Save, Share and the rest aren't Apply: none of them is the button to press."""
     buttons = [
