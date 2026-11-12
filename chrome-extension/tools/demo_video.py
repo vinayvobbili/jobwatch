@@ -28,6 +28,7 @@ import harness
 import store_assets
 
 FPS = 15
+INTRO_SECONDS = 6.0  # the title card, over the intro sting, before any narration
 SIZE = store_assets.SCREEN
 CAPTION_H = store_assets.CAPTION_H
 PANEL_W = store_assets.PANEL_W
@@ -46,24 +47,48 @@ CAPTION_HTML = """<!doctype html><html><head><meta charset="utf-8"><style>
   p {{ margin: 4px 0 0; font-size: 16px; opacity: 0.92; }}
 </style></head><body><header><h1>{title}</h1><p>{subtitle}</p></header></body></html>"""
 
-END_HTML = """<!doctype html><html><head><meta charset="utf-8"><style>
+# The title and end cards use jobwatch's palette (scripts/demo/build.py, jobwatch/static/index.html): dark violet
+# with a soft glow, gradient accents and a mint code chip.
+CARD_CSS = """
   html, body {{ margin: 0; width: {w}px; height: {h}px; overflow: hidden; }}
-  body {{ background: radial-gradient(620px 360px at 85% -10%, rgb(236 72 153 / 0.35), transparent 65%),
-                      linear-gradient(135deg, #4f52e8, #9b3fe8); color: #fff; text-align: center;
-          font: 15px/1.4 system-ui, sans-serif; display: flex; flex-direction: column;
-          align-items: center; justify-content: center; }}
-  .brand {{ display: flex; align-items: center; gap: 22px; }}
-  img {{ width: 104px; height: 104px; border-radius: 22px; box-shadow: 0 0 0 3px rgb(255 255 255 / 0.55); }}
-  h1 {{ margin: 0; font-size: 64px; font-weight: 800; letter-spacing: -0.02em; }}
-  p {{ margin: 28px 0 0; font-size: 28px; max-width: 900px; }}
-  code {{ display: block; margin-top: 36px; font: 600 24px ui-monospace, monospace; opacity: 0.95; }}
-</style></head><body>
-  <div class="brand"><img src="{icon}"><h1>jobwatch</h1></div>
-  <p>You check the form and press Submit yourself.<br>Nothing leaves your computer.</p>
-  <code>{url}</code>
-</body></html>"""
+  body {{ color: #f4f3ff; text-align: center; font: 15px/1.4 -apple-system, "SF Pro Display", system-ui, sans-serif;
+          background: radial-gradient(900px 520px at 85% -10%, #4b2bb8 0%, transparent 60%),
+                      radial-gradient(700px 480px at -10% 110%, #1f3fb0 0%, transparent 55%), #0e0d1f;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; }}
+  .glow {{ position: absolute; left: 50%; top: 46%; width: 760px; height: 460px; margin: -230px 0 0 -380px;
+           background: radial-gradient(closest-side, rgb(176 92 246 / 0.38), transparent); filter: blur(30px); }}
+  .logo {{ position: relative; width: 112px; height: 112px; margin-bottom: 30px; border-radius: 30px;
+           box-shadow: 0 0 60px rgb(176 92 246 / 0.55); }}
+  .logo img {{ width: 112px; height: 112px; border-radius: 30px; }}
+  h1 {{ position: relative; margin: 0; font-size: 62px; font-weight: 800; letter-spacing: -0.02em; }}
+  h1 b {{ background: linear-gradient(90deg, #b9a8ff, #f08cff); -webkit-background-clip: text; color: transparent; }}
+  p {{ position: relative; margin: 20px 0 0; font-size: 27px; color: #cfcbe8; max-width: 940px; line-height: 1.4; }}
+  .chips {{ position: relative; display: flex; gap: 12px; margin-top: 34px; }}
+  .chips span {{ border: 1px solid rgb(185 168 255 / 0.45); color: #dcd5ff; border-radius: 999px; padding: 8px 18px;
+                 font-size: 18px; background: rgb(109 92 255 / 0.14); }}
+  code {{ position: relative; margin-top: 30px; font: 600 22px ui-monospace, Menlo, monospace; color: #7ee2a8;
+          background: rgb(0 0 0 / 0.35); border: 1px solid rgb(255 255 255 / 0.15); border-radius: 12px;
+          padding: 12px 26px; }}
+"""
 
-END_NARRATION = "You check the form, and press Submit yourself. jobwatch is open source, on GitHub."
+TITLE_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CARD_CSS + """</style></head><body>
+  <div class="glow"></div>
+  <div class="logo"><img src="{icon}"></div>
+  <h1><b>jobwatch</b>: Application Filler</h1>
+  <p>Fills the application for you. You check it, and press Submit yourself.</p>
+</body></html>""")
+
+END_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CARD_CSS + """</style></head><body>
+  <div class="glow"></div>
+  <div class="logo"><img src="{icon}"></div>
+  <h1><b>jobwatch</b>: Application Filler</h1>
+  <p>A free, open-source Chrome extension. Nothing leaves your computer.</p>
+  <div class="chips"><span>Chrome Web Store</span><span>PyPI: jobwatch</span><span>GitHub</span></div>
+  <code>{url}</code>
+</body></html>""")
+
+END_NARRATION = ("You check the form, and press Submit yourself. Get the extension from the Chrome Web Store. "
+                 "jobwatch is open source, on PyPI and GitHub.")
 
 CURSOR_JS = """() => {
   if (document.getElementById('__demo_cursor')) return;
@@ -253,6 +278,8 @@ def make_tts(voice: str):
 
     if voice == "silent":
         return slidecast.SilentTTS()
+    if voice == "kokoro":  # the house voice, in-process: pip install 'slidecast[mlx]'
+        return slidecast.MLXKokoroTTS(voice="af_heart", phonetic=SAY_LIKE)
     if voice == "gtts":
         return slidecast.GTTSTTS(phonetic=SAY_LIKE)
     if shutil.which("say") is None:
@@ -260,7 +287,7 @@ def make_tts(voice: str):
     return slidecast.MacSayTTS(voice=voice, phonetic=SAY_LIKE)
 
 
-def record(target: Path, voice: str = "Samantha", headless: bool = True, playwright=None) -> Path:
+def record(target: Path, voice: str = "kokoro", headless: bool = True, playwright=None) -> Path:
     """Record and narrate the walkthrough into `target` (.mp4). Pass `playwright` to reuse one."""
     import slidecast
 
@@ -289,12 +316,20 @@ def record(target: Path, voice: str = "Samantha", headless: bool = True, playwri
         # from this Playwright, since a second sync Playwright can't start inside it.
         browser = playwright.chromium.launch()
         scope.callback(browser.close)
+        # The house style (scripts/demo/build.py): a composed lo-fi bed ducked under the voice, intro and outro
+        # stings, -16 LUFS. The title card holds through the intro sting (lead_in), so the music swells in first.
         reel = slidecast.Reel(width=SIZE[0], height=SIZE[1], fps=FPS, tts=make_tts(voice),
-                              renderer=slidecast.PlaywrightRenderer(browser=browser))
+                              renderer=slidecast.PlaywrightRenderer(browser=browser),
+                              music=slidecast.Music("compose", volume=0.3, fade_in=1.0, fade_out=3.0, duck=True,
+                                                    duck_db=16),
+                              intro=slidecast.Sting("compose", volume=0.75),
+                              outro=slidecast.Sting("compose", volume=0.7),
+                              lead_in=INTRO_SECONDS, loudness=-16)
+        icon = store_assets.data_uri(harness.EXTENSION_DIR / "icons" / "icon128.png")
+        reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), "", min_duration=0.5)
         for step in rec.steps:
             clip = encode_step(ffmpeg, rec.frames, step, work / f"{step.key}.mp4")
             reel.add_clip(clip, step.narration, tail_pad=0.5)
-        icon = store_assets.data_uri(harness.EXTENSION_DIR / "icons" / "icon128.png")
         reel.add(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL), END_NARRATION,
                  tail_pad=1.2, min_duration=4.0)
         return reel.render(target, ffmpeg=ffmpeg, fade_in=0.6, fade_out=1.0, make_poster=True)
@@ -305,8 +340,9 @@ def main(argv=None) -> int:
     parser.add_argument("--out", type=Path,
                         default=store_assets.REPO_DIR / "dist" / "store" / "jobwatch-extension-demo.mp4",
                         help="output file (default: dist/store/jobwatch-extension-demo.mp4)")
-    parser.add_argument("--voice", default="Samantha",
-                        help="a macOS voice from `say -v '?'` (default Samantha), 'gtts', or 'silent'")
+    parser.add_argument("--voice", default="kokoro",
+                        help="'kokoro' (the house voice, default), a macOS voice from `say -v '?'`, "
+                             "'gtts', or 'silent'")
     parser.add_argument("--headed", action="store_true", help="show the browser while recording")
     args = parser.parse_args(argv)
     print(f"Wrote {record(args.out, voice=args.voice, headless=not args.headed)}")

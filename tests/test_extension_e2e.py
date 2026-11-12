@@ -419,5 +419,6 @@ def test_demo_video_is_a_narrated_1280x800_mp4(tmp_path, pw):
         pytest.skip(str(exc))
     probe = subprocess.run([ffmpeg, "-i", str(out)], capture_output=True, text=True).stderr
     assert "1280x800" in probe and "Audio: aac" in probe
-    assert slidecast.probe_duration(out, ffmpeg=ffmpeg) > 20  # four steps and the end card
+    # The title card over the intro sting, four steps and the end card, all under the store's limit.
+    assert demo_video.INTRO_SECONDS + 20 < slidecast.probe_duration(out, ffmpeg=ffmpeg) < 90
     assert (tmp_path / "demo_poster.jpg").is_file()
