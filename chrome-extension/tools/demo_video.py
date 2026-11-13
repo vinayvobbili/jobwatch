@@ -33,7 +33,9 @@ TITLE_NARRATION = ("Tired of typing the same answers into every job application?
                    "Meet jobwatch, your job-hunt helper. Let's see the Chrome extension fill one in.")
 SIZE = store_assets.SCREEN
 CAPTION_H = store_assets.CAPTION_H
-PANEL_W = store_assets.PANEL_W
+TAIL_PAD = 0.5  # silence after a step's voice
+GUTTER = 28  # a safe margin on the right: players and thumbnails that crop a few pixels must not cut the panel
+PANEL_W = store_assets.PANEL_W - GUTTER  # the panel's own width; its right-edge colour is smeared across the gutter
 BODY_H = store_assets.BODY_H
 FORM_W = store_assets.FORM_W
 FORM_URL = ("job-boards.greenhouse.io", "/initech/jobs/4001")
@@ -150,9 +152,12 @@ class Recorder:
         self.steps = []
         self.layer = None
         self.cursor = (PANEL_W / 2, BODY_H / 2)
+        self.durations = {}  # step key -> seconds of narration plus tail, measured before recording
+        self.budget = 0
 
     def step(self, key: str, title: str, subtitle: str, narration: str) -> None:
         """Start a new step: a new caption on screen and a new narrated clip."""
+        self.finish_step()
         page = self.ctx.new_page()
         # The layer is only the caption strip (CAPTION_H tall), so it can never cover the page or the panel.
         page.set_viewport_size({"width": SIZE[0], "height": CAPTION_H})
@@ -161,6 +166,16 @@ class Recorder:
         page.screenshot(path=str(self.layer), omit_background=True)
         page.close()
         self.steps.append(Step(key, narration, self.count))
+        self.budget = round(self.durations.get(key, 0) * FPS)
+
+    def left(self, end_hold: float = 0.4) -> int:
+        """Frames still to record so this step's picture runs as long as its narration (less a short end hold)."""
+        return max(0, self.budget - self.steps[-1].frames - round(end_hold * FPS))
+
+    def finish_step(self) -> None:
+        """Hold the last picture for whatever the narration still needs, so a clip is never shorter than its voice."""
+        if self.steps:
+            self.hold(self.left(0) / FPS)
 
     def frame(self) -> None:
         name = f"{self.count:05d}"
@@ -222,6 +237,40 @@ class Recorder:
             self.form.evaluate("(y) => window.scrollTo(0, y)", start + (y - start) * t * t * (3 - 2 * t))
             self.frame()
 
+    # The form scrolls its window; the panel scrolls its field list (.scroll), under the fixed header and footer.
+    def _top(self, page) -> float:
+        return page.evaluate("() => (document.querySelector('.scroll') || document.scrollingElement).scrollTop")
+
+    def _to(self, page, y: float) -> None:
+        page.evaluate("(y) => (document.querySelector('.scroll') || document.scrollingElement).scrollTo(0, y)", y)
+
+    def extent(self, page) -> float:
+        """How far `page` can scroll."""
+        return page.evaluate("() => { const e = document.querySelector('.scroll') || document.scrollingElement;"
+                             " return Math.max(0, e.scrollHeight - e.clientHeight); }")
+
+    def glide(self, frames: int, form_y: float | None = None, panel_y: float | None = None) -> None:
+        """Ease the form and/or the panel's list from where they are to the given scroll positions.
+
+        The pages move together, so the field the voice is on is on screen in both.
+        """
+        moves = [(p, self._top(p), y) for p, y in ((self.form, form_y), (self.panel, panel_y)) if y is not None]
+        for i in range(1, max(1, frames) + 1):
+            t = i / max(1, frames)
+            ease = t * t * (3 - 2 * t)
+            for p, y0, y1 in moves:
+                self._to(p, y0 + (y1 - y0) * ease)
+            self.frame()
+
+    def essay_at(self, text: str) -> tuple:
+        """Scroll positions that put the essay question containing `text` near the top of the form and the panel."""
+        fy = self.form.locator("label", has_text=text).evaluate(
+            "(e) => e.getBoundingClientRect().top + document.scrollingElement.scrollTop") - 24
+        py = self.panel.locator(".row", has_text=text).evaluate(
+            "(e) => { const s = document.querySelector('.scroll');"
+            " return e.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop; }") - 8
+        return max(0, fy), max(0, py)
+
     def open_panel(self, stack, url: str):
         """A fresh side panel on the form's tab, as when the person opens it again; the old one is closed."""
         old = self.panel
@@ -235,56 +284,72 @@ class Recorder:
         return self.panel
 
 
+NARRATION = {
+    "intro": ("Here is a job application, on the company's own site. "
+              "The jobwatch extension fills it in from your own jobwatch, on your own computer. "
+              "Your details, your earlier answers and your resume stay with you. "
+              "Nothing is sent to anyone else."),
+    "scan": ("Open the side panel, and click Fill this application. "
+             "The extension reads the form, and lists every field. "
+             "Each row says where its answer came from: your details, an earlier application, or your resume. "
+             "A field that already has a value starts unticked, so nothing you typed is overwritten."),
+    "fill": ("Check the rows, edit anything you like, and click Fill selected. "
+             "The form fills in, the way the site expects, and your resume is attached. "
+             "Even the long questions: it fills each answer from what you wrote before, for you to edit. "
+             "Scroll down and check every field. The extension never presses Submit. That is yours to do."),
+    "save": ("When you want to keep the job, click Save this posting. "
+             "It reads the page and adds the job to job watch, where you can track it "
+             "through to an offer. That is the whole flow."),
+}
+
+
 def walkthrough(rec: Recorder, stack, url: str) -> None:
     """What happens, in order, with what the caption shows and the voice says."""
     rec.step("intro", "A job application on the company's own site",
              "The jobwatch extension fills it from your own jobwatch, on your own computer.",
-             "Here is a job application, on the company's own site. "
-             "The jobwatch extension fills it in from your own jobwatch, on your own computer. "
-             "Your details, your earlier answers and your resume stay with you. "
-             "Nothing is sent to anyone else.")
-    rec.hold(3.0)
-    rec.scroll_form(260)
-    rec.hold(0.5)
-    rec.scroll_form(0)
+             NARRATION["intro"])
+    rec.hold(1.5)
+    n = rec.left()  # the whole form slides by while the voice talks, and back to the top
+    rec.glide(n * 55 // 100, rec.extent(rec.form))
+    rec.hold(n * 5 / 100 / FPS)
+    rec.glide(rec.left(), 0)
 
     rec.step("scan", "Fill this application",
              "It reads the form and lists every field, with where each answer comes from.",
-             "Open the side panel, and click Fill this application. "
-             "The extension reads the form, and lists every field. "
-             "Each row says where its answer came from: your details, an earlier application, or your resume. "
-             "A field that already has a value starts unticked, so nothing you typed is overwritten.")
+             NARRATION["scan"])
     rec.click(rec.panel.locator("#scan"))
     rec.until(lambda: rec.panel.locator(".row").count() > 0)
-    rec.hold(2.5)
-    rec.scroll_panel(360, steps=20)
-    rec.hold(2.5)
-    rec.scroll_panel(-360, steps=20)
-    rec.hold(1.5)
+    rec.hold(1.0)
+    # The field list and the form glide together, every source badge in turn, pausing on the essay questions.
+    n = rec.left()
+    rec.glide(n * 30 // 100, *rec.essay_at("Describe a project"))
+    rec.hold(n * 22 / 100 / FPS)
+    rec.glide(n * 28 // 100, rec.extent(rec.form), rec.extent(rec.panel))
+    rec.glide(rec.left(), 0, 0)
 
     rec.step("fill", "Fill selected",
              "Real events, so the board sees them. It never clicks Submit: that is yours to press.",
-             "Check the rows, edit anything you like, and click Fill selected. "
-             "The form fills in, the way the site expects, and your resume is attached. "
-             "Scroll down and check every field. The extension never presses Submit. That is yours to do.")
+             NARRATION["fill"])
     rec.click(rec.panel.locator("#fill"))
     rec.until(lambda: rec.panel.locator(".row .meta.good").count() > 0, timeout=30)
-    rec.hold(2.0)
-    rec.scroll_form(380, steps=30)
-    rec.hold(2.5)
-    rec.scroll_form(760, steps=30)
-    rec.hold(2.5)
+    rec.hold(1.0)
+    # Down through the filled form and the panel's Filled marks, stopping to let the essay answers be read.
+    n = rec.left()
+    rec.glide(n * 14 // 100, *rec.essay_at("Describe a project"))
+    rec.hold(n * 26 / 100 / FPS)
+    rec.glide(n * 14 // 100, *rec.essay_at("disagreed with a teammate"))
+    rec.hold(n * 22 / 100 / FPS)
+    rec.glide(rec.left(), rec.extent(rec.form), rec.extent(rec.panel))
 
     rec.step("save", "Save this posting",
              "Adds the job to jobwatch, so it is tracked with your application.",
-             "When you want to keep the job, click Save this posting. "
-             "It reads the page and adds the job to job watch, where you can track it "
-             "through to an offer. That is the whole flow.")
+             NARRATION["save"])
     rec.open_panel(stack, url)
     rec.hold(2.0)
     rec.click(rec.panel.locator("#posting"))
     rec.until(lambda: rec.panel.locator(".empty.done").count() > 0, timeout=30)
-    rec.hold(4.0)
+    rec.hold(1.5)
+    rec.scroll_form(0, steps=max(1, rec.left()))  # back up the form, so the picture keeps moving to the end
 
 
 def encode_step(ffmpeg: str, frames: Path, step: Step, out: Path) -> Path:
@@ -292,7 +357,8 @@ def encode_step(ffmpeg: str, frames: Path, step: Step, out: Path) -> Path:
     graph = (
         f"color=c=white:s={SIZE[0]}x{SIZE[1]}:r={FPS}[bg];"
         f"[bg][0:v]overlay=0:{CAPTION_H}:shortest=1[a];"
-        f"[a][1:v]overlay={FORM_W}:{CAPTION_H}[b];"
+        f"[1:v]pad={PANEL_W + GUTTER}:{BODY_H}:0:0,fillborders=right={GUTTER}:mode=smear[p];"
+        f"[a][p]overlay={FORM_W}:{CAPTION_H}[b];"
         f"[b][2:v]overlay=0:0,format=yuv420p[v]"
     )
     cmd = [ffmpeg, "-y", "-loglevel", "error"]
@@ -318,6 +384,15 @@ def make_tts(voice: str):
     return slidecast.MacSayTTS(voice=voice, phonetic=SAY_LIKE)
 
 
+def measure_narrations(tts, work: Path) -> dict:
+    """Seconds each step's narration takes, plus the clip's tail pad."""
+    seconds = {}
+    for key, text in NARRATION.items():
+        spoken = tts.synthesize(text, work / f"measure-{key}.wav")
+        seconds[key] = (spoken or 0) + TAIL_PAD
+    return seconds
+
+
 def record(target: Path, voice: str = "kokoro", headless: bool = True, playwright=None) -> Path:
     """Record and narrate the walkthrough into `target` (.mp4). Pass `playwright` to reuse one."""
     import slidecast
@@ -339,9 +414,13 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         form.set_viewport_size({"width": FORM_W, "height": BODY_H})
         form.goto(url)
 
+        # Each step's picture is paced to its narration, so measure the voice first (the same voice renders it).
+        tts = make_tts(voice)
         rec = Recorder(ctx, form, None, work)
+        rec.durations = measure_narrations(tts, work)
         rec.open_panel(stack, url)
         walkthrough(rec, stack, url)
+        rec.finish_step()
 
         # The end card is an HTML slide; slidecast renders it with a browser borrowed
         # from this Playwright, since a second sync Playwright can't start inside it.
@@ -349,7 +428,7 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         scope.callback(browser.close)
         # An upbeat composed bed (fast beats, ducked hard under the voice), punchy intro and outro stings, -16 LUFS.
         # The intro sting's hit lands first (lead_in), then the hook is spoken over the title card.
-        reel = slidecast.Reel(width=SIZE[0], height=SIZE[1], fps=FPS, tts=make_tts(voice),
+        reel = slidecast.Reel(width=SIZE[0], height=SIZE[1], fps=FPS, tts=tts,
                               renderer=slidecast.PlaywrightRenderer(browser=browser),
                               music=slidecast.Music("compose", volume=0.3, fade_in=1.0, fade_out=3.0, duck=True,
                                                     style="upbeat"),
@@ -360,7 +439,7 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), TITLE_NARRATION, tail_pad=0.6, min_duration=7.5)
         for step in rec.steps:
             clip = encode_step(ffmpeg, rec.frames, step, work / f"{step.key}.mp4")
-            reel.add_clip(clip, step.narration, tail_pad=0.5)
+            reel.add_clip(clip, step.narration, tail_pad=TAIL_PAD)
         reel.add(START_HTML.format(w=SIZE[0], h=SIZE[1]), START_NARRATION, tail_pad=0.8, min_duration=4.0)
         reel.add(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL), END_NARRATION,
                  tail_pad=1.2, min_duration=4.0)

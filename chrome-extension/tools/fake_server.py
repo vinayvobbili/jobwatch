@@ -34,6 +34,21 @@ ANSWERS = [
     {"question": "Describe a time you handled a production incident.",
      "answer": "A bad deploy took checkout down; I rolled back in ten minutes and wrote the fix.",
      "company": "Umbrella", "title": "Platform Engineer", "applied_at": "2026-08-02"},
+    {"question": "Describe a project you are most proud of and your role in it.",
+     "answer": "I led the move of our nightly batch jobs onto a small queue-based system. I wrote the design, "
+               "built the retry logic and trained two teammates to run it. Failed runs dropped by about "
+               "eighty percent, and on-call pages for it nearly stopped.",
+     "company": "Umbrella", "title": "Platform Engineer", "applied_at": "2026-08-02"},
+    {"question": "What are your greatest strengths, and one area you are working on?",
+     "answer": "I am good at turning a vague problem into a short written plan that a team can act on. "
+               "I am working on delegating sooner: I tend to fix things myself, so I now hand them off "
+               "with clear notes and check in a day later.",
+     "company": "Globex", "title": "SRE", "applied_at": "2026-09-14"},
+    {"question": "Tell us about a time you disagreed with a teammate and how you resolved it.",
+     "answer": "A teammate wanted to ship a risky change on a Friday, and I wanted to wait. We wrote down "
+               "what could go wrong and agreed on a staged rollout on Monday instead. It went out cleanly, "
+               "and we kept the checklist for later launches.",
+     "company": "Umbrella", "title": "Platform Engineer", "applied_at": "2026-08-02"},
     {"question": "How much notice do you need before starting?", "answer": "Two weeks.",
      "company": "Globex", "title": "SRE", "applied_at": "2026-09-14"},
 ]
