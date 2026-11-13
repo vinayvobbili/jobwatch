@@ -111,15 +111,18 @@ calendar:
 On a Mac, jobwatch can keep each follow-up day in the Reminders app. It is off until you ask, in the watchlist:
 
 ```yaml
-follow_ups: reminders    # off (the default) or reminders; macOS only
+follow_ups: reminders    # off (the default), reminders or reminders-all; macOS only
 ```
 
-Each open application (applied, screening, interviewing, offer) with a follow-up day then has one reminder,
-"Follow up: Initech — Platform Engineer", due that day at 9:00 with an alert. Its notes hold the next step, the
-posting's link and a line `jobwatch:<key>`, which is how jobwatch finds it again. When the day changes (the
-`--follow-up` of `jobwatch mark`, `jobwatch snooze`, the Applications page, the MCP `mark_job`) the reminder moves; when
-the day is cleared or the application is rejected or withdrawn it is completed. A reminder you complete yourself
-stays completed for that day. jobwatch never touches a reminder it didn't make.
+An application then gets one reminder, "Follow up: Initech — Platform Engineer", due its follow-up day at 9:00 with an
+alert, but only when there is something to do: its stage is live (screening, interviewing, offer), or it has a next
+step (`jobwatch mark --next`, the Applications page, the MCP `mark_job`). A snoozed application, or a plain applied
+one with only a day, gets none. `follow_ups: reminders-all` makes one for every open application with a day, snoozed
+ones too. The notes hold the next step, the posting's link and a line `jobwatch:<key>`, which is how jobwatch finds it
+again. When the day changes (the `--follow-up` of `jobwatch mark`, `jobwatch snooze`, the Applications page, the MCP
+`mark_job`) the reminder moves; when the day is cleared, the application is closed, snoozed or loses its next step, the
+reminder is deleted. A reminder you complete yourself stays completed for that day. jobwatch never touches a reminder
+without its `jobwatch:<key>` line.
 
 ```
 jobwatch reminders sync    # make Reminders match every follow-up now (also done when `jobwatch ui` starts); safe to repeat

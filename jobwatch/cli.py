@@ -935,7 +935,7 @@ def cmd_reminders(args, cfg, store):
         done = reminders.sync(cfg, store)
     except reminders.RemindersError as e:
         raise ValueError(str(e)) from None
-    print(f"Reminders: {done['created']} created, {done['moved']} moved, {done['completed']} completed, "
+    print(f"Reminders: {done['created']} created, {done['moved']} moved, {done['deleted']} deleted, "
           f"{done['kept']} already right")
 
 

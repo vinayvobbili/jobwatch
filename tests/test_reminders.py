@@ -19,7 +19,7 @@ class Osascript:
 
     def __init__(self):
         self.calls = []
-        self.reply = {"created": 0, "moved": 0, "completed": 0, "kept": 0}
+        self.reply = {"created": 0, "moved": 0, "deleted": 0, "kept": 0}
         self.fail = None
 
     def __call__(self, cmd, **kw):
@@ -53,7 +53,9 @@ def cfg_with(follow_ups="reminders"):
 
 
 def add(store, company="Initech", title="Platform Engineer", follow_up="2026-11-20", **kw):
+    """An applied job with a day and a next step, so it qualifies; next_step="" makes it a plain applied one."""
     url = f"https://jobs.{company.lower()}.example/1"
+    kw.setdefault("next_step", "check for a reply")
     return store.add(company, title, url=url, follow_up=follow_up, **kw).key
 
 
@@ -100,11 +102,48 @@ def test_a_stage_that_keeps_its_day_keeps_its_reminder(store, osa, status):
     assert [i["key"] for i in osa.calls[0]["items"]] == [key]
 
 
-def test_snoozing_moves_the_reminder(store, osa):
-    key = add(store)
-    until = store.snooze(key, 7)
+def test_a_live_stage_with_a_day_qualifies_without_a_next_step(store, osa):
+    key = add(store, next_step="")
+    store.set_status([key], "interviewing")
     reminders.refresh(cfg_with(), store, [key])
-    assert osa.calls[0]["items"][0]["due"] == reminders.due_epoch(until)
+    assert [i["key"] for i in osa.calls[0]["items"]] == [key]
+
+
+def test_a_next_step_with_a_day_qualifies_at_applied(store, osa):
+    key = add(store, next_step="nudge")
+    reminders.refresh(cfg_with(), store, [key])
+    assert [i["key"] for i in osa.calls[0]["items"]] == [key]
+
+
+def test_a_plain_applied_one_with_only_a_day_has_none(store, osa):
+    key = add(store, next_step="")
+    reminders.refresh(cfg_with(), store, [key])
+    assert osa.calls[0]["items"] == [] and osa.calls[0]["drop"] == [key]
+
+
+def test_a_next_step_without_a_day_has_none(store, osa):
+    key = add(store, follow_up="")
+    reminders.refresh(cfg_with(), store, [key])
+    assert osa.calls[0]["items"] == [] and osa.calls[0]["drop"] == [key]
+
+
+@pytest.mark.parametrize("status", ["applied", "interviewing"])
+def test_a_snoozed_one_has_none_and_loses_its_reminder(store, osa, status):
+    key = add(store)
+    store.set_status([key], status)
+    store.snooze(key, 7)
+    reminders.refresh(cfg_with(), store, [key])
+    assert osa.calls[0]["items"] == [] and osa.calls[0]["drop"] == [key]
+
+
+def test_reminders_all_keeps_the_old_rule(store, osa):
+    plain = add(store, next_step="")
+    asleep = add(store, "Globex", "Data Engineer")
+    until = store.snooze(asleep, 7)
+    reminders.refresh(cfg_with("reminders-all"), store, [plain, asleep])
+    items = {i["key"]: i for i in osa.calls[0]["items"]}
+    assert set(items) == {plain, asleep} and items[asleep]["due"] == reminders.due_epoch(until)
+    assert reminders.sync(cfg_with("reminders-all"), store) is not None
 
 
 def test_a_queued_job_has_no_reminder(store, osa):
@@ -116,9 +155,10 @@ def test_a_queued_job_has_no_reminder(store, osa):
 def test_sync_sends_every_open_follow_up_and_prunes_the_rest(store, osa):
     a, b = add(store), add(store, "Globex", "Data Engineer", "2026-11-22")
     add(store, "Umbrella", "SRE", "")
+    add(store, "Soylent", "DBA", "2026-11-23", next_step="")
     ended = add(store, "Hooli", "QA", "2026-11-21")
     store.set_status([ended], "rejected")
-    osa.reply = {"created": 2, "moved": 0, "completed": 1, "kept": 0}
+    osa.reply = {"created": 2, "moved": 0, "deleted": 1, "kept": 0}
     assert reminders.sync(cfg_with(), store) == osa.reply
     (call,) = osa.calls
     assert sorted(i["key"] for i in call["items"]) == sorted([a, b]) and call["prune"] is True
@@ -134,8 +174,24 @@ def test_sync_twice_asks_for_the_same_thing(store, osa):
 def test_the_script_finds_reminders_by_the_marker_and_only_those(store, osa):
     script = reminders.build_script(reminders.SYNC_BODY, {"items": [], "drop": [], "prune": True})
     assert "_contains: 'jobwatch:'" in script and r"/^jobwatch:(\S+)$/m" in script
-    # nothing outside `found` is ever completed, moved or created over: no unmarked reminder is reachable
-    assert script.count("completed = true") == 2 and "found[" in script
+    # nothing outside `found` is ever deleted, moved or created over: no unmarked reminder is reachable
+    assert script.count("app.delete(") == 2 and "found[" in script and "app.delete(h.r)" in script
+
+
+def test_sync_deletes_by_marker_what_no_longer_qualifies(store, osa):
+    key = add(store)
+    store.track(key, next_step="")  # no longer has a next step
+    reminders.sync(cfg_with(), store)
+    reminders.refresh(cfg_with(), store, [key])
+    assert osa.calls[0]["items"] == [] and osa.calls[0]["prune"] is True  # prune deletes every marked key not wanted
+    assert osa.calls[1]["drop"] == [key]
+    body = reminders.SYNC_BODY
+    assert "app.delete(h.r)" in body and "found[key]" in body and "completed = true" not in body
+
+
+def test_the_script_holds_reminders_by_id_not_by_position():
+    # a whose-query's q[i] is re-evaluated at each use, so deleting one shifts the rest onto the wrong reminders
+    assert "q[i]" not in reminders.SYNC_BODY and "byId(ids[i])" in reminders.SYNC_BODY
 
 
 def test_one_a_person_finished_for_the_same_day_is_not_made_again():
@@ -160,6 +216,7 @@ def test_not_a_mac_does_nothing(store, osa, monkeypatch):
 
 def test_the_setting_is_read_and_checked():
     assert config._follow_ups("Reminders", "x") == "reminders"
+    assert config._follow_ups("reminders-all", "x") == "reminders-all"
     with pytest.raises(config.ConfigError, match="follow_ups must be one of"):
         config._follow_ups("calendar", "x")
 
@@ -192,9 +249,9 @@ def test_sync_reports_a_failure_for_the_command(store, osa):
 
 def test_the_command_says_what_it_did(store, osa, capsys):
     add(store)
-    osa.reply = {"created": 1, "moved": 0, "completed": 0, "kept": 0}
+    osa.reply = {"created": 1, "moved": 0, "deleted": 0, "kept": 0}
     cli.cmd_reminders(None, cfg_with(), store)
-    assert "1 created, 0 moved, 0 completed, 0 already right" in capsys.readouterr().out
+    assert "1 created, 0 moved, 0 deleted, 0 already right" in capsys.readouterr().out
     with pytest.raises(ValueError, match="follow_ups: reminders"):
         cli.cmd_reminders(None, cfg_with("off"), store)
 
@@ -220,7 +277,8 @@ def test_the_page_track_and_snooze_keep_reminders_in_step(app, osa):
     osa.calls.clear()
     app.post_track({"key": key, "follow_up": "2026-12-05"})
     app.post_snooze({"key": key, "days": 3})
-    assert len(osa.calls) == 2 and all(c["items"][0]["key"] == key for c in osa.calls)
+    track, snooze = osa.calls
+    assert track["items"][0]["key"] == key and snooze["items"] == [] and snooze["drop"] == [key]  # snoozed: none
     assert app.get_applications({})["reminders"] is True
 
 

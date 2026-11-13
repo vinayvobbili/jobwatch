@@ -529,11 +529,12 @@ def _quiet(raw, path: Path) -> Quiet:
                     for k in Quiet.__dataclass_fields__})
 
 
-FOLLOW_UPS = ("off", "reminders")
+FOLLOW_UPS = ("off", "reminders", "reminders-all")
 
 
 def _follow_ups(raw, path: Path) -> str:
-    """follow_ups: where follow-up days go besides jobwatch's own pages: off (the default) or reminders."""
+    """follow_ups: where follow-up days go besides jobwatch's own pages: off (the default), reminders (only where
+    there's something to do) or reminders-all (every follow-up day)."""
     text = "off" if raw is None or raw is False else str(raw).strip().lower()
     if text in _OFF:
         return "off"
@@ -1370,9 +1371,10 @@ filters:
 #   interviewing: 10
 #   long: 45
 
-# follow_ups: reminders keeps one Apple Reminders reminder per open application's follow-up day (9:00, with
-# an alert), moved or completed as the day changes (macOS only; the first run asks to control Reminders).
-# `jobwatch reminders sync` makes Reminders match. Off by default.
+# follow_ups: reminders keeps one Apple Reminders reminder (9:00, with an alert) per application that has a
+# follow-up day and something to do: a live stage (screening, interviewing, offer) or a next step set. Moved
+# or deleted as that changes (macOS only; the first run asks to control Reminders). reminders-all: every open
+# application's follow-up day, snoozed ones too. `jobwatch reminders sync` makes Reminders match. Off by default.
 # follow_ups: reminders
 
 # Relevance: keyword -> weight. Title hits count double. Prefix "re:" for a regex.

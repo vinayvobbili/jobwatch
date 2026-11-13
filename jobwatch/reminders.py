@@ -1,10 +1,12 @@
 """Follow-up days in Apple Reminders (macOS only; off unless the watchlist says `follow_ups: reminders`).
 
-Each open application (applied, screening, interviewing, offer) with a follow-up day gets one reminder, "Follow up:
-Company — Role", due that day at 9:00 with an alert; its notes hold the next step, the posting's link and a marker
-line, `jobwatch:<key>`, which is how the reminder is found again. Change or clear the day, or close the application
-(rejected, withdrawn), and the reminder moves or is completed. Reminders jobwatch didn't make are never touched.
-One a person completes by hand for the same day stays completed: it isn't made again.
+An application with a follow-up day gets one reminder, "Follow up: Company — Role", due that day at 9:00 with an
+alert, when there is something to do: its stage is live (screening, interviewing, offer) or it has a next step set.
+A snoozed one, or a plain applied one with only a day, gets none (`follow_ups: reminders-all` makes one for every
+open application). The notes hold the next step, the posting's link and a marker line, `jobwatch:<key>`, which is how
+the reminder is found again. Change or clear the day, or an application stops qualifying (closed, snoozed, next step
+cleared), and the reminder moves or is deleted. Reminders without the marker are never touched. One a person
+completes by hand for the same day stays completed: it isn't made again.
 
 The Reminders app is driven through osascript and JXA, so nothing is installed. The first run asks macOS for
 permission to control Reminders. A failure never stops what the person was doing: it prints one line, once.
@@ -17,6 +19,8 @@ import subprocess
 import sys
 from datetime import date, datetime
 
+from .comps import LIVE
+from .quiet import snoozed_until
 from .store import ENDED, IN_PROGRESS, Store
 
 DUE_HOUR = 9
@@ -41,18 +45,19 @@ for (const l of app.lists()) {
   const q = l.reminders.whose({body: {_contains: 'jobwatch:'}});
   const n = q.length;
   if (!n) continue;
-  const bodies = q.body(), dues = q.dueDate(), done = q.completed();
+  // held by id: a query's own index shifts as others go
+  const bodies = q.body(), dues = q.dueDate(), done = q.completed(), ids = q.id();
   for (let i = 0; i < n; i++) {
     const m = /^jobwatch:(\\S+)$/m.exec(bodies[i] || '');
     if (!m) continue;
     (found[m[1]] = found[m[1]] || []).push(
-      {r: q[i], done: done[i], due: dues[i] ? Math.floor(dues[i].getTime() / 1000) : null});
+      {r: l.reminders.byId(ids[i]), done: done[i], due: dues[i] ? Math.floor(dues[i].getTime() / 1000) : null});
   }
 }
 """
 
 SYNC_BODY = _FIND + """
-const out = {created: 0, moved: 0, completed: 0, kept: 0};
+const out = {created: 0, moved: 0, deleted: 0, kept: 0};
 const want = {};
 for (const it of ARGS.items) want[it.key] = true;
 for (const it of ARGS.items) {
@@ -65,7 +70,7 @@ for (const it of ARGS.items) {
     if (same) { out.kept++; } else {
       r.name = it.title; r.body = it.notes; r.dueDate = due; r.remindMeDate = due; out.moved++;
     }
-    for (const extra of open.slice(1)) { extra.r.completed = true; out.completed++; }
+    for (const extra of open.slice(1)) { app.delete(extra.r); out.deleted++; }
   } else if (have.some(h => h.due === it.due)) {
     out.kept++;  // finished by hand for this day: leave it
   } else {
@@ -75,7 +80,7 @@ for (const it of ARGS.items) {
 }
 for (const key of Object.keys(found)) {
   if (want[key] || !(ARGS.prune || ARGS.drop.includes(key))) continue;
-  for (const h of found[key]) if (!h.done) { h.r.completed = true; out.completed++; }
+  for (const h of found[key]) { app.delete(h.r); out.deleted++; }
 }
 JSON.stringify(out);
 """
@@ -94,11 +99,11 @@ def build_script(body: str, args: dict) -> str:
     return _PRELUDE % json.dumps(args) + body
 
 
-def run_script(script: str) -> dict:
+def run_script(script: str, timeout: int = 120) -> dict:
     """Run JXA through osascript and return the JSON it printed."""
     try:
         proc = subprocess.run(["osascript", "-l", "JavaScript", "-e", script], check=False, capture_output=True,
-                              text=True, timeout=120)
+                              text=True, timeout=timeout)
     except FileNotFoundError:
         raise RemindersError("osascript isn't available") from None
     except subprocess.TimeoutExpired:
@@ -117,7 +122,7 @@ def run_script(script: str) -> dict:
 
 def enabled(cfg) -> bool:
     """Reminders sync is on: the watchlist asks for it and this is a Mac."""
-    return cfg.follow_ups == "reminders" and sys.platform == "darwin"
+    return cfg.follow_ups in ("reminders", "reminders-all") and sys.platform == "darwin"
 
 
 def due_epoch(day: str) -> int:
@@ -125,10 +130,12 @@ def due_epoch(day: str) -> int:
     return int(datetime.combine(date.fromisoformat(day), datetime.min.time()).replace(hour=DUE_HOUR).timestamp())
 
 
-def item(job, rec: dict) -> dict | None:
-    """What the reminder for this application should be, or None when it should have none: it isn't open or has no
-    follow-up day."""
+def item(job, rec: dict, everything: bool = False) -> dict | None:
+    """What the reminder for this application should be, or None when it should have none: it isn't open, has no
+    follow-up day, is snoozed, or has nothing to do (applied, no next step). everything: every open one with a day."""
     if rec["status"] not in IN_PROGRESS or not rec.get("follow_up"):
+        return None
+    if not everything and (snoozed_until(rec) or not (rec["status"] in LIVE or (rec.get("next_step") or "").strip())):
         return None
     notes = [rec["next_step"]] if rec.get("next_step") else []
     if job.url:
@@ -139,7 +146,9 @@ def item(job, rec: dict) -> dict | None:
 
 
 def _apply(items: list[dict], drop: list[str], prune: bool) -> dict:
-    return run_script(build_script(SYNC_BODY, {"items": items, "drop": drop, "prune": prune}))
+    # each change takes Reminders a few seconds, so a full sync after many changes needs far longer than one mark
+    return run_script(build_script(SYNC_BODY, {"items": items, "drop": drop, "prune": prune}),
+                      timeout=900 if prune else 120)
 
 
 def _warn(exc: Exception) -> None:
@@ -159,7 +168,7 @@ def refresh(cfg, store: Store, keys: list[str]) -> None:
         items, drop = [], []
         for key in dict.fromkeys(keys):
             job, rec = store.find(key)
-            if want := item(job, rec):
+            if want := item(job, rec, cfg.follow_ups == "reminders-all"):
                 items.append(want)
             else:
                 drop.append(job.key)
@@ -169,12 +178,15 @@ def refresh(cfg, store: Store, keys: list[str]) -> None:
 
 
 def sync(cfg, store: Store) -> dict:
-    """Make Reminders match every follow-up now: create the missing, move the changed, complete the ones whose
-    application is closed, has no day or is gone. Idempotent. Returns counts: created, moved, completed, kept.
+    """Make Reminders match every follow-up now: create the missing, move the changed, delete the ones whose
+    application is closed, has no day, no longer qualifies or is gone. Idempotent. Returns counts: created, moved,
+    deleted, kept.
     Raises RemindersError (the command prints it); off or not a Mac: nothing happens."""
     if not enabled(cfg):
-        return {"created": 0, "moved": 0, "completed": 0, "kept": 0}
-    items = [want for job, rec in store.jobs((*IN_PROGRESS, *ENDED), include_closed=True) if (want := item(job, rec))]
+        return {"created": 0, "moved": 0, "deleted": 0, "kept": 0}
+    everything = cfg.follow_ups == "reminders-all"
+    items = [want for job, rec in store.jobs((*IN_PROGRESS, *ENDED), include_closed=True)
+             if (want := item(job, rec, everything))]
     return _apply(items, [], prune=True)
 
 
