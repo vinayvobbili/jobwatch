@@ -29,13 +29,14 @@ import store_assets
 
 FPS = 15
 INTRO_SECONDS = 1.2  # the title card's first silent beat: the intro sting's hit lands, then the hook is spoken
-TITLE_NARRATION = ("Tired of typing the same answers into every job application? "
-                   "Meet jobwatch, your job-hunt helper. Let's see the Chrome extension fill one in.")
+TITLE_NARRATION = ("Every job application asks the same questions again, and the essays take the longest. "
+                   "The jobwatch Chrome extension answers them for you.")
 SIZE = store_assets.SCREEN
 CAPTION_H = store_assets.CAPTION_H
 TAIL_PAD = 0.5  # silence after a step's voice
-FULL_STAGE = {"installed"}  # steps recorded as one page across the stage
-MIN_SECONDS = {"installed": 6.5}  # a short line still gets time to look at
+FULL_STAGE = {"installed", "jobs", "resume"}  # steps recorded as one page across the stage
+# a short line still gets time to look at
+MIN_SECONDS = {"installed": 5.0, "jobs": 7.5, "resume": 4.0, "draft": 10.0, "submit": 8.0}
 GUTTER = 28  # a safe margin on the right: players and thumbnails that crop a few pixels must not cut the panel
 PANEL_W = store_assets.PANEL_W - GUTTER  # the panel's own width; its right-edge colour is smeared across the gutter
 BODY_H = store_assets.BODY_H
@@ -88,8 +89,8 @@ END_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CAR
   <div class="glow"></div>
   <div class="logo"><img src="{icon}"></div>
   <h1><b>jobwatch</b>: Application Filler</h1>
-  <p>A free, open-source Chrome extension. Nothing leaves your computer.</p>
-  <div class="chips"><span>Chrome Web Store</span><span>PyPI: jobwatch</span><span>GitHub</span></div>
+  <p>A free, open-source Chrome extension. You review every field, and press Submit yourself.</p>
+  <div class="chips"><span>Chrome extension</span><span>PyPI: jobwatch</span><span>GitHub</span></div>
   <code>{url}</code>
 </body></html>""")
 
@@ -111,18 +112,43 @@ START_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + C
   <ol>
     <li><span><code>pip install jobwatch</code> then <code>jobwatch ui</code>
         <small>(runs on your computer)</small></span></li>
-    <li><span>Add <b>jobwatch: Application Filler</b> to Chrome <small>(search the Web Store)</small></span></li>
+    <li><span>Add <b>jobwatch: Application Filler</b> to Chrome</span></li>
     <li><span>Paste the token from jobwatch's Settings into the extension's options</span></li>
     <li><span>Open an application, click the icon, press <b>Fill this application</b></span></li>
   </ol>
 </body></html>""")
 
-START_NARRATION = ("To get started, install jobwatch from PyPI and run jobwatch ui. Add the extension from the "
-                   "Chrome Web Store, and paste the token from jobwatch's settings into its options. "
+START_NARRATION = ("It takes a minute. Install jobwatch from PyPI and run jobwatch ui. Add the extension, "
+                   "and paste the token from jobwatch's settings into its options. "
                    "Then open an application, and press Fill.")
 
-END_NARRATION = ("You press Submit yourself. jobwatch is open source, on PyPI and GitHub. "
+END_NARRATION = ("Fill your next application in seconds. jobwatch is free and open source, on PyPI and GitHub. "
                  "Less typing, more applying. Good luck out there!")
+
+# What the viewer should trust, each line true of the product: it fills only what you tick (page.js fill, sidepanel.js),
+# never clicks Submit (page.js refuses submit buttons), is MIT licensed, and the extension talks only to the
+# jobwatch on your own computer (PRIVACY.md); a draft is written by the model chosen in jobwatch's Settings.
+TRUST_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CARD_CSS + """
+  h2 {{ position: relative; margin: 0 0 30px; font-size: 54px; font-weight: 800; letter-spacing: -0.02em; }}
+  h2 b {{ background: linear-gradient(90deg, #b9a8ff, #f08cff); -webkit-background-clip: text; color: transparent; }}
+  ul {{ position: relative; list-style: none; margin: 0; padding: 0; text-align: left; }}
+  li {{ display: flex; align-items: center; gap: 20px; margin: 0 0 20px; font-size: 30px; color: #e6e2fb; }}
+  li::before {{ content: "\\2713"; flex: none; width: 46px; height: 46px; border-radius: 50%; font-weight: 800;
+                font-size: 26px; display: flex; align-items: center; justify-content: center; color: #fff;
+                background: linear-gradient(135deg, #6d5cff, #c04af0); box-shadow: 0 0 24px rgb(176 92 246 / 0.5); }}
+</style></head><body>
+  <div class="glow"></div>
+  <h2>You stay in <b>control</b></h2>
+  <ul>
+    <li>You review every field before it is filled</li>
+    <li>It never presses Submit: that is yours</li>
+    <li>Free and open source</li>
+    <li>It talks only to the jobwatch on your own computer</li>
+  </ul>
+</body></html>""")
+
+TRUST_NARRATION = ("You review every field, and it never presses Submit. It is free and open source, "
+                   "and the extension talks only to the jobwatch on your own computer.")
 
 CURSOR_JS = """() => {
   if (document.getElementById('__demo_cursor')) return;
@@ -142,6 +168,7 @@ class Step:
     first_frame: int
     frames: int = 0
     full: bool = False  # one page across the whole stage (no side panel), e.g. chrome://extensions
+    caption: Path | None = None  # a still caption for a replayed step (its frames come from another step's)
 
 
 class Recorder:
@@ -158,23 +185,38 @@ class Recorder:
         self.durations = {}  # step key -> seconds of narration plus tail, measured before recording
         self.budget = 0
         self.stage = None  # a full-stage page being recorded instead of the form and panel
+        self.fill = None  # measure_fill's numbers
+
+    def caption(self, key: str, title: str, subtitle: str) -> Path:
+        """The caption strip as an image. It is only CAPTION_H tall, so it can never cover the page or the panel."""
+        page = self.ctx.new_page()
+        page.set_viewport_size({"width": SIZE[0], "height": CAPTION_H})
+        page.set_content(CAPTION_HTML.format(w=SIZE[0], h=CAPTION_H, cap=CAPTION_H, title=title, subtitle=subtitle))
+        path = self.work / f"caption-{key}.png"
+        page.screenshot(path=str(path), omit_background=True)
+        page.close()
+        return path
 
     def step(self, key: str, title: str, subtitle: str, narration: str) -> None:
         """Start a new step: a new caption on screen and a new narrated clip."""
         self.finish_step()
-        page = self.ctx.new_page()
-        # The layer is only the caption strip (CAPTION_H tall), so it can never cover the page or the panel.
-        page.set_viewport_size({"width": SIZE[0], "height": CAPTION_H})
-        page.set_content(CAPTION_HTML.format(w=SIZE[0], h=CAPTION_H, cap=CAPTION_H, title=title, subtitle=subtitle))
-        self.layer = self.work / f"caption-{key}.png"
-        page.screenshot(path=str(self.layer), omit_background=True)
-        page.close()
+        self.layer = self.caption(key, title, subtitle)
         self.steps.append(Step(key, narration, self.count, full=key in FULL_STAGE))
         self.budget = round(self.durations.get(key, 0) * FPS)
 
     def left(self, end_hold: float = 0.4) -> int:
         """Frames still to record so this step's picture runs as long as its narration (less a short end hold)."""
         return max(0, self.budget - self.steps[-1].frames - round(end_hold * FPS))
+
+    def measure_fill(self) -> None:
+        """How long Fill selected really took (in the panel, from the click to its last row filled), how many fields it
+        filled, and how many of them are essays: the numbers the opening flash quotes. Measured, never assumed."""
+        got = self.panel.evaluate("() => window.__fill")
+        essays = self.form.evaluate(
+            "() => [...document.querySelectorAll('textarea')].filter(t => t.value.length > 150).length")
+        if got and got["t0"] is not None and got["t1"] is not None:
+            self.fill = {"seconds": (got["t1"] - got["t0"]) / 1000, "fields": got["n"], "essays": essays,
+                         "first": self.steps[-1].first_frame, "frames": self.steps[-1].frames}
 
     def finish_step(self) -> None:
         """Hold the last picture for whatever the narration still needs, so a clip is never shorter than its voice."""
@@ -291,7 +333,19 @@ class Recorder:
         return self.panel
 
 
-HIGHLIGHT_JS = """(e) => {
+MEASURE_FILL_JS = """() => {
+  const f = window.__fill = { t0: null, t1: null, n: 0 };
+  document.getElementById('fill').addEventListener('click', () => {
+    f.t0 = performance.now();
+    f.n = document.querySelectorAll('.row input[type=checkbox]:checked').length;
+  }, true);
+  new MutationObserver(() => {
+    const done = document.querySelectorAll('.row .meta.good').length;
+    if (f.t0 !== null && f.t1 === null && done >= f.n) f.t1 = performance.now();
+  }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
+}"""
+
+HIGHLIGHT_JS ="""(e) => {
   e.style.transition = 'box-shadow .6s, outline-color .6s';
   e.style.borderRadius = '14px';
   e.style.outline = '3px solid #8b5cf6';
@@ -327,38 +381,151 @@ def show_installed(rec: Recorder) -> None:
     page.close()
 
 
+def show_resume(rec: Recorder, stack) -> None:
+    """The made-up resume (demo/resume.html), with the bullet that the next step's draft will quote outlined."""
+    rec.step("resume", "Your resume has the answer",
+             "Some form questions have no earlier answer, but your resume does.", NARRATION["resume"])
+    page = rec.ctx.new_page()
+    page.set_viewport_size({"width": SIZE[0], "height": BODY_H})
+    page.emulate_media(color_scheme="light")
+    page.goto(stack.url(FORM_URL[0], "/resume.html"))
+    rec.stage = page
+    rec.hold(1.2)
+    page.locator("#k8s").evaluate(HIGHLIGHT_JS)
+    rec.hold(max(0.0, rec.left() / FPS))
+    rec.finish_step()
+    rec.stage = None
+    page.close()
+
+
+def draft_from_resume(rec: Recorder) -> None:
+    """"Draft with jobwatch" on a question no earlier answer matches: the product has the chat's model write it from
+    the resume (autofill.draft, POST /ext/draft); the panel badges the row "Draft" and holds it unticked, so tick it
+    and fill again to see it land in the form."""
+    rec.step("draft", "Drafted from your resume",
+             "Drafted from your resume, with your real numbers. You read it and edit it before it is filled.",
+             NARRATION["draft"])
+    row = rec.panel.locator(".row", has_text="Kubernetes")
+    rec.glide(18, *rec.essay_at("Kubernetes"))
+    rec.hold(1.0)
+    rec.click(row.get_by_text("Draft with jobwatch"))
+    rec.until(lambda: row.locator("textarea").input_value() != "", timeout=30)
+    rec.hold(2.5)  # the drafted answer sits in the panel, to be read
+    rec.click(row.locator("input[type=checkbox]"))
+    rec.click(rec.panel.locator("#fill"))
+    rec.until(lambda: rec.form.locator("#question_11").input_value() != "", timeout=30)
+    rec.glide(18, rec.essay_at("Kubernetes")[0])
+    rec.hold(max(0.0, rec.left() / FPS))
+    rec.finish_step()
+
+
 NARRATION = {
-    "intro": ("Here is a job application, on the company's own site. "
-              "The jobwatch extension fills it in from your own jobwatch, on your own computer. "
-              "Your details, your earlier answers and your resume stay with you. "
-              "Nothing is sent to anyone else."),
-    "installed": "Add jobwatch to Chrome, and it shows up with your other extensions.",
-    "scan": ("Open the side panel, and click Fill this application. "
-             "The extension reads the form, and lists every field. "
-             "Each row says where its answer came from: your details, an earlier application, or your resume. "
-             "A field that already has a value starts unticked, so nothing you typed is overwritten."),
-    "fill": ("Check the rows, edit anything you like, and click Fill selected. "
-             "The form fills in, the way the site expects, and your resume is attached. "
-             "Even the long questions: it fills each answer from what you wrote before, for you to edit. "
-             "Scroll down and check every field. The extension never presses Submit. That is yours to do."),
-    "save": ("When you want to keep the job, click Save this posting. "
-             "It reads the page and adds the job to job watch, where you can track it "
-             "through to an offer. That is the whole flow."),
+    "installed": "Add jobwatch to Chrome, and it sits with your other extensions.",
+    "jobs": "Here's a job jobwatch found. Let's apply to this one.",
+    "intro": ("Here is the application, on the company's own site. "
+              "The extension fills it in from your own jobwatch."),
+    "scan": ("Open the side panel, and press Fill this application. "
+             "It lists every field, and where each answer comes from."),
+    "fill": ("Press Fill selected. Your details and your earlier answers go in, even the long essays. "
+             "Check everything, and edit anything you like."),
+    "resume": "Some questions have no earlier answer. But your resume does.",
+    "draft": "jobwatch drafts one from it, using your real numbers, for you to edit.",
+    "submit": ("Now press Submit yourself. jobwatch keeps every answer you sent, "
+               "ready for next time and for interview prep."),
 }
 
 
-def walkthrough(rec: Recorder, stack, url: str) -> None:
+INITECH_KEY = "ashby:initech:c1"  # the demo store's Initech Platform Engineer
+
+
+@contextlib.contextmanager
+def demo_ui(form_url: str):
+    """`jobwatch ui` on a throwaway demo store (scripts/demo/seed.py: made-up companies, jobs and resume only), whose
+    Initech Platform Engineer posting links to the demo form. Yields the page's URL (jobwatch.localhost:<port>).
+
+    It never touches the real watchlist or store: everything lives in a temp folder, which is checked below to hold
+    the demo marker and the config and state before the server starts, and JOBWATCH_CONFIG points at it meanwhile.
+    """
+    import importlib.util
+    import threading
+
+    from jobwatch.web import APP_HOST, serve
+
+    spec = importlib.util.spec_from_file_location("demo_seed", store_assets.REPO_DIR / "scripts" / "demo" / "seed.py")
+    seed = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seed)
+    initech = seed.job("ashby", "initech", "Initech", "c1", "Platform Engineer",
+                       ["Denver, CO, United States", "Remote, United States"], 190000, 240000, 0, seed.PLATFORM)
+    initech.url = form_url
+    seed.BOARDS[("ashby", "initech")][0] = initech
+    seed.FIT[INITECH_KEY] = (88, 6, 7, ["GPU serving experience"], "Strong match on Python, Kubernetes and Terraform.")
+    with tempfile.TemporaryDirectory(prefix="jobwatch-demo-ui-") as tmp:
+        root = Path(tmp).resolve()
+        config = seed.seed(root / "demo")
+        assert config.resolve().is_relative_to(root) and (config.parent / seed.MARK).is_file(), \
+            "the demo UI must run on its own throwaway store"
+        assert (config.parent / "state" / "state.db").is_file()
+        before = os.environ.get("JOBWATCH_CONFIG")
+        os.environ["JOBWATCH_CONFIG"] = str(config)
+        server = serve(config, port=0, open_browser=False)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            yield f"http://{APP_HOST}:{server.server_address[1]}/"
+        finally:
+            server.shutdown()
+            server.server_close()
+            if before is None:
+                os.environ.pop("JOBWATCH_CONFIG", None)
+            else:
+                os.environ["JOBWATCH_CONFIG"] = before
+
+
+def show_jobs(rec: Recorder, ui_url: str, form_url: str) -> None:
+    """jobwatch's own page: the Initech job in the list, outlined, then the real Apply click opens the form."""
+    rec.step("jobs", "A job jobwatch found",
+             "It tracks the jobs for you. Pick one, and press Apply to open the company's form.", NARRATION["jobs"])
+    page = rec.ctx.new_page()
+    page.set_viewport_size({"width": SIZE[0], "height": BODY_H})
+    page.emulate_media(color_scheme="light")
+    page.goto(ui_url + "#today")
+    card = page.locator(f"[id='job-{INITECH_KEY}']")
+    card.wait_for()
+    page.wait_for_timeout(1500)  # entrance animations
+    rec.stage = page
+    rec.hold(1.0)
+    top = card.evaluate("(e) => e.getBoundingClientRect().top + window.scrollY") - 120
+    start = page.evaluate("() => window.scrollY")
+    for i in range(1, 25):  # an eased scroll that brings the Initech card up
+        t = i / 24
+        page.evaluate("(y) => window.scrollTo(0, y)", start + (top - start) * t * t * (3 - 2 * t))
+        rec.frame()
+    card.evaluate(HIGHLIGHT_JS)
+    rec.hold(max(1.5, rec.left() / FPS - 2.0))
+    with page.context.expect_page() as opened:
+        card.get_by_role("link", name="Apply").click()
+    form = opened.value
+    form.set_viewport_size({"width": SIZE[0], "height": BODY_H})
+    form.wait_for_load_state()
+    assert form.url == form_url, f"Apply opened {form.url}, not the demo form"
+    rec.stage = form
+    rec.hold(1.5)
+    rec.finish_step()
+    rec.stage = None
+    form.close()
+    page.close()
+
+
+def walkthrough(rec: Recorder, stack, url: str, ui_url: str) -> None:
     """What happens, in order, with what the caption shows and the voice says."""
+    show_installed(rec)
+    show_jobs(rec, ui_url, url)
     rec.step("intro", "A job application on the company's own site",
              "The jobwatch extension fills it from your own jobwatch, on your own computer.",
              NARRATION["intro"])
-    rec.hold(1.5)
-    n = rec.left()  # the whole form slides by while the voice talks, and back to the top
+    rec.hold(0.8)
+    n = rec.left()  # the form slides by while the voice talks, and back to the top
     rec.glide(n * 55 // 100, rec.extent(rec.form))
-    rec.hold(n * 5 / 100 / FPS)
     rec.glide(rec.left(), 0)
-
-    show_installed(rec)
 
     rec.step("scan", "Fill this application",
              "It reads the form and lists every field, with where each answer comes from.",
@@ -376,9 +543,11 @@ def walkthrough(rec: Recorder, stack, url: str) -> None:
     rec.step("fill", "Fill selected",
              "Real events, so the board sees them. It never clicks Submit: that is yours to press.",
              NARRATION["fill"])
+    rec.panel.evaluate(MEASURE_FILL_JS)
     rec.click(rec.panel.locator("#fill"))
     rec.until(lambda: rec.panel.locator(".row .meta.good").count() > 0, timeout=30)
     rec.hold(1.0)
+    rec.measure_fill()
     # Down through the filled form and the panel's Filled marks, stopping to let the essay answers be read.
     n = rec.left()
     rec.glide(n * 14 // 100, *rec.essay_at("Describe a project"))
@@ -387,15 +556,27 @@ def walkthrough(rec: Recorder, stack, url: str) -> None:
     rec.hold(n * 22 / 100 / FPS)
     rec.glide(rec.left(), rec.extent(rec.form), rec.extent(rec.panel))
 
-    rec.step("save", "Save this posting",
-             "Adds the job to jobwatch, so it is tracked with your application.",
-             NARRATION["save"])
-    rec.open_panel(stack, url)
-    rec.hold(2.0)
-    rec.click(rec.panel.locator("#posting"))
-    rec.until(lambda: rec.panel.locator(".empty.done").count() > 0, timeout=30)
-    rec.hold(1.5)
-    rec.scroll_form(0, steps=max(1, rec.left()))  # back up the form, so the picture keeps moving to the end
+    show_resume(rec, stack)
+    draft_from_resume(rec)
+
+    submit_the_form(rec)
+
+
+def submit_the_form(rec: Recorder) -> None:
+    """The person's own Submit click (the extension never presses it). The script in the page snapshots the answers
+    at that moment and the service worker sends them to jobwatch (POST /ext/answers), which keeps them in the job's
+    package; the panel says so. The demo form then shows its thank-you, which is what lets jobwatch record it."""
+    rec.step("submit", "You press Submit",
+             "jobwatch keeps every answer you sent, for next time and for interview prep.", NARRATION["submit"])
+    button = rec.form.locator("button[type=submit]")
+    rec.glide(20, rec.extent(rec.form))
+    rec.hold(0.8)
+    button.evaluate(HIGHLIGHT_JS)
+    rec.hold(1.2)
+    button.click()
+    rec.until(lambda: rec.panel.locator("#toast").count() > 0, timeout=30)
+    rec.hold(max(0.0, rec.left() / FPS))
+    rec.finish_step()
 
 
 def encode_step(ffmpeg: str, frames: Path, step: Step, out: Path) -> Path:
@@ -414,7 +595,12 @@ def encode_step(ffmpeg: str, frames: Path, step: Step, out: Path) -> Path:
         layers = (layers[0], layers[2])
     cmd = [ffmpeg, "-y", "-loglevel", "error"]
     for layer in layers:
-        cmd += ["-framerate", str(FPS), "-start_number", str(step.first_frame), "-i", str(frames / layer)]
+        if step.caption and layer.startswith("layer"):
+            cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{step.frames / FPS:.4f}", "-i", str(step.caption)]
+            continue
+        # -t stops each sequence at the step's last frame; the frames after it may be another kind of step's
+        cmd += ["-framerate", str(FPS), "-start_number", str(step.first_frame),
+                "-t", f"{(step.frames - 0.5) / FPS:.4f}", "-i", str(frames / layer)]
     cmd += ["-filter_complex", graph, "-map", "[v]", "-frames:v", str(step.frames),
             "-c:v", "libx264", "-crf", "16", "-tune", "stillimage", str(out)]
     subprocess.run(cmd, check=True)
@@ -444,6 +630,25 @@ def measure_narrations(tts, work: Path) -> dict:
     return seconds
 
 
+def payoff_step(rec: Recorder, tts, work: Path) -> Step | None:
+    """A flash of the end result for the start of the video: the filled form and its essays, replayed from the fill
+    step's own frames, with what the run measured (fields, essays, seconds). None when nothing was measured."""
+    fill = rec.fill
+    if not fill or fill["fields"] < 1:
+        return None
+    seconds = max(1, round(fill["seconds"]))
+    spoken = (f"{fill['fields']} fields, including {fill['essays']} essay{'s' if fill['essays'] != 1 else ''}, "
+              f"filled in about {seconds} second{'s' if seconds != 1 else ''}.")
+    length = (tts.synthesize(spoken, work / "measure-payoff.wav") or 4.0) + TAIL_PAD
+    frames = round(max(length, 5.0) * FPS)
+    first = fill["first"] + fill["frames"] // 5  # from just after the click: the form fills, then its essays show
+    if first + frames > fill["first"] + fill["frames"]:
+        first, frames = fill["first"], min(frames, fill["frames"])
+    caption = rec.caption("payoff", f"{fill['fields']} fields in about {seconds} second{'s' if seconds != 1 else ''}",
+                          "Your details, your earlier answers and your essays, filled in for you to review.")
+    return Step("payoff", spoken, first, frames, caption=caption)
+
+
 def record(target: Path, voice: str = "kokoro", headless: bool = True, playwright=None) -> Path:
     """Record and narrate the walkthrough into `target` (.mp4). Pass `playwright` to reuse one."""
     import slidecast
@@ -470,7 +675,8 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         rec = Recorder(ctx, form, None, work)
         rec.durations = measure_narrations(tts, work)
         rec.open_panel(stack, url)
-        walkthrough(rec, stack, url)
+        ui_url = scope.enter_context(demo_ui(url))
+        walkthrough(rec, stack, url, ui_url)
         rec.finish_step()
 
         # The end card is an HTML slide; slidecast renders it with a browser borrowed
@@ -488,9 +694,13 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
                               lead_in=INTRO_SECONDS, loudness=-16)
         icon = store_assets.data_uri(harness.EXTENSION_DIR / "icons" / "icon128.png")
         reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), TITLE_NARRATION, tail_pad=0.6, min_duration=7.5)
-        for step in rec.steps:
+        steps = rec.steps
+        if payoff := payoff_step(rec, tts, work):  # the result up front, right after the hook
+            steps = [payoff, *steps]
+        for step in steps:
             clip = encode_step(ffmpeg, rec.frames, step, work / f"{step.key}.mp4")
             reel.add_clip(clip, step.narration, tail_pad=TAIL_PAD, min_duration=MIN_SECONDS.get(step.key, 0))
+        reel.add(TRUST_HTML.format(w=SIZE[0], h=SIZE[1]), TRUST_NARRATION, tail_pad=0.6, min_duration=6.0)
         reel.add(START_HTML.format(w=SIZE[0], h=SIZE[1]), START_NARRATION, tail_pad=0.8, min_duration=4.0)
         reel.add(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL), END_NARRATION,
                  tail_pad=1.2, min_duration=4.0)
