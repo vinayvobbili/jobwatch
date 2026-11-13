@@ -241,6 +241,7 @@ def walkthrough(rec: Recorder, stack, url: str) -> None:
              "The jobwatch extension fills it from your own jobwatch, on your own computer.",
              "Here is a job application, on the company's own site. "
              "The jobwatch extension fills it in from your own jobwatch, on your own computer. "
+             "Your details, your earlier answers and your resume stay with you. "
              "Nothing is sent to anyone else.")
     rec.hold(3.0)
     rec.scroll_form(260)
@@ -250,8 +251,8 @@ def walkthrough(rec: Recorder, stack, url: str) -> None:
     rec.step("scan", "Fill this application",
              "It reads the form and lists every field, with where each answer comes from.",
              "Open the side panel, and click Fill this application. "
-             "Every field is listed, and each row says where its answer came from: "
-             "your details, an earlier application, or your resume. "
+             "The extension reads the form, and lists every field. "
+             "Each row says where its answer came from: your details, an earlier application, or your resume. "
              "A field that already has a value starts unticked, so nothing you typed is overwritten.")
     rec.click(rec.panel.locator("#scan"))
     rec.until(lambda: rec.panel.locator(".row").count() > 0)
@@ -278,7 +279,7 @@ def walkthrough(rec: Recorder, stack, url: str) -> None:
              "Adds the job to jobwatch, so it is tracked with your application.",
              "When you want to keep the job, click Save this posting. "
              "It reads the page and adds the job to job watch, where you can track it "
-             "through to an offer.")
+             "through to an offer. That is the whole flow.")
     rec.open_panel(stack, url)
     rec.hold(2.0)
     rec.click(rec.panel.locator("#posting"))
@@ -363,7 +364,7 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         reel.add(START_HTML.format(w=SIZE[0], h=SIZE[1]), START_NARRATION, tail_pad=0.8, min_duration=4.0)
         reel.add(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL), END_NARRATION,
                  tail_pad=1.2, min_duration=4.0)
-        return reel.render(target, ffmpeg=ffmpeg, fade_in=0.6, fade_out=1.0, make_poster=True)
+        return reel.render(target, ffmpeg=ffmpeg, fade_out=1.0, make_poster=True)
 
 
 def main(argv=None) -> int:
