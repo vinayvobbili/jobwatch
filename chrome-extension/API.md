@@ -96,6 +96,20 @@ are the form's other written answers so far (drafted, past or typed): the draft 
 isn't set up answers `400 {"error": "..."}` saying what to set up. Drafts are for the person to review: the
 extension never ticks one by default.
 
+### `POST /ext/answers`
+
+Sent the moment the person presses the form's Submit (the form's `submit` event, or a click on its submit button),
+from the service worker, so a page that navigates away loses nothing.
+
+```json
+{"url": "<the page's address>", "answers": [{"question": "Notice period?", "answer": "Two weeks."}]}
+```
+
+→ `{"saved": true, "key": "ashby:initech/4f1c…", "status": "queued", "count": 1}`. The answers, as they stood
+(the person's own edits included), replace the answers in the job's package; pressing Submit again (after a
+validation error, say) updates the same package. The job's status is **not** changed: only a confirmation page
+(`/ext/submitted`) records an application. A page jobwatch doesn't know gets `{"saved": false, "why": "…"}`.
+
 ### `POST /ext/submitted`
 
 Sent after the person submits the form.

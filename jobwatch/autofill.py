@@ -221,6 +221,25 @@ def submitted(cfg: Config, store: Store, body: dict) -> dict:
     return {"key": job.key, "status": rec["status"], "added": added}
 
 
+def keep_answers(store: Store, body: dict) -> dict:
+    """What POST /ext/answers does: the form's answers, as they stood when the person pressed Submit, kept in the
+    job's package. It never changes the job's status: only a confirmation page or email says an application went
+    through (see `submitted`). Pressing Submit again (after a validation error, say) replaces the answers in the
+    same package. A page jobwatch doesn't know is not saved (`saved` false), since there is no job to keep them for."""
+    url = str(body.get("url") or "").strip()
+    if not url:
+        raise ValueError("send the page's address (url)")
+    sent = body.get("answers")
+    if not isinstance(sent, list) or not sent:
+        raise ValueError("send the form's answers")
+    found = job_for(store, url)
+    if not found:
+        return {"saved": False, "why": "jobwatch doesn't know this job: save the posting first"}
+    job, rec = found
+    store.package(job.key).write(answers=sent)
+    return {"saved": True, "key": job.key, "status": rec["status"], "count": len(sent)}
+
+
 MAX_TEXT = 60_000  # a posting's text, as much as the extension may send
 
 

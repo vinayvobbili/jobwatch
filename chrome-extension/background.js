@@ -408,6 +408,22 @@ async function captured(tabId, msg, sender) {
   const url = (sender.tab && sender.tab.url) || sender.url || '';
   const pending = { url, pairs: msg.pairs || [], info: msg.info || {}, resume: msg.resume || '', at: Date.now() };
   await chrome.storage.session.set({ [pendingKey(tabId)]: pending });
+  await keepAnswers(tabId, pending);
+}
+
+/**
+ * The snapshot taken when the person pressed Submit goes to jobwatch straight away, from here, so a page that
+ * navigates away loses nothing. It only keeps the answers in the job's package: it never marks the job applied
+ * (that waits for the page to look like a confirmation, see record). Pressing Submit again updates the same package.
+ */
+async function keepAnswers(tabId, pending) {
+  if (!pending.pairs.length) return;
+  try {
+    const r = await api('/ext/answers', { method: 'POST', body: { url: pending.url, answers: pending.pairs } });
+    if (r.saved) await toast(tabId, 'Answers saved to your jobwatch application.', true);
+  } catch {
+    /* an older jobwatch without /ext/answers, or none running: the confirmation path still records them */
+  }
 }
 
 async function toast(tabId, text, ok) {

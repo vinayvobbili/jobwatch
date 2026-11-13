@@ -36,16 +36,17 @@ nothing else; the form's own site receives them only when you press its Submit b
 
 **Where what it reads goes:** only to your own jobwatch, which runs on your computer (`http://127.0.0.1`, or
 `localhost`). The extension sends it the page's address, the text of a question you ask it to draft together with your
-other written answers on that form (so a draft doesn't repeat them), and, after you submit an application, the
-questions and answers on the form (not your name, contact details or voluntary self-identification answers), the
-company and job title, and the name of the resume file; and the job cards of a list you import. What jobwatch does with a draft request, such as which language
+other written answers on that form (so a draft doesn't repeat them), and, when you press the form's Submit, the
+questions and answers on the form as they stood (not your name, contact details or voluntary self-identification
+answers), which jobwatch keeps in that job's application package; once the page shows it went through, also the
+company and job title and the name of the resume file, so the application is recorded; and the job cards of a list you import. What jobwatch does with a draft request, such as which language
 model it asks, is set in jobwatch, not in the extension. The extension's authors run no server and receive nothing.
 
 **What it stores:**
 - **In Chrome, on this computer:** the server address and token you enter in the options page; the number of pages
   and the passive-mode choice you set in the panel; and the job cards passive mode noted, until you import them.
 - **In the browser's session memory, until you close the tab or the browser:** the answers captured when you press
-  Submit, until the application is recorded.
+  Submit, until the application is recorded (they have already been sent to your own jobwatch by then).
 
 **What it doesn't do:** it never submits a form for you, has no analytics, no tracking, no advertising, no sale or
 transfer of data, and no reading of any other site (passive mode runs only on linkedin.com and indeed.com).

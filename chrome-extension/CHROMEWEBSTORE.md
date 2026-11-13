@@ -36,7 +36,7 @@ How it works
 • Each field is a row with a badge: Your details (name, email, phone, links, work authorization), Past answer (an answer you gave on an earlier application, with the question and company it came from), Draft (written by jobwatch for a question nothing matched, never filled until you tick it) or Resume (the file jobwatch keeps for that job).
 • Edit any value, tick the rows you want, press Fill selected.
 • Read the form and submit it yourself. The extension never clicks Submit, Next or any button that sends the form.
-• After you submit, jobwatch records the application and keeps your answers for the next form.
+• When you press the form's own Submit, jobwatch keeps the answers as they stood (your edits included) in that job's application package, and the panel says so. That alone never marks the job applied: only a confirmation page does. Your answers are kept for the next form and for interview prep.
 • On a LinkedIn job, press Open the company's posting and the extension presses LinkedIn's Apply button for you, so the company's own page opens. jobwatch reads the posting there. On a company page it can't read, press Save this posting to jobwatch.
 • On a LinkedIn or Indeed list of jobs, press Read the jobs on this list to send the list's job cards to your jobwatch. While you browse those two sites, the job cards you see are also noted on your computer, and nothing leaves it until you press Import. A checkbox in the side panel turns this off.
 
@@ -143,8 +143,8 @@ unticked.
 | Personal communications | No | | | |
 | Location | No | | The city and state in the user's details are an address for the form, not the device's location. | |
 | Web history | No | | Only the active tab's address, and the address of the one tab LinkedIn's Apply button opens, are used, only to give to the user's own jobwatch; nothing is kept as a history. | |
-| User activity | No | | No clicks, keystrokes or mouse movement are recorded. After a scan it only notices that the form was submitted, so it can tell jobwatch. | |
-| Website content | Yes | No (only to the user's own jobwatch) | Reads the form's questions, answer options, current values, the page address, and the company and job title shown on the page; on LinkedIn and Indeed lists, the job cards; with Save this posting to jobwatch, the job text a company's page shows. Sent to the local jobwatch to find earlier answers, draft an answer, import jobs and record the application. | No |
+| User activity | No | | No clicks, keystrokes or mouse movement are recorded. After a scan it only notices that the form was submitted (the form's submit event, or a click on its Submit button), so it can send the answers as they stood to jobwatch. | |
+| Website content | Yes | No (only to the user's own jobwatch) | Reads the form's questions, answer options, current values, the page address, and the company and job title shown on the page; on LinkedIn and Indeed lists, the job cards; with Save this posting to jobwatch, the job text a company's page shows. Sent to the local jobwatch to find earlier answers, draft an answer, import jobs, keep the answers when the user presses Submit, and record the application. | No |
 
 ### Data Use Certification
 

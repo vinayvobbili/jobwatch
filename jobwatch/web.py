@@ -870,6 +870,15 @@ class App:
             cfg, store, str(body.get("url") or ""), body.get("question") or "", body.get("words") or autofill.WORDS,
             body.get("others")))
 
+    def ext_answers(self, body) -> dict:
+        """The form's answers at the person's Submit, kept in the job's package (see autofill.keep_answers)."""
+        def run(cfg, store):
+            try:
+                return autofill.keep_answers(store, body)
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+        return self._with_store(run)
+
     def ext_submitted(self, body) -> dict:
         def run(cfg, store):
             try:
@@ -2223,12 +2232,13 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     data = app.ext_context(page)
                 elif method == "GET" and url.path == "/ext/resume":
                     return self._send(HTTPStatus.OK, *app.ext_resume(page))
-                elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/posting", "/ext/tailor",
-                                                       "/ext/import-list"):
+                elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/answers", "/ext/posting",
+                                                       "/ext/tailor", "/ext/import-list"):
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
                     data = {"/ext/draft": app.ext_draft, "/ext/submitted": app.ext_submitted,
+                            "/ext/answers": app.ext_answers,
                             "/ext/posting": app.ext_posting, "/ext/tailor": app.ext_tailor,
                             "/ext/import-list": app.ext_import_list}[url.path](body)
                 else:

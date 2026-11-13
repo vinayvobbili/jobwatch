@@ -105,6 +105,36 @@ def test_submitted_records_the_application(app):
         store.close()
 
 
+def test_answers_are_kept_without_marking_the_job_applied(app):
+    first = [{"question": "Why Initech?", "answer": "The platform."}]
+    got = app.ext_answers({"url": FORM, "answers": first})
+    assert got["saved"] and got["key"] == "ashby:initech:c1" and got["count"] == 1
+    store = _store(app)
+    try:
+        before = store.find("ashby:initech:c1")[1]["status"]
+        assert store.package("ashby:initech:c1").data()["answers"] == first
+    finally:
+        store.close()
+    assert got["status"] == before and before not in autofill.STAGES  # saving is not proof of an application
+    # Submit pressed again after a validation error, with an edited answer: the same package, updated.
+    second = [{"question": "Why Initech?", "answer": "The platform work and the team."}]
+    app.ext_answers({"url": FORM, "answers": second})
+    store = _store(app)
+    try:
+        assert store.package("ashby:initech:c1").data()["answers"] == second
+        assert store.find("ashby:initech:c1")[1]["status"] == before
+    finally:
+        store.close()
+
+
+def test_answers_for_a_page_jobwatch_doesnt_know_are_not_saved(app):
+    got = app.ext_answers({"url": "https://careers.umbrella.example/jobs/42",
+                           "answers": [{"question": "q", "answer": "a"}]})
+    assert got["saved"] is False
+    with pytest.raises(Exception, match="answers"):
+        app.ext_answers({"url": FORM, "answers": []})
+
+
 def test_submitted_adds_a_page_it_doesnt_know(app):
     got = app.ext_submitted({"url": "https://careers.umbrella.example/jobs/42", "company": "Umbrella",
                              "title": "Platform Engineer"})

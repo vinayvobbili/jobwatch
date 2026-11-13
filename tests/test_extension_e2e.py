@@ -48,6 +48,7 @@ def stack(pw):
 def ext(stack):
     page = stack.extension_page()
     stack.server.submitted.clear()
+    stack.server.answers.clear()
     stack.server.drafts.clear()
     yield page
     page.close()
@@ -171,12 +172,23 @@ def test_greenhouse_fills_records_and_never_submits(stack, ext, panels):
     page.wait_for_selector(".field-error")
     time.sleep(2.5)
     assert stack.server.submitted == []
+    # ...but the answers as they stood are kept at once (the person's own edits, not the scan's), and that doesn't
+    # record an application
+    harness.wait_until(lambda: stack.server.answers, 15, "the answers to be kept at Submit")
+    first = {a["question"]: a["answer"] for a in stack.server.answers[0]["answers"]}
+    assert first["Why do you want to work at Initech?"] == "I like small teams that own what they run."
+    assert "What is your notice period?" not in first  # the person emptied it
+    panel.wait_for_function(
+        "() => document.getElementById('toast')?.textContent.includes('Answers saved to your jobwatch application')")
     # filled in properly, the person's submit goes through and is recorded once, with the page's company and title
     page.fill("#question_4", "Two weeks.")
     page.click("button[type=submit]")
     harness.wait_until(lambda: stack.server.submitted, 15, "the application to be recorded")
     time.sleep(1.5)
     assert len(stack.server.submitted) == 1
+    assert len(stack.server.answers) == 2  # a second snapshot, which jobwatch keeps in the same package
+    assert {a["question"]: a["answer"] for a in stack.server.answers[1]["answers"]}[
+        "What is your notice period?"] == "Two weeks."
     sent = stack.server.submitted[0]
     assert sent["url"] == url and sent["company"] == "Initech" and sent["title"] == "Platform Engineer"
     assert sent["resume"] == "resume.pdf"
@@ -419,6 +431,6 @@ def test_demo_video_is_a_narrated_1280x800_mp4(tmp_path, pw):
         pytest.skip(str(exc))
     probe = subprocess.run([ffmpeg, "-i", str(out)], capture_output=True, text=True).stderr
     assert "1280x800" in probe and "Audio: aac" in probe
-    # The title card over the intro sting, four steps and the end card, all under the store's limit.
-    assert demo_video.INTRO_SECONDS + 20 < slidecast.probe_duration(out, ffmpeg=ffmpeg) < 90
+    # The hook, the steps from the extensions page to Submit, the trust, start and end cards: about two minutes.
+    assert demo_video.INTRO_SECONDS + 20 < slidecast.probe_duration(out, ffmpeg=ffmpeg) < 150
     assert (tmp_path / "demo_poster.jpg").is_file()

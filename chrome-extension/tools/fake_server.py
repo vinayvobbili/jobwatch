@@ -54,9 +54,18 @@ ANSWERS = [
 ]
 
 
+# What the model would write from demo/resume.html (the made-up resume) for a question no earlier answer covers.
+DRAFTS = {
+    "kubernetes": "At Globex I ran 40 Kubernetes clusters serving 2M requests a minute. I owned the upgrades, "
+                  "autoscaling and on-call, and right-sizing the nodes cut our compute bill by a quarter. "
+                  "At Initech I now build the deploy pipeline that 30 teams use to ship onto those clusters.",
+}
+
+
 class State:
     def __init__(self) -> None:
         self.submitted: list[dict] = []
+        self.answers: list[dict] = []  # /ext/answers: a snapshot per Submit press
         self.drafts: list[dict] = []
         self.postings: list[dict] = []
         self.requests: list[tuple[str, str]] = []
@@ -115,13 +124,21 @@ def _handler(state: State):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             if self.path == "/ext/draft":
                 state.drafts.append(body)
-                answer = state.draft_answer or f"A drafted answer to: {body['question']}"
+                # The real endpoint (autofill.draft) has the chat's model answer from the resume, stories and
+                # posting; here a canned answer stands in for it, one that quotes demo/resume.html.
+                canned = next((a for q, a in DRAFTS.items() if q in body["question"].lower()), None)
+                answer = state.draft_answer or canned or f"A drafted answer to: {body['question']}"
                 self._json(200, {"answer": answer, "model": "fake-model"})
             elif self.path == "/ext/posting":
                 state.postings.append(body)
                 self._json(200, {"key": "greenhouse:initech/4001", "company": body.get("company") or "Initech",
                                  "title": body.get("title") or "Platform Engineer", "added": False,
                                  "has_text": True, "where": "queue", "said": "Filled in from Greenhouse; scoring now"})
+            elif self.path == "/ext/answers":
+                # The answers as they stood at the person's Submit; the job is not marked applied by this call.
+                state.answers.append(body)
+                self._json(200, {"saved": True, "key": "ashby:initech/4f1c", "status": "queued",
+                                 "count": len(body.get("answers", []))})
             elif self.path == "/ext/submitted":
                 state.submitted.append(body)
                 self._json(200, {"key": "ashby:initech/4f1c", "status": "applied", "added": False})
