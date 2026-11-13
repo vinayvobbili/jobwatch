@@ -113,6 +113,9 @@ document.addEventListener('submit', (e) => {
   });
   if (bad) return;
   window.__submits++;
-  if (form.dataset.thanks) location.href = form.dataset.thanks;
-  else document.querySelector('.confirmation').hidden = false;
+  // window.__thanksDelay (ms): the demo video sets it, so the panel's "answers saved" message can be read first.
+  setTimeout(() => {
+    if (form.dataset.thanks) location.href = form.dataset.thanks;
+    else document.querySelector('.confirmation').hidden = false;
+  }, window.__thanksDelay || 0);
 });

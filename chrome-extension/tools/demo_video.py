@@ -193,6 +193,8 @@ class Recorder:
         page.set_viewport_size({"width": SIZE[0], "height": CAPTION_H})
         page.set_content(CAPTION_HTML.format(w=SIZE[0], h=CAPTION_H, cap=CAPTION_H, title=title, subtitle=subtitle))
         path = self.work / f"caption-{key}.png"
+        page.evaluate("() => document.fonts.ready")  # a caption shot before its text is painted is an empty bar
+        page.wait_for_timeout(150)
         page.screenshot(path=str(path), omit_background=True)
         page.close()
         return path
@@ -484,6 +486,9 @@ def show_jobs(rec: Recorder, ui_url: str, form_url: str) -> None:
     """jobwatch's own page: the Initech job in the list, outlined, then the real Apply click opens the form."""
     rec.step("jobs", "A job jobwatch found",
              "It tracks the jobs for you. Pick one, and press Apply to open the company's form.", NARRATION["jobs"])
+    # Made now, while no other page is loading: the caption for the form that the Apply click opens.
+    form_caption = rec.caption("jobs-form", "The company's application form",
+                               "jobwatch opened it on the company's own site.")
     page = rec.ctx.new_page()
     page.set_viewport_size({"width": SIZE[0], "height": BODY_H})
     page.emulate_media(color_scheme="light")
@@ -508,6 +513,8 @@ def show_jobs(rec: Recorder, ui_url: str, form_url: str) -> None:
     form.wait_for_load_state()
     assert form.url == form_url, f"Apply opened {form.url}, not the demo form"
     rec.stage = form
+    # The scene changed, so the caption does: from the form's first frame it says what is on screen.
+    rec.layer = form_caption
     rec.hold(1.5)
     rec.finish_step()
     rec.stage = None
@@ -551,6 +558,8 @@ def walkthrough(rec: Recorder, stack, url: str, ui_url: str) -> None:
     # Down through the filled form and the panel's Filled marks, stopping to let the essay answers be read.
     n = rec.left()
     rec.glide(n * 14 // 100, *rec.essay_at("Describe a project"))
+    if rec.fill:
+        rec.fill["essays_at"] = rec.count  # the opening flash replays the essays from here
     rec.hold(n * 26 / 100 / FPS)
     rec.glide(n * 14 // 100, *rec.essay_at("disagreed with a teammate"))
     rec.hold(n * 22 / 100 / FPS)
@@ -573,6 +582,8 @@ def submit_the_form(rec: Recorder) -> None:
     rec.hold(0.8)
     button.evaluate(HIGHLIGHT_JS)
     rec.hold(1.2)
+    # The "answers saved" toast should be readable before the demo form's thank-you replaces it.
+    rec.form.evaluate("() => { window.__thanksDelay = 3800; }")
     button.click()
     rec.until(lambda: rec.panel.locator("#toast").count() > 0, timeout=30)
     rec.hold(max(0.0, rec.left() / FPS))
@@ -641,9 +652,10 @@ def payoff_step(rec: Recorder, tts, work: Path) -> Step | None:
               f"filled in about {seconds} second{'s' if seconds != 1 else ''}.")
     length = (tts.synthesize(spoken, work / "measure-payoff.wav") or 4.0) + TAIL_PAD
     frames = round(max(length, 5.0) * FPS)
-    first = fill["first"] + fill["frames"] // 5  # from just after the click: the form fills, then its essays show
-    if first + frames > fill["first"] + fill["frames"]:
-        first, frames = fill["first"], min(frames, fill["frames"])
+    # The money shot: the filled essays, readable, with the panel's "Past answer" rows beside them.
+    first = fill.get("essays_at", fill["first"] + fill["frames"] // 5)
+    filled = next(s for s in rec.steps if s.key == "fill")
+    frames = min(frames, filled.first_frame + filled.frames - first)
     caption = rec.caption("payoff", f"{fill['fields']} fields in about {seconds} second{'s' if seconds != 1 else ''}",
                           "Your details, your earlier answers and your essays, filled in for you to review.")
     return Step("payoff", spoken, first, frames, caption=caption)
