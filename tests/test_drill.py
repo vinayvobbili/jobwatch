@@ -159,6 +159,28 @@ def test_a_long_answer_turns_the_page_as_its_read():
     assert (segs[0].tail, segs[1].tail) == (drill.BETWEEN, drill.TAIL)  # a short beat at the turn, not a pause
 
 
+@pytest.mark.parametrize("theme, mac, said", [
+    ("system", "Dark\n", "dark"), ("system", "", "light"), ("system", "Light", "light"),
+    ("light", "Dark", "light"), ("dark", "", "dark"),
+])
+def test_the_theme_follows_the_macs_appearance_unless_chosen(theme, mac, said):
+    assert drill.resolve_theme(theme, read=lambda: mac) == said
+
+
+def test_an_unknown_theme_is_refused():
+    with pytest.raises(ValueError):
+        drill.resolve_theme("sepia", read=lambda: "")
+
+
+def test_dark_slides_use_the_sheets_dark_palette_and_light_ones_do_not():
+    cards = [drill.Card("Q?", "A.")]
+    dark = drill.segments(cards, "T", pause=0, theme="dark")
+    light = drill.segments(cards, "T", pause=0, theme="light")
+    assert all("#0b0d17" in s.html and "#e8eaf4" in s.html for s in dark)
+    assert [s.html for s in drill.segments(cards, "T", pause=0)] == [s.html for s in dark]  # dark is the default
+    assert not any("#0b0d17" in s.html for s in light)
+
+
 def test_no_pause_is_a_quick_review():
     segs = drill.segments([drill.Card("Q?", "A.")], "T", pause=0)
     assert [s.voice for s in segs] == [drill.INTERVIEWER, drill.INTERVIEWER, drill.ANSWERER]

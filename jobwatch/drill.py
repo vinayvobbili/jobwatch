@@ -19,6 +19,7 @@ import importlib.util
 import mimetypes
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -289,21 +290,47 @@ box-shadow:0 6px 18px rgba(0,0,0,.25)}
 .bar{position:absolute;left:0;bottom:0;height:10px;background:rgba(255,255,255,.9);width:var(--p)}"""
 
 
-def _page(label: str, body: str, n: int = 0, total: int = 1, wide: bool = False) -> str:
-    """A slide: a white card on question n's gradient, with a bar along the bottom for how far along it is. A wide
-    card has room for pictures beside the text."""
+# The prep sheets' own dark palette (prep/theme.css): page #0b0d17, panel #161928, text #e8eaf4, muted #949bb5.
+_DARK_CSS = """body{color:#e8eaf4;background:radial-gradient(900px 600px at 85% 0,var(--a),transparent 60%),
+radial-gradient(800px 600px at 0 100%,var(--b),transparent 60%),#0b0d17}
+.blob{opacity:.08}.card{background:rgba(22,25,40,.94);box-shadow:0 30px 60px rgba(0,0,0,.6),0 0 0 1px #262a3d}
+.q{color:#949bb5}.big{filter:none}li{color:#e8eaf4}.bar{background:rgba(232,234,244,.85)}"""
+
+
+def resolve_theme(theme: str = "system", read=None) -> str:
+    """"light" or "dark": the Mac's appearance when theme is "system" (macOS says "Dark" in AppleInterfaceStyle and
+    has no such setting at all in Light), like the prep sheets that follow prefers-color-scheme."""
+    if theme in ("light", "dark"):
+        return theme
+    if theme != "system":
+        raise ValueError(f"theme must be light, dark or system, not {theme!r}")
+    if read is None:
+        def read():
+            return subprocess.run(["defaults", "read", "-g", "AppleInterfaceStyle"], capture_output=True,
+                                  text=True).stdout
+    return "dark" if read().strip().lower() == "dark" else "light"
+
+
+def _page_slide(label: str, body: str, n: int = 0, total: int = 1, wide: bool = False, dark: bool = False) -> str:
+    """A slide: a white card (dark in the dark theme) on question n's gradient, with a bar along the bottom for how
+    far along it is. A wide card has room for pictures beside the text."""
     a, b = THEMES[n % len(THEMES)]
-    return (f"<!doctype html><html><head><meta charset='utf-8'><style>{_CSS}</style></head>"
+    css = _CSS + (_DARK_CSS if dark else "")
+    return (f"<!doctype html><html><head><meta charset='utf-8'><style>{css}</style></head>"
             f"<body style='--a:{a};--b:{b};--p:{100 * n / max(total, 1):.0f}%'>"
             "<div class='blob b1'></div><div class='blob b2'></div>"
             f"<div class='card{' wide' if wide else ''}'><div class='pill'>{_html.escape(label)}</div>{body}</div>"
             "<div class='bar'></div></body></html>")
 
 
-def segments(cards: list[Card], title: str, pause: float = PAUSE) -> list[Segment]:
+def segments(cards: list[Card], title: str, pause: float = PAUSE, theme: str = "dark") -> list[Segment]:
     """What slidecast gets, in order: a title, then for each card the question, the hold (unless pause is 0) and
-    the answer's pages, each read while it's on screen."""
+    the answer's pages, each read while it's on screen. theme is "light" or "dark" (see resolve_theme)."""
     e = _html.escape
+    dark = theme == "dark"
+
+    def _page(*a, **kw):
+        return _page_slide(*a, dark=dark, **kw)
     how = (f"Answer each one out loud in the {pause:g} seconds after it's asked, then hear the answer."
            if pause else "A quick review: each question, then its answer.")
     out = [Segment(_page("Drill", f"<h1>{e(title)}</h1><p class='q'>{len(cards)} questions. {e(how)}</p>"),

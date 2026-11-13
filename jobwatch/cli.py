@@ -1095,7 +1095,8 @@ def cmd_drill(args, cfg, store):
     pause = 0 if args.no_pause else args.pause
     print(f"({len(cards)} questions, {'no pause' if not pause else f'{pause:g} s to answer each'}; "
           "Kokoro speaks on this computer)", file=sys.stderr)
-    out = drill.render(drill.segments(cards, title, pause), args.drill)
+    theme = drill.resolve_theme(args.theme)
+    out = drill.render(drill.segments(cards, title, pause, theme), args.drill)
     print(f"wrote {out}", file=sys.stderr)
 
 
@@ -1652,6 +1653,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pause", type=float, default=drill.PAUSE, metavar="SECONDS",
                    help=f"with --drill: seconds to answer each question (default {drill.PAUSE:g})")
     p.add_argument("--no-pause", action="store_true", help="with --drill: no pause, for a quick review")
+    p.add_argument("--theme", choices=("light", "dark", "system"), default="dark",
+                   help="with --drill: slide theme (default dark); system follows this Mac's Light/Dark setting")
     p.set_defaults(func=cmd_prep)
 
     p = sub.add_parser("rehearse", help="practise a hand-written prep sheet's answers out loud in the browser: "
