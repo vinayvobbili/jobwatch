@@ -1,11 +1,12 @@
 """Follow-up days in Apple Reminders (macOS only; off unless the watchlist says `follow_ups: reminders`).
 
 An application with a follow-up day gets one reminder, "Follow up: Company — Role", due that day at 9:00 with an
-alert, when there is something to do: its stage is live (screening, interviewing, offer) or it has a next step set.
-A snoozed one, or a plain applied one with only a day, gets none (`follow_ups: reminders-all` makes one for every
-open application). The notes hold the next step, the posting's link and a marker line, `jobwatch:<key>`, which is how
-the reminder is found again. Change or clear the day, or an application stops qualifying (closed, snoozed, next step
-cleared), and the reminder moves or is deleted. Reminders without the marker are never touched. One a person
+alert, when there is something to do: its stage is live (screening, interviewing, offer; snoozed or not) or, at
+applied, its next step is an action, not a wait ("Wait for the recruiter", "no action" and the like). A snoozed
+applied one gets none (`follow_ups: reminders-all` makes one for every open application). The notes hold the next
+step, the posting's link and a marker line, `jobwatch:<key>`, which is how the reminder is found again. Change or
+clear the day, or an application stops qualifying (closed, snoozed, next step cleared), and the reminder moves or is
+deleted. Reminders without the marker are never touched. One a person
 completes by hand for the same day stays completed: it isn't made again.
 
 The Reminders app is driven through osascript and JXA, so nothing is installed. The first run asks macOS for
@@ -15,6 +16,7 @@ permission to control Reminders. A failure never stops what the person was doing
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from datetime import date, datetime
@@ -130,12 +132,24 @@ def due_epoch(day: str) -> int:
     return int(datetime.combine(date.fromisoformat(day), datetime.min.time()).replace(hour=DUE_HOUR).timestamp())
 
 
+# A next step that is a wait, not something to do: it starts with one of these words, or says one of these anywhere.
+WAITING = re.compile(r"^\W*(wait|waiting|waits|await|awaiting|awaits|passive|no action)\b|"
+                     r"\b(hear back|hearing back|no action|passive|none)\b", re.IGNORECASE)
+
+
+def waiting(next_step: str | None) -> bool:
+    """The next step is a wait (or empty), so there's nothing for the person to do."""
+    text = (next_step or "").strip()
+    return not text or bool(WAITING.search(text))
+
+
 def item(job, rec: dict, everything: bool = False) -> dict | None:
     """What the reminder for this application should be, or None when it should have none: it isn't open, has no
-    follow-up day, is snoozed, or has nothing to do (applied, no next step). everything: every open one with a day."""
+    follow-up day, or has nothing to do. A live stage (screening, interviewing, offer) always has something, snoozed
+    or not; an applied one needs a next step that is an action, not a wait. everything: every open one with a day."""
     if rec["status"] not in IN_PROGRESS or not rec.get("follow_up"):
         return None
-    if not everything and (snoozed_until(rec) or not (rec["status"] in LIVE or (rec.get("next_step") or "").strip())):
+    if not everything and rec["status"] not in LIVE and (snoozed_until(rec) or waiting(rec.get("next_step"))):
         return None
     notes = [rec["next_step"]] if rec.get("next_step") else []
     if job.url:

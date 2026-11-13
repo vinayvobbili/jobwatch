@@ -127,13 +127,42 @@ def test_a_next_step_without_a_day_has_none(store, osa):
     assert osa.calls[0]["items"] == [] and osa.calls[0]["drop"] == [key]
 
 
-@pytest.mark.parametrize("status", ["applied", "interviewing"])
-def test_a_snoozed_one_has_none_and_loses_its_reminder(store, osa, status):
+def test_a_snoozed_applied_one_has_none_and_loses_its_reminder(store, osa):
     key = add(store)
-    store.set_status([key], status)
     store.snooze(key, 7)
     reminders.refresh(cfg_with(), store, [key])
     assert osa.calls[0]["items"] == [] and osa.calls[0]["drop"] == [key]
+
+
+@pytest.mark.parametrize("status", ["screening", "interviewing", "offer"])
+def test_a_snoozed_live_one_keeps_its_reminder(store, osa, status):
+    key = add(store, next_step="Wait for the recruiter")
+    store.set_status([key], status)
+    until = store.snooze(key, 7)
+    reminders.refresh(cfg_with(), store, [key])
+    assert osa.calls[0]["items"][0]["due"] == reminders.due_epoch(until)
+
+
+@pytest.mark.parametrize("text", [
+    "Wait for recruiter; if they ask about the COI, answer", "waiting on Varun", "  Await the screen", "Awaiting word",
+    "Passive: nothing to do", "No action", "no action until they write", "Expect to hear back by Friday",
+    "None; let it go unless they reach out", "", None])
+def test_a_waiting_next_step_is_not_something_to_do(text):
+    assert reminders.waiting(text)
+
+
+@pytest.mark.parametrize("text", [
+    "Follow up if no reply", "check for a reply", "nudge", "Recruiter screen; ask about pay early",
+    "Follow up with Dana if no word", "Email the recruiter, then wait a day", "Prepare for the waitlist call"])
+def test_an_action_next_step_is_something_to_do(text):
+    assert not reminders.waiting(text)
+
+
+def test_an_applied_one_waiting_has_no_reminder_but_an_action_has(store, osa):
+    waits = add(store, next_step="Wait for the recruiter")
+    acts = add(store, "Globex", "Data Engineer", next_step="Follow up if no reply")
+    reminders.sync(cfg_with(), store)
+    assert [i["key"] for i in osa.calls[0]["items"]] == [acts] and waits != acts
 
 
 def test_reminders_all_keeps_the_old_rule(store, osa):
