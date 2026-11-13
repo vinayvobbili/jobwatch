@@ -34,6 +34,8 @@ TITLE_NARRATION = ("Tired of typing the same answers into every job application?
 SIZE = store_assets.SCREEN
 CAPTION_H = store_assets.CAPTION_H
 TAIL_PAD = 0.5  # silence after a step's voice
+FULL_STAGE = {"installed"}  # steps recorded as one page across the stage
+MIN_SECONDS = {"installed": 6.5}  # a short line still gets time to look at
 GUTTER = 28  # a safe margin on the right: players and thumbnails that crop a few pixels must not cut the panel
 PANEL_W = store_assets.PANEL_W - GUTTER  # the panel's own width; its right-edge colour is smeared across the gutter
 BODY_H = store_assets.BODY_H
@@ -139,6 +141,7 @@ class Step:
     narration: str
     first_frame: int
     frames: int = 0
+    full: bool = False  # one page across the whole stage (no side panel), e.g. chrome://extensions
 
 
 class Recorder:
@@ -154,6 +157,7 @@ class Recorder:
         self.cursor = (PANEL_W / 2, BODY_H / 2)
         self.durations = {}  # step key -> seconds of narration plus tail, measured before recording
         self.budget = 0
+        self.stage = None  # a full-stage page being recorded instead of the form and panel
 
     def step(self, key: str, title: str, subtitle: str, narration: str) -> None:
         """Start a new step: a new caption on screen and a new narrated clip."""
@@ -165,7 +169,7 @@ class Recorder:
         self.layer = self.work / f"caption-{key}.png"
         page.screenshot(path=str(self.layer), omit_background=True)
         page.close()
-        self.steps.append(Step(key, narration, self.count))
+        self.steps.append(Step(key, narration, self.count, full=key in FULL_STAGE))
         self.budget = round(self.durations.get(key, 0) * FPS)
 
     def left(self, end_hold: float = 0.4) -> int:
@@ -179,8 +183,11 @@ class Recorder:
 
     def frame(self) -> None:
         name = f"{self.count:05d}"
-        self.form.screenshot(path=str(self.frames / f"form_{name}.jpg"), type="jpeg", quality=92)
-        self.panel.screenshot(path=str(self.frames / f"panel_{name}.jpg"), type="jpeg", quality=92)
+        if self.stage:
+            self.stage.screenshot(path=str(self.frames / f"form_{name}.jpg"), type="jpeg", quality=92)
+        else:
+            self.form.screenshot(path=str(self.frames / f"form_{name}.jpg"), type="jpeg", quality=92)
+            self.panel.screenshot(path=str(self.frames / f"panel_{name}.jpg"), type="jpeg", quality=92)
         os.link(self.layer, self.frames / f"layer_{name}.png")
         self.count += 1
         self.steps[-1].frames += 1
@@ -284,11 +291,48 @@ class Recorder:
         return self.panel
 
 
+HIGHLIGHT_JS = """(e) => {
+  e.style.transition = 'box-shadow .6s, outline-color .6s';
+  e.style.borderRadius = '14px';
+  e.style.outline = '3px solid #8b5cf6';
+  e.style.outlineOffset = '4px';
+  e.style.boxShadow = '0 0 0 10px rgb(139 92 246 / 0.22), 0 0 36px 8px rgb(176 92 246 / 0.45)';
+}"""
+
+
+def show_installed(rec: Recorder) -> None:
+    """chrome://extensions, live, in the browser that has the extension: search "jobwatch", outline its card."""
+    rec.step("installed", "Installed in Chrome",
+             "It sits with your other extensions, ready on any job application page.", NARRATION["installed"])
+    page = rec.ctx.new_page()
+    page.set_viewport_size({"width": SIZE[0], "height": BODY_H})
+    page.emulate_media(color_scheme="light")
+    page.goto("chrome://extensions")
+    page.wait_for_selector("extensions-item")
+    # Developer mode off, so the card looks like a normal install (no ID, no "service worker", no Load unpacked).
+    page.evaluate("() => chrome.developerPrivate.updateProfileConfiguration({inDeveloperMode: false})")
+    page.wait_for_timeout(600)  # the page re-renders the card without the developer details
+    rec.stage = page
+    rec.hold(1.2)
+    box = page.locator("cr-toolbar-search-field input")
+    box.click()
+    for letter in "jobwatch":  # visibly, letter by letter
+        page.keyboard.type(letter)
+        rec.hold(0.14)
+    rec.hold(0.6)
+    page.locator("extensions-item").first.evaluate(HIGHLIGHT_JS)
+    rec.hold(max(0.0, rec.left() / FPS))
+    rec.finish_step()
+    rec.stage = None
+    page.close()
+
+
 NARRATION = {
     "intro": ("Here is a job application, on the company's own site. "
               "The jobwatch extension fills it in from your own jobwatch, on your own computer. "
               "Your details, your earlier answers and your resume stay with you. "
               "Nothing is sent to anyone else."),
+    "installed": "Add jobwatch to Chrome, and it shows up with your other extensions.",
     "scan": ("Open the side panel, and click Fill this application. "
              "The extension reads the form, and lists every field. "
              "Each row says where its answer came from: your details, an earlier application, or your resume. "
@@ -313,6 +357,8 @@ def walkthrough(rec: Recorder, stack, url: str) -> None:
     rec.glide(n * 55 // 100, rec.extent(rec.form))
     rec.hold(n * 5 / 100 / FPS)
     rec.glide(rec.left(), 0)
+
+    show_installed(rec)
 
     rec.step("scan", "Fill this application",
              "It reads the form and lists every field, with where each answer comes from.",
@@ -361,8 +407,13 @@ def encode_step(ffmpeg: str, frames: Path, step: Step, out: Path) -> Path:
         f"[a][p]overlay={FORM_W}:{CAPTION_H}[b];"
         f"[b][2:v]overlay=0:0,format=yuv420p[v]"
     )
+    layers = ("form_%05d.jpg", "panel_%05d.jpg", "layer_%05d.png")
+    if step.full:  # the page spans the stage: nothing to put beside it
+        graph = (f"color=c=white:s={SIZE[0]}x{SIZE[1]}:r={FPS}[bg];[bg][0:v]overlay=0:{CAPTION_H}:shortest=1[a];"
+                 f"[a][1:v]overlay=0:0,format=yuv420p[v]")
+        layers = (layers[0], layers[2])
     cmd = [ffmpeg, "-y", "-loglevel", "error"]
-    for layer in ("form_%05d.jpg", "panel_%05d.jpg", "layer_%05d.png"):
+    for layer in layers:
         cmd += ["-framerate", str(FPS), "-start_number", str(step.first_frame), "-i", str(frames / layer)]
     cmd += ["-filter_complex", graph, "-map", "[v]", "-frames:v", str(step.frames),
             "-c:v", "libx264", "-crf", "16", "-tune", "stillimage", str(out)]
@@ -389,7 +440,7 @@ def measure_narrations(tts, work: Path) -> dict:
     seconds = {}
     for key, text in NARRATION.items():
         spoken = tts.synthesize(text, work / f"measure-{key}.wav")
-        seconds[key] = (spoken or 0) + TAIL_PAD
+        seconds[key] = max((spoken or 0) + TAIL_PAD, MIN_SECONDS.get(key, 0))
     return seconds
 
 
@@ -439,7 +490,7 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), TITLE_NARRATION, tail_pad=0.6, min_duration=7.5)
         for step in rec.steps:
             clip = encode_step(ffmpeg, rec.frames, step, work / f"{step.key}.mp4")
-            reel.add_clip(clip, step.narration, tail_pad=TAIL_PAD)
+            reel.add_clip(clip, step.narration, tail_pad=TAIL_PAD, min_duration=MIN_SECONDS.get(step.key, 0))
         reel.add(START_HTML.format(w=SIZE[0], h=SIZE[1]), START_NARRATION, tail_pad=0.8, min_duration=4.0)
         reel.add(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL), END_NARRATION,
                  tail_pad=1.2, min_duration=4.0)
