@@ -36,7 +36,9 @@ CAPTION_H = store_assets.CAPTION_H
 TAIL_PAD = 0.5  # silence after a step's voice
 FULL_STAGE = {"installed", "jobs", "resume"}  # steps recorded as one page across the stage
 # a short line still gets time to look at
-MIN_SECONDS = {"installed": 5.0, "jobs": 7.5, "resume": 4.0, "draft": 10.0, "submit": 8.0}
+MIN_SECONDS = {"installed": 5.0, "jobs": 9.0, "resume": 4.0, "draft": 12.0, "submit": 9.0,
+               "intro": 8.5, "scan": 10.0, "fill": 17.0}
+SLOWER = 1.5  # vertical scrolls take this many times longer than the first cut, so they can be followed
 GUTTER = 28  # a safe margin on the right: players and thumbnails that crop a few pixels must not cut the panel
 PANEL_W = store_assets.PANEL_W - GUTTER  # the panel's own width; its right-edge colour is smeared across the gutter
 BODY_H = store_assets.BODY_H
@@ -408,7 +410,7 @@ def draft_from_resume(rec: Recorder) -> None:
              "Drafted from your resume, with your real numbers. You read it and edit it before it is filled.",
              NARRATION["draft"])
     row = rec.panel.locator(".row", has_text="Kubernetes")
-    rec.glide(18, *rec.essay_at("Kubernetes"))
+    rec.glide(round(18 * SLOWER), *rec.essay_at("Kubernetes"))
     rec.hold(1.0)
     rec.click(row.get_by_text("Draft with jobwatch"))
     rec.until(lambda: row.locator("textarea").input_value() != "", timeout=30)
@@ -416,7 +418,7 @@ def draft_from_resume(rec: Recorder) -> None:
     rec.click(row.locator("input[type=checkbox]"))
     rec.click(rec.panel.locator("#fill"))
     rec.until(lambda: rec.form.locator("#question_11").input_value() != "", timeout=30)
-    rec.glide(18, rec.essay_at("Kubernetes")[0])
+    rec.glide(round(18 * SLOWER), rec.essay_at("Kubernetes")[0])
     rec.hold(max(0.0, rec.left() / FPS))
     rec.finish_step()
 
@@ -500,8 +502,9 @@ def show_jobs(rec: Recorder, ui_url: str, form_url: str) -> None:
     rec.hold(1.0)
     top = card.evaluate("(e) => e.getBoundingClientRect().top + window.scrollY") - 120
     start = page.evaluate("() => window.scrollY")
-    for i in range(1, 25):  # an eased scroll that brings the Initech card up
-        t = i / 24
+    steps = round(24 * SLOWER)
+    for i in range(1, steps + 1):  # an eased scroll that brings the Initech card up
+        t = i / steps
         page.evaluate("(y) => window.scrollTo(0, y)", start + (top - start) * t * t * (3 - 2 * t))
         rec.frame()
     card.evaluate(HIGHLIGHT_JS)
@@ -531,7 +534,7 @@ def walkthrough(rec: Recorder, stack, url: str, ui_url: str) -> None:
              NARRATION["intro"])
     rec.hold(0.8)
     n = rec.left()  # the form slides by while the voice talks, and back to the top
-    rec.glide(n * 55 // 100, rec.extent(rec.form))
+    rec.glide(n * 58 // 100, rec.extent(rec.form))
     rec.glide(rec.left(), 0)
 
     rec.step("scan", "Fill this application",
@@ -542,10 +545,9 @@ def walkthrough(rec: Recorder, stack, url: str, ui_url: str) -> None:
     rec.hold(1.0)
     # The field list and the form glide together, every source badge in turn, pausing on the essay questions.
     n = rec.left()
-    rec.glide(n * 30 // 100, *rec.essay_at("Describe a project"))
-    rec.hold(n * 22 / 100 / FPS)
-    rec.glide(n * 28 // 100, rec.extent(rec.form), rec.extent(rec.panel))
-    rec.glide(rec.left(), 0, 0)
+    rec.glide(n * 40 // 100, *rec.essay_at("Describe a project"))
+    rec.hold(n * 12 / 100 / FPS)
+    rec.glide(rec.left(), rec.extent(rec.form), rec.extent(rec.panel))  # on down to the end, no rush back up
 
     rec.step("fill", "Fill selected",
              "Real events, so the board sees them. It never clicks Submit: that is yours to press.",
@@ -557,12 +559,12 @@ def walkthrough(rec: Recorder, stack, url: str, ui_url: str) -> None:
     rec.measure_fill()
     # Down through the filled form and the panel's Filled marks, stopping to let the essay answers be read.
     n = rec.left()
-    rec.glide(n * 14 // 100, *rec.essay_at("Describe a project"))
+    rec.glide(n * 21 // 100, *rec.essay_at("Describe a project"))
     if rec.fill:
         rec.fill["essays_at"] = rec.count  # the opening flash replays the essays from here
-    rec.hold(n * 26 / 100 / FPS)
-    rec.glide(n * 14 // 100, *rec.essay_at("disagreed with a teammate"))
     rec.hold(n * 22 / 100 / FPS)
+    rec.glide(n * 21 // 100, *rec.essay_at("disagreed with a teammate"))
+    rec.hold(n * 12 / 100 / FPS)
     rec.glide(rec.left(), rec.extent(rec.form), rec.extent(rec.panel))
 
     show_resume(rec, stack)
@@ -578,7 +580,7 @@ def submit_the_form(rec: Recorder) -> None:
     rec.step("submit", "You press Submit",
              "jobwatch keeps every answer you sent, for next time and for interview prep.", NARRATION["submit"])
     button = rec.form.locator("button[type=submit]")
-    rec.glide(20, rec.extent(rec.form))
+    rec.glide(round(20 * SLOWER), rec.extent(rec.form))
     rec.hold(0.8)
     button.evaluate(HIGHLIGHT_JS)
     rec.hold(1.2)
