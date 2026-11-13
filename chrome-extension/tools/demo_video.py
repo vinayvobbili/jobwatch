@@ -28,7 +28,9 @@ import harness
 import store_assets
 
 FPS = 15
-INTRO_SECONDS = 6.0  # the title card, over the intro sting, before any narration
+INTRO_SECONDS = 1.2  # the title card's first silent beat: the intro sting's hit lands, then the hook is spoken
+TITLE_NARRATION = ("Tired of typing the same answers into every job application? "
+                   "Meet jobwatch, your job-hunt helper. Let's see the Chrome extension fill one in.")
 SIZE = store_assets.SCREEN
 CAPTION_H = store_assets.CAPTION_H
 PANEL_W = store_assets.PANEL_W
@@ -115,7 +117,8 @@ START_NARRATION = ("To get started, install jobwatch from PyPI and run jobwatch 
                    "Chrome Web Store, and paste the token from jobwatch's settings into its options. "
                    "Then open an application, and press Fill.")
 
-END_NARRATION = "You press Submit yourself. jobwatch is open source, on PyPI and GitHub."
+END_NARRATION = ("You press Submit yourself. jobwatch is open source, on PyPI and GitHub. "
+                 "Less typing, more applying. Good luck out there!")
 
 CURSOR_JS = """() => {
   if (document.getElementById('__demo_cursor')) return;
@@ -237,8 +240,7 @@ def walkthrough(rec: Recorder, stack, url: str) -> None:
     rec.step("intro", "A job application on the company's own site",
              "The jobwatch extension fills it from your own jobwatch, on your own computer.",
              "Here is a job application, on the company's own site. "
-             "The job watch extension fills it in from your own job watch, on your own computer. "
-             "Your details, your earlier answers and your resume stay with you. "
+             "The jobwatch extension fills it in from your own jobwatch, on your own computer. "
              "Nothing is sent to anyone else.")
     rec.hold(3.0)
     rec.scroll_form(260)
@@ -248,8 +250,8 @@ def walkthrough(rec: Recorder, stack, url: str) -> None:
     rec.step("scan", "Fill this application",
              "It reads the form and lists every field, with where each answer comes from.",
              "Open the side panel, and click Fill this application. "
-             "The extension reads the form, and lists every field. "
-             "Each row says where its answer came from: your details, an earlier application, or your resume. "
+             "Every field is listed, and each row says where its answer came from: "
+             "your details, an earlier application, or your resume. "
              "A field that already has a value starts unticked, so nothing you typed is overwritten.")
     rec.click(rec.panel.locator("#scan"))
     rec.until(lambda: rec.panel.locator(".row").count() > 0)
@@ -276,7 +278,7 @@ def walkthrough(rec: Recorder, stack, url: str) -> None:
              "Adds the job to jobwatch, so it is tracked with your application.",
              "When you want to keep the job, click Save this posting. "
              "It reads the page and adds the job to job watch, where you can track it "
-             "through to an offer. That is the whole flow.")
+             "through to an offer.")
     rec.open_panel(stack, url)
     rec.hold(2.0)
     rec.click(rec.panel.locator("#posting"))
@@ -344,17 +346,17 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         # from this Playwright, since a second sync Playwright can't start inside it.
         browser = playwright.chromium.launch()
         scope.callback(browser.close)
-        # The house style (scripts/demo/build.py): a composed lo-fi bed ducked under the voice, intro and outro
-        # stings, -16 LUFS. The title card holds through the intro sting (lead_in), so the music swells in first.
+        # An upbeat composed bed (fast beats, ducked hard under the voice), punchy intro and outro stings, -16 LUFS.
+        # The intro sting's hit lands first (lead_in), then the hook is spoken over the title card.
         reel = slidecast.Reel(width=SIZE[0], height=SIZE[1], fps=FPS, tts=make_tts(voice),
                               renderer=slidecast.PlaywrightRenderer(browser=browser),
                               music=slidecast.Music("compose", volume=0.3, fade_in=1.0, fade_out=3.0, duck=True,
-                                                    duck_db=16),
-                              intro=slidecast.Sting("compose", volume=0.75),
+                                                    style="upbeat"),
+                              intro=slidecast.Sting("compose", volume=0.5),
                               outro=slidecast.Sting("compose", volume=0.7),
                               lead_in=INTRO_SECONDS, loudness=-16)
         icon = store_assets.data_uri(harness.EXTENSION_DIR / "icons" / "icon128.png")
-        reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), "", min_duration=0.5)
+        reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), TITLE_NARRATION, tail_pad=0.6, min_duration=7.5)
         for step in rec.steps:
             clip = encode_step(ffmpeg, rec.frames, step, work / f"{step.key}.mp4")
             reel.add_clip(clip, step.narration, tail_pad=0.5)
