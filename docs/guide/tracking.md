@@ -117,8 +117,8 @@ follow_ups: reminders    # off (the default), reminders or reminders-all; macOS 
 An application then gets one reminder, "Follow up: Initech — Platform Engineer", due its follow-up day at 9:00 with an
 alert, but only when there is something to do: its stage is live (screening, interviewing, offer; snoozed or not), or
 it is applied and its next step (`jobwatch mark --next`, the Applications page, the MCP `mark_job`) is an action, not a
-wait. A next step counts as waiting when it starts with wait, waiting, await, awaiting, passive or "no action", or
-says "hear back", "no action", "passive" or "none"; "Wait for the recruiter" gets no reminder, "Follow up if no
+wait. A next step counts as waiting when it starts with wait, waiting, await, awaiting, passive, "no action" or
+none, or says "hear back", "no action" or "passive" anywhere; "Wait for the recruiter" gets no reminder, "Follow up if no
 reply" does. A snoozed applied one, or one with no next step, gets none. `follow_ups: reminders-all` makes one for every open application with a day, snoozed
 ones too. The notes hold the next step, the posting's link and a line `jobwatch:<key>`, which is how jobwatch finds it
 again. When the day changes (the `--follow-up` of `jobwatch mark`, `jobwatch snooze`, the Applications page, the MCP

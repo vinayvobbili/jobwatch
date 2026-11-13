@@ -132,9 +132,10 @@ def due_epoch(day: str) -> int:
     return int(datetime.combine(date.fromisoformat(day), datetime.min.time()).replace(hour=DUE_HOUR).timestamp())
 
 
-# A next step that is a wait, not something to do: it starts with one of these words, or says one of these anywhere.
-WAITING = re.compile(r"^\W*(wait|waiting|waits|await|awaiting|awaits|passive|no action)\b|"
-                     r"\b(hear back|hearing back|no action|passive|none)\b", re.IGNORECASE)
+# A next step that is a wait, not something to do: it starts with one of these words ("None; let it go" included),
+# or says one of the phrases anywhere. "none" mid-sentence doesn't count ("follow up through Pooja if none").
+WAITING = re.compile(r"^\W*(wait|waiting|waits|await|awaiting|awaits|passive|no action|none)\b|"
+                     r"\b(hear back|hearing back|no action|passive)\b", re.IGNORECASE)
 
 
 def waiting(next_step: str | None) -> bool:

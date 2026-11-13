@@ -153,7 +153,8 @@ def test_a_waiting_next_step_is_not_something_to_do(text):
 
 @pytest.mark.parametrize("text", [
     "Follow up if no reply", "check for a reply", "nudge", "Recruiter screen; ask about pay early",
-    "Follow up with Dana if no word", "Email the recruiter, then wait a day", "Prepare for the waitlist call"])
+    "Follow up with Dana if no word", "check for a reply; follow up through Pooja if none",
+    "Email the recruiter, then wait a day", "Prepare for the waitlist call"])
 def test_an_action_next_step_is_something_to_do(text):
     assert not reminders.waiting(text)
 
