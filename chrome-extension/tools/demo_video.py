@@ -87,8 +87,35 @@ END_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CAR
   <code>{url}</code>
 </body></html>""")
 
-END_NARRATION = ("You check the form, and press Submit yourself. Get the extension from the Chrome Web Store. "
-                 "jobwatch is open source, on PyPI and GitHub.")
+# The extension has no standalone mode: it pairs with a jobwatch running on the same computer (README, API.md Pairing).
+START_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CARD_CSS + """
+  h2 {{ position: relative; margin: 0 0 34px; font-size: 54px; font-weight: 800; letter-spacing: -0.02em; }}
+  h2 b {{ background: linear-gradient(90deg, #b9a8ff, #f08cff); -webkit-background-clip: text; color: transparent; }}
+  ol {{ position: relative; list-style: none; margin: 0; padding: 0; text-align: left; counter-reset: s; }}
+  li {{ counter-increment: s; display: flex; align-items: center; gap: 22px; margin: 0 0 20px; font-size: 27px;
+        color: #e6e2fb; }}
+  li::before {{ content: counter(s); flex: none; width: 46px; height: 46px; border-radius: 50%; font-weight: 800;
+                font-size: 24px; display: flex; align-items: center; justify-content: center; color: #fff;
+                background: linear-gradient(135deg, #6d5cff, #c04af0); box-shadow: 0 0 24px rgb(176 92 246 / 0.5); }}
+  li code {{ margin: 0; padding: 4px 12px; font-size: 24px; }}
+  li small {{ color: #a9a4cf; font-size: 20px; }}
+</style></head><body>
+  <div class="glow"></div>
+  <h2>Get <b>started</b></h2>
+  <ol>
+    <li><span><code>pip install jobwatch</code> then <code>jobwatch ui</code>
+        <small>(runs on your computer)</small></span></li>
+    <li><span>Add <b>jobwatch: Application Filler</b> to Chrome <small>(search the Web Store)</small></span></li>
+    <li><span>Paste the token from jobwatch's Settings into the extension's options</span></li>
+    <li><span>Open an application, click the icon, press <b>Fill this application</b></span></li>
+  </ol>
+</body></html>""")
+
+START_NARRATION = ("To get started, install jobwatch from PyPI and run jobwatch ui. Add the extension from the "
+                   "Chrome Web Store, and paste the token from jobwatch's settings into its options. "
+                   "Then open an application, and press Fill.")
+
+END_NARRATION = "You press Submit yourself. jobwatch is open source, on PyPI and GitHub."
 
 CURSOR_JS = """() => {
   if (document.getElementById('__demo_cursor')) return;
@@ -124,8 +151,9 @@ class Recorder:
     def step(self, key: str, title: str, subtitle: str, narration: str) -> None:
         """Start a new step: a new caption on screen and a new narrated clip."""
         page = self.ctx.new_page()
-        page.set_viewport_size({"width": SIZE[0], "height": SIZE[1]})
-        page.set_content(CAPTION_HTML.format(w=SIZE[0], h=SIZE[1], cap=CAPTION_H, title=title, subtitle=subtitle))
+        # The layer is only the caption strip (CAPTION_H tall), so it can never cover the page or the panel.
+        page.set_viewport_size({"width": SIZE[0], "height": CAPTION_H})
+        page.set_content(CAPTION_HTML.format(w=SIZE[0], h=CAPTION_H, cap=CAPTION_H, title=title, subtitle=subtitle))
         self.layer = self.work / f"caption-{key}.png"
         page.screenshot(path=str(self.layer), omit_background=True)
         page.close()
@@ -330,6 +358,7 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         for step in rec.steps:
             clip = encode_step(ffmpeg, rec.frames, step, work / f"{step.key}.mp4")
             reel.add_clip(clip, step.narration, tail_pad=0.5)
+        reel.add(START_HTML.format(w=SIZE[0], h=SIZE[1]), START_NARRATION, tail_pad=0.8, min_duration=4.0)
         reel.add(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL), END_NARRATION,
                  tail_pad=1.2, min_duration=4.0)
         return reel.render(target, ffmpeg=ffmpeg, fade_in=0.6, fade_out=1.0, make_poster=True)

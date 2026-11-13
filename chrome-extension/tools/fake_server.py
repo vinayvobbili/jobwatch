@@ -12,6 +12,10 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+try:  # report the real version, so the demo video never shows a stale one
+    from jobwatch import __version__ as JOBWATCH_VERSION
+except ImportError:
+    JOBWATCH_VERSION = "0.7.0"
 TOKEN = "test-token"
 RESUME = b"%PDF-1.4\n% a made-up resume for Jordan Rivera\n%%EOF\n"
 
@@ -78,7 +82,7 @@ def _handler(state: State):
             page = parse_qs(url.query).get("url", [""])[0]
             known = state.know_every_page or "initech" in page
             if url.path == "/ext/ping":
-                self._json(200, {"ok": True, "version": "0.7.0", "features": state.features})
+                self._json(200, {"ok": True, "version": JOBWATCH_VERSION, "features": state.features})
             elif url.path == "/ext/context":
                 job = {"key": "ashby:initech/4f1c", "title": "Platform Engineer", "company": "Initech",
                        "status": "queued", "url": page} if known else None
