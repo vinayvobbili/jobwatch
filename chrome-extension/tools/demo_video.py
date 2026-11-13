@@ -37,12 +37,26 @@ TAIL_PAD = 0.5  # silence after a step's voice
 FULL_STAGE = {"installed", "jobs", "resume"}  # steps recorded as one page across the stage
 # a short line still gets time to look at
 MIN_SECONDS = {"installed": 5.0, "jobs": 9.0, "resume": 4.0, "draft": 12.0, "submit": 9.0,
-               "intro": 8.5, "scan": 10.0, "fill": 17.0}
+               "intro": 8.5, "open": 8.0, "scan": 10.0, "fill": 17.0}
 SLOWER = 1.5  # vertical scrolls take this many times longer than the first cut, so they can be followed
 GUTTER = 28  # a safe margin on the right: players and thumbnails that crop a few pixels must not cut the panel
 PANEL_W = store_assets.PANEL_W - GUTTER  # the panel's own width; its right-edge colour is smeared across the gutter
-BODY_H = store_assets.BODY_H
+FULL_H = store_assets.BODY_H  # a page that spans the stage, under the caption strip
+TOOLBAR_H = 44  # Chrome's toolbar (address bar, pinned extension icons), over the form and the side panel
+BODY_H = FULL_H - TOOLBAR_H  # the form's, and the side panel's, height
+PANEL_HEAD = 40  # the header row of Chrome's side panel: icon, name, close
+PANEL_VIEW_H = BODY_H - PANEL_HEAD
 FORM_W = store_assets.FORM_W
+SHADOW = 10  # the side panel's shadow on the page, left of its divider
+GROUP_W = SIZE[0] - FORM_W + SHADOW  # shadow, divider and the panel: what slides in
+ICON_X, ICON_Y = 1201, CAPTION_H + TOOLBAR_H // 2  # where the pinned jobwatch icon sits in the toolbar
+# The "open" step's timeline, in seconds into the step: the pointer waits, glides to the icon, presses it, and the panel
+# slides in (all inside the narration "Click the jobwatch icon... Its side panel opens next to the application").
+T_MOVE, CURSOR_MOVE, T_PRESS, SLIDE = 0.8, 1.2, 0.3, 0.5
+T_CLICK = T_MOVE + CURSOR_MOVE + T_PRESS
+CALLOUT = (0.6, 2.7)  # when the callout shows, from the click: about 2 s, once the panel is in
+CURSOR_FROM = (700, CAPTION_H + TOOLBAR_H + 260)  # where the pointer starts, on the page
+PANEL_STATE = {"intro": "out", "open": "open"}  # the panel is not there yet in "intro"; "open" slides it in
 FORM_URL = ("job-boards.greenhouse.io", "/initech/jobs/4001")
 REPO_URL = "github.com/vinayvobbili/jobwatch"
 SAY_LIKE = {r"\bjobwatch\b": "job watch"}  # how the voice should pronounce the name
@@ -163,6 +177,72 @@ CURSOR_JS = """() => {
 }"""
 
 
+# Chrome's own frame around the page, drawn generically (no real browser branding): the toolbar with its address bar and
+# the pinned jobwatch icon, and the side panel's header row, divider and shadow. Each is a transparent PNG laid over
+# the recorded frames, so the form and the panel stay exactly as recorded.
+CHROME_CSS = """
+  html, body {{ margin: 0; overflow: hidden; background: transparent;
+               font: 14px/1 system-ui, -apple-system, "Segoe UI", sans-serif; color: #202124; }}
+  .abs {{ position: absolute; }}
+"""
+GLYPH_PUZZLE = ('<svg viewBox="0 0 24 24" width="20" height="20"><path fill="#5f6368" '
+                'd="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2'
+                'v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 '
+                '2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 '
+                '20.5 11z"/></svg>')
+TOOLBAR_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CHROME_CSS + """
+  body {{ width: {w}px; height: {h}px; background: #f1f3f9; border-bottom: 1px solid #d3d6e0; box-sizing: border-box; }}
+  .nav {{ top: 11px; font-size: 18px; color: #5f6368; }}
+  .omni {{ left: 112px; top: 6px; width: 1000px; height: 30px; border-radius: 15px; background: #e6e9f3;
+           display: flex; align-items: center; padding: 0 16px; box-sizing: border-box; font-size: 14px; }}
+  .omni i {{ width: 9px; height: 9px; border: 2px solid #5f6368; border-radius: 3px; margin-right: 12px; }}
+  .omni span {{ color: #6a6f7b; }}
+  .dots {{ left: {dots}px; top: 12px; width: 4px; height: 4px; border-radius: 50%; background: #5f6368;
+           box-shadow: 0 7px #5f6368, 0 14px #5f6368; }}
+</style></head><body>
+  <span class="abs nav" style="left:20px">&#8592;</span><span class="abs nav" style="left:52px">&#8594;</span>
+  <span class="abs nav" style="left:84px">&#8635;</span>
+  <div class="abs omni"><i></i>{host}<span>{path}</span></div>
+  <div class="abs" style="left:{puzzle}px;top:11px">""" + GLYPH_PUZZLE + """</div>
+  <img class="abs" style="left:{icon_x}px;top:12px;width:20px;height:20px;border-radius:5px" src="{icon}">
+  <div class="abs dots"></div>
+</body></html>""")
+SIDEPANEL_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CHROME_CSS + """
+  body {{ width: {w}px; height: {h}px; }}
+  .shadow {{ left: 0; top: 0; width: {shadow}px; height: {h}px;
+             background: linear-gradient(90deg, rgb(20 20 40 / 0), rgb(20 20 40 / 0.24)); }}
+  .head {{ left: {shadow}px; top: 0; right: 0; height: {head}px; background: #ecedf7; border-bottom: 1px solid #d5d8e8;
+           box-sizing: border-box; display: flex; align-items: center; padding: 0 14px; }}
+  .head img {{ width: 18px; height: 18px; border-radius: 5px; margin-right: 10px; }}
+  .head b {{ font-size: 14px; font-weight: 600; }}
+  .head svg {{ position: absolute; right: 14px; top: 12px; }}
+  .rule {{ left: {shadow}px; top: 0; width: 1px; height: {h}px; background: #aeb3c8; }}
+</style></head><body>
+  <div class="abs shadow"></div>
+  <div class="abs head"><img src="{icon}"><b>jobwatch</b>
+    <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="#5f6368" stroke-width="1.6"
+      stroke-linecap="round"/></svg></div>
+  <div class="abs rule"></div>
+</body></html>""")
+CALLOUT_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CHROME_CSS + """
+  body {{ width: {w}px; height: {h}px; }}
+  .pill {{ left: 0; top: 0; width: {pw}px; height: {h}px; border-radius: {r}px; color: #fff; font-size: 18px;
+           font-weight: 700; display: flex; align-items: center; justify-content: center;
+           background: linear-gradient(120deg, #5a5cf2, #a24af0); box-shadow: 0 6px 18px rgb(60 40 160 / 0.4); }}
+  .tip {{ left: {pw}px; top: {tip}px; border: {tip}px solid transparent; border-left: 16px solid #a24af0; }}
+</style></head><body><div class="abs pill">jobwatch extension (Chrome side panel)</div><div class="abs tip"></div>
+</body></html>""")
+DOT_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CHROME_CSS + """
+  body {{ width: {s}px; height: {s}px; }}
+  div {{ position: absolute; left: {m}px; top: {m}px; width: {d}px; height: {d}px; border-radius: 50%; {css} }}
+</style></head><body><div></div></body></html>""")
+CALLOUT_SIZE = (430, 50)
+
+# The pointer, as the panel's own (CURSOR_JS) so it looks the same on the toolbar and in the panel.
+POINTER_CSS = "background: rgb(31 35 40 / 0.35); border: 2px solid #fff; box-shadow: 0 1px 5px rgb(0 0 0 / 0.45);"
+HOVER_CSS = "background: rgb(60 64 90 / 0.14);"
+
+
 @dataclass
 class Step:
     key: str
@@ -171,6 +251,7 @@ class Step:
     frames: int = 0
     full: bool = False  # one page across the whole stage (no side panel), e.g. chrome://extensions
     caption: Path | None = None  # a still caption for a replayed step (its frames come from another step's)
+    panel: str = "in"  # the Chrome side panel: "in" the whole step, "out" (not opened yet) or sliding "open" at T_CLICK
 
 
 class Recorder:
@@ -183,7 +264,7 @@ class Recorder:
         self.count = 0
         self.steps = []
         self.layer = None
-        self.cursor = (PANEL_W / 2, BODY_H / 2)
+        self.cursor = (PANEL_W / 2, PANEL_VIEW_H / 2)
         self.durations = {}  # step key -> seconds of narration plus tail, measured before recording
         self.budget = 0
         self.stage = None  # a full-stage page being recorded instead of the form and panel
@@ -201,11 +282,41 @@ class Recorder:
         page.close()
         return path
 
+    def png(self, name: str, html: str, width: int, height: int) -> Path:
+        """`html` as a transparent PNG of this size, in the work folder."""
+        page = self.ctx.new_page()
+        page.set_viewport_size({"width": width, "height": height})
+        page.set_content(html)
+        page.evaluate("() => document.fonts.ready")
+        page.wait_for_timeout(150)
+        path = self.work / f"{name}.png"
+        page.screenshot(path=str(path), omit_background=True)
+        page.close()
+        return path
+
+    def chrome_frame(self, icon: str, url: tuple) -> dict:
+        """Chrome's toolbar, the side panel's frame, the callout and the pointer, as PNGs for encode_step."""
+        host, path = url
+        pw = CALLOUT_SIZE[0] - 16
+        return {
+            "toolbar": self.png("toolbar", TOOLBAR_HTML.format(
+                w=SIZE[0], h=TOOLBAR_H, host=host, path=path, icon=icon, icon_x=ICON_X - 10, puzzle=ICON_X - 52,
+                dots=SIZE[0] - 28), SIZE[0], TOOLBAR_H),
+            "sidepanel": self.png("sidepanel", SIDEPANEL_HTML.format(
+                w=GROUP_W, h=BODY_H, shadow=SHADOW, head=PANEL_HEAD, icon=icon), GROUP_W, BODY_H),
+            "callout": self.png("callout", CALLOUT_HTML.format(
+                w=CALLOUT_SIZE[0], h=CALLOUT_SIZE[1], pw=pw, r=CALLOUT_SIZE[1] // 2, tip=CALLOUT_SIZE[1] // 2),
+                CALLOUT_SIZE[0], CALLOUT_SIZE[1]),
+            "pointer": self.png("pointer", DOT_HTML.format(s=30, m=4, d=18, css=POINTER_CSS), 30, 30),
+            "hover": self.png("hover", DOT_HTML.format(s=34, m=0, d=34, css=HOVER_CSS), 34, 34),
+        }
+
     def step(self, key: str, title: str, subtitle: str, narration: str) -> None:
         """Start a new step: a new caption on screen and a new narrated clip."""
         self.finish_step()
         self.layer = self.caption(key, title, subtitle)
-        self.steps.append(Step(key, narration, self.count, full=key in FULL_STAGE))
+        self.steps.append(Step(key, narration, self.count, full=key in FULL_STAGE,
+                               panel=PANEL_STATE.get(key, "in")))
         self.budget = round(self.durations.get(key, 0) * FPS)
 
     def left(self, end_hold: float = 0.4) -> int:
@@ -329,7 +440,7 @@ class Recorder:
         old = self.panel
         self.panel = harness.side_panel(stack, url)
         self.panel.emulate_media(color_scheme="light")
-        self.panel.set_viewport_size({"width": PANEL_W, "height": BODY_H})
+        self.panel.set_viewport_size({"width": PANEL_W, "height": PANEL_VIEW_H})
         self.panel.wait_for_selector("#scan")
         self.panel.evaluate(CURSOR_JS)
         if old:
@@ -363,7 +474,7 @@ def show_installed(rec: Recorder) -> None:
     rec.step("installed", "Installed in Chrome",
              "It sits with your other extensions, ready on any job application page.", NARRATION["installed"])
     page = rec.ctx.new_page()
-    page.set_viewport_size({"width": SIZE[0], "height": BODY_H})
+    page.set_viewport_size({"width": SIZE[0], "height": FULL_H})
     page.emulate_media(color_scheme="light")
     page.goto("chrome://extensions")
     page.wait_for_selector("extensions-item")
@@ -390,7 +501,7 @@ def show_resume(rec: Recorder, stack) -> None:
     rec.step("resume", "Your resume has the answer",
              "Some form questions have no earlier answer, but your resume does.", NARRATION["resume"])
     page = rec.ctx.new_page()
-    page.set_viewport_size({"width": SIZE[0], "height": BODY_H})
+    page.set_viewport_size({"width": SIZE[0], "height": FULL_H})
     page.emulate_media(color_scheme="light")
     page.goto(stack.url(FORM_URL[0], "/resume.html"))
     rec.stage = page
@@ -428,7 +539,9 @@ NARRATION = {
     "jobs": "Here's a job jobwatch found. Let's apply to this one.",
     "intro": ("Here is the application, on the company's own site. "
               "The extension fills it in from your own jobwatch."),
-    "scan": ("Open the side panel, and press Fill this application. "
+    "open": ("Click the jobwatch icon in your Chrome toolbar. "
+             "Its side panel opens next to the application."),
+    "scan": ("Press Fill this application. "
              "It lists every field, and where each answer comes from."),
     "fill": ("Press Fill selected. Your details and your earlier answers go in, even the long essays. "
              "Check everything, and edit anything you like."),
@@ -492,7 +605,7 @@ def show_jobs(rec: Recorder, ui_url: str, form_url: str) -> None:
     form_caption = rec.caption("jobs-form", "The company's application form",
                                "jobwatch opened it on the company's own site.")
     page = rec.ctx.new_page()
-    page.set_viewport_size({"width": SIZE[0], "height": BODY_H})
+    page.set_viewport_size({"width": SIZE[0], "height": FULL_H})
     page.emulate_media(color_scheme="light")
     page.goto(ui_url + "#today")
     card = page.locator(f"[id='job-{INITECH_KEY}']")
@@ -512,7 +625,7 @@ def show_jobs(rec: Recorder, ui_url: str, form_url: str) -> None:
     with page.context.expect_page() as opened:
         card.get_by_role("link", name="Apply").click()
     form = opened.value
-    form.set_viewport_size({"width": SIZE[0], "height": BODY_H})
+    form.set_viewport_size({"width": SIZE[0], "height": FULL_H})
     form.wait_for_load_state()
     assert form.url == form_url, f"Apply opened {form.url}, not the demo form"
     rec.stage = form
@@ -536,6 +649,13 @@ def walkthrough(rec: Recorder, stack, url: str, ui_url: str) -> None:
     n = rec.left()  # the form slides by while the voice talks, and back to the top
     rec.glide(n * 58 // 100, rec.extent(rec.form))
     rec.glide(rec.left(), 0)
+
+    # The click on the toolbar icon and the panel sliding in are composed over these frames (chrome_graph).
+    rec.step("open", "Open the side panel",
+             "Click the jobwatch icon in Chrome's toolbar: the panel opens next to the application.",
+             NARRATION["open"])
+    rec.hold(rec.left() / FPS)
+    rec.finish_step()
 
     rec.step("scan", "Fill this application",
              "It reads the form and lists every field, with where each answer comes from.",
@@ -592,15 +712,50 @@ def submit_the_form(rec: Recorder) -> None:
     rec.finish_step()
 
 
-def encode_step(ffmpeg: str, frames: Path, step: Step, out: Path) -> Path:
-    """One step's frames, composed: white stage, form, panel, caption on top."""
+CHROME_LAYERS = ("toolbar", "sidepanel", "pointer", "hover", "callout")  # encode_step's inputs 3 to 7
+
+
+def ease(start: float, seconds: float) -> str:
+    """An ffmpeg expression: 0 until `start` seconds, then a smoothstep to 1 over `seconds`."""
+    p = f"clip((t-{start})/{seconds},0,1)"
+    return f"({p}*{p}*(3-2*{p}))"
+
+
+def chrome_graph(step: Step) -> str:
+    """The form (the page runs under the panel, as Chrome resizes it later), Chrome's toolbar, the side panel with its
+    header, divider and shadow (in, out, or sliding in at the click), and for "open" the pointer and the callout."""
+    top = CAPTION_H + TOOLBAR_H
+    group_x = {"in": str(FORM_W - SHADOW), "out": str(SIZE[0]),
+               "open": f"{FORM_W - SHADOW}+{GROUP_W}*(1-{ease(T_CLICK, SLIDE)})"}[step.panel]
     graph = (
         f"color=c=white:s={SIZE[0]}x{SIZE[1]}:r={FPS}[bg];"
-        f"[bg][0:v]overlay=0:{CAPTION_H}:shortest=1[a];"
-        f"[1:v]pad={PANEL_W + GUTTER}:{BODY_H}:0:0,fillborders=right={GUTTER}:mode=smear[p];"
-        f"[a][p]overlay={FORM_W}:{CAPTION_H}[b];"
-        f"[b][2:v]overlay=0:0,format=yuv420p[v]"
+        f"[0:v]pad={SIZE[0]}:{BODY_H}:0:0,fillborders=right={SIZE[0] - FORM_W}:mode=smear[f];"
+        f"[bg][f]overlay=0:{top}:shortest=1[a];"
+        f"[1:v]pad={PANEL_W + GUTTER}:{PANEL_VIEW_H}:0:0,fillborders=right={GUTTER}:mode=smear[p];"
+        f"[a][p]overlay=x='{group_x}+{SHADOW}':y={top + PANEL_HEAD}[b];"
+        f"[b][4:v]overlay=x='{group_x}':y={top}[c];"
+        f"[c][3:v]overlay=0:{CAPTION_H}[d]"
     )
+    last = "d"
+    if step.panel == "open":
+        arrive = T_MOVE + CURSOR_MOVE
+        move = ease(T_MOVE, CURSOR_MOVE)
+        cx = f"{CURSOR_FROM[0]}+({ICON_X}-{CURSOR_FROM[0]})*{move}-15"
+        cy = f"{CURSOR_FROM[1]}+({ICON_Y}-{CURSOR_FROM[1]})*{move}-15"
+        show = (T_CLICK + CALLOUT[0], T_CLICK + CALLOUT[1])
+        cx_, cy_ = SIZE[0] - GROUP_W - CALLOUT_SIZE[0] - 6, top + 8
+        graph += (
+            f";[d][6:v]overlay=x={ICON_X - 17}:y={ICON_Y - 17}:enable='gte(t,{arrive})'[e]"
+            f";[e][5:v]overlay=x='{cx}':y='{cy}':enable='lt(t,{T_CLICK + 0.3})'[f]"
+            f";[f][7:v]overlay=x={cx_}:y={cy_}:enable='between(t,{show[0]},{show[1]})'[g]"
+        )
+        last = "g"
+    return graph + f";[{last}][2:v]overlay=0:0,format=yuv420p[v]"
+
+
+def encode_step(ffmpeg: str, frames: Path, step: Step, out: Path, chrome: dict) -> Path:
+    """One step's frames, composed: white stage, form, Chrome's toolbar and side panel, caption on top."""
+    graph = chrome_graph(step)
     layers = ("form_%05d.jpg", "panel_%05d.jpg", "layer_%05d.png")
     if step.full:  # the page spans the stage: nothing to put beside it
         graph = (f"color=c=white:s={SIZE[0]}x{SIZE[1]}:r={FPS}[bg];[bg][0:v]overlay=0:{CAPTION_H}:shortest=1[a];"
@@ -614,10 +769,28 @@ def encode_step(ffmpeg: str, frames: Path, step: Step, out: Path) -> Path:
         # -t stops each sequence at the step's last frame; the frames after it may be another kind of step's
         cmd += ["-framerate", str(FPS), "-start_number", str(step.first_frame),
                 "-t", f"{(step.frames - 0.5) / FPS:.4f}", "-i", str(frames / layer)]
+    if not step.full:
+        for name in CHROME_LAYERS:  # still images, held for the whole step
+            cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{step.frames / FPS:.4f}", "-i", str(chrome[name])]
     cmd += ["-filter_complex", graph, "-map", "[v]", "-frames:v", str(step.frames),
             "-c:v", "libx264", "-crf", "16", "-tune", "stillimage", str(out)]
     subprocess.run(cmd, check=True)
     return out
+
+
+def check_frame_sizes(frames: Path, steps: list) -> None:
+    """Every recorded frame must be the size encode_step lays out."""
+    from PIL import Image
+
+    for step in steps:
+        want = {"form": (SIZE[0], FULL_H) if step.full else (FORM_W, BODY_H), "panel": (PANEL_W, PANEL_VIEW_H)}
+        for n in range(step.first_frame, step.first_frame + step.frames):
+            for layer, size in want.items():
+                path = frames / f"{layer}_{n:05d}.jpg"
+                if not path.exists():
+                    continue
+                with Image.open(path) as image:
+                    assert image.size == size, f"{step.key}: {path.name} is {image.size}, not {size}"
 
 
 def make_tts(voice: str):
@@ -692,6 +865,7 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         ui_url = scope.enter_context(demo_ui(url))
         walkthrough(rec, stack, url, ui_url)
         rec.finish_step()
+        check_frame_sizes(rec.frames, rec.steps)
 
         # The end card is an HTML slide; slidecast renders it with a browser borrowed
         # from this Playwright, since a second sync Playwright can't start inside it.
@@ -707,12 +881,13 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
                               outro=slidecast.Sting("compose", volume=0.7),
                               lead_in=INTRO_SECONDS, loudness=-16)
         icon = store_assets.data_uri(harness.EXTENSION_DIR / "icons" / "icon128.png")
+        chrome = rec.chrome_frame(icon, FORM_URL)
         reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), TITLE_NARRATION, tail_pad=0.6, min_duration=7.5)
         steps = rec.steps
         if payoff := payoff_step(rec, tts, work):  # the result up front, right after the hook
             steps = [payoff, *steps]
         for step in steps:
-            clip = encode_step(ffmpeg, rec.frames, step, work / f"{step.key}.mp4")
+            clip = encode_step(ffmpeg, rec.frames, step, work / f"{step.key}.mp4", chrome)
             reel.add_clip(clip, step.narration, tail_pad=TAIL_PAD, min_duration=MIN_SECONDS.get(step.key, 0))
         reel.add(TRUST_HTML.format(w=SIZE[0], h=SIZE[1]), TRUST_NARRATION, tail_pad=0.6, min_duration=6.0)
         reel.add(START_HTML.format(w=SIZE[0], h=SIZE[1]), START_NARRATION, tail_pad=0.8, min_duration=4.0)
