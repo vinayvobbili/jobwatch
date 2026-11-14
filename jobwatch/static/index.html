@@ -3668,7 +3668,7 @@ async function renderToday() {
     h("div", { class: "hint", style: "margin-top:8px", title: "Only jobs with a fit score: ones not scored yet are left out" }, "Fit score"),
     segmented([[0, "Any"], [60, "60+"], [70, "70+"], [80, "80+"]], v.fit, k => { v.fit = k; drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "The top of the posted range; jobs that don't list pay still show" }, "Top of posted pay"),
-    segmented([[0, "Any"], [150000, "$150K+"], [175000, "$175K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,
+    segmented([[0, "Any"], [175000, "$175K+"], [200000, "$200K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,
       k => { v.pay = k; drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "Jobs with no posting date still show" }, "Posted within"),
     segmented([[0, "Any"], [1, "24h"], [3, "3d"], [7, "7d"], [14, "14d"]], v.posted,
