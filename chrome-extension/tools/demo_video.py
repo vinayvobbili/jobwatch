@@ -40,6 +40,8 @@ PROBLEM_NARRATION = ("Forty applications. Every form asks the same questions: ar
                      "At half an hour each, that's twenty hours of retyping what you've already written. "
                      f"{problem_scene.TAGLINE}")
 CLOSING_SECONDS = 4.0  # the closing card: the title card again with the tagline, silent, until the end
+STORE_URL = "https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi"
+STORE_LABEL = "Get it on the Chrome Web Store"  # under the QR code on the closing card
 # The turn, spoken at the start of the payoff flash, as the form fills.
 TURN_NARRATION = "The jobwatch Chrome extension answers them for you."
 SIZE = store_assets.SCREEN
@@ -177,12 +179,12 @@ TRUST_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + C
     <li>You review every field before it is filled</li>
     <li>It never presses Submit: that is yours</li>
     <li>Free and open source</li>
-    <li>It talks only to the jobwatch on your own computer</li>
+    <li>It talks only to the jobwatch app on your own computer</li>
   </ul>
 </body></html>""")
 
 TRUST_NARRATION = ("You review every field, and it never presses Submit. It is free and open source, "
-                   "and the extension talks only to the jobwatch on your own computer.")
+                   "and the extension talks only to the jobwatch app running on your own computer.")
 
 CURSOR_JS = """() => {
   if (document.getElementById('__demo_cursor')) return;
@@ -739,6 +741,23 @@ def ease(start: float, seconds: float) -> str:
     return f"({p}*{p}*(3-2*{p}))"
 
 
+def link_step_frames(frames: Path, step: Step, patterns: tuple, into: Path) -> Path:
+    """Link just the step's frames into `into`, numbered from 0, so each image sequence ends where the step does.
+
+    The recorder numbers frames across the whole video, so a step used to read its own with `-start_number` and cut
+    the sequence with `-t`. ffmpeg's cut let the first frame of the next step through now and then, and that frame
+    can be another size (the next step may be a full-stage page, taller than the form), so a pad smaller than its
+    input stopped the encode: "Padded dimensions cannot be smaller than input dimensions". With only the step's own
+    files in the folder there is nothing after its last frame to read."""
+    into.mkdir(parents=True, exist_ok=True)
+    for pattern in patterns:
+        for i in range(step.frames):
+            source = frames / (pattern % (step.first_frame + i))
+            if source.exists():
+                (into / (pattern % i)).symlink_to(source)
+    return into
+
+
 def chrome_graph(step: Step) -> str:
     """The form (the page runs under the panel, as Chrome resizes it later), Chrome's toolbar, the side panel with its
     header, divider and shadow (in, out, or sliding in at the click), and for "open" the pointer and the callout."""
@@ -779,21 +798,39 @@ def encode_step(ffmpeg: str, frames: Path, step: Step, out: Path, chrome: dict) 
         graph = (f"color=c=white:s={SIZE[0]}x{SIZE[1]}:r={FPS}[bg];[bg][0:v]overlay=0:{CAPTION_H}:shortest=1[a];"
                  f"[a][1:v]overlay=0:0,format=yuv420p[v]")
         layers = (layers[0], layers[2])
+    own = link_step_frames(frames, step, layers, out.with_suffix(".frames"))
     cmd = [ffmpeg, "-y", "-loglevel", "error"]
     for layer in layers:
         if step.caption and layer.startswith("layer"):
             cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{step.frames / FPS:.4f}", "-i", str(step.caption)]
             continue
-        # -t stops each sequence at the step's last frame; the frames after it may be another kind of step's
-        cmd += ["-framerate", str(FPS), "-start_number", str(step.first_frame),
-                "-t", f"{(step.frames - 0.5) / FPS:.4f}", "-i", str(frames / layer)]
+        cmd += ["-framerate", str(FPS), "-i", str(own / layer)]
     if not step.full:
         for name in CHROME_LAYERS:  # still images, held for the whole step
             cmd += ["-loop", "1", "-framerate", str(FPS), "-t", f"{step.frames / FPS:.4f}", "-i", str(chrome[name])]
     cmd += ["-filter_complex", graph, "-map", "[v]", "-frames:v", str(step.frames),
             "-c:v", "libx264", "-crf", "16", "-tune", "stillimage", str(out)]
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(f"{step.key}: ffmpeg failed. {describe_frames(frames, step)}") from error
+    finally:
+        shutil.rmtree(own, ignore_errors=True)
     return out
+
+
+def describe_frames(frames: Path, step: Step) -> str:
+    """The size of each layer's first and last frame in the step, to say what ffmpeg was handed."""
+    from PIL import Image
+
+    sizes = []
+    for layer in ("form", "panel"):
+        for n in (step.first_frame, step.first_frame + step.frames - 1):
+            path = frames / f"{layer}_{n:05d}.jpg"
+            if path.exists():
+                with Image.open(path) as image:
+                    sizes.append(f"{path.name} {image.size}")
+    return "frames: " + ", ".join(sizes)
 
 
 def check_frame_sizes(frames: Path, steps: list) -> None:
@@ -915,7 +952,9 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         reel.add(START_HTML.format(w=SIZE[0], h=SIZE[1]), START_NARRATION, tail_pad=0.8, min_duration=4.0)
         reel.add(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL), END_NARRATION,
                  tail_pad=0.6, min_duration=4.0)
-        reel.add(CLOSING_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), min_duration=CLOSING_SECONDS)
+        closing = CLOSING_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon)
+        tile = slidecast.qr.qr_tile(STORE_URL, STORE_LABEL)  # a viewer scans the install page off the screen
+        reel.add(closing.replace("</body>", tile + "</body>", 1), min_duration=CLOSING_SECONDS)
         return reel.render(target, ffmpeg=ffmpeg, make_poster=True)  # no fade: it ends on the closing card
 
 
