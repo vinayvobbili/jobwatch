@@ -939,7 +939,7 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
                               lead_in=0, loudness=-16)
         icon = store_assets.data_uri(harness.EXTENSION_DIR / "icons" / "icon128.png")
         chrome = rec.chrome_frame(icon, FORM_URL)
-        reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), min_duration=TITLE_SECONDS)
+        reel.add(sentence_lines(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon)), min_duration=TITLE_SECONDS)
         reel.add_animated(problem_scene.problem_html(CARD_CSS, SIZE[0], SIZE[1]), PROBLEM_NARRATION,
                           seconds=problem_scene.TOTAL, tail_pad=0.4)
         steps = rec.steps
@@ -950,12 +950,26 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
             reel.add_clip(clip, step.narration, tail_pad=TAIL_PAD, min_duration=MIN_SECONDS.get(step.key, 0))
         reel.add(TRUST_HTML.format(w=SIZE[0], h=SIZE[1]), TRUST_NARRATION, tail_pad=0.6, min_duration=6.0)
         reel.add(START_HTML.format(w=SIZE[0], h=SIZE[1]), START_NARRATION, tail_pad=0.8, min_duration=4.0)
-        reel.add(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL), END_NARRATION,
+        reel.add(sentence_lines(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL)), END_NARRATION,
                  tail_pad=0.6, min_duration=4.0)
-        closing = CLOSING_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon)
+        closing = sentence_lines(CLOSING_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon))
         tile = slidecast.qr.qr_tile(STORE_URL, STORE_LABEL)  # a viewer scans the install page off the screen
         reel.add(closing.replace("</body>", tile + "</body>", 1), min_duration=CLOSING_SECONDS)
-        return reel.render(target, ffmpeg=ffmpeg, make_poster=True)  # no fade: it ends on the closing card
+        out = reel.render(target, ffmpeg=ffmpeg, make_poster=True)  # no fade: it ends on the closing card
+        # A 2x copy for YouTube (a 1280x800 upload gets its blurry 720p tier); older slidecasts lack it.
+        if hasattr(slidecast, "youtube_copy"):
+            print(f"Wrote {slidecast.youtube_copy(out, ffmpeg=ffmpeg)}")
+        return out
+
+
+def sentence_lines(html: str) -> str:
+    """The card with each sentence of its subtitle on its own line, so one never wraps to a lone last word.
+    slidecast adds the base text-wrap CSS and warns about a lone last word itself; older ones lack this helper."""
+    try:
+        from slidecast.typeset import sentences_on_lines
+    except ImportError:
+        return html
+    return sentences_on_lines(html)
 
 
 def main(argv=None) -> int:
