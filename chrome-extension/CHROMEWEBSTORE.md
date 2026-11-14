@@ -130,6 +130,14 @@ Shows the review (each field, where its value came from, and the Fill selected b
 
 Reads the address and title of tabs so the panel offers the right buttons for the site the user is on; the one new tab that LinkedIn's Apply button opens (within two minutes of the press), whose address goes to the user's local jobwatch; and a form's tab after a scan, to notice that the page now looks like a submission confirmation so jobwatch can record the application. During a list import the user started, it also moves that same list tab to the list's next page.
 
+### Host permission justification (the dashboard field; 1,000 characters at most)
+
+The dashboard has one box for every match pattern, content-script sites included, capped at 1,000 characters. Paste this; the two longer blocks below are the full wording for a reviewer who asks.
+
+Local app (http://127.0.0.1/*, http://localhost/*): the only network destination is the jobwatch app the user runs on their own computer. It supplies the user's details, earlier answers and resume, and receives imported job cards and applications. Nothing goes to the developer or any third party; the developer runs no server.
+
+LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*): the content script does nothing unless the page is a list of jobs. There it reads only the job cards already drawn (job number, title, company, place, pay, posted date), never profiles, messages or account data. Passive mode is off by default; once the user ticks it, cards they browse are kept in local storage until they press Import. Read the jobs on this list runs only when pressed: it scrolls and pages that list tab (4 pages by default, at most 10) and sends the cards to the local jobwatch only.
+
 ### Justification: host permissions (http://127.0.0.1/* and http://localhost/*)
 
 These are the only network destinations the extension talks to: the jobwatch app the user runs on their own computer (default http://127.0.0.1:8765). It supplies the user's details, earlier answers and resume, drafts answers, receives imported job cards, and records applications. Nothing is sent to the developer or any third party; the developer runs no server.
@@ -268,12 +276,14 @@ The extension fills job application forms from the jobwatch app, which runs on t
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). Upload: `dist/jobwatch-extension-0.10.0.zip`. Paste blocks and screenshots 5 and 6 ready; not yet submitted. | Ready to submit |
+| 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). LinkedIn/Indeed list import, passive mode off by default, one side panel per tab, parallel list imports. New promo video: https://youtu.be/cILjM1IF4ZQ. Upload: `dist/jobwatch-extension-0.10.0.zip`. Paste blocks and screenshots 5 and 6 ready; submitted for review 2026-11-14. | In review |
 | 0.9.0 | 2026-11-10 | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | Published |
 
 Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Updated" date.
 
 ## Review Notes
+
+- 0.10.0 submitted for review 2026-11-14.
 
 ### Known Issues / Limitations
 
