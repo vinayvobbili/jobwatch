@@ -75,3 +75,14 @@ def test_saving_settings_writes_the_watchlist_back_as_it_was(page, watchlist):
     saved = yaml.safe_load(watchlist.read_text())["filters"]
     assert {k: saved[k] for k in FILTERS} == FILTERS
     assert page.errors == []
+
+
+def test_the_no_pay_clue_choice_is_remembered(page):
+    seg = page.locator(".seg-ctl").filter(has=page.get_by_role("button", name="Hide", exact=True))
+    sync_api.expect(seg.get_by_role("button", name="Show")).to_have_class("on")
+    seg.get_by_role("button", name="Hide").click()
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    seg = page.locator(".seg-ctl").filter(has=page.get_by_role("button", name="Hide", exact=True))
+    sync_api.expect(seg.get_by_role("button", name="Hide")).to_have_class("on")
+    assert page.errors == []

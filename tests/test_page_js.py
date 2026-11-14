@@ -94,7 +94,8 @@ def test_todays_quick_narrowing(tmp_path):
         "all": {"where": "remote", "fit": 80, "pay": 250000, "posted": 3},
     }
     js = tmp_path / "narrow.js"
-    js.write_text(page_const("roleShown") + "\n" + page_function("quickNarrow") + f"""
+    js.write_text(page_const("roleShown") + "\n" + page_const("payShown") + "\n" + page_function("payTop") + "\n"
+                  + page_function("quickNarrow") + f"""
 const jobs = {json.dumps(jobs)}, views = {json.dumps(views)};
 const out = {{}};
 for (const [v, view] of Object.entries(views)) out[v] = Object.keys(jobs).filter(k => quickNarrow(jobs[k], view));
@@ -111,6 +112,46 @@ console.log(JSON.stringify(out));
         "week": ["remote", "both", "nowhere"],       # posted within 3 days; no date still shows
         "all": ["remote"],
     }
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_the_pay_chip_goes_by_the_best_pay_clue_and_unknown_pay_sorts_last(tmp_path):
+    """The chip compares the posted top, else the Levels figure, else the LCA one; a job with no clue shows unless
+    "No pay clue" is Hide, and follows the ones with a clue while a chip is on; it's tagged "pay unknown"."""
+    jobs = [  # made-up jobs
+        {"key": "blank", "salary_max": None, "pay_sources": [{"key": "levels", "value": None, "blank": "TBD"}]},
+        {"key": "posted", "salary_max": 210_000},
+        {"key": "market", "salary_max": None, "pay_sources": [{"key": "lca", "amount": 250_000, "market": True}]},
+        {"key": "levels", "salary_max": None, "pay_sources": [{"key": "levels", "amount": 230_000},
+                                                              {"key": "lca", "amount": 100_000}]},
+        {"key": "low", "salary_max": 150_000, "pay_sources": [{"key": "levels", "amount": 400_000}]},
+        {"key": "lca", "salary_max": None, "pay_sources": [{"key": "lca", "amount": 205_000}]},
+        {"key": "underlevels", "salary_max": None, "pay_sources": [{"key": "levels", "amount": 190_000}]},
+    ]
+    js = tmp_path / "clue.js"
+    js.write_text(page_const("payShown") + "\n" + page_const("cluesFirst") + "\n" + page_function("payTop") + "\n"
+                  + page_function("paySources") + f"""
+const h = (tag, attrs, ...kids) =>
+  ({{ tag, attrs: attrs || {{}}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) }});
+const jobs = {json.dumps(jobs)};
+const shown = noClue => jobs.filter(j => payShown(j, {{ pay: 200000, noClue }})).map(j => j.key);
+console.log(JSON.stringify({{
+  tops: jobs.map(payTop), show: shown("show"), hide: shown("hide"),
+  off: jobs.every(j => payShown(j, {{ pay: 0, noClue: "hide" }})),
+  on: cluesFirst(jobs, {{ pay: 200000 }}).map(j => j.key), same: cluesFirst(jobs, {{ pay: 0 }}) === jobs,
+  tagged: jobs.map(j => paySources({{ ...j, pay_sources: j.pay_sources || [] }}).kids
+    .some(c => c.kids[0] === "pay unknown")),
+}}));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    assert got["tops"] == [None, 210_000, None, 230_000, 150_000, 205_000, 190_000]  # market filings are no clue
+    assert got["show"] == ["blank", "posted", "market", "levels", "lca"]  # low and underlevels are under $200K
+    assert got["hide"] == ["posted", "levels", "lca"]
+    assert got["off"] and got["same"]
+    assert got["on"] == ["posted", "levels", "low", "lca", "underlevels", "blank", "market"]
+    assert got["tagged"] == [True, False, True, False, False, False, False]
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
@@ -208,8 +249,8 @@ def test_company_counts_follow_the_other_filters(tmp_path):
     views = {"off": base, "fit80": {**base, "fit": 80}, "picked": {**base, "fit": 80, "company": "Globex"},
              "search": {**base, "q": "data"}, "python": {**base, "kws": ["python"]}}
     js = tmp_path / "counts.js"
-    js.write_text(page_const("roleShown") + "\n" + page_function("quickNarrow") + "\n" + page_function("companyCounts")
-                  + f"""
+    js.write_text(page_const("roleShown") + "\n" + page_const("payShown") + "\n" + page_function("payTop") + "\n"
+                  + page_function("quickNarrow") + "\n" + page_function("companyCounts") + f"""
 const jobs = {json.dumps(jobs)}, views = {json.dumps(views)};
 const out = {{}}, kept = {{Umbrella: 4}};
 for (const [n, v] of Object.entries(views)) out[n] = companyCounts(jobs, {{...v, kws: new Set(v.kws)}});
@@ -589,7 +630,7 @@ def test_a_jobs_pay_is_one_row_of_labelled_chips_and_empty_ones_say_why(tmp_path
     empty source is a dimmed chip showing its blank word with the reason on hover, and a job without sources (an
     older server) still gets the plain pay chip."""
     js = tmp_path / "pay.js"
-    js.write_text(page_function("paySources") + """
+    js.write_text(page_function("paySources") + "\n" + page_function("payTop") + """
 const h = (tag, attrs, ...kids) =>
   ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
 const chips = el => el.kids.map(c => [c.attrs.class, c.kids[0].kids[0], c.kids[1], c.attrs.title]);
@@ -600,7 +641,7 @@ const items = [
     detail: "H-1B filings: median $165K" },
   { key: "recruiter", label: "Recruiter", value: null, blank: "none", reason: "no recruiter figures kept" },
   { key: "ask", label: "Ask", value: "$180K" }];
-const row = paySources({ key: "k", pay: "$150K–$196K", pay_sources: items });
+const row = paySources({ key: "k", pay: "$150K–$196K", salary_max: 196000, pay_sources: items });
 console.log(JSON.stringify({ attrs: row.attrs, chips: chips(row), old: paySources({ pay: "$1K" }).kids,
   none: paySources({}) }));
 """, encoding="utf-8")

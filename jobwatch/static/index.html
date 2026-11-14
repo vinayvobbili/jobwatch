@@ -244,6 +244,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .psrc-posted b, .psrc-ask b { color: inherit; opacity: .75; }
 .psrc-levels, .psrc-lca { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .psrc-levels b, .psrc-lca b { color: inherit; opacity: .75; }
+.psrc-unknown { background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent); color: var(--warn, #b45309); font-weight: 600; }
 .psrc-none { background: transparent; border: 1px dashed var(--muted); color: var(--muted); opacity: .7; font-style: italic; cursor: help; }
 .kv .advice { margin: 0; }
 .kv .advice .atext { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -1792,9 +1793,19 @@ function whyScore(fit) {
 function paySources(job) {
   const items = job.pay_sources;
   if (!items) return job.pay ? h("span", { class: "paychip" }, job.pay) : null;
-  return h("div", { class: "psrcs", "data-pay": job.key }, items.map(s => s.value
+  return h("div", { class: "psrcs", "data-pay": job.key }, [...items.map(s => s.value
     ? h("span", { class: `psrc psrc-${s.key}`, title: s.detail || s.value }, h("b", {}, s.label), s.short || s.value)
-    : h("span", { class: "psrc psrc-none", title: s.reason }, h("b", {}, s.label), s.blank)));
+    : h("span", { class: "psrc psrc-none", title: s.reason }, h("b", {}, s.label), s.blank)),
+    payTop(job) == null ? h("span", { class: "psrc psrc-unknown",
+      title: "No source has a pay figure for this job yet" }, "pay unknown") : null]);
+}
+// The best pay clue a job carries, as a top figure to compare with Today's pay chip: the posted top, else the Levels
+// figure, else the H-1B (LCA) one (other employers' filings are no clue to this job's pay). null: no clue at all.
+function payTop(job) {
+  if (job.salary_max != null) return job.salary_max;
+  const by = Object.fromEntries((job.pay_sources || []).map(s => [s.key, s]));
+  for (const k of ["levels", "lca"]) if (by[k] && by[k].amount != null && !by[k].market) return by[k].amount;
+  return null;
 }
 
 // How the Levels.fyi and H-1B (U.S. DOL LCA, base only, not total compensation) figures were worked out, with
@@ -3512,6 +3523,7 @@ function paceLine(el, p) {
 // all: every matching job, paged, rather than today's picks (the top display.today in the order picked).
 // where, fit, pay: the quick narrowing (see quickNarrow); "any" and 0 mean off.
 const todayView = { q: "", sort: remembered("today.sort", "fit"), company: "", kws: new Set(), where: "any", fit: 0, pay: 0, posted: 0, page: 1, all: false,
+  noClue: remembered("today.noclue", "show") === "hide" ? "hide" : "show",  // jobs with no pay clue, while a pay chip is on
   rolesOff: rolesOffKept() };
 // Today's Roles checkboxes: the kinds of work unticked, kept in this browser (a view, not a filter in the watchlist).
 function rolesOffKept() {
@@ -3545,13 +3557,18 @@ function worthChip(job) {
 }
 
 // Today's quick narrowing, on top of the saved filters: how the job is worked, a lowest fit score, a lowest top of
-// the posted pay. A job with no location, no score yet or no listed pay isn't hidden by that part, the same as the
-// saved filters treat them.
+// the best known pay. A job with no location or no score yet isn't hidden by that part, the same as the saved
+// filters treat them.
+// The pay chip compares its threshold with the job's best pay clue (payTop): a clue under it hides the job, one at or
+// over it keeps it. A job with no clue at all shows unless "No pay clue" is on Hide.
+const payShown = (j, v) => { const t = payTop(j); return !v.pay || (t == null ? v.noClue !== "hide" : t >= v.pay); };
+// With a pay chip on, jobs with a pay clue come before the ones without, each part in the order it was in.
+const cluesFirst = (jobs, v) => !v.pay ? jobs : [...jobs.filter(j => payTop(j) != null), ...jobs.filter(j => payTop(j) == null)];
 function quickNarrow(j, v) {
   const where = j.where || [];  // a server from before `where` sends none
   return roleShown(j, v) && (v.where === "any" || !where.length || where.includes(v.where)) &&
     (!v.fit || (j.fit && j.fit.score >= v.fit)) &&  // a fit filter shows scored jobs only
-    (!v.pay || j.salary_max == null || j.salary_max >= v.pay) &&
+    payShown(j, v) &&
     (!v.posted || j.age_days == null || j.age_days <= v.posted);  // no posting date: still shows
 }
 // Jobs per company among the ones the other filters (search, keywords, quick narrowing) let through: a company's
@@ -3667,9 +3684,13 @@ async function renderToday() {
     segmented([["any", "Any"], ["remote", "Remote"], ["onsite", "On-site or hybrid"]], v.where, k => { v.where = k; drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "Only jobs with a fit score: ones not scored yet are left out" }, "Fit score"),
     segmented([[0, "Any"], [60, "60+"], [70, "70+"], [80, "80+"]], v.fit, k => { v.fit = k; drawToday(); }),
-    h("div", { class: "hint", style: "margin-top:8px", title: "The top of the posted range; jobs that don't list pay still show" }, "Top of posted pay"),
+    h("div", { class: "hint", style: "margin-top:8px",
+      title: "The top of the posted range, else the Levels.fyi figure, else the H-1B filings'" }, "Top pay"),
     segmented([[0, "Any"], [175000, "$175K+"], [200000, "$200K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,
       k => { v.pay = k; drawToday(); }),
+    h("div", { class: "hint", style: "margin-top:8px",
+      title: "Jobs no source has any pay figure for: they follow the ones with a figure while a pay chip is on" }, "No pay clue"),
+    segmented([["show", "Show"], ["hide", "Hide"]], v.noClue, k => { v.noClue = k; remember("today.noclue", k); drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "Jobs with no posting date still show" }, "Posted within"),
     segmented([[0, "Any"], [1, "24h"], [3, "3d"], [7, "7d"], [14, "14d"]], v.posted,
       k => { v.posted = k; drawToday(); }));
@@ -3688,9 +3709,9 @@ async function renderToday() {
     let jobs = todayJobs.filter(j => (!q || `${j.title} ${j.company}`.toLowerCase().includes(q)) &&
       (!v.company || j.company === v.company) && [...v.kws].every(k => j.keywords.includes(k)) && quickNarrow(j, v));
     if (v.sort === "new") jobs = [...jobs].sort((a, b) => (a.age_days ?? 1e4) - (b.age_days ?? 1e4));
-    if (v.sort === "pay") jobs = [...jobs].sort((a, b) => (b.salary_max ?? -1) - (a.salary_max ?? -1));
+    if (v.sort === "pay") jobs = [...jobs].sort((a, b) => (payTop(b) ?? -1) - (payTop(a) ?? -1));
     if (v.sort === "worth") jobs = [...jobs].sort(byWorth);
-    jobs = focusFirst(jobs);
+    jobs = cluesFirst(focusFirst(jobs), v);
     worthShown = v.sort === "worth";
     const narrowed = v.q || v.company || v.kws.size || v.where !== "any" || v.fit || v.pay || v.posted;
     // Today's picks: the top few in this order. A search, company, keyword or quick narrowing looks through every match.
@@ -3703,7 +3724,7 @@ async function renderToday() {
       return;
     }
     const pg = paged(jobs, v, JSON.stringify([v.q, v.company, [...v.kws], v.where, v.fit, v.pay, v.posted, v.sort,
-      [...v.rolesOff]]), drawToday);
+      v.noClue, [...v.rolesOff]]), drawToday);
     const back = top && !narrowed ? h("button", { class: "btn ghost", onclick: () => {
       v.all = false; drawToday(); scrollTo({ top: 0, behavior: REDUCED ? "auto" : "smooth" }); } }, `Back to today's ${d.picks} picks`) : null;
     fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")

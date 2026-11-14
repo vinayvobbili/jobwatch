@@ -39,6 +39,8 @@ def test_other_employers_filings_say_they_are_not_this_employers_pay():
     s = by_key(paysources.sources(job(), est=market, lca_cached=True))["lca"]
     assert s["value"] == "$165K median (40 filings, CO, all employers; not this employer's)"
     assert s["short"] == "$165K mkt"
+    assert s["market"] is True  # the page's pay filter doesn't take it as this job's pay
+    assert "market" not in by_key(paysources.sources(job(), est=FILINGS, lca_cached=True))["lca"]
 
 
 def test_levels_without_a_base_shows_the_total():

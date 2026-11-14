@@ -54,7 +54,7 @@ def _lca(est: lca.Estimate | None, cached: bool) -> dict:
         return _src("lca", reason=f"fewer than {lca.MIN_FILINGS} matching H-1B filings for this employer and title")
     if est.where.endswith(lca.MARKET):  # other employers' filings in the home state: never read as this one's pay
         return _src("lca", f"{_k(est.median)} median ({est.count} filings, {est.where}; not this employer's)",
-                    detail=est.line(), amount=est.median, short=f"{_k(est.median)} mkt", url=est.url)
+                    detail=est.line(), amount=est.median, short=f"{_k(est.median)} mkt", market=True, url=est.url)
     return _src("lca", f"{_k(est.median)} median ({est.count} filings)", detail=est.line(), amount=est.median,
                 short=f"{_k(est.median)} med", url=est.url)
 
