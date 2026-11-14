@@ -114,7 +114,9 @@ TITLE_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + C
 
 # The last frame: the opening title card again, with the tagline under it, held to the end (no fade to black).
 CLOSING_HTML = TITLE_HTML.replace(
-    "</style>", "  p.tag {{ font-size: 40px; font-weight: 700; color: #fff; margin-top: 30px; }}\n</style>").replace(
+    "</style>", "  p.tag {{ font-size: 40px; font-weight: 700; margin-top: 30px; color: transparent; "
+                "background: linear-gradient(90deg, #b9a8ff, #f08cff); "
+                "-webkit-background-clip: text; }}\n</style>").replace(
     "</body>", f'  <p class="tag">{problem_scene.TAGLINE}</p>\n</body>')
 
 END_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CARD_CSS + """</style></head><body>

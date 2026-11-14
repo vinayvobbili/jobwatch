@@ -228,9 +228,9 @@ PROBLEM_CSS = """
   .chip { margin-top: 20px; padding: 8px 20px; border-radius: 999px; font-size: 21px; color: #ffe2bd;
           background: rgb(255 140 100 / .16); border: 1px solid rgb(255 184 107 / .55); }
   .tagline { position: absolute; left: 120px; right: 120px; top: 270px; margin: 0; font-size: 76px; line-height: 1.15;
-             font-weight: 800; letter-spacing: -0.02em; text-shadow: 0 0 40px rgb(176 92 246 / .6); }
-  .tagline b { background: linear-gradient(90deg, #ffd08a, #ff8f6b); -webkit-background-clip: text;
-               color: transparent; }
+             font-weight: 800; letter-spacing: -0.02em; color: transparent;
+             background: linear-gradient(90deg, #b9a8ff, #f08cff); -webkit-background-clip: text;
+             filter: drop-shadow(0 0 24px rgb(176 92 246 / .5)); }
   .foot { position: absolute; left: 0; right: 0; bottom: 18px; font-size: 16px; color: #8f8bb8; }
   .cursor { position: absolute; z-index: 9; width: 30px; height: 30px; margin: 0; }
 """
