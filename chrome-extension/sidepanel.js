@@ -110,12 +110,12 @@
   // on request). Both are kept in chrome.storage.local; passive.js and background.js read them from there.
   const listOptions = () => {
     const pages = h('input', { id: 'list-pages', type: 'number', min: '1', max: '10', step: '1', value: '4', title: 'Pages read from a list (1-10)' });
-    const on = h('input', { id: 'passive-on', type: 'checkbox', checked: true });
+    const on = h('input', { id: 'passive-on', type: 'checkbox', checked: false });
     const seen = h('button', { id: 'passive-import', class: 'ghost', hidden: true, onclick: importSeen });
     const refresh = async () => {
       const s = await chrome.storage.local.get(['listPages', 'passiveOn', 'passiveSeen']);
       if (document.activeElement !== pages) pages.value = String(s.listPages || 4);
-      on.checked = s.passiveOn !== false;
+      on.checked = s.passiveOn === true; // off by default; the person opts in
       const n = Object.keys(s.passiveSeen || {}).length;
       seen.hidden = !n;
       seen.textContent = `Read the ${n} job${n === 1 ? '' : 's'} seen while browsing`;

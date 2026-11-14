@@ -224,6 +224,7 @@ def _capture(pw, out_dir: Path, headless: bool) -> list:
         # 5 and 6. a LinkedIn list of made-up jobs: passive mode has noted them, then Import sends them to jobwatch
         stack.server.features = ["posting", "import-list"]
         list_url = stack.url("www.linkedin.com", "/jobs/collections/recommended")
+        options.evaluate("() => chrome.storage.local.set({ passiveOn: true })")  # passive mode is opt-in: tick it
         jobs = ctx.new_page()
         jobs.emulate_media(color_scheme="light")
         jobs.set_viewport_size({"width": FORM_W, "height": BODY_H})

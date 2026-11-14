@@ -12,13 +12,13 @@ Next button (or opens its next page), at a human pace with random pauses of a fe
 you set in the panel (4 by default, at most 10), and sends those cards to your own jobwatch. Nothing else on those
 pages is read, and nothing is sent anywhere else.
 
-**Passive mode (on by default; a checkbox in the side panel turns it off):** on LinkedIn and Indeed, a small script
+**Passive mode (off by default; you turn it on with a checkbox in the side panel):** on LinkedIn and Indeed, a small script
 runs in the pages you browse there. When the address is a list of jobs, it notes the job cards the page has already
 drawn, with no scrolling, clicking or opening of anything by the extension: the same fields as above (the job's number
 on the site, title, company, place, pay and how long ago it was posted), and nothing else from the page. It keeps them,
 once per job, in the extension's storage in Chrome on this computer, up to 1000 jobs. They stay there and are sent
 nowhere until you press **Import** in the side panel ("N jobs seen while browsing"); then they go to your own jobwatch,
-the same as an imported list, and are deleted from the extension. With the checkbox off, the script reads nothing.
+the same as an imported list, and are deleted from the extension. With the checkbox off (the default), the script reads and stores nothing.
 Removing the extension deletes what it kept.
 
 **LinkedIn job pages:** apart from a list you import or passive mode's job cards, it reads nothing from LinkedIn's pages: no title, company,

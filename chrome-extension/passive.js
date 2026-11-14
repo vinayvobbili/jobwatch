@@ -17,7 +17,10 @@
   const MAX_KEPT = 1000;
   const QUIET_MS = 2500; // after the page stops changing, read what's there once
   const KEY = 'passiveSeen'; // chrome.storage.local: { "<site>:<id>": { ...record, seenAt } }
-  const ON_KEY = 'passiveOn'; // chrome.storage.local: false turns passive mode off; absent means on
+  const ON_KEY = 'passiveOn'; // chrome.storage.local: true once the person ticks the side panel box; absent means off
+
+  /** Whether passive mode is on, given the stored value: only an explicit true (off by default, opt-in). */
+  const isOn = (value) => value === true;
 
   const keyOf = (r) => `${r.source}:${r.id}`;
 
@@ -45,7 +48,7 @@
       .map(({ seenAt, ...r }) => r); // eslint-disable-line no-unused-vars
   }
 
-  const api = { merge, records, keyOf, KEY, ON_KEY, MAX_KEPT };
+  const api = { merge, records, keyOf, isOn, KEY, ON_KEY, MAX_KEPT };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JWPassive = api;
 
@@ -60,10 +63,10 @@
   async function flush() {
     timer = null;
     try {
+      const stored = await chrome.storage.local.get(ON_KEY);
+      if (!isOn(stored[ON_KEY])) return; // off unless the person opted in: read and store nothing
       const source = root.JW.listMode(location.href);
       if (!source) return;
-      const stored = await chrome.storage.local.get(ON_KEY);
-      if (stored[ON_KEY] === false) return;
       const fresh = root.JWList.readList(document, { source }).filter((r) => r.id && !reported.has(keyOf(r)));
       if (!fresh.length) return;
       for (const r of fresh) reported.add(keyOf(r));

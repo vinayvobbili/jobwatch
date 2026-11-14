@@ -117,3 +117,50 @@ const { store } = P.merge({}, recs, 1);
 const keys = Object.keys(store);
 console.log(JSON.stringify({ n: keys.length, first: keys[0], max: P.MAX_KEPT }));""")
     assert out["n"] == out["max"] and out["first"] == "linkedin:6"
+
+
+@needs_node
+def test_passive_mode_is_off_unless_the_person_opts_in(tmp_path):
+    out = run_js(tmp_path, "console.log(JSON.stringify([undefined, null, false, true, 'true', 1].map(P.isOn)));")
+    assert out == [False, False, False, True, False, False]  # absent = the default = off; only an explicit true is on
+
+
+def run_content_script(tmp_path, stored: dict):
+    """Load passive.js as the content script on a LinkedIn list, with `stored` as chrome.storage.local; return the messages sent."""
+    js = tmp_path / "content.js"
+    js.write_text(f"""
+const sent = [];
+globalThis.document = {{ documentElement: {{}} }};
+globalThis.location = {{ href: 'https://www.linkedin.com/jobs/collections/recommended' }};
+globalThis.MutationObserver = class {{ observe() {{}} }};
+globalThis.setTimeout = (fn) => {{ globalThis.__flush = fn; return 1; }};
+globalThis.JW = {{ listMode: () => 'linkedin' }};
+globalThis.JWList = {{ readList: () => [{{ source: 'linkedin', id: '1', title: 't', company: 'Initech' }}] }};
+globalThis.chrome = {{
+  runtime: {{ id: 'x', sendMessage: async (m) => {{ sent.push(m); }} }},
+  storage: {{ local: {{ get: async () => ({json.dumps(stored)}) }} }},
+}};
+require({json.dumps(str(EXT / 'passive.js'))});
+globalThis.__flush().then(() => console.log(JSON.stringify(sent)));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+@needs_node
+def test_content_script_stores_nothing_by_default_or_when_off(tmp_path):
+    assert run_content_script(tmp_path, {}) == []  # a fresh install: nothing stored yet, so nothing noted
+    assert run_content_script(tmp_path, {"passiveOn": False}) == []
+
+
+@needs_node
+def test_content_script_notes_jobs_once_opted_in(tmp_path):
+    sent = run_content_script(tmp_path, {"passiveOn": True})
+    assert [m["type"] for m in sent] == ["passiveSeen"] and sent[0]["records"][0]["id"] == "1"
+
+
+def test_side_panel_checkbox_starts_unticked_and_reads_only_an_explicit_true():
+    panel = (EXT / "sidepanel.js").read_text(encoding="utf-8")
+    assert "id: 'passive-on', type: 'checkbox', checked: false" in panel
+    assert "on.checked = s.passiveOn === true" in panel
