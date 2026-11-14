@@ -2,6 +2,8 @@
 
 <!-- mcp-name: io.github.vinayvobbili/jobwatch -->
 
+[Home page](https://vinayvobbili.github.io/jobwatch/)
+
 Watch the job boards of the companies you care about and get a short, ranked digest of **new** roles that
 match you, optionally fit-scored against your resume. jobwatch finds and ranks. It never applies for you.
 

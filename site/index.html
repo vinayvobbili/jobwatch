@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jobwatch: your job hunt shouldn't be a full-time job</title>
+<meta name="description" content="jobwatch watches company job boards, ranks new roles, tracks applications and fills application forms, and runs on your own computer.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#5a5cf2">
+<style>
+:root {
+  --bg: #f6f4fd; --glow-1: rgba(185, 168, 255, .35); --glow-2: rgba(240, 140, 255, .2);
+  --panel: rgba(255, 255, 255, .88); --panel-solid: #fff; --text: #17142b; --muted: #625d80; --line: #e4e0f3;
+  --accent: #5a4ee8; --accent-2: #c23ee0; --chip: #efecfa;
+  --shadow: 0 1px 2px rgba(23, 20, 43, .04), 0 10px 28px -16px rgba(23, 20, 43, .18);
+  --shadow-hover: 0 2px 4px rgba(23, 20, 43, .05), 0 24px 46px -20px rgba(110, 70, 220, .38);
+  --name-grad: linear-gradient(90deg, #8a73f5, #d654e8);
+  --grad: linear-gradient(135deg, #5a5cf2, #a24af0);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #0b0a14; --glow-1: rgba(120, 100, 240, .26); --glow-2: rgba(220, 90, 240, .14);
+  --panel: rgba(24, 21, 40, .86); --panel-solid: #181528; --text: #ece9fa; --muted: #9a94bb; --line: #2a2640;
+  --accent: #b9a8ff; --accent-2: #f08cff; --chip: #221e38;
+  --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 12px 32px -20px rgba(0, 0, 0, .9);
+  --shadow-hover: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 48px -20px rgba(150, 110, 255, .5);
+  --name-grad: linear-gradient(90deg, #b9a8ff, #f08cff);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-height: 100vh; color: var(--text);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  background: radial-gradient(1100px 600px at 8% -12%, var(--glow-1), transparent 62%),
+    radial-gradient(900px 540px at 102% -6%, var(--glow-2), transparent 60%), var(--bg);
+  background-attachment: fixed; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+:root[data-width="wide"] .wrap { max-width: 1600px; }
+:root[data-width="full"] .wrap { max-width: none; padding: 0 32px; }
+
+header { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-solid) 72%, transparent); backdrop-filter: saturate(1.5) blur(16px);
+  -webkit-backdrop-filter: saturate(1.5) blur(16px); }
+.bar { display: flex; gap: 12px; align-items: center; padding-top: 10px; padding-bottom: 10px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 19px; letter-spacing: -.02em;
+  margin-right: auto; color: var(--text); text-decoration: none; }
+.brand img { width: 26px; height: 26px; border-radius: 7px; }
+.brand b, .grad { background: var(--name-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--chip); border-radius: 11px; }
+.seg button { background: none; border: 0; color: var(--muted); padding: 5px 11px; border-radius: 8px;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: color .15s, background .15s; }
+.seg button:hover { color: var(--text); }
+.seg button[aria-pressed="true"] { color: var(--text); background: var(--panel-solid); box-shadow: 0 1px 3px rgba(23, 20, 43, .15); }
+
+.hero { text-align: center; padding: 72px 0 40px; position: relative; }
+.hero h1 { margin: 0; font-size: clamp(44px, 9vw, 84px); letter-spacing: -.04em; line-height: 1; font-weight: 850; }
+.hero .tag { margin: 14px 0 0; font-size: clamp(20px, 3.4vw, 30px); font-weight: 700; letter-spacing: -.02em; }
+.hero p.what { margin: 18px auto 0; max-width: 640px; color: var(--muted); font-size: 18px; }
+.cta { display: flex; gap: 12px; justify-content: center; align-items: stretch; flex-wrap: wrap; margin-top: 30px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 13px; font: inherit;
+  font-weight: 650; text-decoration: none; cursor: pointer; border: 1px solid var(--line);
+  transition: transform .18s, box-shadow .18s; }
+.btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.btn.primary { background: var(--grad); color: #fff; border-color: transparent; }
+.install { display: inline-flex; align-items: center; gap: 10px; padding: 6px 6px 6px 16px; border-radius: 13px;
+  background: var(--panel-solid); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.install code { font: 600 15px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
+.install button { border: 0; border-radius: 9px; padding: 8px 14px; cursor: pointer; font: inherit; font-weight: 650;
+  font-size: 14px; background: var(--chip); color: var(--text); transition: background .15s; }
+.install button:hover { background: var(--line); }
+.sub { margin-top: 14px; font-size: 14px; color: var(--muted); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 30px 0 10px; text-align: left; }
+.tile { border-radius: 16px; padding: 16px 18px; color: #fff; box-shadow: var(--shadow); animation: rise .6s both; }
+.tile b { display: block; font-size: 22px; letter-spacing: -.02em; }
+.tile span { font-size: 13px; opacity: .92; }
+.tile:nth-child(1) { background: linear-gradient(135deg, #5a5cf2, #8a5cf6); }
+.tile:nth-child(2) { background: linear-gradient(135deg, #8a5cf6, #c23ee0); animation-delay: .08s; }
+.tile:nth-child(3) { background: linear-gradient(135deg, #c23ee0, #ec4899); animation-delay: .16s; }
+.tile:nth-child(4) { background: linear-gradient(135deg, #0ea5b7, #5a5cf2); animation-delay: .24s; }
+
+section { padding: 36px 0; }
+h2 { margin: 0 0 18px; font-size: clamp(24px, 4vw, 34px); letter-spacing: -.03em; }
+.video { border-radius: 20px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow-hover);
+  background: var(--panel-solid); max-width: 960px; margin: 0 auto; }
+.video video, .video img, .video iframe { display: block; width: 100%; border: 0; background: #0b0a14; }
+.video iframe { aspect-ratio: 16 / 9; }
+.video img, .video video { height: auto; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px; box-shadow: var(--shadow);
+  transition: transform .2s, box-shadow .2s, border-color .2s; animation: rise .6s both; }
+.card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.card:nth-child(2) { animation-delay: .06s; } .card:nth-child(3) { animation-delay: .12s; }
+.card:nth-child(4) { animation-delay: .18s; } .card:nth-child(5) { animation-delay: .24s; } .card:nth-child(6) { animation-delay: .3s; }
+.badge { display: inline-block; font-size: 12px; font-weight: 700; color: #fff; background: var(--grad); border-radius: 999px;
+  padding: 3px 10px; margin-bottom: 10px; }
+.card h3 { margin: 0 0 6px; font-size: 18px; letter-spacing: -.01em; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+.private { border-radius: 22px; padding: 32px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow);
+  position: relative; overflow: hidden; }
+.private::before { content: ""; position: absolute; width: 420px; height: 420px; right: -120px; top: -160px;
+  background: radial-gradient(closest-side, var(--glow-2), transparent); pointer-events: none; }
+.private ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; position: relative; }
+.private li { padding-left: 30px; position: relative; color: var(--muted); }
+.private li::before { content: ""; position: absolute; left: 0; top: 7px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--grad); }
+.private li b { color: var(--text); }
+
+.links { display: flex; flex-wrap: wrap; gap: 10px; }
+.links a { padding: 9px 16px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-weight: 600;
+  text-decoration: none; transition: transform .18s, box-shadow .18s; }
+.links a:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align: center; }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+@media (max-width: 560px) { .hero { padding-top: 44px; } .install code { font-size: 13px; } .private { padding: 22px; } }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="#top"><img src="icon.svg" alt=""><b>jobwatch</b></a>
+    <div class="seg" id="theme" role="group" aria-label="Theme">
+      <button data-v="system" aria-pressed="true">System</button><button data-v="light" aria-pressed="false">Light</button><button data-v="dark" aria-pressed="false">Dark</button>
+    </div>
+    <div class="seg" id="width" role="group" aria-label="Width">
+      <button data-v="standard" aria-pressed="true">Standard</button><button data-v="wide" aria-pressed="false">Wide</button><button data-v="full" aria-pressed="false">Full</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="top">
+  <div class="hero">
+    <h1 class="grad">jobwatch</h1>
+    <p class="tag grad">Your job hunt shouldn't be a full-time job.</p>
+    <p class="what">jobwatch watches company job boards, ranks new roles, tracks applications and fills application forms, and runs on your own computer.</p>
+    <div class="cta">
+      <a class="btn primary" id="add-chrome" href="https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi">Add to Chrome</a>
+      <div class="install"><code id="cmd">pipx install jobwatch</code><button id="copy" type="button">Copy</button></div>
+    </div>
+    <p class="sub">Then run <code>jobwatch ui</code>. Or <code>pip install jobwatch</code>. MIT licensed.</p>
+    <div class="tiles">
+      <div class="tile"><b>Boards</b><span>Greenhouse, Lever, Ashby, Workday and more</span></div>
+      <div class="tile"><b>Fit score</b><span>out of 100, against your resume</span></div>
+      <div class="tile"><b>Every stage</b><span>tracked through to an offer</span></div>
+      <div class="tile"><b>Your computer</b><span>nothing sent home</span></div>
+    </div>
+  </div>
+
+  <section>
+    <h2>See it work</h2>
+    <div class="video" id="video"></div>
+  </section>
+
+  <section>
+    <h2>What it does</h2>
+    <div class="grid">
+      <div class="card"><span class="badge">Watch</span><h3>Watches company boards</h3><p>Greenhouse, Lever, Ashby, Workable, Workday and more, plus HN's Who is hiring and VC portfolio boards. Fresh roles, real pay ranges, robots.txt respected.</p></div>
+      <div class="card"><span class="badge">Rank</span><h3>A short, ranked daily digest</h3><p>Only new roles that match you, optionally fit-scored against your resume: must-haves met, gaps, a score out of 100.</p></div>
+      <div class="card"><span class="badge">Apply</span><h3>Apply queue and form fill</h3><p>A short queue of jobs to apply to, with a resume tailored per job. The Chrome extension fills the form from your details and earlier answers.</p></div>
+      <div class="card"><span class="badge">Track</span><h3>Tracking through to an offer</h3><p>Every stage, the next step, follow-ups for applications that go quiet, a calendar feed, and offers side by side.</p></div>
+      <div class="card"><span class="badge">Prep</span><h3>Interview prep</h3><p>A prep sheet per interview, answers drafted from your own stories, a mock interview and a drill video.</p></div>
+      <div class="card"><span class="badge">Agents</span><h3>An MCP server for assistants</h3><p>An MCP server and an agent skill, so Claude and other assistants can run your search with you.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="private">
+      <h2>Private by design</h2>
+      <ul>
+        <li><b>It runs on your computer.</b> jobwatch sends nothing home.</li>
+        <li><b>Your data stays on your machine.</b> The only exception is a model you choose for fit scores and chat; on-device models send nothing anywhere.</li>
+        <li><b>You press Submit yourself.</b> jobwatch finds and ranks. It never applies for you.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Read more</h2>
+    <div class="links">
+      <a href="https://github.com/vinayvobbili/jobwatch">GitHub</a>
+      <a href="https://pypi.org/project/jobwatch/">PyPI</a>
+      <a href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/README.md">The guide</a>
+      <a href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/the-page.md">The page</a>
+      <a href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/applying.md">Applying</a>
+      <a href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/tracking.md">Tracking</a>
+      <a href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/interview-prep.md">Interview prep</a>
+      <a href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/mcp.md">MCP server</a>
+      <a href="https://registry.modelcontextprotocol.io">MCP Registry</a>
+    </div>
+  </section>
+</main>
+<footer class="wrap">jobwatch is open source under the MIT license.</footer>
+
+<script>
+const YOUTUBE_ID = "";  // set to the video's id to show the YouTube embed instead of the demo clip
+
+const root = document.documentElement;
+const get = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const put = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const dark = matchMedia("(prefers-color-scheme: dark)");
+
+function applyTheme(v) {
+  root.dataset.theme = v === "system" ? (dark.matches ? "dark" : "light") : v;
+}
+function setup(id, key, fallback, apply) {
+  const box = document.getElementById(id);
+  const set = v => {
+    box.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.v === v)));
+    apply(v);
+  };
+  box.addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (b) { put(key, b.dataset.v); set(b.dataset.v); }
+  });
+  set(get(key) || fallback);
+}
+setup("theme", "jw-theme", "system", applyTheme);
+dark.addEventListener("change", () => applyTheme(get("jw-theme") || "system"));
+setup("width", "jw-width", "standard", v => { root.dataset.width = v; });
+
+const video = document.getElementById("video");
+if (YOUTUBE_ID) {
+  video.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + encodeURIComponent(YOUTUBE_ID) +
+    '" title="jobwatch demo" allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe>';
+} else {
+  video.innerHTML = '<video src="jobwatch-demo.mp4" poster="demo.gif" autoplay muted loop playsinline controls></video>';
+}
+
+document.getElementById("copy").addEventListener("click", async e => {
+  const b = e.currentTarget;
+  try { await navigator.clipboard.writeText(document.getElementById("cmd").textContent); b.textContent = "Copied"; }
+  catch (err) { b.textContent = "Press Ctrl+C"; }
+  setTimeout(() => { b.textContent = "Copy"; }, 1800);
+});
+</script>
+</body>
+</html>
