@@ -26,6 +26,19 @@ def add_to(watchlist, text):
     return config.load(watchlist)
 
 
+def test_today_defaults_start_on_any_and_are_whole_numbers(watchlist):
+    cfg = config.load(watchlist)
+    assert (cfg.today_fit, cfg.today_pay) == (0, 0)
+    cfg = add_to(watchlist, "display:\n  today_defaults: {fit: 80, pay: 250000}\n")
+    assert (cfg.today_fit, cfg.today_pay) == (80, 250000)
+    watchlist.write_text(watchlist.read_text().replace("fit: 80", "fit: high"))
+    with pytest.raises(config.ConfigError, match=r"display\.today_defaults\.fit must be a whole number"):
+        config.load(watchlist)
+    watchlist.write_text(watchlist.read_text().replace("fit: high", "fit: 80, rank: 1"))
+    with pytest.raises(config.ConfigError, match=r"display\.today_defaults is"):
+        config.load(watchlist)
+
+
 def test_defaults(watchlist):
     cfg = config.load(watchlist)
     assert cfg.today == 10 and (cfg.pace.daily, cfg.pace.max) == (3, 5)

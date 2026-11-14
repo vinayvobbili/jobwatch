@@ -744,6 +744,8 @@ class Config:
     theme: str = "system"      # the page: see THEMES and WIDTHS
     width: str = "standard"
     today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
+    today_fit: int = 0         # display.today_defaults.fit: the fit-score chip Today loads on (0: Any)
+    today_pay: int = 0         # display.today_defaults.pay: the top-pay chip Today loads on (0: Any)
     company_view: str = "matches"  # display.company: which open roles a company's page lists (COMPANY_VIEWS)
     pace: Pace = field(default_factory=Pace)
     calendar: Calendar = field(default_factory=Calendar)
@@ -1217,6 +1219,11 @@ def load(explicit: str | Path | None = None) -> Config:
     if width not in WIDTHS:
         raise ConfigError(f"{path}: display.width must be one of {', '.join(WIDTHS)}, got {width!r}")
     today = _whole(display.get("today", 10), "display.today", path, "0 shows every match")
+    chips = display.get("today_defaults") or {}
+    if not isinstance(chips, dict) or set(chips) - {"fit", "pay"}:
+        raise ConfigError(f"{path}: display.today_defaults is {{fit: 80, pay: 250000}}, got {chips!r}")
+    today_fit = _whole(chips.get("fit", 0), "display.today_defaults.fit", path, "0 starts on Any")
+    today_pay = _whole(chips.get("pay", 0), "display.today_defaults.pay", path, "0 starts on Any")
     company_view = str(display.get("company", "matches"))
     if company_view not in COMPANY_VIEWS:
         raise ConfigError(f"{path}: display.company must be one of {', '.join(COMPANY_VIEWS)}, got {company_view!r}")
@@ -1271,7 +1278,7 @@ def load(explicit: str | Path | None = None) -> Config:
         suggest=_suggestions(raw.get("suggestions"), path),
         slow_boards=_slow_boards(raw.get("slow_boards"), path), ui=_ui(raw.get("ui"), path),
         incoming=_incoming(raw.get("incoming"), path),
-        theme=theme, width=width, today=today, company_view=company_view,
+        theme=theme, width=width, today=today, today_fit=today_fit, today_pay=today_pay, company_view=company_view,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
         quiet=_quiet(raw.get("quiet"), path), follow_ups=_follow_ups(raw.get("follow_ups"), path),
         speech=_speech(raw.get("speech"), path),
@@ -1351,6 +1358,7 @@ filters:
 # display:
 #   today: 10            # how many picks a day; 0 shows every match
 #   company: matches     # a company's page lists the open roles your filters pass; all lists every one
+#   today_defaults: {fit: 80, pay: 250000}   # the Fit score and Top pay chips Today opens on (0: Any)
 
 # How many applications to send a day: a few good ones beat a burst. Today and the queue say how many went
 # out today. Nothing is ever blocked. daily: 0 turns it off (when looking for work is your full-time job).

@@ -89,6 +89,7 @@ def test_todays_quick_narrowing(tmp_path):
         "remote": {"where": "remote", "fit": 0, "pay": 0, "posted": 0},
         "onsite": {"where": "onsite", "fit": 0, "pay": 0, "posted": 0},
         "fit70": {"where": "any", "fit": 70, "pay": 0, "posted": 0},
+        "fit70hide": {"where": "any", "fit": 70, "pay": 0, "posted": 0, "noScore": "hide"},
         "pay250": {"where": "any", "fit": 0, "pay": 250000, "posted": 0},
         "week": {"where": "any", "fit": 0, "pay": 0, "posted": 3},
         "all": {"where": "remote", "fit": 80, "pay": 250000, "posted": 3},
@@ -107,11 +108,25 @@ console.log(JSON.stringify(out));
         "off": ["remote", "city", "both", "nowhere"],
         "remote": ["remote", "both", "nowhere"],     # no location given isn't hidden
         "onsite": ["city", "both", "nowhere"],
-        "fit70": ["remote"],                         # not scored yet is left out
+        "fit70": ["remote", "both"],                 # not scored yet still shows ...
+        "fit70hide": ["remote"],                     # ... unless "No score yet" is Hide
         "pay250": ["remote", "both", "nowhere"],     # no listed pay still shows
         "week": ["remote", "both", "nowhere"],       # posted within 3 days; no date still shows
-        "all": ["remote"],
+        "all": ["remote", "both"],
     }
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_unscored_jobs_follow_the_scored_ones_while_a_fit_chip_is_on():
+    js = page_const("scoredFirst") + """
+const jobs = [{ key: "a", fit: null }, { key: "b", fit: { score: 90 } }, { key: "c", fit: null },
+  { key: "d", fit: { score: 70 } }];
+console.log(JSON.stringify([scoredFirst(jobs, { fit: 70 }).map(j => j.key),
+  scoredFirst(jobs, { fit: 0 }) === jobs]));
+"""
+    r = subprocess.run(["node", "-e", js], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [["b", "d", "a", "c"], True]
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
@@ -126,7 +141,7 @@ def test_the_pay_chip_goes_by_the_best_pay_clue_and_unknown_pay_sorts_last(tmp_p
                                                               {"key": "lca", "amount": 100_000}]},
         {"key": "low", "salary_max": 150_000, "pay_sources": [{"key": "levels", "amount": 400_000}]},
         {"key": "lca", "salary_max": None, "pay_sources": [{"key": "lca", "amount": 205_000}]},
-        {"key": "underlevels", "salary_max": None, "pay_sources": [{"key": "levels", "amount": 190_000}]},
+        {"key": "underlevels", "salary_max": None, "pay_sources": [{"key": "levels", "amount": 160_000}]},
     ]
     js = tmp_path / "clue.js"
     js.write_text(page_const("payShown") + "\n" + page_const("cluesFirst") + "\n" + page_function("payTop") + "\n"
@@ -134,11 +149,11 @@ def test_the_pay_chip_goes_by_the_best_pay_clue_and_unknown_pay_sorts_last(tmp_p
 const h = (tag, attrs, ...kids) =>
   ({{ tag, attrs: attrs || {{}}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) }});
 const jobs = {json.dumps(jobs)};
-const shown = noClue => jobs.filter(j => payShown(j, {{ pay: 200000, noClue }})).map(j => j.key);
+const shown = noClue => jobs.filter(j => payShown(j, {{ pay: 175000, noClue }})).map(j => j.key);
 console.log(JSON.stringify({{
   tops: jobs.map(payTop), show: shown("show"), hide: shown("hide"),
   off: jobs.every(j => payShown(j, {{ pay: 0, noClue: "hide" }})),
-  on: cluesFirst(jobs, {{ pay: 200000 }}).map(j => j.key), same: cluesFirst(jobs, {{ pay: 0 }}) === jobs,
+  on: cluesFirst(jobs, {{ pay: 175000 }}).map(j => j.key), same: cluesFirst(jobs, {{ pay: 0 }}) === jobs,
   tagged: jobs.map(j => paySources({{ ...j, pay_sources: j.pay_sources || [] }}).kids
     .some(c => c.kids[0] === "pay unknown")),
 }}));
@@ -146,8 +161,8 @@ console.log(JSON.stringify({{
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     got = json.loads(r.stdout)
-    assert got["tops"] == [None, 210_000, None, 230_000, 150_000, 205_000, 190_000]  # market filings are no clue
-    assert got["show"] == ["blank", "posted", "market", "levels", "lca"]  # low and underlevels are under $200K
+    assert got["tops"] == [None, 210_000, None, 230_000, 150_000, 205_000, 160_000]  # market filings are no clue
+    assert got["show"] == ["blank", "posted", "market", "levels", "lca"]  # low and underlevels are under $175K
     assert got["hide"] == ["posted", "levels", "lca"]
     assert got["off"] and got["same"]
     assert got["on"] == ["posted", "levels", "low", "lca", "underlevels", "blank", "market"]
@@ -246,7 +261,8 @@ def test_company_counts_follow_the_other_filters(tmp_path):
         {"company": "Globex", "title": "SRE", "keywords": ["python"], "fit": None, "where": []},
     ]
     base = {"q": "", "kws": [], "company": "", "where": "any", "fit": 0, "pay": 0, "posted": 0}
-    views = {"off": base, "fit80": {**base, "fit": 80}, "picked": {**base, "fit": 80, "company": "Globex"},
+    hide = {**base, "fit": 80, "noScore": "hide"}
+    views = {"off": base, "fit80": hide, "fit80show": {**base, "fit": 80}, "picked": {**hide, "company": "Globex"},
              "search": {**base, "q": "data"}, "python": {**base, "kws": ["python"]}}
     js = tmp_path / "counts.js"
     js.write_text(page_const("roleShown") + "\n" + page_const("payShown") + "\n" + page_function("payTop") + "\n"
@@ -262,6 +278,7 @@ console.log(JSON.stringify(out));
     assert json.loads(r.stdout) == {
         "off": {"Initech": 2, "Globex": 1},
         "fit80": {"Initech": 1},
+        "fit80show": {"Initech": 2, "Globex": 1},  # not scored yet counts unless hidden
         "picked": {"Initech": 1, "Globex": 0},
         "search": {"Initech": 1},
         "python": {"Initech": 1, "Globex": 1},

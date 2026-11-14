@@ -77,12 +77,32 @@ def test_saving_settings_writes_the_watchlist_back_as_it_was(page, watchlist):
     assert page.errors == []
 
 
-def test_the_no_pay_clue_choice_is_remembered(page):
-    seg = page.locator(".seg-ctl").filter(has=page.get_by_role("button", name="Hide", exact=True))
-    sync_api.expect(seg.get_by_role("button", name="Show")).to_have_class("on")
-    seg.get_by_role("button", name="Hide").click()
+def chip(page, hint, label):
+    """The button of the chip group under `hint` (Fit score, Top pay) that says `label`."""
+    group = page.locator(".hint", has_text=hint).first.locator("xpath=following-sibling::div[1]")
+    return group.get_by_role("button", name=label, exact=True)
+
+
+def test_today_opens_on_any_chips_unless_the_watchlist_sets_them(page, watchlist):
+    sync_api.expect(chip(page, "Fit score", "Any")).to_have_class("on")
+    sync_api.expect(chip(page, "Top pay", "Any")).to_have_class("on")
+    watchlist.write_text(watchlist.read_text() + "display:\n  today_defaults: {fit: 80, pay: 175000}\n")
     page.reload()
     page.wait_for_load_state("networkidle")
-    seg = page.locator(".seg-ctl").filter(has=page.get_by_role("button", name="Hide", exact=True))
-    sync_api.expect(seg.get_by_role("button", name="Hide")).to_have_class("on")
+    sync_api.expect(chip(page, "Fit score", "80+")).to_have_class("on")
+    sync_api.expect(chip(page, "Top pay", "$175K+")).to_have_class("on")
+    chip(page, "Top pay", "Any").click()  # still one click away
+    sync_api.expect(chip(page, "Top pay", "Any")).to_have_class("on")
+    assert page.errors == []
+
+
+@pytest.mark.parametrize("hint", ["No pay clue", "No score yet"])
+def test_the_show_hide_choices_for_unknowns_are_remembered(page, hint):
+    sync_api.expect(chip(page, hint, "Show")).to_have_class("on")
+    chip(page, hint, "Hide").click()
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    sync_api.expect(chip(page, hint, "Hide")).to_have_class("on")
+    other = "No score yet" if hint == "No pay clue" else "No pay clue"
+    sync_api.expect(chip(page, other, "Show")).to_have_class("on")  # each has its own memory
     assert page.errors == []

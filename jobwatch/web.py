@@ -1081,6 +1081,7 @@ class App:
                    "checked": self.refresher.status(cfg, store),
                    # Today leads with the top `picks` in the order picked (0: every match), and says the pace.
                    "picks": cfg.today, "pace": pace(cfg, store),
+                   "defaults": {"fit": cfg.today_fit, "pay": cfg.today_pay},  # the chips Today opens on
                    "role_kinds": rolekinds.labels()}  # Today's Roles checkboxes; each job's "roles" are its kinds
             # "New" shows once: the next visit lists these as seen.
             store.set_status([k for e in d.entries if e.record.get("status") == "new" for k in e.keys], "shown")

@@ -93,6 +93,7 @@ display:                                  # the browser page
   theme: system                           # system, light or dark
   width: standard                         # standard, wide or full
   today: 10                               # Today's picks, and the digest's length; 0 shows every match
+  today_defaults: {fit: 80, pay: 250000}  # the Fit score and Top pay chips Today opens on; unset or 0 is Any
   company: matches                        # a company's page: the open roles your filters pass, or all
 pace:                                     # applications a day: counted on Today and the queue, never enforced
   daily: 3                                # 0 turns it off, for when job hunting is your full-time job

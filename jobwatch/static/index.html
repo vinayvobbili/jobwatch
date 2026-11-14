@@ -3523,6 +3523,7 @@ function paceLine(el, p) {
 // all: every matching job, paged, rather than today's picks (the top display.today in the order picked).
 // where, fit, pay: the quick narrowing (see quickNarrow); "any" and 0 mean off.
 const todayView = { q: "", sort: remembered("today.sort", "fit"), company: "", kws: new Set(), where: "any", fit: 0, pay: 0, posted: 0, page: 1, all: false,
+  noScore: remembered("today.noscore", "show") === "hide" ? "hide" : "show",  // jobs with no fit score yet, while a fit chip is on
   noClue: remembered("today.noclue", "show") === "hide" ? "hide" : "show",  // jobs with no pay clue, while a pay chip is on
   rolesOff: rolesOffKept() };
 // Today's Roles checkboxes: the kinds of work unticked, kept in this browser (a view, not a filter in the watchlist).
@@ -3564,10 +3565,12 @@ function worthChip(job) {
 const payShown = (j, v) => { const t = payTop(j); return !v.pay || (t == null ? v.noClue !== "hide" : t >= v.pay); };
 // With a pay chip on, jobs with a pay clue come before the ones without, each part in the order it was in.
 const cluesFirst = (jobs, v) => !v.pay ? jobs : [...jobs.filter(j => payTop(j) != null), ...jobs.filter(j => payTop(j) == null)];
+// With a fit chip on, scored jobs come before the ones not scored yet, each part in the order it was in.
+const scoredFirst = (jobs, v) => !v.fit ? jobs : [...jobs.filter(j => j.fit), ...jobs.filter(j => !j.fit)];
 function quickNarrow(j, v) {
   const where = j.where || [];  // a server from before `where` sends none
   return roleShown(j, v) && (v.where === "any" || !where.length || where.includes(v.where)) &&
-    (!v.fit || (j.fit && j.fit.score >= v.fit)) &&  // a fit filter shows scored jobs only
+    (!v.fit || (j.fit ? j.fit.score >= v.fit : v.noScore !== "hide")) &&  // not scored yet: shows unless set to Hide
     payShown(j, v) &&
     (!v.posted || j.age_days == null || j.age_days <= v.posted);  // no posting date: still shows
 }
@@ -3659,6 +3662,10 @@ async function renderToday() {
   // What the filters hide is a hint, not the page: Today still opens if it can't be counted.
   const [d, hidden] = await Promise.all([api("/api/digest"), api("/api/hidden").catch(() => null)]);
   todayJobs = d.jobs;
+  if (!todayView.seeded) {  // the chips Today opens on (display.today_defaults), once; Any is a click away
+    todayView.seeded = true;
+    Object.assign(todayView, { fit: (d.defaults || {}).fit || 0, pay: (d.defaults || {}).pay || 0 });
+  }
   const out = Object.values(d.rejected).reduce((a, b) => a + b, 0);
   const fresh = d.jobs.filter(j => j.status === "new").length, strong = d.jobs.filter(j => j.fit && j.fit.score >= 75).length;
   const picks = d.picks && d.jobs.length > d.picks ? d.picks : 0;  // Today's picks lead when there are more matches
@@ -3682,8 +3689,11 @@ async function renderToday() {
   const drawNarrow = () => fill(narrow,
     h("div", { class: "hint" }, "Where"),
     segmented([["any", "Any"], ["remote", "Remote"], ["onsite", "On-site or hybrid"]], v.where, k => { v.where = k; drawToday(); }),
-    h("div", { class: "hint", style: "margin-top:8px", title: "Only jobs with a fit score: ones not scored yet are left out" }, "Fit score"),
+    h("div", { class: "hint", style: "margin-top:8px", title: "The lowest fit score a scored job may have" }, "Fit score"),
     segmented([[0, "Any"], [60, "60+"], [70, "70+"], [80, "80+"]], v.fit, k => { v.fit = k; drawToday(); }),
+    h("div", { class: "hint", style: "margin-top:8px",
+      title: "Jobs with no fit score yet (some can't be scored: no posting text): they follow the scored ones while a fit chip is on" }, "No score yet"),
+    segmented([["show", "Show"], ["hide", "Hide"]], v.noScore, k => { v.noScore = k; remember("today.noscore", k); drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px",
       title: "The top of the posted range, else the Levels.fyi figure, else the H-1B filings'" }, "Top pay"),
     segmented([[0, "Any"], [175000, "$175K+"], [200000, "$200K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,
@@ -3711,7 +3721,7 @@ async function renderToday() {
     if (v.sort === "new") jobs = [...jobs].sort((a, b) => (a.age_days ?? 1e4) - (b.age_days ?? 1e4));
     if (v.sort === "pay") jobs = [...jobs].sort((a, b) => (payTop(b) ?? -1) - (payTop(a) ?? -1));
     if (v.sort === "worth") jobs = [...jobs].sort(byWorth);
-    jobs = cluesFirst(focusFirst(jobs), v);
+    jobs = scoredFirst(cluesFirst(focusFirst(jobs), v), v);
     worthShown = v.sort === "worth";
     const narrowed = v.q || v.company || v.kws.size || v.where !== "any" || v.fit || v.pay || v.posted;
     // Today's picks: the top few in this order. A search, company, keyword or quick narrowing looks through every match.
@@ -3724,7 +3734,7 @@ async function renderToday() {
       return;
     }
     const pg = paged(jobs, v, JSON.stringify([v.q, v.company, [...v.kws], v.where, v.fit, v.pay, v.posted, v.sort,
-      v.noClue, [...v.rolesOff]]), drawToday);
+      v.noClue, v.noScore, [...v.rolesOff]]), drawToday);
     const back = top && !narrowed ? h("button", { class: "btn ghost", onclick: () => {
       v.all = false; drawToday(); scrollTo({ top: 0, behavior: REDUCED ? "auto" : "smooth" }); } }, `Back to today's ${d.picks} picks`) : null;
     fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
