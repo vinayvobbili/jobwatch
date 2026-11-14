@@ -231,15 +231,36 @@ def test_the_job_lists_import_this_list_reads(tmp_path):
 
 
 @needs_node
-def test_a_second_list_import_on_another_tab_is_named_not_started(tmp_path):
+def test_each_tab_knows_only_its_own_import_and_progress(tmp_path):
     got = run_js(tmp_path, """
-const msg = (running, tab) => JW.importOnOtherTab(running, tab);
-console.log(JSON.stringify([msg(null, 7), msg({ tabId: 7, source: 'linkedin' }, 7), msg({ tabId: 7, source: 'linkedin' }, 9),
-  msg({ tabId: 7, source: 'indeed' }, 9), msg({ tabId: 7, source: 'other' }, 9)]));""")
-    assert got[:2] == ["", ""]
-    assert "already running on another tab (LinkedIn)" in got[2]
-    assert "(Indeed)" in got[3]
-    assert "(a job site)" in got[4]
+const running = [{ tabId: 7, source: 'linkedin' }, { tabId: 9, source: 'indeed' }];
+const msg = (tabId) => ({ type: 'listProgress', tabId, text: 'Read page 1' });
+console.log(JSON.stringify([JW.importOnTab(running, 7), JW.importOnTab(running, 9), JW.importOnTab(running, 3),
+  JW.importOnTab([], 7), JW.importOnTab(null, 7),
+  JW.progressIsMine(msg(7), 7), JW.progressIsMine(msg(9), 7), JW.progressIsMine(msg(7), null),
+  JW.progressIsMine({ type: 'toast', tabId: 7 }, 7)]));""")
+    assert got == [True, True, False, False, False, True, False, False, False]
+
+
+def test_list_imports_run_one_per_tab_in_parallel():
+    """Two tabs import at once; the same tab twice is refused; the hidden-tab note is sent while a read is under way."""
+    src = (EXT / "background.js").read_text(encoding="utf-8")
+    assert "const listImports = new Map()" in src and "let listImport " not in src
+    assert "if (listImports.has(tabId)) throw new Expected(JW.IMPORT_RUNNING)" in src
+    assert src.index("listImports.has(tabId)") < src.index("listImports.set(tabId, source)")
+    assert "listImports.delete(tabId)" in src  # in the finally: a failed import frees its tab
+    assert "case 'importState': return { running: [...listImports]" in src
+    assert "listProgress(tabId, now ? JW.IMPORT_HIDDEN" in src and "document.visibilityState" in src
+    assert "whileVisible(tabId, () => chrome.scripting.executeScript" in src
+    panel = (EXT / "sidepanel.js").read_text(encoding="utf-8")
+    assert "JW.progressIsMine(msg, importing)" in panel and "importOnOtherTab" not in panel + src
+
+
+@needs_node
+def test_the_hidden_tab_note_says_how_to_read_two_lists_at_once(tmp_path):
+    got = run_js(tmp_path, "console.log(JSON.stringify([JW.IMPORT_HIDDEN, JW.IMPORT_RUNNING]));")
+    assert "isn't visible" in got[0] and "own window" in got[0]
+    assert "already running on this tab" in got[1]
 
 
 def test_each_tab_gets_its_own_side_panel():

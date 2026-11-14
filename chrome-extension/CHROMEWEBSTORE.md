@@ -202,7 +202,7 @@ The extension fills job application forms from the jobwatch app, which runs on t
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab. In `manifest.json`, not yet submitted. | Draft |
+| 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). In `manifest.json`, not yet submitted. | Draft |
 | 0.9.0 | 2026-11-10 | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | Published |
 
 Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Updated" date.

@@ -36,8 +36,10 @@ has no standalone mode.
 The review lives in Chrome's side panel, docked beside the page like Claude's, so it never covers the form. At the top
 it says whether it is paired with jobwatch. Each tab has its own panel, opened by clicking the icon on that tab: switch
 to another tab and its panel (or none) shows, not this one. Let the tab load another page and the rows are dropped
-with a note to scan again, so a row never fills a form that is gone. Only one list import runs at a time; on another
-tab, Read the jobs on this list says one is already running and names its site. A
+with a note to scan again, so a row never fills a form that is gone. List imports run one per tab, any number of tabs at once
+(say LinkedIn in one window and Indeed in another); each panel shows its own tab's progress, and a second import on
+the same tab is refused. Chrome stops rendering a tab that isn't visible, so the reading stalls there and the panel
+says so: keep each list in its own window to read two at once. A
 multi-step form that swaps its next step in place (the address stays the same) is noticed too: the panel reads the
 new step by itself. If a page
 was not opened with the icon (Chrome only lets the extension touch a tab after you click its icon there), click the

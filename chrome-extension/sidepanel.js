@@ -99,10 +99,10 @@
       if (!tab || !JW.listMode(tab.url)) return;
       b.hidden = false;
       const { running } = await send({ type: 'importState' });
-      const elsewhere = JW.importOnOtherTab(running, tab.id);
-      b.disabled = !!elsewhere;
-      note.hidden = !elsewhere;
-      note.textContent = elsewhere;
+      const here = JW.importOnTab(running, tab.id);
+      b.disabled = here;
+      note.hidden = !here;
+      note.textContent = here ? JW.IMPORT_RUNNING : '';
     }, () => {});
     return [b, note];
   };
@@ -424,7 +424,7 @@
   chrome.runtime.onMessage.addListener((msg, sender) => {
     if (msg && msg.type === 'formChanged' && sender.tab && sender.tab.id === tabId) stepChanged();
     if (msg && msg.type === 'toast' && (!tabId || msg.tabId === tabId)) toast(msg.text, msg.ok);
-    if (msg && msg.type === 'listProgress' && msg.tabId === importing && $('progress')) $('progress').textContent = msg.text;
+    if (msg && JW.progressIsMine(msg, importing) && $('progress')) $('progress').textContent = msg.text;
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings && !busy && !state) init();

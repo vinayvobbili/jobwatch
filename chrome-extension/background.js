@@ -48,7 +48,7 @@ async function handle(msg, tabId, sender) {
     case 'draft': return draft(tabId, msg.question, msg.words, msg.others);
     case 'posting': return posting(tabId);
     case 'importList': return importList(tabId);
-    case 'importState': return { running: listImport };
+    case 'importState': return { running: [...listImports].map(([tabId, source]) => ({ tabId, source })) };
     case 'passiveSeen': return sender.tab ? passiveSeen(msg.records) : {};
     case 'importPassive': return importPassive();
     case 'tailor': return tailor(tabId);
@@ -280,7 +280,8 @@ const LIST_PAGES_DEFAULT = 4; // lists are sorted by relevance: later pages matt
 const LIST_PAGES_MAX = 10;
 const LIST_IMPORT_TIMEOUT_MS = 10 * 60 * 1000; // jobwatch looks for each new job's company board: minutes for a long list
 const PAGE_LOAD_MS = 30 * 1000;
-let listImport = null; // { tabId, source }: the one list import running, so a panel on another tab can say so
+const listImports = new Map(); // tabId -> source: the list imports running, one per tab, any number of tabs at once
+const HIDDEN_CHECK_MS = 2000;
 
 function listProgress(tabId, text) {
   chrome.runtime.sendMessage({ type: 'listProgress', tabId, text }).catch(() => {});
@@ -312,12 +313,34 @@ async function importList(tabId) {
   const maxPages = await listPages();
   const source = JW.listMode(await tabUrl(tabId));
   if (!source) throw new Expected('Open a job list on LinkedIn (Jobs, a search) or Indeed (Jobs for you, a search), then try again.');
-  if (listImport) throw new Expected(JW.importOnOtherTab(listImport, tabId) || 'An import is already running on this tab. Wait for it to finish.');
-  listImport = { tabId, source };
+  if (listImports.has(tabId)) throw new Expected(JW.IMPORT_RUNNING);
+  listImports.set(tabId, source);
   try {
     return await readAndImport(tabId, source, settings, maxPages);
   } finally {
-    listImport = null;
+    listImports.delete(tabId);
+  }
+}
+
+/**
+ * Chrome stops rendering a tab that isn't visible and slows its timers, so a list's lazy-loaded cards stall there.
+ * While `task` runs, say so in the tab's progress line whenever the tab is hidden (and when it is back); the reading
+ * itself just carries on once Chrome renders the tab again.
+ */
+async function whileVisible(tabId, task) {
+  let hidden = false;
+  const timer = setInterval(async () => {
+    try {
+      const [r] = await chrome.scripting.executeScript({ target: { tabId }, func: () => document.visibilityState });
+      const now = r.result === 'hidden';
+      if (now !== hidden) listProgress(tabId, now ? JW.IMPORT_HIDDEN : 'Reading again.');
+      hidden = now;
+    } catch { /* the tab is gone or moving: the reading says so itself */ }
+  }, HIDDEN_CHECK_MS);
+  try {
+    return await task();
+  } finally {
+    clearInterval(timer);
   }
 }
 
@@ -325,7 +348,7 @@ async function readAndImport(tabId, source, settings, maxPages) {
   const byId = new Map();
   const run = async (func) => {
     await chrome.scripting.executeScript({ target: { tabId }, files: ['job-lists.js'] });
-    const [r] = await chrome.scripting.executeScript({ target: { tabId }, func, args: [source] });
+    const [r] = await whileVisible(tabId, () => chrome.scripting.executeScript({ target: { tabId }, func, args: [source] }));
     return r.result;
   };
   let stopped = '';

@@ -215,3 +215,31 @@ def test_history_shows_local_time_and_reads_old_rows(monkeypatch):
     finally:
         monkeypatch.undo()
         time.tzset()
+
+
+def test_two_lists_import_at_once_from_two_tabs(setup):
+    """The extension reads a LinkedIn list and an Indeed list in two tabs at once: each request has its own store
+    connection, and both finish with the shared job tracked once and a history line each."""
+    from concurrent.futures import ThreadPoolExecutor
+    cfg, _ = setup
+    linkedin = joblist.records([rec("Platform Engineer", "Hooli", id="4100000002"),
+                                rec("Detection Engineer", "Vandelay Industries", id="4100000003")])
+    indeed = joblist.records([rec("Platform Engineer", "Hooli", id="a1b2c3d4e5f60002", source="indeed"),
+                              rec("Data Analyst", "Initech", id="a1b2c3d4e5f60005", source="indeed")])
+
+    def run(recs):
+        store = Store(cfg.state)
+        try:
+            return joblist.take(cfg, store, recs)
+        finally:
+            store.close()
+
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(run, [linkedin, indeed]))
+    assert all(len(r.seen) == 2 for r in results)
+    assert {h["source"] for h in joblist.history(cfg)} == {"linkedin", "indeed"}
+    store = Store(cfg.state)
+    try:
+        assert len([j for j, _ in store.jobs() if j.company == "hooli" and j.title == "Platform Engineer"]) == 1
+    finally:
+        store.close()

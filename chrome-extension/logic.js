@@ -323,12 +323,18 @@
     return '';
   }
 
-  /** What a panel on `tabId` says when a list import (`running`: { tabId, source }, or null) is already under way on
-   * another tab, naming its site: only one runs at a time. '' when none is, or it is this tab's own. */
-  function importOnOtherTab(running, tabId) {
-    if (!running || running.tabId === tabId) return '';
-    const site = { linkedin: 'LinkedIn', indeed: 'Indeed' }[running.source] || 'a job site';
-    return `An import is already running on another tab (${site}). Wait for it to finish, then import here.`;
+  // List imports run one per tab, any number of tabs at once; each progress message carries its tab's id.
+  const IMPORT_RUNNING = 'An import is already running on this tab. Wait for it to finish.';
+  const IMPORT_HIDDEN = "Paused while this tab isn't visible: keep it in its own window to read two lists at once.";
+
+  /** Whether a list import is running on `tabId`: `running` is importState's list of { tabId, source }. */
+  function importOnTab(running, tabId) {
+    return (running || []).some((r) => r.tabId === tabId);
+  }
+
+  /** Whether a message is list progress for the panel's own tab (`mine`: the tab it is importing, else null). */
+  function progressIsMine(msg, mine) {
+    return !!msg && msg.type === 'listProgress' && mine != null && msg.tabId === mine;
   }
 
   /** Whether a button, by its accessible label and its text, is LinkedIn's offsite Apply button (it opens the
@@ -368,7 +374,7 @@
 
   const JW = { formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
-    linkedinJobId, postingMode, listMode, importOnOtherTab, isOffsiteApply, isEasyApply, sameCompany, tidyText };
+    linkedinJobId, postingMode, listMode, importOnTab, progressIsMine, IMPORT_RUNNING, IMPORT_HIDDEN, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;
   root.JW = JW;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
