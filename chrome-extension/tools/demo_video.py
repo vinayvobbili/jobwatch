@@ -37,7 +37,9 @@ TITLE_SECONDS = 3.0  # the title card is silent: only the intro sting plays over
 # The problem scene (problem_scene.py) is animated; its narration is an example, not a statistic.
 PROBLEM_NARRATION = ("Forty applications. Every form asks the same questions: are you authorized to work here, "
                      "what salary do you want, why this company. And the essays take the longest. "
-                     "At half an hour each, that's twenty hours of retyping what you've already written.")
+                     "At half an hour each, that's twenty hours of retyping what you've already written. "
+                     f"{problem_scene.TAGLINE}")
+CLOSING_SECONDS = 4.0  # the closing card: the title card again with the tagline, silent, until the end
 # The turn, spoken at the start of the payoff flash, as the form fills.
 TURN_NARRATION = "The jobwatch Chrome extension answers them for you."
 SIZE = store_assets.SCREEN
@@ -109,6 +111,11 @@ TITLE_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + C
   <h1><b>jobwatch</b>: Application Filler</h1>
   <p>Fills the application for you. You check it, and press Submit yourself.</p>
 </body></html>""")
+
+# The last frame: the opening title card again, with the tagline under it, held to the end (no fade to black).
+CLOSING_HTML = TITLE_HTML.replace(
+    "</style>", "  p.tag {{ font-size: 40px; font-weight: 700; color: #fff; margin-top: 30px; }}\n</style>").replace(
+    "</body>", f'  <p class="tag">{problem_scene.TAGLINE}</p>\n</body>')
 
 END_HTML = ("""<!doctype html><html><head><meta charset="utf-8"><style>""" + CARD_CSS + """</style></head><body>
   <div class="glow"></div>
@@ -905,8 +912,9 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         reel.add(TRUST_HTML.format(w=SIZE[0], h=SIZE[1]), TRUST_NARRATION, tail_pad=0.6, min_duration=6.0)
         reel.add(START_HTML.format(w=SIZE[0], h=SIZE[1]), START_NARRATION, tail_pad=0.8, min_duration=4.0)
         reel.add(END_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon, url=REPO_URL), END_NARRATION,
-                 tail_pad=1.2, min_duration=4.0)
-        return reel.render(target, ffmpeg=ffmpeg, fade_out=1.0, make_poster=True)
+                 tail_pad=0.6, min_duration=4.0)
+        reel.add(CLOSING_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), min_duration=CLOSING_SECONDS)
+        return reel.render(target, ffmpeg=ffmpeg, make_poster=True)  # no fade: it ends on the closing card
 
 
 def main(argv=None) -> int:

@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import re
 
-TOTAL = 16.5  # seconds the animation runs; the voice (about 15 s) finishes inside it, the last frame holds if not
+TAGLINE = "Your job hunt shouldn't be a full-time job."
+TAGLINE_AT = 16.0  # when the tagline replaces the essay, as the voice says it
+TOTAL = 19.0  # seconds the animation runs; the voice (about 18 s) finishes inside it, the last frame holds if not
 
 # The four forms: made-up companies, with a platform label and an accent loosely like that kind of page.
 FORMS = [
@@ -139,8 +141,15 @@ def scene_css() -> str:
     css.append(track("essay", [(0, "opacity: 0; transform: translateY(26px) scale(.96)"),
                                (RECEDE[0] + 0.1, "opacity: 0; transform: translateY(26px) scale(.96); "
                                                  "animation-timing-function: cubic-bezier(.2,.9,.25,1.05)"),
-                               (RECEDE[1] + 0.3, "opacity: 1; transform: none")]))
+                               (RECEDE[1] + 0.3, "opacity: 1; transform: none"),
+                               (TAGLINE_AT - 0.2, "opacity: 1; transform: none; animation-timing-function: ease-in"),
+                               (TAGLINE_AT + 0.4, "opacity: 0; transform: translateY(-20px) scale(.97)")]))
     css.append(f".essay {{ {play('essay')} }}")
+    css.append(track("tagline", [(0, "opacity: 0; transform: translateY(30px) scale(.95)"),
+                                 (TAGLINE_AT + 0.2, "opacity: 0; transform: translateY(30px) scale(.95); "
+                                                    "animation-timing-function: cubic-bezier(.2,.9,.25,1.05)"),
+                                 (TAGLINE_AT + 0.9, "opacity: 1; transform: none")]))
+    css.append(f".tagline {{ {play('tagline')} }}")
     for n, line in enumerate(TYPE_RUNS):
         css.append(typing_track(f"type{n}", line))
         points = [(0, "border-right-color: transparent")]
@@ -157,7 +166,8 @@ def scene_css() -> str:
         (10.5, "opacity: 1; left: 560px; top: 410px; transform: scale(1)"),
         (12.8, "opacity: 1; left: 560px; top: 410px; animation-timing-function: ease-in-out"),
         (13.2, "opacity: 1; left: 640px; top: 450px"),
-        (TOTAL, "opacity: 1; left: 640px; top: 450px")]))
+        (TAGLINE_AT - 0.2, "opacity: 1; left: 640px; top: 450px"),
+        (TAGLINE_AT + 0.2, "opacity: 0; left: 640px; top: 450px")]))
     css.append(f".cursor {{ {play('cursor')} }}")
     css.append(track("chip", [(0, "opacity: 0; transform: scale(.8)"), (10.8, "opacity: 0; transform: scale(.8)"),
                               (11.2, "opacity: 1; transform: none")]))
@@ -217,6 +227,10 @@ PROBLEM_CSS = """
                border-right: 3px solid transparent; }
   .chip { margin-top: 20px; padding: 8px 20px; border-radius: 999px; font-size: 21px; color: #ffe2bd;
           background: rgb(255 140 100 / .16); border: 1px solid rgb(255 184 107 / .55); }
+  .tagline { position: absolute; left: 120px; right: 120px; top: 270px; margin: 0; font-size: 76px; line-height: 1.15;
+             font-weight: 800; letter-spacing: -0.02em; text-shadow: 0 0 40px rgb(176 92 246 / .6); }
+  .tagline b { background: linear-gradient(90deg, #ffd08a, #ff8f6b); -webkit-background-clip: text;
+               color: transparent; }
   .foot { position: absolute; left: 0; right: 0; bottom: 18px; font-size: 16px; color: #8f8bb8; }
   .cursor { position: absolute; z-index: 9; width: 30px; height: 30px; margin: 0; }
 """
@@ -243,6 +257,7 @@ def problem_html(card_css: str, w: int, h: int) -> str:
             f'<div class="box">{lines}</div></div>'
             '<div class="chip">About half an hour for each one</div></div>'
             f'<div class="cursor">{CURSOR_SVG}</div>'
+            "<h2 class=\"tagline\">Your job hunt shouldn't be a <b>full-time job</b>.</h2>"
             '<div class="foot">An example: 40 applications, about half an hour of retyping each.</div>'
             '</body></html>')
 
