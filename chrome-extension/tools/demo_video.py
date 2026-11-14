@@ -10,6 +10,10 @@ then Save this posting. Each step is captured frame by frame, with the form and 
 caption, and encoded as a clip. slidecast then narrates the clips (holding a clip's last frame while the voice
 finishes), adds the end card and fades, and writes one 1280x800 MP4 for YouTube and the store listing.
 
+The video opens with the silent title card (about 3 s, the intro sting only), then an animated "problem" scene
+(problem_scene.py, rendered by slidecast's add_animated), then "The jobwatch Chrome extension answers them for you."
+as the payoff flash of the filled form, and the walkthrough.
+
 Run it as its own process. Nothing is uploaded.
 """
 
@@ -25,12 +29,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import harness
+import problem_scene
 import store_assets
 
 FPS = 15
-INTRO_SECONDS = 1.2  # the title card's first silent beat: the intro sting's hit lands, then the hook is spoken
-TITLE_NARRATION = ("Every job application asks the same questions again, and the essays take the longest. "
-                   "The jobwatch Chrome extension answers them for you.")
+TITLE_SECONDS = 3.0  # the title card is silent: only the intro sting plays over it, then the problem scene
+# The problem scene (problem_scene.py) is animated; its narration is an example, not a statistic.
+PROBLEM_NARRATION = ("Forty applications. Every form asks the same questions: are you authorized to work here, "
+                     "what salary do you want, why this company. And the essays take the longest. "
+                     "At half an hour each, that's twenty hours of retyping what you've already written.")
+# The turn, spoken at the start of the payoff flash, as the form fills.
+TURN_NARRATION = "The jobwatch Chrome extension answers them for you."
 SIZE = store_assets.SCREEN
 CAPTION_H = store_assets.CAPTION_H
 TAIL_PAD = 0.5  # silence after a step's voice
@@ -817,13 +826,15 @@ def measure_narrations(tts, work: Path) -> dict:
 
 
 def payoff_step(rec: Recorder, tts, work: Path) -> Step | None:
-    """A flash of the end result for the start of the video: the filled form and its essays, replayed from the fill
-    step's own frames, with what the run measured (fields, essays, seconds). None when nothing was measured."""
+    """A flash of the end result, right after the problem scene: the filled form and its essays, replayed from the fill
+    step's own frames, with what the run measured (fields, essays, seconds). It opens with the turn, "The jobwatch
+    Chrome extension answers them for you." None when nothing was measured."""
     fill = rec.fill
     if not fill or fill["fields"] < 1:
         return None
     seconds = max(1, round(fill["seconds"]))
-    spoken = (f"{fill['fields']} fields, including {fill['essays']} essay{'s' if fill['essays'] != 1 else ''}, "
+    spoken = (f"{TURN_NARRATION} "
+              f"{fill['fields']} fields, including {fill['essays']} essay{'s' if fill['essays'] != 1 else ''}, "
               f"filled in about {seconds} second{'s' if seconds != 1 else ''}.")
     length = (tts.synthesize(spoken, work / "measure-payoff.wav") or 4.0) + TAIL_PAD
     frames = round(max(length, 5.0) * FPS)
@@ -872,19 +883,21 @@ def record(target: Path, voice: str = "kokoro", headless: bool = True, playwrigh
         browser = playwright.chromium.launch()
         scope.callback(browser.close)
         # An upbeat composed bed (fast beats, ducked hard under the voice), punchy intro and outro stings, -16 LUFS.
-        # The intro sting's hit lands first (lead_in), then the hook is spoken over the title card.
+        # The intro sting plays over the silent title card (no lead_in: nothing is spoken until the problem scene).
         reel = slidecast.Reel(width=SIZE[0], height=SIZE[1], fps=FPS, tts=tts,
                               renderer=slidecast.PlaywrightRenderer(browser=browser),
                               music=slidecast.Music("compose", volume=0.3, fade_in=1.0, fade_out=3.0, duck=True,
                                                     style="upbeat"),
                               intro=slidecast.Sting("compose", volume=0.5),
                               outro=slidecast.Sting("compose", volume=0.7),
-                              lead_in=INTRO_SECONDS, loudness=-16)
+                              lead_in=0, loudness=-16)
         icon = store_assets.data_uri(harness.EXTENSION_DIR / "icons" / "icon128.png")
         chrome = rec.chrome_frame(icon, FORM_URL)
-        reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), TITLE_NARRATION, tail_pad=0.6, min_duration=7.5)
+        reel.add(TITLE_HTML.format(w=SIZE[0], h=SIZE[1], icon=icon), min_duration=TITLE_SECONDS)
+        reel.add_animated(problem_scene.problem_html(CARD_CSS, SIZE[0], SIZE[1]), PROBLEM_NARRATION,
+                          seconds=problem_scene.TOTAL, tail_pad=0.4)
         steps = rec.steps
-        if payoff := payoff_step(rec, tts, work):  # the result up front, right after the hook
+        if payoff := payoff_step(rec, tts, work):  # the turn and the result up front, right after the problem
             steps = [payoff, *steps]
         for step in steps:
             clip = encode_step(ffmpeg, rec.frames, step, work / f"{step.key}.mp4", chrome)
