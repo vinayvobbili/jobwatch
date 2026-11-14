@@ -10,7 +10,9 @@ images the store asks for:
     screenshot-2-filled.png    1280x800   the form after "Fill selected"
     screenshot-3-draft.png     1280x800   a drafted answer, waiting to be ticked
     screenshot-4-pairing.png   1280x800   the options page, where the extension is paired
-    promo-small.png            440x280    small promo tile
+    screenshot-5-list-import.png 1280x800  a LinkedIn list of jobs, with the import button and passive mode
+    screenshot-6-imported.png  1280x800   what the import did: coverage per site
+    promo-small.png           440x280    small promo tile
     promo-marquee.png          1400x560   marquee promo tile (used if the store features it)
     icon128.png                128x128    store icon
 
@@ -218,6 +220,28 @@ def _capture(pw, out_dir: Path, headless: bool) -> list:
             ctx, "Paired with the jobwatch on your own computer",
             "Paste the token from jobwatch's Settings once. The extension talks only to 127.0.0.1.",
             [tmp / "options.png"], out_dir / "screenshot-4-pairing.png"))
+
+        # 5 and 6. a LinkedIn list of made-up jobs: passive mode has noted them, then Import sends them to jobwatch
+        stack.server.features = ["posting", "import-list"]
+        list_url = stack.url("www.linkedin.com", "/jobs/collections/recommended")
+        jobs = ctx.new_page()
+        jobs.emulate_media(color_scheme="light")
+        jobs.set_viewport_size({"width": FORM_W, "height": BODY_H})
+        jobs.goto(list_url)
+        side = harness.side_panel(stack, list_url)
+        side.emulate_media(color_scheme="light")
+        side.set_viewport_size({"width": PANEL_W, "height": BODY_H})
+        side.wait_for_selector("#passive-import", state="visible", timeout=20000)  # passive mode noted the cards
+        written.append(compose(
+            ctx, "Import the jobs on a LinkedIn or Indeed list",
+            "Press the button on a list you have open, or import the jobs noted while you browsed.",
+            [shot(jobs, "list-5.png"), shot(side, "side-5.png")], out_dir / "screenshot-5-list-import.png"))
+        side.locator("#passive-import").click()
+        side.wait_for_selector(".row .badge", timeout=20000)
+        written.append(compose(
+            ctx, "See which jobs jobwatch already had",
+            "The jobs go only to the jobwatch on your own computer, which tracks the new ones.",
+            [shot(jobs, "list-6.png"), shot(side, "side-6.png")], out_dir / "screenshot-6-imported.png"))
 
         icon = harness.EXTENSION_DIR / "icons" / "icon128.png"
         written.append(render(ctx, promo_small_html(icon), PROMO, out_dir / "promo-small.png"))

@@ -28,7 +28,7 @@ EXTENSION_DIR = Path(__file__).resolve().parents[1]
 DEMO_DIR = EXTENSION_DIR / "demo"
 
 HOSTS = ("job-boards.greenhouse.io", "boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com",
-         "careers.initech.example")
+         "careers.initech.example", "www.linkedin.com")
 TLS_HOSTS = ("jobs.ashbyhq.com",)
 ROUTES = [
     (r"^/initech/jobs/\d+$", "greenhouse.html"),
@@ -37,6 +37,7 @@ ROUTES = [
     (r"^/[^/]+/[^/]+/thanks$", "lever-thanks.html"),
     (r"^/[^/]+/[^/]+/application$", "ashby.html"),
     (r"^/careers$", "greenhouse-embed.html"),
+    (r"^/jobs/collections/[^/]+/?$", "linkedin-jobs.html"),
 ]
 
 
@@ -118,6 +119,9 @@ def browser_with_extension(playwright, headless: bool = True, map_hosts: bool = 
         shutil.copytree(EXTENSION_DIR, ext, ignore=shutil.ignore_patterns("demo", "tools", "__pycache__"))
         manifest = json.loads((ext / "manifest.json").read_text())
         manifest["host_permissions"] = ["<all_urls>"]
+        if map_hosts:  # the demo list page is plain http: let the list scripts run on it too
+            for script in manifest["content_scripts"]:
+                script["matches"] += ["http://www.linkedin.com/*"]
         (ext / "manifest.json").write_text(json.dumps(manifest))
         args = [f"--disable-extensions-except={ext}", f"--load-extension={ext}"]
         if map_hosts:

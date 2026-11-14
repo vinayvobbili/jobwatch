@@ -68,6 +68,7 @@ class State:
         self.answers: list[dict] = []  # /ext/answers: a snapshot per Submit press
         self.drafts: list[dict] = []
         self.postings: list[dict] = []
+        self.imports: list[dict] = []  # /ext/import-list: a snapshot per import
         self.requests: list[tuple[str, str]] = []
         self.token = TOKEN
         self.know_every_page = False  # live_check.py: every page is a known job, with a resume
@@ -134,6 +135,20 @@ def _handler(state: State):
                 self._json(200, {"key": "greenhouse:initech/4001", "company": body.get("company") or "Initech",
                                  "title": body.get("title") or "Platform Engineer", "added": False,
                                  "has_text": True, "where": "queue", "said": "Filled in from Greenhouse; scoring now"})
+            elif self.path == "/ext/import-list":
+                state.imports.append(body)
+                records = body.get("records", [])
+                added = [r for r in records if int(r["id"]) % 2 == 0]  # made-up coverage: half were already tracked
+                by_source: dict = {}
+                for r in records:
+                    c = by_source.setdefault(r["source"], {"seen": 0, "tracked": 0, "earlier": 0, "added": 0,
+                                                           "unplaced": 0, "coverage": 0.0})
+                    c["seen"] += 1
+                    c["added" if r in added else "tracked"] += 1
+                for c in by_source.values():
+                    c["coverage"] = c["tracked"] / c["seen"]
+                self._json(200, {"by_source": by_source, "added": added, "unplaced": [],
+                                 "link": "http://127.0.0.1:8765/#today"})
             elif self.path == "/ext/answers":
                 # The answers as they stood at the person's Submit; the job is not marked applied by this call.
                 state.answers.append(body)

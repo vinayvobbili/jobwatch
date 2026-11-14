@@ -407,7 +407,7 @@ def test_store_assets_have_the_sizes_the_web_store_requires(tmp_path, pw):
         written = {p.name: p for p in store_assets.build(tmp_path, playwright=pw)}
     except harness.BrowserUnavailable as exc:
         pytest.skip(str(exc))
-    shots = {f"screenshot-{n}.png" for n in ("1-review", "2-filled", "3-draft", "4-pairing")}
+    shots = {f"screenshot-{n}.png" for n in ("1-review", "2-filled", "3-draft", "4-pairing", "5-list-import", "6-imported")}
     assert set(written) == shots | {"promo-small.png", "promo-marquee.png", "icon128.png"}
     sizes = {"promo-small.png": store_assets.PROMO, "promo-marquee.png": store_assets.MARQUEE, "icon128.png": (128, 128)}
     for name, path in written.items():

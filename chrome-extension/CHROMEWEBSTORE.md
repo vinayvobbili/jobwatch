@@ -62,9 +62,9 @@ Support: https://github.com/vinayvobbili/jobwatch/issues
 
 Productivity › Workflow & Planning
 
-**Single Purpose**
+**Single Purpose** (see "Paste blocks for 0.10.0" below for the 0.10.0 wording)
 
-Fill job application forms with the user's details and earlier answers kept by their own local jobwatch app, after the user reviews each field.
+Connect the user's browser to their own local jobwatch app for job applications: fill application forms with the user's details and earlier answers after they review each field, and send the jobs on a LinkedIn or Indeed list they have open to that app.
 
 **Primary Language**
 
@@ -79,10 +79,15 @@ English
 | Screenshot 2 | 1280×800 | ✅ Ready | `dist/store/screenshot-2-filled.png` |
 | Screenshot 3 | 1280×800 | ✅ Ready | `dist/store/screenshot-3-draft.png` |
 | Screenshot 4 | 1280×800 | ✅ Ready | `dist/store/screenshot-4-pairing.png` |
+| Screenshot 5 (0.10.0) | 1280×800 | ✅ Ready | `dist/store/screenshot-5-list-import.png` |
+| Screenshot 6 (0.10.0) | 1280×800 | ✅ Ready | `dist/store/screenshot-6-imported.png` |
 | Small Promo Tile | 440×280 | ✅ Ready | `dist/store/promo-small.png` |
 | Marquee Promo Tile (optional, shown only if the store features the item) | 1400×560 | ✅ Ready | `dist/store/promo-marquee.png` |
 
-Global promo video: none. All data in the images is made up (the demo server's Jordan Rivera and Initech).
+YouTube promo: (pending re-upload)
+
+Absolute paths: `/Users/vinayvobbili/PycharmProjects/jobwatch/dist/store/` (the files above; upload all six
+screenshots, the store allows up to five, so drop screenshot 4 or 3 if the dashboard refuses a sixth). All data in the images is made up (the demo server's Jordan Rivera and Initech).
 
 ### Screenshot Notes
 
@@ -90,11 +95,72 @@ Global promo video: none. All data in the images is made up (the demo server's J
 2. The same form after Fill selected.
 3. A drafted answer, unticked until the user ticks it.
 4. The pairing step on the options page (server address and token).
+5. (0.10.0) A LinkedIn list of made-up jobs (Initech, Globex, Umbrella), with Read the jobs on this list, the pages
+   setting, the passive-mode checkbox and "Read the 8 jobs seen while browsing".
+6. (0.10.0) What the import did: jobs seen and coverage.
 
-These show the 0.9.0 flow. None shows the list import or passive-mode checkbox added in 0.10.0; refresh or add one
-when 0.10.0 is submitted.
+Regenerate with `python chrome-extension/tools/store_assets.py`. The demo list page is `demo/linkedin-jobs.html`.
 
-## Permissions Justification
+## Paste blocks for 0.10.0
+
+One block per dashboard field (Privacy practices tab, and Package > What's new). Checked against `manifest.json`,
+`passive.js`, `job-lists.js`, `background.js` and `sidepanel.js` on 2026-11-14.
+
+### Single purpose
+
+Help with job applications by connecting the browser to the user's own jobwatch app, which runs on their computer. The extension fills job application forms from the user's saved details and earlier answers after the user reviews each field, and sends the job listings from a LinkedIn or Indeed list the user has open to that same local app.
+
+### Justification: activeTab
+
+Reads the application form's questions and fills the ticked fields, only on the tab where the user clicked the extension's icon and pressed Fill this application.
+
+### Justification: scripting
+
+Injects the script that finds a form's fields and writes the ticked values into the tab, only after the user presses Fill this application. Also injects the job-list reader into the user's LinkedIn or Indeed tab when the user presses Read the jobs on this list, and the script that presses LinkedIn's Apply button when the user presses Open the company's posting. All scripts ship inside the package; no remote code is loaded.
+
+### Justification: storage
+
+Keeps the jobwatch address and pairing token the user enters on the options page, the number of list pages to read, the passive-mode checkbox, and the job cards passive mode has noted (see the LinkedIn and Indeed justification) until the user imports or deletes them. Session memory holds an answer the user just submitted until the local jobwatch has recorded it.
+
+### Justification: sidePanel
+
+Shows the review (each field, where its value came from, and the Fill selected button) and the list-import results in Chrome's side panel beside the page, so nothing covers the page. One panel per tab.
+
+### Justification: tabs
+
+Reads the address and title of tabs so the panel offers the right buttons for the site the user is on; the one new tab that LinkedIn's Apply button opens (within two minutes of the press), whose address goes to the user's local jobwatch; and a form's tab after a scan, to notice that the page now looks like a submission confirmation so jobwatch can record the application. During a list import the user started, it also moves that same list tab to the list's next page.
+
+### Justification: host permissions (http://127.0.0.1/* and http://localhost/*)
+
+These are the only network destinations the extension talks to: the jobwatch app the user runs on their own computer (default http://127.0.0.1:8765). It supplies the user's details, earlier answers and resume, drafts answers, receives imported job cards, and records applications. Nothing is sent to the developer or any third party; the developer runs no server.
+
+### Justification: content script on LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*)
+
+A content script runs on LinkedIn and Indeed pages. It does nothing unless the address is a list of jobs (a search, "Jobs based on your preferences", "Jobs for you"). On such a list it reads only the job cards the page has already drawn: the job number on the site, title, company, place, pay and how long ago it was posted. Nothing else on the page is read: no profile, messages, job descriptions or account data.
+
+Passive mode (on by default, with a checkbox in the side panel to turn it off): as the user browses a list, the script notes those cards, with no scrolling, clicking or page-opening by the extension, and keeps them in the extension's local Chrome storage on the user's computer (up to 1000 jobs). Nothing is sent anywhere until the user presses Import in the side panel; then the jobs go only to the user's own local jobwatch and are deleted from the extension. With the checkbox off, the script reads nothing.
+
+Read the jobs on this list: only when the user presses this button, the extension scrolls the list the user has open and moves it to the list's next page, up to the number of pages the user sets (4 by default, at most 10), reads the same job cards, and sends them to the user's local jobwatch. It reads only pages of that list in the user's own tab and never opens other pages or crawls. Nothing goes to the developer or any third party.
+
+### Data use: data types to tick
+
+Tick: Personally identifiable information, Health information, Website content.
+
+Leave unticked: Financial and payment information, Authentication information, Personal communications, Location, Web history, User activity.
+
+Why, if a reviewer asks: PII and Health come from the user's own jobwatch and are written into the form they are filling (Health: the voluntary self-identification answers, only when the user ticks that row). Website content is the form's questions and the job cards of a LinkedIn or Indeed list. All of it goes only to the user's own jobwatch on the same computer; none to the developer or a third party. The pairing token is the user's own credential for their own jobwatch, stored locally.
+
+### Data use: certifications to tick
+
+- [x] I do not sell or transfer user data to third parties, outside of the approved use cases.
+- [x] I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
+- [x] I do not use or transfer user data to determine creditworthiness or for lending purposes.
+
+### What's new (0.10.0)
+
+New: import the jobs from a LinkedIn or Indeed list into your own jobwatch. Press "Read the jobs on this list" on a list you have open, or leave "Note jobs while I browse" on (it can be switched off in the side panel) and import the jobs noted while you browsed. The jobs go only to the jobwatch on your own computer. Also: one side panel per tab, and list imports can run in several tabs at once. This version adds LinkedIn and Indeed (job-list pages) as a site the extension runs on; the privacy policy is updated.
+
+## Permissions Justification (working notes)
 
 Each entry matches what the code does (checked against `background.js`, `sidepanel.js`, `options.js`, `passive.js`
 on 2026-11-12).
@@ -202,7 +268,7 @@ The extension fills job application forms from the jobwatch app, which runs on t
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). In `manifest.json`, not yet submitted. | Draft |
+| 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). Upload: `dist/jobwatch-extension-0.10.0.zip`. Paste blocks and screenshots 5 and 6 ready; not yet submitted. | Ready to submit |
 | 0.9.0 | 2026-11-10 | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | Published |
 
 Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Updated" date.
@@ -211,9 +277,11 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
 
 ### Known Issues / Limitations
 
-- The 0.10.0 content script on LinkedIn and Indeed is a new host access; the dashboard's permission justifications
-  and data-use answers above must be updated when 0.10.0 is submitted.
-- Screenshots predate the list import and passive-mode checkbox.
+- The 0.10.0 content script on LinkedIn and Indeed is a new host access (adds a "broad host access" review and
+  possible in-depth review). The paste blocks above are the 0.10.0 answers; the 0.9.0 claim "reads nothing from
+  LinkedIn" is gone.
+- The store takes at most five screenshots; there are six. Drop one when uploading.
+- A reviewer may ask why `tabs` and `scripting` are needed beyond `activeTab`: answered in the blocks above.
 
 ### Rejection History
 
