@@ -1,6 +1,9 @@
 # Chrome Web Store Listing: jobwatch: Application Filler
 
-> Last Updated: 2026-11-12
+> Last Updated: 2026-11-14
+
+Live: https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi
+(item ID `abackmpdpfflgiaccgfkababjplgolfi`)
 
 Everything the [Developer Dashboard](https://chrome.google.com/webstore/devconsole) asks for, in the order it asks.
 This file is for the developer and is not packaged (`tools/package.py` leaves out `.md` files). Build the upload and
@@ -200,9 +203,9 @@ The extension fills job application forms from the jobwatch app, which runs on t
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
 | 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab. In `manifest.json`, not yet submitted. | Draft |
-| 0.9.0 | | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | In Review |
+| 0.9.0 | 2026-11-10 | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | Published |
 
-Fill in the 0.9.0 and 0.10.0 dates from the dashboard. The first review usually takes from a few days to a couple of weeks.
+Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Updated" date.
 
 ## Review Notes
 
