@@ -20,6 +20,7 @@ class Fake:
         self.pieces = ["Initech ", "wants ", "Python."]
         self.usage = {"prompt_tokens": 120, "completion_tokens": 3}
         self.tail = []  # raw SSE lines after the pieces, before [DONE]
+        self.state = {"busy": False, "waiting": 0}  # what GET /status says (local-llm's own shape)
 
 
 @pytest.fixture
@@ -38,6 +39,8 @@ def server(monkeypatch):
             self.wfile.write(body)
 
         def do_GET(self):
+            if self.path == "/status":  # not recorded: the tests count the model requests
+                return self._send(200, json.dumps(fake.state).encode())
             fake.requests.append(("GET", self.path, None))
             self._send(fake.models_status, json.dumps({"data": [{"id": "tiny-model"}]}).encode())
 
@@ -83,6 +86,18 @@ def test_the_reply_streams_in_pieces_and_the_stats_come_last(server):
     out = ask(max_tokens=77)
     assert out == ["Initech ", "wants ", "Python.", {"input_tokens": 120, "output_tokens": 3}]
     assert chat.stats_line(out[-1]) == "3 tokens out · 120 in"
+
+
+def test_a_busy_server_says_the_question_is_queued_before_the_reply(server):
+    server.state = {"busy": True, "waiting": 1}
+    out = ask()
+    assert out[0] == {"status": chat.BUSY} and out[1:4] == ["Initech ", "wants ", "Python."]
+    server.state = {"busy": False, "waiting": 0}
+    assert not any(isinstance(p, dict) and "status" in p for p in ask())
+
+
+def test_a_server_without_status_is_not_called_busy(nothing_listening):
+    assert chat.local_busy() is False
 
 
 def test_the_request_names_no_model_and_carries_the_system_message(server):

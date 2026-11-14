@@ -255,12 +255,34 @@ def _local_call(path: str, body: dict | None = None, read_timeout: float = LOCAL
         conn.close()
 
 
+BUSY = "The local model is busy with another job; your question is queued"
+
+
+def local_busy() -> bool:
+    """Whether the shared local model server (local-llm's /status, beside its /v1) is answering another request
+    right now, so a new one waits in line. False when it can't tell: other servers have no /status."""
+    parts = urllib.parse.urlsplit(local_url())
+    cls = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
+    conn = cls(parts.hostname, parts.port, timeout=LOCAL_CONNECT_TIMEOUT)
+    try:
+        conn.request("GET", parts.path.removesuffix("/v1").rstrip("/") + "/status")
+        resp = conn.getresponse()
+        state = json.loads(resp.read()) if resp.status == 200 else {}
+        return bool(state.get("busy") or state.get("waiting"))
+    except (OSError, ValueError, http.client.HTTPException, AttributeError):
+        return False
+    finally:
+        conn.close()
+
+
 def _local(system: str, messages: list[dict], max_tokens: int) -> Iterator[str | dict]:
     """The reply from the shared local model server (LOCAL_LLM_URL), which loads the model, queues every caller and
     ignores `model`: nothing here is specific to one model."""
     body = {"model": "local", "messages": [{"role": "system", "content": system}, *messages],
             "max_tokens": max_tokens, "stream": True, "stream_options": {"include_usage": True}}
     usage = {}
+    if local_busy():
+        yield {"status": BUSY}
     with _local_call("/chat/completions", body) as resp:
         try:
             for raw in resp:

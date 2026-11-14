@@ -3023,7 +3023,13 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
     const out = h("div", { class: "msg bot" }, h("div", { class: "thinking" },
       h("span", { class: "dots", "aria-label": "Thinking" }, h("i"), h("i"), h("i")), clock, status));
     const turn = h("div", { class: "turn" }, out);
-    const tick = setInterval(() => { clock.textContent = Math.round((Date.now() - started) / 1000) + "s"; }, 1000);
+    let told = false;  // the server said what it waits for
+    const tick = setInterval(() => {
+      const s = Math.round((Date.now() - started) / 1000);
+      clock.textContent = s + "s";
+      // Well past the estimate with no word from the server: the shared local model is likely on another job.
+      if (expect && !told && s > 2 * expect) status.textContent = "taking longer than expected; the local model may be busy with another job, so your question is queued";
+    }, 1000);
     log.append(turn); scroll();
     let reply = "", failed = null, queued = false, stats = null, finished = false;
     const paint = () => {  // the reply so far, with a caret while it's still being written
@@ -3051,7 +3057,7 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
           buf = buf.slice(nl + 1);
           if (msg.text) { clearInterval(tick); reply += msg.text; if (!queued) { queued = true; requestAnimationFrame(paint); } }
           if (msg.stats) stats = msg.stats;
-          if (msg.status) status.textContent = msg.status + "…";
+          if (msg.status) { told = true; status.textContent = msg.status + "…"; }
           if (msg.error) failed = msg.error;
         }
       }
