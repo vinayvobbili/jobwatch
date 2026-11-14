@@ -84,7 +84,7 @@ English
 | Small Promo Tile | 440×280 | ✅ Ready | `dist/store/promo-small.png` |
 | Marquee Promo Tile (optional, shown only if the store features the item) | 1400×560 | ✅ Ready | `dist/store/promo-marquee.png` |
 
-YouTube promo: (pending re-upload)
+YouTube promo: https://youtu.be/cILjM1IF4ZQ
 
 Absolute paths: `/Users/vinayvobbili/PycharmProjects/jobwatch/dist/store/` (the files above; upload all six
 screenshots, the store allows up to five, so drop screenshot 4 or 3 if the dashboard refuses a sixth). All data in the images is made up (the demo server's Jordan Rivera and Initech).
