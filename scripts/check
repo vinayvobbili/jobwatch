@@ -15,7 +15,8 @@ for v in "${VERSIONS[@]}"; do
   echo "== Python $v"
   env=".venv-py$v"
   uv venv --quiet --allow-existing --python "$v" "$env"
-  VIRTUAL_ENV="$env" uv pip install --quiet -e ".[dev,mcp]"
+  # hatchling: tests/test_sdist.py builds the sdist
+  VIRTUAL_ENV="$env" uv pip install --quiet -e ".[dev,mcp]" hatchling
   "$env/bin/ruff" check .
   "$env/bin/python" -m pytest -q
 done

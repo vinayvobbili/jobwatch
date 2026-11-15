@@ -49,7 +49,9 @@ jobwatch-mcp = "jobwatch.mcp_server:main"
 packages = ["jobwatch"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["docs/**/*.gif", "docs/**/*.mp4"]  # the README's demo and tutorials; GitHub serves them
+# The demo and tutorial videos (docs/ and the home page's copies in site/); GitHub and Pages serve them.
+# Without this the sdist was 74 MB against an 864 kB wheel. tests/test_sdist.py guards it.
+exclude = ["**/*.gif", "**/*.mp4"]
 
 [tool.ruff]
 line-length = 120
