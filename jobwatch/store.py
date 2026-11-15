@@ -7,6 +7,7 @@ import json
 import re
 import secrets
 import sqlite3
+import threading
 from collections.abc import Callable, Iterator, Mapping
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -318,11 +319,47 @@ class Scores(Mapping):
         return Scores({**self._raw, **other._raw})
 
 
+class KnownJobs(Mapping):
+    """A board's stored jobs by key, each read from the database when asked for. A board's reads run in worker
+    threads, so each thread reads through a connection of its own."""
+
+    def __init__(self, path: Path, keys: set[str], board: tuple[str, str] = ("", "")):
+        self._path, self._keys, self._board, self._local = path, keys, board, threading.local()
+
+    def values(self):
+        """Each job, one at a time, in one query (not a read per key)."""
+        for row in self._db().execute("SELECT data FROM jobs WHERE source=? AND company=?", self._board):
+            yield Job.from_dict(json.loads(row[0]))
+
+    def _db(self) -> sqlite3.Connection:
+        if (db := getattr(self._local, "db", None)) is None:
+            db = self._local.db = sqlite3.connect(self._path, timeout=BUSY)
+        return db
+
+    def __getitem__(self, key: str) -> Job:
+        if key not in self._keys:
+            raise KeyError(key)
+        row = self._db().execute("SELECT data FROM jobs WHERE key=?", (key,)).fetchone()
+        if not row:
+            raise KeyError(key)
+        return Job.from_dict(json.loads(row[0]))
+
+    def __contains__(self, key) -> bool:
+        return key in self._keys
+
+    def __iter__(self):
+        return iter(self._keys)
+
+    def __len__(self) -> int:
+        return len(self._keys)
+
+
 class Store:
     def __init__(self, path: Path | str, read_only: bool = False):
         """read_only opens an existing state file without changing it, not even to add a newer version's columns
         (`jobwatch dupes` reads with it)."""
         path = Path(path).expanduser()
+        self.path = path
         self.packages = path.parent / "packages"  # what was sent with each application (see package.py)
         if read_only:
             self.db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
@@ -468,6 +505,13 @@ class Store:
         """Every job ever seen on one board, open or closed, by key."""
         rows = self.db.execute("SELECT key, data FROM jobs WHERE source=? AND company=?", (source, company))
         return {r["key"]: Job.from_dict(json.loads(r["data"])) for r in rows}
+
+    def known_jobs(self, source: str, company: str) -> KnownJobs:
+        """board_jobs, with each job read when it's asked for (from any thread): a check holds the keys of every
+        searched board's jobs, not their postings' text."""
+        keys = {r["key"] for r in self.db.execute("SELECT key FROM jobs WHERE source=? AND company=?",
+                                                  (source, company))}
+        return KnownJobs(self.path, keys, (source, company))
 
     def manual_jobs(self) -> list[Job]:
         """Every job added by hand or from an alert email (source MANUAL), at any status, open or closed."""

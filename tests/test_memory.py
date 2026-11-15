@@ -55,6 +55,15 @@ def test_tracked_indexes_the_store_without_holding_its_jobs(store):
     assert tracked.get(new.key) is new  # one taken in since is known before it's read back
 
 
+def test_a_boards_known_jobs_are_read_when_asked_for(store):
+    known = store.known_jobs("lever", "globex")
+    assert peak(lambda: store.known_jobs("lever", "globex")) < 200_000  # keys only, not 3 MB of postings
+    assert len(known) == 300 and "lever:globex:5" in known and "lever:globex:x" not in known
+    assert known["lever:globex:5"].title == "Engineer 5" and known.get("lever:globex:x") is None
+    assert sum(1 for j in known.values() if j.description) == 300
+    assert len(store.known_jobs("lever", "initech")) == 0
+
+
 def test_scores_are_parsed_when_asked_for(store):
     store.save_score("lever:globex:1", "resume-a", {"score": 80, "reasoning": "x" * 1000})
     scores = store.scores("resume-a")

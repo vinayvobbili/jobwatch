@@ -234,7 +234,7 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
         raise ValueError(f"no watched board named {', '.join(sorted(missing))}: see `jobwatch list`")
     to_read = list(cfg.boards) if every_board else boards_due(cfg, store, again)
     report.not_due = [b.entry for b in cfg.boards if b not in to_read]
-    known = {b: store.board_jobs(b.source, b.board) for b in to_read if sources.SOURCES[b.source].search
+    known = {b: store.known_jobs(b.source, b.board) for b in to_read if sources.SOURCES[b.source].search
              and not again & {b.entry.lower(), b.board.lower(), (b.name or "").lower()}}
     hosted = HostedPages(store, page)
     due = hosted.due([(b.source, b.board) for b in to_read])
@@ -256,13 +256,16 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
     new: list[Job] = []
     partial: dict[str, str] = {}
     took: dict[str, float] = {}
-    answered: list[tuple[Board, list[Job]]] = []
+    answered: list[tuple[Board, int]] = []  # how many jobs each read: the jobs themselves aren't held past their sync
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for b, jobs, err, up in pool.map(one, to_read):
+        def read_boards():  # a few boards ahead of the one synced, in order: early finishers don't pile up
+            for i in range(0, len(to_read), workers * 2):
+                yield from pool.map(one, to_read[i:i + workers * 2])
+        for b, jobs, err, up in read_boards():
             if err:
                 report.errors[b.entry] = err
                 continue
-            answered.append((b, jobs))
+            answered.append((b, len(jobs)))
             if b.entry in partial:
                 report.warnings[b.entry] = f"read partway: {partial[b.entry]}"
             up = hosted.answer(b.source, b.board, up) if sources.SOURCES[b.source].hosted else None
@@ -308,8 +311,8 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
     report.duplicates = dupes.record(store, new) if new else {}
     # How each board's read went. With no board answering the network is down: that says nothing about any board.
     if answered:
-        for b, jobs in answered:
-            store.save_board_read(b.entry, took.get(b.entry, 0.0), len(jobs))
+        for b, count in answered:
+            store.save_board_read(b.entry, took.get(b.entry, 0.0), count)
         for b in to_read:
             if b.entry in report.errors:
                 store.save_board_failure(b.entry)
