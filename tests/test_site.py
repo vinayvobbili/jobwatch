@@ -16,7 +16,7 @@ def test_web_store_item_id_matches_listing():
 
 def test_install_command_matches_readme():
     cmd = re.search(r"^(pipx install jobwatch)\b", README, re.M).group(1)
-    assert f'<code id="cmd">{cmd}</code>' in PAGE
+    assert PAGE.count(f'<code class="cmd">{cmd}</code>') == 2  # the hero's line and the install section's
 
 
 def test_page_is_self_contained():
@@ -42,13 +42,13 @@ def test_stat_tiles_link_to_page_sections():
 
 
 def test_install_notes_cover_every_system_uv_and_claude_desktop():
-    notes = PAGE.split('<div class="uv" id="uv">')[1].split('<div class="tiles">')[0]
+    notes = PAGE.split('<div class="uv">')[1].split('<div class="tiles">')[0]
     assert ('<p class="sub">Works on Mac, Windows and Linux. Run <code>jobwatch</code> and your page opens '
             'in the browser.</p>') in notes
-    assert ('<p class="sub pipx">Already have Python? <code id="cmd">pipx install jobwatch</code>'
+    assert ('<p class="sub pipx">Already have Python? <code class="cmd">pipx install jobwatch</code>'
             '<button type="button" aria-live="polite">Copy</button> works too.</p>') in notes
     assert "uv brings Python" not in PAGE and "No Python?" not in PAGE
-    assert PAGE.count("getting-started/installation/") == 2  # the "Install uv" label links the docs on each system
+    assert PAGE.count("getting-started/installation/") == 4  # "Install uv" links the docs, per system, in both cards
     desktop = notes
     assert ('Use Claude Desktop? Install it with <a target="_blank" rel="noopener" '
             'href="https://github.com/vinayvobbili/jobwatch/releases/latest">one click</a> instead.') in desktop
@@ -58,9 +58,9 @@ def test_install_notes_cover_every_system_uv_and_claude_desktop():
 
 
 def test_uv_commands_have_a_system_switch_that_starts_on_the_visitors_system():
-    uv = PAGE.split('<div class="uv" id="uv">')[1].split('<p class="sub">Works on')[0]
+    uv = PAGE.split('<div class="uv">')[1].split('<p class="sub">Works on')[0]
     hero = PAGE.split('<div class="hero">')[1]
-    assert hero.index('id="uv"') < hero.index('<p class="sub">Works on') < hero.index('<div class="tiles">')
+    assert hero.index('class="uv"') < hero.index('<p class="sub">Works on') < hero.index('<div class="tiles">')
     # two panels, one per system, each with the install line and its alternative, then the shared next steps
     assert "<code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>" in uv
     assert "<code>brew install uv</code>" in uv
@@ -83,10 +83,11 @@ def test_uv_commands_have_a_system_switch_that_starts_on_the_visitors_system():
     # no script: the switch stays hidden and both systems show, each under its name
     assert '<span class="os">Mac / Linux</span>' in uv and '<span class="os">Windows</span>' in uv
     assert ".uv.js .os { display: none; }" in PAGE
-    script = PAGE.split("// the uv commands show")[1].split("document.querySelectorAll")[0]
+    script = PAGE.split("// the uv commands show")[1].split('document.querySelectorAll(".uvrow')[0]
     assert "osSwitch.hidden = false" in script and "navigator.platform || navigator.userAgent" in script
     assert "put(" not in script and "localStorage" not in script  # nothing is remembered
-    assert '".install button, .uvrow button, .pipx button"' in PAGE
+    assert '".uvrow button, .pipx button"' in PAGE
+    assert 'querySelectorAll(".uv").forEach' in PAGE  # each card switches on its own
 
 
 def test_gear_popover_options_have_icons_and_keep_their_labels_and_state():
@@ -106,10 +107,13 @@ def test_hero_notes_balance_their_lines_so_no_word_is_left_alone():
 def test_install_box_is_shown_again_after_the_privacy_section_and_both_copy_buttons_speak():
     assert PAGE.index('id="private"') < PAGE.index('<section class="again" id="install">') < PAGE.index("<h2>Read more")
     again = PAGE.split('<section class="again" id="install">')[1].split("</section>")[0]
-    assert "<code>pipx install jobwatch</code>" in again
-    buttons = re.findall(r'<div class="install">.*?<button[^>]*>', PAGE)
-    assert len(buttons) == 1 and all('aria-live="polite"' in b for b in buttons)
-    assert PAGE.count('id="cmd"') == 1  # the hero's pipx line has the id; the script reads the code beside a button
+    hero = PAGE.split('<div class="uv">')[1].split('<div class="tiles">')[0]
+    again_card = again.split('<div class="uv">')[1].split('<p class="sub pipx">')[0]
+    assert again_card == hero.split('<p class="sub">Works on')[0]  # the same card, markup for markup
+    assert '<p class="sub pipx">Already have Python? <code class="cmd">pipx install jobwatch</code>' in again
+    assert 'class="install"' not in PAGE and PAGE.count('class="uvrow"') == 16
+    assert re.findall(r' id="(\w+)"', PAGE).count("uv") == 0 and len(set(re.findall(r' id="([^"]+)"', PAGE))) == len(
+        re.findall(r' id="([^"]+)"', PAGE))  # no duplicate ids
 
 
 def test_readme_has_the_uv_line():
@@ -157,7 +161,7 @@ def test_private_tile_and_demo_data_caption():
 
 def test_hero_has_the_pipx_install_and_no_chrome_button_but_step_3_says_the_app_comes_first():
     hero = PAGE.split('<div class="hero">')[1].split('<div class="tiles">')[0]
-    assert 'id="cmd"' in hero and "Add to Chrome" not in PAGE and 'id="add-chrome"' not in PAGE
+    assert 'class="cmd"' in hero and "Add to Chrome" not in PAGE and 'id="add-chrome"' not in PAGE
     assert "chromewebstore" not in hero
     step = PAGE.split('<article class="step" id="apply">')[1].split("</article>")[0]
     assert "The extension works with the jobwatch app on your computer; install the app first." in step

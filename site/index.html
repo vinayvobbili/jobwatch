@@ -176,7 +176,7 @@ h2 { margin: 0 0 18px; font-size: clamp(24px, 4vw, 34px); letter-spacing: -.03em
 .step h3 { margin: 10px 0 8px; font-size: 24px; letter-spacing: -.02em; }
 .step p { margin: 0; color: var(--muted); }
 /* every inline command: a monospace chip (the pipx box has its own look) */
-:where(code:not(#cmd)) { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
+:where(code:not(.cmd)) { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
   background: color-mix(in srgb, var(--accent) 10%, var(--chip)); color: var(--text); padding: 2px 7px; border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line)); overflow-wrap: anywhere; }
 .step code, .tut code { font-size: .9em; background: var(--chip); padding: 1px 6px; border-radius: 6px; }
@@ -289,7 +289,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
     <h1 class="grad">jobwatch</h1>
     <p class="tag grad">Your job hunt shouldn't be a full-time job.</p>
     <p class="what">For anyone applying to lots of companies: jobwatch checks the companies' own job pages for you every day, ranks the new openings against your resume, and keeps track of every application. It helps fill in forms, and you always press Submit. Free, and it runs on your own computer.</p>
-    <div class="uv" id="uv">
+    <div class="uv">
       <div class="seg" role="group" aria-label="Your system" hidden>
         <button type="button" data-os="unix" aria-pressed="true">Mac / Linux</button><button type="button" data-os="win" aria-pressed="false">Windows</button>
       </div>
@@ -309,7 +309,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
       </div>
     </div>
     <p class="sub">Works on Mac, Windows and Linux. Run <code>jobwatch</code> and your page opens in the browser.</p>
-    <p class="sub pipx">Already have Python? <code id="cmd">pipx install jobwatch</code><button type="button" aria-live="polite">Copy</button> works too.</p>
+    <p class="sub pipx">Already have Python? <code class="cmd">pipx install jobwatch</code><button type="button" aria-live="polite">Copy</button> works too.</p>
     <p class="sub">Use Claude Desktop? Install it with <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/releases/latest">one click</a> instead.</p>
     <div class="tiles">
       <a class="tile" href="#find"><b>Company job pages</b><span>checked daily, straight from the source</span></a>
@@ -428,10 +428,26 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
 
   <section class="again" id="install">
     <h2>Install it</h2>
-    <div class="cta">
-      <div class="install"><code>pipx install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+    <div class="uv">
+      <div class="seg" role="group" aria-label="Your system" hidden>
+        <button type="button" data-os="unix" aria-pressed="true">Mac / Linux</button><button type="button" data-os="win" aria-pressed="false">Windows</button>
+      </div>
+      <div class="uvpanel" data-os="unix">
+        <span class="os">Mac / Linux</span>
+        <div class="uvrow"><span class="or"><a target="_blank" rel="noopener" href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a></span><code>curl -LsSf https://astral.sh/uv/install.sh | sh</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">or</span><code>brew install uv</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">Then</span><code>uv tool install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">Then run</span><code>jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+      </div>
+      <div class="uvpanel" data-os="win">
+        <span class="os">Windows</span>
+        <div class="uvrow"><span class="or"><a target="_blank" rel="noopener" href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a></span><code>powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">or</span><code>winget install astral-sh.uv</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">Then</span><code>uv tool install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">Then run</span><code>jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+      </div>
     </div>
-    <p class="sub">Then run <code>jobwatch</code>. <a href="#top">Other ways to install</a></p>
+    <p class="sub pipx">Already have Python? <code class="cmd">pipx install jobwatch</code><button type="button" aria-live="polite">Copy</button> works too.</p>
   </section>
 
   <section>
@@ -544,17 +560,19 @@ new IntersectionObserver((entries, io) => {
 }, { rootMargin: "300px" }).observe(document.getElementById("comments"));
 
 // the uv commands show the visitor's system first (nothing is remembered); without script both systems show
-const uv = document.getElementById("uv"), osSwitch = uv.querySelector(".seg");
-const pickOs = os => {
-  uv.querySelectorAll(".uvpanel[data-os]").forEach(p => { p.hidden = p.dataset.os !== os; });
-  osSwitch.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.os === os)));
-};
-osSwitch.hidden = false;
-uv.classList.add("js");
-osSwitch.addEventListener("click", e => { const b = e.target.closest("button"); if (b) pickOs(b.dataset.os); });
-pickOs(/win/i.test(navigator.platform || navigator.userAgent) ? "win" : "unix");
+document.querySelectorAll(".uv").forEach(uv => {   // each card switches on its own
+  const osSwitch = uv.querySelector(".seg");
+  const pickOs = os => {
+    uv.querySelectorAll(".uvpanel[data-os]").forEach(p => { p.hidden = p.dataset.os !== os; });
+    osSwitch.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.os === os)));
+  };
+  osSwitch.hidden = false;
+  uv.classList.add("js");
+  osSwitch.addEventListener("click", e => { const b = e.target.closest("button"); if (b) pickOs(b.dataset.os); });
+  pickOs(/win/i.test(navigator.platform || navigator.userAgent) ? "win" : "unix");
+});
 
-document.querySelectorAll(".install button, .uvrow button, .pipx button").forEach(b => b.addEventListener("click", async () => {
+document.querySelectorAll(".uvrow button, .pipx button").forEach(b => b.addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(b.parentElement.querySelector("code").textContent); b.textContent = "Copied"; }
   catch (err) { b.textContent = "Press Ctrl+C"; }
   setTimeout(() => { b.textContent = "Copy"; }, 1800);
