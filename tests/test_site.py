@@ -41,6 +41,56 @@ def test_stat_tiles_link_to_page_sections():
         assert f'id="{anchor}"' in PAGE, anchor
 
 
+def test_install_line_lists_the_options_before_running_jobwatch():
+    sub = re.search(r'<p class="sub">(.*?)</p>', PAGE.split('<div class="cta">')[1], re.S).group(1)
+    assert sub.index("pipx install jobwatch") < sub.index("pip install jobwatch") < sub.index("Then run")
+    assert "Or <code>" not in sub
+    assert 'target="_blank" rel="noopener" href="https://pipx.pypa.io/stable/installation/">Setup guide</a>' in sub
+    assert "New to Python?" in sub
+
+
+def test_readme_has_the_uv_line():
+    assert "https://docs.astral.sh/uv/getting-started/installation/" in README
+    assert "`uv tool install jobwatch`" in README
+
+
+def test_title_and_link_preview():
+    title = "jobwatch | Your job hunt shouldn't be a full-time job"
+    desc = ("Free and open source. Watches the job boards you pick, ranks new roles against your resume, "
+            "tracks your applications and fills the forms. Runs on your own computer.")
+    assert f"<title>{title}</title>" in PAGE
+    assert f'<meta name="description" content="{desc}">' in PAGE
+    assert f'<meta property="og:description" content="{desc}">' in PAGE
+    assert f'<meta property="og:title" content="{title}">' in PAGE
+    for tag in ('property="og:type" content="website"', 'name="twitter:card" content="summary_large_image"',
+                'property="og:url" content="https://vinayvobbili.github.io/jobwatch/"',
+                'property="og:image" content="https://vinayvobbili.github.io/jobwatch/og.jpg"'):
+        assert f"<meta {tag}>" in PAGE, tag
+    og = (ROOT / "site" / "og.jpg").read_bytes()
+    assert og[:2] == b"\xff\xd8"
+
+
+def test_display_settings_live_in_a_gear_popover():
+    header = PAGE.split("<header>")[1].split("</header>")[0]
+    gear = re.search(r'<button class="gear"[^>]*>', header).group(0)
+    assert 'aria-label="Display settings"' in gear and 'aria-expanded="false"' in gear
+    pop = header.split('id="pop"')[1]
+    assert pop.index('id="theme"') < pop.index('id="width"')
+    assert pop.index('data-v="system"') < pop.index('data-v="light"') < pop.index('data-v="dark"')
+    for want in ('"jw-theme"', '"jw-width"', "root.dataset.width", "root.dataset.theme", '"Escape"',
+                 'closest(".settings")'):
+        assert want in PAGE, want
+    assert ".gear:focus-visible" in PAGE
+
+
+def test_private_tile_and_demo_data_caption():
+    assert '<a class="tile" href="#private"><b>Private</b><span>nothing leaves your computer</span></a>' in PAGE
+    assert "made from made-up data" not in PAGE
+    assert "The whole app in a minute and a half.</p>" in PAGE
+    # once under the tour, once under the tutorials
+    assert PAGE.count("Demo data: the companies and jobs shown are invented.") == 2
+
+
 def test_hero_leads_with_the_pipx_install():
     hero = PAGE.split('<div class="cta">')[1]
     assert hero.index('id="cmd"') < hero.index('id="add-chrome"')

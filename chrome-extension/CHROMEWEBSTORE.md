@@ -276,7 +276,7 @@ The extension fills job application forms from the jobwatch app, which runs on t
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.10.1 | | List import reads the card's visible title, and drops LinkedIn's screen-reader text ("Selected, ...", the title said twice) from titles; the import summary shows jobwatch's own coverage and says when a list was imported before. Setup text (side panel, options page, README) says to run `jobwatch`, which now opens the app. Upload: `dist/jobwatch-extension-0.10.1.zip`. | pending, not submitted |
+| 0.11.0 | | List import reads the card's visible title, and drops LinkedIn's screen-reader text ("Selected, ...", the title said twice) from titles; the import summary shows jobwatch's own coverage and says when a list was imported before. Setup text (side panel, options page, README) says to run `jobwatch`, which now opens the app. Upload: `dist/jobwatch-extension-0.11.0.zip`. | pending, not submitted |
 | 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). LinkedIn/Indeed list import, passive mode off by default, one side panel per tab, parallel list imports. New promo video: https://youtu.be/cILjM1IF4ZQ. Upload: `dist/jobwatch-extension-0.10.0.zip`. Paste blocks and screenshots 5 and 6 ready; submitted for review 2026-11-14. | In review |
 | 0.9.0 | 2026-11-10 | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | Published |
 

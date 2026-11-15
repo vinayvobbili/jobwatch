@@ -15,8 +15,10 @@ https://github.com/user-attachments/assets/8653c4ca-a79d-4135-9be1-51ba3c9fccf6
 
 ```
 pipx install jobwatch      # or: pip install jobwatch
-jobwatch
 ```
+
+Then run `jobwatch`. No Python yet? uv installs it for you: see https://docs.astral.sh/uv/getting-started/installation/
+then `uv tool install jobwatch`.
 
 A page opens on your computer. The first time, it starts with **Tell me about yourself** and walks you through
 four short steps, each saved as you go and each skippable:
