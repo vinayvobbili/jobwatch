@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 import cards
-from common import TAGLINE, Scene, Video, demo_running, seconds_to_say
+from common import TAGLINE, Scene, Video, cue_times, demo_running, problem_seconds, seconds_to_say
 from slidecast import MLXKokoroTTS, Music, Reel, Sting
 from slidecast.recorder import Recorder
 
@@ -72,8 +72,9 @@ def assemble(video: Video, clips: list[Path], work: Path, music: Path | None, yo
                    "outro": Sting(str(music / "outro_sting.wav"), volume=0.7)}
     reel = Reel(width=1920, height=1080, fps=25, tts=tts, lead_in=0, loudness=-16, theme=cards.THEME, **options)
     reel.title_card(cards.title_card(video.subtitle), seconds=TITLE_SECONDS)
-    seconds = max(PROBLEM_SECONDS, seconds_to_say(video.problem_say))
-    reel.problem(cards.problem_scene(video.problem, seconds), video.problem_say, seconds=seconds)
+    seconds = problem_seconds(video.problem_say, PROBLEM_SECONDS)
+    delays = cue_times(video.problem_say, video.problem_cues) if video.problem_cues else None
+    reel.problem(cards.problem_scene(video.problem, seconds, delays), video.problem_say, seconds=seconds)
     reel.tagline(TAGLINE)
     for scene, clip in zip(video.scenes, clips, strict=True):
         if clip is None:

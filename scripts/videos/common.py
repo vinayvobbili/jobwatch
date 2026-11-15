@@ -22,6 +22,7 @@ from screenshots import canned_chat, hide_folder, serving  # noqa: E402
 
 WORDS_PER_SECOND = 2.55  # Kokoro's af_heart, a little slower than it speaks, so a clip never ends before its line
 LEAD = 0.6  # a beat before the voice has anything to look at
+SPEECH_WPS = 3.0  # what af_heart really does (the problem card's 63 words took 21.3 s): for a card that must not linger
 
 
 def seconds_to_say(text: str) -> float:
@@ -45,6 +46,18 @@ class Demo:
 
     def hide_path(self, page) -> None:
         hide_folder(page, self.folder)
+
+
+def problem_seconds(say: str, minimum: float = 7.0) -> float:
+    """How long the problem card runs: about its narration at the voice's real pace. It is a floor, not a cap: if the
+    voice runs longer, the card's last frame holds until it is done."""
+    return max(minimum, len(say.split()) / SPEECH_WPS)
+
+
+def cue_times(say: str, cues: tuple[str, ...] | list[str], lead: float = 0.3) -> list[float]:
+    """When each cue phrase of a narration is spoken, about: seconds from its start, `lead` early so a card that
+    takes a moment to land is in place as the words are said."""
+    return [max(0.0, len(say[:say.index(cue)].split()) / SPEECH_WPS - lead) for cue in cues]
 
 
 @dataclass
@@ -73,7 +86,8 @@ class Video:
     """A video: its title card, the problem it opens on, and the scenes of the walkthrough.
 
     name: the file stem (`jobwatch-demo`, `jobwatch-01-getting-started`). subtitle: under the title card's logo.
-    problem: lines for the animated problem scene, and `problem_say` is its narration. demo: which demo to seed (see
+    problem: lines for the animated problem scene, and `problem_say` is its narration; `problem_cues` are the phrases
+    of that narration where each line drops in (none: the lines fall at even gaps). demo: which demo to seed (see
     demo_running), unless a scene says otherwise. extension: load the Chrome extension. max_seconds: the length
     this video must stay under.
     """
@@ -86,6 +100,7 @@ class Video:
     demo: str = "plain"  # "plain", "more" (comps, contacts, interviews, a package) or "empty" (first-run onboarding)
     extension: bool = False
     max_seconds: float = 120.0
+    problem_cues: tuple[str, ...] = ()
 
     def kind(self, scene: Scene) -> str:
         return scene.demo or self.demo

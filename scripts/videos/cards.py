@@ -40,13 +40,16 @@ def title_card(subtitle: str) -> str:
     return _page(css, body)
 
 
-def problem_scene(lines: list[str], seconds: float) -> str:
+def problem_scene(lines: list[str], seconds: float, delays: list[float] | None = None) -> str:
     """The pain, before the payoff: each line drops in as a card, one after another, and the pile gets heavier.
 
-    Animated with CSS only (slidecast steps the animations frame by frame)."""
+    `delays` are when each line drops in (seconds), to match the narration; without them the lines fall at even
+    gaps over `seconds`. Animated with CSS only (slidecast steps the animations frame by frame); the last frame
+    holds for as long as the narration runs."""
     gap = max(0.9, (seconds - 1.5) / max(1, len(lines)))
+    delays = delays or [0.4 + i * gap for i in range(len(lines))]
     cards = "".join(
-        f'<div class="line" style="animation-delay:{0.4 + i * gap:.2f}s;--tilt:{(-1) ** i * (1 + i % 3) * .35:.2f}deg">'
+        f'<div class="line" style="animation-delay:{delays[i]:.2f}s;--tilt:{(-1) ** i * (1 + i % 3) * .35:.2f}deg">'
         f"{html.escape(line)}</div>" for i, line in enumerate(lines))
     css = """
     .stack { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;

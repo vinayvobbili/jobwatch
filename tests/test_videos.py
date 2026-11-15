@@ -40,7 +40,7 @@ def estimated_length(stories, video) -> float:
     """Title card, problem, tagline, each scene held for its voice, and the closing card."""
     say = stories["common"].seconds_to_say
     scenes = sum((s.seconds if s.html else max(s.min_seconds, say(s.say))) + 0.3 for s in video.scenes)
-    return 3.0 + max(7.0, say(video.problem_say)) + say(stories["common"].TAGLINE) + scenes + 4.0
+    return 3.0 + stories["common"].problem_seconds(video.problem_say) + say(stories["common"].TAGLINE) + scenes + 4.0
 
 
 def test_the_capture_has_the_frames_aspect_ratio_and_is_recorded_at_the_viewport_size(stories):
@@ -115,3 +115,15 @@ def test_the_cards_hold_the_title_and_the_problem(stories):
     assert "Getting started" in title and "job" in title and "background-clip: text" in title
     problem = cards.problem_scene(["One", "Two", "Three"], 9.0)
     assert problem.count('class="line"') == 3 and "animation-delay" in problem
+
+
+def test_the_problem_lines_drop_in_as_the_narration_reaches_them(stories):
+    """Each line drops in at its cue phrase, in order, and the scene outlasts the whole narration."""
+    cards, common = stories["cards"], stories["common"]
+    video = all_videos(stories)["jobwatch-demo"]
+    assert len(video.problem_cues) == len(video.problem)
+    times = common.cue_times(video.problem_say, video.problem_cues)
+    assert times == sorted(times) and len(set(times)) == len(times)
+    assert times[0] > 0 and times[-1] < common.problem_seconds(video.problem_say) - 3
+    problem = cards.problem_scene(video.problem, common.problem_seconds(video.problem_say), times)
+    assert [float(d) for d in re.findall(r"animation-delay:([\d.]+)s", problem)] == [round(t, 2) for t in times]

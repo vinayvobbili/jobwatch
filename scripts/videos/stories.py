@@ -357,8 +357,10 @@ PROBLEM_TOUR = ["Twelve job boards, checked by hand", "Forty tabs and a spreadsh
 VIDEOS: dict[str, Video] = {
     "jobwatch-demo": Video(
         "jobwatch-demo", "New roles at the companies you watch, ranked for you.", PROBLEM_TOUR,
-        "Twelve job boards. Forty tabs. A spreadsheet that is always out of date. "
-        "And the same application form, typed again and again.",
+        "Hunting for a job the traditional way is a lot of work. You keep track of a dozen job boards, "
+        "and check each one by hand, every day. You end up with forty tabs open, and a spreadsheet that is "
+        "always out of date. Then you type the same application form, again and again. "
+        "jobwatch does that grind for you. Here is how.",
         [Scene("Every morning, Today opens on your own filters: a fit of eighty or more, and a pay floor. "
                "Jobs with no score or no pay clue wait at the end, or you can hide them.", today_chips,
                name="chips"),
@@ -373,5 +375,6 @@ VIDEOS: dict[str, Video] = {
                tracking, start="applied", name="tracking"),
          Scene("Before a call, open the prep sheet.", open_prep, start="applied", name="prep"),
          Scene("And compare your real options side by side.", comps, start="comps", name="comps")],
-        demo="more", extension=True, max_seconds=100),
+        demo="more", extension=True, max_seconds=100,
+        problem_cues=("You keep track", "You end up with forty", "Then you type")),
 }

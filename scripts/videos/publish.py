@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 OUT = ROOT / "scripts" / "demo" / "out" / "videos"
 TOUR = "jobwatch-demo"
-GIF_FROM, GIF_SECONDS = 14.0, 14.0  # the Today tab, after the title and the problem
+GIF_FROM, GIF_SECONDS = 28.5, 14.0  # the Today tab, after the title and the problem
 
 
 def tutorial_names(out: Path) -> list[str]:
