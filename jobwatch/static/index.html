@@ -719,6 +719,21 @@ table.use th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
 .ai-steps a { font-weight: 600; }
 .cmd { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
 .cmd code { flex: 1; min-width: 0; font-size: 12px; padding: 6px 9px; border-radius: 9px; background: var(--chip); overflow-wrap: anywhere; }
+.lm-suggest { display: grid; gap: 8px; padding: 11px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.45;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 11%, transparent), color-mix(in srgb, var(--good) 9%, transparent));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line)); animation: bell-pop .3s ease both; }
+.lm-suggest .lm-model { font-weight: 700; font-size: 13.5px; overflow-wrap: anywhere; }
+.lm-suggest .lm-tag { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 10.5px;
+  font-weight: 800; background: var(--grad); color: #fff; vertical-align: 1px; white-space: nowrap; }
+.lm-suggest .lm-tag.soft { background: var(--chip); color: var(--muted); }
+.lm-suggest .lm-warn { color: var(--warn); font-weight: 600; }
+.lm-suggest .cmd { margin-top: 0; }
+.lm-suggest details summary { cursor: pointer; font-weight: 600; color: var(--accent); }
+.lm-table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+.lm-table th, .lm-table td { text-align: left; padding: 5px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.lm-table th { color: var(--muted); font-weight: 600; border-top: 0; }
+.lm-table tr.me td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.lm-table code { font-size: 11px; overflow-wrap: anywhere; }
 .ai-key { display: grid; gap: 6px; }
 .ai-key .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
 .ai-tile .foot { margin-top: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
@@ -4152,11 +4167,12 @@ function aiSetup(s) {
         h("div", {}, h("div", { class: "name" }, AI_LOOK[b].name), h("div", { class: "muted small" }, AI_LOOK[b].tag)), state),
       meters(b),
       h("div", { class: "about" }, st ? st.about : ""),
+      b === "local" && st ? localSuggest(st.recommend) : null,
       st ? setupSteps(b, st) : null,
       key,
       h("div", { class: "foot" }, test, result));
     // a click on the tile picks it; one on its buttons, links or the key box doesn't
-    el.onclick = e => { if (!e.target.closest("button, a, input, code")) pick(b); };
+    el.onclick = e => { if (!e.target.closest("button, a, input, code, details")) pick(b); };
     el.onkeydown = e => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); pick(b); } };
     return el;
   };
@@ -4350,6 +4366,29 @@ const AI_LOOK = {
   agy: { name: "Antigravity", tag: "Your Google AI subscription", icon: "cloud", quality: 3, cost: 2, privacy: 1, speed: 2 },
   local: { name: "On this Mac", tag: "Apple Silicon, offline", icon: "lock", quality: 2, cost: 3, privacy: 3, speed: 1 },
 };
+// The local model suggested for this computer's memory (localmodel.recommend, from /api/ai): the suggestion with a
+// copy button for the command that serves it, what is set already (only noted when it's bigger than the suggestion),
+// and every size behind "See all sizes". Only the 16 GB row is tested; the rest are sized by memory.
+function localSuggest(r) {
+  if (!r || !r.rows) return null;
+  const s = r.suggested, c = r.configured;
+  const where = s ? `${s.gb} GB, ${r.system}` : r.system;
+  const table = h("table", { class: "lm-table" },
+    h("tr", {}, h("th", {}, "Memory"), h("th", {}, "Model"), h("th", {}, "Status")),
+    r.rows.map(row => h("tr", { class: s && s.row === row.ram ? "me" : "" },
+      h("td", {}, row.ram), h("td", {}, row.model, h("div", {}, h("code", {}, row.id))),
+      h("td", {}, row.tested ? "tested" : "suggested, sized by memory"))));
+  return h("div", { class: "lm-suggest" },
+    s ? h("div", {}, h("div", {}, `Suggested for this computer (${where}):`),
+      h("div", { class: "lm-model" }, s.model, h("span", { class: "lm-tag" + (s.tested ? "" : " soft") },
+        s.tested ? "tested" : "sized by memory")))
+      : h("div", {}, "Couldn't read this computer's memory; every size is below."),
+    c ? h("div", {}, `Set now: ${c.model}. `, c.larger ? h("span", { class: "lm-warn" },
+      "That's larger than suggested for this memory, so it may be slow or swap.") : null) : null,
+    s ? h("div", { class: "cmd" }, h("code", {}, s.command), copyButton(() => s.command)) : null,
+    r.note ? h("div", { class: "muted" }, r.note) : null,
+    h("details", {}, h("summary", {}, "See all sizes"), table));
+}
 const AI_METERS = [["Scores", "quality"], ["Low cost", "cost"], ["Privacy", "privacy"], ["Speed", "speed"]];
 
 // Step 4: optional extras, each closed until opened: where the AI runs and job-alert emails. "Later" leaves both

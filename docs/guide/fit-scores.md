@@ -74,6 +74,27 @@ text only, about 35 seconds a call, so up to three run at once. `scoring.model` 
 it uses your subscription's quota. `agy` can't run the chat, which stays on `claude` or `local`
 (`chat.backend`).
 
+### Which local model to run
+
+`scoring.backend: local` talks to any OpenAI-compatible server at `http://127.0.0.1:8010/v1` (or `LOCAL_LLM_URL`):
+`vllm-mlx serve`, `mlx_lm.server`, LM Studio, or Ollama (at `http://127.0.0.1:11434/v1`, with `scoring.model`
+set to the tag). The page's "On this Mac" card (Settings › Where the AI runs, and onboarding) reads this
+computer's memory and suggests one from this table, with the command that serves it. Only the 16 GB row was
+tested; the others are suggested, sized by memory.
+
+| Memory | Apple Silicon (mlx-community repo) | Windows, Linux, Intel Mac (Ollama tag) |
+|---|---|---|
+| 8 GB | Qwen3.5-4B, 4-bit: [`Qwen3.5-4B-MLX-4bit`](https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit) | [`qwen3.5:4b-q4_K_M`](https://ollama.com/library/qwen3.5:4b-q4_K_M) |
+| 16 GB (tested) | Qwen3.5-9B, 4-bit: [`Qwen3.5-9B-MLX-4bit`](https://huggingface.co/mlx-community/Qwen3.5-9B-MLX-4bit) | [`qwen3.5:9b-q4_K_M`](https://ollama.com/library/qwen3.5:9b-q4_K_M) |
+| 24-32 GB | Qwen3.6-27B, 4-bit: [`Qwen3.6-27B-4bit`](https://huggingface.co/mlx-community/Qwen3.6-27B-4bit) | [`qwen3.6:27b-q4_K_M`](https://ollama.com/library/qwen3.6:27b-q4_K_M) |
+| 48 GB and up | Qwen3.6-35B-A3B, 4-bit: [`Qwen3.6-35B-A3B-4bit`](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-4bit); 8-bit with 64 GB or more: [`Qwen3.6-35B-A3B-8bit`](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-8bit) | [`qwen3.6:35b-a3b-q4_K_M`](https://ollama.com/library/qwen3.6:35b-a3b-q4_K_M); 8-bit: [`qwen3.6:35b-a3b-q8_0`](https://ollama.com/library/qwen3.6:35b-a3b-q8_0) |
+
+On Apple Silicon, serve a row with `vllm-mlx serve mlx-community/<repo> --port 8010`; elsewhere,
+`ollama pull <tag>`. The 16 GB row was compared on a 16 GB Apple Silicon Mac against a 6-bit build of the same
+model and Gemma 4 12B (4-bit) on 29 expected requirement verdicts: 28, 27 and 29 agreed, at 27, 36 and 42
+seconds a call and 7.5, 9.7 and 9.2 GB. The gap was within noise, so the faster and smaller 4-bit Qwen won.
+The page only notes when a model you already set is larger than the suggestion for your memory.
+
 To score with Claude and keep other backends for when it can't, set `scoring.fallback: local`, or a list tried
 in order, `scoring.fallback: [agy, local]` (Claude, then agy, then the local model; `scoring.agy_model` is the
 model agy uses as a fallback). Without a key, out of credit, out of quota or with the API down, the next

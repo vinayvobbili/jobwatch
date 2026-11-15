@@ -137,6 +137,31 @@ section[id], .private { scroll-margin-top: 70px; }
 .private li::before { content: ""; position: absolute; left: 0; top: 7px; width: 16px; height: 16px; border-radius: 50%;
   background: var(--grad); }
 .private li b { color: var(--text); }
+.private h3 { position: relative; margin: 26px 0 4px; font-size: 18px; letter-spacing: -.01em; }
+.private .sub { position: relative; margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+.models { position: relative; width: 100%; border-collapse: collapse; font-size: 14px; }
+.models th, .models td { text-align: left; padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+.models th { color: var(--muted); font-weight: 600; font-size: 12.5px; border-top: 0; }
+.models code { font-size: 12.5px; overflow-wrap: anywhere; }
+.models a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.models a:hover { text-decoration: underline; }
+.models .ram { font-weight: 700; white-space: nowrap; }
+.models tr.tested td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.models .badge { display: inline-block; margin-top: 4px; padding: 2px 9px; border-radius: 999px; background: var(--grad); color: #fff;
+  font-size: 11.5px; font-weight: 700; white-space: normal; }
+.models .soft { display: block; margin-top: 4px; color: var(--muted); font-size: 12.5px; font-weight: 400; }
+.models-note { position: relative; margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+@media (max-width: 640px) {
+  .models, .models tbody, .models tr, .models td { display: block; }
+  .models thead { display: none; }
+  .models tr { padding: 12px 0; border-top: 1px solid var(--line); }
+  .models tr:first-child { border-top: 0; }
+  .models td { border: 0; padding: 2px 12px; }
+  .models tr.tested { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 12px; }
+  .models tr.tested td { background: none; }
+  .models td[data-l]::before { content: attr(data-l); display: block; color: var(--muted); font-size: 11.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+}
 
 .links { display: flex; flex-wrap: wrap; gap: 10px; }
 .links a { padding: 9px 16px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-weight: 600;
@@ -257,6 +282,26 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
         <li><b>Your data stays on your machine.</b> The only exception is a model you choose for fit scores and chat; on-device models send nothing anywhere.</li>
         <li><b>You press Submit yourself.</b> jobwatch finds and ranks. It never applies for you.</li>
       </ul>
+      <h3 id="local-model">Which local model to run</h3>
+      <p class="sub">Sized by how much memory your computer has. jobwatch's page suggests one for yours.</p>
+      <table class="models">
+        <thead><tr><th>Memory</th><th>Apple Silicon (mlx-community)</th><th>Windows, Linux, Intel Mac (Ollama)</th></tr></thead>
+        <tbody>
+          <tr><td class="ram">8 GB</td>
+            <td data-l="Apple Silicon">Qwen3.5-4B, 4-bit<br><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit">Qwen3.5-4B-MLX-4bit ↗</a><span class="soft">suggested, sized by memory</span></td>
+            <td data-l="Windows, Linux, Intel Mac"><a target="_blank" rel="noopener" href="https://ollama.com/library/qwen3.5:4b-q4_K_M">qwen3.5:4b-q4_K_M ↗</a></td></tr>
+          <tr class="tested"><td class="ram">16 GB<br><span class="badge">tested on a 16 GB Mac</span></td>
+            <td data-l="Apple Silicon">Qwen3.5-9B, 4-bit<br><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/Qwen3.5-9B-MLX-4bit">Qwen3.5-9B-MLX-4bit ↗</a></td>
+            <td data-l="Windows, Linux, Intel Mac"><a target="_blank" rel="noopener" href="https://ollama.com/library/qwen3.5:9b-q4_K_M">qwen3.5:9b-q4_K_M ↗</a><span class="soft">same model; the test ran the Apple Silicon build</span></td></tr>
+          <tr><td class="ram">24-32 GB</td>
+            <td data-l="Apple Silicon">Qwen3.6-27B, 4-bit<br><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/Qwen3.6-27B-4bit">Qwen3.6-27B-4bit ↗</a><span class="soft">suggested, sized by memory</span></td>
+            <td data-l="Windows, Linux, Intel Mac"><a target="_blank" rel="noopener" href="https://ollama.com/library/qwen3.6:27b-q4_K_M">qwen3.6:27b-q4_K_M ↗</a></td></tr>
+          <tr><td class="ram">48 GB and up</td>
+            <td data-l="Apple Silicon">Qwen3.6-35B-A3B, 4-bit<br><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-4bit">Qwen3.6-35B-A3B-4bit ↗</a><br>8-bit with 64 GB or more:<br><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-8bit">Qwen3.6-35B-A3B-8bit ↗</a><span class="soft">suggested, sized by memory</span></td>
+            <td data-l="Windows, Linux, Intel Mac"><a target="_blank" rel="noopener" href="https://ollama.com/library/qwen3.6:35b-a3b-q4_K_M">qwen3.6:35b-a3b-q4_K_M ↗</a><br>8-bit with 64 GB or more:<br><a target="_blank" rel="noopener" href="https://ollama.com/library/qwen3.6:35b-a3b-q8_0">qwen3.6:35b-a3b-q8_0 ↗</a></td></tr>
+        </tbody>
+      </table>
+      <p class="models-note">Only the 16 GB row was tested: on a 16 GB Apple Silicon Mac it agreed with 28 of 29 expected verdicts, at 27 seconds a call and 7.5 GB of memory. The other rows are suggested, sized by memory.</p>
     </div>
   </section>
 

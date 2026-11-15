@@ -51,6 +51,7 @@ from . import (
     lca,
     learn,
     levels,
+    localmodel,
     logos,
     logtail,
     mock,
@@ -732,6 +733,10 @@ class App:
         for b, s in st.items():
             s["default_model"] = scorestats.default_model(b)
             s["models"] = [{"id": m, "name": name} for m, name in models.get(b, [])]
+        raw = (yaml.safe_load(self.path.read_text()) or {}) if self.path.is_file() else {}
+        scoring = raw.get("scoring") if isinstance(raw.get("scoring"), dict) else {}
+        st["local"]["recommend"] = localmodel.recommend(
+            localmodel.configured_model(scoring, st["local"]["default_model"]))
         # the chain's steps paused now (out of credit or quota), by "backend:model": Settings shows them so
         try:
             st["paused"] = self._with_store(lambda cfg, store: store.scorers_down())

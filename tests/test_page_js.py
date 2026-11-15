@@ -754,3 +754,42 @@ console.log(JSON.stringify(out));
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout) == ["live", "due", "quiet", "quiet", "waiting", "snoozed", "closed", "closed",
                                     [True, False, True, False, False, True]]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_the_local_tile_suggests_a_model_for_this_computers_memory(tmp_path):
+    """The suggestion reads "Suggested for this computer (16 GB, Apple Silicon): ..." with the command to copy, notes a
+    model set already only when it's larger than suggested, and lists every size behind "See all sizes"."""
+    js = tmp_path / "suggest.js"
+    js.write_text(page_function("localSuggest") + """
+const h = (tag, attrs, ...kids) => ({ tag, attrs: attrs || {},
+  kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const copyButton = get => ({ tag: "copy", text: get() });
+const text = n => typeof n === "string" ? n : [n.text || "", ...(n.kids || []).map(text)].join(" ");
+const rows = [
+  { ram: "8 GB", model: "Qwen3.5-4B, 4-bit", id: "mlx-community/Qwen3.5-4B-MLX-4bit", tested: false },
+  { ram: "16 GB", model: "Qwen3.5-9B, 4-bit", id: "mlx-community/Qwen3.5-9B-MLX-4bit", tested: true }];
+const suggested = { ...rows[1], gb: 16, row: "16 GB",
+  command: "vllm-mlx serve mlx-community/Qwen3.5-9B-MLX-4bit --port 8010" };
+const base = { rows, suggested, system: "Apple Silicon", note: "" };
+const find = (n, f) => (f(n) ? [n] : []).concat(...(n.kids || []).map(k => typeof k === "string" ? [] : find(k, f)));
+const a = localSuggest(base), b = localSuggest({ ...base, configured: { model: "Qwen3.6-27B-4bit", larger: true } });
+const c = localSuggest({ ...base, configured: { model: "Qwen3.5-9B-MLX-4bit", larger: false } });
+console.log(JSON.stringify({
+  a: text(a), copy: find(a, n => n.tag === "copy")[0].text, rowsShown: find(a, n => n.tag === "tr").length,
+  marked: find(a, n => n.attrs && n.attrs.class === "me").length,
+  warnA: find(a, n => n.attrs && n.attrs.class === "lm-warn").length,
+  warnB: find(b, n => n.attrs && n.attrs.class === "lm-warn").length, c: text(c),
+  none: localSuggest(null), blind: text(localSuggest({ rows, suggested: null, system: "Linux" })),
+}));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert "Suggested for this computer (16 GB, Apple Silicon):" in out["a"]
+    assert "Qwen3.5-9B, 4-bit" in out["a"] and "tested" in out["a"] and "See all sizes" in out["a"]
+    assert out["copy"] == "vllm-mlx serve mlx-community/Qwen3.5-9B-MLX-4bit --port 8010"
+    assert out["rowsShown"] == 3 and out["marked"] == 1  # the header and both rows; the one for this memory marked
+    assert (out["warnA"], out["warnB"]) == (0, 1)
+    assert "Set now: Qwen3.5-9B-MLX-4bit" in out["c"] and "larger" not in out["c"]
+    assert out["none"] is None and "Couldn't read this computer's memory" in out["blind"]
