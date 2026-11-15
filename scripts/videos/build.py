@@ -7,8 +7,8 @@
 Each scene is a screen recording of the real `jobwatch ui` (or the extension's side panel) on made-up data: a cursor
 glides to each target, clicks ripple, and nothing may be cut off at the frame's edges (slidecast's framing check
 fails the scene). The story, in slidecast's shape: a silent title card, the problem, the tagline at the turn, the
-walkthrough, and the title card again. Writes OUT/videos/NAME/ (clips, the video, its poster) and, for the tour, a
-1440p `-youtube.mp4`. See scripts/videos/README.md.
+walkthrough, and the title card again. Writes OUT/videos/NAME/ (clips, the video, its poster and its captions,
+NAME.vtt) and, for the tour, a 1440p `-youtube.mp4`. See scripts/videos/README.md.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import shutil
 import sys
 from pathlib import Path
 
+import captions
 import cards
 from common import TAGLINE, Scene, Video, cue_times, demo_running, problem_seconds, seconds_to_say
 from slidecast import MLXKokoroTTS, Music, Reel, Sting
@@ -83,6 +84,7 @@ def assemble(video: Video, clips: list[Path], work: Path, music: Path | None, yo
             reel.add_clip(clip, scene.say, tail_pad=0.3)
     out = where / f"{video.name}.mp4"
     reel.render(out, make_poster=True, workdir=where / "work", youtube=youtube)
+    captions.write_for(video, TAGLINE, where)
     return out
 
 

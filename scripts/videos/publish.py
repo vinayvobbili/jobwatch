@@ -3,7 +3,8 @@
     python scripts/videos/publish.py [--out DIR]
 
 Overwrites docs/jobwatch-demo.mp4, site/jobwatch-demo.{mp4,jpg}, docs/demo.gif, site/demo.gif and, for each tutorial,
-docs/tutorials/NAME.mp4, site/tutorials/NAME.mp4 and site/tutorials/NAME.jpg (a poster frame, 640 wide).
+docs/tutorials/NAME.mp4, site/tutorials/NAME.mp4 and site/tutorials/NAME.jpg (a poster frame, 640 wide). Each video's
+captions (NAME.vtt, see captions.py) go beside its mp4 in site/. `--captions-only` copies only those.
 """
 
 from __future__ import annotations
@@ -31,6 +32,11 @@ def targets(name: str, root: Path = ROOT) -> list[Path]:
     return [root / "docs" / "tutorials" / f"{name}.mp4", root / "site" / "tutorials" / f"{name}.mp4"]
 
 
+def caption_target(name: str, root: Path = ROOT) -> Path:
+    """Where a video's captions go: beside its mp4 on the site."""
+    return targets(name, root)[1].with_suffix(".vtt")
+
+
 def frame(video: Path, dest: Path, at: float, width: int) -> None:
     run(["ffmpeg", "-v", "error", "-y", "-ss", str(at), "-i", str(video), "-frames:v", "1",
          "-vf", f"scale={width}:-1", "-q:v", "3", str(dest)])
@@ -50,10 +56,17 @@ def run(cmd: list[str]) -> None:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--captions-only", action="store_true", help="copy only the captions (the .vtt files)")
     args = ap.parse_args(argv)
     names = ([TOUR] if (args.out / TOUR / f"{TOUR}.mp4").exists() else []) + tutorial_names(args.out)
     for name in names:
         video = args.out / name / f"{name}.mp4"
+        captions = args.out / name / f"{name}.vtt"
+        if captions.exists():
+            shutil.copyfile(captions, caption_target(name))
+        if args.captions_only:
+            print(f"published {name}'s captions")
+            continue
         for dest in targets(name):
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(video, dest)

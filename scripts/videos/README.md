@@ -26,7 +26,8 @@ Output goes to `scripts/demo/out/videos/NAME/` (git ignores it): `clips/`, `NAME
 | `extension.py` | The extension's side panel docked beside a form or LinkedIn list |
 | `cards.py` | The title card (silent 3 s, and the closing card), the animated problem scene |
 | `common.py` | The seeded demo, `Scene` and `Video`, the narration timing |
-| `build.py` | Records the scenes, assembles the reel, renders it |
+| `build.py` | Records the scenes, assembles the reel, renders it, writes its captions |
+| `captions.py` | `NAME.vtt` from the narration and the rendered segments' lengths; run alone it captions videos already rendered, with no re-render (`python scripts/videos/captions.py`, then `publish.py --captions-only`) |
 
 The story follows slidecast's shape: a silent title card, the problem, the tagline "Your job hunt shouldn't be a
 full-time job." at the turn, the walkthrough, and the title card again. Each clip is held as long as its narration.
