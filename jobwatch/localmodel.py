@@ -22,24 +22,44 @@ OLLAMA_URL = "http://127.0.0.1:11434/v1"
 
 
 @dataclass(frozen=True)
+class Alt:
+    """The "also good" Gemma 4 model beside a row's Qwen suggestion."""
+    name: str       # the model, as a person reads it
+    mlx: str        # its mlx-community repo
+    tag: str        # its Ollama tag
+    note: str = ""  # what was measured, only where something was
+
+
+@dataclass(frozen=True)
 class Tier:
     ram: str        # the row's label
     min_gb: int     # the least memory (nominal GB) it is suggested for
     name: str       # the model, as a person reads it
     mlx: str        # its mlx-community repo (Apple Silicon)
     tag: str        # its Ollama tag (everything else)
+    alt: Alt | None = None  # the Gemma 4 beside it
     tested: bool = False
 
 
+# Gemma 4 loads through mlx-vlm (mlx_lm has no class for it); vllm-mlx installs that and loads any gemma-4 repo by
+# its name, so the serve command is the same as for a Qwen. The 8 GB row gets E2B: E4B's 5.2 GB of weights would
+# leave an 8 GB computer too little (Qwen3.5-4B is 3.1 GB, E2B 3.6 GB).
+GEMMA_E2B = Alt("Gemma 4 E2B, 4-bit", "gemma-4-e2b-it-4bit", "gemma4:e2b-it-q4_K_M")
+GEMMA_12B = Alt("Gemma 4 12B, 4-bit", "gemma-4-12B-it-4bit", "gemma4:12b-it-q4_K_M",
+                "tested: most accurate (29/29 vs 28/29), about 50% slower, +1.7 GB")
+GEMMA_26B = Alt("Gemma 4 26B-A4B, 4-bit", "gemma-4-26b-a4b-it-4bit", "gemma4:26b-a4b-it-q4_K_M")
+GEMMA_31B = Alt("Gemma 4 31B, 4-bit", "gemma-4-31b-it-4bit", "gemma4:31b-it-q4_K_M")
+
 TIERS = (
-    Tier("8 GB", 0, "Qwen3.5-4B, 4-bit", "Qwen3.5-4B-MLX-4bit", "qwen3.5:4b-q4_K_M"),
-    Tier("16 GB", 16, "Qwen3.5-9B, 4-bit", "Qwen3.5-9B-MLX-4bit", "qwen3.5:9b-q4_K_M", tested=True),
-    Tier("24-32 GB", 24, "Qwen3.6-27B, 4-bit", "Qwen3.6-27B-4bit", "qwen3.6:27b-q4_K_M"),
-    Tier("48 GB and up", 48, "Qwen3.6-35B-A3B, 4-bit", "Qwen3.6-35B-A3B-4bit", "qwen3.6:35b-a3b-q4_K_M"),
+    Tier("8 GB", 0, "Qwen3.5-4B, 4-bit", "Qwen3.5-4B-MLX-4bit", "qwen3.5:4b-q4_K_M", GEMMA_E2B),
+    Tier("16 GB", 16, "Qwen3.5-9B, 4-bit", "Qwen3.5-9B-MLX-4bit", "qwen3.5:9b-q4_K_M", GEMMA_12B, tested=True),
+    Tier("24-32 GB", 24, "Qwen3.6-27B, 4-bit", "Qwen3.6-27B-4bit", "qwen3.6:27b-q4_K_M", GEMMA_26B),
+    Tier("48 GB and up", 48, "Qwen3.6-35B-A3B, 4-bit", "Qwen3.6-35B-A3B-4bit", "qwen3.6:35b-a3b-q4_K_M", GEMMA_31B),
 )
 # with this much memory or more the biggest row's 8-bit build fits
 EIGHT_BIT_GB = 64
-EIGHT_BIT = Tier("64 GB and up", EIGHT_BIT_GB, "Qwen3.6-35B-A3B, 8-bit", "Qwen3.6-35B-A3B-8bit", "qwen3.6:35b-a3b-q8_0")
+EIGHT_BIT = Tier("64 GB and up", EIGHT_BIT_GB, "Qwen3.6-35B-A3B, 8-bit", "Qwen3.6-35B-A3B-8bit", "qwen3.6:35b-a3b-q8_0",
+                 GEMMA_31B)
 SIZES = (4, 6, 8, 12, 16, 18, 24, 32, 36, 48, 64, 96, 128, 192, 256, 384, 512)  # memory sizes computers ship with
 SLACK = 0.93  # an OS reports a little under what is installed (Linux and Windows hold some back)
 
@@ -102,11 +122,11 @@ def pick(gb: int) -> Tier:
     return EIGHT_BIT if t is TIERS[-1] and gb >= EIGHT_BIT_GB else t
 
 
-def serve_command(t: Tier, apple: bool) -> str:
+def serve_command(t: Tier | Alt, apple: bool) -> str:
     return f"vllm-mlx serve mlx-community/{t.mlx} --port {SERVE_PORT}" if apple else f"ollama pull {t.tag}"
 
 
-def model_id(t: Tier, apple: bool) -> str:
+def model_id(t: Tier | Alt, apple: bool) -> str:
     return f"mlx-community/{t.mlx}" if apple else t.tag
 
 
@@ -141,9 +161,13 @@ def recommend(configured: str = "", total: int | None = None, apple: bool | None
     gb = nominal_gb(total) if total else None
 
     def flavor(t: Tier) -> dict:
+        a = t.alt
         return {"ram": t.ram, "model": t.name, "id": model_id(t, apple), "tested": t.tested,
                 "link": (HF + t.mlx) if apple else (OLLAMA + t.tag.split(":")[0]),
-                "command": serve_command(t, apple)}
+                "command": serve_command(t, apple),
+                "alt": a and {"model": a.name, "id": model_id(a, apple), "note": a.note,
+                              "link": (HF + a.mlx) if apple else (OLLAMA + a.tag),
+                              "command": serve_command(a, apple)}}
 
     rows = [flavor(t) for t in TIERS]
     rows[-1]["model"] += f" (8-bit with {EIGHT_BIT_GB} GB or more)"

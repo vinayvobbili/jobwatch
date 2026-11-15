@@ -130,6 +130,42 @@ def test_the_home_page_and_the_guide_show_every_model_of_the_table():
             assert f"https://huggingface.co/mlx-community/{t.mlx}" in text
             assert f"https://ollama.com/library/{t.tag}" in text
     assert "tested on a 16 GB Mac" in site
+    for t in [*TIERS, EIGHT_BIT]:
+        for text in (site, guide):
+            assert f"https://huggingface.co/mlx-community/{t.alt.mlx}" in text
+            assert f"https://ollama.com/library/{t.alt.tag}" in text
+    assert "Also good: Gemma 4" in site and "Also good: Gemma 4" in guide
+    for text in (site, guide):
+        assert "Mac with Apple Silicon (MLX, runs on the GPU via Metal)" in text
+        assert "Windows, Linux or Intel Mac (Ollama)" in text
+        assert text.index("Mac with Apple Silicon (MLX") < text.index("Windows, Linux or Intel Mac (Ollama)")
+        assert ("On an Apple Silicon Mac, use MLX: it's built for Apple's chips and runs faster than Ollama there."
+                in " ".join(text.split()))
+    assert "about 50% slower" in site and "about 50% slower" in guide
+
+
+def test_every_row_has_a_gemma_4_beside_its_qwen():
+    assert [t.alt.mlx for t in TIERS] == [
+        "gemma-4-e2b-it-4bit", "gemma-4-12B-it-4bit", "gemma-4-26b-a4b-it-4bit", "gemma-4-31b-it-4bit"]
+    assert [t.alt.tag for t in TIERS] == [
+        "gemma4:e2b-it-q4_K_M", "gemma4:12b-it-q4_K_M", "gemma4:26b-a4b-it-q4_K_M", "gemma4:31b-it-q4_K_M"]
+    assert all(t.alt.tag.endswith("q4_K_M") and t.alt.mlx.endswith("4bit") for t in TIERS)
+    assert [bool(t.alt.note) for t in TIERS] == [False, True, False, False]  # only the 16 GB row's was measured
+    assert "29/29 vs 28/29" in TIERS[1].alt.note and "about 50% slower" in TIERS[1].alt.note
+
+
+def test_the_alternative_is_served_like_the_suggestion_and_shown_with_every_row():
+    r = recommend(total=16 * GB, apple=True)
+    alt = r["suggested"]["alt"]
+    assert alt["id"] == "mlx-community/gemma-4-12B-it-4bit"
+    assert alt["command"] == "vllm-mlx serve mlx-community/gemma-4-12B-it-4bit --port 8010"
+    assert alt["link"] == "https://huggingface.co/mlx-community/gemma-4-12B-it-4bit"
+    assert r["rows"][0]["alt"]["id"] == "mlx-community/gemma-4-e2b-it-4bit"
+    assert all(row["alt"] for row in r["rows"])
+    other = recommend(total=16 * GB, apple=False)["suggested"]["alt"]
+    assert other["command"] == "ollama pull gemma4:12b-it-q4_K_M"
+    assert other["link"] == "https://ollama.com/library/gemma4:12b-it-q4_K_M"
+    assert recommend(total=64 * GB, apple=True)["suggested"]["alt"]["id"] == "mlx-community/gemma-4-31b-it-4bit"
 
 
 def test_the_ai_endpoint_carries_the_suggestion_and_the_model_set(server, watchlist, monkeypatch):

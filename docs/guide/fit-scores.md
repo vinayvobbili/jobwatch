@@ -82,17 +82,23 @@ set to the tag). The page's "On this Mac" card (Settings › Where the AI runs, 
 computer's memory and suggests one from this table, with the command that serves it. Only the 16 GB row was
 tested; the others are suggested, sized by memory.
 
-| Memory | Apple Silicon (mlx-community repo) | Windows, Linux, Intel Mac (Ollama tag) |
-|---|---|---|
-| 8 GB | Qwen3.5-4B, 4-bit: [`Qwen3.5-4B-MLX-4bit`](https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit) | [`qwen3.5:4b-q4_K_M`](https://ollama.com/library/qwen3.5:4b-q4_K_M) |
-| 16 GB (tested) | Qwen3.5-9B, 4-bit: [`Qwen3.5-9B-MLX-4bit`](https://huggingface.co/mlx-community/Qwen3.5-9B-MLX-4bit) | [`qwen3.5:9b-q4_K_M`](https://ollama.com/library/qwen3.5:9b-q4_K_M) |
-| 24-32 GB | Qwen3.6-27B, 4-bit: [`Qwen3.6-27B-4bit`](https://huggingface.co/mlx-community/Qwen3.6-27B-4bit) | [`qwen3.6:27b-q4_K_M`](https://ollama.com/library/qwen3.6:27b-q4_K_M) |
-| 48 GB and up | Qwen3.6-35B-A3B, 4-bit: [`Qwen3.6-35B-A3B-4bit`](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-4bit); 8-bit with 64 GB or more: [`Qwen3.6-35B-A3B-8bit`](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-8bit) | [`qwen3.6:35b-a3b-q4_K_M`](https://ollama.com/library/qwen3.6:35b-a3b-q4_K_M); 8-bit: [`qwen3.6:35b-a3b-q8_0`](https://ollama.com/library/qwen3.6:35b-a3b-q8_0) |
+| Memory | Mac with Apple Silicon (MLX, runs on the GPU via Metal) | Windows, Linux or Intel Mac (Ollama) | Also good: Gemma 4 (MLX first, then Ollama) |
+|---|---|---|---|
+| 8 GB | Qwen3.5-4B, 4-bit: [`Qwen3.5-4B-MLX-4bit`](https://huggingface.co/mlx-community/Qwen3.5-4B-MLX-4bit) | [`qwen3.5:4b-q4_K_M`](https://ollama.com/library/qwen3.5:4b-q4_K_M) | E2B: [`gemma-4-e2b-it-4bit`](https://huggingface.co/mlx-community/gemma-4-e2b-it-4bit); [`gemma4:e2b-it-q4_K_M`](https://ollama.com/library/gemma4:e2b-it-q4_K_M) |
+| 16 GB (tested) | Qwen3.5-9B, 4-bit: [`Qwen3.5-9B-MLX-4bit`](https://huggingface.co/mlx-community/Qwen3.5-9B-MLX-4bit) | [`qwen3.5:9b-q4_K_M`](https://ollama.com/library/qwen3.5:9b-q4_K_M) | 12B, tested: most accurate (29/29 vs 28/29), about 50% slower, +1.7 GB: [`gemma-4-12B-it-4bit`](https://huggingface.co/mlx-community/gemma-4-12B-it-4bit); [`gemma4:12b-it-q4_K_M`](https://ollama.com/library/gemma4:12b-it-q4_K_M) |
+| 24-32 GB | Qwen3.6-27B, 4-bit: [`Qwen3.6-27B-4bit`](https://huggingface.co/mlx-community/Qwen3.6-27B-4bit) | [`qwen3.6:27b-q4_K_M`](https://ollama.com/library/qwen3.6:27b-q4_K_M) | 26B-A4B: [`gemma-4-26b-a4b-it-4bit`](https://huggingface.co/mlx-community/gemma-4-26b-a4b-it-4bit); [`gemma4:26b-a4b-it-q4_K_M`](https://ollama.com/library/gemma4:26b-a4b-it-q4_K_M) |
+| 48 GB and up | Qwen3.6-35B-A3B, 4-bit: [`Qwen3.6-35B-A3B-4bit`](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-4bit); 8-bit with 64 GB or more: [`Qwen3.6-35B-A3B-8bit`](https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-8bit) | [`qwen3.6:35b-a3b-q4_K_M`](https://ollama.com/library/qwen3.6:35b-a3b-q4_K_M); 8-bit: [`qwen3.6:35b-a3b-q8_0`](https://ollama.com/library/qwen3.6:35b-a3b-q8_0) | 31B: [`gemma-4-31b-it-4bit`](https://huggingface.co/mlx-community/gemma-4-31b-it-4bit); [`gemma4:31b-it-q4_K_M`](https://ollama.com/library/gemma4:31b-it-q4_K_M) |
+
+On an Apple Silicon Mac, use MLX: it's built for Apple's chips and runs faster than Ollama there. Ollama is for
+computers MLX doesn't run on.
 
 On Apple Silicon, serve a row with `vllm-mlx serve mlx-community/<repo> --port 8010`; elsewhere,
-`ollama pull <tag>`. The 16 GB row was compared on a 16 GB Apple Silicon Mac against a 6-bit build of the same
+`ollama pull <tag>`. That is the same command for a Gemma 4 repo: vllm-mlx recognizes a gemma-4 name, loads it
+through mlx-vlm (which it installs) and serves it text and all on the same port. The 8 GB row's Gemma is E2B, not
+E4B, because E4B's 5.2 GB of weights would crowd an 8 GB computer. The 16 GB row was compared on a 16 GB Apple Silicon Mac against a 6-bit build of the same
 model and Gemma 4 12B (4-bit) on 29 expected requirement verdicts: 28, 27 and 29 agreed, at 27, 36 and 42
-seconds a call and 7.5, 9.7 and 9.2 GB. The gap was within noise, so the faster and smaller 4-bit Qwen won.
+seconds a call and 7.5, 9.7 and 9.2 GB. The gap was within noise, so the faster and smaller 4-bit Qwen stays the suggestion, and Gemma 4 12B
+(the most accurate, about 50% slower, 1.7 GB more) is the "also good" for that row.
 The page only notes when a model you already set is larger than the suggestion for your memory.
 
 To score with Claude and keep other backends for when it can't, set `scoring.fallback: local`, or a list tried

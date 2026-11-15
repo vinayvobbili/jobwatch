@@ -734,6 +734,18 @@ table.use th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
 .lm-table th { color: var(--muted); font-weight: 600; border-top: 0; }
 .lm-table tr.me td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .lm-table code { font-size: 11px; overflow-wrap: anywhere; }
+.lm-suggest .lm-alt { display: grid; gap: 4px; }
+.lm-suggest a { font-weight: 600; }
+@media (max-width: 520px) {
+  .lm-table, .lm-table tbody, .lm-table tr, .lm-table td { display: block; }
+  .lm-table th { display: none; }
+  .lm-table tr { padding: 6px 0; border-top: 1px solid var(--line); }
+  .lm-table td { border: 0; padding: 2px 6px; }
+  .lm-table tr.me td { background: none; }
+  .lm-table tr.me { background: color-mix(in srgb, var(--accent) 9%, transparent); border-radius: 8px; }
+  .lm-table td[data-l]::before { content: attr(data-l); display: block; color: var(--muted); font-size: 10.5px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: .05em; margin-top: 3px; }
+}
 .ai-key { display: grid; gap: 6px; }
 .ai-key .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
 .ai-tile .foot { margin-top: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; }
@@ -4372,12 +4384,18 @@ const AI_LOOK = {
 function localSuggest(r) {
   if (!r || !r.rows) return null;
   const s = r.suggested, c = r.configured;
-  const where = s ? `${s.gb} GB, ${r.system}` : r.system;
+  const runtime = r.apple ? "MLX" : "Ollama";
+  const where = s ? `${s.gb} GB, ${r.system}, ${runtime}` : r.system;
+  const alsoGood = a => h("a", { href: a.link, target: "_blank", rel: "noopener noreferrer" }, a.model + " ↗");
   const table = h("table", { class: "lm-table" },
-    h("tr", {}, h("th", {}, "Memory"), h("th", {}, "Model"), h("th", {}, "Status")),
+    h("tr", {}, h("th", {}, "Memory"), h("th", {}, r.apple ? "Model (MLX, on the GPU)" : "Model (Ollama)"), h("th", {}, "Also good"), h("th", {}, "Status")),
     r.rows.map(row => h("tr", { class: s && s.row === row.ram ? "me" : "" },
-      h("td", {}, row.ram), h("td", {}, row.model, h("div", {}, h("code", {}, row.id))),
-      h("td", {}, row.tested ? "tested" : "suggested, sized by memory"))));
+      h("td", { "data-l": "Memory" }, row.ram),
+      h("td", { "data-l": "Model" }, row.model, h("div", {}, h("code", {}, row.id))),
+      h("td", { "data-l": "Also good" }, row.alt ? [alsoGood(row.alt), h("div", {}, h("code", {}, row.alt.id)),
+        row.alt.note ? h("div", { class: "muted" }, row.alt.note) : null] : null),
+      h("td", { "data-l": "Status" }, row.tested ? "tested" : "suggested, sized by memory"))));
+  const alt = s && s.alt;
   return h("div", { class: "lm-suggest" },
     s ? h("div", {}, h("div", {}, `Suggested for this computer (${where}):`),
       h("div", { class: "lm-model" }, s.model, h("span", { class: "lm-tag" + (s.tested ? "" : " soft") },
@@ -4386,8 +4404,14 @@ function localSuggest(r) {
     c ? h("div", {}, `Set now: ${c.model}. `, c.larger ? h("span", { class: "lm-warn" },
       "That's larger than suggested for this memory, so it may be slow or swap.") : null) : null,
     s ? h("div", { class: "cmd" }, h("code", {}, s.command), copyButton(() => s.command)) : null,
+    alt ? h("div", { class: "lm-alt" },
+      h("div", {}, "Also good: ", alsoGood(alt)),
+      alt.note ? h("div", { class: "muted" }, alt.note) : null,
+      h("div", { class: "cmd" }, h("code", {}, alt.command), copyButton(() => alt.command))) : null,
     r.note ? h("div", { class: "muted" }, r.note) : null,
-    h("details", {}, h("summary", {}, "See all sizes"), table));
+    h("details", {}, h("summary", {}, "See all sizes"), table,
+      h("div", { class: "muted" }, "On an Apple Silicon Mac, use MLX: it's built for Apple's chips and runs " +
+        "faster than Ollama there. Ollama is for computers MLX doesn't run on.")));
 }
 const AI_METERS = [["Scores", "quality"], ["Low cost", "cost"], ["Privacy", "privacy"], ["Speed", "speed"]];
 

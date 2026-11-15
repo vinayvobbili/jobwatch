@@ -769,14 +769,24 @@ const text = n => typeof n === "string" ? n : [n.text || "", ...(n.kids || []).m
 const rows = [
   { ram: "8 GB", model: "Qwen3.5-4B, 4-bit", id: "mlx-community/Qwen3.5-4B-MLX-4bit", tested: false },
   { ram: "16 GB", model: "Qwen3.5-9B, 4-bit", id: "mlx-community/Qwen3.5-9B-MLX-4bit", tested: true }];
+rows[0].alt = { model: "Gemma 4 E2B, 4-bit", id: "mlx-community/gemma-4-e2b-it-4bit", note: "",
+  link: "https://huggingface.co/mlx-community/gemma-4-e2b-it-4bit",
+  command: "vllm-mlx serve mlx-community/gemma-4-e2b-it-4bit --port 8010" };
+rows[1].alt = { model: "Gemma 4 12B, 4-bit", id: "mlx-community/gemma-4-12B-it-4bit",
+  note: "tested: most accurate (29/29 vs 28/29), about 50% slower, +1.7 GB",
+  link: "https://huggingface.co/mlx-community/gemma-4-12B-it-4bit",
+  command: "vllm-mlx serve mlx-community/gemma-4-12B-it-4bit --port 8010" };
 const suggested = { ...rows[1], gb: 16, row: "16 GB",
   command: "vllm-mlx serve mlx-community/Qwen3.5-9B-MLX-4bit --port 8010" };
-const base = { rows, suggested, system: "Apple Silicon", note: "" };
+const base = { rows, suggested, system: "Apple Silicon", apple: true, note: "" };
 const find = (n, f) => (f(n) ? [n] : []).concat(...(n.kids || []).map(k => typeof k === "string" ? [] : find(k, f)));
 const a = localSuggest(base), b = localSuggest({ ...base, configured: { model: "Qwen3.6-27B-4bit", larger: true } });
 const c = localSuggest({ ...base, configured: { model: "Qwen3.5-9B-MLX-4bit", larger: false } });
 console.log(JSON.stringify({
-  a: text(a), copy: find(a, n => n.tag === "copy")[0].text, rowsShown: find(a, n => n.tag === "tr").length,
+  a: text(a), copy: find(a, n => n.tag === "copy")[0].text, copies: find(a, n => n.tag === "copy").map(n => n.text),
+  links: find(a, n => n.tag === "a").map(n => [n.attrs.target, n.kids.join("")]),
+  noAlt: text(localSuggest({ ...base, suggested: { ...suggested, alt: null } })),
+  rowsShown: find(a, n => n.tag === "tr").length,
   marked: find(a, n => n.attrs && n.attrs.class === "me").length,
   warnA: find(a, n => n.attrs && n.attrs.class === "lm-warn").length,
   warnB: find(b, n => n.attrs && n.attrs.class === "lm-warn").length, c: text(c),
@@ -786,9 +796,15 @@ console.log(JSON.stringify({
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
-    assert "Suggested for this computer (16 GB, Apple Silicon):" in out["a"]
+    assert "Suggested for this computer (16 GB, Apple Silicon, MLX):" in out["a"]
+    assert "Model (MLX, on the GPU)" in out["a"] and "runs faster than Ollama there" in out["a"]
     assert "Qwen3.5-9B, 4-bit" in out["a"] and "tested" in out["a"] and "See all sizes" in out["a"]
     assert out["copy"] == "vllm-mlx serve mlx-community/Qwen3.5-9B-MLX-4bit --port 8010"
+    assert "Also good:" in out["a"] and "most accurate (29/29 vs 28/29)" in out["a"] and "Also good" in out["a"]
+    assert out["copies"] == ["vllm-mlx serve mlx-community/Qwen3.5-9B-MLX-4bit --port 8010",
+                             "vllm-mlx serve mlx-community/gemma-4-12B-it-4bit --port 8010"]
+    assert ["_blank", "Gemma 4 12B, 4-bit ↗"] in out["links"] and "Also good:" not in out["noAlt"]
+    assert all(target == "_blank" for target, _ in out["links"]) and len(out["links"]) == 3  # tile + both table rows
     assert out["rowsShown"] == 3 and out["marked"] == 1  # the header and both rows; the one for this memory marked
     assert (out["warnA"], out["warnB"]) == (0, 1)
     assert "Set now: Qwen3.5-9B-MLX-4bit" in out["c"] and "larger" not in out["c"]
