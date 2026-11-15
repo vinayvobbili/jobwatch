@@ -89,6 +89,7 @@ try {
         Check 'no execution time limit' ((& $get '//t:ExecutionTimeLimit') -eq 'PT0S')
         Check 'a second copy is ignored' ((& $get '//t:MultipleInstancesPolicy') -eq 'IgnoreNew')
         Check 'least privilege, interactive token' (((& $get '//t:RunLevel') -eq 'LeastPrivilege') -and ((& $get '//t:LogonType') -eq 'InteractiveToken'))
+        Check 'a repeating trigger every 5 minutes starts a stopped page' ((& $get '//t:TimeTrigger/t:Repetition/t:Interval') -eq 'PT5M')
         Check 'a logon trigger for the user' (($null -ne $doc.SelectSingleNode('//t:LogonTrigger', $ns)) -and ((& $get '//t:LogonTrigger/t:UserId') -ne ''))
         $cmd = & $get '//t:Exec/t:Command'
         $arguments = & $get '//t:Exec/t:Arguments'
@@ -106,8 +107,8 @@ try {
     Check "page answers 200 on $Url within 60 s" (Wait-Page 60)
     $s = & jobwatch service status 2>&1
     Block 'jobwatch service status' $s
-    Check 'service status says running' (($s | Out-String) -match 'running \(pid \d+\)')
-    Check 'service status names the url' (($s | Out-String) -match [regex]::Escape($Url.TrimEnd('/')))
+    Check 'service status says running' (($s | Out-String) -match '^running')
+    Check 'service status names the url' (($s | Out-String) -match "http://jobwatch\.localhost:$Port/")
     Block 'ui.log' (Get-Content $logPath -ErrorAction SilentlyContinue)
     Check 'ui.log was written by --log' ((Test-Path $logPath) -and ((Get-Item $logPath).Length -gt 0))
 
@@ -127,7 +128,7 @@ try {
     Block 'task status 3 s after the kill' (Task-Status)
     $back = $false
     $timeline = @()
-    while (((Get-Date) - $killedAt).TotalSeconds -lt 200) {
+    while (((Get-Date) - $killedAt).TotalSeconds -lt 400) {  # the repeating trigger fires every 5 minutes
         $now = @(Ui-Processes | Where-Object { $oldIds -notcontains $_.ProcessId })
         $stat = (Task-Status | Select-String -Pattern '^(Status|Last Result):.*$' | ForEach-Object { $_.Line.Trim() }) -join ' | '
         $timeline += ("{0,4:N0} s  new processes: {1}  page: {2}  {3}" -f ((Get-Date) - $killedAt).TotalSeconds, $now.Count, (Get-Page), $stat)
@@ -136,9 +137,9 @@ try {
     }
     Block 'timeline after the kill (every 10 s)' $timeline
     $secs = [int]((Get-Date) - $killedAt).TotalSeconds
-    # An observation, not a pass/fail: if Task Scheduler doesn't restart a force-killed process, say so.
-    if ($back) { Say "- OBSERVED the task restarted the page $secs s after Stop-Process -Force (RestartOnFailure works for a killed process)" }
-    else { Say "- OBSERVED the task did NOT restart the page within $secs s of Stop-Process -Force (a process killed this way may not count as a task failure for RestartOnFailure)" }
+    # First run on a real runner: RestartOnFailure alone did NOT bring back a force-killed pythonw (the history log
+    # said the task "successfully completed", last result -1, status Ready), hence the repeating trigger.
+    Check "a killed page is started again within 5 minutes (it was back after $secs s)" $back
     $events = Get-WinEvent -LogName $historyLog -MaxEvents 60 -ErrorAction SilentlyContinue |
         Where-Object { $_.Message -match $Task } | Sort-Object TimeCreated |
         ForEach-Object { '{0:HH:mm:ss}  {1,-4} {2}' -f $_.TimeCreated, $_.Id, ($_.Message -replace '\s+', ' ') }

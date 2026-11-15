@@ -1316,7 +1316,8 @@ def cmd_service(args):
             if not s["installed"]:
                 print("Not installed. `jobwatch service install` starts jobwatch ui at login.")
             else:
-                state = f"running (pid {s['pid']})" if s["running"] else "installed, not running: see the log"
+                state = (("running" + (f" (pid {s['pid']})" if s["pid"] else "")) if s["running"]
+                         else "installed, not running: see the log")  # Windows has no pid to give
                 print(f"{state}\n{s['url'] or ''}\nLog: {s['log']}")
                 for key, label in (("job_state", "Job state"), ("exit_reason", "Last exit reason")):
                     if s.get(key):
