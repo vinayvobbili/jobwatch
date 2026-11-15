@@ -81,10 +81,22 @@ def test_scenes_show_the_ui_not_a_terminal(stories):
 def test_the_tour_shows_the_current_features(stories):
     tour = stories["stories"].VIDEOS["jobwatch-demo"]
     said = " ".join(s.say for s in tour.scenes).lower()
-    for word in ("no score", "no pay clue", "pay unknown", "queue", "extension", "linkedin", "same list", "coverage",
-                 "already had", "follow up", "prep sheet", "side by side"):
+    for word in ("no score", "no pay listed", "pay unknown", "queue", "extension", "linkedin", "same list",
+                 "how many of those jobs", "already found", "nothing new", "follow up", "prep sheet", "side by side"):
         assert word in said, word
     assert tour.extension and tour.demo == "more"
+
+
+def test_narration_keeps_to_words_a_newcomer_knows(stories):
+    said = " ".join(s.say for v in all_videos(stories).values() for s in v.scenes)
+    for jargon in ("fallback chain", "this Mac", "no pay clue", "your coverage", "chips open", "still needs",
+                   "live opportunities", "in a row", "Press slash", "Practise", "Your own LinkedIn data"):
+        assert jargon not in said, jargon
+    assert "a fit score of eighty or more, out of a hundred" in said
+    assert "The filters start where you set them." in said
+    assert "Set a backup order." in said and "In each column, the best value gets a star." in said
+    # the scenes click the app's own button, spelled the way the app spells it
+    assert '"Practise"' not in (VIDEOS / "stories.py").read_text(encoding="utf-8")
 
 
 def test_no_real_pay_figure_is_written_in_the_story_files(stories):
@@ -103,6 +115,9 @@ def test_publish_puts_each_video_where_the_site_and_docs_read_it(tmp_path):
         "docs/jobwatch-demo.mp4", "site/jobwatch-demo.mp4"]
     assert [p.relative_to(tmp_path).as_posix() for p in publish.targets("jobwatch-04-applying", tmp_path)] == [
         "docs/tutorials/jobwatch-04-applying.mp4", "site/tutorials/jobwatch-04-applying.mp4"]
+    assert publish.caption_target("jobwatch-demo", tmp_path) == tmp_path / "site" / "jobwatch-demo.vtt"
+    assert publish.caption_target("jobwatch-04-applying", tmp_path) == (
+        tmp_path / "site" / "tutorials" / "jobwatch-04-applying.vtt")
     for name in ("jobwatch-02-x", "jobwatch-01-x", "jobwatch-demo"):
         (tmp_path / name).mkdir()
         (tmp_path / name / f"{name}.mp4").write_bytes(b"")

@@ -145,7 +145,7 @@ def calendar_button(rec, demo):
 def open_prep(rec, demo):
     """Open the prep sheet and point at what it gives you."""
     rec.click(card(rec, "Initech").get_by_role("button", name="Details").first, after=1.0)
-    rec.click(btn(rec, "Practise", "#dialog"), after=1.4)
+    rec.click(btn(rec, "Practice", "#dialog"), after=1.4)
     rec.point_at(btn(rec, "Find a story", "#dialog"))
     rec.hold(0.5)
     rec.point_at(btn(rec, "Mock interview", "#dialog"))
@@ -157,7 +157,7 @@ def open_prep(rec, demo):
 def prep_asks(rec, demo):
     """Their asks next to your closest resume line (the dialog scrolls, the buttons stay in view above)."""
     rec.click(card(rec, "Initech").get_by_role("button", name="Details").first, after=1.0)
-    rec.click(btn(rec, "Practise", "#dialog"), after=1.4)
+    rec.click(btn(rec, "Practice", "#dialog"), after=1.4)
     rec.wheel(300, at=(768, 520))
     rec.hold(0.6)
     rec.wheel(380, at=(768, 520))
@@ -166,7 +166,7 @@ def prep_asks(rec, demo):
 
 def practised(rec, demo):
     rec.click(card(rec, "Initech").get_by_role("button", name="Details").first, after=1.0)
-    rec.click(btn(rec, "Practise", "#dialog"), after=1.2)
+    rec.click(btn(rec, "Practice", "#dialog"), after=1.2)
     rec.scroll_to(rec.page.get_by_role("heading", name="Practised answers"))
     rec.hold(1.0)
 
@@ -361,16 +361,18 @@ VIDEOS: dict[str, Video] = {
         "and check each one by hand, every day. You end up with forty tabs open, and a spreadsheet that is "
         "always out of date. Then you type the same application form, again and again. "
         "jobwatch does that grind for you. Here is how.",
-        [Scene("Every morning, Today opens on your own filters: a fit of eighty or more, and a pay floor. "
-               "Jobs with no score or no pay clue wait at the end, or you can hide them.", today_chips,
+        [Scene("Every morning, Today opens on your own filters: "
+               "a fit score of eighty or more, out of a hundred, and a pay floor. "
+               "Jobs with no score or no pay listed wait at the end, or you can hide them.", today_chips,
                name="chips"),
          Scene("A job with no pay figure says so: pay unknown. You're never guessing.", pay_unknown, name="payunknown"),
          Scene("Queue the ones worth applying to. The queue is your short list, with the warnings to check first.",
                queue_one, name="queue"),
          Scene("On the company's own form, the extension fills what it can from your details and earlier answers. "
                "You check every field, and you press Submit.", ext_fill, start=form_url, name="fill"),
-         Scene("On a LinkedIn list, it shows your coverage: how many of those jobs jobwatch already had. "
-               "Read the same list again, and it says so.", ext_list_both, start=list_url, name="list"),
+         Scene("On a LinkedIn list, it counts how many of those jobs jobwatch already found. "
+               "Read the same list again, and it tells you there's nothing new.", ext_list_both, start=list_url,
+               name="list"),
          Scene("Then track every application: its stage, the next step, and when to follow up.",
                tracking, start="applied", name="tracking"),
          Scene("Before a call, open the prep sheet.", open_prep, start="applied", name="prep"),

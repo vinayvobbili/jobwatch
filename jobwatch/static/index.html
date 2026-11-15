@@ -2170,7 +2170,7 @@ async function openDetails(key) {
             : h("button", { class: "btn", onclick: () => openPrepPage(j.key),
               title: "Their asks next to your resume, gaps, what you sent, questions to expect, in a new tab" }, "Prep sheet ↗"),
             h("button", { class: "btn", onclick: () => openPrep(j.key),
-              title: "Find a story, a mock interview and drafted answers for this job" }, "Practise")] : null,
+              title: "Find a story, a mock interview and drafted answers for this job" }, "Practice")] : null,
           h("span", { class: "muted small" }, "· key "), h("code", { class: "small" }, j.key)),
         APPLIED.includes(j.status) || hasPackage(j.package) ? sentSection(j) : null,
         gapChips(j.skills),
@@ -2289,7 +2289,7 @@ async function openPrep(key, draft = false, questions = false) {
           title: "Answer a few questions about something this job asks for, and save the story to your story file" },
           "Find a story"),
         h("button", { class: "btn", onclick: () => openMock(key),
-          title: "Practise the likely questions one at a time, with feedback on each answer" }, "Mock interview"),
+          title: "Practice the likely questions one at a time, with feedback on each answer" }, "Mock interview"),
         h("button", { class: "btn", onclick: () => openMock(key, true),
           title: "The same questions read aloud: answer out loud, then get a report on what you said and how" },
           icon("mic", 14), " Voice interview"),
@@ -2664,7 +2664,7 @@ async function voiceReport(key, m, answers) {
       h("h3", {}, "How you delivered each answer"), d.answers.map(row),
       h("h3", {}, "What to rehearse next"),
       again.length ? [h("ul", {}, again.map(r => h("li", {}, h("b", {}, r.question), r.flag ? ` · ${r.flag}` : ""))),
-        h("button", { class: "btn primary", onclick: () => openVoice(key, m, again.map(r => r.question)) }, icon("mic", 14), " Practise these again")]
+        h("button", { class: "btn primary", onclick: () => openVoice(key, m, again.map(r => r.question)) }, icon("mic", 14), " Practice these again")]
         : h("p", { class: "muted" }, "Nothing stands out in how you delivered these. Read the opportunities above."),
       h("div", { class: "row", style: "margin-top:16px" }, save, h("span", { class: "small muted" }, "Only the text is kept, never the audio.")));
   }

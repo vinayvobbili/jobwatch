@@ -809,3 +809,9 @@ console.log(JSON.stringify({
     assert (out["warnA"], out["warnB"]) == (0, 1)
     assert "Set now: Qwen3.5-9B-MLX-4bit" in out["c"] and "larger" not in out["c"]
     assert out["none"] is None and "Couldn't read this computer's memory" in out["blind"]
+
+
+def test_the_prep_buttons_are_spelled_the_american_way():
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    assert '"Practice")' in page and "Practice the likely questions" in page and " Practice these again" in page
+    assert not re.search(r'"Practise\b|" Practise\b|Practise the', page)
