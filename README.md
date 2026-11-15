@@ -49,11 +49,18 @@ https://github.com/user-attachments/assets/42eb0edb-945e-4caf-95c0-3eeae6fdada6
 ## Get started
 
 ```
-pipx install jobwatch      # or: pip install jobwatch
+curl -LsSf https://astral.sh/uv/install.sh | sh      # installs uv (other systems: brew install uv, or the docs below)
+uv tool install jobwatch
 ```
 
-Then run `jobwatch`. No Python yet? uv installs it for you: see https://docs.astral.sh/uv/getting-started/installation/
-then `uv tool install jobwatch`.
+Then run `jobwatch`. uv brings Python with it; install options for every system:
+https://docs.astral.sh/uv/getting-started/installation/
+
+Already have Python? This works too:
+
+```
+pipx install jobwatch      # or: pip install jobwatch
+```
 
 A page opens on your computer and walks you through four short steps: about you and your resume, the jobs you
 want, the companies to watch, and (optionally) fit scores and job-alert emails. Then press **Check for new

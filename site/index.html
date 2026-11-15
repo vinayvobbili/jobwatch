@@ -74,6 +74,12 @@ header { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--li
 .pop .grp + .grp { margin-top: 12px; }
 .pop .lbl { display: block; margin: 0 0 6px 2px; font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .pop .seg { display: flex; } .pop .seg button { flex: 1; }
+.pop .seg button { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  transition: color .15s, transform .18s; }
+.pop .seg button:hover .ic { transform: translateY(-1px) rotate(-8deg); }
+.pop .seg button[aria-pressed="true"] .ic { color: var(--accent-2); }
+@media (prefers-reduced-motion: reduce) { .pop .seg button:hover .ic { transform: none; } }
 
 .hero { text-align: center; padding: 72px 0 40px; position: relative; }
 .hero h1 { margin: 0; font-size: clamp(44px, 9vw, 84px); letter-spacing: -.04em; line-height: 1; font-weight: 850; }
@@ -93,22 +99,31 @@ a.btn[target]::after { content: "\2197"; font-weight: 700; }
 .install button { border: 0; border-radius: 9px; padding: 8px 14px; cursor: pointer; font: inherit; font-weight: 650;
   font-size: 14px; background: var(--chip); color: var(--text); transition: background .15s; }
 .install button:hover { background: var(--line); }
-.sub { margin: 14px auto 0; max-width: 560px; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.sub { margin: 14px auto 0; max-width: 560px; font-size: 13.5px; line-height: 1.5; color: var(--muted); text-wrap: balance; }
 .sub a { color: var(--muted); } .sub a::after { content: "\2197"; margin-left: 3px; }
 .sub a[href^="#"]::after { content: none; }
 /* the uv commands: a Mac / Linux | Windows switch (without script both systems show, each under its name) */
-.uv { margin: 12px auto 0; max-width: 560px; display: grid; gap: 8px; justify-items: center; }
+.uv { margin: 30px auto 0; max-width: 700px; display: grid; gap: 8px; justify-items: center; }
 .uv .seg { padding: 2px; border-radius: 10px; } .uv .seg[hidden], .uvpanel[hidden] { display: none; }
 .uv .seg button { padding: 3px 11px; font-size: 12.5px; }
 .uv .seg button:focus-visible, .uvrow button:focus-visible { outline: 3px solid var(--accent-2); outline-offset: 2px; }
-.uvpanel { display: grid; gap: 6px; justify-items: center; max-width: 100%; }
+.uvpanel { display: block; width: 100%; max-width: 100%; overflow: hidden; border-radius: 13px; border: 2px solid transparent;
+  box-shadow: 0 10px 30px -12px var(--accent); text-align: left;
+  background: linear-gradient(var(--panel-solid), var(--panel-solid)) padding-box, var(--grad) border-box; }
+.uvrow .or a { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.sub.pipx code { white-space: nowrap; font-size: 12.5px; color: var(--text); }
+.sub.pipx button { margin: 0 4px; border: 0; border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; font-size: 11.5px;
+  font-weight: 650; background: var(--chip); color: var(--text); }
+.sub.pipx button:hover { background: var(--line); }
 .uv.js .os { display: none; }
-.os { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-.uvrow { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 4px 4px 12px; border-radius: 10px;
-  background: var(--panel-solid); border: 1px solid var(--line); font-size: 13px; text-align: left; }
-.uvrow .or { color: var(--muted); font-size: 12.5px; }
-.uvrow code { background: none; border: 0; padding: 0; font-size: 13px; }
-.uvrow button { flex: none; border: 0; border-radius: 7px; padding: 4px 10px; cursor: pointer; font: inherit; font-size: 12.5px;
+.os { display: block; padding: 5px 12px 0; font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.uvrow { display: grid; grid-template-columns: 5.2em minmax(0, 1fr) 4.6em; align-items: center; gap: 10px; padding: 4px 6px 4px 12px;
+  font-size: 13px; }
+.uvrow + .uvrow { border-top: 1px solid var(--line); }
+.uvrow .or { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.uvrow code { background: none; border: 0; padding: 0; font-size: 13px; white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+.uvrow code::-webkit-scrollbar { display: none; }
+.uvrow button { border: 0; border-radius: 7px; padding: 4px 0; text-align: center; cursor: pointer; font: inherit; font-size: 12.5px;
   font-weight: 650; background: var(--chip); color: var(--text); transition: background .15s; }
 .uvrow button:hover { background: var(--line); }
 .pain { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; padding: 14px 0 6px; }
@@ -258,11 +273,11 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
       <div class="pop" id="pop" role="group" aria-label="Display settings" hidden>
         <div class="grp"><span class="lbl">Theme</span>
           <div class="seg" id="theme" role="group" aria-label="Theme">
-            <button data-v="system" aria-pressed="true">System</button><button data-v="light" aria-pressed="false">Light</button><button data-v="dark" aria-pressed="false">Dark</button>
+            <button data-v="system" aria-pressed="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>System</button><button data-v="light" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Light</button><button data-v="dark" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>Dark</button>
           </div></div>
         <div class="grp"><span class="lbl">Width</span>
           <div class="seg" id="width" role="group" aria-label="Width">
-            <button data-v="standard" aria-pressed="true">Standard</button><button data-v="wide" aria-pressed="false">Wide</button><button data-v="full" aria-pressed="false">Full</button>
+            <button data-v="standard" aria-pressed="true"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="4" width="10" height="16" rx="2"/></svg>Standard</button><button data-v="wide" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/></svg>Wide</button><button data-v="full" aria-pressed="false"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>Full</button>
           </div></div>
       </div>
     </div>
@@ -274,29 +289,27 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
     <h1 class="grad">jobwatch</h1>
     <p class="tag grad">Your job hunt shouldn't be a full-time job.</p>
     <p class="what">For anyone applying to lots of companies: jobwatch checks the companies' own job pages for you every day, ranks the new openings against your resume, and keeps track of every application. It helps fill in forms, and you always press Submit. Free, and it runs on your own computer.</p>
-    <div class="cta">
-      <div class="install"><code id="cmd">pipx install jobwatch</code><button id="copy" type="button" aria-live="polite">Copy</button></div>
-    </div>
-    <p class="sub">Works on Mac, Windows and Linux. Then run <code>jobwatch</code> and your page opens in the browser.<br>No Python? <a target="_blank" rel="noopener" href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a> (one line, any system), then run <code>uv tool install jobwatch</code>; uv brings Python with it.</p>
     <div class="uv" id="uv">
       <div class="seg" role="group" aria-label="Your system" hidden>
         <button type="button" data-os="unix" aria-pressed="true">Mac / Linux</button><button type="button" data-os="win" aria-pressed="false">Windows</button>
       </div>
       <div class="uvpanel" data-os="unix">
         <span class="os">Mac / Linux</span>
-        <div class="uvrow"><code>curl -LsSf https://astral.sh/uv/install.sh | sh</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or"><a target="_blank" rel="noopener" href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a></span><code>curl -LsSf https://astral.sh/uv/install.sh | sh</code><button type="button" aria-live="polite">Copy</button></div>
         <div class="uvrow"><span class="or">or</span><code>brew install uv</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">Then</span><code>uv tool install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">Then run</span><code>jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
       </div>
       <div class="uvpanel" data-os="win">
         <span class="os">Windows</span>
-        <div class="uvrow"><code>powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or"><a target="_blank" rel="noopener" href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a></span><code>powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code><button type="button" aria-live="polite">Copy</button></div>
         <div class="uvrow"><span class="or">or</span><code>winget install astral-sh.uv</code><button type="button" aria-live="polite">Copy</button></div>
-      </div>
-      <div class="uvpanel">
-        <div class="uvrow"><span class="or">then</span><code>uv tool install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
-        <div class="uvrow"><span class="or">then</span><code>jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">Then</span><code>uv tool install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">Then run</span><code>jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
       </div>
     </div>
+    <p class="sub">Works on Mac, Windows and Linux. Run <code>jobwatch</code> and your page opens in the browser.</p>
+    <p class="sub pipx">Already have Python? <code id="cmd">pipx install jobwatch</code><button type="button" aria-live="polite">Copy</button> works too.</p>
     <p class="sub">Use Claude Desktop? Install it with <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/releases/latest">one click</a> instead.</p>
     <div class="tiles">
       <a class="tile" href="#find"><b>Company job pages</b><span>checked daily, straight from the source</span></a>
@@ -541,7 +554,7 @@ uv.classList.add("js");
 osSwitch.addEventListener("click", e => { const b = e.target.closest("button"); if (b) pickOs(b.dataset.os); });
 pickOs(/win/i.test(navigator.platform || navigator.userAgent) ? "win" : "unix");
 
-document.querySelectorAll(".install button, .uvrow button").forEach(b => b.addEventListener("click", async () => {
+document.querySelectorAll(".install button, .uvrow button, .pipx button").forEach(b => b.addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(b.parentElement.querySelector("code").textContent); b.textContent = "Copied"; }
   catch (err) { b.textContent = "Press Ctrl+C"; }
   setTimeout(() => { b.textContent = "Copy"; }, 1800);

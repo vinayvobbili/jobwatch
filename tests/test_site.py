@@ -42,13 +42,14 @@ def test_stat_tiles_link_to_page_sections():
 
 
 def test_install_notes_cover_every_system_uv_and_claude_desktop():
-    sub = re.search(r'<p class="sub">(.*?)</p>', PAGE.split('<div class="cta">')[1], re.S).group(1)
-    assert sub.startswith("Works on Mac, Windows and Linux. Then run <code>jobwatch</code> and your page opens "
-                          "in the browser.")
-    assert ('No Python? <a target="_blank" rel="noopener" '
-            'href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a> (one line, any system), '
-            'then run <code>uv tool install jobwatch</code>; uv brings Python with it.') in sub
-    desktop = PAGE.split('<div class="uv" id="uv">')[1].split('<div class="tiles">')[0]
+    notes = PAGE.split('<div class="uv" id="uv">')[1].split('<div class="tiles">')[0]
+    assert ('<p class="sub">Works on Mac, Windows and Linux. Run <code>jobwatch</code> and your page opens '
+            'in the browser.</p>') in notes
+    assert ('<p class="sub pipx">Already have Python? <code id="cmd">pipx install jobwatch</code>'
+            '<button type="button" aria-live="polite">Copy</button> works too.</p>') in notes
+    assert "uv brings Python" not in PAGE and "No Python?" not in PAGE
+    assert PAGE.count("getting-started/installation/") == 2  # the "Install uv" label links the docs on each system
+    desktop = notes
     assert ('Use Claude Desktop? Install it with <a target="_blank" rel="noopener" '
             'href="https://github.com/vinayvobbili/jobwatch/releases/latest">one click</a> instead.') in desktop
     assert "MIT licensed" not in PAGE  # the license is named in the footer only
@@ -57,18 +58,25 @@ def test_install_notes_cover_every_system_uv_and_claude_desktop():
 
 
 def test_uv_commands_have_a_system_switch_that_starts_on_the_visitors_system():
-    uv = PAGE.split('<div class="uv" id="uv">')[1].split('<p class="sub">Use Claude Desktop?')[0]
+    uv = PAGE.split('<div class="uv" id="uv">')[1].split('<p class="sub">Works on')[0]
     hero = PAGE.split('<div class="hero">')[1]
-    assert hero.index('<p class="sub">Works on') < hero.index('id="uv"') < hero.index('<div class="tiles">')
+    assert hero.index('id="uv"') < hero.index('<p class="sub">Works on') < hero.index('<div class="tiles">')
     # two panels, one per system, each with the install line and its alternative, then the shared next steps
     assert "<code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>" in uv
     assert "<code>brew install uv</code>" in uv
     assert '<code>powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code>' in uv
     assert "<code>winget install astral-sh.uv</code>" in uv
-    assert uv.index("brew install uv") < uv.index("powershell -c") < uv.index("uv tool install jobwatch")
-    assert uv.index("uv tool install jobwatch") < uv.rindex("<code>jobwatch</code>")
+    # each system is one card with labelled rows: install, its alternative, then the two shared next steps
+    order = ["brew install uv", "uv tool install jobwatch", "powershell -c"]
+    assert uv.index(order[0]) < uv.index(order[1]) < uv.index(order[2]) < uv.rindex("<code>jobwatch</code>")
+    assert uv.count('<div class="uvpanel"') == 2 and uv.count("uv tool install jobwatch") == 2
+    labels = re.findall(r'<span class="or">(?:<a [^>]*>)?([^<]+)(?:</a>)?</span>', uv)
+    assert labels == ["Install uv", "or", "Then", "Then run"] * 2
+    assert "var(--grad) border-box" in PAGE.split(".uvpanel {")[1].split("}")[0]  # the glow border the old box had
+    # label, command, Copy: the same columns on every row
+    assert "grid-template-columns: 5.2em minmax(0, 1fr) 4.6em" in PAGE
     # a copy button on every command, in the hero's style, and a keyboard-reachable switch
-    assert uv.count("<code>") == 6 and uv.count("<button type=\"button\" aria-live=\"polite\">Copy</button>") == 6
+    assert uv.count("<code>") == 8 and uv.count("<button type=\"button\" aria-live=\"polite\">Copy</button>") == 8
     seg = re.search(r'<div class="seg" role="group" aria-label="Your system" hidden>(.*?)</div>', uv, re.S).group(1)
     assert re.findall(r'<button type="button" data-os="(\w+)" aria-pressed="(\w+)">([^<]+)</button>', seg) == [
         ("unix", "true", "Mac / Linux"), ("win", "false", "Windows")]
@@ -78,7 +86,21 @@ def test_uv_commands_have_a_system_switch_that_starts_on_the_visitors_system():
     script = PAGE.split("// the uv commands show")[1].split("document.querySelectorAll")[0]
     assert "osSwitch.hidden = false" in script and "navigator.platform || navigator.userAgent" in script
     assert "put(" not in script and "localStorage" not in script  # nothing is remembered
-    assert '".install button, .uvrow button"' in PAGE
+    assert '".install button, .uvrow button, .pipx button"' in PAGE
+
+
+def test_gear_popover_options_have_icons_and_keep_their_labels_and_state():
+    pop = PAGE.split('id="pop"')[1].split("</header>")[0]
+    buttons = re.findall(r'<button data-v="(\w+)" aria-pressed="(\w+)"><svg class="ic" viewBox="0 0 24 24" '
+                         r'aria-hidden="true">.*?</svg>(\w+)</button>', pop)
+    assert buttons == [("system", "true", "System"), ("light", "false", "Light"), ("dark", "false", "Dark"),
+                       ("standard", "true", "Standard"), ("wide", "false", "Wide"), ("full", "false", "Full")]
+    assert '.pop .seg button[aria-pressed="true"] .ic { color: var(--accent-2); }' in PAGE
+    assert "prefers-reduced-motion" in PAGE  # the hover wiggle stands down
+
+
+def test_hero_notes_balance_their_lines_so_no_word_is_left_alone():
+    assert re.search(r"\.sub \{[^}]*text-wrap: balance;", PAGE)
 
 
 def test_install_box_is_shown_again_after_the_privacy_section_and_both_copy_buttons_speak():
@@ -86,13 +108,14 @@ def test_install_box_is_shown_again_after_the_privacy_section_and_both_copy_butt
     again = PAGE.split('<section class="again" id="install">')[1].split("</section>")[0]
     assert "<code>pipx install jobwatch</code>" in again
     buttons = re.findall(r'<div class="install">.*?<button[^>]*>', PAGE)
-    assert len(buttons) == 2 and all('aria-live="polite"' in b for b in buttons)
-    assert PAGE.count('id="cmd"') == 1  # the second box has no id: the copy script reads the code beside the button
+    assert len(buttons) == 1 and all('aria-live="polite"' in b for b in buttons)
+    assert PAGE.count('id="cmd"') == 1  # the hero's pipx line has the id; the script reads the code beside a button
 
 
 def test_readme_has_the_uv_line():
     assert "https://docs.astral.sh/uv/getting-started/installation/" in README
-    assert "`uv tool install jobwatch`" in README
+    get_started = README.split("## Get started")[1]
+    assert get_started.index("uv tool install jobwatch") < get_started.index("pipx install jobwatch")
 
 
 def test_title_and_link_preview():
