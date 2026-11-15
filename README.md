@@ -18,7 +18,7 @@ https://github.com/user-attachments/assets/71b048d0-d372-42fd-a247-c4a59c3ffd71
 Seven short videos, two minutes or less each, made from made-up data. GitHub's video links last five minutes,
 so if one stops after a second or two, reload the page and play it again.
 
-**Getting started**: install, `jobwatch ui`, the four onboarding steps, Today.
+**Getting started**: install, `jobwatch`, the four onboarding steps, Today.
 
 https://github.com/user-attachments/assets/f95f85df-406f-4ede-b84c-59569d1a586a
 
@@ -50,7 +50,7 @@ https://github.com/user-attachments/assets/42eb0edb-945e-4caf-95c0-3eeae6fdada6
 
 ```
 pipx install jobwatch      # or: pip install jobwatch
-jobwatch ui
+jobwatch
 ```
 
 A page opens on your computer and walks you through four short steps: about you and your resume, the jobs you
@@ -123,7 +123,6 @@ tests and making a release. MIT licensed.
 
 If jobwatch helps your search, a ⭐ on GitHub is how I know: jobwatch sends nothing home, so stars are the
 only count of who uses it. If it landed you an interview, a [$1 coffee](https://ko-fi.com/vinayvobbili) says so too.
-
 [![M8ven Score](https://m8ven.ai/badge/mcp/vinayvobbili-jobwatch-1cvk7w?v=b3794e69984556a0e35f219ef71c5bca)](https://m8ven.ai/mcp/vinayvobbili-jobwatch-1cvk7w?s=readme)
 [![vinayvobbili/jobwatch MCP server](https://glama.ai/mcp/servers/vinayvobbili/jobwatch/badges/score.svg)](https://glama.ai/mcp/servers/vinayvobbili/jobwatch)
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/vinayvobbili/jobwatch)

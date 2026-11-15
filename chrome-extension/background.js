@@ -97,7 +97,7 @@ async function tabUrl(tabId) {
 async function analyze(tabId) {
   const url = await tabUrl(tabId);
   const settings = await getSettings();
-  if (!settings.token) throw new Expected('Pair the extension with jobwatch first: run "jobwatch ui", then paste its token into this extension\'s options.');
+  if (!settings.token) throw new Expected('Pair the extension with jobwatch first: run "jobwatch", then paste its token into this extension\'s options.');
   const ctx = await api(`/ext/context?url=${encodeURIComponent(url)}`, { settings });
   const details = ctx.applicant || {};
 
@@ -180,7 +180,7 @@ const EASY = "This job applies on LinkedIn (Easy Apply), so there's no company p
 
 async function pairedSettings() {
   const settings = await getSettings();
-  if (!settings.token) throw new Expected('Pair the extension with jobwatch first: run "jobwatch ui", then paste its token into this extension\'s options.');
+  if (!settings.token) throw new Expected('Pair the extension with jobwatch first: run "jobwatch", then paste its token into this extension\'s options.');
   return settings;
 }
 

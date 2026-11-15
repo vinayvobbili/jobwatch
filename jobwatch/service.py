@@ -123,6 +123,15 @@ def why_not_running(printed: str) -> dict:
     return why
 
 
+def installed_port() -> int | None:
+    """The port the installed login item serves on, or None (not installed, or not a macOS)."""
+    try:
+        args = plistlib.loads(plist_path().read_bytes()).get("ProgramArguments", [])
+        return int(args[args.index("--port") + 1])
+    except (OSError, ValueError, IndexError, plistlib.InvalidFileException):
+        return None
+
+
 def status() -> dict:
     _mac()
     path = plist_path()

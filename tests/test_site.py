@@ -56,3 +56,27 @@ def test_tutorials_section_serves_local_videos_lazily():
         assert "user-attachments" not in src
     for _, src in cards:
         assert "autoplay" not in src
+
+
+def test_local_model_table_is_in_a_closed_details_that_a_hash_opens():
+    box = PAGE.split('<details class="models-box" id="local-models">')[1].split("</details>")[0]
+    assert "<summary>" in box and '<table class="models">' in box
+    assert "open" not in PAGE.split('id="local-models"')[0].rsplit("<details", 1)[-1]  # closed by default
+    assert 'location.hash === "#local-models"' in PAGE and "box.open = true" in PAGE
+
+
+def test_join_in_links_and_lazy_giscus_comments():
+    join = PAGE.split('id="join"')[1].split("</section>")[0]
+    for href in ("https://github.com/vinayvobbili/jobwatch", "https://github.com/vinayvobbili/jobwatch/issues",
+                 "https://ko-fi.com/vinayvobbili"):
+        assert f'href="{href}"' in join
+    assert 'id="comments"' in join
+    script = PAGE.split("// comments (giscus")[1].split('document.getElementById("copy")')[0]
+    assert 'src = "https://giscus.app/client.js"' in script
+    assert "IntersectionObserver" in script  # client.js loads only when the section scrolls into view
+    for want in ('repo: "vinayvobbili/vinayvobbili.github.io"', '"repo-id": "R_kgDOSZD6Ig"',
+                 'category: "Announcements"', '"category-id": "DIC_kwDOSZD6Is4C-p2b"',
+                 'mapping: "specific"', 'term: "jobwatch"', 'strict: "0"', 'loading: "lazy"'):
+        assert want in script, want
+    assert "setConfig" in script  # follows the System / Light / Dark switch
+    assert "giscus.app/client.js" not in PAGE.split("<script>")[0]  # not a static script tag

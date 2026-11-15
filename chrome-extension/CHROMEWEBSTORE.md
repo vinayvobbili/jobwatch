@@ -32,7 +32,7 @@ Fill job applications from your own details and earlier answers, and review ever
 
 jobwatch for Chrome is the browser half of jobwatch, a free, open-source job search tracker that runs on your own computer. Open an application, click the jobwatch icon, and Chrome's side panel shows what it can fill, each field marked with where the value came from, before anything is written.
 
-It needs the jobwatch app: install it (https://github.com/vinayvobbili/jobwatch) and run `jobwatch ui` on the same computer. Without it the extension does nothing.
+It needs the jobwatch app: install it (https://github.com/vinayvobbili/jobwatch) and run `jobwatch` on the same computer. Without it the extension does nothing.
 
 How it works
 • Click the jobwatch icon on an application page, then Fill this application.
@@ -267,7 +267,7 @@ The extension does nothing without the jobwatch app on the same computer, so the
 
 The extension fills job application forms from the jobwatch app, which runs on the same computer (free, open source). To try it:
 1. Install Python 3.10 or later, then run: pip install jobwatch
-2. Run: jobwatch init, then: jobwatch ui. It opens http://127.0.0.1:8765.
+2. Run: jobwatch init, then: jobwatch. It opens http://127.0.0.1:8765.
 3. In jobwatch, open Settings > Applying and fill in a few applicant details (any made-up name, email and phone). Then open Settings > Browser extension and copy the token.
 4. In the extension's options (right-click its icon > Options), paste the token and press Test. It says "Connected to jobwatch".
 5. Open any Greenhouse, Lever or Ashby job's application page, for example a job from https://job-boards.greenhouse.io, click the jobwatch icon (the side panel opens) and press "Fill this application". Each field shows what would be filled; tick rows and press "Fill selected". The extension never submits the form; please don't submit it.
@@ -276,7 +276,7 @@ The extension fills job application forms from the jobwatch app, which runs on t
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.10.1 | | List import reads the card's visible title, and drops LinkedIn's screen-reader text ("Selected, ...", the title said twice) from titles; the import summary shows jobwatch's own coverage and says when a list was imported before. Upload: `dist/jobwatch-extension-0.10.1.zip`. | pending, not submitted |
+| 0.10.1 | | List import reads the card's visible title, and drops LinkedIn's screen-reader text ("Selected, ...", the title said twice) from titles; the import summary shows jobwatch's own coverage and says when a list was imported before. Setup text (side panel, options page, README) says to run `jobwatch`, which now opens the app. Upload: `dist/jobwatch-extension-0.10.1.zip`. | pending, not submitted |
 | 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). LinkedIn/Indeed list import, passive mode off by default, one side panel per tab, parallel list imports. New promo video: https://youtu.be/cILjM1IF4ZQ. Upload: `dist/jobwatch-extension-0.10.0.zip`. Paste blocks and screenshots 5 and 6 ready; submitted for review 2026-11-14. | In review |
 | 0.9.0 | 2026-11-10 | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | Published |
 

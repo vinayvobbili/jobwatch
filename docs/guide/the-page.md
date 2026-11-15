@@ -2,7 +2,7 @@
 
 [← jobwatch guide](README.md)
 
-**Tutorial: getting started** (1¾ minutes): install, `jobwatch ui`, the four onboarding steps, Today.
+**Tutorial: getting started** (1¾ minutes): install, `jobwatch`, the four onboarding steps, Today.
 
 https://github.com/user-attachments/assets/f95f85df-406f-4ede-b84c-59569d1a586a
 
@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/8653c4ca-a79d-4135-9be1-51ba3c9fccf6
 
 ```
 pipx install jobwatch      # or: pip install jobwatch
-jobwatch ui
+jobwatch
 ```
 
 A page opens on your computer. The first time, it starts with **Tell me about yourself** and walks you through

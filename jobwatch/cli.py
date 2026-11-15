@@ -19,6 +19,7 @@ from pathlib import Path
 import yaml
 
 from . import (
+    APP_HOST,
     GUIDE,
     __version__,
     advice,
@@ -1252,6 +1253,35 @@ def cmd_ui(args):
         server.server_close()
 
 
+def ui_running(port: int) -> bool:
+    """Whether a jobwatch page already answers on this port (a quick probe, as the browser would reach it)."""
+    import http.client
+
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=1.5)
+    try:
+        conn.request("GET", "/", headers={"Host": f"{APP_HOST}:{port}"})
+        return conn.getresponse().getheader("Server", "").startswith("jobwatch/")
+    except (OSError, http.client.HTTPException):
+        return False
+    finally:
+        conn.close()
+
+
+def cmd_open(args):
+    """Bare `jobwatch`: open the page. One that is already running (say, the login item) just gets a browser tab;
+    otherwise this starts it, as `jobwatch ui` does."""
+    from . import service
+
+    args.port = service.installed_port() or 8765
+    args.no_browser = False
+    if ui_running(args.port):
+        url = f"http://{APP_HOST}:{args.port}/"
+        print(f"jobwatch is already running: opening {url}", file=sys.stderr)
+        webbrowser.open(url)
+        return
+    return cmd_ui(args)
+
+
 def cmd_mcp(args):
     try:
         from . import mcp_server
@@ -1315,7 +1345,8 @@ def _tracking(p: argparse.ArgumentParser):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="jobwatch", description="Watch company job boards (Greenhouse, Lever, "
+    ap = argparse.ArgumentParser(prog="jobwatch", description="Run jobwatch alone to open the app in your browser. "
+                                 "Watch company job boards (Greenhouse, Lever, "
                                  "Ashby, Workable, Workday, Eightfold, Jibe, Rippling, Google Careers, Amazon, "
                                  "Oracle Recruiting Cloud, SmartRecruiters, Avature, iCIMS, Jobvite, Comeet, Gem, "
                                  "Recruitee, "
@@ -1325,7 +1356,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--version", action="version", version=f"jobwatch {__version__}")
     ap.add_argument("-c", "--config", help="watchlist file (default: ./jobwatch.yaml, $JOBWATCH_CONFIG, "
                     "~/.config/jobwatch/config.yaml)")
-    sub = ap.add_subparsers(dest="command", required=True)
+    sub = ap.add_subparsers(dest="command", title="commands", metavar="COMMAND")
 
     p = sub.add_parser("init", help="write an example watchlist")
     p.add_argument("path", nargs="?", default="jobwatch.yaml")
@@ -1896,6 +1927,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None):
     args = build_parser().parse_args(argv)
+    if args.command is None:  # bare `jobwatch` opens the page, as `ui` does
+        args.func, args.needs_config = cmd_open, False
     try:
         if getattr(args, "needs_config", True) is False:
             return args.func(args)

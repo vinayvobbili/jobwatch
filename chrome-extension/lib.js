@@ -38,7 +38,7 @@ export async function api(path, { method = 'GET', body, settings, raw = false, t
     });
   } catch (err) {
     if (err.name === 'AbortError') throw new ApiError('jobwatch took too long to answer.');
-    throw new ApiError(`Can't reach jobwatch at ${cfg.serverUrl}. Is "jobwatch ui" running?`);
+    throw new ApiError(`Can't reach jobwatch at ${cfg.serverUrl}. Is "jobwatch" running?`);
   } finally {
     clearTimeout(timer);
   }

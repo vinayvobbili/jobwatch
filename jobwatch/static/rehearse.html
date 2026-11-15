@@ -440,7 +440,7 @@ async function ready() {
     st = await r.json();
     if (!r.ok) return esc(String(st.error || "jobwatch ui said " + r.status));
   } catch {
-    return `Feedback needs jobwatch ui running on this computer. Start it with <code>jobwatch ui</code> (this page ` +
+    return `Feedback needs jobwatch ui running on this computer. Start it with <code>jobwatch</code> (this page ` +
       `looks for it at <code>${esc(UI)}</code>), then click Say it again. Nothing was recorded.`;
   }
   if (!st.reachable)
@@ -480,7 +480,7 @@ async function send(blob, secs) {
   } catch (e) {
     if (mine !== tryNo) return;
     fb = { state: "error", html: e instanceof TypeError
-      ? "jobwatch ui stopped answering. Start it with <code>jobwatch ui</code>, then click Say it again."
+      ? "jobwatch ui stopped answering. Start it with <code>jobwatch</code>, then click Say it again."
       : esc(String(e.message || e)) };
   }
   render();

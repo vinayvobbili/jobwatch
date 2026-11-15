@@ -114,6 +114,10 @@ h2 { margin: 0 0 18px; font-size: clamp(24px, 4vw, 34px); letter-spacing: -.03em
 .step video, .private video { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 14px; background: #0b0a14; border: 1px solid var(--line); }
 .step h3 { margin: 10px 0 8px; font-size: 24px; letter-spacing: -.02em; }
 .step p { margin: 0; color: var(--muted); }
+/* every inline command: a monospace chip (the pipx box has its own look) */
+:where(code:not(#cmd)) { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
+  background: color-mix(in srgb, var(--accent) 10%, var(--chip)); color: var(--text); padding: 2px 7px; border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line)); overflow-wrap: anywhere; }
 .step code, .tut code { font-size: .9em; background: var(--chip); padding: 1px 6px; border-radius: 6px; }
 .num { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #fff; font-weight: 750; background: var(--grad); }
 .acts { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
@@ -172,6 +176,22 @@ section[id], .private { scroll-margin-top: 70px; }
   background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
 .maker a { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .made { font-weight: 650; color: var(--text); }
+.models-box { margin-top: 18px; }
+.models-box summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; list-style: none;
+  padding: 12px 16px; border-radius: 14px; font-weight: 650; background: color-mix(in srgb, var(--accent) 8%, var(--panel-solid));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); transition: background .2s, box-shadow .2s, transform .2s; }
+.models-box summary::-webkit-details-marker { display: none; }
+.models-box summary:hover { background: color-mix(in srgb, var(--accent) 16%, var(--panel-solid)); transform: translateY(-1px);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.models-box summary:focus-visible { outline: 3px solid var(--accent-2); outline-offset: 3px; }
+.models-box .chev { flex: none; color: var(--accent); transition: transform .25s; }
+.models-box[open] .chev { transform: rotate(180deg); }
+.models-box[open] summary { margin-bottom: 14px; }
+.join .card h3 { margin-top: 0; }
+.join .card a { font-weight: 650; }
+.join .card a::after { content: "\2197"; margin-left: 4px; font-weight: 700; }
+.join .card .emoji { font-size: 26px; display: block; margin-bottom: 6px; }
+#comments { margin-top: 22px; min-height: 120px; }
 .maker { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 12px 0 16px; }
 .maker a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: var(--panel);
   border: 1px solid var(--line); font-weight: 600; font-size: 14px; color: var(--text); text-decoration: none;
@@ -205,7 +225,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
       <div class="install"><code id="cmd">pipx install jobwatch</code><button id="copy" type="button">Copy</button></div>
       <a class="btn" id="add-chrome" target="_blank" rel="noopener" href="https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi">Add to Chrome</a>
     </div>
-    <p class="sub">Then run <code>jobwatch ui</code>. Or <code>pip install jobwatch</code>. MIT licensed.</p>
+    <p class="sub">Then run <code>jobwatch</code>. Or <code>pip install jobwatch</code>. MIT licensed.</p>
     <div class="tiles">
       <a class="tile" href="#find"><b>Boards</b><span>Greenhouse, Lever, Ashby, Workday and more</span></a>
       <a class="tile" href="#find"><b>Fit score</b><span>out of 100, against your resume</span></a>
@@ -226,7 +246,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
     <div class="steps">
       <article class="step" id="setup">
         <div class="copy"><span class="num">1</span><h3>Set up</h3>
-          <p>Install it with pipx, run <code>jobwatch ui</code> and follow the four onboarding steps. Your page opens on Today.</p></div>
+          <p>Install it with pipx, run <code>jobwatch</code> and follow the four onboarding steps. Your page opens on Today.</p></div>
         <video controls preload="none" playsinline poster="tutorials/jobwatch-01-getting-started.jpg" src="tutorials/jobwatch-01-getting-started.mp4"></video>
       </article>
       <article class="step" id="find">
@@ -282,7 +302,8 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
         <li><b>Your data stays on your machine.</b> The only exception is a model you choose for fit scores and chat; on-device models send nothing anywhere.</li>
         <li><b>You press Submit yourself.</b> jobwatch finds and ranks. It never applies for you.</li>
       </ul>
-      <h3 id="local-model">Which local model to run</h3>
+      <details class="models-box" id="local-models">
+      <summary><span>Which local model to run? See suggestions by memory</span><svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
       <p class="sub">Sized by how much memory your computer has. jobwatch's page suggests one for yours.</p>
       <table class="models">
         <thead><tr><th>Memory</th><th>Mac with Apple Silicon (MLX, runs on the GPU via Metal)</th><th>Windows, Linux or Intel Mac (Ollama)</th><th>Also good: Gemma 4 (MLX first, then Ollama)</th></tr></thead>
@@ -308,6 +329,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
       <p class="models-note">On computers with 48 GB or more, 35B-A3B-style models (about 3B active parameters) are the fastest choice.</p>
       <p class="models-note">On an Apple Silicon Mac, use MLX: it's built for Apple's chips and runs faster than Ollama there. Ollama is for computers MLX doesn't run on.</p>
       <p class="models-note">Only the 16 GB row was tested: on a 16 GB Apple Silicon Mac it agreed with 28 of 29 expected verdicts, at 27 seconds a call and 7.5 GB of memory. The other rows are suggested, sized by memory. The Gemma 4 column is an alternative for each row; on Apple Silicon it is served the same way as the Qwen beside it.</p>
+      </details>
     </div>
   </section>
 
@@ -325,6 +347,18 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
       <a target="_blank" rel="noopener" href="https://registry.modelcontextprotocol.io">MCP Registry</a>
     </div>
   </section>
+  <section class="join" id="join">
+    <h2>Join in</h2>
+    <div class="grid">
+      <div class="card"><span class="emoji" aria-hidden="true">&#11088;</span><h3>Star it on GitHub</h3><p>jobwatch sends nothing home, so stars are the only count of who uses it.</p>
+        <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch">Star on GitHub</a></div>
+      <div class="card"><span class="emoji" aria-hidden="true">&#128161;</span><h3>Issues and PRs welcome</h3><p>Found a bug, a board that won't load, or want to add something? Open an issue or send a pull request.</p>
+        <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/issues">Issues</a> &middot; <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch">The repo</a></div>
+      <div class="card"><span class="emoji" aria-hidden="true">&#9749;</span><h3>A $1 coffee</h3><p>If it landed you an interview, a coffee says so.</p>
+        <a target="_blank" rel="noopener" href="https://ko-fi.com/vinayvobbili">Buy a coffee</a></div>
+    </div>
+    <div id="comments"></div>
+  </section>
 </main>
 <footer class="wrap">
   <div class="made">Made by Vinay Vobbilichetty</div>
@@ -332,8 +366,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
     <a target="_blank" rel="noopener" href="https://www.linkedin.com/in/vinay-vobbilichetty/"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.34V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z"/></svg>LinkedIn</a>
     <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.26.8-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.19.7.8.58A12 12 0 0 0 12 .3"/></svg>GitHub</a>
   </div>
-  <div>jobwatch is open source under the MIT license.</div>
-</footer>
+  <div>jobwatch is open source under the MIT license.</div></footer>
 
 <script>
 const YOUTUBE_ID = "cILjM1IF4ZQ";  // the Chrome extension demo's YouTube id
@@ -370,6 +403,37 @@ document.getElementById("yt-btn").addEventListener("click", e => {
   box.hidden = false;
   e.currentTarget.hidden = true;
 });
+
+// a link to #local-models opens the collapsed block and lands on it
+const openLocalModels = () => {
+  const box = document.getElementById("local-models");
+  if (location.hash === "#local-models" && box) { box.open = true; box.scrollIntoView(); }
+};
+openLocalModels();
+addEventListener("hashchange", openLocalModels);
+
+// comments (giscus, on the blog's discussions) load only when the section scrolls into view
+const giscusTheme = () => root.dataset.theme === "dark" ? "dark" : "light";
+const sendGiscusTheme = () => {
+  const f = document.querySelector("iframe.giscus-frame");
+  if (f) f.contentWindow.postMessage({ giscus: { setConfig: { theme: giscusTheme() } } }, "https://giscus.app");
+};
+new MutationObserver(sendGiscusTheme).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+new IntersectionObserver((entries, io) => {
+  if (!entries.some(e => e.isIntersecting)) return;
+  io.disconnect();
+  const s = document.createElement("script");
+  s.src = "https://giscus.app/client.js";
+  s.async = true;
+  s.crossOrigin = "anonymous";
+  Object.entries({
+    repo: "vinayvobbili/vinayvobbili.github.io", "repo-id": "R_kgDOSZD6Ig",
+    category: "Announcements", "category-id": "DIC_kwDOSZD6Is4C-p2b",
+    mapping: "specific", term: "jobwatch", strict: "0", "reactions-enabled": "1",
+    "emit-metadata": "0", "input-position": "bottom", theme: giscusTheme(), lang: "en", loading: "lazy",
+  }).forEach(([k, v]) => s.setAttribute("data-" + k, v));
+  document.getElementById("comments").appendChild(s);
+}, { rootMargin: "300px" }).observe(document.getElementById("comments"));
 
 document.getElementById("copy").addEventListener("click", async e => {
   const b = e.currentTarget;

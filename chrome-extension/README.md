@@ -23,7 +23,7 @@ the form, and submit it yourself.
 
 ## Set it up
 
-1. Run `jobwatch ui` and open Settings, Browser extension. Copy the token.
+1. Run `jobwatch` and open Settings, Browser extension. Copy the token.
 2. In Chrome, open the extension's options (right-click its icon, Options) and paste the token. The server address is
    `http://127.0.0.1:8765` unless you started `jobwatch ui --port` differently. Press **Test**.
 3. Open a job application and click the extension's icon. Chrome's side panel opens beside the page; press **Fill this application**.

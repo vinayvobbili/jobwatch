@@ -264,3 +264,62 @@ def test_python_dash_m_runs_the_command_line(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["jobwatch", "init"])
     with pytest.raises(SystemExit, match="exists"):  # errors end the same way as the console script
         runpy.run_module("jobwatch", run_name="__main__")
+
+
+def test_bare_jobwatch_starts_the_page_like_ui(monkeypatch):
+    started = []
+    monkeypatch.setattr("jobwatch.service.installed_port", lambda: None)
+    monkeypatch.setattr(cli, "ui_running", lambda port: False)
+    monkeypatch.setattr(cli, "cmd_ui", lambda args: started.append((args.port, args.no_browser, args.config)))
+    assert cli.build_parser().parse_args(["-c", "x.yaml"]).command is None
+    cli.main(["-c", "x.yaml"])
+    assert started == [(8765, False, "x.yaml")]
+
+
+def test_bare_jobwatch_opens_the_running_page_without_a_second_server(monkeypatch, capsys):
+    opened = []
+    monkeypatch.setattr("jobwatch.service.installed_port", lambda: 9001)
+    monkeypatch.setattr(cli, "ui_running", lambda port: port == 9001)
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    monkeypatch.setattr(cli, "cmd_ui", lambda args: pytest.fail("started a second server"))
+    cli.main([])
+    assert opened == ["http://jobwatch.localhost:9001/"]
+    assert "already running" in capsys.readouterr().err
+
+
+def test_ui_running_probe_sees_only_jobwatch():
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Page(BaseHTTPRequestHandler):
+        server_version = "jobwatch/9"
+
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    class Other(Page):
+        server_version = "nginx/1"
+
+    for handler, expected in ((Page, True), (Other, False)):
+        srv = HTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            assert cli.ui_running(srv.server_address[1]) is expected
+        finally:
+            srv.shutdown()
+            srv.server_close()
+    assert cli.ui_running(1) is False
+
+
+def test_help_mentions_bare_jobwatch_and_subcommands_are_unchanged(capsys):
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--help"])
+    assert e.value.code == 0
+    assert "alone" in capsys.readouterr().out
+    args = cli.build_parser().parse_args(["ui", "--port", "9", "--no-browser"])
+    assert args.func is cli.cmd_ui and args.port == 9 and args.no_browser
+    assert cli.build_parser().parse_args(["list"]).func is cli.cmd_list

@@ -72,8 +72,8 @@
     } else {
       pair.className = 'warn';
       pair.textContent = !s.paired
-        ? 'This needs jobwatch. Run "jobwatch ui", copy the token from its Settings, and paste it in Settings here.'
-        : `jobwatch is not running or did not accept the token (${s.error}). Start it with "jobwatch ui", then check again.`;
+        ? 'This needs jobwatch. Run "jobwatch", copy the token from its Settings, and paste it in Settings here.'
+        : `jobwatch is not running or did not accept the token (${s.error}). Start it with "jobwatch", then check again.`;
     }
     return ready;
   }
