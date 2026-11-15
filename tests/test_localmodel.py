@@ -24,7 +24,7 @@ def test_the_installed_size_is_found_from_what_the_system_reports(reported, inst
 @pytest.mark.parametrize("gb, name", [
     (4, "Qwen3.5-4B-MLX-4bit"), (8, "Qwen3.5-4B-MLX-4bit"), (12, "Qwen3.5-4B-MLX-4bit"),
     (16, "Qwen3.5-9B-MLX-4bit"), (18, "Qwen3.5-9B-MLX-4bit"),
-    (24, "Qwen3.6-27B-4bit"), (32, "Qwen3.6-27B-4bit"), (36, "Qwen3.6-27B-4bit"),
+    (24, "Qwen3.8-27B-4bit"), (32, "Qwen3.8-27B-4bit"), (36, "Qwen3.8-27B-4bit"),
     (48, "Qwen3.6-35B-A3B-4bit"), (64, "Qwen3.6-35B-A3B-8bit"), (128, "Qwen3.6-35B-A3B-8bit")])
 def test_each_size_of_memory_gets_the_biggest_row_that_fits_with_8_bit_from_64_gb(gb, name):
     assert pick(gb).mlx == name
@@ -56,8 +56,8 @@ def test_other_computers_get_an_ollama_tag(monkeypatch):
     r = recommend(total=32 * GB, apple=False)
     s = r["suggested"]
     assert r["system"] == "Linux" and not r["apple"]
-    assert s["id"] == "qwen3.6:27b-q4_K_M" and s["command"] == "ollama pull qwen3.6:27b-q4_K_M"
-    assert not s["tested"] and s["link"] == "https://ollama.com/library/qwen3.6"
+    assert s["id"] == "qwen3.8:27b-q4_K_M" and s["command"] == "ollama pull qwen3.8:27b-q4_K_M"
+    assert not s["tested"] and s["link"] == "https://ollama.com/library/qwen3.8"
     assert "LOCAL_LLM_URL=http://127.0.0.1:11434/v1" in r["note"]
     assert [row["id"] for row in r["rows"]] == [t.tag for t in TIERS]
 
@@ -105,7 +105,7 @@ def test_a_models_size_is_read_from_its_id(model, size):
 
 def test_a_model_set_already_is_only_noted_when_larger_than_suggested():
     small = recommend("mlx-community/Qwen3.5-9B-MLX-4bit", total=16 * GB, apple=True)["configured"]
-    big = recommend("mlx-community/Qwen3.6-27B-4bit", total=16 * GB, apple=True)["configured"]
+    big = recommend("mlx-community/Qwen3.8-27B-4bit", total=16 * GB, apple=True)["configured"]
     assert small == {"model": "mlx-community/Qwen3.5-9B-MLX-4bit", "larger": False}
     assert big["larger"] is True
     assert recommend("", total=16 * GB, apple=True)["configured"] is None
@@ -176,5 +176,5 @@ def test_the_ai_endpoint_carries_the_suggestion_and_the_model_set(server, watchl
     status, data = request(server, "GET", "/api/ai", headers={"X-Jobwatch-Token": TOKEN})
     rec = json.loads(data)["local"]["recommend"]
     assert status == 200
-    assert rec["suggested"]["id"] == "mlx-community/Qwen3.6-27B-4bit" and rec["suggested"]["gb"] == 32
+    assert rec["suggested"]["id"] == "mlx-community/Qwen3.8-27B-4bit" and rec["suggested"]["gb"] == 32
     assert rec["configured"] == {"model": "mlx-community/Qwen3.5-9B-MLX-4bit", "larger": False}

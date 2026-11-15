@@ -780,7 +780,7 @@ const suggested = { ...rows[1], gb: 16, row: "16 GB",
   command: "vllm-mlx serve mlx-community/Qwen3.5-9B-MLX-4bit --port 8010" };
 const base = { rows, suggested, system: "Apple Silicon", apple: true, note: "" };
 const find = (n, f) => (f(n) ? [n] : []).concat(...(n.kids || []).map(k => typeof k === "string" ? [] : find(k, f)));
-const a = localSuggest(base), b = localSuggest({ ...base, configured: { model: "Qwen3.6-27B-4bit", larger: true } });
+const a = localSuggest(base), b = localSuggest({ ...base, configured: { model: "Qwen3.8-27B-4bit", larger: true } });
 const c = localSuggest({ ...base, configured: { model: "Qwen3.5-9B-MLX-4bit", larger: false } });
 console.log(JSON.stringify({
   a: text(a), copy: find(a, n => n.tag === "copy")[0].text, copies: find(a, n => n.tag === "copy").map(n => n.text),

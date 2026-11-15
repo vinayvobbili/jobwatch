@@ -296,8 +296,8 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
             <td data-l="Windows, Linux, Intel Mac"><a target="_blank" rel="noopener" href="https://ollama.com/library/qwen3.5:9b-q4_K_M">qwen3.5:9b-q4_K_M ↗</a><span class="soft">same model; the test ran the Apple Silicon build</span></td>
             <td data-l="Also good: Gemma 4 12B, 4-bit"><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/gemma-4-12B-it-4bit">gemma-4-12B-it-4bit ↗</a><br><a target="_blank" rel="noopener" href="https://ollama.com/library/gemma4:12b-it-q4_K_M">gemma4:12b-it-q4_K_M ↗</a><span class="soft">tested: most accurate (29/29 vs 28/29), about 50% slower, +1.7 GB</span></td></tr>
           <tr><td class="ram">24-32 GB</td>
-            <td data-l="Apple Silicon">Qwen3.6-27B, 4-bit<br><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/Qwen3.6-27B-4bit">Qwen3.6-27B-4bit ↗</a><span class="soft">suggested, sized by memory</span></td>
-            <td data-l="Windows, Linux, Intel Mac"><a target="_blank" rel="noopener" href="https://ollama.com/library/qwen3.6:27b-q4_K_M">qwen3.6:27b-q4_K_M ↗</a></td>
+            <td data-l="Apple Silicon">Qwen3.8-27B, 4-bit<br><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/Qwen3.8-27B-4bit">Qwen3.8-27B-4bit ↗</a><span class="soft">suggested, sized by memory</span></td>
+            <td data-l="Windows, Linux, Intel Mac"><a target="_blank" rel="noopener" href="https://ollama.com/library/qwen3.8:27b-q4_K_M">qwen3.8:27b-q4_K_M ↗</a></td>
             <td data-l="Also good: Gemma 4 26B-A4B, 4-bit"><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/gemma-4-26b-a4b-it-4bit">gemma-4-26b-a4b-it-4bit ↗</a><br><a target="_blank" rel="noopener" href="https://ollama.com/library/gemma4:26b-a4b-it-q4_K_M">gemma4:26b-a4b-it-q4_K_M ↗</a></td></tr>
           <tr><td class="ram">48 GB and up</td>
             <td data-l="Apple Silicon">Qwen3.6-35B-A3B, 4-bit<br><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-4bit">Qwen3.6-35B-A3B-4bit ↗</a><br>8-bit with 64 GB or more:<br><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/Qwen3.6-35B-A3B-8bit">Qwen3.6-35B-A3B-8bit ↗</a><span class="soft">suggested, sized by memory</span></td>
@@ -305,6 +305,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
             <td data-l="Also good: Gemma 4 31B, 4-bit"><a target="_blank" rel="noopener" href="https://huggingface.co/mlx-community/gemma-4-31b-it-4bit">gemma-4-31b-it-4bit ↗</a><br><a target="_blank" rel="noopener" href="https://ollama.com/library/gemma4:31b-it-q4_K_M">gemma4:31b-it-q4_K_M ↗</a></td></tr>
         </tbody>
       </table>
+      <p class="models-note">On computers with 48 GB or more, 35B-A3B-style models (about 3B active parameters) are the fastest choice.</p>
       <p class="models-note">On an Apple Silicon Mac, use MLX: it's built for Apple's chips and runs faster than Ollama there. Ollama is for computers MLX doesn't run on.</p>
       <p class="models-note">Only the 16 GB row was tested: on a 16 GB Apple Silicon Mac it agreed with 28 of 29 expected verdicts, at 27 seconds a call and 7.5 GB of memory. The other rows are suggested, sized by memory. The Gemma 4 column is an alternative for each row; on Apple Silicon it is served the same way as the Qwen beside it.</p>
     </div>

@@ -53,7 +53,7 @@ GEMMA_31B = Alt("Gemma 4 31B, 4-bit", "gemma-4-31b-it-4bit", "gemma4:31b-it-q4_K
 TIERS = (
     Tier("8 GB", 0, "Qwen3.5-4B, 4-bit", "Qwen3.5-4B-MLX-4bit", "qwen3.5:4b-q4_K_M", GEMMA_E2B),
     Tier("16 GB", 16, "Qwen3.5-9B, 4-bit", "Qwen3.5-9B-MLX-4bit", "qwen3.5:9b-q4_K_M", GEMMA_12B, tested=True),
-    Tier("24-32 GB", 24, "Qwen3.6-27B, 4-bit", "Qwen3.6-27B-4bit", "qwen3.6:27b-q4_K_M", GEMMA_26B),
+    Tier("24-32 GB", 24, "Qwen3.8-27B, 4-bit", "Qwen3.8-27B-4bit", "qwen3.8:27b-q4_K_M", GEMMA_26B),
     Tier("48 GB and up", 48, "Qwen3.6-35B-A3B, 4-bit", "Qwen3.6-35B-A3B-4bit", "qwen3.6:35b-a3b-q4_K_M", GEMMA_31B),
 )
 # with this much memory or more the biggest row's 8-bit build fits
