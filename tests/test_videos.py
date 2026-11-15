@@ -43,6 +43,14 @@ def estimated_length(stories, video) -> float:
     return 3.0 + max(7.0, say(video.problem_say)) + say(stories["common"].TAGLINE) + scenes + 4.0
 
 
+def test_the_capture_has_the_frames_aspect_ratio_and_is_recorded_at_the_viewport_size(stories):
+    """Playwright never scales a recording up: recording at the frame's size left the page in a grey frame."""
+    common = stories["common"]
+    view, frame, record = common.VIEW["viewport"], common.VIDEO_SIZE, common.RECORD_SIZE
+    assert record == view
+    assert view["width"] * frame["height"] == view["height"] * frame["width"]
+
+
 def test_the_tour_and_the_seven_tutorials_are_here(stories):
     assert list(all_videos(stories)) == [
         "jobwatch-demo", "jobwatch-01-getting-started", "jobwatch-02-daily-routine", "jobwatch-03-where-the-ai-runs",

@@ -92,7 +92,11 @@ class Video:
 
 
 VIEW = {"viewport": {"width": 1536, "height": 864}, "device_scale_factor": 1.25, "color_scheme": "light"}
-VIDEO_SIZE = {"width": 1920, "height": 1080}
+VIDEO_SIZE = {"width": 1920, "height": 1080}  # the reel's frame; the capture is scaled up to it on saving
+# Playwright records the viewport at its CSS size and never scales it up, so the recording is made at the viewport's
+# size (a 1920x1080 record size left the 1536x864 page in a corner of a grey frame); Recorder scales it to VIDEO_SIZE.
+RECORD_SIZE = dict(VIEW["viewport"])
+assert RECORD_SIZE["width"] * VIDEO_SIZE["height"] == RECORD_SIZE["height"] * VIDEO_SIZE["width"], "aspect mismatch"
 EXTENSION_TOOLS = SCRIPTS.parent / "chrome-extension" / "tools"
 
 
@@ -131,6 +135,6 @@ def demo_running(more: bool = False, empty: bool = False, extension: bool = Fals
 
             options = dict(VIEW, expose_panel=True)
             if record:
-                options.update(record_video_dir=str(record), record_video_size=VIDEO_SIZE)
+                options.update(record_video_dir=str(record), record_video_size=RECORD_SIZE)
             with harness.demo_stack(p, **options) as stack:
                 yield Demo(url=url, folder=folder, browser=stack.context, extra={"stack": stack})
