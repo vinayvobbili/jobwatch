@@ -45,7 +45,8 @@ def test_install_line_lists_the_options_before_running_jobwatch():
     sub = re.search(r'<p class="sub">(.*?)</p>', PAGE.split('<div class="cta">')[1], re.S).group(1)
     assert sub.index("pipx install jobwatch") < sub.index("pip install jobwatch") < sub.index("Then run")
     assert "Or <code>" not in sub
-    assert 'target="_blank" rel="noopener" href="https://pipx.pypa.io/stable/installation/">Setup guide</a>' in sub
+    assert ('target="_blank" rel="noopener" href="https://pipx.pypa.io/stable/how-to/install-pipx.html">'
+            'Setup guide</a>') in sub
     assert "New to Python?" in sub
 
 
