@@ -235,6 +235,12 @@ ACTIVITY_KEPT = 1000  # the things done in the background remembered, of each ki
 BUSY = 30  # seconds to wait for another thread or process writing the state file, instead of "database is locked"
 
 
+def slimmed(data: dict) -> dict:
+    """A job's stored data without its heavy parts (the posting's text, the boards an HN post links to): what is
+    left still names and links the job, and lets a fetch see it as already seen."""
+    return {**data, "description": "", "boards": []}
+
+
 def _letters(text: str | None) -> str:
     """A company's name with only its letters and digits, in lower case, to match it however it's punctuated.
     "&" and the word "and" are left out, so "Pied & Piper", "Pied and Piper" and "Pied Piper" read the same."""
@@ -243,7 +249,8 @@ def _letters(text: str | None) -> str:
 
 # Columns added after the first release, and how to fill them in an older state file.
 _ADDED = {"applied_at": "UPDATE jobs SET applied_at=substr(status_at, 1, 10) WHERE status='applied'",
-          "next_step": None, "follow_up": None, "round": None, "via": None, "duplicate_of": None}  # round: rounds.py
+          "next_step": None, "follow_up": None, "round": None, "via": None, "duplicate_of": None,  # round: rounds.py
+          "slim": None}  # '1': the posting's text was dropped to save space (prune.py), and a fetch keeps it dropped
 
 
 def _now() -> str:
@@ -420,16 +427,18 @@ class Store:
         `close_missing` is off: a board read only partway (sources.Partial) says nothing about the rest."""
         now, new = _now(), []
         with self.db:
-            known = {r["key"] for r in self.db.execute("SELECT key FROM jobs WHERE source=? AND company=?",
-                                                        (source, company))}
+            rows = self.db.execute("SELECT key, slim, status FROM jobs WHERE source=? AND company=?",
+                                   (source, company)).fetchall()
+            known = {r["key"] for r in rows}
+            slim = {r["key"] for r in rows if r["slim"] and r["status"] == "new"}  # not acted on: text stays dropped
             for job in jobs:
                 if known and job.key not in known and job.posted and \
                         (datetime.now(timezone.utc) - job.posted).days > REPOST_DAYS:
                     job.posted = datetime.now(timezone.utc)  # reposted: new to the board today, not months old
-                data = json.dumps(job.to_dict())
+                data = json.dumps(slimmed(job.to_dict()) if job.key in slim else job.to_dict())
                 if job.key in known:
-                    self.db.execute("UPDATE jobs SET data=?, last_seen=?, closed=NULL WHERE key=?",
-                                    (data, now, job.key))
+                    self.db.execute("UPDATE jobs SET data=?, last_seen=?, closed=NULL, slim=? WHERE key=?",
+                                    (data, now, "1" if job.key in slim else None, job.key))
                 else:
                     self.db.execute("INSERT INTO jobs (key, source, company, data, first_seen, last_seen) "
                                     "VALUES (?, ?, ?, ?, ?, ?)", (job.key, source, company, data, now, now))
@@ -447,7 +456,7 @@ class Store:
                                   "VALUES (?, ?, ?, ?, ?, ?)", (job.key, job.source, job.company,
                                                                 json.dumps(job.to_dict()), now, now)).rowcount
             if not new:
-                self.db.execute("UPDATE jobs SET data=?, last_seen=?, closed=NULL WHERE key=?",
+                self.db.execute("UPDATE jobs SET data=?, last_seen=?, closed=NULL, slim=NULL WHERE key=?",
                                 (json.dumps(job.to_dict()), now, job.key))
         return bool(new)
 
@@ -1038,7 +1047,7 @@ class Store:
     def update(self, job: Job):
         """Save a recorded job's posting data as it is now (a fetch does this for a watched board's jobs)."""
         with self.db:
-            self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
+            self.db.execute("UPDATE jobs SET data=?, slim=NULL WHERE key=?", (json.dumps(job.to_dict()), job.key))
 
     # Checks for new jobs: when each ran and what it found, so the page can say when the boards were last checked
     # and the next check can be planned from it, whoever ran the last one (the page, `jobwatch fetch`, MCP).

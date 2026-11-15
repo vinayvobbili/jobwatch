@@ -43,6 +43,7 @@ from . import (
     paysources,
     prep,
     profile,
+    prune,
     quiet,
     referrals,
     rehearse,
@@ -907,6 +908,25 @@ def cmd_backup(args, cfg, store):
           + (f"; dropped {len(dropped)} older" if dropped else ""))
     if args.install:
         print(f"Backing up {backup.install(cfg.path, dest, args.keep, also)} to {dest}; log: {backup.log_path()}")
+
+
+def cmd_prune(args, cfg, store):
+    """Shrink the state file: old closed jobs nobody acted on go, old open ones lose their posting's text."""
+    size = store.path.stat().st_size
+    p = prune.plan(store, args.days)
+    print(f"Jobs posted over {args.days} days ago that nobody acted on:")
+    print(f"  delete (off their board for over {args.days} days): {len(p.delete):,}  ({p.bytes_delete / 1e6:,.0f} MB)")
+    print(f"  drop the posting text (still posted or lately closed, stay known): {len(p.slim):,}  "
+          f"({p.bytes_slim / 1e6:,.0f} MB)")
+    for why, n in p.kept.items():
+        print(f"  left alone, {why}: {n:,}")
+    print(f"About {p.bytes / 1e6:,.0f} MB of the {size / 1e6:,.0f} MB can go")
+    if not args.apply:
+        print("Nothing changed: add --apply to do it (after a copy of the database, then VACUUM).")
+        return
+    print(f"Copy of the database: {prune.copy_before(store)}")
+    prune.apply(store, p)
+    print(f"State file {size / 1e6:,.0f} MB -> {store.path.stat().st_size / 1e6:,.0f} MB")
 
 
 def cmd_snooze(args, cfg, store):
@@ -1838,6 +1858,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--format", choices=["text", "json", "html"], default="text",
                    help="html is a <ul> to paste into a prep sheet")
     p.set_defaults(func=cmd_profile, needs_config=False)
+
+    p = sub.add_parser("prune", help="shrink the database: old jobs you never acted on that left their board are "
+                       "deleted, old ones still posted lose their posting's text (and stay known, so a check "
+                       "doesn't report them as new again). Dry run unless --apply")
+    p.add_argument("--days", type=int, default=prune.DAYS, help=f"how old a job is, in days (default {prune.DAYS})")
+    p.add_argument("--apply", action="store_true", help="do it: copy the database first, then VACUUM")
+    p.set_defaults(func=cmd_prune)
 
     p = sub.add_parser("hidden", help="what the filters hide from Today, by filter; name one (e.g. excluded) to "
                        "list its jobs and why. Read-only")
