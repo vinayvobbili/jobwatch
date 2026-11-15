@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Record and render jobwatch's videos (the tour and the seven tutorials) from made-up data.
+#
+#   scripts/videos/make-videos [--dry] [--clips-only] [--out DIR] [NAME ...]
+#
+# See scripts/videos/README.md. Set PYTHON to use another interpreter.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+exec "${PYTHON:-python}" scripts/videos/build.py "$@"

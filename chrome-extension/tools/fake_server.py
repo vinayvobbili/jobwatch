@@ -69,6 +69,7 @@ class State:
         self.drafts: list[dict] = []
         self.postings: list[dict] = []
         self.imports: list[dict] = []  # /ext/import-list: a snapshot per import
+        self.imported: set[tuple[str, str]] = set()  # (site, id) of the jobs an earlier import added
         self.requests: list[tuple[str, str]] = []
         self.token = TOKEN
         self.know_every_page = False  # live_check.py: every page is a known job, with a resume
@@ -138,15 +139,23 @@ def _handler(state: State):
             elif self.path == "/ext/import-list":
                 state.imports.append(body)
                 records = body.get("records", [])
-                added = [r for r in records if int(r["id"]) % 2 == 0]  # made-up coverage: half were already tracked
+                # made-up coverage: half were already tracked; the others are added the first time, and the same
+                # list again finds them already added by that earlier import (as jobwatch's joblist.py says it)
+                fresh = [r for r in records if int(r["id"]) % 2 == 0 and (r["source"], r["id"]) not in state.imported]
+                added = fresh
                 by_source: dict = {}
                 for r in records:
                     c = by_source.setdefault(r["source"], {"seen": 0, "tracked": 0, "earlier": 0, "added": 0,
-                                                           "unplaced": 0, "coverage": 0.0})
+                                                           "unplaced": 0, "coverage": 0.0, "note": None})
                     c["seen"] += 1
-                    c["added" if r in added else "tracked"] += 1
+                    kind = ("added" if r in fresh else "earlier" if int(r["id"]) % 2 == 0 else "tracked")
+                    c[kind] += 1
                 for c in by_source.values():
                     c["coverage"] = c["tracked"] / c["seen"]
+                    if c["earlier"] * 2 >= c["seen"]:
+                        c["note"] = ("Same list as before: nothing new" if not c["added"]
+                                     else f"Mostly the same list as before: {c['added']} new")
+                state.imported.update((r["source"], r["id"]) for r in fresh)
                 self._json(200, {"by_source": by_source, "added": added, "unplaced": [],
                                  "link": "http://127.0.0.1:8765/#today"})
             elif self.path == "/ext/answers":

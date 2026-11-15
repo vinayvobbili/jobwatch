@@ -107,7 +107,8 @@ def demo_site() -> Iterator[tuple[int, int]]:
 
 
 @contextmanager
-def browser_with_extension(playwright, headless: bool = True, map_hosts: bool = True) -> Iterator[tuple]:
+def browser_with_extension(playwright, headless: bool = True, map_hosts: bool = True, expose_panel: bool = False,
+                           **context_options) -> Iterator[tuple]:
     """Chromium with the extension loaded. Yields (context, extension_id).
 
     activeTab is granted by a person clicking the toolbar button, which automation can't do, so the loaded
@@ -122,6 +123,9 @@ def browser_with_extension(playwright, headless: bool = True, map_hosts: bool = 
         if map_hosts:  # the demo list page is plain http: let the list scripts run on it too
             for script in manifest["content_scripts"]:
                 script["matches"] += ["http://www.linkedin.com/*"]
+        if expose_panel:  # the videos dock the side panel in an iframe beside the page: let a page frame it
+            manifest["web_accessible_resources"] = [{"resources": ["*.html", "*.js", "*.css", "icons/*"],
+                                                     "matches": ["<all_urls>"]}]
         (ext / "manifest.json").write_text(json.dumps(manifest))
         args = [f"--disable-extensions-except={ext}", f"--load-extension={ext}"]
         if map_hosts:
@@ -129,7 +133,7 @@ def browser_with_extension(playwright, headless: bool = True, map_hosts: bool = 
             args += [f"--host-resolver-rules={rules}", "--ignore-certificate-errors"]
         try:
             context = playwright.chromium.launch_persistent_context(
-                str(Path(tmp) / "profile"), channel="chromium", headless=headless, args=args)
+                str(Path(tmp) / "profile"), channel="chromium", headless=headless, args=args, **context_options)
         except Exception as exc:  # playwright raises its own Error for a missing binary
             raise BrowserUnavailable(f"Chromium unavailable: {exc}") from exc
         try:
@@ -147,10 +151,11 @@ def browser_with_extension(playwright, headless: bool = True, map_hosts: bool = 
 
 
 @contextmanager
-def demo_stack(playwright, headless: bool = True, token: str = TOKEN) -> Iterator[Stack]:
-    """Everything at once, with the extension already paired to the fake jobwatch."""
+def demo_stack(playwright, headless: bool = True, token: str = TOKEN, **browser_options) -> Iterator[Stack]:
+    """Everything at once, with the extension already paired to the fake jobwatch. `browser_options` go to
+    browser_with_extension (expose_panel, and the context's viewport, scale or video options)."""
     with fake_jobwatch() as (api_url, server), demo_site() as (port, tls_port), \
-            browser_with_extension(playwright, headless) as (context, ext_id):
+            browser_with_extension(playwright, headless, **browser_options) as (context, ext_id):
         stack = Stack(api_url=api_url, site_port=port, tls_port=tls_port, server=server, context=context,
                       extension_id=ext_id)
         pair(stack, api_url, token)

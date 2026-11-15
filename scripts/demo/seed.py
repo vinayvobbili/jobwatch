@@ -54,6 +54,7 @@ scoring:
   auto: false
 display:
   theme: light
+  today_defaults: {fit: 80, pay: 175000}   # Today opens on the Fit 80+ and Top pay $175K+ chips
 fetch_every: off   # the page checks no board by itself: nothing here reaches the web
 state: state/state.db
 cache: cache
@@ -121,6 +122,8 @@ BOARDS = {
             170000, 215000, 5, GENERIC),
         job("greenhouse", "acme", "Acme", "4090", "Platform Engineer", ["Remote, United States"],
             165000, 205000, 18, GENERIC),
+        job("greenhouse", "acme", "Acme", "4103", "Senior Software Engineer, Integrations",
+            ["Remote, United States"], None, None, 3, GENERIC),  # no pay clue and no fit score yet
     ],
     ("lever", "globex"): [
         job("lever", "globex", "Globex", "a7c2", "Data Platform Engineer", ["Remote, United States"],
