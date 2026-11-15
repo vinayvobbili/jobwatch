@@ -5,8 +5,8 @@
 - macOS: a launchd agent, ~/Library/LaunchAgents/<LABEL>.plist; output in ~/Library/Logs/jobwatch-ui.log.
 - Linux: a systemd user unit, ~/.config/systemd/user/jobwatch-ui.service; output in ~/.local/state/jobwatch/ui.log
   (`loginctl enable-linger $USER` keeps it running when you're logged out).
-- Windows: a per-user Task Scheduler task "jobwatch-ui" (no admin rights) that runs at logon, restarts if it fails
-  and shows no console window; output in %LOCALAPPDATA%\\jobwatch\\ui.log.
+- Windows: a per-user Task Scheduler task "jobwatch-ui" (no admin rights) that runs at logon, is started again
+  within 5 minutes if it has stopped, and shows no console window; output in %LOCALAPPDATA%\\jobwatch\\ui.log.
 
 `uninstall` stops it and removes what install made. The page is then always at http://jobwatch.localhost:<port>/.
 
@@ -36,7 +36,8 @@ from . import APP_HOST
 LABEL = "io.github.jobwatch.ui"
 UNIT = "jobwatch-ui.service"  # the systemd user unit
 TASK = "jobwatch-ui"          # the Windows scheduled task
-GONE_WAIT = 15  # seconds to wait for a replaced job to stop before loading the new one
+WATCH_MINUTES = 5  # Windows: how often Task Scheduler looks for a stopped page and starts it
+GONE_WAIT = 15 # seconds to wait for a replaced job to stop before loading the new one
 
 TASK_NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 
@@ -309,8 +310,9 @@ def _local_appdata() -> Path:
 
 class TaskSchedulerBackend:
     """`schtasks`: a task for your user, at logon, with limited rights (no admin). It is made from an XML file,
-    the one way to ask for a restart on failure, and runs pythonw, which has no console window, so the page's
-    output goes to the log through `jobwatch ui --log`. Status reads schtasks' English labels."""
+    the one way to ask for a restart on failure or a repeating trigger, and runs pythonw, which has no console
+    window, so the page's output goes to the log through `jobwatch ui --log`. A repeating trigger starts a page
+    that has stopped. Status reads schtasks' English labels."""
 
     note = ""
 
@@ -343,7 +345,14 @@ class TaskSchedulerBackend:
             f'<Task version="1.4" xmlns="{TASK_NS}">\n'
             "  <RegistrationInfo><Description>jobwatch ui: the job search page, from logon</Description>"
             "</RegistrationInfo>\n"
-            f"  <Triggers><LogonTrigger><Enabled>true</Enabled>{user_id}</LogonTrigger></Triggers>\n"
+            # At logon, and again every WATCH_MINUTES: IgnoreNew leaves a running page alone, so a tick only starts
+            # one that has stopped. RestartOnFailure alone doesn't: on a real Windows runner a killed pythonw was
+            # not restarted (Task Scheduler counts the exit as the task completing).
+            "  <Triggers>"
+            f"<LogonTrigger><Enabled>true</Enabled>{user_id}</LogonTrigger>"
+            "<TimeTrigger><StartBoundary>2024-01-01T00:00:00</StartBoundary><Enabled>true</Enabled>"
+            f"<Repetition><Interval>PT{WATCH_MINUTES}M</Interval></Repetition></TimeTrigger>"
+            "</Triggers>\n"
             f'  <Principals><Principal id="Author">{user_id}<LogonType>InteractiveToken</LogonType>'
             "<RunLevel>LeastPrivilege</RunLevel></Principal></Principals>\n"
             "  <Settings>\n"

@@ -258,6 +258,10 @@ def test_windows_install_makes_a_logon_task_without_admin(windows, tmp_path, cap
         f'-m jobwatch.cli -c "{cfg.resolve()}" ui --no-browser --port 8802 '
         f'--log "{tmp_path / "Local Data" / "jobwatch" / "ui.log"}"')
     assert root.find(".//t:LogonTrigger", ns) is not None
+    # RestartOnFailure didn't restart a killed process on a real runner: a repeating trigger starts a stopped page
+    assert root.findtext(".//t:TimeTrigger/t:Repetition/t:Interval", namespaces=ns) == "PT5M"
+    assert root.findtext(".//t:TimeTrigger/t:StartBoundary", namespaces=ns) == "2024-01-01T00:00:00"
+    assert root.findtext(".//t:MultipleInstancesPolicy", namespaces=ns) == "IgnoreNew"
     assert root.findtext(".//t:RunLevel", namespaces=ns) == "LeastPrivilege"
     assert root.findtext(".//t:RestartOnFailure/t:Count", namespaces=ns) == "999"
     assert root.findtext(".//t:Principal/t:UserId", namespaces=ns) == "INITECH\\ada"
@@ -270,7 +274,7 @@ def test_windows_falls_back_to_python_without_pythonw(windows, watchlist):
     assert root.findtext(".//t:Command", namespaces=ns) == service.sys.executable
 
 
-def test_windows_status_reads_schtasks_output(windows, watchlist):
+def test_windows_status_reads_schtasks_output(windows, watchlist, capsys):
     windows.replies.append((["/Query"], 1, "", "ERROR: The system cannot find the file specified."))
     assert service.status() == {"installed": False, "running": False, "pid": None, "log": str(service.log_path()),
                                 "url": None}
@@ -280,6 +284,10 @@ def test_windows_status_reads_schtasks_output(windows, watchlist):
     windows.replies.append((["/Query"], 0, listing, ""))
     s = service.status()
     assert s["installed"] and s["running"] and s["url"] == "http://jobwatch.localhost:8803/"
+    windows.replies.append((["/Query"], 0, listing, ""))
+    capsys.readouterr()
+    cli.main(["service", "status"])
+    assert capsys.readouterr().out.startswith("running\nhttp://jobwatch.localhost:8803/\n")  # no "(pid None)"
     assert windows.calls[-1] == ["schtasks", "/Query", "/TN", "jobwatch-ui", "/FO", "LIST", "/V"]
     windows.replies[:] = [(["/Query"], 0, listing.replace("Running", "Ready"), "")]
     s = service.status()
