@@ -1244,6 +1244,10 @@ def cmd_check(args, cfg, store):
 def cmd_ui(args):
     from .web import serve
 
+    log = getattr(args, "log", None)
+    if log:  # what the Windows service passes: pythonw has no console, so its output goes to a file
+        log.parent.mkdir(parents=True, exist_ok=True)
+        sys.stdout = sys.stderr = open(log, "a", buffering=1, encoding="utf-8", errors="replace")
     server = serve(config.locate(args.config), port=args.port, open_browser=not args.no_browser)
     try:
         server.serve_forever()
@@ -1303,6 +1307,8 @@ def cmd_service(args):
             url = service.install(config.locate(args.config), args.port)
             print(f"jobwatch ui now starts when you log in and restarts if it stops: {url}\n"
                   f"Log: {service.log_path()}. Undo with `jobwatch service uninstall`.")
+            if service.note():
+                print(service.note())
         elif args.action == "uninstall":
             print("Removed: jobwatch ui no longer starts at login." if service.uninstall() else "Not installed.")
         else:
@@ -1835,13 +1841,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("ui", help="open jobwatch in your browser (setup, digest, queue, applied)")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    p.add_argument("--log", type=Path, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_ui, needs_config=False)
 
     p = sub.add_parser("mcp", help="run the MCP server (the same as `jobwatch-mcp`) for Claude or another assistant")
     p.set_defaults(func=cmd_mcp, needs_config=False)
 
     p = sub.add_parser("service", help="keep `jobwatch ui` running: start it at login, restart it if it stops "
-                                       "(macOS)")
+                                       "(macOS launchd, Linux systemd user unit, Windows Task Scheduler)")
     p.add_argument("action", choices=["install", "uninstall", "status"])
     p.add_argument("--port", type=int, default=8765)
     p.set_defaults(func=cmd_service, needs_config=False)

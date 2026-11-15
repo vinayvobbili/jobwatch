@@ -65,7 +65,7 @@ pipx install jobwatch      # or: pip install jobwatch
 A page opens on your computer and walks you through four short steps: about you and your resume, the jobs you
 want, the companies to watch, and (optionally) fit scores and job-alert emails. Then press **Check for new
 jobs**. Install the page as an app from Chrome's address bar to keep it in its own window, or run
-`jobwatch service install` to have it always running on a Mac.
+`jobwatch service install` to have it always running (on a Mac, Linux or Windows).
 
 **Or run it from Claude:**
 

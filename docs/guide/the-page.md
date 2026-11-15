@@ -87,13 +87,26 @@ The page only talks to jobwatch on your own machine. The one exception is a mode
 Google through the Antigravity CLI. It's the same
 watchlist file and history as the command line, so you can switch between the two.
 
-To have the page always there, even after a restart, on a Mac:
+To have the page always there, even after a restart, on a Mac, Linux or Windows:
 
 ```
 jobwatch service install      # starts jobwatch ui when you log in, and again if it stops
 jobwatch service status       # running? where's the log?
 jobwatch service uninstall
 ```
+
+What it sets up depends on the system, and none of it needs administrator rights:
+
+| System | What it makes | Log |
+| --- | --- | --- |
+| macOS | a launchd agent, `~/Library/LaunchAgents/io.github.jobwatch.ui.plist` | `~/Library/Logs/jobwatch-ui.log` |
+| Linux | a systemd user unit, `~/.config/systemd/user/jobwatch-ui.service` | `~/.local/state/jobwatch/ui.log` |
+| Windows | a Task Scheduler task named `jobwatch-ui` that runs when you log on, with no console window | `%LOCALAPPDATA%\jobwatch\ui.log` |
+
+On Linux, run `loginctl enable-linger $USER` once if it should keep running while you're logged out. It needs
+systemd: on a system without it (a container, or WSL without systemd), `jobwatch service install` says so, and
+you start `jobwatch ui --no-browser` yourself from whatever starts things there. On Windows, `status` reads
+Task Scheduler's English labels.
 
 Running like that, the page keeps Today fresh on its own: it checks every board when it starts (if the last
 check, from the page or `jobwatch fetch`, is older than `fetch_every`) and again every 6 hours. For checks at
@@ -118,7 +131,8 @@ jobwatch's requests keep their initials. `jobwatch logos` looks them all up at o
 A login item doesn't see variables set in your shell profile, so with `scoring.backend: claude` the page's
 chat and scores need the API key another way: keep it in the macOS keychain and name the item in
 `scoring.keychain` (`security add-generic-password -s anthropic -a "$USER" -w`, then `keychain: anthropic`),
-give `ANTHROPIC_API_KEY` to launchd (`launchctl setenv ANTHROPIC_API_KEY ...`), or run `jobwatch ui` from a
+give `ANTHROPIC_API_KEY` to launchd (`launchctl setenv ANTHROPIC_API_KEY ...`; on Linux an `Environment=` line
+from `systemctl --user edit jobwatch-ui`; on Windows a user environment variable), or run `jobwatch ui` from a
 terminal instead. The local backend needs nothing.
 
 ## On the command line
