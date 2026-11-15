@@ -407,7 +407,7 @@ def pairs(store: Store, strong_only: bool = False) -> list[Pair]:
     before skipped ones within each. Changes nothing."""
     index = Index(store)
     out: dict[frozenset, Pair] = {}
-    for job, rec in store.jobs(include_closed=True):
+    for job, rec in store.iter_jobs(include_closed=True):
         if not (names := companies(job)) or not any(n in index.by_company for n in names):
             continue
         sig = Signature.of(job, rec.get("note"))

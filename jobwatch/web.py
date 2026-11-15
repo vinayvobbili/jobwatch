@@ -501,12 +501,13 @@ class LogoLookup:
         try:
             store = Store(self.app._cfg().state)
             try:
-                jobs, robots = [j for j, _ in store.jobs(include_closed=True)], Robots()
+                robots = Robots()
                 while True:
                     with self._lock:
                         names, self._todo = self._todo, []
                     if not names:
                         break
+                    jobs = (j for j, _ in store.iter_jobs(include_closed=True))  # streamed: not all held at once
                     if found := logos.look_up(store, names, jobs, robots=robots):
                         store.log("logos", f"Found {plural(len(found), 'company logo')}", detail=found,
                                   by="background")

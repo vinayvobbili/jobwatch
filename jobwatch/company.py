@@ -175,7 +175,7 @@ def view(cfg: Config, store: Store, text: str, every: bool | None = None) -> dic
         return None
     best, key = found[0], found[0]["key"]
     index, mine = dupes.Index(store), []
-    for job, rec in store.jobs(include_closed=True):
+    for job, rec in store.iter_jobs(include_closed=True):
         if dupes.company_key(job.display_company) == key:
             mine.append((job, rec))
     mine.sort(key=lambda r: _order(r[1]))  # stable: newest first within each

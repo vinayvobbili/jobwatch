@@ -57,7 +57,7 @@ def jobs_there(cfg: Config, store: Store, name: str) -> list[tuple]:
     """A company's jobs posted in one of your places, open or closed, newest first: (job, record, locations
     there). What `offices --jobs NAME` lists: has it ever posted here, and what?"""
     places, want = [p.lower() for p in wanted_places(cfg)], company_key(name)
-    return [(job, rec, here) for job, rec in store.jobs(include_closed=True)
+    return [(job, rec, here) for job, rec in store.iter_jobs(include_closed=True)
             if want in companies(job) and (here := _here(job, places))]
 
 
@@ -69,7 +69,7 @@ def found(cfg: Config, store: Store) -> list[dict]:
         return []
     known = {company_key(n) for n in cfg.filters.nearby_offices + cfg.filters.exclude_companies}
     out: dict[str, dict] = {}
-    for job, _ in store.jobs(include_closed=True):
+    for job, _ in store.iter_jobs(include_closed=True):
         if companies(job) & known or not tech_job(job):
             continue
         here = _here(job, places)
@@ -86,7 +86,7 @@ def remote_offers(cfg: Config, store: Store) -> list[tuple]:
     ("unless designated remote"), passing every other filter: (job, record, the words), newest first.
     `offices --remote-offers`, to see what that rule lets in."""
     out = []
-    for job, rec in store.jobs():
+    for job, rec in store.iter_jobs():
         f = cfg.filters_for(job)
         if (offer := remote_offered(job, f)) and not office_nearby(job, f) and rejection(job, f) is None:
             out.append((job, rec, offer))
@@ -99,7 +99,7 @@ def unproven(cfg: Config, store: Store) -> list[str]:
     one you know has a tech office there (filters.known_offices) isn't listed. `offices --drop` uncounts one."""
     places = [p.lower() for p in wanted_places(cfg)]
     shown = {company_key(n) for n in cfg.filters.known_offices}
-    for job, _ in store.jobs(include_closed=True):
+    for job, _ in store.iter_jobs(include_closed=True):
         if tech_job(job) and _here(job, places):
             shown |= companies(job)
     return [n for n in cfg.filters.nearby_offices if company_key(n) not in shown]

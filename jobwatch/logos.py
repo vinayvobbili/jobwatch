@@ -188,9 +188,11 @@ def due(kept, now: datetime | None = None) -> bool:
 
 def look_up(store, names: list[str], jobs: list[Job], **kw) -> list[str]:
     """Look up the logos of the companies named (that are due), from their jobs; the ones found."""
+    wanted = {key(n) for n in names}
     by_name: dict[str, list[Job]] = {}
-    for j in jobs:
-        by_name.setdefault(key(j.display_company), []).append(j)
+    for j in jobs:  # may be a stream of every job: only the named companies' first 20 are kept
+        if (k := key(j.display_company)) in wanted and len(by_name.setdefault(k, [])) < 20:
+            by_name[k].append(j)
     found = []
     for i, name in enumerate(dict.fromkeys(key(n) for n in names)):
         if not name or not due(store.logo(name)) or not by_name.get(name):

@@ -21,8 +21,9 @@ Each job is taken in the way an alert email's is (see alerts.py), with via "<sou
 Each company seen counts toward Companies to watch (see suggest.py), as an alert's do, so the ones a site keeps
 showing get their boards watched (by hand, or by suggestions.auto_watch).
 
-Coverage is the share of a site's jobs that jobwatch had found before this import, per site: jobs an earlier
-import added are left out of it, so a list seen twice isn't counted as caught the second time. Each run is appended
+Coverage is the share of a site's jobs that jobwatch had found on its own before this import (tracked over
+everything seen), per site: a job an earlier import added counts as one jobwatch missed, so a list seen twice
+doesn't read as caught the second time. Each run is appended
 to import-list.jsonl next to the database, a line per site; `jobwatch import-list --history` shows the trend.
 """
 
@@ -45,6 +46,28 @@ LOOKUP_WORKERS = 6  # companies whose boards are looked for at once
 LINKS = {"linkedin": "https://www.linkedin.com/jobs/view/{}/", "indeed": "https://www.indeed.com/viewjob?jk={}"}
 NAMES = {"linkedin": "LinkedIn", "indeed": "Indeed"}
 _VERIFIED = re.compile(r"\s*(?:\((?:verified job|verified)\)|with verification)\s*$", re.I)
+# LinkedIn's screen-reader text that ends up in a card's text (job-lists.js cleanTitle has the same rules)
+_SELECTED_MID = re.compile(r"^(.+?)\s*:\s*selected\s*,\s*(.+)$", re.I)
+_SELECTED_LEAD = re.compile(r"^selected\s*[,:]\s*", re.I)
+_TWICE = re.compile(r"^(.{3,}?)(?:\s*[:|–—-]\s*|\s+)\1$", re.I)
+
+
+def clean_title(title: str) -> str:
+    """A listed title as the job has it: "(Verified job)" / "with verification", the selected card's "<title>:
+    Selected, <title>", a leading "Selected," and the title said twice ("T T", "T: T", "T - T") are taken off."""
+    t = " ".join(str(title or "").split())
+    for _ in range(3):
+        before = t
+        t = _VERIFIED.sub("", t).strip()
+        if m := _SELECTED_MID.match(t):
+            t = m.group(1)
+        t = _SELECTED_LEAD.sub("", t)
+        if m := _TWICE.match(t):
+            t = m.group(1)
+        t = t.strip()
+        if t == before:
+            break
+    return t
 
 
 def script() -> str:
@@ -97,7 +120,7 @@ def records(data) -> list[Record]:
         if not re.fullmatch(r"[a-z][a-z0-9]{1,20}", source):
             raise ValueError(f"a record's source is a site's name (linkedin, indeed), got {source!r}")
         jid = str(raw.get("id") or raw.get("linkedin_id") or raw.get("jk") or "").strip()
-        r = Record(title=_VERIFIED.sub("", " ".join(str(raw.get("title") or "").split())),
+        r = Record(title=clean_title(raw.get("title")),
                    company=linkedin.unrated(" ".join(str(raw.get("company") or "").split())),
                    location=" ".join(str(raw.get("location") or "").split()), pay=str(raw.get("pay") or "").strip(),
                    posted=str(raw.get("posted") or "").strip(), id=re.sub(r"[^\w-]", "", jid), source=source)
@@ -126,9 +149,17 @@ class Seen:
 
 def _counts(seen: list[Seen]) -> dict:
     n = {o: sum(s.outcome == o for s in seen) for o in ("tracked", "earlier", "added", "unplaced")}
-    base = n["tracked"] + n["added"] + n["unplaced"]
-    return {"seen": sum(n.values()), **n, "coverage": round(n["tracked"] / base, 4) if base else None,
-            "upgraded": sum(s.upgraded for s in seen)}
+    total = sum(n.values())
+    return {"seen": total, **n, "coverage": round(n["tracked"] / total, 4) if total else None,
+            "upgraded": sum(s.upgraded for s in seen), "note": _repeat_note(n, total)}
+
+
+def _repeat_note(n: dict, total: int) -> str | None:
+    """Said when most of a list was added by an earlier import: this run found little that's new."""
+    if not total or n["earlier"] * 2 < total:
+        return None
+    new = n["added"] + n["unplaced"]
+    return "Same list as before: nothing new" if not new else f"Mostly the same list as before: {new} new"
 
 
 @dataclass
@@ -142,8 +173,8 @@ class Result:
         return list(dict.fromkeys(s.record.source for s in self.seen))
 
     def counts(self, source: str | None = None) -> dict:
-        """seen, tracked, earlier, added, unplaced and coverage (tracked over the jobs earlier imports aside, 0-1,
-        None with none): one site's, or all of them."""
+        """seen, tracked, earlier, added, unplaced, coverage (tracked over seen, 0-1, None with none) and note
+        (said when most of the list was added by an earlier import): one site's, or all of them."""
         return _counts([s for s in self.seen if source is None or s.record.source == source])
 
     def to_dict(self) -> dict:
@@ -174,7 +205,7 @@ def take(cfg, store: Store, recs: list[Record], dry_run: bool = False, page=None
     if follow:
         def wants_board(r: Record) -> bool:
             key = taker.tracked.match(r.company, r.title, r.url)
-            return not key or ((_via(store, key) or "").endswith("-list") and _textless(taker.tracked.jobs[key]))
+            return not key or ((_via(store, key) or "").endswith("-list") and _textless(taker.tracked.get(key)))
         missing = list(dict.fromkeys(r.company for r in recs if wants_board(r)))
         with ThreadPoolExecutor(max_workers=LOOKUP_WORKERS) as pool:
             list(pool.map(_quietly(taker.resolver.company_boards), missing))
@@ -288,9 +319,11 @@ def summary(r: Result) -> str:
                    + (f" ({c['earlier']} added by an earlier import)" if c["earlier"] else "")
                    + f", {c['added']} {'would be ' if r.dry_run else ''}added from the company's board, "
                    f"{c['unplaced']} couldn't place.")
-        if base := c["tracked"] + c["added"] + c["unplaced"]:
-            out.append(f"  Coverage: {_pct(c['coverage'])} ({c['tracked']} of {base} were tracked before this "
-                       "import" + ("; earlier imports aside" if c["earlier"] else "") + ").")
+        if c["seen"]:
+            out.append(f"  Coverage: {_pct(c['coverage'])} ({c['tracked']} of {c['seen']} were found by jobwatch "
+                       "itself, not added by an import).")
+        if c["note"]:
+            out.append(f"  {c['note']}.")
         if c["upgraded"]:
             were = "would be" if r.dry_run else "were"
             out.append(f"  {c['upgraded']} job(s) an earlier import kept as listed {were} moved onto their "
@@ -335,14 +368,15 @@ def history_text(runs: list[dict], now: datetime | None = None) -> str:
     for h in runs[-40:]:
         out.append(f"{_local_when(h['at']):<16}  {_name(h['source']):<8}  {h['seen']:>4}  "
                    f"{h['tracked']:>7}  {h['earlier']:>7}  {h['added']:>5}  {h['unplaced']:>8}  "
-                   f"{_pct(h['coverage']):>8}")
+                   # worked out here: older rows kept another figure
+                   f"{_pct(h['tracked'] / h['seen'] if h['seen'] else None):>8}")
     now = now or datetime.now(timezone.utc)
     for src in dict.fromkeys(h["source"] for h in runs):
         mine = [h for h in runs if h["source"] == src]
         week = [h for h in mine if _utc(h["at"]) >= now - timedelta(days=7)]
         for label, rows in (("last 7 days", week), ("all runs", mine)):
             own = sum(h["tracked"] for h in rows)
-            base = own + sum(h["added"] + h["unplaced"] for h in rows)
-            out.append(f"{_name(src)}, {label}: {_pct(own / base if base else None)} of {base} job(s) were tracked "
-                       "before their import.")
+            base = sum(h["seen"] for h in rows)
+            out.append(f"{_name(src)}, {label}: {_pct(own / base if base else None)} of {base} job(s) were found "
+                       "by jobwatch itself.")
     return "\n".join(out)

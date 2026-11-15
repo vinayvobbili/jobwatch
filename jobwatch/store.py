@@ -7,7 +7,7 @@ import json
 import re
 import secrets
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -295,6 +295,29 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60] or "job"
 
 
+class Scores(Mapping):
+    """Fit scores by job key, kept as the stored JSON text and read when a key is asked for: a list of a hundred
+    thousand jobs asks for a few hundred, and parsed they'd take several times the text's size in memory."""
+
+    def __init__(self, raw: dict[str, tuple[str, bool]] | None = None):
+        self._raw = raw or {}  # key -> (result JSON, stale)
+
+    def __getitem__(self, key: str) -> dict:
+        text, stale = self._raw[key]
+        fit = json.loads(text)
+        return {**fit, "stale": True} if stale else fit
+
+    def __iter__(self):
+        return iter(self._raw)
+
+    def __len__(self) -> int:
+        return len(self._raw)
+
+    def over(self, other: Mapping) -> Scores:
+        """These, with `other`'s (a Scores) in place of any with the same key."""
+        return Scores({**self._raw, **other._raw})
+
+
 class Store:
     def __init__(self, path: Path | str, read_only: bool = False):
         """read_only opens an existing state file without changing it, not even to add a newer version's columns
@@ -470,14 +493,25 @@ class Store:
     def jobs(self, statuses: tuple[str, ...] | None = None, include_closed: bool = False) -> list[tuple[Job, dict]]:
         """(job, record) pairs; the record has status, first_seen, closed, note, and for applications applied_at,
         next_step and follow_up."""
+        return list(self.iter_jobs(statuses, include_closed))
+
+    def job(self, key: str) -> Job | None:
+        """The job with exactly this key, or None."""
+        row = self.db.execute("SELECT data FROM jobs WHERE key=?", (key,)).fetchone()
+        return Job.from_dict(json.loads(row["data"])) if row else None
+
+    def iter_jobs(self, statuses: tuple[str, ...] | None = None, include_closed: bool = False
+                  ) -> Iterator[tuple[Job, dict]]:
+        """jobs(), one pair at a time: a caller that keeps only some of them (the filters pass a few hundred of a
+        hundred thousand) never holds the rest, with their postings' text, in memory at once."""
         sql, args = "SELECT * FROM jobs WHERE 1=1", []
         if statuses:
             sql += f" AND status IN ({','.join('?' * len(statuses))})"
             args += list(statuses)
         if not include_closed:
             sql += " AND closed IS NULL"
-        rows = self.db.execute(sql + " ORDER BY first_seen DESC", args).fetchall()
-        return [(Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}) for r in rows]
+        for r in self.db.execute(sql + " ORDER BY first_seen DESC", args):
+            yield Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}
 
     def search(self, text: str) -> list[tuple[Job, dict]]:
         """Jobs at any status, closed too, whose note, next step, via, title, company, key or link contains the
@@ -766,12 +800,12 @@ class Store:
                               (key, resume)).fetchone()
         return json.loads(row["result"]) if row else None
 
-    def scores(self, resume: str) -> dict[str, dict]:
+    def scores(self, resume: str) -> Scores:
         """Every stored fit score for this resume, by job key: one query for a whole list of jobs."""
-        return {r["key"]: json.loads(r["result"])
-                for r in self.db.execute(f"SELECT key, result FROM scores WHERE resume=? AND {_SCORED}", (resume,))}
+        return Scores({r["key"]: (r["result"], False) for r in self.db.execute(
+            f"SELECT key, result FROM scores WHERE resume=? AND {_SCORED}", (resume,))})
 
-    def stale_scores(self, resume: str) -> dict[str, dict]:
+    def stale_scores(self, resume: str) -> Scores:
         """Per job key, the newest fit score made for the same resume content and prompts as `resume` by another
         scorer (see score.resume_family), marked "stale": true. For showing something until the job is scored
         afresh; never in place of a current score."""
@@ -780,8 +814,8 @@ class Store:
         for r in self.db.execute(f"SELECT key, resume, result FROM scores WHERE resume!=? AND resume LIKE ? "
                                  f"AND {_SCORED} ORDER BY scored_at", (resume, ":".join(family.split(":")[:2]) + "%")):
             if resume_family(r["resume"]) == family:
-                out[r["key"]] = {**json.loads(r["result"]), "stale": True}
-        return out
+                out[r["key"]] = (r["result"], True)
+        return Scores(out)
 
     def drop_incomplete_scores(self, resume: str) -> list[str]:
         """Remove this resume's current scores whose model left requirements unjudged (see score.unjudged), saved

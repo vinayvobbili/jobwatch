@@ -103,10 +103,36 @@ def test_a_list_seen_again_counts_earlier_imports_apart(setup):
     joblist.take(cfg, store, joblist.records(LIST))
     r = joblist.take(cfg, store, joblist.records(LIST))
     assert [s.outcome for s in r.seen] == ["tracked", "earlier", "earlier", "earlier"]
-    assert r.counts()["coverage"] == 1.0  # of the jobs it hadn't been handed before
+    # jobwatch's own share, not lifted by what the first import added: the same 1 of 4
+    assert r.counts()["coverage"] == 0.25 and r.counts()["note"] == "Same list as before: nothing new"
+    assert "Same list as before: nothing new." in joblist.summary(r)
+    assert joblist.take(cfg, store, joblist.records(LIST[:1])).counts()["note"] is None
     runs = joblist.history(cfg)
-    assert [h["coverage"] for h in runs] == [0.25, 1.0] and runs[0]["unplaced_jobs"][0]["company"] == \
+    assert [h["coverage"] for h in runs[:2]] == [0.25, 0.25] and runs[0]["unplaced_jobs"][0]["company"] == \
         "Vandelay Industries"
+    assert "LinkedIn, all runs: 33% of 9 job(s) were found by jobwatch itself" in joblist.history_text(runs)
+
+
+@pytest.mark.parametrize("raw, clean", [
+    ("Principal, Initech Automation - Remote: Selected, Principal, Initech Automation - Remote",
+     "Principal, Initech Automation - Remote"),
+    ("Platform Engineer: Selected, Platform Engineer with verification", "Platform Engineer"),
+    ("Selected, Platform Engineer", "Platform Engineer"),
+    ("Platform Engineer Platform Engineer", "Platform Engineer"),
+    ("Platform Engineer: Platform Engineer (Verified job)", "Platform Engineer"),
+    ("Platform Engineer with verification", "Platform Engineer"),
+    ("Senior Data Engineer, Data Platform", "Senior Data Engineer, Data Platform"),
+])
+def test_clean_title_drops_linkedins_screen_reader_text(raw, clean):
+    assert joblist.clean_title(raw) == clean
+    assert joblist.records([rec(raw, "Initech")])[0].title == clean
+
+
+def test_a_selected_cards_title_still_matches_the_tracked_job(setup):
+    cfg, store = setup
+    junk = "Sr. Software Engineer - Platform: Selected, Sr. Software Engineer - Platform"
+    r = joblist.take(cfg, store, joblist.records([rec(junk, "Acme, Inc.", id="4100000001")]))
+    assert [(s.outcome, s.key) for s in r.seen] == [("tracked", "greenhouse:acme:101")]
 
 
 def test_a_job_kept_as_listed_moves_onto_its_board_when_a_later_import_finds_it(setup, web):
@@ -142,7 +168,7 @@ def test_coverage_is_per_site(setup):
     cfg, store = setup
     r = joblist.take(cfg, store, joblist.records([
         LIST[0], rec("Platform Engineer", "Hooli", "Remote", id="a1b2c3d4e5f60001", source="indeed")]))
-    assert r.counts("linkedin")["coverage"] == 1.0 and r.counts("indeed")["coverage"] == 0.0
+    assert r.counts("linkedin")["coverage"] == 1.0 and r.counts("indeed")["coverage"] == 0.0  # no earlier import
     assert set(r.to_dict()["by_source"]) == {"linkedin", "indeed"}
     assert store.find("greenhouse:hooli:500")[1]["via"] == "indeed-list"
     assert [h["source"] for h in joblist.history(cfg)] == ["linkedin", "indeed"]

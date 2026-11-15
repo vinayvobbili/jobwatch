@@ -281,6 +281,7 @@
     const sites = Object.entries(r.by_source || {}).map(([src, c]) => h('div', { class: 'row' },
       h('div', { class: 'q', textContent: `${SITE[src] || src}: ${c.seen} jobs` }),
       h('span', { class: 'badge details', textContent: `Coverage ${pct(c.coverage)}` }),
+      c.note ? h('div', { class: 'meta', textContent: c.note }) : null,
       h('div', { class: 'meta', textContent: `${c.tracked + c.earlier} already tracked${c.earlier ? ` (${c.earlier} by an earlier import)` : ''}, ${c.added} added from the company's board, ${c.unplaced} couldn't place.` })));
     const unplaced = (r.unplaced || []).map((j, i) => h('div', { class: 'row', style: `animation-delay:${Math.min(i, 12) * 25}ms` },
       h('div', { class: 'q', textContent: `${j.company}: ${j.title}` }),

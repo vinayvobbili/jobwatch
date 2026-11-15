@@ -63,7 +63,26 @@
     };
   }
   const squash = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-  const cleanTitle = (line) => squash(line).replace(VERIFIED, '').trim();
+  // LinkedIn's screen-reader text sneaks into a card's text: "<title>: Selected, <title>" on the selected card, a
+  // leading "Selected,", the title twice, "with verification". The same rules as jobwatch/joblist.py clean_title.
+  const SELECTED_MID = /^(.+?)\s*:\s*selected\s*,\s*(.+)$/i;
+  const SELECTED_LEAD = /^selected\s*[,:]\s*/i;
+  const TWICE = /^(.{3,}?)(?:\s*[:|–—-]\s*|\s+)\1$/i;
+  function cleanTitle(line) {
+    let t = squash(line);
+    for (let i = 0; i < 3; i += 1) {
+      const before = t;
+      t = t.replace(VERIFIED, '').trim();
+      const m = t.match(SELECTED_MID);
+      if (m) t = m[1];
+      t = t.replace(SELECTED_LEAD, '');
+      const twice = t.match(TWICE);
+      if (twice) t = twice[1];
+      t = t.trim();
+      if (t === before) break;
+    }
+    return t;
+  }
   const linesOf = (text) => String(text || '').split('\n').map(squash).filter((s) => s && s !== '·');
   const textOf = (el) => (el ? squash(el.innerText !== undefined ? el.innerText : el.textContent) : '');
 
@@ -72,9 +91,9 @@
   const LI_PREFIX = 'job-card-component-ref-';
 
   /** One LinkedIn card's text as a record, or null when it has no title and company (a card not rendered yet). */
-  function parseLinkedIn(text, id) {
+  function parseLinkedIn(text, id, titleText) {
     const lines = linesOf(text);
-    const title = cleanTitle(lines[0]);
+    const title = cleanTitle(titleText || lines[0]);
     let i = 1;
     if (lines[i] !== undefined && cleanTitle(lines[i]) === title) i += 1;
     const company = lines[i] || '';
@@ -89,6 +108,18 @@
       pay: payLine ? payLine.match(PAY)[0].trim() : PAY.test(location) ? location.match(PAY)[0].trim() : '',
       posted: postedLine ? postedLine.match(POSTED)[1] : '',
     };
+  }
+
+  /** The title as the card shows it: its visible node (screen-reader copies come with it in the card's text), or ''. */
+  function linkedinTitle(el) {
+    const sels = ['a[href*="/jobs/view/"] [aria-hidden="true"]', '.job-card-list__title--link [aria-hidden="true"]',
+      '.job-card-list__title', 'a[href*="/jobs/view/"] strong'];
+    for (const sel of sels) {
+      const node = el.querySelector && el.querySelector(sel);
+      const t = node ? cleanTitle(textOf(node)) : '';
+      if (t) return t;
+    }
+    return '';
   }
 
   function linkedinCards(doc) {
@@ -158,7 +189,7 @@
   // --- The site's page ------------------------------------------------------------------------------------------
 
   const SITES = {
-    linkedin: { cards: linkedinCards, parse: (el, id) => parseLinkedIn(el.innerText || '', id), spa: true },
+    linkedin: { cards: linkedinCards, parse: (el, id) => parseLinkedIn(el.innerText || '', id, linkedinTitle(el)), spa: true },
     indeed: { cards: indeedCards, parse: parseIndeed, spa: false },
   };
 

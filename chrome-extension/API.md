@@ -137,7 +137,7 @@ and sends them all at once:
 
 jobwatch counts the jobs it already tracks and looks for each new one on the company's own board (see
 `jobwatch import-list`); that can take a few minutes for a long list. → the counts overall and per site
-(`seen`, `tracked`, `earlier`, `added`, `unplaced`, `coverage` from 0 to 1, `by_source`), `summary` (the text
+(`seen`, `tracked`, `earlier`, `added`, `unplaced`, `coverage` from 0 to 1: tracked over seen, `note`: "Same list as before: nothing new" when most was imported earlier, `by_source`), `summary` (the text
 `jobwatch import-list` prints), and `added` and `unplaced`: the jobs, each with `company`, `title`, `location`, `key`
 and, for unplaced ones, `why`. No records: `400`.
 

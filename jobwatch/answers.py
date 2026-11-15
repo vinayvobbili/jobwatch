@@ -27,7 +27,7 @@ def find(store: Store, query: str = "", full: bool = False) -> list[dict]:
     the start of its latest answer (a query for it gives the whole one; full: the whole one at once) and asked (how
     many applications had it)."""
     words = query.lower().split()
-    rows = [(job, rec) for job, rec in store.jobs(include_closed=True)
+    rows = [(job, rec) for job, rec in store.iter_jobs(include_closed=True)
             if (Package(store.packages, job.key).dir / MANIFEST).is_file()]
     rows.sort(key=lambda r: (_when(r[1]), r[1].get("first_seen") or ""), reverse=True)
     found, seen = [], {}

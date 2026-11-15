@@ -639,7 +639,7 @@ def check_daily(store: Store, get=None, page=None, watched: list[Board] = (), li
     done, now = store.posting_checked(), datetime.now(timezone.utc)
     on = {(b.source, b.board) for b in watched}
     rows = store.jobs(CHECKED, include_closed=True) + [
-        (j, r) for j, r in store.jobs(("new", "shown"))
+        (j, r) for j, r in store.iter_jobs(("new", "shown"))
         if (j.source == MANUAL and j.url and not linkedin.job_id(j.url)
             and not any(s in j.url for s in alerts.UNREAD_SITES))
         or (j.source in sources.SOURCES and not sources.SOURCES[j.source].many_companies
@@ -911,7 +911,7 @@ def _spread(entries: list[Entry], now: datetime | None = None) -> list[Entry]:
 def _fits(store: Store, rid: str) -> dict[str, dict]:
     """The fit scores to list and filter jobs by: the current one, else the last one made by another scorer
     (marked "stale") until the job is scored afresh, so a changed scorer doesn't make every job look unscored."""
-    return {**store.stale_scores(rid), **store.scores(rid)}
+    return store.stale_scores(rid).over(store.scores(rid))
 
 
 def job_fit(cfg: Config, store: Store, key: str) -> dict | None:
@@ -933,7 +933,7 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
     fits = _fits(store, rid) if rid else {}
     index = dupes.Index(store)
-    for job, record in store.jobs(statuses):
+    for job, record in store.iter_jobs(statuses):  # one at a time: most are filtered out
         fit = fits.get(job.key)
         f = cfg.filters_for(job)
         judged = None if redo_passes and fit and (fit.get("fallback") or fit.get("stale")) else fit
@@ -1312,7 +1312,7 @@ def hidden(cfg: Config, store: Store, kind: str = "", limit: int = 100, since: d
     companies = dict.fromkeys(cfg.filters.exclude_companies, 0)
     jobs = []
     fits = _fits(store, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
-    for job, rec in store.jobs(("new", "shown")):  # Today's statuses: see build_digest
+    for job, rec in store.iter_jobs(("new", "shown")):  # Today's statuses: see build_digest
         if (since and datetime.fromisoformat(rec["first_seen"]) < since) or (source and job.source != source):
             continue
         f = cfg.filters_for(job)

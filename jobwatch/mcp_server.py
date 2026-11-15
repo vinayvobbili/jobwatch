@@ -566,9 +566,10 @@ def import_job_list(
     (they decide what get_digest shows); one not found there is tracked from the list's text and comes back as
     unplaced, with why (no board found, or not on it): find its board with find_board and watch it, and the alerts
     backfill fills it in. Each company counts toward list_suggested_boards. Returns counts (seen, tracked: jobwatch
-    had it, earlier: an earlier import added it, added, unplaced) and coverage (tracked over the jobs earlier imports
-    aside, 0-1), overall and by_source, and each job with its outcome and key. Every run is kept: `jobwatch
-    import-list --history` shows the trend per site."""
+    had it, earlier: an earlier import added it, added, unplaced) and coverage (jobwatch's own share: tracked over
+    seen, 0-1; jobs an earlier import added count as missed), with a note when most of the list was imported
+    before ("Same list as before: nothing new"), overall and by_source, and each
+    job with its outcome and key. Every run is kept: `jobwatch import-list --history` shows the trend per site."""
     cfg, store = _open()
     try:
         return joblist.take(cfg, store, joblist.records(records), dry_run=dry_run).to_dict()

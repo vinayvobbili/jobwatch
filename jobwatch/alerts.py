@@ -845,12 +845,20 @@ class _Tracked:
     def __init__(self, store: Store):
         self.links: dict[str, str] = {}
         self.names: dict[str, list[tuple[str, str]]] = {}
-        self.jobs: dict[str, Job] = {}
-        for job, _ in store.jobs(include_closed=True):
-            self.add(job)
+        self.store = store
+        self.added: dict[str, Job] = {}  # the jobs taken in since; the rest are read from the store when asked for
+        for job, _ in store.iter_jobs(include_closed=True):  # indexed one at a time: never all held (postings' text)
+            self.index(job)
+
+    def get(self, key: str) -> Job | None:
+        """The tracked job with this key (read from the store unless it came in since)."""
+        return self.added.get(key) or self.store.job(key)
 
     def add(self, job: Job):
-        self.jobs[job.key] = job
+        self.added[job.key] = job
+        self.index(job)
+
+    def index(self, job: Job):
         if job.url:
             self.links.setdefault(clean_link(job.url), job.key)
         for name in {job.display_company, job.company}:
@@ -1041,7 +1049,7 @@ class Taker:
                 f.how in ("board", "posting") and tracked.match(f.job.display_company, f.job.title, f.job.url))
         if known:
             emailed = f.job
-            f.result, f.job = "known", tracked.jobs.get(known) or store.find(known)[0]
+            f.result, f.job = "known", tracked.get(known) or store.find(known)[0]
             # A job tracked from an earlier email, which this one says is remote (its alert searched only
             # remote jobs)
             if f.job.source == MANUAL and emailed.remote and not f.job.remote:

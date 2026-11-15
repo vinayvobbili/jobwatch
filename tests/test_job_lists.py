@@ -35,10 +35,14 @@ console.log(JSON.stringify([
   L.parseLinkedIn("Senior Platform Engineer  (Verified job)\\nSenior Platform Engineer \\n\\nInitech\\n\\nBoulder, CO (Remote)\\n\\nPosted 9 minutes ago\\n9 minutes ago\\n\\n · \\n\\nBe an early applicant\\n\\n · \\n\\nEasy Apply", "4100000001"),
   L.parseLinkedIn("Platform Engineer (Verified job)\\nPlatform Engineer \\n\\nGlobex\\n\\nBoulder, CO\\n\\n$120K/yr - $180K/yr\\n\\n401(k) benefit\\n\\n1 connection works here\\n\\nSaved", "4100000002"),
   L.parseLinkedIn("", "4100000003"),
+  L.parseLinkedIn("Staff Engineer, Initech Tools - Remote: Selected, Staff Engineer, Initech Tools - Remote\\nStaff Engineer, Initech Tools - Remote with verification\\n\\nGlobex\\n\\nBoulder, CO", "4100000004"),
+  L.parseLinkedIn("Selected, Staff Engineer\\nStaff Engineer\\n\\nGlobex\\n\\nBoulder, CO", "4100000005", "Staff Engineer"),
 ]));""", encoding="utf-8")
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    first, second, empty = json.loads(r.stdout)
+    first, second, empty, selected, hinted = json.loads(r.stdout)
+    assert selected["title"] == "Staff Engineer, Initech Tools - Remote" and selected["company"] == "Globex"
+    assert hinted["title"] == "Staff Engineer" and hinted["company"] == "Globex"
     assert first == {"source": "linkedin", "id": "4100000001", "title": "Senior Platform Engineer",
                      "company": "Initech", "location": "Boulder, CO (Remote)", "pay": "", "posted": "9 minutes ago"}
     assert second["pay"] == "$120K/yr - $180K/yr" and second["location"] == "Boulder, CO" and not second["posted"]

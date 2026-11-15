@@ -251,8 +251,10 @@ not what's tracked. One that isn't found there (no board under the company's nam
 tracked from the list's text and listed as couldn't place; watch its company's board and `jobwatch alerts --backfill
 --again` fills it in. Every company seen counts toward [Companies to watch](#companies-to-watch).
 
-Coverage is per site, and leaves out jobs an earlier import added, so a list imported twice doesn't count as caught
-the second time. Each run is kept in `import-list.jsonl` next to the database.
+Coverage is per site: the share of the list's jobs jobwatch had found on its own (tracked, over everything seen). A
+job an earlier import added counts as one jobwatch missed, so a list imported twice shows the same coverage, and
+says "Same list as before: nothing new" when most of it was imported already. Titles lose LinkedIn's screen-reader
+text ("with verification", "Selected, ...", the title said twice) before they're matched. Each run is kept in `import-list.jsonl` next to the database.
 
 ## Status updates from application emails
 
