@@ -41,13 +41,53 @@ def test_stat_tiles_link_to_page_sections():
         assert f'id="{anchor}"' in PAGE, anchor
 
 
-def test_install_line_lists_the_options_before_running_jobwatch():
+def test_install_notes_cover_every_system_uv_and_claude_desktop():
     sub = re.search(r'<p class="sub">(.*?)</p>', PAGE.split('<div class="cta">')[1], re.S).group(1)
-    assert sub.index("pipx install jobwatch") < sub.index("pip install jobwatch") < sub.index("Then run")
-    assert "Or <code>" not in sub
-    assert ('target="_blank" rel="noopener" href="https://pipx.pypa.io/stable/how-to/install-pipx.html">'
-            'Setup guide</a>') in sub
-    assert "New to Python?" in sub
+    assert sub.startswith("Works on Mac, Windows and Linux. Then run <code>jobwatch</code> and your page opens "
+                          "in the browser.")
+    assert ('No Python? <a target="_blank" rel="noopener" '
+            'href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a> (one line, any system), '
+            'then run <code>uv tool install jobwatch</code>; uv brings Python with it.') in sub
+    desktop = PAGE.split('<div class="uv" id="uv">')[1].split('<div class="tiles">')[0]
+    assert ('Use Claude Desktop? Install it with <a target="_blank" rel="noopener" '
+            'href="https://github.com/vinayvobbili/jobwatch/releases/latest">one click</a> instead.') in desktop
+    assert "MIT licensed" not in PAGE  # the license is named in the footer only
+    assert "jobwatch is open source under the MIT license." in PAGE.split("<footer")[1]
+    assert "pipx.pypa.io" not in PAGE
+
+
+def test_uv_commands_have_a_system_switch_that_starts_on_the_visitors_system():
+    uv = PAGE.split('<div class="uv" id="uv">')[1].split('<p class="sub">Use Claude Desktop?')[0]
+    hero = PAGE.split('<div class="hero">')[1]
+    assert hero.index('<p class="sub">Works on') < hero.index('id="uv"') < hero.index('<div class="tiles">')
+    # two panels, one per system, each with the install line and its alternative, then the shared next steps
+    assert "<code>curl -LsSf https://astral.sh/uv/install.sh | sh</code>" in uv
+    assert "<code>brew install uv</code>" in uv
+    assert '<code>powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code>' in uv
+    assert "<code>winget install astral-sh.uv</code>" in uv
+    assert uv.index("brew install uv") < uv.index("powershell -c") < uv.index("uv tool install jobwatch")
+    assert uv.index("uv tool install jobwatch") < uv.rindex("<code>jobwatch</code>")
+    # a copy button on every command, in the hero's style, and a keyboard-reachable switch
+    assert uv.count("<code>") == 6 and uv.count("<button type=\"button\" aria-live=\"polite\">Copy</button>") == 6
+    seg = re.search(r'<div class="seg" role="group" aria-label="Your system" hidden>(.*?)</div>', uv, re.S).group(1)
+    assert re.findall(r'<button type="button" data-os="(\w+)" aria-pressed="(\w+)">([^<]+)</button>', seg) == [
+        ("unix", "true", "Mac / Linux"), ("win", "false", "Windows")]
+    # no script: the switch stays hidden and both systems show, each under its name
+    assert '<span class="os">Mac / Linux</span>' in uv and '<span class="os">Windows</span>' in uv
+    assert ".uv.js .os { display: none; }" in PAGE
+    script = PAGE.split("// the uv commands show")[1].split("document.querySelectorAll")[0]
+    assert "osSwitch.hidden = false" in script and "navigator.platform || navigator.userAgent" in script
+    assert "put(" not in script and "localStorage" not in script  # nothing is remembered
+    assert '".install button, .uvrow button"' in PAGE
+
+
+def test_install_box_is_shown_again_after_the_privacy_section_and_both_copy_buttons_speak():
+    assert PAGE.index('id="private"') < PAGE.index('<section class="again" id="install">') < PAGE.index("<h2>Read more")
+    again = PAGE.split('<section class="again" id="install">')[1].split("</section>")[0]
+    assert "<code>pipx install jobwatch</code>" in again
+    buttons = re.findall(r'<div class="install">.*?<button[^>]*>', PAGE)
+    assert len(buttons) == 2 and all('aria-live="polite"' in b for b in buttons)
+    assert PAGE.count('id="cmd"') == 1  # the second box has no id: the copy script reads the code beside the button
 
 
 def test_readme_has_the_uv_line():
@@ -85,19 +125,23 @@ def test_display_settings_live_in_a_gear_popover():
 
 
 def test_private_tile_and_demo_data_caption():
-    assert '<a class="tile" href="#private"><b>Private</b><span>nothing leaves your computer</span></a>' in PAGE
+    assert '<a class="tile" href="#private"><b>Private</b><span>your data stays on your computer</span></a>' in PAGE
     assert "made from made-up data" not in PAGE
-    assert "The whole app in a minute and a half.</p>" in PAGE
+    assert "The whole app in under two minutes.</p>" in PAGE
     # once under the tour, once under the tutorials
     assert PAGE.count("Demo data: the companies and jobs shown are invented.") == 2
 
 
-def test_hero_leads_with_the_pipx_install():
-    hero = PAGE.split('<div class="cta">')[1]
-    assert hero.index('id="cmd"') < hero.index('id="add-chrome"')
+def test_hero_has_the_pipx_install_and_no_chrome_button_but_step_3_says_the_app_comes_first():
+    hero = PAGE.split('<div class="hero">')[1].split('<div class="tiles">')[0]
+    assert 'id="cmd"' in hero and "Add to Chrome" not in PAGE and 'id="add-chrome"' not in PAGE
+    assert "chromewebstore" not in hero
+    step = PAGE.split('<article class="step" id="apply">')[1].split("</article>")[0]
+    assert "The extension works with the jobwatch app on your computer; install the app first." in step
+    assert ">Chrome extension</a>" in step and "chromewebstore.google.com" in step
 
 
-def test_tutorials_section_serves_local_videos_lazily():
+def test_tutorials_section_serves_local_videos_lazily_with_captions_and_a_name():
     cards = re.findall(r'<video controls preload="none" playsinline poster="([^"]+)" src="([^"]+)"', PAGE)
     assert len(cards) == 8  # seven tutorials and the whole-app tour
     assert PAGE.count('class="step"') == 6
@@ -107,6 +151,86 @@ def test_tutorials_section_serves_local_videos_lazily():
         assert "user-attachments" not in src
     for _, src in cards:
         assert "autoplay" not in src
+    videos = re.findall(r"<video\b[^>]*>.*?</video>", PAGE)
+    assert len(videos) == 8
+    for video, (_, src) in zip(videos, cards, strict=True):
+        vtt = src.removesuffix(".mp4") + ".vtt"
+        assert re.search(r'aria-label="Video: [^"]+"', video), video
+        assert f'<track kind="captions" srclang="en" label="English" src="{vtt}" default>' in video
+        assert (ROOT / "site" / vtt).read_text(encoding="utf-8").startswith("WEBVTT"), vtt
+
+
+def test_hero_says_who_it_is_for_in_plain_words():
+    hero = PAGE.split('<div class="hero">')[1].split('<div class="cta">')[0]
+    assert ("For anyone applying to lots of companies: jobwatch checks the companies' own job pages for you every "
+            "day, ranks the new openings against your resume, and keeps track of every application. It helps fill "
+            "in forms, and you always press Submit. Free, and it runs on your own computer.") in hero
+    tiles = re.findall(r'<a class="tile" href="#\w+"><b>(.*?)</b><span>(.*?)</span></a>', PAGE)
+    assert tiles[:2] == [("Company job pages", "checked daily, straight from the source"),
+                         ("Fit score", "how well each job matches your resume, 0 to 100")]
+    for jargon in ("Ashby", "Boards</b>"):
+        assert jargon not in PAGE.split('<div class="tiles">')[1].split("</div>")[0]
+
+
+def test_tiles_keep_white_text_readable():
+    assert "#ec4899" not in PAGE and "#0ea5b7" not in PAGE  # their white text was under 4.5:1
+    assert "#db2777" in PAGE and "#0e7490" in PAGE
+
+
+def test_the_problem_comes_right_after_the_hero_and_the_overview_before_the_demo():
+    pain = re.findall(r"<p>(.*?)</p>", PAGE.split('<div class="pain">')[1].split("</div>")[0])
+    assert pain == ["Twelve job boards, checked by hand.", "Forty tabs and a spreadsheet that's always out of date.",
+                    "The same form, typed again and again."]
+    order = [PAGE.index(m) for m in ('<div class="hero">', '<div class="pain">', "<h2>What it does</h2>",
+                                     "<h2>See it work</h2>", "<h2>How it works</h2>", "<h2>Private by design</h2>",
+                                     '<section class="again"', "<h2>Read more</h2>", 'id="join"')]
+    assert order == sorted(order)
+
+
+def test_steps_and_cards_use_plain_words():
+    step = lambda name: PAGE.split(f'<article class="step" id="{name}">')[1].split("</article>")[0]  # noqa: E731
+    assert "It opens in your browser and asks four quick things" in step("setup")
+    assert "Then you land on Today, your daily list of new matches." in step("setup")
+    assert "Status emails from companies become suggested updates you confirm with one click" in step("track")
+    assert "Status emails update it" not in PAGE
+    assert "a mock interview, and a practice video to rehearse with." in step("prep")
+    assert "<h3>Compare and ask</h3>" in step("extras") and "Extras" not in PAGE
+    assert "so you know whom to ask for a referral." in step("extras")
+    assert '<p class="lead">Six parts, each with a short video.</p>' in PAGE
+    cards = PAGE.split("<h2>What it does</h2>")[1].split("</section>")[0]
+    assert "Hacker News' monthly hiring thread and investor job boards" in cards
+    assert "with the posted pay range when there is one. It reads only what sites allow." in cards
+    for jargon in ("robots.txt", "real pay ranges", "VC portfolio", "HN's Who is hiring", "drill video"):
+        assert jargon not in PAGE, jargon
+    assert "<h3>Works with your AI assistant</h3>" in cards
+    assert "the standard way to plug tools into AI chat" in cards and "An MCP server for" not in PAGE
+
+
+def test_privacy_caption_and_local_model_notes_avoid_jargon():
+    cap = re.search(r'<p class="cap">(.*?)</p>', PAGE).group(1)
+    assert cap == ("Where the AI runs: Claude's API, Google's Antigravity (with your own subscription) or a model on "
+                   "your own computer; a backup if one runs out; and exactly what leaves your computer.")
+    assert ("<summary><span>Want the AI to run on your own computer? Pick a model by how much memory (RAM) you "
+            "have.</span>") in PAGE
+    assert "We tested only the 16 GB row: it matched 28 of 29 hand-checked scores, at about 27 seconds a job." in PAGE
+
+
+def test_read_more_pills_are_in_reading_order_with_plain_names():
+    links = PAGE.split("<h2>Read more</h2>")[1].split("</section>")[0]
+    names = re.findall(r"<a [^>]*>(.*?)</a>", links)
+    assert names == ["The guide", "Applying", "Tracking", "Interview prep", "The jobwatch page (dashboard)",
+                     "Use it from Claude (MCP)", "GitHub", "PyPI", "MCP Registry entry"]
+    # jobwatch's own entry, not the registry's home page
+    assert "registry.modelcontextprotocol.io/v0.1/servers/io.github.vinayvobbili%2Fjobwatch/versions/latest" in links
+    server = (ROOT / "server.json").read_text(encoding="utf-8")
+    assert '"name": "io.github.vinayvobbili/jobwatch"' in server
+
+
+def test_join_in_cards_name_no_price_and_do_not_guilt():
+    join = PAGE.split('id="join"')[1].split("</section>")[0]
+    assert "<h3>Buy me a coffee</h3><p>If it landed you an interview, a coffee says thanks.</p>" in join
+    assert "$1" not in PAGE
+    assert "jobwatch collects no usage data, so a star is how I know it helped." in join
 
 
 def test_local_model_table_is_in_a_closed_details_that_a_hash_opens():
@@ -122,7 +246,7 @@ def test_join_in_links_and_lazy_giscus_comments():
                  "https://ko-fi.com/vinayvobbili"):
         assert f'href="{href}"' in join
     assert 'id="comments"' in join
-    script = PAGE.split("// comments (giscus")[1].split('document.getElementById("copy")')[0]
+    script = PAGE.split("// comments (giscus")[1].split('document.querySelectorAll(".install button")')[0]
     assert 'src = "https://giscus.app/client.js"' in script
     assert "IntersectionObserver" in script  # client.js loads only when the section scrolls into view
     for want in ('repo: "vinayvobbili/vinayvobbili.github.io"', '"repo-id": "R_kgDOSZD6Ig"',

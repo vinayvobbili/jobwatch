@@ -93,8 +93,31 @@ a.btn[target]::after { content: "\2197"; font-weight: 700; }
 .install button { border: 0; border-radius: 9px; padding: 8px 14px; cursor: pointer; font: inherit; font-weight: 650;
   font-size: 14px; background: var(--chip); color: var(--text); transition: background .15s; }
 .install button:hover { background: var(--line); }
-.sub { margin-top: 14px; font-size: 14px; color: var(--muted); }
-.sub .setup, .sub .setup a { color: var(--muted); } .sub .setup a::after { content: "\2197"; margin-left: 3px; }
+.sub { margin: 14px auto 0; max-width: 560px; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+.sub a { color: var(--muted); } .sub a::after { content: "\2197"; margin-left: 3px; }
+.sub a[href^="#"]::after { content: none; }
+/* the uv commands: a Mac / Linux | Windows switch (without script both systems show, each under its name) */
+.uv { margin: 12px auto 0; max-width: 560px; display: grid; gap: 8px; justify-items: center; }
+.uv .seg { padding: 2px; border-radius: 10px; } .uv .seg[hidden], .uvpanel[hidden] { display: none; }
+.uv .seg button { padding: 3px 11px; font-size: 12.5px; }
+.uv .seg button:focus-visible, .uvrow button:focus-visible { outline: 3px solid var(--accent-2); outline-offset: 2px; }
+.uvpanel { display: grid; gap: 6px; justify-items: center; max-width: 100%; }
+.uv.js .os { display: none; }
+.os { font-size: 11.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.uvrow { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 4px 4px 12px; border-radius: 10px;
+  background: var(--panel-solid); border: 1px solid var(--line); font-size: 13px; text-align: left; }
+.uvrow .or { color: var(--muted); font-size: 12.5px; }
+.uvrow code { background: none; border: 0; padding: 0; font-size: 13px; }
+.uvrow button { flex: none; border: 0; border-radius: 7px; padding: 4px 10px; cursor: pointer; font: inherit; font-size: 12.5px;
+  font-weight: 650; background: var(--chip); color: var(--text); transition: background .15s; }
+.uvrow button:hover { background: var(--line); }
+.pain { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; padding: 14px 0 6px; }
+.pain p { margin: 0; padding: 14px 18px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line);
+  border-left: 4px solid var(--accent-2); box-shadow: var(--shadow); font-weight: 650; letter-spacing: -.01em;
+  animation: rise .6s both; }
+.pain p:nth-child(2) { animation-delay: .08s; } .pain p:nth-child(3) { animation-delay: .16s; }
+.again { text-align: center; }
+.again h2 { margin-bottom: 4px; }
 .demo-note { margin: 8px 0 0; text-align: center; font-size: 13px; color: var(--muted); }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 30px 0 10px; text-align: left; }
@@ -109,8 +132,8 @@ a.btn[target]::after { content: "\2197"; font-weight: 700; }
 .tile span { font-size: 13px; opacity: .92; }
 .tile:nth-child(1) { background: linear-gradient(135deg, #5a5cf2, #8a5cf6); }
 .tile:nth-child(2) { background: linear-gradient(135deg, #8a5cf6, #c23ee0); animation-delay: .08s; }
-.tile:nth-child(3) { background: linear-gradient(135deg, #c23ee0, #ec4899); animation-delay: .16s; }
-.tile:nth-child(4) { background: linear-gradient(135deg, #0ea5b7, #5a5cf2); animation-delay: .24s; }
+.tile:nth-child(3) { background: linear-gradient(135deg, #c23ee0, #db2777); animation-delay: .16s; }
+.tile:nth-child(4) { background: linear-gradient(135deg, #0e7490, #5a5cf2); animation-delay: .24s; }
 
 section { padding: 36px 0; }
 h2 { margin: 0 0 18px; font-size: clamp(24px, 4vw, 34px); letter-spacing: -.03em; }
@@ -165,7 +188,7 @@ section[id], .private { scroll-margin-top: 70px; }
   background: var(--grad); }
 .private li b { color: var(--text); }
 .private h3 { position: relative; margin: 26px 0 4px; font-size: 18px; letter-spacing: -.01em; }
-.private .sub { position: relative; margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+.private .sub { position: relative; margin: 0 0 12px; max-width: none; color: var(--muted); font-size: 15px; }
 .models { position: relative; width: 100%; border-collapse: collapse; font-size: 14px; }
 .models th, .models td { text-align: left; padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: top; }
 .models th { color: var(--muted); font-weight: 600; font-size: 12.5px; border-top: 0; }
@@ -250,92 +273,117 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
   <div class="hero">
     <h1 class="grad">jobwatch</h1>
     <p class="tag grad">Your job hunt shouldn't be a full-time job.</p>
-    <p class="what">jobwatch watches company job boards, ranks new roles, tracks applications and fills application forms, and runs on your own computer.</p>
+    <p class="what">For anyone applying to lots of companies: jobwatch checks the companies' own job pages for you every day, ranks the new openings against your resume, and keeps track of every application. It helps fill in forms, and you always press Submit. Free, and it runs on your own computer.</p>
     <div class="cta">
-      <div class="install"><code id="cmd">pipx install jobwatch</code><button id="copy" type="button">Copy</button></div>
-      <a class="btn" id="add-chrome" target="_blank" rel="noopener" href="https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi">Add to Chrome</a>
+      <div class="install"><code id="cmd">pipx install jobwatch</code><button id="copy" type="button" aria-live="polite">Copy</button></div>
     </div>
-    <p class="sub"><code>pipx install jobwatch</code>, or <code>pip install jobwatch</code>. Then run <code>jobwatch</code>. MIT licensed. <span class="setup">&middot; New to Python? <a target="_blank" rel="noopener" href="https://pipx.pypa.io/stable/how-to/install-pipx.html">Setup guide</a></span></p>
+    <p class="sub">Works on Mac, Windows and Linux. Then run <code>jobwatch</code> and your page opens in the browser.<br>No Python? <a target="_blank" rel="noopener" href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a> (one line, any system), then run <code>uv tool install jobwatch</code>; uv brings Python with it.</p>
+    <div class="uv" id="uv">
+      <div class="seg" role="group" aria-label="Your system" hidden>
+        <button type="button" data-os="unix" aria-pressed="true">Mac / Linux</button><button type="button" data-os="win" aria-pressed="false">Windows</button>
+      </div>
+      <div class="uvpanel" data-os="unix">
+        <span class="os">Mac / Linux</span>
+        <div class="uvrow"><code>curl -LsSf https://astral.sh/uv/install.sh | sh</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">or</span><code>brew install uv</code><button type="button" aria-live="polite">Copy</button></div>
+      </div>
+      <div class="uvpanel" data-os="win">
+        <span class="os">Windows</span>
+        <div class="uvrow"><code>powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">or</span><code>winget install astral-sh.uv</code><button type="button" aria-live="polite">Copy</button></div>
+      </div>
+      <div class="uvpanel">
+        <div class="uvrow"><span class="or">then</span><code>uv tool install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+        <div class="uvrow"><span class="or">then</span><code>jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+      </div>
+    </div>
+    <p class="sub">Use Claude Desktop? Install it with <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/releases/latest">one click</a> instead.</p>
     <div class="tiles">
-      <a class="tile" href="#find"><b>Boards</b><span>Greenhouse, Lever, Ashby, Workday and more</span></a>
-      <a class="tile" href="#find"><b>Fit score</b><span>out of 100, against your resume</span></a>
+      <a class="tile" href="#find"><b>Company job pages</b><span>checked daily, straight from the source</span></a>
+      <a class="tile" href="#find"><b>Fit score</b><span>how well each job matches your resume, 0 to 100</span></a>
       <a class="tile" href="#track"><b>Every stage</b><span>tracked through to an offer</span></a>
-      <a class="tile" href="#private"><b>Private</b><span>nothing leaves your computer</span></a>
+      <a class="tile" href="#private"><b>Private</b><span>your data stays on your computer</span></a>
     </div>
   </div>
 
+  <div class="pain">
+    <p>Twelve job boards, checked by hand.</p>
+    <p>Forty tabs and a spreadsheet that's always out of date.</p>
+    <p>The same form, typed again and again.</p>
+  </div>
+
+  <section>
+    <h2>What it does</h2>
+    <div class="grid">
+      <div class="card"><span class="badge">Watch</span><h3>Watches company boards</h3><p>Checks the job pages companies run themselves (Greenhouse, Lever, Workday and more), Hacker News' monthly hiring thread and investor job boards. Openings come straight from the source, with the posted pay range when there is one. It reads only what sites allow.</p></div>
+      <div class="card"><span class="badge">Rank</span><h3>A short, ranked daily digest</h3><p>Only new roles that match you, optionally fit-scored against your resume: must-haves met, gaps, a score out of 100.</p></div>
+      <div class="card"><span class="badge">Apply</span><h3>Apply queue and form fill</h3><p>A short queue of jobs to apply to, with a resume tailored per job. The Chrome extension fills the form from your details and earlier answers.</p></div>
+      <div class="card"><span class="badge">Track</span><h3>Tracking through to an offer</h3><p>Every stage and next step, status emails from companies as suggested updates you confirm with one click, follow-ups for applications that go quiet, a calendar feed, and offers side by side.</p></div>
+      <div class="card"><span class="badge">Prep</span><h3>Interview prep</h3><p>A prep sheet for each interview, answers drafted from your own stories, a mock interview and a practice video to rehearse with.</p></div>
+      <div class="card"><span class="badge">Agents</span><h3>Works with your AI assistant</h3><p>Ask Claude (or another assistant that supports MCP, the standard way to plug tools into AI chat) to check new jobs, queue them or prep you for a call.</p></div>
+    </div>
+  </section>
+
   <section>
     <h2>See it work</h2>
-    <div class="video"><video controls preload="none" playsinline poster="jobwatch-demo.jpg" src="jobwatch-demo.mp4"></video></div>
-    <p class="lead center">The whole app in a minute and a half.</p>
+    <div class="video"><video controls preload="none" playsinline poster="jobwatch-demo.jpg" src="jobwatch-demo.mp4" aria-label="Video: the whole jobwatch app (2 min)"><track kind="captions" srclang="en" label="English" src="jobwatch-demo.vtt" default></video></div>
+    <p class="lead center">The whole app in under two minutes.</p>
     <p class="demo-note">Demo data: the companies and jobs shown are invented.</p>
   </section>
 
   <section id="how">
     <h2>How it works</h2>
-    <p class="lead">Six steps, each with a short video.</p>
+    <p class="lead">Six parts, each with a short video.</p>
     <div class="steps">
       <article class="step" id="setup">
         <div class="copy"><span class="num">1</span><h3>Set up</h3>
-          <p>Install it with pipx, run <code>jobwatch</code> and follow the four onboarding steps. Your page opens on Today.</p></div>
-        <video controls preload="none" playsinline poster="tutorials/jobwatch-01-getting-started.jpg" src="tutorials/jobwatch-01-getting-started.mp4"></video>
+          <p>Install jobwatch and run it. It opens in your browser and asks four quick things: about you and your resume, the jobs you want, the companies to watch, and where the AI runs. Then you land on Today, your daily list of new matches.</p></div>
+        <video controls preload="none" playsinline poster="tutorials/jobwatch-01-getting-started.jpg" src="tutorials/jobwatch-01-getting-started.mp4" aria-label="Video: Set up jobwatch (1 min)"><track kind="captions" srclang="en" label="English" src="tutorials/jobwatch-01-getting-started.vtt" default></video>
       </article>
       <article class="step" id="find">
         <div class="copy"><span class="num">2</span><h3>Find</h3>
           <p>jobwatch watches the company boards you pick. Today ranks the new roles, optionally with a fit score against your resume.</p></div>
-        <video controls preload="none" playsinline poster="tutorials/jobwatch-02-daily-routine.jpg" src="tutorials/jobwatch-02-daily-routine.mp4"></video>
+        <video controls preload="none" playsinline poster="tutorials/jobwatch-02-daily-routine.jpg" src="tutorials/jobwatch-02-daily-routine.mp4" aria-label="Video: Find new jobs every day (1 min)"><track kind="captions" srclang="en" label="English" src="tutorials/jobwatch-02-daily-routine.vtt" default></video>
       </article>
       <article class="step" id="apply">
         <div class="copy"><span class="num">3</span><h3>Apply</h3>
-          <p>A short queue of jobs to apply to, with a resume tailored per job. The Chrome extension fills application forms from your details and earlier answers. You press Submit.</p>
+          <p>A short queue of jobs to apply to, with a resume tailored per job. The Chrome extension fills application forms from your details and earlier answers. You press Submit. The extension works with the jobwatch app on your computer; install the app first.</p>
           <div class="acts"><a class="btn" target="_blank" rel="noopener" href="https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi">Chrome extension</a>
             <button class="btn" type="button" id="yt-btn">Watch the extension demo</button></div>
           <div class="yt" id="yt" hidden></div></div>
-        <video controls preload="none" playsinline poster="tutorials/jobwatch-04-applying.jpg" src="tutorials/jobwatch-04-applying.mp4"></video>
+        <video controls preload="none" playsinline poster="tutorials/jobwatch-04-applying.jpg" src="tutorials/jobwatch-04-applying.mp4" aria-label="Video: Apply with a resume tailored to each job (1 min)"><track kind="captions" srclang="en" label="English" src="tutorials/jobwatch-04-applying.vtt" default></video>
       </article>
       <article class="step" id="track">
         <div class="copy"><span class="num">4</span><h3>Track</h3>
-          <p>Every stage through to an offer, with the next step and a follow-up day. Status emails update it, and applications that go quiet get flagged.</p></div>
-        <video controls preload="none" playsinline poster="tutorials/jobwatch-05-tracking.jpg" src="tutorials/jobwatch-05-tracking.mp4"></video>
+          <p>Every stage through to an offer, with the next step and a follow-up day. Status emails from companies become suggested updates you confirm with one click, and applications that go quiet get flagged.</p></div>
+        <video controls preload="none" playsinline poster="tutorials/jobwatch-05-tracking.jpg" src="tutorials/jobwatch-05-tracking.mp4" aria-label="Video: Track every application (1 min)"><track kind="captions" srclang="en" label="English" src="tutorials/jobwatch-05-tracking.vtt" default></video>
       </article>
       <article class="step" id="prep">
         <div class="copy"><span class="num">5</span><h3>Prep</h3>
-          <p>A prep sheet per interview, built from the resume and answers you sent, with answers drafted from your own stories, a mock interview and a drill video.</p></div>
-        <video controls preload="none" playsinline poster="tutorials/jobwatch-06-interview-prep.jpg" src="tutorials/jobwatch-06-interview-prep.mp4"></video>
+          <p>A prep sheet for each interview: what the posting asks next to your closest resume line, answers drafted from your own stories, a mock interview, and a practice video to rehearse with.</p></div>
+        <video controls preload="none" playsinline poster="tutorials/jobwatch-06-interview-prep.jpg" src="tutorials/jobwatch-06-interview-prep.mp4" aria-label="Video: Prepare for an interview (under a minute)"><track kind="captions" srclang="en" label="English" src="tutorials/jobwatch-06-interview-prep.vtt" default></video>
       </article>
       <article class="step" id="extras">
-        <div class="copy"><span class="num">6</span><h3>Extras</h3>
-          <p>Compare pay, career value and company health side by side, and see who you know at each company.</p></div>
-        <video controls preload="none" playsinline poster="tutorials/jobwatch-07-comps-and-contacts.jpg" src="tutorials/jobwatch-07-comps-and-contacts.mp4"></video>
+        <div class="copy"><span class="num">6</span><h3>Compare and ask</h3>
+          <p>Put your live options side by side (pay, fit, career value, company health) and see who you know at each company, so you know whom to ask for a referral.</p></div>
+        <video controls preload="none" playsinline poster="tutorials/jobwatch-07-comps-and-contacts.jpg" src="tutorials/jobwatch-07-comps-and-contacts.mp4" aria-label="Video: Compare your options and find referrals (under a minute)"><track kind="captions" srclang="en" label="English" src="tutorials/jobwatch-07-comps-and-contacts.vtt" default></video>
       </article>
     </div>
     <p class="demo-note">Demo data: the companies and jobs shown are invented.</p>
   </section>
 
   <section>
-    <h2>What it does</h2>
-    <div class="grid">
-      <div class="card"><span class="badge">Watch</span><h3>Watches company boards</h3><p>Greenhouse, Lever, Ashby, Workable, Workday and more, plus HN's Who is hiring and VC portfolio boards. Fresh roles, real pay ranges, robots.txt respected.</p></div>
-      <div class="card"><span class="badge">Rank</span><h3>A short, ranked daily digest</h3><p>Only new roles that match you, optionally fit-scored against your resume: must-haves met, gaps, a score out of 100.</p></div>
-      <div class="card"><span class="badge">Apply</span><h3>Apply queue and form fill</h3><p>A short queue of jobs to apply to, with a resume tailored per job. The Chrome extension fills the form from your details and earlier answers.</p></div>
-      <div class="card"><span class="badge">Track</span><h3>Tracking through to an offer</h3><p>Every stage, the next step, follow-ups for applications that go quiet, a calendar feed, and offers side by side.</p></div>
-      <div class="card"><span class="badge">Prep</span><h3>Interview prep</h3><p>A prep sheet per interview, answers drafted from your own stories, a mock interview and a drill video.</p></div>
-      <div class="card"><span class="badge">Agents</span><h3>An MCP server for your AI assistants</h3><p>An MCP server and an agent skill, so Claude and other assistants can run your search with you.</p></div>
-    </div>
-  </section>
-
-  <section>
     <div class="private" id="private">
       <h2>Private by design</h2>
-      <video controls preload="none" playsinline poster="tutorials/jobwatch-03-where-the-ai-runs.jpg" src="tutorials/jobwatch-03-where-the-ai-runs.mp4"></video>
-      <p class="cap">Where the AI runs: the Claude API, Antigravity or this Mac, the fallback chain, and what leaves your computer.</p>
+      <video controls preload="none" playsinline poster="tutorials/jobwatch-03-where-the-ai-runs.jpg" src="tutorials/jobwatch-03-where-the-ai-runs.mp4" aria-label="Video: Where the AI runs, and what leaves your computer (1 min)"><track kind="captions" srclang="en" label="English" src="tutorials/jobwatch-03-where-the-ai-runs.vtt" default></video>
+      <p class="cap">Where the AI runs: Claude's API, Google's Antigravity (with your own subscription) or a model on your own computer; a backup if one runs out; and exactly what leaves your computer.</p>
       <ul>
         <li><b>It runs on your computer.</b> jobwatch sends nothing home.</li>
-        <li><b>Your data stays on your machine.</b> The only exception is a model you choose for fit scores and chat; on-device models send nothing anywhere.</li>
+        <li><b>Your data stays on your machine.</b> The one exception is the AI model for fit scores and chat, if you pick a cloud one. Pick a local model and nothing leaves at all.</li>
         <li><b>You press Submit yourself.</b> jobwatch finds and ranks. It never applies for you.</li>
       </ul>
       <details class="models-box" id="local-models">
-      <summary><span>Which local model to run? See suggestions by memory</span><svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+      <summary><span>Want the AI to run on your own computer? Pick a model by how much memory (RAM) you have.</span><svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
       <p class="sub">Sized by how much memory your computer has. jobwatch's page suggests one for yours.</p>
       <table class="models">
         <thead><tr><th>Memory</th><th>Mac with Apple Silicon (MLX, runs on the GPU via Metal)</th><th>Windows, Linux or Intel Mac (Ollama)</th><th>Also good: Gemma 4 (MLX first, then Ollama)</th></tr></thead>
@@ -360,33 +408,41 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
       </table>
       <p class="models-note">On computers with 48 GB or more, 35B-A3B-style models (about 3B active parameters) are the fastest choice.</p>
       <p class="models-note">On an Apple Silicon Mac, use MLX: it's built for Apple's chips and runs faster than Ollama there. Ollama is for computers MLX doesn't run on.</p>
-      <p class="models-note">Only the 16 GB row was tested: on a 16 GB Apple Silicon Mac it agreed with 28 of 29 expected verdicts, at 27 seconds a call and 7.5 GB of memory. The other rows are suggested, sized by memory. The Gemma 4 column is an alternative for each row; on Apple Silicon it is served the same way as the Qwen beside it.</p>
+      <p class="models-note">We tested only the 16 GB row: it matched 28 of 29 hand-checked scores, at about 27 seconds a job. The other rows are suggested, sized by memory. The Gemma 4 column is an alternative for each row; on Apple Silicon it is served the same way as the Qwen beside it.</p>
       </details>
     </div>
+  </section>
+
+  <section class="again" id="install">
+    <h2>Install it</h2>
+    <div class="cta">
+      <div class="install"><code>pipx install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
+    </div>
+    <p class="sub">Then run <code>jobwatch</code>. <a href="#top">Other ways to install</a></p>
   </section>
 
   <section>
     <h2>Read more</h2>
     <div class="links">
-      <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch">GitHub</a>
-      <a target="_blank" rel="noopener" href="https://pypi.org/project/jobwatch/">PyPI</a>
       <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/README.md">The guide</a>
-      <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/the-page.md">The page</a>
       <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/applying.md">Applying</a>
       <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/tracking.md">Tracking</a>
       <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/interview-prep.md">Interview prep</a>
-      <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/mcp.md">MCP server</a>
-      <a target="_blank" rel="noopener" href="https://registry.modelcontextprotocol.io">MCP Registry</a>
+      <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/the-page.md">The jobwatch page (dashboard)</a>
+      <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/mcp.md">Use it from Claude (MCP)</a>
+      <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch">GitHub</a>
+      <a target="_blank" rel="noopener" href="https://pypi.org/project/jobwatch/">PyPI</a>
+      <a target="_blank" rel="noopener" href="https://registry.modelcontextprotocol.io/v0.1/servers/io.github.vinayvobbili%2Fjobwatch/versions/latest">MCP Registry entry</a>
     </div>
   </section>
   <section class="join" id="join">
     <h2>Join in</h2>
     <div class="grid">
-      <div class="card"><span class="emoji" aria-hidden="true">&#11088;</span><h3>Star it on GitHub</h3><p>jobwatch sends nothing home, so stars are the only count of who uses it.</p>
+      <div class="card"><span class="emoji" aria-hidden="true">&#11088;</span><h3>Star it on GitHub</h3><p>jobwatch collects no usage data, so a star is how I know it helped.</p>
         <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch">Star on GitHub</a></div>
       <div class="card"><span class="emoji" aria-hidden="true">&#128161;</span><h3>Issues and PRs welcome</h3><p>Found a bug, a board that won't load, or want to add something? Open an issue or send a pull request.</p>
         <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch/issues">Issues</a> &middot; <a target="_blank" rel="noopener" href="https://github.com/vinayvobbili/jobwatch">The repo</a></div>
-      <div class="card"><span class="emoji" aria-hidden="true">&#9749;</span><h3>A $1 coffee</h3><p>If it landed you an interview, a coffee says so.</p>
+      <div class="card"><span class="emoji" aria-hidden="true">&#9749;</span><h3>Buy me a coffee</h3><p>If it landed you an interview, a coffee says thanks.</p>
         <a target="_blank" rel="noopener" href="https://ko-fi.com/vinayvobbili">Buy a coffee</a></div>
     </div>
     <div id="comments"></div>
@@ -474,12 +530,22 @@ new IntersectionObserver((entries, io) => {
   document.getElementById("comments").appendChild(s);
 }, { rootMargin: "300px" }).observe(document.getElementById("comments"));
 
-document.getElementById("copy").addEventListener("click", async e => {
-  const b = e.currentTarget;
-  try { await navigator.clipboard.writeText(document.getElementById("cmd").textContent); b.textContent = "Copied"; }
+// the uv commands show the visitor's system first (nothing is remembered); without script both systems show
+const uv = document.getElementById("uv"), osSwitch = uv.querySelector(".seg");
+const pickOs = os => {
+  uv.querySelectorAll(".uvpanel[data-os]").forEach(p => { p.hidden = p.dataset.os !== os; });
+  osSwitch.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.os === os)));
+};
+osSwitch.hidden = false;
+uv.classList.add("js");
+osSwitch.addEventListener("click", e => { const b = e.target.closest("button"); if (b) pickOs(b.dataset.os); });
+pickOs(/win/i.test(navigator.platform || navigator.userAgent) ? "win" : "unix");
+
+document.querySelectorAll(".install button, .uvrow button").forEach(b => b.addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(b.parentElement.querySelector("code").textContent); b.textContent = "Copied"; }
   catch (err) { b.textContent = "Press Ctrl+C"; }
   setTimeout(() => { b.textContent = "Copy"; }, 1800);
-});
+}));
 </script>
 </body>
 </html>
