@@ -6,8 +6,9 @@ Amazon, Oracle, SmartRecruiters, Avature, iCIMS, Jobvite, careers sites with a j
 the new roles that match what you're looking for, and keeps track of every application from the day you apply
 to the offer. It never applies for you: Claude fills in what it can and you press Submit.
 
-The plugin bundles jobwatch's MCP server (its tools) and a skill that tells Claude the daily routine: what to
-check, what to show you first, and what never to do without you.
+This plugin is jobwatch's skill: it tells Claude the daily routine (what to check, what to show you first, and
+what never to do without you). The tools that do the work come from jobwatch's MCP server, which runs on your
+computer, so your job search stays there. The first time, Claude offers to add it for you.
 
 ## Use it
 
@@ -21,25 +22,28 @@ Ask Claude things like:
 
 The first time, Claude asks which companies to watch and creates your watchlist.
 
-## Install
+## Add the tools
 
-First install [uv](https://docs.astral.sh/uv/getting-started/installation/), once: the plugin starts
-jobwatch with uv's `uvx`, which downloads jobwatch from PyPI on first use. On a Mac or Linux, in Terminal:
-`curl -LsSf https://astral.sh/uv/install.sh | sh` (or `brew install uv`); on Windows, in PowerShell:
-`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`. Then restart Claude.
+First install [uv](https://docs.astral.sh/uv/getting-started/installation/), once: on a Mac or Linux, in
+Terminal, `curl -LsSf https://astral.sh/uv/install.sh | sh` (or `brew install uv`); on Windows, in PowerShell,
+`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`. Then, in Claude Code (or
+the Claude app's Code tab), add jobwatch's server and restart Claude:
 
-Claude Code: `/plugin marketplace add vinayvobbili/jobwatch`, then `/plugin install jobwatch@jobwatch`. In the Claude app: Settings → Plugins → Add → Add marketplace, `vinayvobbili/jobwatch`; the tools work in
-the Code tab and in Cowork. Chat runs plugins in the cloud, where the skill loads but the tools can't reach
-your computer. Claude Desktop versions with Settings → Extensions can install the jobwatch desktop extension
-(`jobwatch-<version>.mcpb` from the [releases page](https://github.com/vinayvobbili/jobwatch/releases))
-instead.
+```
+claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/.config/jobwatch/config.yaml -- uvx --from jobwatch jobwatch-mcp
+```
+
+Or install the plugin with the server built in instead of this one: `/plugin marketplace add vinayvobbili/jobwatch`,
+then `/plugin install jobwatch@jobwatch`. Claude Desktop versions with Settings → Extensions can install the
+jobwatch desktop extension (`jobwatch-<version>.mcpb` from the
+[releases page](https://github.com/vinayvobbili/jobwatch/releases)). A chat whose plugins run in the cloud has
+the skill but not the tools, because they can't reach your computer: use the Code tab or Cowork.
 
 ## Your data
 
-Everything jobwatch keeps stays on your computer: the watchlist file (by default
-`~/.config/jobwatch/config.yaml`, set in the plugin's options), the tracker database in
-`~/.local/share/jobwatch/`, and a cache in `~/.cache/jobwatch/`. Nothing is sent to the plugin's author or any
-analytics service.
+Everything jobwatch keeps stays on your computer: the watchlist file (`~/.config/jobwatch/config.yaml` in the
+command above), the tracker database in `~/.local/share/jobwatch/`, and a cache in `~/.cache/jobwatch/`. Nothing
+is sent to the plugin's author or any analytics service.
 
 What it fetches over the network:
 
