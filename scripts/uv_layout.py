@@ -4,7 +4,9 @@
 
 Prints each note paragraph's lines (a line that is a single word is flagged WIDOW) and, per width, scheme and system,
 whether the page scrolls sideways and whether the Copy buttons share one column and one width. The exit code is 1 on
-any problem. With OUT_DIR it also writes a crop of the uv card per case. Needs playwright.
+any problem. With OUT_DIR it also writes a crop of the uv card per case. It also checks the closing "Ready to try it?"
+section: no one-word line, and the Install button scrolls the card into view below the sticky header (with OUT_DIR, a
+crop of the section per width and scheme). Needs playwright.
 """
 
 import functools
@@ -43,6 +45,23 @@ TABLE = """() => {
 }"""
 
 
+CLOSING = """() => {
+  const sec = document.querySelector('#get-started');
+  const sub = sec.querySelector('.sub'); const lines = new Set();
+  const range = document.createRange(); range.selectNodeContents(sub);
+  [...range.getClientRects()].forEach(r => lines.add(Math.round(r.top)));
+  const btn = sec.querySelector('.btn.primary');
+  return {commands: sec.querySelectorAll('code').length, subLines: lines.size, buttonColor: getComputedStyle(btn).color,
+          buttonText: btn.textContent, pageOverflow: document.documentElement.scrollWidth - innerWidth};
+}"""
+
+LANDING = """() => {
+  const card = document.querySelector('#install-card').getBoundingClientRect();
+  const bar = document.querySelector('header').getBoundingClientRect();
+  return {cardBelowHeader: card.top >= bar.bottom - 1, cardTop: Math.round(card.top)};
+}"""
+
+
 def check(site: Path, out: Path | None = None) -> bool:
     from playwright.sync_api import sync_playwright
 
@@ -75,7 +94,22 @@ def check(site: Path, out: Path | None = None) -> bool:
                                 or not m["cardInsideViewport"])
                         if out:
                             out.mkdir(parents=True, exist_ok=True)
-                            page.locator("#uv").screenshot(path=str(out / f"uv-{scheme}-{width}-{os_name}.png"))
+                            shot = out / f"uv-{scheme}-{width}-{os_name}.png"
+                            page.locator("#install-card").screenshot(path=str(shot))
+                for scheme in ("light", "dark"):
+                    page.emulate_media(color_scheme=scheme)
+                    closing = page.evaluate(CLOSING)
+                    print(width, scheme, "closing", closing)
+                    bad |= closing["commands"] > 0 or closing["subLines"] > 2 or closing["pageOverflow"] > 0
+                    if out:
+                        page.locator("#get-started").screenshot(path=str(out / f"closing-{scheme}-{width}.png"))
+                page.evaluate("scrollTo(0, document.body.scrollHeight)")
+                page.wait_for_timeout(300)
+                page.click("#get-started .btn.primary")
+                page.wait_for_timeout(1500)
+                landing = page.evaluate(LANDING)
+                print(width, "landing", landing)
+                bad |= not landing["cardBelowHeader"]
                 page.close()
             browser.close()
     finally:

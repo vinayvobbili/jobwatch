@@ -104,7 +104,8 @@ a.btn[target]::after { content: "\2197"; font-weight: 700; }
 .sub a { color: var(--muted); } .sub a::after { content: "\2197"; margin-left: 3px; }
 .sub a[href^="#"]::after { content: none; }
 /* the uv commands: a Mac / Linux | Windows switch (without script both systems show, each under its name) */
-.uv { margin: 30px auto 0; max-width: 700px; display: grid; gap: 8px; justify-items: center; }
+.uv { margin: 30px auto 0; max-width: 700px; display: grid; gap: 8px; justify-items: center; scroll-margin-top: 90px; }
+.uv:focus { outline: none; }
 .uv .seg { padding: 2px; border-radius: 10px; } .uv .seg[hidden], .uvpanel[hidden] { display: none; }
 .uv .seg button { padding: 3px 11px; font-size: 12.5px; }
 .uv .seg button:focus-visible, .uvrow button:focus-visible { outline: 3px solid var(--accent-2); outline-offset: 2px; }
@@ -138,6 +139,7 @@ a.btn[target]::after { content: "\2197"; font-weight: 700; }
 .pain p:nth-child(2) { animation-delay: .08s; } .pain p:nth-child(3) { animation-delay: .16s; }
 .again { text-align: center; }
 .again h2 { margin-bottom: 4px; }
+.again .cta { margin-top: 22px; }
 .demo-note { margin: 8px 0 0; text-align: center; font-size: 13px; color: var(--muted); }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 30px 0 10px; text-align: left; }
@@ -294,7 +296,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
     <h1 aria-label="jobwatch">job<span class="grad">watch</span></h1>
     <p class="tag grad">Your job hunt shouldn't be a full-time job.</p>
     <p class="what">For anyone applying to lots of companies: jobwatch checks the companies' own job pages for you every day, ranks the new openings against your resume, and keeps track of every application. It helps fill forms, and you always press Submit.<span class="free">Free, and it runs on your own computer.</span></p>
-    <div class="uv">
+    <div class="uv" id="install-card" tabindex="-1">
       <div class="seg" role="group" aria-label="Your system" hidden>
         <button type="button" data-os="unix" aria-pressed="true">Mac / Linux</button><button type="button" data-os="win" aria-pressed="false">Windows</button>
       </div>
@@ -432,28 +434,13 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
     </div>
   </section>
 
-  <section class="again" id="install">
-    <h2>Install it</h2>
-    <div class="uv">
-      <div class="seg" role="group" aria-label="Your system" hidden>
-        <button type="button" data-os="unix" aria-pressed="true">Mac / Linux</button><button type="button" data-os="win" aria-pressed="false">Windows</button>
-      </div>
-      <div class="uvpanel" data-os="unix">
-        <span class="os">Mac / Linux</span>
-        <div class="uvrow"><span class="or"><a target="_blank" rel="noopener" href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a></span><code>curl -LsSf https://astral.sh/uv/install.sh | sh</code><button type="button" aria-live="polite">Copy</button></div>
-        <div class="uvrow"><span class="or">or</span><code>brew install uv</code><button type="button" aria-live="polite">Copy</button></div>
-        <div class="uvrow"><span class="or">Then</span><code>uv tool install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
-        <div class="uvrow"><span class="or">Then run</span><code>jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
-      </div>
-      <div class="uvpanel" data-os="win">
-        <span class="os">Windows</span>
-        <div class="uvrow"><span class="or"><a target="_blank" rel="noopener" href="https://docs.astral.sh/uv/getting-started/installation/">Install uv</a></span><code>powershell -c "irm https://astral.sh/uv/install.ps1 | iex"</code><button type="button" aria-live="polite">Copy</button></div>
-        <div class="uvrow"><span class="or">or</span><code>winget install astral-sh.uv</code><button type="button" aria-live="polite">Copy</button></div>
-        <div class="uvrow"><span class="or">Then</span><code>uv tool install jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
-        <div class="uvrow"><span class="or">Then run</span><code>jobwatch</code><button type="button" aria-live="polite">Copy</button></div>
-      </div>
+  <section class="again" id="get-started">
+    <h2>Ready to try it?</h2>
+    <p class="sub">Install takes about a minute and works on Mac, Windows and Linux.</p>
+    <div class="cta">
+      <a class="btn primary" href="#install-card">Install jobwatch</a>
+      <a class="btn" href="#setup">Watch the setup video</a>
     </div>
-    <p class="sub pipx">Already have Python? <code class="cmd">pipx install jobwatch</code><button type="button" aria-live="polite">Copy</button> works too.</p>
   </section>
 
   <section>
@@ -566,7 +553,7 @@ new IntersectionObserver((entries, io) => {
 }, { rootMargin: "300px" }).observe(document.getElementById("comments"));
 
 // the uv commands show the visitor's system first (nothing is remembered); without script both systems show
-document.querySelectorAll(".uv").forEach(uv => {   // each card switches on its own
+document.querySelectorAll(".uv").forEach(uv => {   // the one card switches system
   const osSwitch = uv.querySelector(".seg");
   const pickOs = os => {
     uv.querySelectorAll(".uvpanel[data-os]").forEach(p => { p.hidden = p.dataset.os !== os; });

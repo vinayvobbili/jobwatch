@@ -16,7 +16,7 @@ def test_web_store_item_id_matches_listing():
 
 def test_install_command_matches_readme():
     cmd = re.search(r"(?:^|`)(pipx install jobwatch)\b", README, re.M).group(1)
-    assert PAGE.count(f'<code class="cmd">{cmd}</code>') == 2  # the hero's line and the install section's
+    assert PAGE.count(f'<code class="cmd">{cmd}</code>') == 1  # the hero's line, the page's only install card
 
 
 def test_page_is_self_contained():
@@ -42,13 +42,13 @@ def test_stat_tiles_link_to_page_sections():
 
 
 def test_install_notes_cover_every_system_uv_and_claude_desktop():
-    notes = PAGE.split('<div class="uv">')[1].split('<div class="tiles">')[0]
+    notes = PAGE.split('<div class="uv" id="install-card" tabindex="-1">')[1].split('<div class="tiles">')[0]
     assert ('<p class="sub">Works on Mac, Windows and Linux. Run <code>jobwatch</code> and your page opens '
             'in the browser.</p>') in notes
     assert ('<p class="sub pipx">Already have Python? <code class="cmd">pipx install jobwatch</code>'
             '<button type="button" aria-live="polite">Copy</button> works too.</p>') in notes
     assert "uv brings Python" not in PAGE and "No Python?" not in PAGE
-    assert PAGE.count("getting-started/installation/") == 4  # "Install uv" links the docs, per system, in both cards
+    assert PAGE.count("getting-started/installation/") == 2  # "Install uv" links the docs, once per system
     desktop = notes
     assert ('Use Claude Desktop? <a target="_blank" rel="noopener" '
             'href="https://github.com/vinayvobbili/jobwatch/releases/latest/download/jobwatch.mcpb">'
@@ -59,7 +59,7 @@ def test_install_notes_cover_every_system_uv_and_claude_desktop():
 
 
 def test_uv_commands_have_a_system_switch_that_starts_on_the_visitors_system():
-    uv = PAGE.split('<div class="uv">')[1].split('<p class="sub">Works on')[0]
+    uv = PAGE.split('<div class="uv" id="install-card" tabindex="-1">')[1].split('<p class="sub">Works on')[0]
     hero = PAGE.split('<div class="hero">')[1]
     assert hero.index('class="uv"') < hero.index('<p class="sub">Works on') < hero.index('<div class="tiles">')
     # two panels, one per system, each with the install line and its alternative, then the shared next steps
@@ -88,7 +88,7 @@ def test_uv_commands_have_a_system_switch_that_starts_on_the_visitors_system():
     assert "osSwitch.hidden = false" in script and "navigator.platform || navigator.userAgent" in script
     assert "put(" not in script and "localStorage" not in script  # nothing is remembered
     assert '".uvrow button, .pipx button"' in PAGE
-    assert 'querySelectorAll(".uv").forEach' in PAGE  # each card switches on its own
+    assert 'querySelectorAll(".uv").forEach' in PAGE  # the (one) card switches on its own
 
 
 def test_gear_popover_options_have_icons_and_keep_their_labels_and_state():
@@ -105,16 +105,25 @@ def test_hero_notes_balance_their_lines_so_no_word_is_left_alone():
     assert re.search(r"\.sub \{[^}]*text-wrap: balance;", PAGE)
 
 
-def test_install_box_is_shown_again_after_the_privacy_section_and_both_copy_buttons_speak():
-    assert PAGE.index('id="private"') < PAGE.index('<section class="again" id="install">') < PAGE.index("<h2>Read more")
-    again = PAGE.split('<section class="again" id="install">')[1].split("</section>")[0]
-    hero = PAGE.split('<div class="uv">')[1].split('<div class="tiles">')[0]
-    again_card = again.split('<div class="uv">')[1].split('<p class="sub pipx">')[0]
-    assert again_card == hero.split('<p class="sub">Works on')[0]  # the same card, markup for markup
-    assert '<p class="sub pipx">Already have Python? <code class="cmd">pipx install jobwatch</code>' in again
-    assert 'class="install"' not in PAGE and PAGE.count('class="uvrow"') == 16
-    assert re.findall(r' id="(\w+)"', PAGE).count("uv") == 0 and len(set(re.findall(r' id="([^"]+)"', PAGE))) == len(
-        re.findall(r' id="([^"]+)"', PAGE))  # no duplicate ids
+def test_install_card_exists_once_in_the_hero_and_the_closing_section_points_up_to_it():
+    # one card, in the hero: the closing section has no commands, only a button that scrolls up to the card
+    assert PAGE.count('class="uv" ') == 1 and PAGE.count("curl -LsSf https://astral.sh/uv/install.sh") == 1
+    assert PAGE.count('class="uvrow"') == 8 and PAGE.count("pipx install jobwatch") == 1
+    hero = PAGE.split('<div class="hero">')[1].split('<div class="tiles">')[0]
+    assert '<div class="uv" id="install-card" tabindex="-1">' in hero
+    closing = PAGE.index('<section class="again" id="get-started">')
+    assert PAGE.index('id="private"') < closing < PAGE.index("<h2>Read more")
+    again = PAGE.split('<section class="again" id="get-started">')[1].split("</section>")[0]
+    assert "<h2>Ready to try it?</h2>" in again
+    assert "Install takes about a minute and works on Mac, Windows and Linux." in again
+    assert '<a class="btn primary" href="#install-card">Install jobwatch</a>' in again
+    assert '<a class="btn" href="#setup">Watch the setup video</a>' in again
+    assert "<code" not in again and "<pre" not in again  # no install commands down here
+    assert 'id="setup"' in PAGE  # the link's target: the set-up tutorial video
+    assert re.search(r"\.uv \{[^}]*scroll-margin-top: \d+px", PAGE)  # the sticky header doesn't cover the card
+    assert 'class="install"' not in PAGE
+    ids = re.findall(r' id="([^"]+)"', PAGE)
+    assert "uv" not in ids and len(set(ids)) == len(ids)  # no duplicate ids
 
 
 def test_readme_has_the_uv_line():
