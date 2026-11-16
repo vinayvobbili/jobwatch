@@ -1042,7 +1042,12 @@ class Taker:
             # Only jobs worth a look are followed (the rest stay as emailed), and jobs that fail only on what
             # the email didn't say: MyGreenhouse's name no place or pay, and the posting does
             if self.follow and (self.every or f.reason is None or _unsaid(f.job, cfg.filters_for(f.job))):
+                emailed = f.job
                 self.resolver.resolve(f)  # can find it on a watched board, with filters of its own
+                # The board's job lists the country alone; that the alert's search was for remote jobs is lost
+                # with the email's job, and the job then fails a place filter
+                if f.job is not emailed and emailed.remote and not f.job.remote:
+                    f.job.remote = True
                 f.reason = reject_reason(f.job, cfg.filters_for(f.job))
             # The same job, already tracked from its board (or from another alert, under another name)
             known = (f.job.key if store.has(f.job.key) else None) or (

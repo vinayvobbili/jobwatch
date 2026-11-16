@@ -19,6 +19,8 @@ from jobwatch.filters import Filters, reject_reason
 from jobwatch.store import Store
 from jobwatch.watch import build_digest, fetch_all
 
+from .conftest import iso
+
 FIXTURES = Path(__file__).parent / "fixtures" / "alerts"
 pytestmark = pytest.mark.usefixtures("alert_week")
 PLACEHOLDERS = re.compile(r"TOKEN|TRACKING|VIEWER-ID|ALERT-ID|PREFERENCE-ID|MESSAGE-ID|SIGNATURE|REF-ID|MID-|EMAIL-ID|"
@@ -150,6 +152,24 @@ def test_a_linkedin_alert_for_remote_jobs_only_makes_its_jobs_remote(web, watchl
     assert alerts.remote_search('<a href="https://www.linkedin.com/jobs/search/?f_WT=1%2C2&amp;geoId=1">', "")
     assert not alerts.remote_search("", "https://www.linkedin.com/comm/jobs/search-results/?keywords=Remote+Sensing"
                                         "+Engineer+Hybrid&geoId=1")
+
+
+def test_a_remote_alert_job_found_on_its_board_stays_remote_and_is_noted_when_the_board_isnt_watched(web, watchlist):
+    # Umbrella's board lists the job by its country alone; the alert (a remote-only search) is what says remote
+    web.responses["https://boards-api.greenhouse.io/v1/boards/umbrella/jobs?content=true"] = {
+        "jobs": [{"id": 7, "title": "Field Engineer", "company_name": "Umbrella LLC",
+                  "absolute_url": "https://job-boards.greenhouse.io/umbrella/jobs/7",
+                  "location": {"name": "United States"}, "offices": [], "metadata": [], "departments": [],
+                  "first_published": iso(3), "content": "&lt;p&gt;Fix things in the field.&lt;/p&gt;"}],
+        "meta": {"total": 1}}
+    raw = (FIXTURES / "linkedin.eml").read_text().replace("United States (Remote)", "United States")
+    raw = raw.replace("keywords=Software%20Engineer", "keywords=Software%20Engineer+Full-time+Remote")
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    found = by_title(alerts.intake(cfg, store, [alerts.message(raw)], page=Pages()))["Field Engineer @ Umbrella LLC"]
+    assert (found.how, found.key) == ("board", "greenhouse:umbrella:7")
+    assert store.find(found.key)[0].remote and found.reason is None
+    assert [r["company"] for r in store.unwatched() if r["jobs"]] == ["umbrella"]
 
 
 @pytest.mark.parametrize("title, remote", [("Principal Engineer - Agentic Security Operations (remote)", True),
