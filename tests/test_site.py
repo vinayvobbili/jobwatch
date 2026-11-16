@@ -214,6 +214,8 @@ def test_the_problem_comes_right_after_the_hero_and_the_overview_before_the_demo
     pain = re.findall(r"<p>(.*?)</p>", PAGE.split('<div class="pain">')[1].split("</div>")[0])
     assert pain == ["Twelve job boards, checked by hand.", "Forty tabs and a spreadsheet that's always out of date.",
                     "The same form, typed again and again."]
+    assert PAGE.index('<p class="pain-label">The old way</p>') < PAGE.index('<div class="pain">')
+    assert "var(--panel)" not in re.search(r"\.pain p \{.*?\}", PAGE, re.S).group(0)  # lines, not cards
     order = [PAGE.index(m) for m in ('<div class="hero">', '<div class="pain">', "<h2>What it does</h2>",
                                      "<h2>See it work</h2>", "<h2>How it works</h2>", "<h2>Private by design</h2>",
                                      '<section class="again"', "<h2>Read more</h2>", 'id="join"')]

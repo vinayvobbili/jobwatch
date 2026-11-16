@@ -20,7 +20,7 @@
 :root {
   --bg: #f6f4fd; --glow-1: rgba(185, 168, 255, .35); --glow-2: rgba(240, 140, 255, .2);
   --panel: rgba(255, 255, 255, .88); --panel-solid: #fff; --text: #17142b; --muted: #625d80; --line: #e4e0f3;
-  --accent: #5a4ee8; --accent-2: #c23ee0; --chip: #efecfa;
+  --accent: #5a4ee8; --accent-2: #c23ee0; --chip: #efecfa; --pain-x: #be123c;
   --shadow: 0 1px 2px rgba(23, 20, 43, .04), 0 10px 28px -16px rgba(23, 20, 43, .18);
   --shadow-hover: 0 2px 4px rgba(23, 20, 43, .05), 0 24px 46px -20px rgba(110, 70, 220, .38);
   --name-grad: linear-gradient(90deg, #8a73f5, #d654e8);
@@ -30,7 +30,7 @@
 :root[data-theme="dark"] {
   --bg: #0b0a14; --glow-1: rgba(120, 100, 240, .26); --glow-2: rgba(220, 90, 240, .14);
   --panel: rgba(24, 21, 40, .86); --panel-solid: #181528; --text: #ece9fa; --muted: #9a94bb; --line: #2a2640;
-  --accent: #b9a8ff; --accent-2: #f08cff; --chip: #221e38;
+  --accent: #b9a8ff; --accent-2: #f08cff; --chip: #221e38; --pain-x: #fb7185;
   --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 12px 32px -20px rgba(0, 0, 0, .9);
   --shadow-hover: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 24px 48px -20px rgba(150, 110, 255, .5);
   --name-grad: linear-gradient(90deg, #b9a8ff, #f08cff);
@@ -127,10 +127,12 @@ a.btn[target]::after { content: "\2197"; font-weight: 700; }
 .uvrow button { border: 0; border-radius: 7px; padding: 4px 0; text-align: center; cursor: pointer; font: inherit; font-size: 12.5px;
   font-weight: 650; background: var(--chip); color: var(--text); transition: background .15s; }
 .uvrow button:hover { background: var(--line); }
-.pain { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; padding: 14px 0 6px; }
-.pain p { margin: 0; padding: 14px 18px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line);
-  border-left: 4px solid var(--accent-2); box-shadow: var(--shadow); font-weight: 650; letter-spacing: -.01em;
-  animation: rise .6s both; }
+/* the problem: plain muted lines under a small label, never cards, so they don't read as more features */
+.pain-label { margin: 64px 0 0; text-align: center; font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); }
+.pain { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0 6px; }
+.pain p { margin: 0; color: var(--muted); font-size: 16px; text-align: center; text-wrap: balance; animation: rise .6s both; }
+.pain p::before { content: "\2715"; margin-right: 9px; font-size: .8em; font-weight: 700; color: var(--pain-x); }
 .pain p:nth-child(2) { animation-delay: .08s; } .pain p:nth-child(3) { animation-delay: .16s; }
 .again { text-align: center; }
 .again h2 { margin-bottom: 4px; }
@@ -320,6 +322,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
     </div>
   </div>
 
+  <p class="pain-label">The old way</p>
   <div class="pain">
     <p>Twelve job boards, checked by hand.</p>
     <p>Forty tabs and a spreadsheet that's always out of date.</p>
