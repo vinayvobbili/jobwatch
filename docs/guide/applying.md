@@ -327,8 +327,11 @@ over a few days. What was added shows on the Activity tab, and a dismissed compa
 Staffing and recruiting agencies and colleges are never watched this way (unless you applied there): an agency's
 jobs are its clients', and a college's board is mostly campus jobs. They're told by the name ("Staffing",
 "Recruiting", "Talent", "(agency)", "University", "College"...), by an industry the jobs name, or by an agency's
-posting text; `suggestions.never_watch: [Globex Staffing]` adds names. Before lowering `min_jobs`, see what it would
-do, with nothing added or looked up:
+posting text; `suggestions.never_watch: [Globex Staffing]` adds names. To watch a company whose jobs don't pass your
+filters today (so a good role there later is seen), name it in `suggestions.watch_always: [Initech]`: each check adds
+its board with no matching job needed, found the way `jobwatch suggest --add` finds it (a board one of its alert jobs
+is on, else one found under its name); `never_watch` still wins. Before lowering `min_jobs`, see what it would
+do, with nothing added or looked up (`watch_always` shows as its own group):
 
 ```
 jobwatch suggest --preview-auto --min-jobs 1

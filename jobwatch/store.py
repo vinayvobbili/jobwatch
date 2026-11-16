@@ -1150,6 +1150,12 @@ class Store:
             self.set_unwatched_board(company, entry, found_by)
         return bool(new)
 
+    def note_company(self, company: str, name: str):
+        """Record a company named by the person (suggestions.watch_always) that no job of theirs has been recorded
+        for, so that what's found of its board is kept. It isn't suggested until a job of theirs comes in."""
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO unwatched (company, name) VALUES (?, ?)", (company, name))
+
     def set_unwatched_board(self, company: str, entry: str, found_by: str | None = None):
         """Keep what's been found of a company's board: a board one of its jobs is on beats one found under its
         name, and either beats none found. A later find that's no better leaves it as it is."""

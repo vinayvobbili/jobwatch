@@ -323,6 +323,7 @@ class Suggestions:
     auto_watch: bool = False  # each check adds the boards that meet the rules (see suggest.auto_watch)
     min_jobs: int = 2         # matching jobs that make a company worth watching on their own
     never_watch: tuple[str, ...] = ()  # companies auto_watch leaves alone (agencies and colleges it tells itself)
+    watch_always: tuple[str, ...] = ()  # companies auto_watch watches whether or not a job of theirs passes today
 
 
 def _suggestions(raw, path: Path) -> Suggestions:
@@ -332,6 +333,9 @@ def _suggestions(raw, path: Path) -> Suggestions:
     never = raw.get("never_watch") or []
     if not isinstance(never, list) or not all(isinstance(n, str) and n.strip() for n in never):
         raise ConfigError(f"{path}: suggestions.never_watch is a list of company names, got {never!r:.80}")
+    always = raw.get("watch_always") or []
+    if not isinstance(always, list) or not all(isinstance(n, str) and n.strip() for n in always):
+        raise ConfigError(f"{path}: suggestions.watch_always is a list of company names, got {always!r:.80}")
     return Suggestions(
         half_life=_between(raw.get("half_life", Suggestions.half_life), "suggestions.half_life", path, 1, 3650,
                            "days until a job counts half"),
@@ -340,7 +344,8 @@ def _suggestions(raw, path: Path) -> Suggestions:
         auto_watch=raw.get("auto_watch", False),
         min_jobs=_between(raw.get("min_jobs", Suggestions.min_jobs), "suggestions.min_jobs", path, 1, 20,
                           "matching jobs that make a company worth watching"),
-        never_watch=tuple(n.strip() for n in never))
+        never_watch=tuple(n.strip() for n in never),
+        watch_always=tuple(n.strip() for n in always))
 
 
 @dataclass(frozen=True)
@@ -1509,6 +1514,8 @@ scoring:
 #                          # `jobwatch suggest --preview-auto --min-jobs 1` shows what that would add)
 #   never_watch: [Globex Staffing]  # companies auto_watch leaves alone; staffing and recruiting agencies and
 #                          # colleges are left alone anyway, unless you applied there
+#   watch_always: [Initech]  # companies auto_watch watches even when none of their jobs passes your filters today
+#                          # (a good role there later is then seen); never_watch wins
 
 # A board this slow to read is read less often (0 days: every board on every check; `fetch --all` reads them all):
 # slow_boards:

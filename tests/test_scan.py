@@ -163,3 +163,61 @@ def test_auto_watch_leaves_agencies_colleges_and_never_watch_alone(web, watchlis
     assert suggest.worth_watching(cfg, s)
     with pytest.raises(config.ConfigError, match="never_watch is a list of company names"):
         config.save(watchlist, {"suggestions": {"never_watch": "Umbrella"}})
+
+
+def always(watchlist, names, never=""):
+    watchlist.write_text(watchlist.read_text() + f"suggestions: {{auto_watch: true, min_jobs: 3, "
+                         f"watch_always: [{names}]{never}}}\n")
+    cfg = config.load(watchlist)
+    return cfg, Store(cfg.state)
+
+
+def test_watch_always_watches_a_company_with_no_matching_job(web, watchlist, capsys):
+    web.responses[HOOLI] = [lever_job("Account Executive")]  # a board with nothing the filters want
+    cfg, store = always(watchlist, "Hooli")
+    p = suggest.auto_preview(cfg, store)
+    assert [r["company"] for r in p["watch_always"]] == ["Hooli"] and not p["ready"] + p["to_check"] + p["no_board"]
+    cli.main(["-c", str(watchlist), "suggest", "--preview-auto"])
+    assert "1 would be watched whatever their jobs (suggestions.watch_always):\n  Hooli" in capsys.readouterr().out
+    assert not store.unwatched(dismissed=True)  # a preview records nothing
+    _, got = suggest.auto_watch(cfg, store)
+    assert [s.name for s in got] == ["Hooli"] and "lever:hooli" in watching(watchlist)
+    assert suggest.why_watched(cfg, got[0]) == "on suggestions.watch_always"
+    assert suggest.auto_preview(config.load(watchlist), store)["watch_always"] == []  # watched now
+
+
+def test_watch_always_resolves_a_recorded_company_and_looks_once_a_week_when_none_is_found(web, watchlist):
+    cfg, store = always(watchlist, "Wonka")  # no board under that name
+    assert suggest.auto_watch(cfg, store)[1] == []
+    [row] = store.unwatched(dismissed=True)
+    assert (row["company"], row["entry"], row["looked_at"] is not None) == ("wonka", "", True)
+    web.calls.clear()
+    assert suggest.auto_watch(cfg, store)[1] == [] and not web.calls  # not looked for again at once
+    # A recorded company with a job that passes no filter, its board linked by the job: added
+    web.responses[HOOLI] = [lever_job("Account Executive")]
+    save_job(store, company="Hooli", title="Account Executive", status="new", location="Remote", boards=cfg.boards)
+    watchlist.write_text(watchlist.read_text().replace("Wonka", "Hooli"))
+    cfg = config.load(watchlist)
+    assert [s.name for s in suggest.auto_watch(cfg, store)[1]] == ["Hooli"]
+
+
+def test_never_watch_beats_watch_always(web, watchlist):
+    web.responses[HOOLI] = [lever_job("Account Executive")]
+    cfg, store = always(watchlist, "Hooli", ", never_watch: [Hooli]")
+    assert suggest.auto_preview(cfg, store)["watch_always"] == []
+    assert suggest.auto_watch(cfg, store)[1] == [] and "lever:hooli" not in watching(watchlist)
+
+
+def test_auto_watch_watches_a_company_with_an_application_in_flight_whatever_its_jobs(web, watchlist):
+    title = "Strategic Enterprise Account Executive"  # on the board, and long enough to prove it's theirs
+    web.responses[HOOLI] = [lever_job(title)]
+    watchlist.write_text(watchlist.read_text() + "suggestions: {auto_watch: true, min_jobs: 5}\n")
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    save_job(store, company="Hooli", title=title, status="applied", boards=cfg.boards)
+    assert [s.name for s in suggest.auto_watch(cfg, store)[1]] == ["Hooli"]
+
+
+def test_watch_always_is_a_list_of_company_names(watchlist):
+    with pytest.raises(config.ConfigError, match="watch_always is a list of company names"):
+        config.save(watchlist, {"suggestions": {"watch_always": "Hooli"}})

@@ -19,7 +19,8 @@ With suggestions.auto_watch on, each check does the accepting (see auto_watch): 
 one of the company's jobs is on it and the person has applied there, the company has an office near them, or it has
 suggestions.min_jobs matching jobs (2 unless set; 1 watches every company with a matching job). A board only guessed
 from the company's name never does: it can be another company's. Nor does a staffing or recruiting agency's, a
-college's, or one on suggestions.never_watch, unless the person applied there (see unwatchable). `jobwatch suggest
+college's, or one on suggestions.never_watch, unless the person applied there (see unwatchable). Companies named
+on suggestions.watch_always are watched with no matching job needed (never_watch still wins). `jobwatch suggest
 --preview-auto` shows what a min_jobs would do, adding nothing.
 """
 
@@ -227,7 +228,8 @@ def find(store: Store, which: str) -> Suggestion:
         (r for r in rows if r["entry"] and r["entry"] == which.strip()), None)
     if not row:
         raise KeyError(f"no suggested company matches {which!r}: see `jobwatch suggest`")
-    return Suggestion(row["company"], row["name"], row["entry"], row["found_by"], [j for j, _ in row["jobs"]])
+    return Suggestion(row["company"], row["name"], row["entry"], row["found_by"], [j for j, _ in row["jobs"]],
+                      looked_at=row["looked_at"])
 
 
 def accept(cfg: Config, store: Store, which: str, page=None) -> tuple[Config, Suggestion]:
@@ -339,6 +341,26 @@ def worth_watching(cfg: Config, s: Suggestion) -> bool:
         excluded_company(j, cfg.filters_for(j).nearby_offices) for j in s.jobs)
 
 
+def always_named(cfg: Config) -> list[str]:
+    """The companies named on suggestions.watch_always that are to be watched: not on never_watch, which wins."""
+    return [n for n in cfg.suggest.watch_always
+            if not any(linkedin.same_company(n, x) for x in cfg.suggest.never_watch)]
+
+
+def is_always(cfg: Config, name: str) -> bool:
+    return any(linkedin.same_company(n, name) for n in always_named(cfg))
+
+
+def always_suggestion(store: Store, name: str) -> Suggestion:
+    """A company on watch_always as `suggest --add` resolves a name: the one recorded (dismissed or not), else a new
+    record for it, so that what's found of its board under its name is kept."""
+    try:
+        return find(store, name)
+    except KeyError:
+        store.note_company(company_id(name), name)
+        return Suggestion(company_id(name), name, None)
+
+
 def auto_preview(cfg: Config, store: Store, min_jobs: int | None = None, now: datetime | None = None) -> dict:
     """What auto_watch would do with suggestions.min_jobs at `min_jobs` (default: as set), with nothing read from the
     web and nothing added: the companies it would watch, by where their board stands. ready: a board one of their
@@ -347,9 +369,16 @@ def auto_preview(cfg: Config, store: Store, min_jobs: int | None = None, now: da
     no_board: looked for, and none found. excluded: the ones unwatchable leaves out, with why."""
     if min_jobs is not None:
         cfg = replace(cfg, suggest=replace(cfg.suggest, min_jobs=min_jobs))
-    out: dict = {"min_jobs": cfg.suggest.min_jobs, "ready": [], "to_check": [], "no_board": [], "excluded": []}
+    out: dict = {"min_jobs": cfg.suggest.min_jobs, "ready": [], "to_check": [], "no_board": [], "excluded": [],
+                 "watch_always": []}
+    recorded = {r["company"]: r for r in store.unwatched(dismissed=True)}
+    for name in always_named(cfg):
+        row = recorded.get(company_id(name))
+        if not watched(cfg.boards, name, (row or {}).get("entry") or ""):
+            out["watch_always"].append({"company": name, "matching_jobs": len((row or {}).get("jobs", [])),
+                                        "board": (row or {}).get("entry") or None})
     for s in suggestions(cfg, store, limit=0, now=now):
-        if watched(cfg.boards, s.name, s.entry or ""):
+        if watched(cfg.boards, s.name, s.entry or "") or is_always(cfg, s.name):
             continue
         if not s.engaged and (why := unwatchable(cfg, s)):
             if len(s.jobs) >= cfg.suggest.min_jobs:
@@ -366,8 +395,10 @@ def auto_preview(cfg: Config, store: Store, min_jobs: int | None = None, now: da
 def preview_text(p: dict, sample: int = 15) -> str:
     groups = (("ready", "would be added (one of their jobs is on the board)"),
               ("to_check", "would be looked into (board guessed from the name, or not looked for yet)"),
-              ("no_board", "have no board found"), ("excluded", "are left out"))
-    n = sum(len(p[g]) for g in ("ready", "to_check", "no_board"))
+              ("no_board", "have no board found"),
+              ("watch_always", "would be watched whatever their jobs (suggestions.watch_always)"),
+              ("excluded", "are left out"))
+    n = sum(len(p[g]) for g in ("ready", "to_check", "no_board", "watch_always"))
     out = [f"auto_watch with min_jobs {p['min_jobs']}: {n} compan{'y' if n == 1 else 'ies'} worth watching, nothing "
            "added (a preview)."]
     for g, label in groups:
@@ -405,11 +436,30 @@ def auto_watch(cfg: Config, store: Store, get=None, page=None,
         if s.entry and s.found_by == "posting" and not watched(cfg.boards, s.name, s.entry):
             cfg = config.add_board(cfg.path, s.entry, s.board_name)
             added.append(s)
+    # The companies the person named: the same, with no matching job needed, and a board found under the name counts
+    # (they asked for this company, as `suggest --add` does)
+    for name in always_named(cfg):
+        if len(added) >= AUTO_ADDS:
+            break
+        s = always_suggestion(store, name)
+        if watched(cfg.boards, s.name, s.entry or "") or watched(cfg.boards, name):
+            continue
+        due = not s.looked_at or now - datetime.fromisoformat(s.looked_at) >= AUTO_RETRY
+        if not s.entry and due and looked < AUTO_LOOKS:
+            looked += 1
+            s.entry = None  # looked for before and none found: once a week again
+            find_job_board(store, s, get, page)
+            store.set_unwatched_looked(s.company)
+        if s.entry and not watched(cfg.boards, s.name, s.entry):
+            cfg = config.add_board(cfg.path, s.entry, s.board_name)
+            added.append(s)
     return cfg, added
 
 
 def why_watched(cfg: Config, s: Suggestion) -> str:
     """Why auto_watch added a company's board, for the Activity tab."""
+    if is_always(cfg, s.name):
+        return "on suggestions.watch_always"
     if s.engaged:
         return "you applied there"
     if any(excluded_company(j, cfg.filters_for(j).nearby_offices) for j in s.jobs):

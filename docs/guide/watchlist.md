@@ -83,6 +83,7 @@ suggestions:                              # Companies to watch
   auto_watch: false                       # true: each check adds the boards that meet the rules
   min_jobs: 2                             # matching jobs that make a company worth watching
   never_watch: []                         # companies auto_watch leaves alone (agencies and colleges are anyway)
+  watch_always: []                        # companies auto_watch watches even with no matching job today
 slow_boards:                              # a board this slow to read is read less often
   seconds: 120
   every_days: 2                           # 0: every board on every check
