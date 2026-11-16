@@ -212,11 +212,13 @@ def test_tiles_keep_white_text_readable():
 
 def test_the_problem_comes_right_after_the_hero_and_the_overview_before_the_demo():
     pain = re.findall(r"<p>(.*?)</p>", PAGE.split('<div class="pain">')[1].split("</div>")[0])
-    assert pain == ["Twelve job boards, checked by hand.", "Forty tabs and a spreadsheet that's always out of date.",
-                    "The same form, typed again and again."]
-    assert PAGE.index('<p class="pain-label">The old way</p>') < PAGE.index('<div class="pain">')
+    assert pain == ["Twelve boards, checked by hand.", "Forty tabs and a stale spreadsheet.",
+                    "The same form, again and again."]
+    label = re.search(r'<p class="pain-label">(.*?)The old way</p>', PAGE, re.S)
+    assert label and '<svg class="ic"' in label.group(1) and 'aria-hidden="true"' in label.group(1)
+    assert PAGE.index('The old way</p>') < PAGE.index('<div class="pain">')
     assert "var(--panel)" not in re.search(r"\.pain p \{.*?\}", PAGE, re.S).group(0)  # lines, not cards
-    order = [PAGE.index(m) for m in ('<div class="hero">', '<div class="pain">', "<h2>What it does</h2>",
+    order = [PAGE.index(m) for m in ('<div class="hero">', '<div class="pain">', "<h2>What jobwatch does for you</h2>",
                                      "<h2>See it work</h2>", "<h2>How it works</h2>", "<h2>Private by design</h2>",
                                      '<section class="again"', "<h2>Read more</h2>", 'id="join"')]
     assert order == sorted(order)
@@ -232,7 +234,7 @@ def test_steps_and_cards_use_plain_words():
     assert "<h3>Compare and ask</h3>" in step("extras") and "Extras" not in PAGE
     assert "so you know whom to ask for a referral." in step("extras")
     assert '<p class="lead">Six parts, each with a short video.</p>' in PAGE
-    cards = PAGE.split("<h2>What it does</h2>")[1].split("</section>")[0]
+    cards = PAGE.split("<h2>What jobwatch does for you</h2>")[1].split("</section>")[0]
     assert "Hacker News' monthly hiring thread and investor job boards" in cards
     assert "with the posted pay range when there is one. It reads only what sites allow." in cards
     for jargon in ("robots.txt", "real pay ranges", "VC portfolio", "HN's Who is hiring", "drill video"):

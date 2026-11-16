@@ -129,8 +129,10 @@ a.btn[target]::after { content: "\2197"; font-weight: 700; }
 .uvrow button:hover { background: var(--line); }
 /* the problem: plain muted lines under a small label, never cards, so they don't read as more features */
 .pain-label { margin: 64px 0 0; text-align: center; font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--muted); }
+  color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 7px; }
+.pain-label .ic { width: 15px; height: 15px; flex: none; stroke-width: 2; }
 .pain { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0 6px; }
+@media (min-width: 900px) { .pain { flex-direction: row; justify-content: center; gap: 36px; } .pain p { white-space: nowrap; } }
 .pain p { margin: 0; color: var(--muted); font-size: 16px; text-align: center; text-wrap: balance; animation: rise .6s both; }
 .pain p::before { content: "\2715"; margin-right: 9px; font-size: .8em; font-weight: 700; color: var(--pain-x); }
 .pain p:nth-child(2) { animation-delay: .08s; } .pain p:nth-child(3) { animation-delay: .16s; }
@@ -322,15 +324,15 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
     </div>
   </div>
 
-  <p class="pain-label">The old way</p>
+  <p class="pain-label"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>The old way</p>
   <div class="pain">
-    <p>Twelve job boards, checked by hand.</p>
-    <p>Forty tabs and a spreadsheet that's always out of date.</p>
-    <p>The same form, typed again and again.</p>
+    <p>Twelve boards, checked by hand.</p>
+    <p>Forty tabs and a stale spreadsheet.</p>
+    <p>The same form, again and again.</p>
   </div>
 
   <section>
-    <h2>What it does</h2>
+    <h2>What jobwatch does for you</h2>
     <div class="grid">
       <div class="card"><span class="badge">Watch</span><h3>Watches company boards</h3><p>Checks the job pages companies run themselves (Greenhouse, Lever, Workday and more), Hacker News' monthly hiring thread and investor job boards. Openings come straight from the source, with the posted pay range when there is one. It reads only what sites allow.</p></div>
       <div class="card"><span class="badge">Rank</span><h3>A short, ranked daily digest</h3><p>Only new roles that match you, optionally fit-scored against your resume: must-haves met, gaps, a score out of 100.</p></div>
@@ -395,7 +397,7 @@ footer { padding: 30px 0 50px; color: var(--muted); font-size: 14px; text-align:
       <video controls preload="none" playsinline poster="tutorials/jobwatch-03-where-the-ai-runs.jpg" src="tutorials/jobwatch-03-where-the-ai-runs.mp4" aria-label="Video: Where the AI runs, and what leaves your computer (1 min)"><track kind="captions" srclang="en" label="English" src="tutorials/jobwatch-03-where-the-ai-runs.vtt"></video>
       <p class="cap">Where the AI runs: Claude's API, Google's Antigravity (with your own subscription) or a model on your own computer; a backup if one runs out; and exactly what leaves your computer.</p>
       <ul>
-        <li><b>It runs on your computer.</b> jobwatch sends nothing home.</li>
+        <li><b>It runs on your computer.</b> There is no jobwatch account or server, and no usage tracking.</li>
         <li><b>Your data stays on your machine.</b> The one exception is the AI model for fit scores and chat, if you pick a cloud one. Pick a local model and nothing leaves at all.</li>
         <li><b>You press Submit yourself.</b> jobwatch finds and ranks. It never applies for you.</li>
       </ul>

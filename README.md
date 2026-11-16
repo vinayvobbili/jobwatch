@@ -163,7 +163,7 @@ Everything else, from every watchlist setting to the drill video, is in
 [Development](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/development.md) covers running the
 tests and making a release. MIT licensed.
 
-If jobwatch helps your search, a ⭐ on GitHub is how I know: jobwatch sends nothing home, so stars are the
+If jobwatch helps your search, a ⭐ on GitHub is how I know: jobwatch has no usage tracking, so stars are the
 only count of who uses it. If it landed you an interview, a [$1 coffee](https://ko-fi.com/vinayvobbili) says so too.
 
 <sub>Listed on:
