@@ -15,7 +15,7 @@ def test_web_store_item_id_matches_listing():
 
 
 def test_install_command_matches_readme():
-    cmd = re.search(r"^(pipx install jobwatch)\b", README, re.M).group(1)
+    cmd = re.search(r"(?:^|`)(pipx install jobwatch)\b", README, re.M).group(1)
     assert PAGE.count(f'<code class="cmd">{cmd}</code>') == 2  # the hero's line and the install section's
 
 

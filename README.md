@@ -2,6 +2,8 @@
 
 <!-- mcp-name: io.github.vinayvobbili/jobwatch -->
 
+[![CI](https://github.com/vinayvobbili/jobwatch/actions/workflows/ci.yml/badge.svg)](https://github.com/vinayvobbili/jobwatch/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/jobwatch)](https://pypi.org/project/jobwatch/)
 [Home page](https://vinayvobbili.github.io/jobwatch/)
 
 Watch the job boards of the companies you care about and get a short, ranked digest of **new** roles that
@@ -13,80 +15,102 @@ With sound (1½ minutes, made from made-up data):
 
 https://github.com/user-attachments/assets/71b048d0-d372-42fd-a247-c4a59c3ffd71
 
-## Tutorials
-
-Seven short videos, two minutes or less each, made from made-up data. GitHub's video links last five minutes,
-so if one stops after a second or two, reload the page and play it again.
-
-**Getting started**: install, `jobwatch`, the four onboarding steps, Today.
-
-https://github.com/user-attachments/assets/f95f85df-406f-4ede-b84c-59569d1a586a
-
-**Your daily routine**: today's picks, a job's details, the queue, "I applied", Applications, the prep sheet.
-
-https://github.com/user-attachments/assets/8653c4ca-a79d-4135-9be1-51ba3c9fccf6
-
-**Where the AI runs**: the Claude API, Antigravity or this Mac; the fallback chain; what leaves your computer.
-
-https://github.com/user-attachments/assets/40e6f2cb-c201-4da9-ba21-77bdacc464b8
-
-**Applying**: the queue, jobs found elsewhere, job-alert emails, status emails, companies to watch.
-
-https://github.com/user-attachments/assets/9d021676-85da-4ce1-8d42-f3808b4ae03b
-
-**Tracking applications**: stages and follow-ups, applications that go quiet, the calendar feed, Interviews.
-
-https://github.com/user-attachments/assets/e2e43a54-83d2-4154-9229-a063fafefe44
-
-**Interview prep**: prep sheets, answers drafted from your stories, a mock interview, a drill video.
-
-https://github.com/user-attachments/assets/c8ac1030-700f-4cdd-823d-4b92cd411bf3
-
-**Comps and who you know**: pay, career value and company health side by side; the people you know there.
-
-https://github.com/user-attachments/assets/42eb0edb-945e-4caf-95c0-3eeae6fdada6
-
 ## Get started
 
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), which brings Python with it, then jobwatch:
+
 ```
-curl -LsSf https://astral.sh/uv/install.sh | sh      # installs uv (other systems: brew install uv, or the docs below)
+curl -LsSf https://astral.sh/uv/install.sh | sh      # Mac or Linux (or: brew install uv)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"      # Windows (or: winget install astral-sh.uv)
+
 uv tool install jobwatch
+jobwatch ui
 ```
 
-Then run `jobwatch`. uv brings Python with it; install options for every system:
-https://docs.astral.sh/uv/getting-started/installation/
-
-Already have Python? This works too:
-
-```
-pipx install jobwatch      # or: pip install jobwatch
-```
+Already have Python? `pipx install jobwatch` works too.
 
 A page opens on your computer and walks you through four short steps: about you and your resume, the jobs you
 want, the companies to watch, and (optionally) fit scores and job-alert emails. Then press **Check for new
 jobs**. Install the page as an app from Chrome's address bar to keep it in its own window, or run
-`jobwatch service install` to have it always running (on a Mac, Linux or Windows).
+`jobwatch service install` to have it always running, on macOS, Linux or Windows (a launchd agent, a systemd user
+unit or a Task Scheduler task).
 
 **Or run it from Claude:**
 
-- **Claude Code** (the Claude app's Code tab, the terminal, and Cowork): add the marketplace
-  `vinayvobbili/jobwatch` (Settings → Plugins → Add → Add marketplace, or `/plugin marketplace add
-  vinayvobbili/jobwatch`), then install **jobwatch** (`/plugin install jobwatch@jobwatch`). The
-  [plugin](plugin/README.md) brings the tools and a skill with the daily routine; it runs jobwatch with
-  [uv](https://docs.astral.sh/uv/). Then ask Claude "watch Stripe for product designer roles".
+- **Claude Code** (the Claude app's Code tab, the terminal, and Cowork): `/plugin marketplace add
+  vinayvobbili/jobwatch`, then `/plugin install jobwatch@jobwatch` (or Settings → Plugins → Add marketplace). The
+  [plugin](https://github.com/vinayvobbili/jobwatch/blob/main/plugin/README.md) brings the tools and a skill with
+  the daily routine, and runs jobwatch with uv. Then ask Claude "watch Stripe for product designer roles".
 - **Claude Desktop with Settings → Extensions**: download `jobwatch-<version>.mcpb` from the
   [latest release](https://github.com/vinayvobbili/jobwatch/releases/latest), open it and press Install.
   Claude Desktop sets up everything it needs, uv included.
 
-A chat on claude.ai, or in an app whose plugins run in the cloud, can't reach jobwatch on your computer: the
-skill loads there, but the tools don't.
+A chat on claude.ai, or in an app whose plugins run in the cloud, can't reach jobwatch on your computer.
 
-Extras: `jobwatch[score]` (fit scores with the Claude API), `jobwatch[local]` (fit scores with a local model: run
-any OpenAI-compatible server, e.g. `vllm-mlx serve`, `mlx_lm.server` or LM Studio, and set `LOCAL_LLM_URL` if it
-isn't at `http://127.0.0.1:8010/v1`), `jobwatch[mcp]` (an MCP server for Claude and other assistants), `jobwatch[video]` (drill videos for
-interview prep), `jobwatch[lca]` (H-1B wage filings from the U.S. Department of Labor as a second pay source: needs
-openpyxl to read its Excel files; see the [watchlist guide](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/watchlist.md)). Prefer a terminal? `jobwatch init`, `jobwatch find "Globex"`, then `jobwatch run` daily.
+Extras: `jobwatch[score]` (fit scores with the Claude API), `jobwatch[local]` (fit scores with a local model on any
+OpenAI-compatible server, `LOCAL_LLM_URL` if it isn't at `http://127.0.0.1:8010/v1`), `jobwatch[mcp]` (an MCP server),
+`jobwatch[video]` (drill videos) and `jobwatch[lca]` (H-1B wage filings as a second pay source). Prefer a terminal?
+`jobwatch init`, `jobwatch find "Globex"`, then `jobwatch run` daily.
 [More on the page and the command line →](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/the-page.md)
+
+## Example
+
+All of this is made-up data. A digest entry (the same text `jobwatch run` prints and `get_digest` returns):
+
+```
+# jobwatch digest
+
+Top 2 of 9 matching job(s). Filtered out: 14 by location, 31 by title.
+Scored 2 with shortlist-ai.
+
+### [Senior Platform Engineer](https://jobs.ashbyhq.com/initech/7f3a1c)
+Initech; Remote (US) · $180K–$220K · posted 1d ago
+**Fit 78/100**, must-haves 4/6 (scored by Qwen3.5-9B · local). Gaps: Observability (metrics, tracing); Led an on-call rotation
+Source: Initech's Ashby board
+`ashby:initech:7f3a1c`
+```
+
+The card behind that score, from `jobwatch show ashby:initech:7f3a1c`, with the resume's own words per verdict:
+
+```
+Fit 78/100, must-haves 4/6 (scored by Qwen3.5-9B · local)
+  met     [must] 5+ years running Kubernetes in production  "Ran 40-node Kubernetes clusters for 6 years at Globex"
+  met     [must] Terraform or similar infrastructure as code  "Wrote the Terraform modules behind 120 services"
+  met     [must] Python for tooling and automation  "Python: CLI tools, CI pipelines, internal APIs"
+  partly  [must] Observability (metrics, tracing)  "Set up Prometheus dashboards for the payments team"
+  met     [must] Incident response  "Cut mean time to recover from 90 to 25 minutes"
+  missing [must] Led an on-call rotation
+  met     [nice] Postgres operations  "Tuned Postgres replicas serving 5K queries per second"
+```
+
+## Why trust it
+
+- About 2,400 tests in 121 modules, none of which touch the network (a fixture fails any test that tries).
+- CI runs ruff and the whole suite on Python 3.10 and 3.13 for every push; the same checks run before every push.
+- Fit scoring was checked on a small eval of 29 expected verdicts. The suggested 16 GB model (Qwen3.5-9B, 4-bit)
+  agreed on 28, a 6-bit build on 27 and Gemma 4 12B on 29, at 27, 36 and 42 seconds a call: within noise. Only the
+  16 GB row of the model table was tested.
+  [Fit scores](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/fit-scores.md)
+
+## Design in 5 lines
+
+1. Poll each company's public board or API once per run, follow robots.txt, back off when asked.
+2. Keep only new roles that pass your title, place and pay filters, ranked by keyword relevance.
+3. Fit-score only the top few per digest (`scoring.top`, 5 in the example watchlist): your resume against the
+   posting's must-haves and nice-to-haves.
+4. Quote-verify: each verdict carries the resume's own words, checked against the resume text.
+5. A job is scored once, and the score says which model made it, so a new model or an edited resume never triggers
+   a surprise bill.
+
+## Limits
+
+- It reads the boards in the table below. A company on any other system isn't watched; add its jobs through
+  job-alert emails, a link or pasted text. It doesn't scrape LinkedIn or Indeed.
+- It finds and ranks. It never applies; you answer the forms and press Submit.
+- Fit scores are an LLM's judgment, checked against your resume's text, not against how a recruiter reads it. The
+  eval is small (29 verdicts, one model row).
+- The always-on service (`jobwatch service install`) covers macOS (launchd), Linux (a systemd user unit) and Windows
+  (Task Scheduler). Linux needs systemd; elsewhere run `jobwatch ui` when you want the page.
 
 ## What it does
 
@@ -103,21 +127,32 @@ openpyxl to read its Excel files; see the [watchlist guide](https://github.com/v
 | **Answers questions** | A chat about today's jobs and each posting, and the skills your matches keep asking for. [Chat](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/chat.md) · [Skills](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/skills.md) |
 | **Works with assistants** | An MCP server and an agent skill, so Claude can run your search with you. [MCP server](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/mcp.md) |
 
-Everything stays on your computer. The only exception is a model you choose for fit scores and chat: the
-Claude API or Antigravity get the posting and your resume (and, for drafted interview answers, your stories);
-on-device models send nothing anywhere.
+Everything stays on your computer, except what a model you choose for fit scores and chat receives: the Claude API
+or Antigravity get the posting and your resume (and your stories, for drafted answers). On-device models send nothing.
+
+## Tutorials
+
+Seven videos of two minutes or less, made from made-up data. If one stops after a second or two (GitHub's video
+links last five minutes), reload the page.
+
+- [Getting started](https://github.com/user-attachments/assets/f95f85df-406f-4ede-b84c-59569d1a586a): install, the four onboarding steps, Today.
+- [Your daily routine](https://github.com/user-attachments/assets/8653c4ca-a79d-4135-9be1-51ba3c9fccf6): picks, a job's details, the queue, "I applied", the prep sheet.
+- [Where the AI runs](https://github.com/user-attachments/assets/40e6f2cb-c201-4da9-ba21-77bdacc464b8): the Claude API, Antigravity or this Mac; what leaves your computer.
+- [Applying](https://github.com/user-attachments/assets/9d021676-85da-4ce1-8d42-f3808b4ae03b): the queue, job-alert emails, status emails, companies to watch.
+- [Tracking applications](https://github.com/user-attachments/assets/e2e43a54-83d2-4154-9229-a063fafefe44): stages, follow-ups, the calendar feed, Interviews.
+- [Interview prep](https://github.com/user-attachments/assets/c8ac1030-700f-4cdd-823d-4b92cd411bf3): prep sheets, drafted answers, a mock interview, a drill video.
+- [Comps and who you know](https://github.com/user-attachments/assets/42eb0edb-945e-4caf-95c0-3eeae6fdada6): pay, career value and company health side by side; the people you know there.
 
 ## Why it doesn't auto-apply
 
-Tools that auto-apply to hundreds of jobs make the process worse for everyone and rarely work for the
-person using them:
+Tools that auto-apply to hundreds of jobs make the process worse for everyone and rarely work:
 
 - Recruiters recognize mass applications.
 - Some companies cap how many roles one person can apply to.
 - Application forms ask legal questions (work authorization, export control, signatures) that you answer
   yourself.
 
-jobwatch's job is to make sure you never miss a role worth applying to, and to spend your time on those.
+jobwatch makes sure you never miss a role worth applying to, and spends your time on those.
 [Getting more interviews](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/more-interviews.md)
 has what moves an application from the pile to a recruiter's call.
 
@@ -128,12 +163,12 @@ Everything else, from every watchlist setting to the drill video, is in
 [Development](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/development.md) covers running the
 tests and making a release. MIT licensed.
 
-## Support and listings
-
 If jobwatch helps your search, a ⭐ on GitHub is how I know: jobwatch sends nothing home, so stars are the
 only count of who uses it. If it landed you an interview, a [$1 coffee](https://ko-fi.com/vinayvobbili) says so too.
-[![M8ven Score](https://m8ven.ai/badge/mcp/vinayvobbili-jobwatch-1cvk7w?v=b3794e69984556a0e35f219ef71c5bca)](https://m8ven.ai/mcp/vinayvobbili-jobwatch-1cvk7w?s=readme)
-[![vinayvobbili/jobwatch MCP server](https://glama.ai/mcp/servers/vinayvobbili/jobwatch/badges/score.svg)](https://glama.ai/mcp/servers/vinayvobbili/jobwatch)
-[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/vinayvobbili/jobwatch)
-[![jobwatch on AI Agents Listing](https://aiagentslisting.com/jobwatch/badge.svg?claim=7ad06551a472272d8db3d80aa39a0895)](https://aiagentslisting.com/mcp/jobwatch)
-[![jobwatch skill on Agensi](https://img.shields.io/badge/Agensi-skill-2563eb)](https://www.agensi.io/skills/jobwatch)
+
+<sub>Listed on:
+[M8ven](https://m8ven.ai/mcp/vinayvobbili-jobwatch-1cvk7w?s=readme) ·
+[Glama](https://glama.ai/mcp/servers/vinayvobbili/jobwatch) ·
+[mcpservers.org](https://mcpservers.org/servers/vinayvobbili/jobwatch) ·
+[AI Agents Listing](https://aiagentslisting.com/mcp/jobwatch) ·
+[Agensi](https://www.agensi.io/skills/jobwatch)</sub>
