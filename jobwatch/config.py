@@ -295,6 +295,26 @@ def _prep(raw, path: Path) -> Prep:
                 sheets=_path(raw["sheets"], path.parent) if raw.get("sheets") else None, cache_max=cache_max)
 
 
+REPLY_BACKENDS = ("local", "chat")
+
+
+@dataclass(frozen=True)
+class Reply:
+    """reply in the watchlist: the extension's Draft reply (see reply.py). A recruiter's thread is private, so by
+    default it goes only to the shared local model, whatever the chat is set to. `chat` is the opt-in: the draft is
+    written by the chat's backend and model instead (claude: the thread goes to Anthropic)."""
+    backend: str = "local"
+
+
+def _reply(raw, path: Path) -> Reply:
+    raw = _section(raw, "reply", Reply, path, "{backend: local}")
+    chosen = str(raw.get("backend") or Reply.backend).strip().lower()
+    if chosen not in REPLY_BACKENDS:
+        raise ConfigError(f"{path}: reply.backend must be one of {', '.join(REPLY_BACKENDS)} (local keeps a thread "
+                          f"on this computer; chat uses the chat's backend), got {chosen!r}")
+    return Reply(backend=chosen)
+
+
 @dataclass(frozen=True)
 class Suggestions:
     """suggestions in the watchlist: Companies to watch (see suggest.py)."""
@@ -734,6 +754,7 @@ class Config:
     prompts: dict[str, str] = field(default_factory=dict)  # scoring.prompts: the edited fit-score prompts
     chat: Chat = field(default_factory=lambda: Chat(backend="local"))
     prep: Prep = field(default_factory=Prep)
+    reply: Reply = field(default_factory=Reply)
     timeline: str = "quarter"  # how soon you want to close a skill gap: see TIMELINES
     near: str = ""             # a city, for certificate programs at colleges nearby
     learn_jobs: int = 5        # learning.jobs: example jobs listed with each skill
@@ -965,7 +986,7 @@ def locate(explicit: str | Path | None = None) -> Path:
 
 SETTINGS = ("companies", "filters", "keywords", "focus", "resume", "connections", "connections_skip", "employer",
             "stories", "resume_kit", "scoring",
-            "chat", "prep",
+            "chat", "prep", "reply",
             "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
             "slow_boards", "ui", "incoming", "speech", "fetch_every", "follow_ups")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
@@ -1272,7 +1293,7 @@ def load(explicit: str | Path | None = None) -> Config:
         score_workers=max(1, _whole(scoring.get("workers", 4), "scoring.workers", path, "1 makes one call at a time")),
         chat=_chat(raw.get("chat"), backend, path, str(scoring.get("keychain") or "").strip(),
                    str(scoring.get("key_command") or "").strip()),
-        prep=_prep(raw.get("prep"), path),
+        prep=_prep(raw.get("prep"), path), reply=_reply(raw.get("reply"), path),
         timeline=timeline, near=_near(learning, filters),
         learn_jobs=_whole(learning.get("jobs", 5), "learning.jobs", path, "0 lists none"),
         suggest=_suggestions(raw.get("suggestions"), path),
@@ -1435,6 +1456,12 @@ scoring:
 #   # prompt: |                                     # the drafting instructions; keep {context}
 #   # sheets: ~/Documents/prep                      # prep sheets you wrote (acme-onsite.html), on Interviews
 #   # cache_max: 15G                                # slidecast's clip cache cap when an edit re-renders a drill video
+
+# The extension's Draft reply (a recruiter's message thread you opened on LinkedIn). local (default): the thread goes
+# only to the local model server on this computer. chat: the chat's backend and model write it instead; with
+# chat.backend: claude the thread goes to Anthropic.
+# reply:
+#   backend: local
 
 # Where a spoken answer is turned into text (the voice mock interview, the rehearsal page's mic): an OpenAI-style
 # endpoint. Default: LOCAL_STT_URL, else the local model server's (LOCAL_LLM_URL) /audio/transcriptions.

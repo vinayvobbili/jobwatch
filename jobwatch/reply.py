@@ -4,8 +4,10 @@ The extension reads the one open thread on the page and sends its text here; thi
 tracker (what was applied to, queued, said about pay, a referral in flight), writes the reply with the
 shared local model and returns it for the person to read and send themselves. Nothing here sends anything.
 
-The thread is private: it only ever goes to the local model server (chat.py's `local` backend, whatever the chat
-is set to), never to Claude, and it isn't saved anywhere.
+The thread is private: by default it only goes to the local model server (chat.py's `local` backend, whatever the
+chat is set to) and isn't saved anywhere. `reply.backend: chat` in the watchlist is the opt-in to the chat's backend
+and model instead (claude: the thread, your resume and the tracker's lines for that company go to Anthropic through
+the API key the chat already uses; nothing new is wired). The result says which ran (`model`, `local`).
 
 The rules are fixed text (RULES), not left to the model, and the code checks what it can:
 - a thread that says not to use AI gets no draft at all, only a warning (decided before the model is asked);
@@ -51,9 +53,10 @@ smaller than theirs), don't express interest. Thank them, say politely and brief
 from what you're looking for, and ask them to keep you in mind for senior or staff-level roles. Don't quote the \
 user's years or title, and don't call the role a step down or beneath you.
 - The company already tracked: if the tracker shows an application, a referral or a conversation in flight there, \
-answer a question about it honestly ("I'm already in process for the <title> role"), ask whether this is the same \
-opening or a different one, and say nothing else about it: not the referral, not who the user talked to, not pay \
-or the next step. Never re-apply or contradict the tracker.
+the reply says NOTHING about it: no mention of an application, a process, an interview, a referral, who the user \
+talked to, pay or a next step, and no answer to a question about it (such as "have you applied before?"). Reply only \
+to the rest of the message, neutrally (thank them, ask about the role or what they need), and leave the rest to the \
+user, who sees a warning. Never re-apply or contradict the tracker. Don't write that you applied, or didn't.
 - Don't mention contract, rate, relocation, onsite or a specific team unless the thread does. Don't ask for \
 things the thread already told you.
 - Don't agree to a call time or give a phone number, a salary or an address. Offer to find a time, or ask what \
@@ -102,10 +105,13 @@ _NO_AI = re.compile(
 _OPENER = re.compile(r"hope\s+(?:this|you)\b[^.\n]{0,40}\b(?:well|finds)|hope you(?:'re| are) (?:doing )?well", re.I)
 # A money figure: $150K, $150,000, 150k, 120/hr after a $. (A bare number isn't one.)
 _FIGURE = re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?\s?[kKmM]?\b|\b\d{2,3}\s?[kK]\b")
+_PROCESS = re.compile(r"\b(?:appl(?:y|ied|ication)s?|interview(?:s|ing|ed)?|referr(?:al|ed)s?|"
+                      r"in (?:the )?process|in process)\b", re.I)
 _LIVE = (*IN_PROGRESS, "queued", "snoozed")
-_THINK =re.compile(r"<think>.*?</think>", re.S | re.I)
+# A model's reasoning, which isn't the reply: Qwen's <think>...</think>, Gemma's <|channel>thought ...<channel|>.
+_THINK = re.compile(r"<think>.*?</think>|<\|channel>.*?<channel\|>", re.S | re.I)
 _CHECK = re.compile(r"^\s*CHECK:?\s*$", re.I | re.M)
-_LABEL = re.compile(r"^\s*REPLY:?[ \t]*\n?", re.I)
+_LABEL = re.compile(r"^(?:\W*REPLY\W*?:[ \t]*\n?)+", re.I)
 
 
 def no_ai_clause(thread: str) -> str | None:
@@ -204,9 +210,13 @@ def parse(reply: str) -> tuple[str, list[str]]:
     return text[:MAX_REPLY].strip(), found[:MAX_NOTES]
 
 
-def review(text: str, thread: str, pay: list[str]) -> list[str]:
-    """What the code found wrong with a drafted reply, as warnings for the panel."""
+def review(text: str, thread: str, pay: list[str], in_flight: bool = False) -> list[str]:
+    """What the code found wrong with a drafted reply, as warnings for the panel. in_flight: the company has an
+    application or referral in flight, which the reply must not mention."""
     out = []
+    if in_flight and _PROCESS.search(text):
+        out.append("The draft mentions an application, interview or referral at a company where one is in "
+                   "flight: cut that line.")
     if _OPENER.search(text):
         out.append("The draft opens with a stock line (\"hope you're well\"): cut it.")
     if extra := _figures(text) - _figures(thread) - _figures("\n".join(pay)):
@@ -225,7 +235,8 @@ def draft(cfg: Config, store: Store, thread: str, sender: str = "", company_name
         raise ValueError("send the thread's text to answer")
     sender = " ".join(str(sender or "").split())[:120]
     name = known_company(store, " ".join(str(company_name or "").split())[:120], thread)
-    out = {"reply": "", "notes": [], "warnings": [], "company": name, "model": None, "drafted": False}
+    out = {"reply": "", "notes": [], "warnings": [], "company": name, "model": None, "local": True,
+           "drafted": False}
     if phrase := no_ai_clause(thread):
         out["warnings"].append(f"This thread asks for no AI (\"{phrase}\"). No draft was written: reply yourself.")
         return out
@@ -237,9 +248,16 @@ def draft(cfg: Config, store: Store, thread: str, sender: str = "", company_name
         bank = []
     system = PROMPT.format(rules=RULES, today=(today or date.today()).isoformat(),
                            context=context(sender, thread, resume_text(cfg.resume), bank, name, lines, pay))
+    c = cfg.chat
+    backend, model = (c.backend, c.model) if cfg.reply.backend == "chat" else ("local", "")
+    where = chat.where(backend, model)
+    out["model"], out["local"] = where["model"], where["local"]
     try:
-        chat.check("local")
-        text = "".join(p for p in chat.reply("local", system, [{"role": "user", "content": ASK}],
+        if backend == "claude":
+            chat.check(backend, c.keychain, c.key_command)
+        else:
+            chat.check(backend)
+        text = "".join(p for p in chat.reply(backend, system, [{"role": "user", "content": ASK}], model=model,
                                              max_tokens=MAX_TOKENS) if isinstance(p, str))
     except chat.ChatUnavailable as e:
         out["warnings"].append(f"No draft: {str(e).rstrip('.')}.")
@@ -251,6 +269,6 @@ def draft(cfg: Config, store: Store, thread: str, sender: str = "", company_name
     if not reply:
         out["warnings"].append("No draft: the model gave no reply. Try again.")
         return out
-    out.update(reply=reply, notes=notes, drafted=True, model=chat.where("local")["model"])
-    out["warnings"] += review(reply, thread, pay)
+    out.update(reply=reply, notes=notes, drafted=True)
+    out["warnings"] += review(reply, thread, pay, in_flight=bool(flags))
     return out

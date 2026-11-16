@@ -29,6 +29,14 @@ permission, to see the address of that one new tab (opened within two minutes of
 On a company's page, **Save this posting to jobwatch** sends your jobwatch the page's address and the job text the page
 shows, only when you press it.
 
+**Draft reply (draft wording; phase 2 finalises):** only when you press **Draft reply** on a LinkedIn message thread you
+have open, it reads the text of that one thread (the sender's name, the messages and their times) and sends it to your own
+jobwatch, which writes a reply on this computer with its local model; the extension types it into the message box and never
+presses Send. It does not open, scroll or read any other thread or list. By default the thread goes nowhere else. If you
+turn on `reply: {backend: chat}` in jobwatch's watchlist, jobwatch asks its chat model instead, and with the chat set to
+Claude the thread (with your resume text and your tracked notes for that company) is sent to Anthropic by jobwatch, not by
+the extension. That is a setting in jobwatch, off by default.
+
 **What it receives, and writes into the form:** from your own jobwatch, your applicant details (name, email, phone,
 address, links, work authorization, and the voluntary self-identification answers you have set there), your answers to
 earlier applications, and the job's resume file. It writes the ones you tick into the form you are looking at, and

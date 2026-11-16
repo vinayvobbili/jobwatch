@@ -104,14 +104,21 @@ extension never ticks one by default.
 
 `thread` is the text of the one open message thread, as read from the page (`sender` and `company` are optional: what
 the page showed). → `{"reply": "…", "notes": ["…"], "warnings": ["…"], "company": "Initech", "model": "local model",
-"drafted": true}`. The reply is written by the shared local model server only (never Claude, whatever the chat is set
-to) from the thread, the resume, the stories and what's tracked at that company (its applications, notes and pay lines
-kept with `comp`), under fixed reply rules. `notes` are one to three things to check before sending, `warnings` are
-what the code found: an application or referral in flight at that company, a figure in the draft that isn't in the
+"local": true, "drafted": true}`. By default the reply is written by the shared local model server only (never Claude,
+whatever the chat is set to), so the thread stays on the computer. It reads the thread, the resume, the stories and
+what's tracked at that company (its applications, notes and pay lines kept with `comp`), under fixed reply rules.
+`notes` are one to three things to check before sending, `warnings` are what the code found: an application or
+referral in flight at that company (the reply itself says nothing about it), a figure in the draft that isn't in the
 thread or the pay lines, or a stock opener. A thread that asks for no AI gets `reply: ""`, `drafted: false` and a
 warning instead of a draft, and so does a model that isn't running. The thread isn't kept. Only shown when
 `/ext/ping`'s `features` has `reply`. An empty thread: `400`. The extension types `reply` into the message box and
 never presses Send.
+
+**Opt-in to a bigger model:** the watchlist's `reply: {backend: chat}` makes the chat's backend and model write the
+draft instead (`chat.backend: claude`: Anthropic's model, through the API key the chat already uses; jobwatch adds
+no other way to pay or sign in). Then the thread, the resume's text and the tracker's lines for that company leave
+the computer for Anthropic; `local` is `false` and `model` names the model, so the panel can say so. `reply:
+{backend: local}` (the default) keeps everything local.
 
 ### `POST /ext/answers`
 

@@ -160,6 +160,8 @@ def test_a_stock_opener_is_flagged(cfg, store, model):
 def test_parse_handles_labels_think_blocks_and_missing_notes():
     assert reply.parse("<think>hm</think>\nREPLY:\nHi Sam.\n\nCHECK:\n1. One\n2) Two\n- Three\n- Four") == \
         ("Hi Sam.", ["One", "Two", "Three"])
+    assert reply.parse("<|channel>thought\n<channel|>REPLY:\nHi Sam.\nCHECK:\n- One") == ("Hi Sam.", ["One"])
+    assert reply.parse("REPLY:\n\nREPLY:\nHi Sam.\nCHECK:\n- One") == ("Hi Sam.", ["One"])
     assert reply.parse("Hi Sam, thanks.") == ("Hi Sam, thanks.", [])
     assert reply.parse("REPLY: Hi Sam.") == ("Hi Sam.", [])
 
@@ -197,3 +199,61 @@ def test_the_extension_endpoint(server, watchlist, model):
     assert status == 200 and json.loads(data)["reply"] == "Hi Dana, thanks for writing."
     status, data = request(server, "POST", "/ext/reply", {"thread": " "}, headers=ok)
     assert status == 400 and "thread" in json.loads(data)["error"]
+
+
+def test_a_tracked_company_gets_a_reply_that_says_nothing_about_the_process(cfg, store, model):
+    store.add("Initech", "Platform Engineer", status="interviewing", applied="2026-11-01")
+    reply.draft(cfg, store, thread("tracked_company"), "Marcus Bell")
+    assert "says NOTHING about it" in model["system"] and "have you applied before" in model["system"]
+
+
+def test_a_mention_of_the_process_in_flight_is_flagged(cfg, store, model):
+    store.add("Initech", "Platform Engineer", status="interviewing", applied="2026-11-01")
+    model["said"] = "REPLY:\nHi Marcus, I'm already in process for that role.\nCHECK:\n- ok"
+    got = reply.draft(cfg, store, thread("tracked_company"), "Marcus Bell")
+    assert any("cut that line" in w for w in got["warnings"])
+    model["said"] = "REPLY:\nHi Marcus, thanks for reaching out. What does the team work on?\nCHECK:\n- ok"
+    assert not any("cut that line" in w for w in reply.draft(cfg, store, thread("tracked_company"), "")["warnings"])
+
+
+def test_the_process_is_only_checked_when_one_is_in_flight():
+    assert reply.review("I applied last year.", "", []) == []
+    assert reply.review("I applied last year.", "", [], in_flight=True)
+
+
+def _setting(watchlist, **sections):
+    raw = yaml.safe_load(watchlist.read_text())
+    raw.update(sections)
+    watchlist.write_text(yaml.safe_dump(raw))
+    return config.load(watchlist)
+
+
+def test_the_draft_stays_local_unless_the_reply_setting_says_chat(watchlist, store, model):
+    cfg = _setting(watchlist, chat={"backend": "claude"})
+    got = reply.draft(cfg, store, thread("rate_question"), "Dana Whitfield")
+    assert model["backend"] == "local" and got["local"] is True and got["model"] == "local model"
+
+
+def test_chat_is_the_opt_in_to_the_chats_backend(watchlist, store, model):
+    cfg = _setting(watchlist, chat={"backend": "claude", "claude_model": "claude-test-1"}, reply={"backend": "chat"})
+    got = reply.draft(cfg, store, thread("rate_question"), "Dana Whitfield")
+    assert model["backend"] == "claude" and got["local"] is False and got["model"] == "claude-test-1"
+    cfg = _setting(watchlist, chat={"backend": "local"}, reply={"backend": "chat"})
+    reply.draft(cfg, store, thread("rate_question"), "Dana Whitfield")
+    assert model["backend"] == "local"
+
+
+def test_chat_without_a_key_is_a_warning(watchlist, store, monkeypatch):
+    def no_key(backend, *a):
+        raise chat.ChatUnavailable("set ANTHROPIC_API_KEY")
+    monkeypatch.setattr(chat, "check", no_key)
+    cfg = _setting(watchlist, chat={"backend": "claude"}, reply={"backend": "chat"})
+    got = reply.draft(cfg, store, thread("rate_question"), "Dana Whitfield")
+    assert got["reply"] == "" and "ANTHROPIC_API_KEY" in got["warnings"][0]
+
+
+def test_an_unknown_reply_backend_is_refused(watchlist):
+    with pytest.raises(config.ConfigError, match=r"reply\.backend must be one of local, chat"):
+        _setting(watchlist, reply={"backend": "agy"})
+    with pytest.raises(config.ConfigError, match="unknown reply setting"):
+        _setting(watchlist, reply={"model": "x"})
