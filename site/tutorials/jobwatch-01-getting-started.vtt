@@ -9,35 +9,35 @@ Which boards, which titles, which companies?
 00:00:10.000 --> 00:00:12.775
 Your job hunt shouldn't be a full-time job.
 
-00:00:13.200 --> 00:00:16.325
-Install jobwatch with pipx, and open it.
+00:00:13.200 --> 00:00:17.250
+Install uv, then install jobwatch with it, and open it.
 
-00:00:18.200 --> 00:00:22.580
+00:00:20.200 --> 00:00:24.580
 The first time, it asks a little about you, and for your resume.
 
-00:00:22.580 --> 00:00:24.975
+00:00:24.580 --> 00:00:26.975
 Your resume stays on this computer.
 
-00:00:30.000 --> 00:00:33.688
+00:00:32.280 --> 00:00:35.968
 Next, the jobs you want: titles, places and pay.
 
-00:00:33.688 --> 00:00:36.300
+00:00:35.968 --> 00:00:38.580
 Skip any step and come back later.
 
-00:00:36.800 --> 00:00:38.729
+00:00:39.120 --> 00:00:41.049
 Then the companies to watch.
 
-00:00:38.729 --> 00:00:42.175
+00:00:41.049 --> 00:00:44.495
 Type a name, or paste a link to one of their jobs.
 
-00:00:44.000 --> 00:00:46.370
+00:00:46.320 --> 00:00:48.723
 The last step is where the AI runs.
 
-00:00:46.370 --> 00:00:48.875
-Each choice says what it still needs.
+00:00:48.723 --> 00:00:51.745
+Each option tells you what it needs to work.
 
-00:00:53.400 --> 00:00:57.552
+00:00:55.720 --> 00:00:59.784
 Then you land on Today: your matches, ranked, with fit and pay.
 
-00:00:57.552 --> 00:00:59.925
-The chips open on your own defaults.
+00:00:59.784 --> 00:01:02.170
+The filters start where you set them.

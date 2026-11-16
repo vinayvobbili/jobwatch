@@ -64,7 +64,7 @@ TUTORIALS: dict[str, Video] = {
         "jobwatch-01-getting-started", "Getting started: from install to your first ranked jobs.",
         ["Which boards do I watch?", "Which titles count?", "Where do I even begin?"],
         "Where do you start? Which boards, which titles, which companies?",
-        [Scene("Install jobwatch with pipx, and open it.", html=INSTALL, seconds=5, name="install"),
+        [Scene("Install uv, then install jobwatch with it, and open it.", html=INSTALL, seconds=7, name="install"),
          Scene("The first time, it asks a little about you, and for your resume. Your resume stays on this computer.",
                onboard_about, start="today", name="about"),
          Scene("Next, the jobs you want: titles, places and pay. Skip any step and come back later.",

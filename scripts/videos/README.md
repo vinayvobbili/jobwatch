@@ -3,8 +3,8 @@
 The 1.5-minute tour (`docs/jobwatch-demo.mp4`) and the seven tutorials (`docs/tutorials/jobwatch-0N-*.mp4`) are screen
 recordings of the real `jobwatch ui` and of the Chrome extension's side panel, on made-up data (Acme, Globex, Initech,
 Umbrella, Hooli): nothing reads your own watchlist, reaches a job board or calls a model. They show the UI, with a
-visible cursor, a ripple on every click and nothing cut off at the frame's edges. The one command on screen is
-`pipx install jobwatch`.
+visible cursor, a ripple on every click and nothing cut off at the frame's edges. The only commands on screen are the
+uv-first install: install uv, `uv tool install jobwatch`, `jobwatch ui`.
 
 ```
 source .venv/bin/activate            # jobwatch's environment, with playwright and slidecast[mlx,yaml,playwright]

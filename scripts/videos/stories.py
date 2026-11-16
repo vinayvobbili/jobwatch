@@ -1,6 +1,6 @@
 """The videos' stories: each scene's narration and what the mouse does while it is said.
 
-Short, plain sentences. Show the page and the side panel, never a command (`pipx install jobwatch` is the one
+Short, plain sentences. Show the page and the side panel, never a command (the uv install is the one
 exception, in the getting-started video). Scenes run on the made-up demo (scripts/demo/seed.py)."""
 
 from __future__ import annotations
@@ -338,15 +338,21 @@ INSTALL = """<!doctype html><meta charset="utf-8"><style>
 .bar i { width: 16px; height: 16px; border-radius: 50%; background: #ff5f57 }
 .bar i:nth-child(2) { background: #febc2e }
 .bar i:nth-child(3) { background: #28c840 }
-.body { background: #14131f; padding: 56px 60px; font: 46px/1.4 "SF Mono", Menlo, monospace; color: #7ee2a8;
-  height: 240px }
+.body { background: #14131f; padding: 48px 60px; font: 40px/1.5 "SF Mono", Menlo, monospace; color: #7ee2a8;
+  height: 330px }
+.ln { display: block; white-space: nowrap }
 .cmd { display: inline-block; overflow: hidden; white-space: nowrap; width: 0; vertical-align: bottom;
-  animation: type 1.6s steps(22) .6s forwards; color: #e6e4f5 }
-.cur { display: inline-block; width: 22px; height: 46px; background: #b9a8ff; vertical-align: bottom;
+  color: #e6e4f5 }
+.c1 { animation: t1 1.6s steps(39) .5s forwards } .c2 { animation: t2 1.2s steps(24) 2.6s forwards }
+.c3 { animation: t3 .8s steps(11) 4.4s forwards }
+.cur { display: inline-block; width: 20px; height: 40px; background: #b9a8ff; vertical-align: bottom;
   animation: blink .8s steps(1) infinite }
-@keyframes type { to { width: 22ch } } @keyframes blink { 50% { opacity: 0 } }
+@keyframes t1 { to { width: 39ch } } @keyframes t2 { to { width: 24ch } } @keyframes t3 { to { width: 11ch } }
+@keyframes blink { 50% { opacity: 0 } }
 </style><div class="term"><div class="bar"><i></i><i></i><i></i></div>
-<div class="body">$ <span class="cmd">pipx install jobwatch</span><span class="cur"></span></div></div>"""
+<div class="body"><span class="ln">$ <span class="cmd c1">curl -LsSf astral.sh/uv/install.sh | sh</span></span>
+<span class="ln">$ <span class="cmd c2">uv tool install jobwatch</span></span>
+<span class="ln">$ <span class="cmd c3">jobwatch ui</span><span class="cur"></span></span></div></div>"""
 
 
 # -- the videos --------------------------------------------------------------

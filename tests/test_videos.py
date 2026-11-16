@@ -68,10 +68,21 @@ def test_the_tour_is_about_a_minute_and_a_half(stories):
     assert 75 <= estimated_length(stories, stories["stories"].VIDEOS["jobwatch-demo"]) <= 100
 
 
+def test_the_install_card_types_uv_first_and_each_whole_command(stories):
+    card = stories["stories"].INSTALL
+    typed = re.findall(r'<span class="cmd c(\d)">([^<]+)</span>', card)
+    assert [text for _, text in typed] == ["curl -LsSf astral.sh/uv/install.sh | sh", "uv tool install jobwatch",
+                                           "jobwatch ui"]
+    for n, text in typed:  # the reveal's width, in characters, must be the whole command (not "jobwatc")
+        assert f"@keyframes t{n} {{ to {{ width: {len(text)}ch }} }}" in card
+        assert re.search(rf"\.c{n} \{{ animation: t{n} [\d.]+s steps\({len(text)}\)", card)
+    assert "pipx" not in card
+
+
 def test_scenes_show_the_ui_not_a_terminal(stories):
     for name, video in all_videos(stories).items():
         cards = [s for s in video.scenes if s.html]
-        assert all(s.html is stories["stories"].INSTALL for s in cards), name  # the one command: pipx install
+        assert all(s.html is stories["stories"].INSTALL for s in cards), name  # the one card: the uv-first install
         assert len(cards) <= 1
         for scene in video.scenes:
             assert not re.search(r"\bjobwatch (ui|add|prep|comp|stories|alerts|inbox)\b|\bterminal\b|\bcommand",

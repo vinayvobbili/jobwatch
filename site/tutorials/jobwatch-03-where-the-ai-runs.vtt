@@ -15,29 +15,29 @@ Fit scores and the chat need a model.
 00:00:15.827 --> 00:00:18.525
 In Settings, you choose where it runs.
 
-00:00:21.320 --> 00:00:24.328
+00:00:21.240 --> 00:00:24.225
 Claude's API gives the strongest scores.
 
-00:00:24.328 --> 00:00:27.786
+00:00:24.225 --> 00:00:27.659
 Antigravity uses your own Google subscription.
 
-00:00:27.786 --> 00:00:31.245
-Or a model runs on this Mac, free and private.
+00:00:27.659 --> 00:00:31.465
+Or a model runs on your computer, free and private.
 
-00:00:31.560 --> 00:00:33.081
-Set a fallback chain.
+00:00:31.800 --> 00:00:33.191
+Set a backup order.
 
-00:00:33.081 --> 00:00:37.860
+00:00:33.191 --> 00:00:38.025
 If one runs out of credit or is down, the next one scores the job.
 
-00:00:39.560 --> 00:00:42.017
+00:00:39.800 --> 00:00:42.257
 A daily cap keeps the bill bounded.
 
-00:00:42.017 --> 00:00:44.685
+00:00:42.257 --> 00:00:44.925
 Past it, the fallback scores the rest.
 
-00:00:46.640 --> 00:00:50.788
+00:00:46.760 --> 00:00:50.706
 Only the model you pick sees your resume and the postings.
 
-00:00:50.788 --> 00:00:52.790
-On this Mac, nothing leaves.
+00:00:50.706 --> 00:00:53.835
+With a model on your computer, nothing leaves.
