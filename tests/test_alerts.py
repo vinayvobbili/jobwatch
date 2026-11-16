@@ -172,6 +172,27 @@ def test_a_remote_alert_job_found_on_its_board_stays_remote_and_is_noted_when_th
     assert [r["company"] for r in store.unwatched() if r["jobs"]] == ["umbrella"]
 
 
+def test_a_remote_alert_repairs_a_board_job_tracked_from_an_earlier_alert(web, watchlist):
+    web.responses["https://boards-api.greenhouse.io/v1/boards/umbrella/jobs?content=true"] = {
+        "jobs": [{"id": 7, "title": "Field Engineer", "company_name": "Umbrella LLC",
+                  "absolute_url": "https://job-boards.greenhouse.io/umbrella/jobs/7",
+                  "location": {"name": "United States"}, "offices": [], "metadata": [], "departments": [],
+                  "first_published": iso(3), "content": "&lt;p&gt;Fix things in the field.&lt;/p&gt;"}],
+        "meta": {"total": 1}}
+    plain = (FIXTURES / "linkedin.eml").read_text().replace("United States (Remote)", "United States")
+    remote = plain.replace("keywords=Software%20Engineer", "keywords=Software%20Engineer+Full-time+Remote")
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    first = by_title(alerts.intake(cfg, store, [alerts.message(remote)], page=Pages()))["Field Engineer @ Umbrella LLC"]
+    job = store.find(first.key)[0]
+    assert first.key == "greenhouse:umbrella:7" and job.remote
+    job.remote = None  # as an earlier version kept it: the alert's remote search was lost on the way to the board
+    store.update(job)
+    again = by_title(alerts.intake(cfg, store, [alerts.message(remote)], page=Pages()))["Field Engineer @ Umbrella LLC"]
+    assert again.result == "known" and again.key == first.key
+    assert store.find(first.key)[0].remote
+
+
 @pytest.mark.parametrize("title, remote", [("Principal Engineer - Agentic Security Operations (remote)", True),
                                            ("Staff Engineer – Remote", True), ("Remote Sensing Engineer", False),
                                            ("Staff Engineer (Hybrid)", False)])

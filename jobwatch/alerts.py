@@ -1055,9 +1055,9 @@ class Taker:
         if known:
             emailed = f.job
             f.result, f.job = "known", tracked.get(known) or store.find(known)[0]
-            # A job tracked from an earlier email, which this one says is remote (its alert searched only
-            # remote jobs)
-            if f.job.source == MANUAL and emailed.remote and not f.job.remote:
+            # A job tracked from an earlier email (or found from one on its company's board), which this one says
+            # is remote (its alert searched only remote jobs)
+            if emailed.remote and not f.job.remote:
                 f.job.remote = True
                 if not dry_run:
                     store.update(f.job)
