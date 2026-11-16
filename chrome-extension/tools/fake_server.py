@@ -73,7 +73,10 @@ class State:
         self.requests: list[tuple[str, str]] = []
         self.token = TOKEN
         self.know_every_page = False  # live_check.py: every page is a known job, with a resume
-        self.features = ["posting"]  # /ext/ping's; an older jobwatch has none
+        self.features = ["posting", "reply"]  # /ext/ping's; an older jobwatch has none
+        self.replies: list[dict] = []  # /ext/reply: what the extension sent from a conversation
+        self.reply_answer: dict = {}  # /ext/reply: fields to change in the canned answer (local, warnings, ...)
+        self.reply_status = 200  # /ext/reply: an error status, to see how the panel words it
         self.draft_answer = ""  # store_assets.py: a draft that reads like one; else it names the question
 
 
@@ -131,6 +134,16 @@ def _handler(state: State):
                 canned = next((a for q, a in DRAFTS.items() if q in body["question"].lower()), None)
                 answer = state.draft_answer or canned or f"A drafted answer to: {body['question']}"
                 self._json(200, {"answer": answer, "model": "fake-model"})
+            elif self.path == "/ext/reply":
+                state.replies.append(body)
+                if state.reply_status != 200:
+                    self._json(state.reply_status, {"error": "the model is not answering"})
+                    return
+                # the real endpoint (jobwatch/reply.py) has the local model answer; a canned draft stands in for it
+                self._json(200, {"reply": "Thanks Dana. Happy to talk Thursday afternoon. Which client is it?",
+                                 "notes": ["Check the range against what you want before you reply."], "warnings": [],
+                                 "company": "Northwind Talent", "model": "fake-local-model", "local": True,
+                                 "drafted": True, **state.reply_answer})
             elif self.path == "/ext/posting":
                 state.postings.append(body)
                 self._json(200, {"key": "greenhouse:initech/4001", "company": body.get("company") or "Initech",

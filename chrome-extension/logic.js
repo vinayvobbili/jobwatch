@@ -372,7 +372,47 @@
     return scanned > 0 && remaining * 2 < scanned;
   }
 
-  const JW = { formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
+  /** Where "Draft reply" is offered: 'messaging' on LinkedIn's Messaging pages, 'linkedin' on any other LinkedIn page
+   * (a conversation can be open in a bubble at the bottom of it), else ''. Only the address is looked at here. */
+  function replyMode(url) {
+    const u = urlOf(url);
+    if (!u || !LINKEDIN_HOST.test(u.hostname.toLowerCase())) return '';
+    return /^\/messaging(\/|$)/.test(u.pathname) ? 'messaging' : 'linkedin';
+  }
+
+  const THREAD_MAX = 12000; // characters of a conversation sent: the newest part, the way a reply reads it
+
+  /**
+   * An open conversation as the text /ext/reply takes: one block per message, "Name, when" then the message, blocks
+   * separated by a blank line. `messages` is what reply.js read: [{ sender, when, text }] oldest first. A message with
+   * no text is dropped; when the thread is longer than `max` characters the oldest messages go, never half of one.
+   */
+  function formatThread(messages, max) {
+    const blocks = [];
+    for (const m of messages || []) {
+      const text = String((m && m.text) || '').replace(/\r/g, '').replace(/[ \t ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+      if (!text) continue;
+      const head = [oneLine(m.sender || ''), oneLine(m.when || '')].filter(Boolean).join(', ') || 'Unknown';
+      blocks.push(`${head}\n${text}`);
+    }
+    const limit = max || THREAD_MAX;
+    let out = blocks.join('\n\n');
+    while (out.length > limit && blocks.length > 1) {
+      blocks.shift();
+      out = blocks.join('\n\n');
+    }
+    return out.slice(-limit);
+  }
+
+  /** A short fingerprint of a thread's text: the panel keeps it with a draft, so the draft is only put in the box while the same conversation is still open. */
+  function fingerprint(text) {
+    let hash = 5381;
+    const s = String(text || '');
+    for (let i = 0; i < s.length; i++) hash = ((hash * 33) ^ s.charCodeAt(i)) >>> 0;
+    return `${s.length}:${hash.toString(36)}`;
+  }
+
+  const JW = { replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
     linkedinJobId, postingMode, listMode, importOnTab, progressIsMine, IMPORT_RUNNING, IMPORT_HIDDEN, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;

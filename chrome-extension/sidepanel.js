@@ -22,6 +22,7 @@
   let ready = false; // jobwatch is paired and answering
   let features = []; // what that jobwatch offers beyond filling (/ext/ping): an older one has no posting call
   let state = null; // the last scan: { items, info, job }
+  let replyState = null; // the draft reply on show: jobwatch's answer with the conversation's fingerprint
   let busy = false;
   let idleText = ''; // what idle() last said, shown again when the tab loads another page
   let listRefresh = null; // re-reads the import-list settings block when passive mode notes a job
@@ -91,6 +92,12 @@
     }, () => {});
     return b;
   };
+  // On LinkedIn: draft a reply to the conversation that is open (only offered when this jobwatch has the call).
+  const replyButton = () => {
+    const b = h('button', { id: 'reply', class: 'ghost', textContent: 'Draft reply to this conversation', onclick: draftReply, hidden: true });
+    myTab().then((tab) => { if (tab && JW.replyMode(tab.url)) b.hidden = false; }, () => {});
+    return b;
+  };
   // On a LinkedIn or Indeed list of jobs: send every page's jobs to jobwatch, to see which it had and track the rest.
   const importButton = () => {
     const b = h('button', { id: 'import-list', class: 'ghost', textContent: 'Read the jobs on this list', onclick: importList, hidden: true });
@@ -134,11 +141,13 @@
         on, ' Note jobs while I browse'),
       seen);
   };
-  const actions = () => h('div', { class: 'actions' }, scanButton(), features.includes('posting') ? postingButton() : null,
+  const actions = () => h('div', { class: 'actions' }, scanButton(), features.includes('reply') ? replyButton() : null,
+    features.includes('posting') ? postingButton() : null,
     features.includes('import-list') ? importButton() : null, features.includes('import-list') ? listOptions() : null);
 
   function idle(text) {
     state = null;
+    replyState = null;
     idleText = text;
     $('where').textContent = '';
     if (!ready) {
@@ -159,6 +168,47 @@
     view(h('div', { class: 'empty done' }, h('div', { class: 'msg good', textContent: r.said + '.' }),
       h('a', { class: 'go linkbtn', href: r.link, target: '_blank', rel: 'noopener', textContent: 'See it in jobwatch' }),
       h('div', { class: 'msg small', textContent: r.has_text ? '' : 'Press Apply on the company\'s site, then use "Save this posting to jobwatch" on its page.' })));
+  }
+
+  /**
+   * A drafted reply: where it was written (on this Mac, or by a cloud model the person chose), jobwatch's warnings, the
+   * draft in a box that can be edited, and the "check this" notes. "Put in the message box" fills LinkedIn's box and
+   * stops there: nothing here presses Send.
+   */
+  function replied(r) {
+    replyState = r;
+    $('where').textContent = r.sender ? `Reply to ${r.sender}` : 'Reply';
+    const cloud = r.local === false;
+    const model = r.model || 'a cloud model';
+    const pill = cloud
+      ? h('div', { id: 'reply-where', class: 'pill cloud', textContent: r.drafted ? `This thread was sent to ${model}, off this Mac.` : `Replies are set to use ${model}, off this Mac.` })
+      : h('div', { id: 'reply-where', class: 'pill local', textContent: r.drafted ? `Written on this Mac by ${model}. The thread did not leave it.` : 'Nothing was sent off this Mac.' });
+    const box = h('textarea', { id: 'reply-text', class: 'val', rows: 9, value: r.reply || '' });
+    const replace = h('button', { id: 'reply-replace', class: 'ghost', textContent: 'Replace what is in the box', hidden: true, onclick: () => putInBox(box, replace, true) });
+    const put = h('button', { id: 'reply-fill', class: 'go', textContent: 'Put in the message box', onclick: () => putInBox(box, replace, false) });
+    const copy = h('button', { id: 'reply-copy', class: 'ghost', textContent: 'Copy', onclick: () => navigator.clipboard.writeText(box.value).then(() => toast('Copied.', true), () => toast("Couldn't copy. Select the text and copy it.", false)) });
+    view(
+      h('div', { class: 'scroll' },
+        h('div', { class: 'rows' },
+          pill,
+          (r.warnings || []).map((w) => h('div', { class: 'row warnrow', textContent: w })),
+          r.drafted ? h('div', { class: 'row' }, h('div', { class: 'q', textContent: 'Draft' }), box) : null,
+          (r.notes || []).length ? h('div', { class: 'row' }, h('div', { class: 'q', textContent: 'Check this before you send' }),
+            h('ul', { class: 'checks' }, r.notes.map((n) => h('li', { textContent: n })))) : null,
+          r.drafted ? h('div', { class: 'meta', textContent: `Read from ${r.count} message${r.count === 1 ? '' : 's'} in the open conversation. jobwatch never presses Send: you do.` }) : null)),
+      h('footer', {}, h('span', { class: 'count', textContent: r.drafted ? 'Edit it, then put it in the box.' : 'No draft for this one.' }),
+        h('button', { id: 'reply-again', class: 'ghost', textContent: 'Draft again', onclick: draftReply }),
+        r.drafted ? [copy, replace, put] : null));
+  }
+
+  async function putInBox(box, replaceButton, replace) {
+    const text = box.value.trim();
+    if (!text) return toast('The draft is empty.', false);
+    const r = await send({ type: 'fillReply', tabId, text, fingerprint: replyState && replyState.fingerprint, replace });
+    if (!r.ok) return toast(r.error, false);
+    if (r.filled) return toast('In the message box. Read it, then press Send yourself.', true);
+    if (r.reason === 'has-text') replaceButton.hidden = false;
+    toast(r.reason === 'has-text' ? 'The message box already has text. Replace it, or copy the draft instead.' : r.error, false);
   }
 
   /** LinkedIn's Apply button was pressed: the company's site opens in a new tab, and jobwatch follows it there. */
@@ -252,6 +302,25 @@
     if (!r.ok) return failed(r.error);
     state = r;
     render();
+  }
+
+  async function draftReply() {
+    if (busy) return;
+    if (!tabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = tab && tab.id;
+    }
+    if (!tabId) return failed('No tab to read. Open a conversation on LinkedIn and try again.');
+    busy = true;
+    replyState = null;
+    const readId = tabId;
+    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: 'Reading the open conversation and drafting a reply...' }),
+      h('div', { class: 'msg small', textContent: 'A local model can take a minute.' })));
+    const r = await send({ type: 'draftReply', tabId: readId });
+    busy = false;
+    if (readId !== tabId) return;
+    if (!r.ok) return failed(r.error);
+    replied(r);
   }
 
   async function savePosting() {
@@ -393,6 +462,7 @@
 
   function tabChanged() {
     if (state) idle(CHANGED);
+    else if (replyState) idle('This tab changed since the draft was written. Press Draft reply to read the conversation again.');
   }
 
   if (!pinned) {

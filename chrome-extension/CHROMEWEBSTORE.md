@@ -1,6 +1,6 @@
 # Chrome Web Store Listing: jobwatch: Application Filler
 
-> Last Updated: 2026-11-14
+> Last Updated: 2026-11-16
 
 Live: https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi
 (item ID `abackmpdpfflgiaccgfkababjplgolfi`)
@@ -42,6 +42,7 @@ How it works
 • When you press the form's own Submit, jobwatch keeps the answers as they stood (your edits included) in that job's application package, and the panel says so. That alone never marks the job applied: only a confirmation page does. Your answers are kept for the next form and for interview prep.
 • On a LinkedIn job, press Open the company's posting and the extension presses LinkedIn's Apply button for you, so the company's own page opens. jobwatch reads the posting there. On a company page it can't read, press Save this posting to jobwatch.
 • On a LinkedIn or Indeed list of jobs, press Read the jobs on this list to send the list's job cards to your jobwatch. While you browse those two sites, the job cards you see are also noted on your computer, and nothing leaves it until you press Import. A checkbox in the side panel turns this off.
+• On a LinkedIn conversation with a recruiter, press Draft reply to this conversation. The extension reads that one open conversation and gives it to your jobwatch, which writes a draft with the model on your computer. The panel shows the draft, warnings and what to check, and says where it was written. Put in the message box types it into LinkedIn's box. The extension never presses Send: you read it and send it yourself.
 
 Works with
 • Greenhouse, Lever and Ashby application forms, including a Greenhouse form embedded in a company's own page.
@@ -54,6 +55,7 @@ Privacy
 • Page content and your answers go only to the jobwatch on your own computer (127.0.0.1). The authors run no server and receive nothing.
 • A draft is written by the model you chose in jobwatch's settings: one on your own computer, or a cloud API you set up with your own key.
 • On LinkedIn and Indeed it reads only the job cards of a list (job number, title, company, place, pay, how long ago it was posted), and on a LinkedIn job page only the address. It presses LinkedIn's Apply button only when you ask, and never Easy Apply or Submit.
+• Only when you press Draft reply, it reads the one LinkedIn conversation that is open (the messages already on screen, no scrolling, no other conversation) and gives it to your jobwatch. It never presses Send. If you set jobwatch to use a cloud model for replies, jobwatch (not the extension) sends the conversation to it, and the panel says so.
 • No analytics, tracking or advertising.
 
 Support: https://github.com/vinayvobbili/jobwatch/issues
@@ -108,7 +110,7 @@ One block per dashboard field (Privacy practices tab, and Package > What's new).
 
 ### Single purpose
 
-Help with job applications by connecting the browser to the user's own jobwatch app, which runs on their computer. The extension fills job application forms from the user's saved details and earlier answers after the user reviews each field, and sends the job listings from a LinkedIn or Indeed list the user has open to that same local app.
+Help with job applications by connecting the browser to the user's own jobwatch app, which runs on their computer. The extension fills job application forms from the user's saved details and earlier answers after the user reviews each field, and sends the job listings from a LinkedIn or Indeed list the user has open to that same local app. When the user asks, it also drafts a reply to a recruiter's LinkedIn conversation the user has open: it reads that conversation, the local app writes the draft, and the user chooses whether it is typed into the message box (the user sends it).
 
 ### Justification: activeTab
 
@@ -116,7 +118,7 @@ Reads the application form's questions and fills the ticked fields, only on the 
 
 ### Justification: scripting
 
-Injects the script that finds a form's fields and writes the ticked values into the tab, only after the user presses Fill this application. Also injects the job-list reader into the user's LinkedIn or Indeed tab when the user presses Read the jobs on this list, and the script that presses LinkedIn's Apply button when the user presses Open the company's posting. All scripts ship inside the package; no remote code is loaded.
+Injects the script that finds a form's fields and writes the ticked values into the tab, only after the user presses Fill this application. Also injects the job-list reader into the user's LinkedIn or Indeed tab when the user presses Read the jobs on this list, and the script that presses LinkedIn's Apply button when the user presses Open the company's posting. When the user presses Draft reply to this conversation, it injects the script that reads the open LinkedIn conversation, and, when the user presses Put in the message box, the script that types the draft into that conversation's message box (it clicks nothing and never presses Send). All scripts ship inside the package; no remote code is loaded.
 
 ### Justification: storage
 
@@ -136,7 +138,7 @@ The dashboard has one box for every match pattern, content-script sites included
 
 Local app (http://127.0.0.1/*, http://localhost/*): the only network destination is the jobwatch app the user runs on their own computer. It supplies the user's details, earlier answers and resume, and receives imported job cards and applications. Nothing goes to the developer or any third party; the developer runs no server.
 
-LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*): the content script does nothing unless the page is a list of jobs. There it reads only the job cards already drawn (job number, title, company, place, pay, posted date), never profiles, messages or account data. Passive mode is off by default; once the user ticks it, cards they browse are kept in local storage until they press Import. Read the jobs on this list runs only when pressed: it scrolls and pages that list tab (4 pages by default, at most 10) and sends the cards to the local jobwatch only.
+LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*): the content script does nothing unless the page is a list of jobs. There it reads only the job cards already drawn (job number, title, company, place, pay, posted date), never profiles or account data. Messages are read only after the user presses Draft reply, and only the one open conversation (details in the content script justification below). Passive mode is off by default; once the user ticks it, cards they browse are kept in local storage until they press Import. Read the jobs on this list runs only when pressed: it scrolls and pages that list tab (4 pages by default, at most 10) and sends the cards to the local jobwatch only.
 
 ### Justification: host permissions (http://127.0.0.1/* and http://localhost/*)
 
@@ -144,7 +146,9 @@ These are the only network destinations the extension talks to: the jobwatch app
 
 ### Justification: content script on LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*)
 
-A content script runs on LinkedIn and Indeed pages. It does nothing unless the address is a list of jobs (a search, "Jobs based on your preferences", "Jobs for you"). On such a list it reads only the job cards the page has already drawn: the job number on the site, title, company, place, pay and how long ago it was posted. Nothing else on the page is read: no profile, messages, job descriptions or account data.
+A content script runs on LinkedIn and Indeed pages. It does nothing unless the address is a list of jobs (a search, "Jobs based on your preferences", "Jobs for you"). On such a list it reads only the job cards the page has already drawn: the job number on the site, title, company, place, pay and how long ago it was posted. Nothing else on the page is read: no profile, job descriptions or account data.
+
+Draft reply (only when the user presses the button in the side panel; a script injected for that press, not the content script above): on a LinkedIn conversation the user has open, it reads the other person's name and the text and times of the messages already on screen in that one conversation. It does not scroll, open another conversation or read the message list, and keeps nothing: the text goes to the user's own local jobwatch, which writes a draft. When the user presses Put in the message box it types the draft into that conversation's message box and nothing else; it never clicks Send or any other button. If jobwatch is set to use a cloud model for replies, jobwatch (not the extension) sends the conversation to it, and the panel says so.
 
 Passive mode (off by default; the user opts in with a checkbox in the side panel): once the user ticks it, as the user browses a list, the script notes those cards, with no scrolling, clicking or page-opening by the extension, and keeps them in the extension's local Chrome storage on the user's computer (up to 1000 jobs). Nothing is sent anywhere until the user presses Import in the side panel; then the jobs go only to the user's own local jobwatch and are deleted from the extension. With the checkbox off (the default), the script reads and stores nothing.
 
@@ -152,17 +156,21 @@ Read the jobs on this list: only when the user presses this button, the extensio
 
 ### Data use: data types to tick
 
-Tick: Personally identifiable information, Health information, Website content.
+Tick: Personally identifiable information, Health information, Personal communications (new with Draft reply), Website content.
 
-Leave unticked: Financial and payment information, Authentication information, Personal communications, Location, Web history, User activity.
+Leave unticked: Financial and payment information, Authentication information, Location, Web history, User activity.
 
-Why, if a reviewer asks: PII and Health come from the user's own jobwatch and are written into the form they are filling (Health: the voluntary self-identification answers, only when the user ticks that row). Website content is the form's questions and the job cards of a LinkedIn or Indeed list. All of it goes only to the user's own jobwatch on the same computer; none to the developer or a third party. The pairing token is the user's own credential for their own jobwatch, stored locally.
+Why, if a reviewer asks: PII and Health come from the user's own jobwatch and are written into the form they are filling (Health: the voluntary self-identification answers, only when the user ticks that row). Website content is the form's questions and the job cards of a LinkedIn or Indeed list. Personal communications is the text of the one LinkedIn conversation the user asks for a reply to, read only when they press Draft reply. All of it goes only to the user's own jobwatch on the same computer; none to the developer or a third party. The pairing token is the user's own credential for their own jobwatch, stored locally.
 
 ### Data use: certifications to tick
 
 - [x] I do not sell or transfer user data to third parties, outside of the approved use cases.
 - [x] I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
 - [x] I do not use or transfer user data to determine creditworthiness or for lending purposes.
+
+### What's new (next version: Draft reply)
+
+New: Draft reply. On a LinkedIn conversation you have open, press "Draft reply to this conversation" in the side panel. The extension reads that one conversation and gives it to your own jobwatch, which writes a draft with the model on your computer. The panel shows the draft, warnings and what to check, and says whether the draft was written on your computer. "Put in the message box" types it into LinkedIn's box; the extension never presses Send. It reads nothing else from LinkedIn's messages. Reading a conversation adds Personal communications to the data the extension handles; the privacy policy is updated.
 
 ### What's new (0.10.0)
 
@@ -176,7 +184,7 @@ on 2026-11-12).
 | Permission | Type | Justification |
 |------------|------|---------------|
 | `activeTab` | permissions | Reads the application form's questions, and fills the ticked fields, only on the tab where the user clicked the extension's icon. |
-| `scripting` | permissions | Injects the script that finds the form's fields and writes the ticked values into that tab, only after the user clicks the icon and presses Fill this application. Also injects the list reader into a LinkedIn or Indeed tab when the user presses Read the jobs on this list, and the script that presses LinkedIn's Apply button when the user presses Open the company's posting. |
+| `scripting` | permissions | Injects the script that finds the form's fields and writes the ticked values into that tab, only after the user clicks the icon and presses Fill this application. Also injects the list reader into a LinkedIn or Indeed tab when the user presses Read the jobs on this list, the script that presses LinkedIn's Apply button when the user presses Open the company's posting, and (Draft reply) the script that reads the one open LinkedIn conversation when the user presses Draft reply, and types the draft into its message box when the user presses Put in the message box. It clicks nothing there and never presses Send. |
 | `storage` | permissions | Saves the jobwatch address and pairing token the user enters on the options page, the list-import page count and the passive-mode checkbox, the job cards passive mode noted until the user imports them, and (in session memory) an answer the user just submitted until jobwatch has recorded it. |
 | `sidePanel` | permissions | Shows the review (each field, where its value came from, and the Fill selected button) in Chrome's side panel beside the form, so it never covers the page. |
 | `tabs` | permissions | Reads the address (and title) of tabs: the active tab, to choose the side panel's button and to know which site the user is on; the one new tab that LinkedIn's Apply button opens (within two minutes), whose address is given to the user's local jobwatch; and a form's tab after a scan, to notice that the page now looks like a submission confirmation so jobwatch can record the application. For a list import it also moves the user's own list tab to its next page. |
@@ -208,8 +216,8 @@ Every permission in `manifest.json` is used by the code. Points to watch in revi
 **Does the extension collect user data?** Yes. It handles it on the user's computer and sends it only to the user's
 own jobwatch; the developer receives none of it.
 
-Tick **Personally identifiable information**, **Health information** and **Website content**. Leave every other type
-unticked.
+Tick **Personally identifiable information**, **Health information**, **Personal communications** (Draft reply) and
+**Website content**. Leave every other type unticked.
 
 | Data Type | Collected? | Transmitted Off-Device? | Purpose | Shared with Third Parties? |
 |-----------|-----------|------------------------|---------|---------------------------|
@@ -217,7 +225,7 @@ unticked.
 | Health information | Yes | No | Voluntary self-identification answers (e.g. disability status, default "decline to answer") chosen in jobwatch and written into the form when the user ticks that row. Never sent back to jobwatch. | No |
 | Financial info | No | | | |
 | Authentication info | No | | The pairing token is the user's own credential for their own jobwatch, stored locally and never collected by the developer. | |
-| Personal communications | No | | | |
+| Personal communications | Yes (Draft reply) | No (only to the user's own jobwatch; jobwatch's own setting, off by default, can send it to a cloud model, and the panel says so) | Only when the user presses Draft reply: the other person's name and the text and times of the messages in the one open LinkedIn conversation, given to the local jobwatch to write a draft reply. Not kept by the extension. | No |
 | Location | No | | The city and state in the user's details are an address for the form, not the device's location. | |
 | Web history | No | | Only the active tab's address, and the address of the one tab LinkedIn's Apply button opens, are used, only to give to the user's own jobwatch; nothing is kept as a history. | |
 | User activity | No | | No clicks, keystrokes or mouse movement are recorded. After a scan it only notices that the form was submitted (the form's submit event, or a click on its Submit button), so it can send the answers as they stood to jobwatch. | |
@@ -271,11 +279,13 @@ The extension fills job application forms from the jobwatch app, which runs on t
 3. In jobwatch, open Settings > Applying and fill in a few applicant details (any made-up name, email and phone). Then open Settings > Browser extension and copy the token.
 4. In the extension's options (right-click its icon > Options), paste the token and press Test. It says "Connected to jobwatch".
 5. Open any Greenhouse, Lever or Ashby job's application page, for example a job from https://job-boards.greenhouse.io, click the jobwatch icon (the side panel opens) and press "Fill this application". Each field shows what would be filled; tick rows and press "Fill selected". The extension never submits the form; please don't submit it.
+6. Draft reply (optional): it needs a LinkedIn account and an open message conversation, and a local model set up in jobwatch, so a reviewer can skip it. Nothing is read from LinkedIn unless Draft reply is pressed on an open conversation.
 
 ## Version History
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
+| next | | Draft reply: reads the one open LinkedIn conversation when the user presses the button, shows jobwatch's draft with warnings and "check this" notes and whether it was written on this computer, and types it into the message box (never presses Send). Adds Personal communications to the data-use ticks and the privacy policy's LinkedIn messages paragraph. `manifest.json` version is bumped by `/release`, not here. Built and tested against a demo page only (`demo/linkedin-messages.html`), not yet against the real LinkedIn. | not built into a zip, not submitted |
 | 0.11.0 | | List import reads the card's visible title, and drops LinkedIn's screen-reader text ("Selected, ...", the title said twice) from titles; the import summary shows jobwatch's own coverage and says when a list was imported before. Setup text (side panel, options page, README) says to run `jobwatch`, which now opens the app. Upload: `dist/jobwatch-extension-0.11.0.zip`. | pending, not submitted |
 | 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). LinkedIn/Indeed list import, passive mode off by default, one side panel per tab, parallel list imports. New promo video: https://youtu.be/cILjM1IF4ZQ. Upload: `dist/jobwatch-extension-0.10.0.zip`. Paste blocks and screenshots 5 and 6 ready; submitted for review 2026-11-14. | In review |
 | 0.9.0 | 2026-11-10 | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | Published |
@@ -291,6 +301,9 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
 - The 0.10.0 content script on LinkedIn and Indeed is a new host access (adds a "broad host access" review and
   possible in-depth review). The paste blocks above are the 0.10.0 answers; the 0.9.0 claim "reads nothing from
   LinkedIn" is gone.
+- Draft reply (next version) reads message text, so the data-use form gains Personal communications and the "never
+  messages" wording is gone from the justifications above. The class names it looks for in LinkedIn's messaging pages
+  (`msg-s-...`) are unverified against the live site: check them by hand on a real conversation before submitting.
 - The store takes at most five screenshots; there are six. Drop one when uploading.
 - A reviewer may ask why `tabs` and `scripting` are needed beyond `activeTab`: answered in the blocks above.
 

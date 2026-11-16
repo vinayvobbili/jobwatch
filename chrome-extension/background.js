@@ -46,6 +46,8 @@ async function handle(msg, tabId, sender) {
     case 'analyze': return analyze(tabId);
     case 'fill': return fill(tabId, msg.items);
     case 'draft': return draft(tabId, msg.question, msg.words, msg.others);
+    case 'draftReply': return draftReply(tabId);
+    case 'fillReply': return fillReply(tabId, msg.text, msg.fingerprint, msg.replace);
     case 'posting': return posting(tabId);
     case 'importList': return importList(tabId);
     case 'importState': return { running: [...listImports].map(([tabId, source]) => ({ tabId, source })) };
@@ -167,6 +169,59 @@ async function fetchResume(url, tabId) {
 async function draft(tabId, question, words, others) {
   const r = await api('/ext/draft', { method: 'POST', body: { url: await tabUrl(tabId), question, words: words || 150, others: others || [] } });
   return { answer: r.answer, model: r.model };
+}
+
+// --- a LinkedIn conversation -------------------------------------------------------------------------
+
+const REPLY_PAGE = 'Open a conversation on LinkedIn (Messaging, or a message bubble), then try again.';
+const REPLY_OLD = 'This jobwatch is too old for Draft reply. Update jobwatch (pip install -U jobwatch), then try again.';
+
+/**
+ * "Draft reply": reads the one conversation that is open (reply.js, only now, because the person pressed the button),
+ * sends its text to jobwatch on this computer, and returns the draft, jobwatch's warnings and "check this" notes, and
+ * whether the model that wrote it was local (`local`: false means the thread went to a cloud model the person chose
+ * in jobwatch's settings). Nothing is kept here and nothing is put in the page: fillReply does that, on a second press.
+ */
+async function draftReply(tabId) {
+  const settings = await pairedSettings();
+  if (!JW.replyMode(await tabUrl(tabId))) throw new Expected(REPLY_PAGE);
+  let read;
+  try {
+    const t = { tabId };
+    await chrome.scripting.executeScript({ target: t, files: ['logic.js', 'reply.js'] });
+    [read] = await chrome.scripting.executeScript({ target: t, func: () => (globalThis.JWReply ? globalThis.JWReply.read() : null) });
+  } catch {
+    throw new Expected("This page can't be read. Click the jobwatch icon on the LinkedIn tab, and try again.");
+  }
+  const got = read && read.result;
+  if (!got) throw new Expected('Reload this page, then try again.');
+  if (!got.ok) throw new Expected(got.error);
+  let r;
+  try {
+    r = await api('/ext/reply', { method: 'POST', body: { thread: got.thread, sender: got.sender, company: '' }, settings });
+  } catch (e) {
+    if (e instanceof ApiError && /HTTP 404|not found/i.test(e.message)) throw new Expected(REPLY_OLD);
+    throw e;
+  }
+  return { ...r, sender: got.sender, count: got.count, fingerprint: got.fingerprint };
+}
+
+/**
+ * Puts the (possibly edited) draft in the open conversation's message box. Never presses Send. `filled: false` comes
+ * back with a `reason` (has-text: the box has something in it; changed: another conversation is open now; gone; failed)
+ * for the panel to say, rather than an error.
+ */
+async function fillReply(tabId, text, fingerprint, replace) {
+  if (!JW.replyMode(await tabUrl(tabId))) throw new Expected(REPLY_PAGE);
+  try {
+    const t = { tabId };
+    await chrome.scripting.executeScript({ target: t, files: ['logic.js', 'reply.js'] });
+    const [done] = await chrome.scripting.executeScript({ target: t, args: [text, { fingerprint, replace: !!replace }],
+      func: (reply, opts) => (globalThis.JWReply ? globalThis.JWReply.fill(reply, opts) : { filled: false, reason: 'gone', error: 'Reload this page, then try again.' }) });
+    return done.result;
+  } catch {
+    throw new Expected("This page can't be written to. Click the jobwatch icon on the LinkedIn tab, and try again.");
+  }
 }
 
 // --- the job posting on screen ----------------------------------------------------------------------

@@ -30,7 +30,7 @@ export async function api(path, { method = 'GET', body, settings, raw = false, t
   const headers = { Accept: raw ? '*/*' : 'application/json', 'X-Jobwatch-Extension': cfg.token };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout || (path.startsWith('/ext/draft') ? DRAFT_TIMEOUT_MS : TIMEOUT_MS));
+  const timer = setTimeout(() => controller.abort(), timeout || (path.startsWith('/ext/draft') || path.startsWith('/ext/reply') ? DRAFT_TIMEOUT_MS : TIMEOUT_MS));
   let res;
   try {
     res = await fetch(cfg.serverUrl + path, {

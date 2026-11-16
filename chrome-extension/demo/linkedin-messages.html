@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Messaging | LinkedIn (demo)</title>
+<style>
+  body { font: 15px/1.4 system-ui, sans-serif; margin: 0; background: #f3f2ef; }
+  header { background: #fff; padding: 14px 24px; font-weight: 700; color: #0a66c2; border-bottom: 1px solid #ddd; }
+  main { max-width: 640px; margin: 16px auto; padding: 0 16px; }
+  .conversation { background: #fff; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px; }
+  .conversation h2 { font-size: 16px; margin: 0; padding: 12px 14px; border-bottom: 1px solid #eee; }
+  ul { list-style: none; margin: 0; padding: 8px 14px; }
+  li { margin: 6px 0; }
+  .msg-s-message-list__time-heading { display: block; text-align: center; color: #666; font-size: 12px; margin: 8px 0; }
+  .msg-s-message-group__name { font-weight: 600; }
+  .msg-s-message-group__timestamp { color: #666; font-size: 12px; margin-left: 6px; }
+  .msg-s-event-listitem__body { margin: 2px 0 0; }
+  form { padding: 10px 14px; border-top: 1px solid #eee; }
+  [role=textbox] { min-height: 64px; border: 1px solid #bbb; border-radius: 6px; padding: 6px 8px; }
+  [role=textbox]:focus { outline: 2px solid #0a66c2; }
+  button { margin-top: 8px; padding: 6px 14px; border-radius: 16px; border: 0; background: #0a66c2; color: #fff; }
+</style>
+</head>
+<body>
+<header>in | Messaging</header>
+<main>
+  <div class="conversation" id="main-thread">
+    <h2 class="msg-entity-lockup__entity-title">Dana Whitfield</h2>
+    <ul class="msg-s-message-list-content">
+      <li><time class="msg-s-message-list__time-heading">Nov 12</time></li>
+      <li data-event-urn="urn:li:msg_event:1">
+        <div class="msg-s-message-group__meta"><span class="msg-s-message-group__name">Dana Whitfield</span><time class="msg-s-message-group__timestamp">9:41 AM</time></div>
+        <p class="msg-s-event-listitem__body">Hi Jordan, I'm a recruiter at Northwind Talent. I'm hiring a Platform Engineer for a client in Austin.</p>
+      </li>
+      <li data-event-urn="urn:li:msg_event:2">
+        <p class="msg-s-event-listitem__body">Would you be open to a quick call this week? What are your salary expectations?</p>
+      </li>
+      <li data-event-urn="urn:li:msg_event:3">
+        <div class="msg-s-message-group__meta"><span class="msg-s-message-group__name">Jordan Rivera</span><time class="msg-s-message-group__timestamp">10:15 AM</time></div>
+        <p class="msg-s-event-listitem__body">Thanks Dana. Which client is it, and what is the range?</p>
+      </li>
+      <li data-event-urn="urn:li:msg_event:4">
+        <div class="msg-s-message-group__meta"><span class="msg-s-message-group__name">Dana Whitfield</span><time class="msg-s-message-group__timestamp">11:02 AM</time></div>
+        <p class="msg-s-event-listitem__body">It is a mid-size logistics company. The range is 140-150K base. Are you free Thursday?</p>
+      </li>
+    </ul>
+    <form class="msg-form" onsubmit="window.__sent = (window.__sent || 0) + 1; return false;">
+      <div role="textbox" contenteditable="true" aria-multiline="true" aria-label="Write a message…" class="msg-form__contenteditable"><p><br></p></div>
+      <button type="submit" class="msg-form__send-button" onclick="window.__clicks = (window.__clicks || 0) + 1">Send</button>
+    </form>
+  </div>
+</main>
+<script>
+  // ?two: a second conversation open as well (a message bubble), with its own box
+  if (location.search.includes('two')) {
+    const c = document.getElementById('main-thread').cloneNode(true);
+    c.id = 'bubble';
+    c.querySelector('h2').textContent = 'Marcus Bell';
+    document.querySelector('main').append(c);
+  }
+  // ?filled: the person has already started typing
+  if (location.search.includes('filled')) document.querySelector('[role=textbox]').innerHTML = '<p>Hi Dana,</p>';
+  window.__sent = 0;
+  window.__clicks = 0;
+</script>
+</body>
+</html>

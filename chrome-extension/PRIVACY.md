@@ -21,7 +21,7 @@ nowhere until you press **Import** in the side panel ("N jobs seen while browsin
 the same as an imported list, and are deleted from the extension. With the checkbox off (the default), the script reads and stores nothing.
 Removing the extension deletes what it kept.
 
-**LinkedIn job pages:** apart from a list you import or passive mode's job cards, it reads nothing from LinkedIn's pages: no title, company,
+**LinkedIn job pages:** apart from a list you import, passive mode's job cards, or the one conversation you ask a reply for (below), it reads nothing from LinkedIn's pages: no title, company,
 description or page data. From a LinkedIn tab it takes only the address, for the job's number. When you press **Open the company's posting**, it presses
 LinkedIn's Apply button (the one that opens the company's own site, never Easy Apply or anything that submits), and
 then gives the address of the tab that opens, with the job's number, to your own jobwatch. For that it uses the `tabs`
@@ -29,13 +29,18 @@ permission, to see the address of that one new tab (opened within two minutes of
 On a company's page, **Save this posting to jobwatch** sends your jobwatch the page's address and the job text the page
 shows, only when you press it.
 
-**Draft reply (draft wording; phase 2 finalises):** only when you press **Draft reply** on a LinkedIn message thread you
-have open, it reads the text of that one thread (the sender's name, the messages and their times) and sends it to your own
-jobwatch, which writes a reply on this computer with its local model; the extension types it into the message box and never
-presses Send. It does not open, scroll or read any other thread or list. By default the thread goes nowhere else. If you
-turn on `reply: {backend: chat}` in jobwatch's watchlist, jobwatch asks its chat model instead, and with the chat set to
-Claude the thread (with your resume text and your tracked notes for that company) is sent to Anthropic by jobwatch, not by
-the extension. That is a setting in jobwatch, off by default.
+**LinkedIn messages (Draft reply):** only when you press **Draft reply to this conversation** in the side panel, on a
+LinkedIn conversation you have open, it reads that one conversation as it is on the screen: the other person's name as the
+page shows it, and the text and times of the messages that are already there. It does not scroll, open another conversation,
+read your message list, profiles or anything else on LinkedIn, and it keeps nothing: the text goes to your own jobwatch, which
+writes a reply from it. The side panel shows the draft, jobwatch's warnings and what to check, and says whether the draft
+was written on your computer. Only when you then press **Put in the message box** does the extension type the draft into
+that conversation's message box (it asks first if the box already has text). It never presses Send, or any other button
+on LinkedIn: you read it and send it yourself. By default jobwatch writes the reply with its model on your computer, and the
+conversation goes nowhere else. If you turn on `reply: {backend: chat}` in jobwatch's watchlist, jobwatch asks its chat
+model instead, and with the chat set to Claude the conversation (with your resume text and your tracked notes for that
+company) is sent to Anthropic by jobwatch, not by the extension; the side panel then says the thread was sent off your
+computer. That is a setting in jobwatch, off by default.
 
 **What it receives, and writes into the form:** from your own jobwatch, your applicant details (name, email, phone,
 address, links, work authorization, and the voluntary self-identification answers you have set there), your answers to
@@ -47,7 +52,7 @@ nothing else; the form's own site receives them only when you press its Submit b
 other written answers on that form (so a draft doesn't repeat them), and, when you press the form's Submit, the
 questions and answers on the form as they stood (not your name, contact details or voluntary self-identification
 answers), which jobwatch keeps in that job's application package; once the page shows it went through, also the
-company and job title and the name of the resume file, so the application is recorded; and the job cards of a list you import. What jobwatch does with a draft request, such as which language
+company and job title and the name of the resume file, so the application is recorded; and the job cards of a list you import; and, when you press Draft reply, the text of the open LinkedIn conversation and the other person's name. What jobwatch does with a draft request, such as which language
 model it asks, is set in jobwatch, not in the extension. The extension's authors run no server and receive nothing.
 
 **What it stores:**

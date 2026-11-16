@@ -65,7 +65,19 @@ Lever and Ashby, and tries its best on other single-page forms. Workday is not s
 A job that came from a LinkedIn alert has no posting text. On Today, **Open on LinkedIn** opens its LinkedIn page. There,
 click the extension's icon and press **Open the company's posting**: it presses LinkedIn's Apply button (never Easy
 Apply) so the company's page opens, and jobwatch reads the posting from that page when it is on a job site it supports.
-On any other company page, press **Save this posting to jobwatch**. The extension reads nothing from LinkedIn's pages.
+On any other company page, press **Save this posting to jobwatch**. Apart from job lists, that is all the extension reads from LinkedIn, except a conversation you ask a reply for (next).
+
+## Drafting a reply to a recruiter
+
+On a LinkedIn conversation you have open (Messaging, or a message bubble), click the extension's icon and press **Draft reply
+to this conversation**. The extension reads that one conversation as it is on the screen (no scrolling, no other
+conversation) and gives it to your jobwatch, which writes a draft from your resume, your stories and what you track at
+that company, with the local model on your computer. The panel shows the draft (edit it), jobwatch's warnings, what to
+check before you send, and whether the draft was written on your computer: if you set `reply: {backend: chat}` in the
+watchlist the thread goes to that chat model instead, and the panel says so in amber. **Put in the message box** types
+the draft into LinkedIn's box (it asks before replacing text already there, and refuses if another conversation is open
+now). It never presses Send: you read it and send it yourself. Needs a jobwatch with the `reply` call (the button is
+absent on an older one).
 
 ## Privacy
 
@@ -82,6 +94,7 @@ logic.js            classification, matching, option picking, the review plan; n
 page.js             content script per frame: scan, fill, read company and title, watch for the person's submit
 job-lists.js        reads LinkedIn / Indeed job lists, paced like a person (PACING); a copy ships in jobwatch/static
 passive.js          content script on LinkedIn and Indeed: notes the job cards seen while browsing (passive mode)
+reply.js            injected by Draft reply only: reads the one open LinkedIn conversation, types the draft into its box (never presses Send)
 sidepanel.*         the review panel in Chrome's side panel: pairing status, scan, rows, fill, drafts, results
 options.*           the options page (server, token, theme and width)
 demo/               fixture forms imitating Greenhouse, Lever and Ashby, and a generic one

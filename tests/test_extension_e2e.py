@@ -355,8 +355,142 @@ def test_an_older_jobwatch_without_the_posting_call_gets_no_posting_button(stack
         panel.wait_for_selector("#scan")  # filling still works
         assert panel.locator("#posting").count() == 0  # its call would fail on that jobwatch
     finally:
-        stack.server.features = ["posting"]
+        stack.server.features = ["posting", "reply"]
         harness.pair(stack, stack.api_url, harness.TOKEN)
+        page.close()
+
+
+# --- Draft reply, on a demo LinkedIn conversation (demo/linkedin-messages.html) ---------------------------
+
+
+@pytest.fixture
+def reply_stack(stack):
+    """The fake jobwatch's reply answer, put back after the test."""
+    server = stack.server
+    server.replies.clear()
+    yield stack
+    server.reply_answer = {}
+    server.reply_status = 200
+    server.features = ["posting", "reply"]
+
+
+def reply_panel(stack, ext, panels, query: str = ""):
+    """A demo conversation in a tab and the panel for it, with Draft reply showing. Returns (page, panel)."""
+    url = stack.url("www.linkedin.com", f"/messaging/thread/2-abc/{query}")
+    page = open_form(stack, ext, url)
+    panel = harness.side_panel(stack, url)
+    panels.append(panel)
+    panel.wait_for_selector("#reply", state="visible", timeout=20000)
+    return page, panel
+
+
+def put_in_box(panel):
+    panel.evaluate("() => document.getElementById('toast')?.remove()")
+    panel.click("#reply-fill")
+    panel.wait_for_selector("#toast", timeout=20000)
+    return panel.inner_text("#toast")
+
+
+def test_draft_reply_reads_the_open_thread_shows_where_it_was_written_and_never_sends(reply_stack, ext, panels):
+    page, panel = reply_panel(reply_stack, ext, panels)
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector("#reply-text", timeout=60000)
+        sent = reply_stack.server.replies[-1]
+        assert sent["sender"] == "Dana Whitfield"
+        assert sent["thread"].startswith("Dana Whitfield, Nov 12, 9:41 AM\nHi Jordan, I'm a recruiter at Northwind Talent.")
+        assert "Jordan Rivera, Nov 12, 10:15 AM\nThanks Dana. Which client" in sent["thread"]
+        assert sent["thread"].count("\n\n") == 3  # four messages, nothing else on the page
+        # the panel says it was written on this Mac, shows the draft, the check-this notes and no warning
+        assert "did not leave" in panel.inner_text("#reply-where")
+        assert "pill local" in panel.get_attribute("#reply-where", "class")
+        assert panel.input_value("#reply-text").startswith("Thanks Dana.")
+        assert "Check this before you send" in panel.inner_text(".rows")
+        assert panel.locator(".warnrow").count() == 0
+        # it goes in LinkedIn's box (edited text included), and nothing is sent
+        panel.fill("#reply-text", "Thanks Dana. Thursday works. What is the client and the range?")
+        assert "In the message box" in put_in_box(panel)
+        assert page.inner_text("[role=textbox]") == "Thanks Dana. Thursday works. What is the client and the range?"
+        assert page.evaluate("[window.__clicks, window.__sent]") == [0, 0]
+    finally:
+        page.close()
+
+
+def test_draft_reply_warns_when_the_thread_went_to_a_cloud_model(reply_stack, ext, panels):
+    reply_stack.server.reply_answer = {"local": False, "model": "claude-test", "warnings": ["They asked for your pay: it is not in the draft."]}
+    page, panel = reply_panel(reply_stack, ext, panels)
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector("#reply-text", timeout=60000)
+        assert "pill cloud" in panel.get_attribute("#reply-where", "class")
+        assert "sent to claude-test, off this Mac" in panel.inner_text("#reply-where")
+        assert "They asked for your pay" in panel.inner_text(".warnrow")
+    finally:
+        page.close()
+
+
+def test_draft_reply_without_a_draft_shows_only_the_warning(reply_stack, ext, panels):
+    reply_stack.server.reply_answer = {"drafted": False, "reply": "", "notes": [], "warnings": ["Their message says no AI replies: write this one yourself."]}
+    page, panel = reply_panel(reply_stack, ext, panels)
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector(".warnrow", timeout=60000)
+        assert panel.locator("#reply-text").count() == 0 and panel.locator("#reply-fill").count() == 0
+        assert "write this one yourself" in panel.inner_text(".warnrow")
+    finally:
+        page.close()
+
+
+def test_draft_reply_says_when_the_server_fails_or_two_conversations_are_open(reply_stack, ext, panels):
+    reply_stack.server.reply_status = 500
+    page, panel = reply_panel(reply_stack, ext, panels, "?two")
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector(".msg", timeout=20000)
+        assert "More than one conversation is open" in panel.inner_text("#view")
+        assert reply_stack.server.replies == []  # nothing was sent while it was unclear which one
+        page.click("#bubble [role=textbox]")  # the person picks one by clicking in its box
+        panel.click("#reply")
+        panel.wait_for_function("() => document.getElementById('view').textContent.includes('the model is not answering')")
+        assert reply_stack.server.replies[-1]["sender"] == "Marcus Bell"
+    finally:
+        page.close()
+
+
+def test_draft_reply_never_overwrites_what_the_person_typed_and_checks_the_thread(reply_stack, ext, panels):
+    page, panel = reply_panel(reply_stack, ext, panels, "?filled")
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector("#reply-text", timeout=60000)
+        assert "already has text" in put_in_box(panel)
+        assert page.inner_text("[role=textbox]") == "Hi Dana,"
+        panel.locator("#reply-replace").wait_for(state="visible")
+        panel.evaluate("() => document.getElementById('toast')?.remove()")
+        panel.click("#reply-replace")  # the person says to replace it
+        panel.wait_for_selector("#toast")
+        drafted = panel.input_value("#reply-text")
+        assert page.inner_text("[role=textbox]") == drafted
+        # a new message arrives meanwhile: the draft no longer answers the thread, so it is not put in the box again
+        page.evaluate("() => { const p = document.createElement('p'); p.className = 'msg-s-event-listitem__body'; "
+                      "p.textContent = 'Actually, the role is remote.'; document.querySelector('li:last-of-type').append(p); }")
+        page.evaluate("() => { document.querySelector('[role=textbox]').innerHTML = ''; }")
+        assert "changed" in put_in_box(panel)
+        assert page.inner_text("[role=textbox]") == ""
+        assert page.evaluate("[window.__clicks, window.__sent]") == [0, 0]
+    finally:
+        page.close()
+
+
+def test_an_older_jobwatch_without_the_reply_call_gets_no_draft_reply_button(reply_stack, ext, panels):
+    reply_stack.server.features = ["posting"]
+    url = reply_stack.url("www.linkedin.com", "/messaging/thread/2-abc/")
+    page = open_form(reply_stack, ext, url)
+    try:
+        panel = harness.side_panel(reply_stack, url)
+        panels.append(panel)
+        panel.wait_for_selector("#scan")
+        assert panel.locator("#reply").count() == 0
+    finally:
         page.close()
 
 

@@ -24,7 +24,7 @@ def run_js(tmp_path, body: str):
 @needs_node
 def test_every_script_parses():
     """A syntax error in a content script gives a panel that never opens, with no test failing elsewhere."""
-    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "job-lists.js", "passive.js"):
+    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "job-lists.js", "passive.js", "reply.js"):
         r = subprocess.run(["node", "--check", str(EXT / name)], capture_output=True, text=True)
         assert r.returncode == 0, f"{name}: {r.stderr}"
 
@@ -228,6 +228,65 @@ def test_the_job_lists_import_this_list_reads(tmp_path):
     }
     got = run_js(tmp_path, f"const urls = {json.dumps(list(urls))};\nconsole.log(JSON.stringify(urls.map(u => JW.listMode(u))));")
     assert got == list(urls.values())
+
+
+@needs_node
+def test_draft_reply_is_offered_on_linkedin_only(tmp_path):
+    urls = {
+        "https://www.linkedin.com/messaging/thread/2-abc123/": "messaging",
+        "https://www.linkedin.com/messaging/": "messaging",
+        "https://www.linkedin.com/feed/": "linkedin",  # a message bubble can be open on any LinkedIn page
+        "https://www.linkedin.com/jobs/view/4101001/": "linkedin",
+        "https://www.indeed.com/jobs?q=engineer": "",
+        "https://example.com/messaging/": "",
+        "https://notlinkedin.com/messaging/": "",
+        "chrome://extensions": "",
+        "": "",
+    }
+    got = run_js(tmp_path, f"const urls = {json.dumps(list(urls))};\nconsole.log(JSON.stringify(urls.map(u => JW.replyMode(u))));")
+    assert got == list(urls.values())
+
+
+@needs_node
+def test_a_conversation_becomes_the_text_the_reply_call_takes(tmp_path):
+    got = run_js(tmp_path, """
+const messages = [
+  { sender: 'Dana Whitfield', when: 'Nov 12, 9:41 AM', text: "Hi Jordan,\\n\\n\\n\\nI'm hiring.  " },
+  { sender: 'Jordan Rivera', when: '', text: 'Thanks.' },
+  { sender: 'Dana Whitfield', when: 'Nov 12, 11:02 AM', text: '   ' },
+  { sender: '', when: '', text: 'No name on this one' },
+];
+const long = Array.from({ length: 10 }, (_, i) => ({ sender: 'Dana', when: `Nov ${i + 1}`, text: 'x'.repeat(100) + i }));
+const cut = JW.formatThread(long, 400);
+console.log(JSON.stringify({
+  text: JW.formatThread(messages), none: JW.formatThread([]), nothing: JW.formatThread(null),
+  cutBlocks: cut.split('\\n\\n').length, cutKeepsNewest: cut.endsWith('x9'), cutKeepsOldest: cut.includes('Nov 1\\n'),
+  cutWhole: cut.split('\\n\\n').every((b) => /^Dana, Nov \\d+\\n/.test(b)),
+}));""")
+    assert got == {
+        "text": "Dana Whitfield, Nov 12, 9:41 AM\nHi Jordan,\n\nI'm hiring.\n\nJordan Rivera\nThanks.\n\nUnknown\nNo name on this one",
+        "none": "", "nothing": "", "cutBlocks": 3, "cutKeepsNewest": True, "cutKeepsOldest": False, "cutWhole": True,
+    }
+
+
+def test_the_reply_script_cannot_press_send():
+    """reply.js reads one conversation and types into its box. It has no way to click, submit or press Enter, and it
+    never scrolls or opens another conversation."""
+    code = "\n".join(line.split("//")[0] for line in (EXT / "reply.js").read_text(encoding="utf-8").splitlines()
+                     if not line.lstrip().startswith(("*", "/*")))
+    for forbidden in (".click(", "requestSubmit", ".submit(", "MouseEvent", "KeyboardEvent", "scrollTo", "scrollIntoView", "scrollTop", "fetch(", "XMLHttpRequest", "sendMessage"):
+        assert forbidden not in code, forbidden
+    # and it is only ever injected by the button: not a content script
+    manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+    assert all("reply.js" not in c["js"] for c in manifest["content_scripts"])
+
+
+@needs_node
+def test_a_thread_fingerprint_changes_when_the_conversation_does(tmp_path):
+    got = run_js(tmp_path, """
+const a = 'Dana, Nov 12\\nHello', b = 'Dana, Nov 12\\nHello\\n\\nDana, Nov 12\\nAnd one more';
+console.log(JSON.stringify([JW.fingerprint(a) === JW.fingerprint(a), JW.fingerprint(a) === JW.fingerprint(b), JW.fingerprint(''), typeof JW.fingerprint(null)]));""")
+    assert got[:2] == [True, False] and got[2].startswith("0:") and got[3] == "string"
 
 
 @needs_node
