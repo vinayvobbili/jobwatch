@@ -64,6 +64,7 @@ from . import (
     referrals,
     rehearse,
     reminders,
+    reply,
     report,
     rolekinds,
     scorestats,
@@ -113,7 +114,7 @@ IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background 
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 # What the extension may offer beyond filling forms, named in /ext/ping: an extension paired with an older jobwatch
 # hides a button whose call that jobwatch doesn't have, instead of failing when it's pressed.
-EXT_FEATURES = ("posting", "import-list")
+EXT_FEATURES = ("posting", "import-list", "reply")
 
 
 class ApiError(Exception):
@@ -875,6 +876,11 @@ class App:
         return self._with_store(lambda cfg, store: autofill.draft(
             cfg, store, str(body.get("url") or ""), body.get("question") or "", body.get("words") or autofill.WORDS,
             body.get("others")))
+
+    def ext_reply(self, body) -> dict:
+        """A drafted reply to the recruiter thread the extension read (see reply.draft)."""
+        return self._with_store(lambda cfg, store: reply.draft(
+            cfg, store, str(body.get("thread") or ""), str(body.get("sender") or ""), str(body.get("company") or "")))
 
     def ext_answers(self, body) -> dict:
         """The form's answers at the person's Submit, kept in the job's package (see autofill.keep_answers)."""
@@ -2240,14 +2246,14 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 elif method == "GET" and url.path == "/ext/resume":
                     return self._send(HTTPStatus.OK, *app.ext_resume(page))
                 elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/answers", "/ext/posting",
-                                                       "/ext/tailor", "/ext/import-list"):
+                                                       "/ext/tailor", "/ext/import-list", "/ext/reply"):
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
                     data = {"/ext/draft": app.ext_draft, "/ext/submitted": app.ext_submitted,
                             "/ext/answers": app.ext_answers,
                             "/ext/posting": app.ext_posting, "/ext/tailor": app.ext_tailor,
-                            "/ext/import-list": app.ext_import_list}[url.path](body)
+                            "/ext/import-list": app.ext_import_list, "/ext/reply": app.ext_reply}[url.path](body)
                 else:
                     raise ApiError("not found", HTTPStatus.NOT_FOUND)
                 self._json(HTTPStatus.OK, data)

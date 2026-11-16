@@ -96,6 +96,23 @@ are the form's other written answers so far (drafted, past or typed): the draft 
 isn't set up answers `400 {"error": "..."}` saying what to set up. Drafts are for the person to review: the
 extension never ticks one by default.
 
+### `POST /ext/reply`
+
+```json
+{"thread": "Dana Whitfield, Nov 12, 9:41 AM\nHi Jordan, …", "sender": "Dana Whitfield", "company": "Northwind Talent"}
+```
+
+`thread` is the text of the one open message thread, as read from the page (`sender` and `company` are optional: what
+the page showed). → `{"reply": "…", "notes": ["…"], "warnings": ["…"], "company": "Initech", "model": "local model",
+"drafted": true}`. The reply is written by the shared local model server only (never Claude, whatever the chat is set
+to) from the thread, the resume, the stories and what's tracked at that company (its applications, notes and pay lines
+kept with `comp`), under fixed reply rules. `notes` are one to three things to check before sending, `warnings` are
+what the code found: an application or referral in flight at that company, a figure in the draft that isn't in the
+thread or the pay lines, or a stock opener. A thread that asks for no AI gets `reply: ""`, `drafted: false` and a
+warning instead of a draft, and so does a model that isn't running. The thread isn't kept. Only shown when
+`/ext/ping`'s `features` has `reply`. An empty thread: `400`. The extension types `reply` into the message box and
+never presses Send.
+
 ### `POST /ext/answers`
 
 Sent the moment the person presses the form's Submit (the form's `submit` event, or a click on its submit button),

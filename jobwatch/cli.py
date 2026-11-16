@@ -49,6 +49,7 @@ from . import (
     referrals,
     rehearse,
     reminders,
+    reply,
     report,
     rolekinds,
     scan,
@@ -719,6 +720,18 @@ def cmd_answers(args, cfg, store):
     query = " ".join(args.query)
     found = answers.find(store, query)
     print(json.dumps(found, indent=2, ensure_ascii=False) if args.format == "json" else answers.text(found, query))
+
+
+def cmd_draft_reply(args, cfg, store):
+    """A reply to a recruiter's message thread (a saved text file, or - for stdin), by the local model: nothing is
+    sent, and the thread isn't kept."""
+    thread = sys.stdin.read() if args.file == "-" else Path(args.file).expanduser().read_text()
+    got = reply.draft(cfg, store, thread, args.sender, args.company)
+    if args.format == "json":
+        print(json.dumps(got, indent=2, ensure_ascii=False))
+        return
+    notes = [f"Warning: {w}" for w in got["warnings"]] + [f"Check: {n}" for n in got["notes"]]
+    print("\n\n".join([got["reply"] or "(no draft)", *(["\n".join(notes)] if notes else [])]))
 
 
 def cmd_profile(args):
@@ -1889,6 +1902,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("query", nargs="*", help="words of the question, e.g. notice period")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_answers, read_only=True)
+
+    p = sub.add_parser("draft-reply", help="draft a reply to a recruiter's message thread you saved as text (what "
+                       "the extension's Draft reply does), with the local model and what's tracked at their company. "
+                       "Nothing is sent; the thread goes to the local model only")
+    p.add_argument("file", metavar="FILE", help="the thread's text, saved to a file, or - for stdin")
+    p.add_argument("--sender", default="", help="the recruiter's name")
+    p.add_argument("--company", default="", help="their company, when the thread doesn't name it")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_draft_reply)
 
     p = sub.add_parser("profile", help="the roles on a LinkedIn experience page (title, company, dates, location, "
                        "bullets), to see who an interviewer is. Reads the page text you saved or copied "
