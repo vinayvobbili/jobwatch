@@ -52,8 +52,8 @@ server runs in the Code tab. Chat runs plugins in the cloud, where the skill loa
 reach your computer, so the tools aren't there.
 
 Claude Desktop versions with Settings → Extensions take the desktop extension instead:
-`jobwatch-<version>.mcpb` on the [releases page](https://github.com/vinayvobbili/jobwatch/releases). Open it and
-choose Install; Claude Desktop sets up Python through uv, so nothing else needs installing.
+[download `jobwatch.mcpb`](https://github.com/vinayvobbili/jobwatch/releases/latest/download/jobwatch.mcpb)
+(always the latest release), open it and choose Install; Claude Desktop sets up Python through uv, so nothing else needs installing.
 `scripts/build-mcpb` builds it from [desktop/](../../desktop).
 
 With a resume tool alongside it (for example [resume-kit](https://github.com/vinayvobbili/resume-kit), whose

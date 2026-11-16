@@ -50,8 +50,9 @@ def test_install_notes_cover_every_system_uv_and_claude_desktop():
     assert "uv brings Python" not in PAGE and "No Python?" not in PAGE
     assert PAGE.count("getting-started/installation/") == 4  # "Install uv" links the docs, per system, in both cards
     desktop = notes
-    assert ('Use Claude Desktop? Install it with <a target="_blank" rel="noopener" '
-            'href="https://github.com/vinayvobbili/jobwatch/releases/latest">one click</a> instead.') in desktop
+    assert ('Use Claude Desktop? <a target="_blank" rel="noopener" '
+            'href="https://github.com/vinayvobbili/jobwatch/releases/latest/download/jobwatch.mcpb">'
+            'Download the extension</a>, open it and press Install.') in desktop
     assert "MIT licensed" not in PAGE  # the license is named in the footer only
     assert "jobwatch is open source under the MIT license." in PAGE.split("<footer")[1]
     assert "pipx.pypa.io" not in PAGE
@@ -192,7 +193,11 @@ def test_hero_says_who_it_is_for_in_plain_words():
     hero = PAGE.split('<div class="hero">')[1].split('<div class="cta">')[0]
     assert ("For anyone applying to lots of companies: jobwatch checks the companies' own job pages for you every "
             "day, ranks the new openings against your resume, and keeps track of every application. It helps fill "
-            "in forms, and you always press Submit. Free, and it runs on your own computer.") in hero
+            'forms, and you always press Submit.<span class="free">Free, and it runs on your own '
+            'computer.</span>') in hero
+    # "job" in the text color, "watch" in the gradient, read as one word; the nav brand matches
+    assert '<h1 aria-label="jobwatch">job<span class="grad">watch</span></h1>' in hero
+    assert '<span aria-label="jobwatch" role="img">job<b>watch</b></span>' in PAGE
     tiles = re.findall(r'<a class="tile" href="#\w+"><b>(.*?)</b><span>(.*?)</span></a>', PAGE)
     assert tiles[:2] == [("Company job pages", "checked daily, straight from the source"),
                          ("Fit score", "how well each job matches your resume, 0 to 100")]

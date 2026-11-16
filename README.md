@@ -41,8 +41,8 @@ unit or a Task Scheduler task).
   vinayvobbili/jobwatch`, then `/plugin install jobwatch@jobwatch` (or Settings → Plugins → Add marketplace). The
   [plugin](https://github.com/vinayvobbili/jobwatch/blob/main/plugin/README.md) brings the tools and a skill with
   the daily routine, and runs jobwatch with uv. Then ask Claude "watch Stripe for product designer roles".
-- **Claude Desktop with Settings → Extensions**: download `jobwatch-<version>.mcpb` from the
-  [latest release](https://github.com/vinayvobbili/jobwatch/releases/latest), open it and press Install.
+- **Claude Desktop with Settings → Extensions**: [download the extension](https://github.com/vinayvobbili/jobwatch/releases/latest/download/jobwatch.mcpb)
+  (`jobwatch.mcpb`, always the latest release), open it and press Install.
   Claude Desktop sets up everything it needs, uv included.
 
 A chat on claude.ai, or in an app whose plugins run in the cloud, can't reach jobwatch on your computer.
