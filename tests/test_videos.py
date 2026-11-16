@@ -118,14 +118,16 @@ def test_no_real_pay_figure_is_written_in_the_story_files(stories):
     assert not forbidden.search((VIDEOS.parent / "demo" / "seed.py").read_text(encoding="utf-8").split("BOARDS")[0])
 
 
-def test_publish_puts_each_video_where_the_site_and_docs_read_it(tmp_path):
+def test_publish_puts_each_video_in_site_only(tmp_path):
+    """One copy of each video, in site/: a second one in docs/ doubled every rebuild's weight in git."""
     spec = importlib.util.spec_from_file_location("publish", VIDEOS / "publish.py")
     publish = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(publish)
-    assert [p.relative_to(tmp_path).as_posix() for p in publish.targets("jobwatch-demo", tmp_path)] == [
-        "docs/jobwatch-demo.mp4", "site/jobwatch-demo.mp4"]
-    assert [p.relative_to(tmp_path).as_posix() for p in publish.targets("jobwatch-04-applying", tmp_path)] == [
-        "docs/tutorials/jobwatch-04-applying.mp4", "site/tutorials/jobwatch-04-applying.mp4"]
+    assert publish.target("jobwatch-demo", tmp_path) == tmp_path / "site" / "jobwatch-demo.mp4"
+    assert publish.target("jobwatch-04-applying", tmp_path) == (
+        tmp_path / "site" / "tutorials" / "jobwatch-04-applying.mp4")
+    root = Path(__file__).resolve().parents[1]
+    assert not [p for p in (root / "docs").rglob("*") if p.suffix in {".mp4", ".vtt", ".gif", ".jpg"}]
     assert publish.caption_target("jobwatch-demo", tmp_path) == tmp_path / "site" / "jobwatch-demo.vtt"
     assert publish.caption_target("jobwatch-04-applying", tmp_path) == (
         tmp_path / "site" / "tutorials" / "jobwatch-04-applying.vtt")

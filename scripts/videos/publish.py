@@ -1,10 +1,11 @@
-"""Copy the rendered videos into the repo: docs/ and site/ (posters and the tour's animated preview too).
+"""Copy the rendered videos into the repo's site/ folder, their one home (posters and the tour's animated preview too).
 
     python scripts/videos/publish.py [--out DIR]
 
-Overwrites docs/jobwatch-demo.mp4, site/jobwatch-demo.{mp4,jpg}, docs/demo.gif, site/demo.gif and, for each tutorial,
-docs/tutorials/NAME.mp4, site/tutorials/NAME.mp4 and site/tutorials/NAME.jpg (a poster frame, 640 wide). Each video's
-captions (NAME.vtt, see captions.py) go beside its mp4 in site/. `--captions-only` copies only those.
+Overwrites site/jobwatch-demo.{mp4,jpg}, site/demo.gif and, for each tutorial, site/tutorials/NAME.mp4 and
+site/tutorials/NAME.jpg (a poster frame, 640 wide). Each video's captions (NAME.vtt, see captions.py) go beside its mp4.
+`--captions-only` copies only those. GitHub Pages serves site/; the README links the files there
+(https://vinayvobbili.github.io/jobwatch/...), so each rebuild adds one copy to git, not two.
 """
 
 from __future__ import annotations
@@ -25,16 +26,16 @@ def tutorial_names(out: Path) -> list[str]:
     return sorted(p.name for p in out.glob("jobwatch-0[1-9]-*") if (p / f"{p.name}.mp4").exists())
 
 
-def targets(name: str, root: Path = ROOT) -> list[Path]:
-    """Where a video's mp4 goes."""
+def target(name: str, root: Path = ROOT) -> Path:
+    """Where a video's mp4 goes: the one copy, in site/."""
     if name == TOUR:
-        return [root / "docs" / f"{name}.mp4", root / "site" / f"{name}.mp4"]
-    return [root / "docs" / "tutorials" / f"{name}.mp4", root / "site" / "tutorials" / f"{name}.mp4"]
+        return root / "site" / f"{name}.mp4"
+    return root / "site" / "tutorials" / f"{name}.mp4"
 
 
 def caption_target(name: str, root: Path = ROOT) -> Path:
-    """Where a video's captions go: beside its mp4 on the site."""
-    return targets(name, root)[1].with_suffix(".vtt")
+    """Where a video's captions go: beside its mp4."""
+    return target(name, root).with_suffix(".vtt")
 
 
 def frame(video: Path, dest: Path, at: float, width: int) -> None:
@@ -67,14 +68,13 @@ def main(argv: list[str] | None = None) -> None:
         if args.captions_only:
             print(f"published {name}'s captions")
             continue
-        for dest in targets(name):
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(video, dest)
+        dest = target(name)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(video, dest)
         site = ROOT / "site"
         if name == TOUR:
             frame(video, site / f"{name}.jpg", 1.5, 960)
-            gif(video, ROOT / "docs" / "demo.gif")
-            shutil.copyfile(ROOT / "docs" / "demo.gif", site / "demo.gif")
+            gif(video, site / "demo.gif")
         else:
             frame(video, site / "tutorials" / f"{name}.jpg", 1.5, 640)
         print(f"published {name}")

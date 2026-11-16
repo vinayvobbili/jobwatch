@@ -9,7 +9,7 @@
 Watch the job boards of the companies you care about and get a short, ranked digest of **new** roles that
 match you, optionally fit-scored against your resume. jobwatch finds and ranks. It never applies for you.
 
-![jobwatch: watch boards, rank by fit, ask about your jobs, track applications, prep for interviews](https://raw.githubusercontent.com/vinayvobbili/jobwatch/main/docs/demo.gif)
+![jobwatch: watch boards, rank by fit, ask about your jobs, track applications, prep for interviews](https://vinayvobbili.github.io/jobwatch/demo.gif)
 
 With sound (1½ minutes, made from made-up data):
 

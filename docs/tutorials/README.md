@@ -1,7 +1,8 @@
 # jobwatch tutorials
 
 Short narrated videos, recorded from the real app on made-up data. Rebuild with `scripts/videos/make-videos`, then
-`python scripts/videos/publish.py` (see `scripts/videos/README.md`).
+`python scripts/videos/publish.py` (see `scripts/videos/README.md`). The files live in `site/tutorials/` and play on
+the [home page](https://vinayvobbili.github.io/jobwatch/); this folder only lists them.
 
 | Video | Length | What it covers |
 |---|---|---|

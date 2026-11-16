@@ -1,6 +1,6 @@
 # Rebuild the videos
 
-The 1.5-minute tour (`docs/jobwatch-demo.mp4`) and the seven tutorials (`docs/tutorials/jobwatch-0N-*.mp4`) are screen
+The 1.5-minute tour (`site/jobwatch-demo.mp4`) and the seven tutorials (`site/tutorials/jobwatch-0N-*.mp4`) are screen
 recordings of the real `jobwatch ui` and of the Chrome extension's side panel, on made-up data (Acme, Globex, Initech,
 Umbrella, Hooli): nothing reads your own watchlist, reaches a job board or calls a model. They show the UI, with a
 visible cursor, a ripple on every click and nothing cut off at the frame's edges. The only commands on screen are the
@@ -12,7 +12,7 @@ python -m playwright install chromium
 scripts/videos/make-videos --dry     # a screenshot after each action, to check framing (cheap, no video)
 scripts/videos/make-videos           # record and render every video (Kokoro narration; needs Apple Silicon)
 scripts/videos/make-videos jobwatch-demo jobwatch-04-applying    # just those
-python scripts/videos/publish.py     # copy them into docs/ and site/, with posters and the tour's demo.gif
+python scripts/videos/publish.py     # copy them into site/ (their one home), with posters and the tour's demo.gif
 ```
 
 Output goes to `scripts/demo/out/videos/NAME/` (git ignores it): `clips/`, `NAME.mp4`, its poster, and for the tour a

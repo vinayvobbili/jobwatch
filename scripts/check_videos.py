@@ -6,7 +6,7 @@
 GitHub renders each user-attachments link as a <video> whose src is a short-lived signed URL, so the page is
 fetched fresh and each video downloaded at once. Each is probed with ffprobe (duration of the container and of
 each stream, whether the moov atom comes first so a browser can start playing before the end arrives) and
-matched by content to docs/tutorials/*.mp4 and docs/jobwatch-demo.mp4. Exits 1 when one fails to download or probe.
+matched by content to site/tutorials/*.mp4 and site/jobwatch-demo.mp4. Exits 1 when one fails to download or probe.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ def probe(path: Path) -> dict:
 
 def local_files() -> dict[str, str]:
     """sha256 → path, for the videos we made."""
-    files = [*sorted((ROOT / "docs" / "tutorials").glob("*.mp4")), ROOT / "docs" / "jobwatch-demo.mp4"]
+    files = [*sorted((ROOT / "site" / "tutorials").glob("*.mp4")), ROOT / "site" / "jobwatch-demo.mp4"]
     return {hashlib.sha256(f.read_bytes()).hexdigest(): str(f.relative_to(ROOT)) for f in files if f.exists()}
 
 
