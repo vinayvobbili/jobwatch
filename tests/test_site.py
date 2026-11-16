@@ -183,7 +183,8 @@ def test_tutorials_section_serves_local_videos_lazily_with_captions_and_a_name()
     for video, (_, src) in zip(videos, cards, strict=True):
         vtt = src.removesuffix(".mp4") + ".vtt"
         assert re.search(r'aria-label="Video: [^"]+"', video), video
-        assert f'<track kind="captions" srclang="en" label="English" src="{vtt}" default>' in video
+        assert f'<track kind="captions" srclang="en" label="English" src="{vtt}">' in video
+        assert " default" not in video  # captions are on request, never forced
         assert (ROOT / "site" / vtt).read_text(encoding="utf-8").startswith("WEBVTT"), vtt
 
 
