@@ -10,7 +10,9 @@
 (function () {
   'use strict';
   const JW = globalThis.JW;
-  const send = (msg) => chrome.runtime.sendMessage(msg);
+  // A service worker Chrome stopped mid-call drops the message: say so, or the panel waits for ever
+  const send = (msg) => chrome.runtime.sendMessage(msg).then((r) => r || { ok: false, error: STOPPED }, () => ({ ok: false, error: STOPPED }));
+  const STOPPED = 'The jobwatch extension stopped before jobwatch answered. Open jobwatch\'s Today to see what it did, then try again.';
   const $ = (id) => document.getElementById(id);
 
   // This panel's tab: the one it was opened for (background.js pins each tab's panel with ?tab=), else the active one.

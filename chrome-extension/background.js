@@ -334,6 +334,7 @@ const LIST_PAGES_KEY = 'listPages'; // chrome.storage.local: how many pages "Rea
 const LIST_PAGES_DEFAULT = 4; // lists are sorted by relevance: later pages matter less
 const LIST_PAGES_MAX = 10;
 const LIST_IMPORT_TIMEOUT_MS = 10 * 60 * 1000; // jobwatch looks for each new job's company board: minutes for a long list
+const LIST_IMPORT_SLOW = "It may still be working: open jobwatch's Today to see what it added, then read the list again (jobs it already has are skipped).";
 const PAGE_LOAD_MS = 30 * 1000;
 const listImports = new Map(); // tabId -> source: the list imports running, one per tab, any number of tabs at once
 const HIDDEN_CHECK_MS = 2000;
@@ -438,7 +439,7 @@ async function readAndImport(tabId, source, settings, maxPages) {
   }
   if (!byId.size) throw new Expected('No jobs found on this page. Open the list itself (not one job), and try again.');
   listProgress(tabId, `Looking for the ${byId.size} jobs on their companies' own boards. This can take a few minutes.`);
-  const r = await api('/ext/import-list', { method: 'POST', body: { records: [...byId.values()] }, settings, timeout: LIST_IMPORT_TIMEOUT_MS });
+  const r = await api('/ext/import-list', { method: 'POST', body: { records: [...byId.values()] }, settings, timeout: LIST_IMPORT_TIMEOUT_MS, slow: LIST_IMPORT_SLOW });
   return { ...r, stopped, link: `${settings.serverUrl}/#today` };
 }
 
@@ -468,7 +469,7 @@ async function importPassive() {
   const kept = (await chrome.storage.local.get(JWPassive.KEY))[JWPassive.KEY] || {};
   const sent = JWPassive.records(kept);
   if (!sent.length) throw new Expected('No jobs seen while browsing yet.');
-  const r = await api('/ext/import-list', { method: 'POST', body: { records: sent }, settings, timeout: LIST_IMPORT_TIMEOUT_MS });
+  const r = await api('/ext/import-list', { method: 'POST', body: { records: sent }, settings, timeout: LIST_IMPORT_TIMEOUT_MS, slow: LIST_IMPORT_SLOW });
   const work = passiveQueue.then(async () => {
     const now = (await chrome.storage.local.get(JWPassive.KEY))[JWPassive.KEY] || {};
     for (const rec of sent) delete now[JWPassive.keyOf(rec)];

@@ -9,6 +9,7 @@ export const DEFAULTS = Object.freeze({ serverUrl: 'http://127.0.0.1:8765', toke
 
 const TIMEOUT_MS = 20_000;
 const DRAFT_TIMEOUT_MS = 120_000;
+const KEEP_ALIVE_MS = 20_000;
 
 export async function getSettings() {
   const { settings } = await chrome.storage.local.get('settings');
@@ -25,22 +26,27 @@ export class ApiError extends Error {}
  * Call jobwatch. Resolves with parsed JSON (or the ArrayBuffer and its headers when `raw`);
  * rejects with an ApiError that says what went wrong in plain words.
  */
-export async function api(path, { method = 'GET', body, settings, raw = false, timeout } = {}) {
+export async function api(path, { method = 'GET', body, settings, raw = false, timeout, slow = '' } = {}) {
   const cfg = settings || (await getSettings());
   const headers = { Accept: raw ? '*/*' : 'application/json', 'X-Jobwatch-Extension': cfg.token };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout || (path.startsWith('/ext/draft') || path.startsWith('/ext/reply') ? DRAFT_TIMEOUT_MS : TIMEOUT_MS));
+  const limit = timeout || (path.startsWith('/ext/draft') || path.startsWith('/ext/reply') ? DRAFT_TIMEOUT_MS : TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), limit);
+  // Chrome stops a service worker whose fetch hasn't been answered in 30 seconds, and the panel then waits for ever:
+  // an extension API call every so often keeps it alive for the wait
+  const keepAlive = limit > KEEP_ALIVE_MS ? setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), KEEP_ALIVE_MS) : null;
   let res;
   try {
     res = await fetch(cfg.serverUrl + path, {
       method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal,
     });
   } catch (err) {
-    if (err.name === 'AbortError') throw new ApiError('jobwatch took too long to answer.');
+    if (err.name === 'AbortError') throw new ApiError(`jobwatch took too long to answer.${slow ? ` ${slow}` : ''}`);
     throw new ApiError(`Can't reach jobwatch at ${cfg.serverUrl}. Is "jobwatch" running?`);
   } finally {
     clearTimeout(timer);
+    if (keepAlive) clearInterval(keepAlive);
   }
   if (res.ok && raw) return { bytes: await res.arrayBuffer(), type: res.headers.get('Content-Type') || '', disposition: res.headers.get('Content-Disposition') || '' };
   let data = null;

@@ -269,3 +269,63 @@ def test_two_lists_import_at_once_from_two_tabs(setup):
         assert len([j for j, _ in store.jobs() if j.company == "hooli" and j.title == "Platform Engineer"]) == 1
     finally:
         store.close()
+
+
+def test_a_board_lookup_that_never_answers_doesnt_hold_the_import_forever(setup, monkeypatch):
+    """The lookups have a budget: companies still being looked for when it runs out are tracked from the list
+    ("lookup ran out of time"), the import finishes, and its summary says so (11/17: a 250-job import sat for
+    minutes with nothing to show for it)."""
+    import threading
+
+    from jobwatch import alerts
+    cfg, store = setup
+    release = threading.Event()
+    real = alerts._Resolver.company_boards
+
+    def stuck(self, company):
+        if company == "Vandelay Industries" and threading.current_thread() is not threading.main_thread():
+            release.wait(30)  # in the lookup pool only: it must not be asked again, one by one, afterwards
+        return real(self, company)
+    monkeypatch.setattr(alerts._Resolver, "company_boards", stuck)
+    try:
+        r = joblist.take(cfg, store, joblist.records(LIST), budget=0.3)
+    finally:
+        release.set()
+    got = {s.record.id: s for s in r.seen}
+    assert got["4100000002"].outcome == "added"  # Hooli's board was found in time
+    assert got["4100000003"].outcome == "unplaced" and got["4100000003"].why == "lookup ran out of time"
+    assert r.cut == 1 and "1 company's board lookup ran out of time" in joblist.summary(r)
+
+
+def test_a_slow_import_doesnt_block_a_save_or_a_check(server, web, monkeypatch):
+    """The import takes no app-wide lock: while one is mid-lookup, a check and a settings read still go through."""
+    import threading
+
+    from jobwatch import alerts
+    token = json.loads(request(server, "GET", "/api/extension", headers={"X-Jobwatch-Token": TOKEN})[1])["token"]
+    ok = {"X-Jobwatch-Extension": token}
+    started, release = threading.Event(), threading.Event()
+    real = alerts._Resolver.company_boards
+
+    def stuck(self, company):
+        started.set()
+        release.wait(20)
+        return real(self, company)
+    monkeypatch.setattr(alerts._Resolver, "company_boards", stuck)
+    done, results = [], []
+    t = threading.Thread(target=lambda: done.append(
+        request(server, "POST", "/ext/import-list", {"records": LIST[2:3]}, headers=ok)))
+    t.start()
+    try:
+        assert started.wait(10)
+        for method, path, body in (("POST", "/api/fetch", {}), ("GET", "/api/settings", None)):
+            th = threading.Thread(target=lambda m=method, p=path, b=body: results.append(
+                request(server, m, p, b, headers={"X-Jobwatch-Token": TOKEN})[0]))
+            th.start()
+            th.join(15)
+            assert not th.is_alive(), f"{path} waited on the import"
+        assert results == [200, 200]
+    finally:
+        release.set()
+        t.join(15)
+    assert done and done[0][0] == 200

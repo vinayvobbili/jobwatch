@@ -185,6 +185,10 @@ New: Draft reply. On a LinkedIn conversation you have open, press "Draft reply t
 
 New look for the side panel. It now opens with a card for the page you are on (an application form, a LinkedIn conversation, a list of jobs, a job posting, or "Nothing to do on this page") and the one action that suits it. Under it, every action is a tile in three groups (Apply, Messages, Jobs); the ones that do not suit the current page are dimmed, not hidden. The jobs noted while you browse show as a badge. A System, Light or Dark theme choice is in Settings. Nothing new is read or sent: the card is chosen from the page's address and tab title, which the extension already had, and no permission was added.
 
+### What's new (next version: long imports)
+
+Fix: "Read the jobs on this list" no longer sits at "Looking for the jobs on their companies' own boards" for ever when Chrome stops the extension during a long wait; it keeps itself running for the wait, and says what to do if jobwatch doesn't answer in time. No permission was added and nothing new is read or sent.
+
 ### What's new (0.10.0)
 
 New: import the jobs from a LinkedIn or Indeed list into your own jobwatch. Press "Read the jobs on this list" on a list you have open, or tick "Note jobs while I browse" in the side panel (it is off by default) and import the jobs noted while you browsed. The jobs go only to the jobwatch on your own computer. Also: one side panel per tab, and list imports can run in several tabs at once. This version adds LinkedIn and Indeed (job-list pages) as a site the extension runs on; the privacy policy is updated.

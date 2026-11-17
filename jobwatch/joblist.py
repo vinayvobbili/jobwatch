@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from importlib import resources
@@ -42,6 +42,7 @@ from .store import MANUAL, Store
 
 HISTORY = "import-list.jsonl"
 LOOKUP_WORKERS = 6  # companies whose boards are looked for at once
+LOOKUP_BUDGET = 240.0  # seconds the lookups may take in all: the extension waits on the import, so not open-ended
 # Each site's link to one of its jobs, by its id: the form alerts.clean_link gives, so a job from an alert matches
 LINKS = {"linkedin": "https://www.linkedin.com/jobs/view/{}/", "indeed": "https://www.indeed.com/viewjob?jk={}"}
 NAMES = {"linkedin": "LinkedIn", "indeed": "Indeed"}
@@ -167,6 +168,7 @@ class Result:
     seen: list[Seen] = field(default_factory=list)
     dry_run: bool = False
     at: str = ""
+    cut: int = 0  # companies whose board lookup ran out of the budget: their jobs are tracked from the list
 
     @property
     def sources(self) -> list[str]:
@@ -196,19 +198,30 @@ def _via(store: Store, key: str) -> str | None:
 
 
 def take(cfg, store: Store, recs: list[Record], dry_run: bool = False, page=None, follow: bool = True,
-         now: datetime | None = None) -> Result:
+         now: datetime | None = None, budget: float = LOOKUP_BUDGET) -> Result:
     """Take in a list's jobs (see the module's docstring). dry_run: nothing is recorded (not even the history);
-    the result says what would be. follow=False looks for no boards: each new job is tracked as listed."""
+    the result says what would be. follow=False looks for no boards: each new job is tracked as listed. The boards
+    are looked for `budget` seconds at most; a company not done by then is tracked as listed (Result.cut)."""
     result = Result(dry_run=dry_run, at=(now or datetime.now(timezone.utc)).isoformat(timespec="seconds"))
     taker = alerts.Taker(cfg, store, alerts.Intake(), follow=follow, dry_run=dry_run, page=page, every=True)
     # The companies of the jobs not tracked yet have their boards looked for at once: the slow part
+    cut: set[str] = set()
     if follow:
         def wants_board(r: Record) -> bool:
             key = taker.tracked.match(r.company, r.title, r.url)
             return not key or ((_via(store, key) or "").endswith("-list") and _textless(taker.tracked.get(key)))
         missing = list(dict.fromkeys(r.company for r in recs if wants_board(r)))
-        with ThreadPoolExecutor(max_workers=LOOKUP_WORKERS) as pool:
-            list(pool.map(_quietly(taker.resolver.company_boards), missing))
+        pool = ThreadPoolExecutor(max_workers=LOOKUP_WORKERS)
+        try:
+            lookups = {pool.submit(_quietly(taker.resolver.company_boards), c): c for c in missing}
+            _, late = wait(lookups, timeout=budget)
+        finally:  # a lookup still running is left to end by itself: nothing waits for it
+            pool.shutdown(wait=False, cancel_futures=True)
+        for f in late:
+            key = linkedin._bare(lookups[f])
+            cut.add(key)
+            taker.resolver.found_boards.setdefault(key, [])  # not looked for again, one by one, below
+        result.cut = len(cut)
     for r in recs:
         f = taker.take(_alert(r))
         if f is None:
@@ -226,14 +239,14 @@ def take(cfg, store: Store, recs: list[Record], dry_run: bool = False, page=None
                     if not dry_run:
                         alerts.fill_from_board(store, f.job, found)
                 else:
-                    s.why = _why(taker, r)
+                    s.why = _why(taker, r, cut)
             if not dry_run:  # it counts toward watching the company's board, as when it first came in
                 suggest.record(store, cfg.boards, f.job, taker.resolver.looked(r.company))
         elif f.how == "email":
             s.outcome = "unplaced"
             boards = taker.resolver.looked(r.company)
             s.board = ", ".join(f"{src}:{b}" for src, b, _ in boards or [])
-            s.why = _why(taker, r)
+            s.why = _why(taker, r, cut)
         else:
             s.outcome, s.board = "added", f"{f.job.source}:{f.job.company}"
         result.seen.append(s)
@@ -253,7 +266,9 @@ def _on_board(taker, r: Record):
         return None
 
 
-def _why(taker, r: Record) -> str:
+def _why(taker, r: Record, cut: set[str] = frozenset()) -> str:
+    if linkedin._bare(r.company) in cut:
+        return "lookup ran out of time"
     boards = taker.resolver.looked(r.company)
     return "not looked for" if boards is None else "no board found under its name" if not boards \
         else "not on its board"
@@ -328,6 +343,9 @@ def summary(r: Result) -> str:
             were = "would be" if r.dry_run else "were"
             out.append(f"  {c['upgraded']} job(s) an earlier import kept as listed {were} moved onto their "
                        "company's board.")
+    if r.cut:
+        out.append(f"{r.cut} company's board lookup ran out of time: their jobs are tracked from the list, and "
+                   "found on their boards when those are watched or the list is read again.")
     if not r.seen:
         out.append("No jobs in the list.")
     if added := [s for s in r.seen if s.outcome == "added"]:

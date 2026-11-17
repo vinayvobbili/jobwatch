@@ -423,3 +423,24 @@ def test_a_job_site_title_names_the_role_and_company(tmp_path):
 def test_the_theme_choice_defaults_to_the_system(tmp_path):
     got = run_js(tmp_path, "console.log(JSON.stringify(['light', 'dark', 'system', 'purple', '', null, undefined].map(JW.themeChoice)));")
     assert got == ["light", "dark", "system", "system", "system", "system", "system"]
+
+
+@needs_node
+def test_a_call_that_times_out_says_what_to_do(tmp_path):
+    """Chrome stops a service worker whose fetch has waited 30 s, and the panel then waits for ever (11/17, Read the
+    jobs on this list): a long call pings an extension API meanwhile (lib.js), and one that times out tells the
+    person where to look."""
+    shutil.copy(EXT / "lib.js", tmp_path / "lib.mjs")
+    js = tmp_path / "case.mjs"
+    js.write_text("""
+globalThis.chrome = { runtime: { getPlatformInfo: () => Promise.resolve({}) } };
+globalThis.fetch = (url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('x'), { name: 'AbortError' }))));
+const { api } = await import('./lib.mjs');
+const settings = { serverUrl: 'http://127.0.0.1:1', token: 't' };
+let error = '';
+try { await api('/ext/import-list', { method: 'POST', body: {}, settings, timeout: 150, slow: 'Look in Today.' }); } catch (e) { error = e.message; }
+console.log(JSON.stringify({ error }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True, timeout=20)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {"error": "jobwatch took too long to answer. Look in Today."}
