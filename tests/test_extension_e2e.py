@@ -25,6 +25,7 @@ sync_api = pytest.importorskip("playwright.sync_api")
 TOOLS = Path(__file__).resolve().parent.parent / "chrome-extension" / "tools"
 sys.path.insert(0, str(TOOLS))
 import harness  # noqa: E402
+import panel_states  # noqa: E402
 import store_assets  # noqa: E402
 
 
@@ -334,7 +335,7 @@ def test_the_panel_says_when_jobwatch_is_missing(stack, ext, panels):
         assert panel.locator("#scan").count() == 0
 
         harness.pair(stack, stack.api_url, harness.TOKEN)
-        panel.wait_for_function("() => document.getElementById('pair').textContent.includes('Paired with jobwatch')")
+        panel.wait_for_function("() => document.getElementById('pair').textContent.includes('paired ')")
         panel.wait_for_selector("#scan")
         assert panel.locator("#posting").count() == 1
     finally:
@@ -351,7 +352,7 @@ def test_an_older_jobwatch_without_the_posting_call_gets_no_posting_button(stack
         panel = harness.side_panel(stack, url)
         panels.append(panel)
         harness.pair(stack, stack.api_url, harness.TOKEN)
-        panel.wait_for_function("() => document.getElementById('pair').textContent.includes('Paired with jobwatch')")
+        panel.wait_for_function("() => document.getElementById('pair').textContent.includes('paired ')")
         panel.wait_for_selector("#scan")  # filling still works
         assert panel.locator("#posting").count() == 0  # its call would fail on that jobwatch
     finally:
@@ -549,6 +550,57 @@ def test_store_assets_have_the_sizes_the_web_store_requires(tmp_path, pw):
         assert struct.unpack(">II", png[16:24]) == sizes.get(name, store_assets.SCREEN), name
 
 
+def test_the_panel_leads_with_the_page_and_dims_the_tiles_that_do_not_suit_it(stack, ext, panels):
+    form = f"http://127.0.0.1:{stack.site_port}/generic.html"
+    page = open_form(stack, ext, form)
+    try:
+        panel = harness.side_panel(stack, form)
+        panels.append(panel)
+        panel.wait_for_selector("#lead")
+        assert "idle" in panel.get_attribute("#lead", "class") and panel.locator("#lead-go").count() == 0
+        assert panel.locator(".tile").count() >= 4  # every action stays, dimmed
+        assert "dim" in panel.get_attribute("#scan", "class")
+        lever = stack.url("jobs.lever.co", "/initech/6f1b2c/apply")
+        page.goto(lever)
+        panel = harness.side_panel(stack, lever)
+        panels.append(panel)
+        panel.wait_for_selector("#lead.form")
+        assert panel.inner_text("#lead h2") == "Application form" and "Initech" in panel.inner_text("#lead .detail")
+        assert "dim" not in panel.get_attribute("#scan", "class") and "dim" in panel.get_attribute("#reply", "class")
+        panel.click("#lead-go")  # the lead card's button does what the Fill tile does
+        panel.wait_for_selector(".row", timeout=20000)
+    finally:
+        page.close()
+
+
+def test_the_theme_chosen_in_settings_is_the_one_the_panel_wears(stack, ext, panels):
+    url = f"http://127.0.0.1:{stack.site_port}/generic.html"
+    page = open_form(stack, ext, url)
+    try:
+        panel = harness.side_panel(stack, url)
+        panels.append(panel)
+        panel.wait_for_selector("#lead")
+        assert panel.evaluate("document.documentElement.getAttribute('data-theme')") is None  # System first
+        options = stack.extension_page("options.html")
+        options.select_option("#theme", "dark")
+        panel.wait_for_function("document.documentElement.getAttribute('data-theme') === 'dark'")
+        options.select_option("#theme", "system")
+        panel.wait_for_function("document.documentElement.getAttribute('data-theme') === null")
+        options.close()
+    finally:
+        page.close()
+
+
+def test_panel_states_are_captured_for_every_kind_of_page(tmp_path, pw):
+    try:
+        written = {p.name for p in panel_states.capture(tmp_path, playwright=pw)}
+    except harness.BrowserUnavailable as exc:
+        pytest.skip(str(exc))
+    assert {f"panel-{k}-{t}-narrow.png" for k in ("form", "thread", "list", "posting", "idle") for t in ("light", "dark")} <= written
+    assert {"panel-list-light-wide.png", "panel-not-paired-light-narrow.png", "options-light.png"} <= written
+    assert all((tmp_path / name).stat().st_size > 2000 for name in written)
+
+
 def test_demo_video_is_a_narrated_1280x800_mp4(tmp_path, pw):
     slidecast = pytest.importorskip("slidecast")
     try:
@@ -566,5 +618,5 @@ def test_demo_video_is_a_narrated_1280x800_mp4(tmp_path, pw):
     probe = subprocess.run([ffmpeg, "-i", str(out)], capture_output=True, text=True).stderr
     assert "1280x800" in probe and "Audio: aac" in probe
     # The hook, the steps from the extensions page to Submit, the trust, start and end cards: about two minutes.
-    assert demo_video.INTRO_SECONDS + 20 < slidecast.probe_duration(out, ffmpeg=ffmpeg) < 150
+    assert demo_video.TITLE_SECONDS + 20 < slidecast.probe_duration(out, ffmpeg=ffmpeg) < 150
     assert (tmp_path / "demo_poster.jpg").is_file()

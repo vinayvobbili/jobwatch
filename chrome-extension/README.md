@@ -95,7 +95,8 @@ page.js             content script per frame: scan, fill, read company and title
 job-lists.js        reads LinkedIn / Indeed job lists, paced like a person (PACING); a copy ships in jobwatch/static
 passive.js          content script on LinkedIn and Indeed: notes the job cards seen while browsing (passive mode)
 reply.js            injected by Draft reply only: reads the one open LinkedIn conversation, types the draft into its box (never presses Send)
-sidepanel.*         the review panel in Chrome's side panel: pairing status, scan, rows, fill, drafts, results
+sidepanel.*         the review panel in Chrome's side panel: pairing status, the lead card and action tiles for the page, scan, rows, fill, drafts, results
+look.js             the System / Light / Dark theme (set on the options page) for the panel and the options page
 options.*           the options page (server, token, theme and width)
 demo/               fixture forms imitating Greenhouse, Lever and Ashby, and a generic one
 tools/              make_icons.py, package.py (store zip), fake_server.py (API.md stand-in), harness.py (Playwright),

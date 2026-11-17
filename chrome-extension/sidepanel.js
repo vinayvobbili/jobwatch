@@ -25,15 +25,12 @@
   let replyState = null; // the draft reply on show: jobwatch's answer with the conversation's fingerprint
   let busy = false;
   let idleText = ''; // what idle() last said, shown again when the tab loads another page
-  let listRefresh = null; // re-reads the import-list settings block when passive mode notes a job
+  let homeShown = null; // the note the home view shows ('' for none) while it is on screen, else null: it is drawn again when the tab or the seen count changes
+  let homeToken = 0; // the newest home() call; an older one still reading the page gives up
+  const DEFAULT_IDLE = 'Open a job application in this tab, then press Fill this application.';
   let importing = null; // the tab whose job list is being imported: its progress shows
 
-  try {
-    const theme = localStorage.getItem('theme');
-    if (theme && theme !== 'system') document.documentElement.setAttribute('data-theme', theme);
-  } catch {
-    /* no stored choice: follow the system */
-  }
+  // The theme (System, Light or Dark) is applied by look.js, from the choice made in Settings.
 
   function h(tag, props, ...kids) {
     const el = document.createElement(tag);
@@ -55,6 +52,7 @@
   }
 
   function view(...body) {
+    homeShown = null; // home() sets it again after drawing itself
     $('view').replaceChildren(...body);
   }
 
@@ -63,13 +61,15 @@
   async function checkPairing() {
     const pair = $('pair');
     pair.className = '';
+    pair.title = '';
     pair.textContent = 'Checking...';
     const s = await send({ type: 'status' });
     ready = !!(s.paired && s.reachable);
     features = s.features || [];
     if (ready) {
       pair.className = 'good';
-      pair.textContent = `Paired with jobwatch ${s.version}.`;
+      pair.textContent = `paired ${s.version}`;
+      pair.title = `Paired with jobwatch ${s.version}`;
     } else {
       pair.className = 'warn';
       pair.textContent = !s.paired
@@ -81,51 +81,65 @@
 
   // --- the views -----------------------------------------------------------------------------------
 
-  const scanButton = () => h('button', { id: 'scan', class: 'go', textContent: 'Fill this application', onclick: scan });
+  // The actions. Each is a tile in the grid under the lead card (ids kept: scan, posting, reply, import-list, passive-import);
+  // the lead card's big button runs the same function for the page's own action. A tile that doesn't suit this page is dimmed.
+
+  // Icons are fixed strings of ours (24px, stroked in the tile's colour), never page text.
+  const ICONS = {
+    scan: '<path d="M9 11l2 2 4-4"/><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 17h5"/>',
+    reply: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M9 11h6M9 14h3"/>',
+    posting: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/>',
+    'import-list': '<path d="M8 6h12M8 12h12M8 18h12"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+    'passive-import': '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    idle: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+  };
+  const icon = (name) => {
+    const span = h('span', { class: 'ico' });
+    span.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
+    return span;
+  };
 
   // The posting action: on a LinkedIn job it presses Apply to open the company's posting, anywhere else it saves the page's posting.
   const POSTING = { linkedin: "Open the company's posting", site: 'Save this posting to jobwatch' };
-  const postingButton = () => {
-    const b = h('button', { id: 'posting', class: 'ghost', textContent: POSTING.site, onclick: savePosting });
-    myTab().then((tab) => {
-      if (tab && JW.postingMode(tab.url) === 'linkedin') b.textContent = POSTING.linkedin;
-    }, () => {});
-    return b;
-  };
-  // On LinkedIn: draft a reply to the conversation that is open (only offered when this jobwatch has the call).
-  const replyButton = () => {
-    const b = h('button', { id: 'reply', class: 'ghost', textContent: 'Draft reply to this conversation', onclick: draftReply, hidden: true });
-    myTab().then((tab) => { if (tab && JW.replyMode(tab.url)) b.hidden = false; }, () => {});
-    return b;
-  };
-  // On a LinkedIn or Indeed list of jobs: send every page's jobs to jobwatch, to see which it had and track the rest.
-  const importButton = () => {
-    const b = h('button', { id: 'import-list', class: 'ghost', textContent: 'Read the jobs on this list', onclick: importList, hidden: true });
-    const note = h('div', { id: 'import-busy', class: 'msg small', hidden: true });
-    myTab().then(async (tab) => {
-      if (!tab || !JW.listMode(tab.url)) return;
-      b.hidden = false;
-      const { running } = await send({ type: 'importState' });
-      const here = JW.importOnTab(running, tab.id);
-      b.disabled = here;
-      note.hidden = !here;
-      note.textContent = here ? JW.IMPORT_RUNNING : '';
-    }, () => {});
-    return [b, note];
-  };
+  const POSTING_TILE = { linkedin: 'Open company posting', site: 'Save this posting' };
+
+  /** One tile: `lit` says whether the page suits it (a dimmed tile still works), `count` puts a badge on it. */
+  function tile({ id, group, label, title, onclick, lit, count, disabled }) {
+    return h('button', { id, class: `tile${lit ? '' : ' dim'}`, title, onclick, disabled: !!disabled },
+      icon(id), h('span', { class: 'lbl', textContent: label }),
+      count != null ? h('span', { class: 'cnt', textContent: String(count) }) : null);
+  }
+
+  /** The tiles by group: Apply, Messages, Jobs. What this jobwatch can't do (an older one) has no tile. */
+  function tileGroups(ctx, tab, seen, importing) {
+    const lit = (id) => ctx.matches.includes(id) || ctx.primary === id;
+    const mode = tab ? JW.postingMode(tab.url) : 'site';
+    const post = mode === 'linkedin' ? 'linkedin' : 'site';
+    const groups = [
+      ['Apply', '', [
+        tile({ id: 'scan', label: 'Fill this application', title: 'Fill this application', onclick: scan, lit: lit('scan') }),
+        features.includes('posting') ? tile({ id: 'posting', label: POSTING_TILE[post], title: POSTING[post], onclick: savePosting, lit: lit('posting') }) : null]],
+      ['Messages', 'msg-g', [
+        features.includes('reply') ? tile({ id: 'reply', label: 'Draft reply', title: 'Draft reply to this conversation', onclick: draftReply, lit: lit('reply') }) : null]],
+      ['Jobs', 'jobs-g', features.includes('import-list') ? [
+        tile({ id: 'import-list', label: 'Read job list', title: 'Read the jobs on this list', onclick: importList, lit: lit('import-list'), disabled: importing }),
+        tile({ id: 'passive-import', label: 'Seen while browsing', title: `Read the ${seen} job${seen === 1 ? '' : 's'} seen while browsing`, onclick: importSeen,
+          lit: lit('passive-import') || seen > 0, count: seen, disabled: !seen })] : []],
+    ];
+    return groups.map(([name, cls, tiles], i) => {
+      const some = tiles.filter(Boolean);
+      return some.length ? h('section', { class: `group ${cls}`, style: `animation-delay:${80 + i * 50}ms` }, h('h3', { textContent: name }), h('div', { class: 'tiles' }, some)) : null;
+    });
+  }
   // Import-list settings: how many pages the button reads, and passive mode (jobs seen while browsing, imported
   // on request). Both are kept in chrome.storage.local; passive.js and background.js read them from there.
   const listOptions = () => {
     const pages = h('input', { id: 'list-pages', type: 'number', min: '1', max: '10', step: '1', value: '4', title: 'Pages read from a list (1-10)' });
     const on = h('input', { id: 'passive-on', type: 'checkbox', checked: false });
-    const seen = h('button', { id: 'passive-import', class: 'ghost', hidden: true, onclick: importSeen });
     const refresh = async () => {
-      const s = await chrome.storage.local.get(['listPages', 'passiveOn', 'passiveSeen']);
+      const s = await chrome.storage.local.get(['listPages', 'passiveOn']);
       if (document.activeElement !== pages) pages.value = String(s.listPages || 4);
       on.checked = s.passiveOn === true; // off by default; the person opts in
-      const n = Object.keys(s.passiveSeen || {}).length;
-      seen.hidden = !n;
-      seen.textContent = `Read the ${n} job${n === 1 ? '' : 's'} seen while browsing`;
     };
     pages.addEventListener('change', () => {
       const n = Math.min(10, Math.max(1, Math.round(Number(pages.value)) || 4));
@@ -134,16 +148,58 @@
     });
     on.addEventListener('change', () => chrome.storage.local.set({ passiveOn: on.checked }));
     refresh();
-    listRefresh = refresh;
     return h('div', { class: 'list-options' },
       h('label', {}, 'Pages to read ', pages),
       h('label', { title: 'Keeps the jobs shown on LinkedIn and Indeed lists while you browse, on this computer, until you press Import.' },
-        on, ' Note jobs while I browse'),
-      seen);
+        on, ' Note jobs while I browse'));
   };
-  const actions = () => h('div', { class: 'actions' }, scanButton(), features.includes('reply') ? replyButton() : null,
-    features.includes('posting') ? postingButton() : null,
-    features.includes('import-list') ? importButton() : null, features.includes('import-list') ? listOptions() : null);
+
+  // What each lead card's big button says, and does (the same functions the tiles run).
+  const LEAD = {
+    scan: ['Fill this application', () => scan()],
+    reply: ['Draft reply to this conversation', () => draftReply()],
+    'import-list': ['Read the jobs on this list', () => importList()],
+    posting: [null, () => savePosting()],
+  };
+  const KICKER = { form: 'scan', thread: 'reply', list: 'import-list', posting: 'posting', idle: 'idle' };
+  const WHY = {
+    form: 'Fields that already have a value start unticked. You review every field before anything is filled.',
+    thread: 'jobwatch reads the open conversation and drafts a reply. It never presses Send.',
+    list: 'Every page of the list is scrolled and read; jobwatch tracks the jobs it did not have.',
+    posting: '',
+    idle: 'Open an application, a LinkedIn conversation or a list of jobs. The tiles below work on any page.',
+  };
+
+  /** The card at the top: what this page is and the one thing to do about it. `importing`: a list import is already running here. */
+  function leadCard(ctx, tab, importing) {
+    const action = LEAD[ctx.primary];
+    const offered = action && (ctx.primary === 'scan' || features.includes(ctx.primary === 'reply' ? 'reply' : ctx.primary === 'posting' ? 'posting' : 'import-list'));
+    const label = ctx.primary === 'posting'
+      ? POSTING[tab && JW.postingMode(tab.url) === 'linkedin' ? 'linkedin' : 'site'] : action && action[0];
+    const kicker = h('div', { class: 'kicker' }, icon(KICKER[ctx.kind]).firstChild, { form: 'Application', thread: 'Message', list: 'Jobs', posting: 'Posting', idle: 'Idle' }[ctx.kind]);
+    return h('div', { id: 'lead', class: `lead ${ctx.kind}` }, kicker,
+      h('h2', { textContent: ctx.heading }),
+      ctx.detail ? h('div', { class: 'detail', textContent: ctx.detail }) : null,
+      WHY[ctx.kind] ? h('div', { class: 'why', textContent: WHY[ctx.kind] }) : null,
+      offered ? h('button', { id: 'lead-go', class: 'go', textContent: label, onclick: action[1], disabled: ctx.primary === 'import-list' && importing }) : null,
+      ctx.kind === 'list' && features.includes('import-list') ? listOptions() : null,
+      importing ? h('div', { id: 'import-busy', class: 'busy', textContent: JW.IMPORT_RUNNING }) : null);
+  }
+
+  /** The view when nothing has been read: a note (what just happened), the lead card for this tab, then every action as a tile. */
+  async function home(message) {
+    const mine = ++homeToken;
+    const tab = await myTab().catch(() => null);
+    const ctx = JW.pageContext(tab && tab.url, tab && tab.title);
+    const importing = ctx.kind === 'list' && features.includes('import-list') && tab
+      ? JW.importOnTab((await send({ type: 'importState' })).running, tab.id) : false;
+    const s = await chrome.storage.local.get('passiveSeen');
+    const seen = Object.keys(s.passiveSeen || {}).length;
+    if (busy || mine !== homeToken) return; // the person pressed something, or the page changed again, while this was reading the page
+    const cards = [leadCard(ctx, tab, importing), ...tileGroups(ctx, tab, seen, importing)];
+    view(h('div', { class: 'scroll' }, h('div', { class: 'empty home' }, message ? h('div', { class: 'msg', textContent: message }) : null, cards)));
+    homeShown = message || '';
+  }
 
   function idle(text) {
     state = null;
@@ -151,15 +207,16 @@
     idleText = text;
     $('where').textContent = '';
     if (!ready) {
+      homeShown = null;
       view(h('div', { class: 'empty' }, h('div', { textContent: 'Nothing to fill from until jobwatch is running.' }),
         h('button', { id: 'recheck', class: 'ghost', textContent: 'Check again', onclick: async () => { if (await checkPairing()) idle(text); } })));
       return;
     }
-    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: text }), actions()));
+    home(text === DEFAULT_IDLE ? '' : text);
   }
 
   function failed(message) {
-    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: message }), actions()));
+    home(message);
   }
 
   /** What the posting action did, with a link to the job on jobwatch's page. */
@@ -469,16 +526,17 @@
     chrome.tabs.onActivated.addListener(({ tabId: now }) => {
       if (now === tabId) return;
       tabId = now;
-      if (!busy) idle('Open a job application in this tab, then press Fill this application.');
+      if (!busy) idle(DEFAULT_IDLE);
     });
   }
   chrome.tabs.onUpdated.addListener((id, change) => {
-    if (id === tabId && (change.status === 'loading' || change.url)) tabChanged();
-    // idle, with buttons (Read the jobs on this list, the posting action) chosen for the page that was there before
-    else if (id === tabId && change.status === 'complete' && !state && !busy && idleText) idle(idleText);
+    if (id !== tabId) return;
+    if (change.status === 'loading' || change.url) tabChanged();
+    // the lead card and the lit tiles follow the page: its address, and its title (LinkedIn names a conversation late)
+    if ((change.status === 'complete' || change.url || change.title) && !state && !replyState && !busy && homeShown !== null) home(homeShown);
   });
   chrome.tabs.onRemoved.addListener((id) => {
-    if (id === tabId) idle('Open a job application in this tab, then press Fill this application.');
+    if (id === tabId) idle(DEFAULT_IDLE);
   });
 
   // A multi-step form that swaps its step in place (no navigation): the page says so, and the new step is read
@@ -499,7 +557,7 @@
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings && !busy && !state) init();
-    if (area === 'local' && changes.passiveSeen && listRefresh && $('passive-import')) listRefresh();
+    if (area === 'local' && changes.passiveSeen && !busy && !state && !replyState && homeShown !== null) home(homeShown); // the badge
   });
 
   $('options').addEventListener('click', (e) => {
@@ -509,7 +567,7 @@
 
   async function init() {
     await checkPairing();
-    idle('Open a job application in this tab, then press Fill this application.');
+    idle(DEFAULT_IDLE);
   }
 
   init();

@@ -19,15 +19,22 @@ function look(name, fallback) {
   }
 }
 
-for (const [id, attr, fallback] of [['theme', 'data-theme', 'system'], ['width', 'data-width', 'standard']]) {
-  const select = document.getElementById(id);
-  const apply = (v) => (v === fallback ? root.removeAttribute(attr) : root.setAttribute(attr, v));
-  select.value = look(id, fallback);
+// The theme is kept in chrome.storage.local so the side panel follows it (look.js applies it to both pages)
+const theme = document.getElementById('theme');
+chrome.storage.local.get('theme').then(({ theme: kept }) => {
+  theme.value = globalThis.JW.themeChoice(kept === undefined ? look('theme', 'system') : kept);
+}, () => {});
+theme.addEventListener('change', () => chrome.storage.local.set({ theme: globalThis.JW.themeChoice(theme.value) }));
+
+{
+  const select = document.getElementById('width');
+  const apply = (v) => (v === 'standard' ? root.removeAttribute('data-width') : root.setAttribute('data-width', v));
+  select.value = look('width', 'standard');
   apply(select.value);
   select.addEventListener('change', () => {
     apply(select.value);
     try {
-      localStorage.setItem(id, select.value);
+      localStorage.setItem('width', select.value);
     } catch {
       /* private window: the choice just isn't remembered */
     }

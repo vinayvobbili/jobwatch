@@ -43,7 +43,6 @@
           </p>
         </div>
         <div class="look">
-          <select id="theme" aria-label="Theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
           <select id="width" aria-label="Width"><option value="standard">Standard</option><option value="wide">Wide</option><option value="full">Full</option></select>
         </div>
       </div>
@@ -63,7 +62,20 @@
           <span id="result"></span>
         </div>
       </form>
+
+      <section class="card" id="appearance">
+        <h2>Appearance</h2>
+        <p class="hint">The side panel and this page follow your computer's light or dark setting unless you pick one here.</p>
+        <div class="grid">
+          <div>
+            <label for="theme">Theme</label>
+            <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+          </div>
+        </div>
+      </section>
     </main>
+    <script src="logic.js"></script>
+    <script src="look.js"></script>
     <script type="module" src="options.js"></script>
   </body>
 </html>

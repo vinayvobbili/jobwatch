@@ -24,7 +24,7 @@ def run_js(tmp_path, body: str):
 @needs_node
 def test_every_script_parses():
     """A syntax error in a content script gives a panel that never opens, with no test failing elsewhere."""
-    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "job-lists.js", "passive.js", "reply.js"):
+    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "look.js", "job-lists.js", "passive.js", "reply.js"):
         r = subprocess.run(["node", "--check", str(EXT / name)], capture_output=True, text=True)
         assert r.returncode == 0, f"{name}: {r.stderr}"
 
@@ -364,3 +364,62 @@ def test_a_form_is_replaced_when_most_of_its_fields_are_gone(tmp_path):
     closing is the same form."""
     got = run_js(tmp_path, "console.log(JSON.stringify([[8, 0], [8, 3], [8, 4], [8, 7], [8, 8], [0, 0]].map(p => JW.formReplaced(...p))));")
     assert got == [True, True, False, False, False, False]
+
+
+CONTEXT_CASES = [
+    # (address, tab title, kind, heading, detail, primary)
+    ("https://job-boards.greenhouse.io/initech/jobs/4012345", "Job Application for Platform Engineer at Initech", "form", "Application form", "Initech: Platform Engineer", "scan"),
+    ("https://job-boards.greenhouse.io/initech/jobs/4012345", "", "form", "Application form", "Initech", "scan"),
+    ("https://boards.greenhouse.io/embed/job_app?for=globex&token=1", "", "form", "Application form", "Globex", "scan"),
+    ("https://boards.greenhouse.io/embed/job_app", "", "form", "Application form", "", "scan"),
+    ("https://jobs.lever.co/umbrella-corp/0a1b2c3d/apply", "", "form", "Application form", "Umbrella Corp", "scan"),
+    ("https://jobs.ashbyhq.com/initech/0a1b2c3d/application", "", "form", "Application form", "Initech", "scan"),
+    ("https://www.linkedin.com/messaging/thread/2-abc/", "(3) Dana Whitfield | LinkedIn", "thread", "Conversation with Dana Whitfield", "", "reply"),
+    ("https://www.linkedin.com/messaging/thread/2-abc/", "Messaging | LinkedIn", "thread", "Conversation", "LinkedIn Messaging", "reply"),
+    ("https://www.linkedin.com/jobs/collections/recommended", "Jobs | LinkedIn", "list", "Job list", "LinkedIn", "import-list"),
+    ("https://www.indeed.com/jobs?q=platform", "", "list", "Job list", "Indeed", "import-list"),
+    ("https://www.linkedin.com/jobs/view/3912345678/", "Platform Engineer | Initech | LinkedIn", "posting", "Job posting", "Platform Engineer | Initech", "posting"),
+    ("https://jobs.lever.co/initech/0a1b2c3d", "", "posting", "Job posting", "Initech", "posting"),
+    ("https://careers.globex.example/jobs/senior-engineer", "", "posting", "Job posting", "", "posting"),
+    ("https://www.example.com/", "Example", "idle", "Nothing to do on this page", "", ""),
+    ("https://www.linkedin.com/feed/", "Feed | LinkedIn", "idle", "Nothing to do on this page", "", ""),
+    ("chrome://extensions", "", "idle", "Nothing to do on this page", "", ""),
+    ("", "", "idle", "Nothing to do on this page", "", ""),
+]
+
+
+@needs_node
+@pytest.mark.parametrize("url, title, kind, heading, detail, primary", CONTEXT_CASES)
+def test_the_panel_leads_with_what_the_page_is(tmp_path, url, title, kind, heading, detail, primary):
+    got = run_js(tmp_path, f"console.log(JSON.stringify(JW.pageContext({json.dumps(url)}, {json.dumps(title)})));")
+    assert (got["kind"], got["heading"], got["detail"], got["primary"]) == (kind, heading, detail, primary)
+    assert got["primary"] == "" or got["primary"] in got["matches"]  # the lead action is never one of the dimmed tiles
+
+
+@needs_node
+def test_the_tiles_that_suit_a_page_are_the_ones_left_lit(tmp_path):
+    got = run_js(tmp_path, """console.log(JSON.stringify([
+      'https://www.linkedin.com/jobs/search/?currentJobId=3912345678', 'https://www.linkedin.com/feed/', 'https://www.example.com/'
+    ].map(u => JW.pageContext(u, '').matches)));""")
+    # a list with a job open also offers the company's posting; any LinkedIn page can have a conversation in a bubble
+    assert got == [["import-list", "passive-import", "reply", "posting"], ["reply"], []]
+
+
+@needs_node
+def test_a_conversation_name_is_read_only_when_the_title_has_one(tmp_path):
+    titles = ["(12) Dana Whitfield | LinkedIn", "Dana Whitfield - LinkedIn", "Messaging | LinkedIn", "(1) Messaging | LinkedIn", "LinkedIn", "", None]
+    got = run_js(tmp_path, f"console.log(JSON.stringify({json.dumps(titles)}.map(t => JW.threadName(t))));")
+    assert got == ["Dana Whitfield", "Dana Whitfield", "", "", "", "", ""]
+
+
+@needs_node
+def test_a_job_site_title_names_the_role_and_company(tmp_path):
+    titles = ["Job Application for Platform Engineer at Initech", "Careers at Globex", ""]
+    got = run_js(tmp_path, f"console.log(JSON.stringify({json.dumps(titles)}.map(t => JW.titleJob(t))));")
+    assert got == [{"role": "Platform Engineer", "company": "Initech"}, {"role": "", "company": ""}, {"role": "", "company": ""}]
+
+
+@needs_node
+def test_the_theme_choice_defaults_to_the_system(tmp_path):
+    got = run_js(tmp_path, "console.log(JSON.stringify(['light', 'dark', 'system', 'purple', '', null, undefined].map(JW.themeChoice)));")
+    assert got == ["light", "dark", "system", "system", "system", "system", "system"]

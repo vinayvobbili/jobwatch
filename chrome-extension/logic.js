@@ -412,7 +412,78 @@
     return `${s.length}:${hash.toString(36)}`;
   }
 
-  const JW = { replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
+  // --- the side panel's lead card: what this page is, from its address (and its title, which is only read for a name) ---
+
+  const titleCase = (slug) => slug.replace(/[-_+]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+
+  /** The role and company a job site's tab title names ("Job Application for Platform Engineer at Initech"), else empty. */
+  function titleJob(title) {
+    const m = String(title || '').match(/^Job Application for (.+?) at (.+)$/i);
+    return m ? { role: oneLine(m[1]), company: oneLine(m[2]) } : { role: '', company: '' };
+  }
+
+  /** The name on a LinkedIn conversation's tab title ("(2) Dana Whitfield | LinkedIn"), or '' when it only says "Messaging". */
+  function threadName(title) {
+    const name = oneLine(String(title || '').replace(/^\(\d+\+?\)\s*/, '').replace(/\s*[|–—-]\s*LinkedIn.*$/i, ''));
+    return !name || /^(messaging|linkedin|inbox)$/i.test(name) ? '' : name;
+  }
+
+  // The job sites with a known address shape: where an application form is (`form`), where only the posting is
+  // (`posting`), and the company in the address, as the path segment or subdomain it sits at.
+  const SITES = [
+    { host: /(^|\.)greenhouse\.io$/, form: /^\/(?:embed\/job_app$|[^/]+\/jobs\/\d+)/, company: (u) => u.searchParams.get('for') || (u.pathname.startsWith('/embed/') ? '' : u.pathname.split('/')[1]) },
+    { host: /^jobs\.lever\.co$/, form: /^\/[^/]+\/[^/]+\/apply\/?$/, posting: /^\/[^/]+\/[^/]+\/?$/, company: (u) => u.pathname.split('/')[1] },
+    { host: /^jobs\.ashbyhq\.com$/, form: /^\/[^/]+\/[^/]+\/application\/?$/, posting: /^\/[^/]+\/[^/]+\/?$/, company: (u) => u.pathname.split('/')[1] },
+    { host: /(^|\.)myworkdayjobs\.com$/, form: /\/apply(\/|$)/, posting: /\/job\//, company: (u) => u.hostname.split('.')[0] },
+    { host: /^apply\.workable\.com$/, form: /\/apply\/?$/, posting: /\/j\//, company: (u) => u.pathname.split('/')[1] },
+    { host: /(^|\.)(smartrecruiters\.com|icims\.com|jobvite\.com)$/, form: /\/(apply|application)(\/|$)/, posting: /\/(job|jobs)\//, company: () => '' },
+  ];
+  const POSTING_PATH = /\/(jobs?|careers?|positions?|openings?|vacancies)\/[^/]+/i;
+
+  /**
+   * What the side panel leads with for a tab: { kind, heading, detail, primary, matches }.
+   * `kind`: 'form' (an application form), 'thread' (a LinkedIn conversation), 'list' (LinkedIn or Indeed jobs), 'posting'
+   * (a job posting), else 'idle'. `primary` is the id of the one action to lead with ('' when idle), `matches` the ids of the
+   * actions that suit the page (the others are shown dimmed, not hidden). Only the address says which; the title is read for
+   * a name, and a company is read from the address when it has one.
+   */
+  function pageContext(url, title) {
+    const u = urlOf(url);
+    const idle = { kind: 'idle', heading: 'Nothing to do on this page', detail: '', primary: '', matches: [] };
+    if (!u) return idle;
+    const reply = replyMode(url) ? ['reply'] : [];
+    if (replyMode(url) === 'messaging') {
+      const name = threadName(title);
+      return { kind: 'thread', heading: name ? `Conversation with ${name}` : 'Conversation', detail: name ? '' : 'LinkedIn Messaging', primary: 'reply', matches: ['reply'] };
+    }
+    const list = listMode(url);
+    if (list) {
+      return { kind: 'list', heading: 'Job list', detail: list === 'linkedin' ? 'LinkedIn' : 'Indeed', primary: 'import-list',
+        matches: ['import-list', 'passive-import', ...reply, ...(postingMode(url) === 'linkedin' ? ['posting'] : [])] };
+    }
+    if (postingMode(url) === 'linkedin') {
+      return { kind: 'posting', heading: 'Job posting', detail: oneLine(String(title || '').replace(/^\(\d+\+?\)\s*/, '').replace(/\s*\|\s*LinkedIn.*$/i, '')),
+        primary: 'posting', matches: ['posting', ...reply] };
+    }
+    const host = u.hostname.toLowerCase();
+    const site = SITES.find((s) => s.host.test(host));
+    if (site && site.form.test(u.pathname)) {
+      const t = titleJob(title);
+      const company = t.company || titleCase(String(site.company(u) || ''));
+      return { kind: 'form', heading: 'Application form', detail: [company, t.role].filter(Boolean).join(': '), primary: 'scan', matches: ['scan'] };
+    }
+    if (postingMode(url) === 'site' && ((site && site.posting && site.posting.test(u.pathname)) || (!site && POSTING_PATH.test(u.pathname)))) {
+      return { kind: 'posting', heading: 'Job posting', detail: site ? titleCase(String(site.company(u) || '')) : '', primary: 'posting', matches: ['posting'] };
+    }
+    return { ...idle, matches: reply };
+  }
+
+  /** The theme the side panel and settings page apply: 'light', 'dark', or 'system' (the default, for anything else). */
+  function themeChoice(value) {
+    return value === 'light' || value === 'dark' ? value : 'system';
+  }
+
+  const JW = { pageContext, titleJob, threadName, themeChoice, replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
     linkedinJobId, postingMode, listMode, importOnTab, progressIsMine, IMPORT_RUNNING, IMPORT_HIDDEN, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;
