@@ -485,3 +485,35 @@ def test_the_page_lists_carry_a_worth_score(tracked):
     assert set(initech["worth"]["parts"]) == {"career", "pay", "fit", "health"}
     page = (__import__("pathlib").Path(config.__file__).parent / "static" / "index.html").read_text()
     assert '["worth", "Worth it"]' in page and 'remember("today.sort"' in page and 'remember("queue.sort"' in page
+
+
+def test_a_suffix_counts_only_right_after_the_number():
+    # "12 months" is a length of time: not 12, and its M is not millions
+    assert comps.amount("$80/hr W-2, 6 months") == (166400, 166400)
+    assert comps.amount("90/hr W-2, 12 months") == (187200, 187200)
+    assert [comps.amount(t) for t in ("12 months", "12mo", "2 yrs", "3 years", "12 M", "6 months, 80")] == [None] * 6
+    assert comps.amount("185K, 12 months") == (185000, 185000)
+    assert comps.amount("$1.2M") == (1_200_000, 1_200_000)
+
+
+@pytest.mark.parametrize("text, rate, yearly", [
+    ("$90/hr", (90, 90), (187200, 187200)), ("90/hr", (90, 90), (187200, 187200)),
+    ("$90 per hour", (90, 90), (187200, 187200)), ("$85-95/hr", (85, 95), (176800, 197600)),
+    ("$80/h W-2, 6 months", (80, 80), (166400, 166400)), ("130/hr W-2", (130, 130), (270400, 270400))])
+def test_hourly_rates_are_read_and_set_at_2080_hours(text, rate, yearly):
+    assert comps.hourly(text) == rate and comps.amount(text) == yearly
+
+
+def test_an_hourly_offer_is_scored_and_explained_as_a_contract_rate(tracked):
+    tracked.write_text(tracked.read_text() + "pay:\n  target: 180000-210000\n")
+    cfg = config.load(tracked)
+    store = Store(cfg.state)
+    store.set_comp("acme", offered="$90/hr W-2, 12 months", asked="130/hr W-2")
+    v = comps.view(cfg, store)
+    row = next(o for o in v["opportunities"] if o["key"] == "manual:acme:platform-engineer")
+    assert (row["offered_mid"], row["asked_mid"]) == (187200, 270400)
+    acme = next(r for r in v["suggestion"]["ranking"] if r["company"] == "Acme")
+    pay = acme["parts"]["pay"]
+    assert pay["known"] and pay["input"] == "$90/hr, about $187K a year as W-2 offered vs your $180K-$210K target"
+    assert "no benefits or paid time off" in acme["reason"] and "M offered" not in acme["reason"]
+    store.close()

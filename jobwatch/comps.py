@@ -50,17 +50,33 @@ NEUTRAL = 50  # a part with nothing to go on: neither for nor against
 UNKNOWN = ("no pay known", "not scored", "no company health kept", "no kind or role kept")
 _NONE = re.compile(r"\s*(none|no|nil|n/a|0)\b", re.I)
 
-_N = r"\$?(\d[\d,]*(?:\.\d+)?)\s*([kKmM])?"
+# A K or M counts only right after the number ("165K", "1.2M"), never a word that starts with one ("12 months")
+_N = r"\$?(\d[\d,]*(?:\.\d+)?)(?:([kKmM])(?![A-Za-z]))?"
 _RANGE = re.compile(rf"(?<![\w.]){_N}\s*(?:-|\u2013|\u2014|to)\s*{_N}(?![\d%])")
 _ONE = re.compile(rf"(?<![\w.]){_N}(?![\d%])(?!\s*%)")
 _SCALE = {"": 1, "k": 1000, "m": 1_000_000}
+_H = r"\$?(\d+(?:\.\d+)?)"
+_HOURLY = re.compile(rf"(?<![\w.]){_H}(?:\s*(?:-|–|—|to)\s*{_H})?\s*(?:/|per\s+|an?\s+)\s*(?:hours?|hrs?|h)\b",
+                     re.I)
+HOURS = 2080  # a year of full-time hours, to set an hourly rate against a salary
+
+
+def hourly(text: str | None) -> tuple[float, float] | None:
+    """The hourly rate or range a person wrote, as (low, high) dollars an hour: "$90/hr", "90 per hour", "$85-95/h"."""
+    m = _HOURLY.search(text or "")
+    if not m:
+        return None
+    low, high = sorted((float(m.group(1)), float(m.group(2) or m.group(1))))
+    return (low, high) if low > 0 else None
 
 
 def amount(text: str | None) -> tuple[int, int] | None:
     """The yearly amount or range a person wrote, as (low, high) dollars: "140-165K", "$150K - $196K", "165,000",
     "180K most likely their max". A K or M on one end of a range applies to both ("140-165K"). Percentages and
-    anything under $1,000 aren't pay (None)."""
+    anything under $1,000 aren't pay (None). An hourly rate ("$90/hr") is set at HOURS a year."""
     text = text or ""
+    if rate := hourly(text):
+        return round(rate[0] * HOURS), round(rate[1] * HOURS)
     for m in _RANGE.finditer(text):
         (low, lk), (high, hk) = (m.group(1), m.group(2)), (m.group(3), m.group(4))
         lk, hk = (lk or hk or "").lower(), (hk or lk or "").lower()
@@ -174,6 +190,14 @@ def _pay(row: dict, target: tuple[float, str] | None, top: float) -> tuple[int, 
     against = f"your {target[1]} target" if target else "the best of these"
     gap = abs(ratio - 1)
     where = "about at" if gap < 0.03 else f"{gap:.0%} {'over' if ratio > 1 else 'under'}"
+    said = (row.get("comp") or {}).get("offered" if what == "offered" else "base") if what != "posted" else None
+    if rate := hourly(said):
+        per = f"${rate[0]:g}" + (f"-{rate[1]:g}" if rate[1] != rate[0] else "") + "/hr"
+        w2 = " as W-2" if re.search(r"\bw-?2\b", said, re.I) else ""
+        yearly = f"{per}, about {_k(figure)} a year{w2}"
+        return (part, f"{yearly} {what} vs {against}",
+                f"{what} pay {yearly} (at {HOURS} hours; a contract rate has no benefits or paid time off) "
+                f"is {where} {against}")
     return part, f"{_k(figure)} {what} vs {against}", f"{what} pay {_k(figure)} is {where} {against}"
 
 
