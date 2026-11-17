@@ -80,6 +80,12 @@ def test_where_a_job_is_worked(locations, remote, where):
     (["NY, SF, Chicago, Remote", "US"], None, True),
     (["Remote-Friendly US (Travel Required)"], None, True),
     (["Remote - United States of America"], None, True),
+    # Greenhouse's multi-country remote: a remote head, then the countries it's open in.
+    (["Remote - US: Select locations", "Canada", "US"], None, True),
+    (["Remote - Canada: Select locations", "Canada", "US"], None, True),
+    (["Remote - Germany: Select locations", "Germany", "France"], None, False),
+    (["Remote - Canada: Select locations", "Canada", "California"], None, False),   # a state isn't the whole US
+    (["Remote - California: Select locations", "California", "US"], None, False),    # a state-qualified remote
 ])
 def test_remote_in_us(locations, remote, ok):
     f = Filters(locations=["remote"])

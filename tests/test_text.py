@@ -8,6 +8,8 @@ from jobwatch.text import (
     names_no_place,
     parse_salary,
     pay_period,
+    remote_in_listed_countries,
+    remote_us_wide,
     split_locations,
 )
 
@@ -121,6 +123,24 @@ def test_names_no_place():
     assert names_no_place("Remote")
     assert names_no_place("Fully Remote")
     assert not names_no_place("Remote - Canada")
+
+
+def test_remote_us_wide_ignores_the_select_locations_tail():
+    assert remote_us_wide("Remote - US: Select locations")
+    assert not remote_us_wide("Remote - Canada: Select locations")
+    assert not remote_us_wide("Remote - California: Select locations")
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ("Remote - US: Select locations; Canada; US", True),
+    ("Remote - Canada: Select locations; Canada; US", True),
+    ("Remote - Germany: Select locations; Germany; France", False),
+    ("Remote - Canada: Select locations; Canada; California", False),
+    ("Remote - California: Select locations; California; US", False),
+    ("Remote - Canada; US", False),                       # no "Select locations": not this form
+])
+def test_remote_in_listed_countries(raw, expected):
+    assert remote_in_listed_countries(split_locations(raw)) is expected
 
 
 def test_split_locations_dedupes_and_splits():

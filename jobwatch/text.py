@@ -228,7 +228,7 @@ def remote_states_in_text(text: str) -> list[str]:
 # The whole country, as opposed to a state or city in it.
 _US_WIDE = re.compile(r"\bunited states(?: of america)?\b|\bnorth america\b|\bamericas\b|\bnationwide\b", re.I)
 _US_WIDE_CODES = re.compile(r"\bU\.S\.(?:A\.)?|\bUSA?\b")
-_FILLER = re.compile(r"\b(?:in|within|the|based|travel|required|occasional)\b", re.I)
+_FILLER = re.compile(r"\b(?:in|within|the|based|travel|required|occasional|select locations)\b", re.I)
 
 
 def names_a_region(location: str) -> bool:
@@ -241,6 +241,19 @@ def names_a_region(location: str) -> bool:
 def remote_us_wide(location: str) -> bool:
     """Remote anywhere in the US: "Remote - US", or one choice in a list ("Seattle, Chicago, US-Remote")."""
     return any(is_remote(p) and in_us(p) and not names_a_region(p) for p in [location, *location.split(",")])
+
+
+_SELECT_LOCATIONS = re.compile(r":\s*select locations\s*$", re.I)
+
+
+def remote_in_listed_countries(locations: list[str]) -> bool:
+    """Greenhouse's multi-country remote: "Remote - Canada: Select locations; Canada; US" splits into a remote
+    head and the countries it's open in. True when one of those is the whole US (not a state: "Remote - California"
+    stays that state's own)."""
+    for i, head in enumerate(locations):
+        if is_remote(head) and _SELECT_LOCATIONS.search(head) and not us_states(head):
+            return any(in_us(p) and not names_a_region(p) for p in locations[:i] + locations[i + 1:])
+    return False
 
 
 def bare_remote(location: str) -> bool:

@@ -13,6 +13,7 @@ from .text import (
     in_us,
     is_remote,
     names_a_region,
+    remote_in_listed_countries,
     remote_offer,
     remote_states_in_text,
     remote_title,
@@ -125,6 +126,9 @@ def _remote_ok(job: Job, country: str) -> bool:
     remote_places = [loc for loc in job.locations if is_remote(loc)]
     # "Remote - Washington D.C." is remote for people there: it counts only as a place (a wanted one or not).
     if any(anywhere or remote_us_wide(loc) or (bare_remote(loc) and bare_ok) for loc in remote_places):
+        return True
+    # "Remote - Canada: Select locations; Canada; US": open in each listed country, the US among them.
+    if remote_in_listed_countries(job.locations):
         return True
     # The posting's own remote flag (or a title that says it: "... (remote)"), with the location saying where.
     return (bool(job.remote) or remote_title(job.title)) and \

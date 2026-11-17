@@ -237,7 +237,8 @@ A posting can list several places (`London, UK; Remote-Friendly, United States; 
 is checked:
 
 - `remote` matches a place that says remote and is in `remote_country`, or says only "Remote". It also
-  matches a posting whose own remote flag is set and that lists a US location.
+  matches a posting whose own remote flag is set and that lists a US location. A multi-country remote
+  (`Remote - Canada: Select locations; Canada; US`) matches when the US is one of the countries listed.
 - With `home_state` set, a remote role open only in some states is left out unless yours is one of them,
   and one open only in your state ("Remote - Colorado") counts as remote. The states come from the
   posting's places ("Remote - Texas", or a remote posting that lists only states) and its text ("Remote
