@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from jobwatch import chat, cli, config, reply
+from jobwatch import chat, cli, config, reply, stories
 from jobwatch.store import Store
 
 from .conftest import TOKEN, request
@@ -41,7 +41,9 @@ def model(monkeypatch):
     seen = {"said": "REPLY:\nHi Dana, thanks for writing.\nCHECK:\n- Confirm the level.\n"}
 
     def fake(backend, system, messages, model="", max_tokens=0):
-        seen.update(backend=backend, system=system, messages=messages)
+        # `system` is what the model read in all: a system message and the user turns
+        seen.update(backend=backend, system="\n".join([system, *(m["content"] for m in messages)]), messages=messages,
+                    sent_system=system)
         yield seen["said"]
         yield {"output_tokens": 9}
 
@@ -94,6 +96,35 @@ def test_the_prompt_carries_the_rules_the_thread_as_data_and_the_resume(cfg, sto
     assert "None. Give no figure." in s
     assert "150000" not in s and "150,000" not in s  # the private floor never reaches a prompt
     assert model["backend"] == "local"  # a thread goes to the local model, whatever the chat is set to
+
+
+def test_the_local_model_gets_the_instructions_as_the_user_turn_not_a_system_message(cfg, store, model):
+    reply.draft(cfg, store, thread("rate_question"), "Dana Whitfield")
+    assert model["sent_system"] == ""  # a system message made Gemma write empty thought blocks and no reply
+    assert len(model["messages"]) == 1 and model["messages"][0]["role"] == "user"
+    assert "Reply rules" in model["messages"][0]["content"] and model["messages"][0]["content"].endswith(reply.ASK)
+
+
+def test_the_local_call_sends_no_empty_system_message(monkeypatch):
+    sent = {}
+
+    class Resp:
+        def __iter__(self):
+            return iter([b"data: [DONE]\n"])
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def call(path, body=None, read_timeout=0):
+        sent.update(body)
+        yield Resp()
+
+    monkeypatch.setattr(chat, "_local_call", call)
+    monkeypatch.setattr(chat, "local_busy", lambda: False)
+    list(chat.reply("local", "", [{"role": "user", "content": "hi"}], max_tokens=5))
+    assert [m["role"] for m in sent["messages"]] == ["user"]
+    list(chat.reply("local", "Be brief.", [{"role": "user", "content": "hi"}], max_tokens=5))
+    assert [m["role"] for m in sent["messages"]] == ["system", "user"]
 
 
 def test_the_thread_cant_close_its_own_fence(cfg, store, model):
@@ -162,6 +193,8 @@ def test_parse_handles_labels_think_blocks_and_missing_notes():
         ("Hi Sam.", ["One", "Two", "Three"])
     assert reply.parse("<|channel>thought\n<channel|>REPLY:\nHi Sam.\nCHECK:\n- One") == ("Hi Sam.", ["One"])
     assert reply.parse("REPLY:\n\nREPLY:\nHi Sam.\nCHECK:\n- One") == ("Hi Sam.", ["One"])
+    assert reply.parse("REPLY:\nHi Sam.\n<|channel>thought\n<channel|><|channel>thought\n<|channel>thought") == \
+        ("Hi Sam.", [])
     assert reply.parse("Hi Sam, thanks.") == ("Hi Sam, thanks.", [])
     assert reply.parse("REPLY: Hi Sam.") == ("Hi Sam.", [])
 
@@ -187,6 +220,55 @@ def test_the_command_prints_the_draft_and_its_notes(watchlist, cfg, model, capsy
     assert out.startswith("Hi Dana, thanks for writing.") and "Check: Confirm the level." in out
     cli.main(["--config", str(watchlist), "draft-reply", str(f), "--format", "json"])
     assert json.loads(capsys.readouterr().out)["drafted"] is True
+
+
+MINE_LAST = "Dana Whitfield, Nov 12\nHi Jordan, would you like to talk about a Platform Engineer role?\n\n" \
+            "Jordan Rivera, Nov 12\nYes. What is the range and level?"
+
+
+@pytest.mark.parametrize("sender, last, mine", [
+    ("Dana Whitfield", "Jordan Rivera", True),
+    ("Dana Whitfield Talent Acquisition Sourcer at Initech", "Jordan Rivera", True),
+    ("Dana Whitfield Talent Acquisition Sourcer at Initech", "Dana Whitfield", False),
+    ("Dana Whitfield", "Dana", False),
+    ("Dana Whitfield", "", False),
+    ("", "Jordan Rivera", False),
+])
+def test_who_spoke_last(sender, last, mine):
+    assert reply.user_spoke_last(sender, last) is mine
+
+
+def test_when_the_users_message_is_last_there_is_nothing_to_reply_to(cfg, store, model):
+    got = reply.draft(cfg, store, MINE_LAST, "Dana Whitfield", last="Jordan Rivera")
+    assert got["waiting"] is True and got["drafted"] is False and got["reply"] == ""
+    assert got["warnings"] == ["Your message is the last one; there is nothing to reply to yet."]
+    assert "system" not in model  # no model call was made
+
+
+def test_a_follow_up_is_drafted_only_when_asked_and_claims_nothing_from_them(cfg, store, model):
+    got = reply.draft(cfg, store, MINE_LAST, "Dana Whitfield", last="Jordan Rivera", followup=True)
+    assert got["drafted"] is True and got["followup"] is True and got["waiting"] is False
+    s = model["system"]
+    assert "has not answered" in s and "does not repeat the earlier question" in s
+    assert "says nothing about what the other side said" in s
+    assert "Who wrote the last message: the user" in s
+
+
+def test_the_prompt_says_the_other_side_wrote_last_and_forbids_inventing_what_they_said(cfg, store, model):
+    reply.draft(cfg, store, thread("rate_question"), "Dana Whitfield", last="Dana Whitfield")
+    s = model["system"]
+    assert "Who wrote the last message: Dana Whitfield (the other side)" in s
+    assert "Never say or imply the other side told, sent, answered or agreed" in s
+    assert "does not repeat the earlier question" not in s  # an ordinary reply, not a follow-up
+
+
+def test_the_endpoint_passes_who_wrote_last_and_the_follow_up_ask(server, watchlist, model):
+    token = json.loads(request(server, "GET", "/api/extension", headers={"X-Jobwatch-Token": TOKEN})[1])["token"]
+    ok = {"X-Jobwatch-Extension": token}
+    body = {"thread": MINE_LAST, "sender": "Dana Whitfield", "last": "Jordan Rivera"}
+    assert json.loads(request(server, "POST", "/ext/reply", body, headers=ok)[1])["waiting"] is True
+    got = json.loads(request(server, "POST", "/ext/reply", {**body, "followup": True}, headers=ok)[1])
+    assert got["drafted"] is True and got["followup"] is True
 
 
 def test_the_extension_endpoint(server, watchlist, model):
@@ -257,3 +339,18 @@ def test_an_unknown_reply_backend_is_refused(watchlist):
         _setting(watchlist, reply={"backend": "agy"})
     with pytest.raises(config.ConfigError, match="unknown reply setting"):
         _setting(watchlist, reply={"model": "x"})
+
+
+def _story(i: int, title: str) -> stories.Story:
+    return stories.Story(id=f"s{i}", title=title, did="Built it. " * 40, hard="Scale.", result="It worked.",
+                         skills=("Python",))
+
+
+def test_only_the_stories_that_fit_the_thread_go_to_the_model():
+    bank = [_story(i, f"Project {i} for Initech") for i in range(60)] + [_story(60, "Terraform modules for Globex")]
+    kept = reply.pick_stories(bank, "We need Terraform experience for this Globex role.")
+    assert sum(len(s.text()) for s in kept) <= reply.MAX_STORIES
+    assert "s60" in [s.id for s in kept]  # the one about Terraform and Globex made the cut
+    assert [s.id for s in kept] == sorted((s.id for s in kept), key=lambda x: int(x[1:]))  # file order kept
+    assert 0 < len(kept) < len(bank)
+    assert reply.pick_stories(bank[:2], "anything") == bank[:2]  # a short bank goes whole

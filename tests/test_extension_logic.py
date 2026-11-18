@@ -290,6 +290,13 @@ console.log(JSON.stringify([JW.fingerprint(a) === JW.fingerprint(a), JW.fingerpr
 
 
 @needs_node
+def test_elapsed_time_reads_as_seconds_then_minutes(tmp_path):
+    got = run_js(tmp_path, """
+console.log(JSON.stringify([0, 12, 12.9, 59, 60, 65, 3725, -3, null, 'x'].map(JW.elapsedLabel)));""")
+    assert got == ["0s", "12s", "12s", "59s", "1m 00s", "1m 05s", "62m 05s", "0s", "0s", "0s"]
+
+
+@needs_node
 def test_each_tab_knows_only_its_own_import_and_progress(tmp_path):
     got = run_js(tmp_path, """
 const running = [{ tabId: 7, source: 'linkedin' }, { tabId: 9, source: 'indeed' }];

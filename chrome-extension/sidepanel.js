@@ -54,9 +54,30 @@
   }
 
   function view(...body) {
+    stopWorking(); // any new view ends the elapsed counter of the one it replaces
     homeShown = null; // home() sets it again after drawing itself
     $('view').replaceChildren(...body);
   }
+
+  // The "working" view of every long action: the message, a spinner and a live elapsed counter, so a slow one reads as busy, not stuck.
+  let workingTimer = null;
+  function stopWorking() {
+    if (workingTimer) clearInterval(workingTimer);
+    workingTimer = null;
+  }
+  function showWorking(message, ...more) {
+    view(h('div', { class: 'empty' },
+      h('div', { class: 'msg working' }, h('span', { class: 'spinner', 'aria-hidden': 'true' }), h('span', { textContent: message }),
+        h('span', { id: 'elapsed', class: 'elapsed', textContent: JW.elapsedLabel(0) })),
+      ...more));
+    const started = Date.now();
+    workingTimer = setInterval(() => {
+      const el = $('elapsed');
+      if (el) el.textContent = JW.elapsedLabel((Date.now() - started) / 1000);
+      else stopWorking();
+    }, 1000);
+  }
+  window.addEventListener('pagehide', stopWorking);
 
   // --- pairing -------------------------------------------------------------------------------------
 
@@ -255,8 +276,9 @@
           (r.notes || []).length ? h('div', { class: 'row' }, h('div', { class: 'q', textContent: 'Check this before you send' }),
             h('ul', { class: 'checks' }, r.notes.map((n) => h('li', { textContent: n })))) : null,
           r.drafted ? h('div', { class: 'meta', textContent: `Read from ${r.count} message${r.count === 1 ? '' : 's'} in the open conversation. jobwatch never presses Send: you do.` }) : null)),
-      h('footer', {}, h('span', { class: 'count', textContent: r.drafted ? 'Edit it, then put it in the box.' : 'No draft for this one.' }),
-        h('button', { id: 'reply-again', class: 'ghost', textContent: 'Draft again', onclick: draftReply }),
+      h('footer', {}, h('span', { class: 'count', textContent: r.drafted ? 'Edit it, then put it in the box.' : r.waiting ? 'Waiting on them.' : 'No draft for this one.' }),
+        r.waiting ? h('button', { id: 'reply-followup', class: 'go', textContent: 'Draft a follow-up', onclick: () => draftReply(true) }) : null,
+        h('button', { id: 'reply-again', class: 'ghost', textContent: 'Draft again', onclick: () => draftReply(!!r.followup) }),
         r.drafted ? [copy, replace, put] : null));
   }
 
@@ -353,7 +375,7 @@
     if (!tabId) return failed('No tab to read. Open the application form and try again.');
     busy = true;
     const scanId = tabId;
-    view(h('div', { class: 'empty', textContent: 'Reading the form...' }));
+    showWorking('Reading the form...');
     const opened = await send({ type: 'open', tabId: scanId });
     const r = opened.ok ? await send({ type: 'analyze', tabId: scanId }) : opened;
     busy = false;
@@ -363,7 +385,7 @@
     render();
   }
 
-  async function draftReply() {
+  async function draftReply(followup) {
     if (busy) return;
     if (!tabId) {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -373,9 +395,9 @@
     busy = true;
     replyState = null;
     const readId = tabId;
-    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: 'Reading the open conversation and drafting a reply...' }),
-      h('div', { class: 'msg small', textContent: 'A local model can take a minute.' })));
-    const r = await send({ type: 'draftReply', tabId: readId });
+    showWorking('Reading the open conversation and drafting a reply...',
+      h('div', { class: 'msg small', textContent: 'A local model can take a minute.' }));
+    const r = await send({ type: 'draftReply', tabId: readId, followup: followup === true });
     busy = false;
     if (readId !== tabId) return;
     if (!r.ok) return failed(r.error);
@@ -391,7 +413,7 @@
     if (!tabId) return failed('No tab to read. Open a job posting and try again.');
     busy = true;
     const readId = tabId;
-    view(h('div', { class: 'empty', textContent: 'Reading the posting...' }));
+    showWorking('Reading the posting...');
     const r = await send({ type: 'posting', tabId: readId });
     busy = false;
     if (readId !== tabId) return;
@@ -433,8 +455,8 @@
     busy = true;
     const readId = tabId;
     importing = readId;
-    view(h('div', { class: 'empty' }, h('div', { class: 'msg', textContent: 'Reading the list...' }),
-      h('div', { id: 'progress', class: 'msg small', textContent: 'Each page is scrolled to its end, then the next one is opened.' })));
+    showWorking('Reading the list...',
+      h('div', { id: 'progress', class: 'msg small', textContent: 'Each page is scrolled to its end, then the next one is opened.' }));
     const r = await send({ type: 'importList', tabId: readId });
     busy = false;
     importing = null;

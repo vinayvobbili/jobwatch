@@ -278,7 +278,7 @@ def local_busy() -> bool:
 def _local(system: str, messages: list[dict], max_tokens: int) -> Iterator[str | dict]:
     """The reply from the shared local model server (LOCAL_LLM_URL), which loads the model, queues every caller and
     ignores `model`: nothing here is specific to one model."""
-    body = {"model": "local", "messages": [{"role": "system", "content": system}, *messages],
+    body = {"model": "local", "messages": [*([{"role": "system", "content": system}] if system else []), *messages],
             "max_tokens": max_tokens, "stream": True, "stream_options": {"include_usage": True}}
     usage = {}
     if local_busy():

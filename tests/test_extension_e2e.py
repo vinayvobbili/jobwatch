@@ -372,6 +372,7 @@ def reply_stack(stack):
     yield stack
     server.reply_answer = {}
     server.reply_status = 200
+    server.reply_delay = 0.0
     server.features = ["posting", "reply"]
 
 
@@ -417,6 +418,50 @@ def test_draft_reply_reads_the_open_thread_shows_where_it_was_written_and_never_
         page.close()
 
 
+@pytest.mark.parametrize("query", ["?live", "?nobox", "?overlay", "?live&overlay"])
+def test_draft_reply_finds_the_thread_on_the_current_site_shape(reply_stack, ext, panels, query):
+    page, panel = reply_panel(reply_stack, ext, panels, query)
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector("#reply-text", timeout=60000)
+        sent = reply_stack.server.replies[-1]
+        assert sent["sender"] == "Dana Whitfield"
+        assert sent["thread"].count("\n\n") == 3
+        assert "No conversation is open" not in panel.inner_text("#view")
+        if query == "?live":  # filling is checked where there is one box
+            assert "In the message box" in put_in_box(panel)
+            assert page.evaluate("[window.__clicks, window.__sent]") == [0, 0]
+    finally:
+        page.close()
+
+
+def test_a_slow_draft_shows_a_spinner_and_a_ticking_counter_that_stop_when_it_returns(reply_stack, ext, panels):
+    reply_stack.server.reply_delay = 3.5
+    page, panel = reply_panel(reply_stack, ext, panels)
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector("#view .spinner")
+        assert panel.inner_text("#elapsed") in ("0s", "1s")
+        panel.wait_for_function("() => ['2s', '3s'].includes(document.getElementById('elapsed')?.textContent)", timeout=10000)
+        panel.wait_for_selector("#reply-text", timeout=20000)
+        assert panel.locator("#elapsed").count() == 0 and panel.locator(".spinner").count() == 0
+    finally:
+        page.close()
+
+
+def test_the_counter_stops_when_the_draft_fails(reply_stack, ext, panels):
+    reply_stack.server.reply_delay = 1.5
+    reply_stack.server.reply_status = 500
+    page, panel = reply_panel(reply_stack, ext, panels)
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector("#elapsed")
+        panel.wait_for_function("() => document.getElementById('view').textContent.includes('the model is not answering')", timeout=20000)
+        assert panel.locator("#elapsed").count() == 0
+    finally:
+        page.close()
+
+
 def test_draft_reply_warns_when_the_thread_went_to_a_cloud_model(reply_stack, ext, panels):
     reply_stack.server.reply_answer = {"local": False, "model": "claude-test", "warnings": ["They asked for your pay: it is not in the draft."]}
     page, panel = reply_panel(reply_stack, ext, panels)
@@ -438,6 +483,25 @@ def test_draft_reply_without_a_draft_shows_only_the_warning(reply_stack, ext, pa
         panel.wait_for_selector(".warnrow", timeout=60000)
         assert panel.locator("#reply-text").count() == 0 and panel.locator("#reply-fill").count() == 0
         assert "write this one yourself" in panel.inner_text(".warnrow")
+    finally:
+        page.close()
+
+
+def test_draft_reply_when_the_users_message_is_last_offers_a_follow_up_only_on_request(reply_stack, ext, panels):
+    reply_stack.server.reply_answer = {"drafted": False, "waiting": True, "reply": "", "notes": [],
+                                       "warnings": ["Your message is the last one; there is nothing to reply to yet."]}
+    page, panel = reply_panel(reply_stack, ext, panels)
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector("#reply-followup", timeout=60000)
+        assert "nothing to reply to yet" in panel.inner_text(".warnrow") and panel.locator("#reply-text").count() == 0
+        assert reply_stack.server.replies[-1]["followup"] is False
+        assert reply_stack.server.replies[-1]["last"] == "Dana Whitfield"  # who wrote the thread's last message (the demo's)
+        reply_stack.server.reply_answer = {"followup": True}
+        panel.click("#reply-followup")
+        panel.wait_for_selector("#reply-text", timeout=60000)
+        assert reply_stack.server.replies[-1]["followup"] is True
+        assert panel.locator("#reply-followup").count() == 0
     finally:
         page.close()
 

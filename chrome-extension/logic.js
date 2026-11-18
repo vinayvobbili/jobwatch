@@ -483,7 +483,13 @@
     return value === 'light' || value === 'dark' ? value : 'system';
   }
 
-  const JW = { pageContext, titleJob, threadName, themeChoice, replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
+  /** How long a panel action has been running, for the live counter: '12s', then '1m 05s' from a minute on. */
+  function elapsedLabel(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  }
+
+  const JW = { elapsedLabel, pageContext, titleJob, threadName, themeChoice, replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
     linkedinJobId, postingMode, listMode, importOnTab, progressIsMine, IMPORT_RUNNING, IMPORT_HIDDEN, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -76,6 +77,7 @@ class State:
         self.features = ["posting", "reply"]  # /ext/ping's; an older jobwatch has none
         self.replies: list[dict] = []  # /ext/reply: what the extension sent from a conversation
         self.reply_answer: dict = {}  # /ext/reply: fields to change in the canned answer (local, warnings, ...)
+        self.reply_delay = 0.0  # /ext/reply: seconds to take before answering, to see the panel's working view
         self.reply_status = 200  # /ext/reply: an error status, to see how the panel words it
         self.draft_answer = ""  # store_assets.py: a draft that reads like one; else it names the question
 
@@ -136,6 +138,8 @@ def _handler(state: State):
                 self._json(200, {"answer": answer, "model": "fake-model"})
             elif self.path == "/ext/reply":
                 state.replies.append(body)
+                if state.reply_delay:
+                    time.sleep(state.reply_delay)
                 if state.reply_status != 200:
                     self._json(state.reply_status, {"error": "the model is not answering"})
                     return

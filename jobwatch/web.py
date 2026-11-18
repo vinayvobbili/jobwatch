@@ -881,7 +881,8 @@ class App:
     def ext_reply(self, body) -> dict:
         """A drafted reply to the recruiter thread the extension read (see reply.draft)."""
         return self._with_store(lambda cfg, store: reply.draft(
-            cfg, store, str(body.get("thread") or ""), str(body.get("sender") or ""), str(body.get("company") or "")))
+            cfg, store, str(body.get("thread") or ""), str(body.get("sender") or ""), str(body.get("company") or ""),
+            last=str(body.get("last") or ""), followup=body.get("followup") is True))
 
     def ext_answers(self, body) -> dict:
         """The form's answers at the person's Submit, kept in the job's package (see autofill.keep_answers)."""

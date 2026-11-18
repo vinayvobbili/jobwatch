@@ -58,6 +58,28 @@
     c.querySelector('h2').textContent = 'Marcus Bell';
     document.querySelector('main').append(c);
   }
+  // ?live: the shape of the current site's thread page: a thread wrapper holding a title bar, a message list whose
+  // items carry data-view-name, and a footer form with a box that has no role and a plaintext-only editor
+  if (location.search.includes('live')) {
+    const c = document.getElementById('main-thread');
+    c.className = 'conversation msg-convo-wrapper msg-thread';
+    c.querySelectorAll('[data-event-urn]').forEach((li) => li.setAttribute('data-view-name', 'message-list-item'));
+    const box = c.querySelector('[role=textbox]');
+    box.removeAttribute('role');
+    box.setAttribute('contenteditable', 'plaintext-only');
+    box.setAttribute('aria-label', 'Write a message…');
+    box.className = 'msg-form__contenteditable';
+    box.style.cssText = 'min-height:64px;border:1px solid #bbb;padding:6px 8px';
+  }
+  // ?overlay: a message bubble pinned beside the thread, with its own box and no messages (a new message, not yet sent)
+  if (location.search.includes('overlay')) {
+    const o = document.createElement('div');
+    o.className = 'msg-overlay-bubble';
+    o.innerHTML = '<form><div role="textbox" contenteditable="true" aria-label="Write a message…" class="msg-form__contenteditable"><p><br></p></div></form>';
+    document.body.append(o);
+  }
+  // ?nobox: the messages only, no message box drawn (read still works; filling is refused)
+  if (location.search.includes('nobox')) document.querySelector('#main-thread form').remove();
   // ?filled: the person has already started typing
   if (location.search.includes('filled')) document.querySelector('[role=textbox]').innerHTML = '<p>Hi Dana,</p>';
   window.__sent = 0;

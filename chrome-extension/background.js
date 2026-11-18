@@ -46,7 +46,7 @@ async function handle(msg, tabId, sender) {
     case 'analyze': return analyze(tabId);
     case 'fill': return fill(tabId, msg.items);
     case 'draft': return draft(tabId, msg.question, msg.words, msg.others);
-    case 'draftReply': return draftReply(tabId);
+    case 'draftReply': return draftReply(tabId, msg.followup);
     case 'fillReply': return fillReply(tabId, msg.text, msg.fingerprint, msg.replace);
     case 'posting': return posting(tabId);
     case 'importList': return importList(tabId);
@@ -182,7 +182,7 @@ const REPLY_OLD = 'This jobwatch is too old for Draft reply. Update jobwatch (pi
  * whether the model that wrote it was local (`local`: false means the thread went to a cloud model the person chose
  * in jobwatch's settings). Nothing is kept here and nothing is put in the page: fillReply does that, on a second press.
  */
-async function draftReply(tabId) {
+async function draftReply(tabId, followup) {
   const settings = await pairedSettings();
   if (!JW.replyMode(await tabUrl(tabId))) throw new Expected(REPLY_PAGE);
   let read;
@@ -198,7 +198,7 @@ async function draftReply(tabId) {
   if (!got.ok) throw new Expected(got.error);
   let r;
   try {
-    r = await api('/ext/reply', { method: 'POST', body: { thread: got.thread, sender: got.sender, company: '' }, settings });
+    r = await api('/ext/reply', { method: 'POST', body: { thread: got.thread, sender: got.sender, last: got.last || '', followup: followup === true, company: '' }, settings });
   } catch (e) {
     if (e instanceof ApiError && /HTTP 404|not found/i.test(e.message)) throw new Expected(REPLY_OLD);
     throw e;
