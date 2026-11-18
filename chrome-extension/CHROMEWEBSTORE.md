@@ -115,7 +115,7 @@ Dana Whitfield).
 
 ## Paste blocks for 0.12.0
 
-One block per dashboard field (Privacy practices tab, and Package > What's new). Checked against `manifest.json`,
+One block per dashboard field (Privacy practices tab; the Package tab has no What's new field). Checked against `manifest.json`,
 `passive.js`, `job-lists.js`, `reply.js`, `background.js` and `sidepanel.js` on 2026-11-17. Changes from the live 0.10.0:
 Single purpose (adds Draft reply), Justification: scripting (adds the two Draft reply scripts), the host permission box
 (Draft reply wording), the content script justification (Draft reply paragraph) and the data types (adds Personal
@@ -183,7 +183,7 @@ Why, if a reviewer asks: PII and Health come from the user's own jobwatch and ar
 
 ### What's new (0.12.0)
 
-Paste into Package > "What's new" (covers 0.11.0 too, which was never submitted):
+The dashboard has no "What's new" field (checked 2026-11-17); this text is for the GitHub release notes and the listing description, not a paste block. It covers 0.11.0 too, which was never submitted:
 
 New: Draft reply. On a LinkedIn conversation you have open, press "Draft reply to this conversation" in the side panel. The extension reads that one open conversation and gives it to your own jobwatch, which writes a draft with a model running on your own computer. The panel shows a spinner with the seconds elapsed, then the draft, warnings and what to check, and says where it was written. "Put in the message box" types it into LinkedIn's box; the extension never presses Send. The message text stays on your computer and goes only to your own jobwatch, at the address you entered. It reads nothing else from LinkedIn's messages. This adds Personal communications to the data the extension handles; the privacy policy is updated.
 
@@ -325,8 +325,9 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
   LinkedIn" is gone.
 - Draft reply (0.12.0) reads message text, so the data-use form gains Personal communications and the "never
   messages" wording is gone from the justifications above (the single purpose, scripting, host permission and content
-  script blocks all name Draft reply). The class names it looks for in LinkedIn's messaging pages
-  (`msg-s-...`) are unverified against the live site: check them by hand on a real conversation before submitting.
+  script blocks all name Draft reply). Checked by hand on a real LinkedIn InMail thread on 2026-11-17: it finds the
+  open thread (role, aria-label and `data-view-name` hooks, not generated class names), drafts on the local model, and
+  says when the user's message is the last one.
 - The store takes at most five screenshots; there are six. Upload 1, 2, 3, 5 and 6; drop 4 (pairing).
 - A reviewer may ask why `tabs` and `scripting` are needed beyond `activeTab`: answered in the blocks above.
 
