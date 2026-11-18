@@ -1,6 +1,6 @@
 # Chrome Web Store Listing: jobwatch: Application Filler
 
-> Last Updated: 2026-11-16
+> Last Updated: 2026-11-17
 
 Live: https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi
 (item ID `abackmpdpfflgiaccgfkababjplgolfi`)
@@ -64,7 +64,7 @@ Support: https://github.com/vinayvobbili/jobwatch/issues
 
 Productivity › Workflow & Planning
 
-**Single Purpose** (see "Paste blocks for 0.10.0" below for the 0.10.0 wording)
+**Single Purpose** (the dashboard wording is in "Paste blocks for 0.12.0" below)
 
 Connect the user's browser to their own local jobwatch app for job applications: fill application forms with the user's details and earlier answers after they review each field, and send the jobs on a LinkedIn or Indeed list they have open to that app.
 
@@ -88,8 +88,9 @@ English
 
 YouTube promo: https://youtu.be/cILjM1IF4ZQ
 
-Absolute paths: `/Users/vinayvobbili/PycharmProjects/jobwatch/dist/store/` (the files above; upload all six
-screenshots, the store allows up to five, so drop screenshot 4 or 3 if the dashboard refuses a sixth). All data in the images is made up (the demo server's Jordan Rivera and Initech).
+Absolute paths: `/Users/vinayvobbili/PycharmProjects/jobwatch/dist/store/` (the files above). Regenerated
+2026-11-17 from 0.12.0 (they show the redesigned panel and "paired 0.12.0"). The store takes at most five: upload
+1, 2, 3, 5 and 6, and drop 4 (pairing). All data in the images is made up (the demo server's Jordan Rivera and Initech).
 
 ### Screenshot Notes
 
@@ -103,19 +104,22 @@ screenshots, the store allows up to five, so drop screenshot 4 or 3 if the dashb
 
 Regenerate with `python chrome-extension/tools/store_assets.py`. The demo list page is `demo/linkedin-jobs.html`.
 
-New screenshots needed for the redesigned side panel (next version; none of this is in the 1280×800 set yet): the panel
+Optional extra shots of the redesigned side panel (not in the 1280×800 set; the lead card is not shown in 1 to 6): the panel
 leading with the page it is on. Capture them with `python chrome-extension/tools/panel_states.py --out DIR`, which makes
 `panel-<form|thread|list|posting|idle>-<light|dark>-narrow.png`, the wide list panel, the not-paired state and the
 settings page. Suggested store shots, composed with `store_assets.compose` beside the page: (a) the application-form
 lead card with the Apply / Messages / Jobs tiles, (b) the LinkedIn conversation card with Draft reply, (c) the job-list
 card with Pages to read, Note jobs while I browse and the seen-while-browsing badge, (d) the dark theme. Screenshots 1 to 6
-still match the review rows and the list import, which did not change. All data is made up (Jordan Rivera, Initech,
+were regenerated for 0.12.0. All data is made up (Jordan Rivera, Initech,
 Dana Whitfield).
 
-## Paste blocks for 0.10.0
+## Paste blocks for 0.12.0
 
 One block per dashboard field (Privacy practices tab, and Package > What's new). Checked against `manifest.json`,
-`passive.js`, `job-lists.js`, `background.js` and `sidepanel.js` on 2026-11-14.
+`passive.js`, `job-lists.js`, `reply.js`, `background.js` and `sidepanel.js` on 2026-11-17. Changes from the live 0.10.0:
+Single purpose (adds Draft reply), Justification: scripting (adds the two Draft reply scripts), the host permission box
+(Draft reply wording), the content script justification (Draft reply paragraph) and the data types (adds Personal
+communications). Every other block is unchanged. No permission in `manifest.json` changed since 0.10.0.
 
 ### Single purpose
 
@@ -147,7 +151,7 @@ The dashboard has one box for every match pattern, content-script sites included
 
 Local app (http://127.0.0.1/*, http://localhost/*): the only network destination is the jobwatch app the user runs on their own computer. It supplies the user's details, earlier answers and resume, and receives imported job cards and applications. Nothing goes to the developer or any third party; the developer runs no server.
 
-LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*): the content script does nothing unless the page is a list of jobs. There it reads only the job cards already drawn (job number, title, company, place, pay, posted date), never profiles or account data. Messages are read only after the user presses Draft reply, and only the one open conversation (details in the content script justification below). Passive mode is off by default; once the user ticks it, cards they browse are kept in local storage until they press Import. Read the jobs on this list runs only when pressed: it scrolls and pages that list tab (4 pages by default, at most 10) and sends the cards to the local jobwatch only.
+LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*): the content script does nothing unless the page is a list of jobs. There it reads only the job cards already drawn (job number, title, company, place, pay, posted date), never profiles or account data. Messages are read only when the user presses Draft reply, and only the one open conversation. Passive mode is off by default; if ticked, cards browsed stay in local storage until Import. Read the jobs on this list runs only when pressed: it pages that list tab (4 pages by default, at most 10) and sends the cards to the local jobwatch only.
 
 ### Justification: host permissions (http://127.0.0.1/* and http://localhost/*)
 
@@ -177,19 +181,19 @@ Why, if a reviewer asks: PII and Health come from the user's own jobwatch and ar
 - [x] I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
 - [x] I do not use or transfer user data to determine creditworthiness or for lending purposes.
 
-### What's new (next version: Draft reply)
+### What's new (0.12.0)
 
-New: Draft reply. On a LinkedIn conversation you have open, press "Draft reply to this conversation" in the side panel. The extension reads that one conversation and gives it to your own jobwatch, which writes a draft with the model on your computer. The panel shows the draft, warnings and what to check, and says whether the draft was written on your computer. "Put in the message box" types it into LinkedIn's box; the extension never presses Send. It reads nothing else from LinkedIn's messages. Reading a conversation adds Personal communications to the data the extension handles; the privacy policy is updated.
+Paste into Package > "What's new" (covers 0.11.0 too, which was never submitted):
 
-### What's new (next version: side panel redesign)
+New: Draft reply. On a LinkedIn conversation you have open, press "Draft reply to this conversation" in the side panel. The extension reads that one open conversation and gives it to your own jobwatch, which writes a draft with a model running on your own computer. The panel shows a spinner with the seconds elapsed, then the draft, warnings and what to check, and says where it was written. "Put in the message box" types it into LinkedIn's box; the extension never presses Send. The message text stays on your computer and goes only to your own jobwatch, at the address you entered. It reads nothing else from LinkedIn's messages. This adds Personal communications to the data the extension handles; the privacy policy is updated.
 
-New look for the side panel. It now opens with a card for the page you are on (an application form, a LinkedIn conversation, a list of jobs, a job posting, or "Nothing to do on this page") and the one action that suits it. Under it, every action is a tile in three groups (Apply, Messages, Jobs); the ones that do not suit the current page are dimmed, not hidden. The jobs noted while you browse show as a badge. A System, Light or Dark theme choice is in Settings. Nothing new is read or sent: the card is chosen from the page's address and tab title, which the extension already had, and no permission was added.
+New look for the side panel: a card for the page you are on (an application form, a LinkedIn conversation, a list of jobs, a job posting) with the one action that suits it, then every action as a tile in three groups (Apply, Messages, Jobs). A System, Light or Dark theme choice is in Settings.
 
-### What's new (next version: long imports)
+Fixes: reading a LinkedIn or Indeed list takes the visible job title (no more "Selected, ..." or doubled titles), shows how many jobs your jobwatch already had, and no longer stalls on long waits; it says what to do if jobwatch doesn't answer in time.
 
-Fix: "Read the jobs on this list" no longer sits at "Looking for the jobs on their companies' own boards" for ever when Chrome stops the extension during a long wait; it keeps itself running for the wait, and says what to do if jobwatch doesn't answer in time. No permission was added and nothing new is read or sent.
+No new permission is requested.
 
-### What's new (0.10.0)
+### What's new (0.10.0, live)
 
 New: import the jobs from a LinkedIn or Indeed list into your own jobwatch. Press "Read the jobs on this list" on a list you have open, or tick "Note jobs while I browse" in the side panel (it is off by default) and import the jobs noted while you browsed. The jobs go only to the jobwatch on your own computer. Also: one side panel per tab, and list imports can run in several tabs at once. This version adds LinkedIn and Indeed (job-list pages) as a site the extension runs on; the privacy policy is updated.
 
@@ -302,26 +306,28 @@ The extension fills job application forms from the jobwatch app, which runs on t
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| next | | Side panel redesign (2026-11-17, not pushed, not versioned): a lead card chosen from the tab's address and title (`pageContext` in `logic.js`) with the page's one action, every action as a dimmable tile in Apply / Messages / Jobs groups, a paired-status chip in the header, and a System / Light / Dark theme kept in `chrome.storage.local` and set on the options page (`look.js`). Same buttons, same messages to the service worker, no new permission (the `tabs` permission already gave the tab title; it is used only to read a company, role or conversation name for the card, and is never sent anywhere). Draft reply: reads the one open LinkedIn conversation when the user presses the button, shows jobwatch's draft with warnings and "check this" notes and whether it was written on this computer, and types it into the message box (never presses Send). Adds Personal communications to the data-use ticks and the privacy policy's LinkedIn messages paragraph. `manifest.json` version is bumped by `/release`, not here. Built and tested against a demo page only (`demo/linkedin-messages.html`), not yet against the real LinkedIn. | not built into a zip, not submitted |
-| 0.11.0 | | List import reads the card's visible title, and drops LinkedIn's screen-reader text ("Selected, ...", the title said twice) from titles; the import summary shows jobwatch's own coverage and says when a list was imported before. Setup text (side panel, options page, README) says to run `jobwatch`, which now opens the app. Upload: `dist/jobwatch-extension-0.11.0.zip`. | pending, not submitted |
-| 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). LinkedIn/Indeed list import, passive mode off by default, one side panel per tab, parallel list imports. New promo video: https://youtu.be/cILjM1IF4ZQ. Upload: `dist/jobwatch-extension-0.10.0.zip`. Paste blocks and screenshots 5 and 6 ready; submitted for review 2026-11-14. | In review |
+| 0.12.0 | 2026-11-17 (prepared) | Covers 0.11.0 (below), which was never submitted. Upload: `dist/jobwatch-extension-0.12.0.zip` (65,245 bytes, 19 files). Side panel redesign: a lead card chosen from the tab's address and title (`pageContext` in `logic.js`) with the page's one action, every action as a dimmable tile in Apply / Messages / Jobs groups, a paired-status chip in the header, and a System / Light / Dark theme kept in `chrome.storage.local` and set on the options page (`look.js`). Same buttons, same messages to the service worker, no new permission (the `tabs` permission already gave the tab title; it is used only to read a company, role or conversation name for the card, and is never sent anywhere). Draft reply: reads the one open LinkedIn conversation when the user presses the button, shows jobwatch's draft with warnings and "check this" notes and whether it was written on this computer, and types it into the message box (never presses Send). Adds Personal communications to the data-use ticks and the privacy policy's LinkedIn messages paragraph. Also in 0.12.0: the side panel shows a spinner with elapsed seconds while a draft or import runs, and the project's fonts; Draft reply finds the open thread on the current LinkedIn page, says when your message is last and offers a follow-up; list-import fixes (the board lookups have a time budget, the extension keeps its worker alive and says what to do when jobwatch doesn't answer). No new permission. Built and tested against a demo page only (`demo/linkedin-messages.html`), not yet against the real LinkedIn. | prepared, not yet submitted |
+| 0.11.0 | | Never submitted; folded into 0.12.0. List import reads the card's visible title, and drops LinkedIn's screen-reader text ("Selected, ...", the title said twice) from titles; the import summary shows jobwatch's own coverage and says when a list was imported before. Setup text (side panel, options page, README) says to run `jobwatch`, which now opens the app. | not submitted |
+| 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). LinkedIn/Indeed list import, passive mode off by default, one side panel per tab, parallel list imports. New promo video: https://youtu.be/cILjM1IF4ZQ. Upload: `dist/jobwatch-extension-0.10.0.zip`. Paste blocks and screenshots 5 and 6 ready; submitted for review 2026-11-14. | Published (live, nothing pending as of 2026-11-17) |
 | 0.9.0 | 2026-11-10 | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | Published |
 
 Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Updated" date.
 
 ## Review Notes
 
-- 0.10.0 submitted for review 2026-11-14.
+- 0.10.0 submitted for review 2026-11-14; live.
+- submit 0.12.0 prepared 2026-11-17, not yet submitted.
 
 ### Known Issues / Limitations
 
 - The 0.10.0 content script on LinkedIn and Indeed is a new host access (adds a "broad host access" review and
   possible in-depth review). The paste blocks above are the 0.10.0 answers; the 0.9.0 claim "reads nothing from
   LinkedIn" is gone.
-- Draft reply (next version) reads message text, so the data-use form gains Personal communications and the "never
-  messages" wording is gone from the justifications above. The class names it looks for in LinkedIn's messaging pages
+- Draft reply (0.12.0) reads message text, so the data-use form gains Personal communications and the "never
+  messages" wording is gone from the justifications above (the single purpose, scripting, host permission and content
+  script blocks all name Draft reply). The class names it looks for in LinkedIn's messaging pages
   (`msg-s-...`) are unverified against the live site: check them by hand on a real conversation before submitting.
-- The store takes at most five screenshots; there are six. Drop one when uploading.
+- The store takes at most five screenshots; there are six. Upload 1, 2, 3, 5 and 6; drop 4 (pairing).
 - A reviewer may ask why `tabs` and `scripting` are needed beyond `activeTab`: answered in the blocks above.
 
 ### Rejection History
