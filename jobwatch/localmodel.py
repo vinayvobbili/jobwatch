@@ -8,10 +8,13 @@ Apple Silicon gets mlx-community repos, served with vllm-mlx; Windows, Linux and
 from __future__ import annotations
 
 import ctypes
+import http.client
+import json
 import platform
 import re
 import subprocess
 import sys
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -148,6 +151,24 @@ def configured_model(scoring: dict, default: str = "") -> str:
         if backend == "local":
             return model.strip() or default
     return ""
+
+
+def running_model(url: str, timeout: float = 1.5) -> str | None:
+    """The model id the local server at `url` (its /v1 base) reports from GET /models, or None when it isn't
+    reachable or lists none. Only asks: it never loads a model."""
+    parts = urllib.parse.urlsplit(url.rstrip("/") + "/models")
+    cls = http.client.HTTPSConnection if parts.scheme == "https" else http.client.HTTPConnection
+    try:
+        conn = cls(parts.hostname, parts.port, timeout=timeout)
+        try:
+            conn.request("GET", parts.path)
+            resp = conn.getresponse()
+            data = json.loads(resp.read()) if resp.status == 200 else {}
+        finally:
+            conn.close()
+        return str(data["data"][0]["id"]) or None
+    except (OSError, ValueError, KeyError, IndexError, TypeError, http.client.HTTPException):
+        return None
 
 
 def recommend(configured: str = "", total: int | None = None, apple: bool | None = None) -> dict:

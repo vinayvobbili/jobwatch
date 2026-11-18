@@ -738,6 +738,7 @@ class App:
         scoring = raw.get("scoring") if isinstance(raw.get("scoring"), dict) else {}
         st["local"]["recommend"] = localmodel.recommend(
             localmodel.configured_model(scoring, st["local"]["default_model"]))
+        st["local"]["recommend"]["running"] = localmodel.running_model(chat.local_url())  # what the server serves now
         # the chain's steps paused now (out of credit or quota), by "backend:model": Settings shows them so
         try:
             st["paused"] = self._with_store(lambda cfg, store: store.scorers_down())

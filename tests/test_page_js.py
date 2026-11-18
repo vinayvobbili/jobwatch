@@ -815,3 +815,27 @@ def test_the_prep_buttons_are_spelled_the_american_way():
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     assert '"Practice")' in page and "Practice the likely questions" in page and " Practice these again" in page
     assert not re.search(r'"Practise\b|" Practise\b|Practise the', page)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_fit_chip_words_the_score_by_band(tmp_path):
+    """The rounded fit chip reads '84/100 Strong fit' and takes the ring's green/amber/red band."""
+    js = tmp_path / "chip.js"
+    js.write_text(page_function("fitClass") + page_function("fitWord") + """
+const h = (tag, attrs, ...kids) => ({ cls: attrs.class, text: kids.join("") });
+""" + page_function("fitChip") + """
+console.log(JSON.stringify([92, 84.4, 60, 20].map(s => fitChip(s))));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [
+        {"cls": "fitchip hi", "text": "92/100 Excellent fit"},
+        {"cls": "fitchip hi", "text": "84/100 Strong fit"},
+        {"cls": "fitchip mid", "text": "60/100 Fair fit"},
+        {"cls": "fitchip lo", "text": "20/100 Weak fit"}]
+
+
+def test_home_page_carries_the_hero_headline_and_mono_captions():
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    assert 'heroHead("Today"' in page and "h1 .grad-text" in page
+    assert ".stat:not(.lead)" in page and ".mono-cap" in page and "fitChip(s)" in page

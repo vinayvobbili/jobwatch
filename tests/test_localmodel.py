@@ -178,3 +178,44 @@ def test_the_ai_endpoint_carries_the_suggestion_and_the_model_set(server, watchl
     assert status == 200
     assert rec["suggested"]["id"] == "mlx-community/Qwen3.8-27B-4bit" and rec["suggested"]["gb"] == 32
     assert rec["configured"] == {"model": "mlx-community/Qwen3.5-9B-MLX-4bit", "larger": False}
+
+
+@pytest.fixture
+def models_server():
+    """A fake local model server: GET /v1/models lists one made-up model."""
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from threading import Thread
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"object": "list", "data": [{"id": "mlx-community/acme-7B-it-4bit"}]}).encode()
+            self.send_response(200 if self.path == "/v1/models" else 404)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    httpd = HTTPServer(("127.0.0.1", 0), Handler)
+    Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_port}/v1"
+    httpd.shutdown()
+
+
+def test_the_running_model_is_what_the_server_lists(models_server):
+    assert localmodel.running_model(models_server) == "mlx-community/acme-7B-it-4bit"
+    assert localmodel.running_model(models_server + "/") == "mlx-community/acme-7B-it-4bit"
+
+
+def test_no_running_model_when_the_server_is_down_or_lists_none(models_server):
+    assert localmodel.running_model("http://127.0.0.1:1/v1", timeout=0.5) is None
+    assert localmodel.running_model(models_server.removesuffix("/v1") + "/nope") is None
+
+
+def test_the_ai_endpoint_names_the_running_model(server, watchlist, monkeypatch, models_server):
+    monkeypatch.setenv("LOCAL_LLM_URL", models_server)
+    _, data = request(server, "GET", "/api/ai", headers={"X-Jobwatch-Token": TOKEN})
+    assert json.loads(data)["local"]["recommend"]["running"] == "mlx-community/acme-7B-it-4bit"
+    monkeypatch.setenv("LOCAL_LLM_URL", "http://127.0.0.1:1/v1")
+    _, data = request(server, "GET", "/api/ai", headers={"X-Jobwatch-Token": TOKEN})
+    assert json.loads(data)["local"]["recommend"]["running"] is None
