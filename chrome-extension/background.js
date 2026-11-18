@@ -30,13 +30,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // first and not awaited (Chrome handles them in order), because awaiting it would let the gesture lapse.
 // Each tab gets its own panel page, pinned to that tab (sidepanel.html?tab=<id>); the window-wide default is
 // disabled, so a tab where the icon wasn't clicked shows no panel instead of another tab's.
+// An installed web app's window (a PWA such as LinkedIn's) and a popup have no side panel: the open fails or does
+// nothing. There the same page opens in a small popup window beside the app's window (panelWindow below), one per tab.
+// The window's type is only known after an async call, so sidePanel.open is still called first, and the popup is
+// the answer when the window is not an ordinary one or when open says no.
 chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.setOptions({ tabId: tab.id, path: `sidepanel.html?tab=${tab.id}`, enabled: true }).catch(() => {});
-  chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+  let opened;
+  try {
+    chrome.sidePanel.setOptions({ tabId: tab.id, path: `sidepanel.html?tab=${tab.id}`, enabled: true }).catch(() => {});
+    opened = chrome.sidePanel.open({ tabId: tab.id }).then(() => true, () => false);
+  } catch {
+    opened = Promise.resolve(false); // no side panel API in this kind of window
+  }
+  Promise.all([opened, chrome.windows.get(tab.windowId).catch(() => null)]).then(([ok, win]) => {
+    if (!ok || JW.panelHome(win && win.type) === 'window') return panelWindow(tab, win);
+  });
 });
 chrome.sidePanel.setOptions({ enabled: false }).catch(() => {});
 
-chrome.tabs.onRemoved.addListener((tabId) => chrome.storage.session.remove([pendingKey(tabId), ctxKey(tabId)]));
+// Panel popups by tab, kept in memory: a worker that Chrome stopped forgets them and finds its own by address.
+const panelWindows = new Map(); // tab id -> window id
+async function panelWindow(tab, win) {
+  const url = chrome.runtime.getURL(`sidepanel.html?tab=${tab.id}`);
+  let id = panelWindows.get(tab.id);
+  if (!id) {
+    const [found] = await chrome.tabs.query({ url }).catch(() => []);
+    id = found && found.windowId;
+  }
+  if (id) {
+    try {
+      await chrome.windows.update(id, { focused: true });
+      panelWindows.set(tab.id, id);
+      return;
+    } catch {
+      panelWindows.delete(tab.id); // the person closed it
+    }
+  }
+  const made = await chrome.windows.create({ url, type: 'popup', ...JW.panelBounds(win) });
+  panelWindows.set(tab.id, made.id);
+}
+
+chrome.windows.onRemoved.addListener((windowId) => {
+  for (const [tabId, id] of panelWindows) if (id === windowId) panelWindows.delete(tabId);
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.session.remove([pendingKey(tabId), ctxKey(tabId)]);
+  const id = panelWindows.get(tabId);
+  if (id) chrome.windows.remove(id).catch(() => {}); // its tab is gone, so is its panel
+});
 
 async function handle(msg, tabId, sender) {
   switch (msg.type) {

@@ -489,7 +489,25 @@
     return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
   }
 
-  const JW = { elapsedLabel, pageContext, titleJob, threadName, themeChoice, replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
+  /** Where the review panel opens for a window of this type: Chrome's side panel in an ordinary browser window,
+   *  a small popup window beside it everywhere else (an installed web app's window, a popup), where the side panel API is not offered. */
+  function panelHome(windowType) {
+    return windowType === 'normal' ? 'sidepanel' : 'window';
+  }
+
+  /** Where a panel popup goes: PANEL_WIDTH wide, as tall as `win` (the window it serves) and against its right edge,
+   *  or at the top-left of the screen when `win` does not say where it is. */
+  const PANEL_WIDTH = 420;
+  function panelBounds(win) {
+    const w = win || {};
+    const bounds = { width: PANEL_WIDTH };
+    if (Number.isFinite(w.height) && w.height > 0) bounds.height = Math.round(w.height);
+    if (Number.isFinite(w.left) && Number.isFinite(w.width)) bounds.left = Math.max(0, Math.round(w.left + w.width - PANEL_WIDTH));
+    if (Number.isFinite(w.top)) bounds.top = Math.round(w.top);
+    return bounds;
+  }
+
+  const JW = { panelHome, panelBounds, elapsedLabel, pageContext, titleJob, threadName, themeChoice, replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
     linkedinJobId, postingMode, listMode, importOnTab, progressIsMine, IMPORT_RUNNING, IMPORT_HIDDEN, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;

@@ -320,6 +320,12 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
 
 ### Known Issues / Limitations
 
+- 0.12.0 does nothing when the toolbar icon is clicked in an installed web app's window (LinkedIn's PWA): Chrome offers
+  no side panel there and `background.js` swallowed the error. Fixed for the next version (not yet bumped or submitted):
+  the click now opens the same panel (`sidepanel.html?tab=<id>`) as a 420 px popup window beside the app window, one per
+  tab, focused instead of duplicated, closed with its tab; ordinary windows keep the side panel. `panelHome` and
+  `panelBounds` in `logic.js` decide; no new permission. Not yet checked in a real PWA window.
+
 - The 0.10.0 content script on LinkedIn and Indeed is a new host access (adds a "broad host access" review and
   possible in-depth review). The paste blocks above are the 0.10.0 answers; the 0.9.0 claim "reads nothing from
   LinkedIn" is gone.

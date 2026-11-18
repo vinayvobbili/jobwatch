@@ -433,6 +433,30 @@ def test_the_theme_choice_defaults_to_the_system(tmp_path):
 
 
 @needs_node
+def test_the_panel_opens_in_the_side_panel_only_in_an_ordinary_window(tmp_path):
+    got = run_js(tmp_path, "console.log(JSON.stringify(['normal', 'app', 'popup', 'devtools', '', null, undefined].map(JW.panelHome)));")
+    assert got == ["sidepanel", "window", "window", "window", "window", "window", "window"]
+
+
+@needs_node
+def test_the_panel_popup_is_as_tall_as_the_app_window_and_against_its_right_edge(tmp_path):
+    got = run_js(tmp_path, """console.log(JSON.stringify([
+      JW.panelBounds({ left: 100, top: 40, width: 1200, height: 800.4, type: 'app' }),
+      JW.panelBounds({ left: 0, top: 0, width: 300, height: 700 }),
+      JW.panelBounds({ type: 'app' }),
+      JW.panelBounds(null)]));""")
+    assert got == [{"width": 420, "height": 800, "left": 880, "top": 40},
+                   {"width": 420, "height": 700, "left": 0, "top": 0},
+                   {"width": 420}, {"width": 420}]
+
+
+def test_the_toolbar_click_falls_back_to_a_panel_window_and_does_not_swallow_the_open_error():
+    source = (EXT / "background.js").read_text(encoding="utf-8")
+    assert "JW.panelHome(" in source and "chrome.windows.create(" in source
+    assert "sidePanel.open({ tabId: tab.id }).catch(() => {})" not in source
+
+
+@needs_node
 def test_a_call_that_times_out_says_what_to_do(tmp_path):
     """Chrome stops a service worker whose fetch has waited 30 s, and the panel then waits for ever (11/17, Read the
     jobs on this list): a long call pings an extension API meanwhile (lib.js), and one that times out tells the

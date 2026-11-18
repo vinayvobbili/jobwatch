@@ -26,7 +26,7 @@ the form, and submit it yourself.
 1. Run `jobwatch` and open Settings, Browser extension. Copy the token.
 2. In Chrome, open the extension's options (right-click its icon, Options) and paste the token. The server address is
    `http://127.0.0.1:8765` unless you started `jobwatch ui --port` differently. Press **Test**.
-3. Open a job application and click the extension's icon. Chrome's side panel opens beside the page; press **Fill this application**.
+3. Open a job application and click the extension's icon. Chrome's side panel opens beside the page (in an installed web app's window, which has no side panel, the same panel opens as a small window beside it); press **Fill this application**.
 
 Without jobwatch running, the side panel says so (with a link to the settings) and does nothing else. The extension
 has no standalone mode.
