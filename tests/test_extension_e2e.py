@@ -29,6 +29,14 @@ import panel_states  # noqa: E402
 import store_assets  # noqa: E402
 
 
+def test_the_fake_jobwatch_offers_what_the_real_one_does():
+    from fake_server import State
+
+    from jobwatch.web import EXT_FEATURES
+
+    assert set(State().features) == set(EXT_FEATURES)  # else a panel test sees fewer tiles than the real panel has
+
+
 @pytest.fixture(scope="module")
 def pw():
     with sync_api.sync_playwright() as playwright:
@@ -356,7 +364,7 @@ def test_an_older_jobwatch_without_the_posting_call_gets_no_posting_button(stack
         panel.wait_for_selector("#scan")  # filling still works
         assert panel.locator("#posting").count() == 0  # its call would fail on that jobwatch
     finally:
-        stack.server.features = ["posting", "reply"]
+        stack.server.features = ["posting", "reply", "import-list"]
         harness.pair(stack, stack.api_url, harness.TOKEN)
         page.close()
 
@@ -373,7 +381,7 @@ def reply_stack(stack):
     server.reply_answer = {}
     server.reply_status = 200
     server.reply_delay = 0.0
-    server.features = ["posting", "reply"]
+    server.features = ["posting", "reply", "import-list"]
 
 
 def reply_panel(stack, ext, panels, query: str = ""):

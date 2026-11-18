@@ -74,7 +74,7 @@ class State:
         self.requests: list[tuple[str, str]] = []
         self.token = TOKEN
         self.know_every_page = False  # live_check.py: every page is a known job, with a resume
-        self.features = ["posting", "reply"]  # /ext/ping's; an older jobwatch has none
+        self.features = ["posting", "reply", "import-list"]  # /ext/ping's (web.EXT_FEATURES); older has none
         self.replies: list[dict] = []  # /ext/reply: what the extension sent from a conversation
         self.reply_answer: dict = {}  # /ext/reply: fields to change in the canned answer (local, warnings, ...)
         self.reply_delay = 0.0  # /ext/reply: seconds to take before answering, to see the panel's working view
