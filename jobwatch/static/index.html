@@ -416,7 +416,20 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .tailor .badge.warn { background: var(--warn); }
 .tailor .problems { flex-basis: 100%; color: var(--warn); white-space: pre-wrap; }
 .tailor .review { flex-basis: 100%; }
-.followup { display: block; margin-top: 8px; }
+.followup, .cover { display: block; margin-top: 8px; }
+.cover textarea { width: 100%; margin-bottom: 6px; }
+.cover .fu-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 6px; }
+.cover .fu-head select { width: auto; }
+.cover .fu-head input[type="text"] { flex: 1 1 220px; min-width: 0; }
+.cover .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cover-compare { margin-top: 10px; }
+.cc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; font-size: 13px; margin-top: 4px; }
+.cc { padding: 2px 8px; border-radius: 8px; line-height: 1.4; }
+.cc.changed { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.cc.added { background: color-mix(in srgb, var(--good) 16%, transparent); }
+.cc.removed { background: color-mix(in srgb, var(--bad) 14%, transparent); text-decoration: line-through; }
+.cc.empty { background: transparent; }
+@media (max-width: 640px) { .cc-grid { grid-template-columns: 1fr; } }
 .followup .fu-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 6px; }
 .followup .fu-head select { width: auto; }
 .followup input[type="text"], .followup textarea { width: 100%; margin-bottom: 6px; }
@@ -2188,6 +2201,70 @@ function atsButton(job) {
     b.classList.remove("spin"); b.disabled = false;
   };
   return [b, out];
+}
+
+// "Cover letter" on a queued job: a draft in a tone you pick, leaning on what you say, from the posting, resume and
+// stories by the local model (see cover.py). Each draft is kept as a version; with two or more, the last two show
+// side by side. A draft to edit and copy: nothing is sent. Returns [button, panel].
+function coverButton(job) {
+  const out = h("div", { class: "tailor cover", hidden: true });
+  const b = h("button", { class: "btn", title: "Draft a cover letter from the posting, your resume and your stories " +
+    "(local model; nothing is sent)" }, "Cover letter");
+  const tone = h("select", { "aria-label": "Tone" });
+  const emphasis = h("input", { type: "text", placeholder: "Lean on… (optional, e.g. my incident-response work)",
+    "aria-label": "Emphasis", maxlength: 300 });
+  const draw = (state, busy) => {
+    const v = (state.versions || []).at(-1), warn = state.warnings || [];
+    out.dataset.tone = state.error || warn.length ? "warn" : "ok";
+    const body = h("textarea", { rows: 12, "aria-label": "Cover letter" }); body.value = v ? v.letter : "";
+    fill(out,
+      h("div", { class: "fu-head" }, tone, emphasis,
+        h("button", { class: "btn primary", disabled: busy, onclick: draft }, v ? "Draft another" : "Draft"),
+        v ? h("span", { class: "small muted" }, `v${v.version} · ${v.tone} · ${v.words} words`) : null),
+      state.error ? h("div", { class: "problems" }, state.error) : null,
+      v ? [body, h("div", { class: "row" },
+        h("button", { class: "btn", onclick: async () => {
+          try { await navigator.clipboard.writeText(body.value); toast("Copied the letter"); } catch { body.select(); }
+        } }, "Copy"),
+        h("span", { class: "small muted" }, "A draft: edit it and send it yourself. Edits here aren't saved.")) ] : null,
+      warn.length ? h("div", { class: "problems" }, warn.join("\n")) : null,
+      state.compare ? coverCompare(state.compare) : null);
+  };
+  const load = async (extra = {}) => {
+    const s = await api("/api/cover?key=" + encodeURIComponent(job.key));
+    if (!tone.options.length) {
+      for (const t of s.tones) tone.append(h("option", { value: t }, t[0].toUpperCase() + t.slice(1)));
+      tone.value = "direct";
+    }
+    const compare = s.versions.length > 1 ? await api("/api/cover/compare?key=" + encodeURIComponent(job.key)) : null;
+    draw({ ...s, compare, ...extra });
+  };
+  async function draft() {
+    draw({ versions: [], warnings: [] }, true);
+    b.classList.add("spin");
+    const [t, e] = [tone.value, emphasis.value];
+    try {
+      const r = await api("/api/cover", { key: job.key, tone: t, emphasis: e });
+      await load({ warnings: r.warnings });
+    } catch (err) { await load({ error: err.message }); }
+    tone.value = t; emphasis.value = e;
+    b.classList.remove("spin");
+  }
+  b.onclick = async () => {
+    out.hidden = !out.hidden;
+    if (out.hidden) return;
+    try { await load(); } catch (err) { out.hidden = false; draw({ versions: [], error: err.message }); }
+  };
+  return [b, out];
+}
+
+// Two letter versions side by side, a row per sentence: changed ones are marked, added and removed ones too.
+function coverCompare(c) {
+  const cell = (text, tag, side) => h("div", { class: "cc " + (text ? tag : "empty") + " " + side }, text);
+  return h("div", { class: "cover-compare" },
+    h("div", { class: "small muted" }, `Side by side: v${c.a} and v${c.b}`),
+    h("div", { class: "cc-grid" }, h("b", {}, `v${c.a}`), h("b", {}, `v${c.b}`),
+      c.rows.map(r => r.left || r.right ? [cell(r.left, r.tag, "l"), cell(r.right, r.tag, "r")] : [h("div"), h("div")])));
 }
 
 // "Draft follow-up" on an application: the email to send a week after applying, or (for a stage with a call
@@ -4621,7 +4698,7 @@ function queueCard(job, i) {
   note.value = job.note || "";
   return jobCard(job, [
     applyButton(job, true),
-    tailorButton(job), atsButton(job),
+    tailorButton(job), atsButton(job), coverButton(job),
     h("button", { class: "btn", onclick: () => mark(job, "applied", note.value || null,
       `Marked applied: ${job.title}`, "queued") }, icon("check", 14), "I applied"),
     snoozeButton(job, (status, label) => mark(job, status, null, label, "queued")),
@@ -6544,7 +6621,7 @@ function companyCard(j, i, c) {
   const score = () => scoreButton(j, j.can_score, x => companyCard(x, i, c));
   const actions = APPLIED.includes(j.status) ? [detailsButton(j), posting(),
       j.has_package ? h("span", { class: "sent-chip", title: "What you sent is saved with this job" }, icon("clip", 13), "package saved") : null]
-    : j.status === "queued" ? [applyButton(j, true), tailorButton(j), atsButton(j),
+    : j.status === "queued" ? [applyButton(j, true), tailorButton(j), atsButton(j), coverButton(j),
       h("button", { class: "btn", onclick: () => act("applied") }, icon("check", 14), "I applied"),
       snoozeButton(j, act), skipIt(), detailsButton(j), score()]
     : j.status === "snoozed" ? [queueIt("Queue now"), applyButton(j, false), skipIt(), detailsButton(j), score()]

@@ -31,6 +31,7 @@ from . import (
     company,
     comps,
     config,
+    cover,
     drill,
     dupes,
     followup,
@@ -1213,6 +1214,29 @@ def cmd_followup(args, cfg, store):
     print(json.dumps(got, indent=2, ensure_ascii=False) if args.format == "json" else followup.render(got))
 
 
+def cmd_cover(args, cfg, store):
+    """A cover letter draft for the job, kept as a numbered version; or the saved versions, or two of them side by
+    side. Nothing is sent."""
+    if args.versions:
+        vs = cover.versions(store, args.key)
+        print(json.dumps([{k: v for k, v in x.items() if k != "letter"} for x in vs], indent=2)
+              if args.format == "json" else cover.render_versions(vs))
+        return
+    if args.compare is not None:
+        if len(args.compare) not in (0, 2):
+            raise SystemExit("--compare takes two version numbers (or none, for the last two)")
+        try:
+            got = cover.compare(store, args.key, *args.compare)
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
+        print(json.dumps(got, indent=2, ensure_ascii=False) if args.format == "json"
+              else cover.render_side_by_side(got))
+        return
+    got = cover.draft(cfg, store, args.key, tone=args.tone, emphasis=args.emphasis or "", prefer=args.story,
+                      keep=not args.no_save)
+    print(json.dumps(got, indent=2, ensure_ascii=False) if args.format == "json" else cover.render(got))
+
+
 def cmd_referrals(args, cfg, store):
     for verdict, who in (("use", args.use), ("skip", args.skip), ("clear", args.clear)):
         for name in who or []:
@@ -1803,6 +1827,26 @@ def build_parser() -> argparse.ArgumentParser:
                    "else a name in the next step or note after 'call with', 'interviewer:', 'met'...")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_followup)
+
+    p = sub.add_parser("cover", help="draft a cover letter for a job in a tone you pick, leaning on what you say, "
+                       "kept as versions you can compare side by side",
+                       description="Writes the letter from the posting, your resume and your stories with the local "
+                       "model, so none of it leaves this computer. Each draft is kept as a version (v1, v2...) "
+                       "under covers/ beside jobwatch's history and printed with what changed since the last one; "
+                       "`--compare` shows two side by side. Warnings list what to check (a number that isn't in "
+                       "your resume, a stock opener, a detail a story says not to say). It never sends anything: "
+                       "`jobwatch attach KEY --message FILE` keeps the one you used.")
+    p.add_argument("key")
+    p.add_argument("--tone", choices=list(cover.TONES), default=cover.DEFAULT_TONE,
+                   help=f"the letter's register (default {cover.DEFAULT_TONE})")
+    p.add_argument("--emphasis", metavar="TEXT", help="what to lean on, e.g. 'my incident-response work'")
+    p.add_argument("--story", action="append", metavar="ID", help="lead with this story (repeat for several)")
+    p.add_argument("--no-save", action="store_true", help="print the draft without keeping it as a version")
+    p.add_argument("--versions", action="store_true", help="list the saved versions instead of drafting")
+    p.add_argument("--compare", nargs="*", type=int, metavar="N", help="two saved versions side by side (none: the "
+                   "last two) instead of drafting")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_cover)
 
     p = sub.add_parser("referrals", help="the people you know at companies you're tracking, and whom to ask for "
                        "a referral: `--use NAME` puts someone first, `--skip NAME` never suggests them, "

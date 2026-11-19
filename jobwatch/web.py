@@ -45,6 +45,7 @@ from . import (
     comps,
     config,
     contacts,
+    cover,
     dupes,
     followup,
     ics,
@@ -1488,6 +1489,50 @@ class App:
                 raise ApiError(str(e)) from None
         return self._with_store(run)
 
+    def get_cover(self, q) -> dict:
+        """A job's saved cover letter versions (see cover.py), and the tones to pick from."""
+        key = (q.get("key") or [""])[0]
+
+        def run(cfg, store):
+            try:
+                return {"versions": cover.versions(store, key), "tones": list(cover.TONES)}
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+        return self._with_store(run)
+
+    def get_cover_compare(self, q) -> dict:
+        """Two saved versions side by side: ?key=...&a=1&b=2, or the last two when a and b are left out."""
+        key = (q.get("key") or [""])[0]
+        try:
+            a, b = [int(q[n][0]) if q.get(n) else None for n in ("a", "b")]
+        except ValueError:
+            raise ApiError("a and b are version numbers") from None
+
+        def run(cfg, store):
+            try:
+                return cover.compare(store, key, a, b)
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+        return self._with_store(run)
+
+    def post_cover(self, body) -> dict:
+        """A cover letter draft for a job, kept as the next version (see cover.py). Nothing is sent."""
+        stories_ = body.get("stories")
+        if stories_ is not None and not (isinstance(stories_, list) and all(isinstance(s, str) for s in stories_)):
+            raise ApiError("stories must be a list of story ids")
+
+        def run(cfg, store):
+            try:
+                return cover.draft(cfg, store, body.get("key") or "", tone=body.get("tone") or cover.DEFAULT_TONE,
+                                   emphasis=str(body.get("emphasis") or ""), prefer=stories_)
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+        return self._with_store(run)
+
     def post_followup(self, body) -> dict:
         """A follow-up or thank-you email draft for an application (see followup.py). Nothing is sent or saved."""
         names = body.get("interviewers")
@@ -1890,6 +1935,9 @@ ROUTES = {
     ("POST", "/api/stories/add"): App.post_story,
     ("POST", "/api/tailor"): App.post_tailor,
     ("GET", "/api/ats"): App.get_ats,
+    ("GET", "/api/cover"): App.get_cover,
+    ("GET", "/api/cover/compare"): App.get_cover_compare,
+    ("POST", "/api/cover"): App.post_cover,
     ("POST", "/api/followup"): App.post_followup,
     ("POST", "/api/package"): App.post_package,
     ("POST", "/api/package/remove"): App.post_package_remove,

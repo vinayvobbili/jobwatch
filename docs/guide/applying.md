@@ -146,6 +146,31 @@ jobwatch ats c1 --format json
   no Experience, Education or Skills heading, symbols that came out as boxes, none of the title's words.
 - A missing keyword is a prompt to look, not an order: add it only where it's true of you, in resume-kit.
 
+## Drafting a cover letter
+
+`jobwatch cover <job>` (or the **Cover letter** button on a queued job) drafts a letter from the posting, your
+resume and your [stories](interview-prep.md), with the local model, so none of it leaves this computer. Pick a tone
+and say what to lean on:
+
+```
+jobwatch cover c1                                         # a direct letter
+jobwatch cover c1 --tone warm --emphasis "my incident-response work" --story alert-dedupe
+jobwatch cover c1 --versions                              # the drafts so far
+jobwatch cover c1 --compare                               # the last two, side by side (or --compare 1 3)
+```
+
+- Tones are `direct` (the default), `warm`, `formal` and `concise`. `--emphasis` is your own note on the angle: it
+  picks what the letter leans on and adds no facts. `--story` (repeatable) puts a story first.
+- Each draft is kept as a version (`v1`, `v2`...) under `covers/` beside jobwatch's history, and printed with the
+  sentences that changed since the last one. On the page the last two versions show side by side, changed
+  sentences marked.
+- The model is told to use only your resume and stories. The code flags, beside the letter and without editing it,
+  a number that isn't in them or the posting, a detail a story says not to say, a stock opener ("I am writing to
+  apply"), an exclamation mark, a word about pay, a letter that never names the company, and one far from the usual
+  150 to 400 words.
+- Nothing is sent or submitted. When you've edited the one you'll use, keep it with the application:
+  `jobwatch attach c1 --message letter.md`.
+
 ## Filling application forms
 
 The jobwatch extension for Chrome fills an application form for you to review. It works alongside the autofill
