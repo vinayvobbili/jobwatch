@@ -218,8 +218,8 @@ ROBOTICS = hn_post(9100001, "Acme Robotics | Senior Python Engineer | Remote (US
                             "<p>We build warehouse robots.")
 BLUEBIRD = hn_post(9100002, "Bluebird Labs | Backend Engineer | Remote | "
                             f"{hn_link('https://bluebird.example/careers')} {hn_link('https://bit.ly/bluebird-jobs')}")
-COBALT = hn_post(9100003, "Cobalt Systems | ML Engineer | Remote | "
-                          f"{hn_link('https://job-boards.greenhouse.io/cobalt-hq/jobs/7001')}")  # a watched board
+VANDELAY = hn_post(9100003, "Vandelay Systems | ML Engineer | Remote | "
+                          f"{hn_link('https://job-boards.greenhouse.io/vandelay-hq/jobs/7001')}")  # a watched board
 DYNAMO = hn_post(9100004, "Dynamo Analytics | Data Engineer | Remote")  # watched under its name
 EMBER = hn_post(9100005, "Ember Health | Platform Engineer | London, UK (ONSITE) | "
                          f"{hn_link('https://jobs.ashbyhq.com/emberhealth')}")  # fails the filters: not remote
@@ -229,11 +229,11 @@ EMBER = hn_post(9100005, "Ember Health | Platform Engineer | London, UK (ONSITE)
 def hn_watched(tmp_path, monkeypatch):
     """A watchlist with HN's thread and two boards, one of them under its company's name; no network."""
     path = tmp_path / "jobwatch.yaml"
-    path.write_text("companies:\n  - hn:whoishiring\n  - greenhouse:cobalt-hq\n"
+    path.write_text("companies:\n  - hn:whoishiring\n  - greenhouse:vandelay-hq\n"
                     "  - {source: lever, board: dynamo, name: Dynamo Analytics}\n"
                     "filters:\n  locations: [remote]\n  max_age_days: 30\nstate: state.db\ncache: cache\n")
-    fake = FakeWeb({**hn_web([ROBOTICS, BLUEBIRD, COBALT, DYNAMO, EMBER]),
-                    "https://boards-api.greenhouse.io/v1/boards/cobalt-hq/jobs?content=true": {"jobs": []},
+    fake = FakeWeb({**hn_web([ROBOTICS, BLUEBIRD, VANDELAY, DYNAMO, EMBER]),
+                    "https://boards-api.greenhouse.io/v1/boards/vandelay-hq/jobs?content=true": {"jobs": []},
                     "https://api.lever.co/v0/postings/dynamo?mode=json": []})
     monkeypatch.setattr(sources, "get_json", fake)
     monkeypatch.setattr(sources, "get_text", FakeWeb({}))  # no robots.txt: reading is allowed
@@ -248,7 +248,7 @@ def test_hn_posts_suggest_their_companies(hn_watched):
     r = watch.fetch_all(cfg, store)
     assert (len(r.new), r.errors, r.warnings) == (5, {}, {})
     got = rows(store)
-    # Cobalt's post links a watched board and Dynamo is watched under its name; Ember's job fails the filters
+    # Vandelay's post links a watched board and Dynamo is watched under its name; Ember's job fails the filters
     assert set(got) == {"acmerobotics", "bluebird"}
     # the board the post links to, found by the post (not the thread's own hn:whoishiring)
     assert (got["acmerobotics"]["entry"], got["acmerobotics"]["found_by"]) == ("ashby:acmerobotics", "posting")
@@ -299,7 +299,7 @@ def test_a_rescan_notes_the_posts_kept_before(hn_watched, monkeypatch):
     assert suggest.rescan(cfg, store) == 2
     assert fake.calls == []  # nothing read from the web
     got = rows(store)
-    # Cobalt's post links a watched board and Dynamo is watched under its name; Ember's job fails the filters
+    # Vandelay's post links a watched board and Dynamo is watched under its name; Ember's job fails the filters
     assert set(got) == {"acmerobotics", "bluebird"}
     assert (got["acmerobotics"]["entry"], got["acmerobotics"]["found_by"]) == ("ashby:acmerobotics", "posting")
     assert got["acmerobotics"]["jobs"][0][1] == kept["hn:whoishiring:9100001"][1]  # counts from when it was kept
