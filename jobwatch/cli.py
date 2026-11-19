@@ -25,6 +25,7 @@ from . import (
     advice,
     alerts,
     answers,
+    ats,
     backup,
     chat,
     company,
@@ -1199,6 +1200,12 @@ def cmd_tailor(args, cfg, store):
         raise SystemExit(1)
 
 
+def cmd_ats(args, cfg, store):
+    """Which of the posting's keywords the job's resume lacks, as a parser reads its text."""
+    r = ats.check(cfg, store, args.key, args.resume)
+    print(json.dumps(r, indent=2, ensure_ascii=False) if args.format == "json" else ats.render(r))
+
+
 def cmd_referrals(args, cfg, store):
     for verdict, who in (("use", args.use), ("skip", args.skip), ("clear", args.clear)):
         for name in who or []:
@@ -1766,6 +1773,14 @@ def build_parser() -> argparse.ArgumentParser:
                                       "(drafts a version the first time, rebuilds it after); review it before applying")
     p.add_argument("key")
     p.set_defaults(func=cmd_tailor)
+
+    p = sub.add_parser("ats", help="which of a job's posting keywords its resume lacks, read the way an applicant "
+                                   "tracking system's parser reads the built PDF's text (nothing leaves this computer)")
+    p.add_argument("key")
+    p.add_argument("--resume", type=Path, metavar="FILE", help="check this file instead of the resume kept with the "
+                   "job (else your general resume)")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_ats)
 
     p = sub.add_parser("referrals", help="the people you know at companies you're tracking, and whom to ask for "
                        "a referral: `--use NAME` puts someone first, `--skip NAME` never suggests them, "

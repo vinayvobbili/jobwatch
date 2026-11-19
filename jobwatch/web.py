@@ -37,6 +37,7 @@ from . import (
     __version__,
     advice,
     ai,
+    ats,
     autofill,
     backup,
     chat,
@@ -1473,6 +1474,19 @@ class App:
                 raise ApiError(str(e)) from None
         return self._with_store(run)
 
+    def get_ats(self, q) -> dict:
+        """The ATS check of the job's resume (see ats.py): missing keywords and what a parser would trip on."""
+        key = (q.get("key") or [""])[0]
+
+        def run(cfg, store):
+            try:
+                return ats.check(cfg, store, key)
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+        return self._with_store(run)
+
     def post_package_remove(self, body) -> dict:
         def run(cfg, store):
             pkg = store.package(body.get("key") or "")
@@ -1858,6 +1872,7 @@ ROUTES = {
     ("GET", "/api/storyfind"): App.get_storyfind,
     ("POST", "/api/stories/add"): App.post_story,
     ("POST", "/api/tailor"): App.post_tailor,
+    ("GET", "/api/ats"): App.get_ats,
     ("POST", "/api/package"): App.post_package,
     ("POST", "/api/package/remove"): App.post_package_remove,
 }

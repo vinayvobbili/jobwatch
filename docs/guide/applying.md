@@ -126,6 +126,26 @@ shows `Resume: <file>.pdf`, and the button becomes **Rebuild resume**). The comm
 resume_kit: ~/tools/resume-kit/.venv/bin/resume
 ```
 
+## Checking a resume for ATS keywords
+
+Before you apply, `jobwatch ats <job>` (or the **ATS check** button beside **Tailor resume**) shows which of the
+posting's keywords the job's resume doesn't show, read the way an applicant tracking system's parser reads it: from
+the text of the built PDF, not from its source. It runs on your computer and uses no model.
+
+```
+jobwatch ats c1                      # the resume kept with the job, else your general resume
+jobwatch ats c1 --resume other.pdf   # check another file
+jobwatch ats c1 --format json
+```
+
+- The keywords are the skills the posting names (the catalog behind `jobwatch skills`, so "K8s" and "Kubernetes"
+  are one) and the tools and acronyms its requirement lines name. Ones under the requirements are must-haves and
+  count double in the percentage.
+- A PDF is read with `pdftotext` (poppler: `brew install poppler`), else with shortlist-ai.
+- It also says what would make a parser drop something: a scanned PDF with no text, no email or phone in the text,
+  no Experience, Education or Skills heading, symbols that came out as boxes, none of the title's words.
+- A missing keyword is a prompt to look, not an order: add it only where it's true of you, in resume-kit.
+
 ## Filling application forms
 
 The jobwatch extension for Chrome fills an application form for you to review. It works alongside the autofill

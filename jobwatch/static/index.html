@@ -416,6 +416,9 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .tailor .badge.warn { background: var(--warn); }
 .tailor .problems { flex-basis: 100%; color: var(--warn); white-space: pre-wrap; }
 .tailor .review { flex-basis: 100%; }
+.ats-miss { display: inline-block; margin: 2px 4px 2px 0; padding: 1px 9px; border-radius: 999px; font-size: 12.5px;
+  font-weight: 600; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line)); }
 .gaps { font-size: 13.5px; color: var(--muted); margin: 2px 0 4px; display: -webkit-box; -webkit-line-clamp: 2;
   -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .gaps.open { -webkit-line-clamp: unset; }
@@ -2151,6 +2154,34 @@ function tailorButton(job) {
     b.classList.remove("spin"); b.disabled = false; b.textContent = label();
   };
   draw();
+  return [b, out];
+}
+
+// "ATS check": which of the posting's keywords this job's resume doesn't show, read from the PDF's text the way a
+// parser reads it (see ats.py), and what would trip the parser. Local; nothing is changed.
+function atsButton(job) {
+  const out = h("div", { class: "tailor ats", hidden: true });
+  const b = h("button", { class: "btn", title: "Check the resume kept for this job against the posting's keywords, " +
+    "as an applicant tracking system's parser would read it." }, "ATS check");
+  const draw = r => {
+    out.hidden = false;
+    out.dataset.tone = r.checks && (r.checks.length || r.score < 70) ? "warn" : "ok";
+    fill(out,
+      r.error ? h("span", { class: "problems" }, r.error) : [
+        h("span", { class: "badge" + (out.dataset.tone === "warn" ? " warn" : "") },
+          r.score == null ? "no keywords" : `ATS ${r.score}% · ${r.found.length} of ${r.found.length + r.missing.length}`),
+        h("span", { class: "small" }, `${r.file}${r.tailored ? "" : " (general resume, not tailored)"}`),
+        r.missing.length ? h("div", { class: "review small" }, "Missing from its text: ",
+          r.missing.map(m => h("span", { class: "ats-miss", title: `${m.count}× in the posting` }, m.term + (m.kind === "must" ? " *" : ""))),
+          h("span", { class: "muted" }, " (* asked for). Add one only where it's true of you.")) : null,
+        r.checks.length ? h("div", { class: "problems" }, r.checks.join("\n")) : null]);
+  };
+  b.onclick = async () => {
+    b.disabled = true; b.classList.add("spin");
+    try { draw(await api("/api/ats?key=" + encodeURIComponent(job.key))); }
+    catch (e) { draw({ error: e.message }); }
+    b.classList.remove("spin"); b.disabled = false;
+  };
   return [b, out];
 }
 
@@ -4543,7 +4574,7 @@ function queueCard(job, i) {
   note.value = job.note || "";
   return jobCard(job, [
     applyButton(job, true),
-    tailorButton(job),
+    tailorButton(job), atsButton(job),
     h("button", { class: "btn", onclick: () => mark(job, "applied", note.value || null,
       `Marked applied: ${job.title}`, "queued") }, icon("check", 14), "I applied"),
     snoozeButton(job, (status, label) => mark(job, status, null, label, "queued")),
@@ -6465,7 +6496,7 @@ function companyCard(j, i, c) {
   const score = () => scoreButton(j, j.can_score, x => companyCard(x, i, c));
   const actions = APPLIED.includes(j.status) ? [detailsButton(j), posting(),
       j.has_package ? h("span", { class: "sent-chip", title: "What you sent is saved with this job" }, icon("clip", 13), "package saved") : null]
-    : j.status === "queued" ? [applyButton(j, true), tailorButton(j),
+    : j.status === "queued" ? [applyButton(j, true), tailorButton(j), atsButton(j),
       h("button", { class: "btn", onclick: () => act("applied") }, icon("check", 14), "I applied"),
       snoozeButton(j, act), skipIt(), detailsButton(j), score()]
     : j.status === "snoozed" ? [queueIt("Queue now"), applyButton(j, false), skipIt(), detailsButton(j), score()]
