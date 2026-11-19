@@ -47,6 +47,7 @@ from . import (
     contacts,
     cover,
     dupes,
+    estimate,
     followup,
     ics,
     interviews,
@@ -635,9 +636,13 @@ class App:
                 out[job.key] = {**out.get(job.key, {}), "expected_pay": levels.as_dict(result, job)}
             if waiting and self.background:
                 self.pay.kick(waiting)
+        kept = store.comps()
         for job, _ in rows:  # every pay source, as labelled chips (see paysources.py)
             out[job.key] = {**out.get(job.key, {}), "pay_sources": paysources.gather(
                 cfg, store, job, results.get(job.key), ests[job.key])}
+            if guess := estimate.for_job(cfg, store, job, comps=kept, filings=ests[job.key],
+                                         result=results.get(job.key)):  # only a job whose posting lists no pay
+                out[job.key]["est_pay"] = guess.to_dict()
         return out
 
     @staticmethod

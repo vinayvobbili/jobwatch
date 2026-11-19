@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from datetime import date
 
-from . import lca
+from . import estimate, lca
 from .config import COMP_WEIGHTS, Config, Goals
 from .contacts import company_key
 from .score import resume_id
@@ -361,7 +361,9 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
     and/or companies are given, just those: the jobs named in keys (whatever their stage) in that order, then a
     column of only health for each company name, even one with no job. Each has key, kind (job or company),
     company, title, url, status,
-    applied_at, next_step, follow_up, pay (as posted), pay_max, places, fit ({score, met, total, gaps, stale}
+    applied_at, next_step, follow_up, pay (as posted), pay_max, pay_estimate (for a job whose posting lists no pay:
+    {estimate: true, low, mid, high, basis, label, detail}, a guess from what a recruiter told you, H-1B filings
+    or Levels.fyi, never used in the suggestion; None otherwise), places, fit ({score, met, total, gaps, stale}
     or None), contacts, comp (what was kept: base, bonus, equity, signon, asked, offered, note) and base_max,
     asked_max, offered_max: the top of each range written, in dollars, when it can be read (and pay_mid, base_mid,
     asked_mid, offered_mid: each range's middle, which the suggestion weighs), and health (the
@@ -389,11 +391,14 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
         ranges = {**{f"{k}_max": r[1] if r else None for k, r in read.items()},
                   **{f"{k}_mid": (r[0] + r[1]) / 2 if r else None for k, r in read.items()},
                   "pay_mid": sum(posted) / len(posted) if posted else None}
+        filed = lca.for_job(filings, job, cfg.filters_for(job).home_state)
+        guess = estimate.for_job(cfg, store, job, comps=kept, filings=filed)
         rows.append({
             "key": job.key, "kind": "job", "company": job.display_company, "title": job.title, "url": job.url,
             "status": rec["status"], "applied_at": rec["applied_at"], "next_step": rec["next_step"],
             "follow_up": rec["follow_up"], "pay": job.pay(), "pay_max": job.salary_max or job.salary_min,
-            "places": job.places, "lca_pay": lca.as_dict(lca.for_job(filings, job, cfg.filters_for(job).home_state)),
+            "pay_estimate": guess.to_dict() if guess else None,
+            "places": job.places, "lca_pay": lca.as_dict(filed),
             "fit": {"score": fit["score"], "met": fit["must_haves_met"], "total": fit["must_haves_total"],
                     "gaps": (fit.get("gaps") or [])[:MOST_GAPS], "stale": bool(fit.get("stale"))} if fit else None,
             "contacts": [{k: p.get(k) for k in ("name", "position", "why")}
@@ -433,7 +438,10 @@ def text(v: dict) -> str:
             fit_line += f"; gaps: {'; '.join(fit['gaps'])}" if fit["gaps"] else ""
         know = "; ".join(p["name"] + (f" ({p['position']})" if p["position"] else "") for p in r["contacts"])
         rest = [("applied", r["applied_at"]), ("next", next_step), ("place", "; ".join(r["places"])),
-                ("posted pay", star(r, "pay", r["pay"])), ("H-1B filings", (r.get("lca_pay") or {}).get("line")),
+                ("posted pay", star(r, "pay", r["pay"])),
+                ("est. pay", (r.get("pay_estimate") or {}).get("label")
+                 and f"{r['pay_estimate']['label']} (an estimate: {r['pay_estimate']['detail']})"),
+                ("H-1B filings", (r.get("lca_pay") or {}).get("line")),
                 ("base", star(r, "base", c["base"])), ("bonus", c["bonus"]),
                 ("equity", c["equity"]), ("sign-on", c["signon"]), ("asked", c["asked"]),
                 ("offered", star(r, "offered", c["offered"])), ("fit", fit_line), ("know", know),

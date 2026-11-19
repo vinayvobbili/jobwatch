@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 
-from . import alerts, dupes, lca, levels, linkedin, sources, suggest
+from . import alerts, dupes, estimate, lca, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config, fallback_entry
 from .contacts import Contacts, company_key
 from .filters import (
@@ -378,6 +378,7 @@ class Entry:
     warnings: list[str] = field(default_factory=list)  # reasons to look twice before applying (queue)
     pay: object = None  # expected pay from Levels.fyi (levels.Estimate, PENDING, REFUSED or None; queue only)
     lca: lca.Estimate | None = None  # base pay filed for H-1B hires (queue only)
+    est: estimate.PayEstimate | None = None  # a guess at the base when the posting lists none (queue only)
     duplicate: dupes.Match | None = None  # a job acted on that it's (maybe) the same opening as; also in warnings
     focus: int = 0  # how many of the watchlist's focus patterns its title matches: the work wanted most, ranked first
 
@@ -450,6 +451,7 @@ def entries_for(cfg: Config, store: Store, rows: list[tuple[Job, dict]], pay_bud
     index = dupes.Index(store)
     applications = store.applications()
     filings = lca.Index.open(lca.cache_path(cfg))
+    kept = store.comps()
     out = []
     for job, rec in rows:
         rel, hits = relevance(job, cfg.keywords)
@@ -466,6 +468,7 @@ def entries_for(cfg: Config, store: Store, rows: list[tuple[Job, dict]], pay_bud
             if warn := levels.below(e.pay, cfg.filters_for(job).min_salary):
                 e.warnings.append(warn)
         e.lca = lca.for_job(filings, job, cfg.filters_for(job).home_state)
+        e.est = estimate.for_job(cfg, store, job, comps=kept, filings=e.lca, result=e.pay)
         out.append(e)
     if filings:
         filings.close()

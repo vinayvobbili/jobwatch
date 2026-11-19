@@ -101,6 +101,8 @@ def _line(e: Entry) -> list[str]:
         out.append(f"{MANY_ROLES[1]}.")
     if isinstance(e.pay, levels.Estimate):  # set on queued jobs only, never in a digest
         out.append(f"Expected pay: {e.pay.line(j.pay())} ({e.pay.credit}: {e.pay.url})")
+    if e.est:  # a guess, said as one, and only for a posting that lists no pay
+        out.append(f"{e.est.label()} (an estimate: {e.est.detail})")
     if e.lca:
         out.append(f"{e.lca.line()} ({e.lca.label[0].lower() + e.lca.label[1:]}; {e.lca.credit}: {e.lca.url})")
     if e.warnings:

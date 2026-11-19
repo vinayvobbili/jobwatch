@@ -34,6 +34,7 @@ from . import (
     cover,
     drill,
     dupes,
+    estimate,
     followup,
     ics,
     inbox,
@@ -1251,7 +1252,13 @@ def cmd_referrals(args, cfg, store):
 
 
 def cmd_comp(args, cfg, store):
-    key = store.find(args.key)[0].key
+    job = store.find(args.key)[0]
+    key = job.key
+    if args.estimate:  # read-only: a guess from what's kept, never written
+        if args.clear or any(getattr(args, f) is not None for f in COMP_FIELDS):
+            raise SystemExit("--estimate only reads: leave out the fields and --clear (nothing is saved)")
+        print(estimate.render(job, estimate.for_job(cfg, store, job)))
+        return
     if args.clear:
         store.set_comp(key, **{f: "" for f in COMP_FIELDS})
     store.set_comp(key, **{f: getattr(args, f) for f in COMP_FIELDS})
@@ -1888,6 +1895,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--career-note", dest="career_note", help="a few words on its career value, e.g. "
                    "'observability product, staff IC'")
     p.add_argument("--clear", action="store_true", help="forget everything kept for this job first")
+    p.add_argument("--estimate", action="store_true", help="print an estimated base for a job whose posting lists "
+                   "no pay (from a recruiter's figures, similar jobs', H-1B filings or Levels.fyi), with where it "
+                   "comes from; it only reads, and saves nothing")
     p.set_defaults(func=cmd_comp)
 
     p = sub.add_parser("health", help="keep what you know of a company's health (public or private, funding, "

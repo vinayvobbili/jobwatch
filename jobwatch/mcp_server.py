@@ -24,6 +24,7 @@ from . import (
     config,
     contacts,
     dupes,
+    estimate,
     followup,
     inbox,
     joblist,
@@ -378,7 +379,9 @@ def get_job(key: Key) -> dict:
     in order: posted (the posting's range), levels (Levels.fyi), lca (H-1B filings), recruiter (what set_comp kept),
     glassdoor (only what the person typed in: never fetched) and ask (the base to ask for); each is {label, value,
     reason, blank, ...}: value is null when the source has nothing, and reason says why (blank is TBD when it will be
-    known later, none or off).
+    known later, none or off). pay_estimate, only when the posting lists no pay, is a guess at the base from
+    what set_comp kept, H-1B filings or Levels.fyi ({estimate: true, low, mid, high, basis, label, detail}): say it's
+    an estimate and give its basis.
     lca_pay, once `jobwatch lca update` has been run, is the base pay the company filed for H-1B
     hires in titles like this one (median, 25th-75th percentile, count, wage levels, examples; U.S. DOL LCA
     disclosures): base only, not total compensation. Use it to tailor a resume or decide whether to apply; for
@@ -393,6 +396,8 @@ def get_job(key: Key) -> dict:
         return {"key": job.key, "company": job.display_company, "title": job.title, "url": job.url,
                 "link_note": job.link_note or None,
                 "pay": job.pay(), "pay_sources": paysources.as_dict(paysources.gather(cfg, store, job, result, est)),
+                "pay_estimate": guess.to_dict() if (guess := estimate.for_job(cfg, store, job, filings=est,
+                                                                              result=result)) else None,
                 "locations": job.places, "text": job.to_text(), **rec,
                 "duplicate_of": same.to_dict() if same else None, "staffing_firm": staffing_firm(job), "fit": fit,
                 "unscored_reason": None if fit else unscored_reason(cfg, store, job),
@@ -642,7 +647,10 @@ def get_comps(
         "company comparison). Overrides stages."))] = None,
 ) -> dict:
     """Open applications side by side, to compare offers and processes: for each, its stage, applied day, next
-    step and follow-up, pay as posted, places, fit score (must-haves met, top gaps), people the person knows
+    step and follow-up, pay as posted, pay_estimate (only for a job whose posting lists no pay: a guess at the
+    base from what the person was told, H-1B filings or Levels.fyi, with estimate: true, low, mid, high, basis and
+    detail: always say it's an estimate and give its basis; it is not in the suggestion), places, fit score
+    (must-haves met, top gaps), people the person knows
     there, and the compensation details they were told (base, bonus, equity, sign-on, asked, offered, note; set
     them with set_comp), and the company's health (set it with set_company_health; stale when older than 90
     days: research it again). best says which opportunity is highest in posted pay, base, offered and fit.

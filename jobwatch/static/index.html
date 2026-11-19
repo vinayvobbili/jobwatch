@@ -263,6 +263,8 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .psrc-posted b, .psrc-ask b { color: inherit; opacity: .75; }
 .psrc-levels, .psrc-lca { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .psrc-levels b, .psrc-lca b { color: inherit; opacity: .75; }
+.psrc-est { background: transparent; border: 1px dashed var(--accent); color: var(--accent); font-weight: 650; cursor: help; }
+.psrc-est b { color: inherit; opacity: .75; }
 .psrc-unknown { background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent); color: var(--warn, #b45309); font-weight: 600; }
 .psrc-none { background: transparent; border: 1px dashed var(--muted); color: var(--muted); opacity: .7; font-style: italic; cursor: help; }
 .kv .advice { margin: 0; }
@@ -1877,7 +1879,10 @@ function paySources(job) {
   return h("div", { class: "psrcs", "data-pay": job.key }, [...items.map(s => s.value
     ? h("span", { class: `psrc psrc-${s.key}`, title: s.detail || s.value }, h("b", {}, s.label), s.short || s.value)
     : h("span", { class: "psrc psrc-none", title: s.reason }, h("b", {}, s.label), s.blank)),
-    payTop(job) == null ? h("span", { class: "psrc psrc-unknown",
+    // A guess for a posting with no pay (estimate.py): always marked Est., with its basis on hover.
+    job.est_pay ? h("span", { class: "psrc psrc-est", title: `${job.est_pay.detail} An estimate, not a posted figure.`,
+      "data-est": job.key }, h("b", {}, "Est."), job.est_pay.label.replace(/^Est\. /, "")) : null,
+    payTop(job) == null && !job.est_pay ? h("span", { class: "psrc psrc-unknown",
       title: "No source has a pay figure for this job yet" }, "pay unknown") : null]);
 }
 // The best pay clue a job carries, as a top figure to compare with Today's pay chip: the posted top, else the Levels

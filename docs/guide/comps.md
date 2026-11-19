@@ -30,6 +30,19 @@ A field you leave out stays; `''` clears it; `--clear` forgets all of a job's or
 90 days (or with no date) is marked stale. Over MCP the tools are `set_comp`, `set_company_health` and
 `get_comps`.
 
+**Est. pay.** When a posting lists no pay, jobwatch makes a guess from what it already holds and shows it as one:
+an "Est." chip on the job's card (hover for where it comes from), an "Est. pay" line in the digest and queue, a
+row on Comps, and `pay_estimate` in the MCP tools `get_comps` and `get_job` (always `estimate: true`, with its
+basis). The first source with a figure wins: a base, offer or figure in the note a recruiter gave for this job;
+the bases recruiters gave for similar jobs (the same kind of work by title; lowest, middle, highest); the
+[H-1B filings](watchlist.md#h-1b-wage-filings-as-a-second-pay-source), the employer's own or, failing that, your
+state's for similar work; then Levels.fyi, if `pay.levels` is on. A job with a posted range has no estimate, and
+the guess never counts toward the suggestion below. Nothing is looked up or saved:
+
+```
+jobwatch comp acme --estimate     # prints the estimate and its basis
+```
+
 The suggestion at the top ranks the opportunities by plain rules, no model. Its default weights are career value
 (25%), pay against your `pay.target` (30%; at target is 80, 10% over 100, 10% under 50), fit score (20%), how far
 along it is (10%: offer 100, interviewing 70, screening 40, applied 15) and company health (15%: 70 to start, public +10, layoffs -25, shrinking headcount
