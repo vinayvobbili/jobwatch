@@ -33,6 +33,7 @@ from . import (
     config,
     drill,
     dupes,
+    followup,
     ics,
     inbox,
     joblist,
@@ -1206,6 +1207,12 @@ def cmd_ats(args, cfg, store):
     print(json.dumps(r, indent=2, ensure_ascii=False) if args.format == "json" else ats.render(r))
 
 
+def cmd_followup(args, cfg, store):
+    """A follow-up or thank-you email for the job, printed as a draft: nothing is sent or saved."""
+    got = followup.draft(cfg, store, args.key, thanks=args.thanks, interviewers=args.interviewer)
+    print(json.dumps(got, indent=2, ensure_ascii=False) if args.format == "json" else followup.render(got))
+
+
 def cmd_referrals(args, cfg, store):
     for verdict, who in (("use", args.use), ("skip", args.skip), ("clear", args.clear)):
         for name in who or []:
@@ -1781,6 +1788,21 @@ def build_parser() -> argparse.ArgumentParser:
                    "job (else your general resume)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_ats)
+
+    p = sub.add_parser("followup", help="draft a follow-up email for an application (a week after applying), or a "
+                       "thank-you after an interview with --thanks: a draft to read and send yourself",
+                       description="Writes the email from what jobwatch keeps for the job (its stage and round, the "
+                       "day applied, the next step and follow-up day, the note's dated lines, what was sent) with the "
+                       "local model, so none of it leaves this computer. It prints the draft and sends and saves "
+                       "nothing; warnings list what to check (a figure the tracker doesn't hold, a stock opener, "
+                       "no interviewer's name).")
+    p.add_argument("key")
+    p.add_argument("--thanks", action="store_true", help="a thank-you after an interview or call instead of a "
+                   "follow-up on the application")
+    p.add_argument("--interviewer", action="append", metavar="NAME", help="address this person (repeat for several); "
+                   "else a name in the next step or note after 'call with', 'interviewer:', 'met'...")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_followup)
 
     p = sub.add_parser("referrals", help="the people you know at companies you're tracking, and whom to ask for "
                        "a referral: `--use NAME` puts someone first, `--skip NAME` never suggests them, "

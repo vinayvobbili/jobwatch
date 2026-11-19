@@ -46,6 +46,7 @@ from . import (
     config,
     contacts,
     dupes,
+    followup,
     ics,
     interviews,
     joblist,
@@ -1487,6 +1488,22 @@ class App:
                 raise ApiError(str(e)) from None
         return self._with_store(run)
 
+    def post_followup(self, body) -> dict:
+        """A follow-up or thank-you email draft for an application (see followup.py). Nothing is sent or saved."""
+        names = body.get("interviewers")
+        if names is not None and not (isinstance(names, list) and all(isinstance(n, str) for n in names)):
+            raise ApiError("interviewers must be a list of names")
+
+        def run(cfg, store):
+            try:
+                return followup.draft(cfg, store, body.get("key") or "", thanks=bool(body.get("thanks")),
+                                      interviewers=names)
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+        return self._with_store(run)
+
     def post_package_remove(self, body) -> dict:
         def run(cfg, store):
             pkg = store.package(body.get("key") or "")
@@ -1873,6 +1890,7 @@ ROUTES = {
     ("POST", "/api/stories/add"): App.post_story,
     ("POST", "/api/tailor"): App.post_tailor,
     ("GET", "/api/ats"): App.get_ats,
+    ("POST", "/api/followup"): App.post_followup,
     ("POST", "/api/package"): App.post_package,
     ("POST", "/api/package/remove"): App.post_package_remove,
 }

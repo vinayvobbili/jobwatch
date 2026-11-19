@@ -13,7 +13,8 @@
   kept as its resume), `rate_contact`, `read_profile` (the roles on a LinkedIn experience page whose text you pasted: who the
   interviewer is; it never fetches linkedin.com)
 - **What was sent:** `save_application_package`, `get_application_package`, `find_past_answers`,
-  `get_interview_prep`, `save_story`
+  `get_interview_prep`, `save_story`, `draft_followup` (a follow-up or thank-you email draft for an
+  application; nothing is sent)
 
 (0.3.0 renamed them to verb_noun: `digest` is now `get_digest`, `job_details` is `get_job`, `apply_queue` is
 `list_queued_jobs`, `applications` is `list_applications`, `application_package` is `get_application_package`,

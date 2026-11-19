@@ -65,6 +65,27 @@ never changes a status. A snooze isn't news, so a snoozed application stays quie
 the Applications page they sit under **Gone quiet** with one-click Snooze 7 days, Mark withdrawn, Mark rejected
 and Add note; the MCP `list_applications` gives each a `quiet` field.
 
+## Follow-up and thank-you drafts
+
+When the follow-up day comes, or after an interview, jobwatch drafts the email from what it already keeps for the
+job: its stage and round, the day you applied, the next step and follow-up day, the note's dated lines, what you sent,
+and the interviewer's name when the next step or note has one after "call with", "interviewer:" or "met":
+
+```
+jobwatch followup c1                                  # a follow-up on the application
+jobwatch followup c1 --thanks --interviewer "Dana Lee"   # a thank-you after the call; --interviewer can repeat
+```
+
+It prints the draft and sends and saves nothing: you read it and send it yourself. The local model writes it (the
+same shared server the extension's Draft reply uses), so the tracker's lines stay on this computer.
+Under the draft, warnings list what to check: a figure the tracker doesn't hold, a stock opener ("hope this finds you
+well"), an exclamation mark, a word about pay, a greeting without the named person, or a thank-you for an
+application with no interview on record. A job that isn't applied to yet, or has ended, has no one to write to.
+
+On the Applications page each open application has a **Draft follow-up** button (a thank-you for one in a
+screening or interviewing stage) with the subject, an editable body, a Copy button and the same warnings. The MCP
+`draft_followup` tool gives the same draft to your agent.
+
 Every company on Workday has its own careers site with its own sign-in, so after a few applications it's hard
 to remember where each one lives. For a Workday application, `jobwatch show`, `jobwatch applications` and
 the job's **Details** link that company's candidate page (`.../userHome`), where you sign in to see its

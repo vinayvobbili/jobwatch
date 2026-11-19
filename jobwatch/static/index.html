@@ -416,6 +416,11 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .tailor .badge.warn { background: var(--warn); }
 .tailor .problems { flex-basis: 100%; color: var(--warn); white-space: pre-wrap; }
 .tailor .review { flex-basis: 100%; }
+.followup { display: block; margin-top: 8px; }
+.followup .fu-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 6px; }
+.followup .fu-head select { width: auto; }
+.followup input[type="text"], .followup textarea { width: 100%; margin-bottom: 6px; }
+.followup .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .ats-miss { display: inline-block; margin: 2px 4px 2px 0; padding: 1px 9px; border-radius: 999px; font-size: 12.5px;
   font-weight: 600; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line)); }
@@ -2182,6 +2187,48 @@ function atsButton(job) {
     catch (e) { draw({ error: e.message }); }
     b.classList.remove("spin"); b.disabled = false;
   };
+  return [b, out];
+}
+
+// "Draft follow-up" on an application: the email to send a week after applying, or (for a stage with a call
+// behind it) a thank-you, written from the tracker by the local model (see followup.py). A draft to edit and copy:
+// nothing is sent or saved. Returns [button, panel].
+function followupButton(a) {
+  const out = h("div", { class: "tailor followup", hidden: true });
+  const b = h("button", { class: "btn ghost", title: "Draft a follow-up or thank-you email from what's tracked " +
+    "(local model; nothing is sent)" }, icon("pencil", 13), "Draft follow-up");
+  const kind = h("select", { "aria-label": "Kind of email" },
+    h("option", { value: "followup" }, "Follow-up"), h("option", { value: "thanks" }, "Thank-you"));
+  kind.value = ["screening", "interviewing"].includes(a.status) ? "thanks" : "followup";
+  const draft = async () => {
+    b.disabled = true; kind.disabled = true; b.classList.add("spin");
+    out.hidden = false;
+    try {
+      const r = await api("/api/followup", { key: a.key, thanks: kind.value === "thanks" });
+      const body = h("textarea", { rows: 8, "aria-label": "Email body" }); body.value = r.body;
+      const subject = h("input", { type: "text", "aria-label": "Subject" }); subject.value = r.subject;
+      out.dataset.tone = r.drafted && !r.warnings.length ? "ok" : "warn";
+      fill(out,
+        h("div", { class: "fu-head" }, kind,
+          r.to.length ? h("span", { class: "small" }, "To: " + r.to.join(", ")) : null,
+          r.model ? h("span", { class: "small muted" }, r.local ? "local model" : r.model) : null),
+        r.drafted ? [subject, body,
+          h("div", { class: "row" },
+            h("button", { class: "btn", onclick: async () => {
+              try { await navigator.clipboard.writeText(`Subject: ${subject.value}\n\n${body.value}`); toast("Copied the draft"); }
+              catch { body.select(); }
+            } }, "Copy"),
+            h("button", { class: "btn ghost", onclick: draft }, "Redraft"),
+            h("span", { class: "small muted" }, "A draft: read it and send it yourself."))] : null,
+        r.warnings.length ? h("div", { class: "problems" }, r.warnings.join("\n")) : null);
+    } catch (e) {
+      fill(out, h("div", { class: "fu-head" }, kind), h("div", { class: "problems" }, e.message));
+      out.dataset.tone = "warn";
+    }
+    b.classList.remove("spin"); b.disabled = false; kind.disabled = false;
+  };
+  kind.onchange = draft;
+  b.onclick = draft;
   return [b, out];
 }
 
@@ -4955,7 +5002,7 @@ function appCard(a, d, i = 0) {
   const facts = [a.snoozed_until ? h("span", { class: "badge snooze", title: "Not counted as quiet until then" },
       `Snoozed until ${fmtDay(a.snoozed_until, d.today)}`) : null,
     a.pay ? h("span", { class: "pay" }, a.pay) : null, a.closed ? "posting closed" : null].filter(Boolean);
-  const view = () => fill(card,
+  const view = () => { const [draftBtn, draftBox] = isEndedStatus(a.status) ? [null, null] : followupButton(a); fill(card,
     monogram(a.company),
     h("div", {},
       h("div", { class: "app-head" },
@@ -4967,9 +5014,10 @@ function appCard(a, d, i = 0) {
       a.quiet ? quietBar(a, d) : null,
       h("div", { class: "app-foot" },
         h("span", { class: "when" }, a.applied_at ? `Applied ${fmtDay(a.applied_at, d.today)} · ${relDay(a.applied_at, d.today)}` : ""),
-        h("div", { class: "acts" }, sentChip(a), d.reminders ? bellButton(a) : null,
+        h("div", { class: "acts" }, sentChip(a), d.reminders ? bellButton(a) : null, draftBtn,
           h("button", { class: "btn ghost", onclick: edit }, icon("pencil", 13), "Edit"),
-          h("button", { class: "btn ghost", onclick: () => openDetails(a.key) }, "Details", icon("arrow", 13))))));
+          h("button", { class: "btn ghost", onclick: () => openDetails(a.key) }, "Details", icon("arrow", 13)))),
+      draftBox)); };
   const edit = () => {
     const f = trackFields(a);
     fill(card, h("div", { class: "full" },

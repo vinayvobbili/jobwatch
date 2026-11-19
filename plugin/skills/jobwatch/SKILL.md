@@ -80,6 +80,9 @@ a story from the user's own past would answer. Ask the user about one, and keep 
 ## Other tools
 
 - `list_applications`: where every application stands, with follow-ups due and ones gone quiet.
+- `draft_followup`: a follow-up email for an application (about a week after it was sent), or with `thanks` a
+  thank-you after an interview, written from the tracker by the local model. It only drafts: read the warnings,
+  show the email, and leave sending it to the user.
 - `get_company`: everything tracked at one company, closed postings too.
 - `get_comps`: the live opportunities (or any jobs and companies you name) side by side, with a rule-based
   suggestion; explain its reasons and say what is missing. `set_comp` keeps what a recruiter said about pay

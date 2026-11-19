@@ -24,6 +24,7 @@ from . import (
     config,
     contacts,
     dupes,
+    followup,
     inbox,
     joblist,
     lca,
@@ -84,7 +85,9 @@ server = MCPServer(
         "interview, find_past_answers finds what they answered before to a form question (\"notice period\") "
         "across all of them, and get_interview_prep puts the posting, the resume and what was sent on one sheet, with "
         "story_gaps: what a story from the person's own past would help with. Interview them about one, and "
-        "save_story keeps what they confirm in their story file for drafted answers. "
+        "save_story keeps what they confirm in their story file for drafted answers. draft_followup drafts the "
+        "follow-up email for an application, or with thanks a thank-you after an interview: a draft for the person "
+        "to read and send, never sent. "
         "list_skill_gaps lists what the matching jobs ask for that the resume doesn't show, with courses and "
         "certifications to close each gap. check_postings checks that queued jobs and open applications are still "
         "posted. The same opening can be tracked twice (an application added by hand, then the job again from an "
@@ -927,6 +930,32 @@ def tailor_resume(key: Key) -> dict:
         return tailor.tailor(cfg, store, key)
     except tailor.TailorError as e:
         raise ToolError(str(e)) from None
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(idempotent=True))
+def draft_followup(
+    key: Key,
+    thanks: Annotated[bool, Field(description=(
+        "True for a thank-you after an interview or call; false (the default) for a follow-up on the application, "
+        "about a week after it was sent."))] = False,
+    interviewers: Annotated[list[str] | None, Field(description=(
+        "Who to address, as the person named them. Left out, jobwatch takes a name from the next step or the note "
+        "(after 'call with', 'interviewer:', 'met'...)."))] = None,
+) -> dict:
+    """Draft the follow-up or thank-you email for an application, from what jobwatch keeps for it: stage and
+    round, the day applied, the next step and follow-up day, the note's dated lines and what was sent. Written by
+    jobwatch's local model, so none of it leaves this computer. Returns to (names), subject, body and warnings:
+    what to check before sending (a figure the tracker doesn't hold, a stock opener, a word about pay, no
+    interviewer's name); drafted is false, with the why in warnings, when no model could run. It only drafts:
+    nothing is sent or saved, and the person reads the email and sends it themselves. Offer it at the
+    application's follow-up day or after an interview."""
+    cfg, store = _open()
+    try:
+        return followup.draft(cfg, store, key, thanks=thanks, interviewers=interviewers)
+    except (KeyError, ValueError) as e:
+        raise ToolError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
     finally:
         store.close()
 
