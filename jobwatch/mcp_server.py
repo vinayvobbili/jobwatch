@@ -1003,6 +1003,11 @@ def get_interview_prep(
         "Also have jobwatch's own model (the chat's backend) write questions for this role from the posting's asks "
         "(role_questions), without answers. Only the posting goes to the model, and to Anthropic with the claude "
         "backend. Slow the first time, then kept; questions saved earlier are always returned."))] = False,
+    ranked: Annotated[bool, Field(description=(
+        "Also have the local model on this computer (never Claude, whatever the chat's backend) write likely "
+        "questions ranked most likely first, each technical, behavioral or why_us (ranked_questions). Only the "
+        "posting's asks go to it, and nothing leaves the machine. Slow the first time, then kept; ranked questions "
+        "saved earlier are always returned."))] = False,
 ) -> dict:
     """A prep sheet for a recruiter call or interview: stage and next step, each requirement and responsibility
     in the posting next to the closest resume line (quoted, never written), gaps to be honest about, what was
@@ -1013,7 +1018,10 @@ def get_interview_prep(
     (posted, posted_min, posted_max), the person's target (target, and target_max when it's a range) and how it
     sits against the range (target_note); and
     role_questions, questions for this role written from the posting's asks (questions_note says where they came
-    from; empty: expect's generic questions stand). The person's private pay floor is never returned here
+    from; empty: expect's generic questions stand), and ranked_questions, likely questions best first
+    ([{rank, question, kind (technical, behavioral or why_us), ask (the posting line it probes, or empty),
+    likelihood 1-5}], ranked_note says where they came from): use them to seed practice, and say they come from the
+    posting alone. The person's private pay floor is never returned here
     (pay.floor_withheld says one is set): don't ask for it or guess it. With draft_answers, drafted holds the
     drafted questions and draft_note how they were made, or why there are none. practised holds the answers the
     person kept from mock interviews (jobwatch ask --job KEY --mock): question, answer as they said it, and
@@ -1024,7 +1032,8 @@ def get_interview_prep(
     get_application_package give the raw pieces."""
     cfg, store = _open()
     try:
-        sheet = prep.without_floor(prep.build(cfg, store, key, draft=draft_answers, questions=role_questions))
+        sheet = prep.without_floor(prep.build(cfg, store, key, draft=draft_answers, questions=role_questions,
+                                            ranked=ranked))
         return {**prep.to_dict(sheet), "story_gaps": storyfind.gaps(sheet), "markdown": prep.markdown(sheet)}
     finally:
         store.close()

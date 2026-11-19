@@ -243,19 +243,21 @@ def draft(cfg: Config, store: Store, key: str, ask_lines: list[tuple[str, str]],
 
 
 def _complete(cfg: Config, store: Store, key: str, system: str, messages: list[dict],
-              generate: bool = True) -> tuple[str | None, str, bool, str]:
+              generate: bool = True, backend: str = "") -> tuple[str | None, str, bool, str]:
     """(the model's reply, its cache key, whether it was saved earlier, "") or (None, key, False, why not).
-    Never raises for the model's sake. Without generate, only a saved reply is read and the model isn't called."""
+    Never raises for the model's sake. Without generate, only a saved reply is read and the model isn't called.
+    backend: ask this one instead of the chat's (questions.py asks only the local model)."""
     c = cfg.chat
-    inputs = inputs_id(c.backend, c.model, system, messages)
+    backend = backend or c.backend
+    inputs = inputs_id(backend, c.model, system, messages)
     reply = store.draft(key, inputs)
     if reply is not None:
         return reply, inputs, True, ""
     if not generate:
         return None, inputs, False, ""
     try:
-        chat.check(c.backend, c.keychain, c.key_command)
-        reply = "".join(p for p in chat.reply(c.backend, system, messages, model=c.model,
+        chat.check(backend, c.keychain, c.key_command)
+        reply = "".join(p for p in chat.reply(backend, system, messages, model=c.model,
                                               max_tokens=cfg.prep.max_tokens) if isinstance(p, str))
     except chat.ChatUnavailable as e:
         return None, inputs, False, f"Not drafted: {str(e).rstrip('.')}."

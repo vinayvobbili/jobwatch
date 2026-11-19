@@ -49,6 +49,7 @@ from . import (
     prep,
     profile,
     prune,
+    questions,
     quiet,
     referrals,
     rehearse,
@@ -1141,11 +1142,24 @@ def cmd_drill(args, cfg, store):
 def cmd_prep(args, cfg, store):
     if args.drill:
         return cmd_drill(args, cfg, store)
-    sheet = prep.build(cfg, store, args.key, draft=args.draft, questions=args.questions)
+    ranked = args.ranked or args.rehearse
+    sheet = prep.build(cfg, store, args.key, draft=args.draft, questions=args.questions, ranked=ranked)
     if args.draft:
         print(f"({sheet.draft_note})", file=sys.stderr)
     if args.questions and sheet.questions_note:
         print(f"({sheet.questions_note})", file=sys.stderr)
+    if ranked and sheet.ranked_note:
+        print(f"({sheet.ranked_note})", file=sys.stderr)
+    if args.rehearse:  # the ranked questions as a rehearsal page, to practise them out loud
+        cards = questions.cards(sheet)
+        if not cards:
+            raise SystemExit("jobwatch: no ranked questions to rehearse: " + (sheet.ranked_note or "none are saved"))
+        page = args.out or Path(tempfile.mkdtemp(prefix="jobwatch-")) / "rehearse.html"
+        out = rehearse.write_cards(f"{sheet.company}: {sheet.title}", cards, page, args.ui)
+        print(f"wrote {out}", file=sys.stderr)
+        if not args.no_open:
+            webbrowser.open(out.resolve().as_uri())
+        return
     if args.open:  # the browser needs a file to open; --out names it, otherwise it's a temp file
         out = args.out or Path(tempfile.mkdtemp(prefix="jobwatch-")) / "prep.html"
         _write(prep.html(sheet, cfg.theme, cfg.width), out)
@@ -1762,6 +1776,15 @@ def build_parser() -> argparse.ArgumentParser:
                    "outlines from your stories and resume only, with the chat's model (slow; kept for next time)")
     p.add_argument("--questions", action="store_true", help="also have the chat's model write questions for this "
                    "role from the posting's asks (no resume or stories are sent; kept for next time)")
+    p.add_argument("--ranked", action="store_true", help="also have the local model (never Claude: nothing "
+                   "leaves this computer) write likely questions, technical, behavioral and why-us, ranked most "
+                   "likely first for this stage; from the posting's asks only, kept for next time")
+    p.add_argument("--rehearse", action="store_true", help="with --ranked (implied): instead of the sheet, write "
+                   "a rehearsal page from the ranked questions (to -o, or a temp file) and open it; each answer "
+                   "side is your closest resume line, never written by a model")
+    p.add_argument("--no-open", action="store_true", help="with --rehearse: write the page without opening it")
+    p.add_argument("--ui", default=rehearse.UI, metavar="URL", help=f"with --rehearse: `jobwatch ui`'s address, which "
+                   f"the page's mic sends recordings to (default {rehearse.UI})")
     p.add_argument("-o", "--out", type=Path)
     p.add_argument("--drill", type=Path, metavar="OUT.mp4", help="make a drill video instead: each question asked, "
                    "a pause to answer it out loud, then the sheet's answer on screen while a second voice reads it "

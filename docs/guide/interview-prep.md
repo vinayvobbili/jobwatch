@@ -29,6 +29,23 @@ doesn't call the model, and a changed posting asks afresh. With no model, or not
 or interview questions stand and the sheet says why. `prep.role_questions(cfg, store, key)` returns them for
 anything else that wants them (such as a mock interview).
 
+**Ranked questions.** `jobwatch prep c1 --ranked` adds a "Likely questions, ranked" section: technical,
+behavioral and why-us questions, most likely first for the stage you are at (a first call leans to why-us and
+behavioral, interviews to technical), each marked with the line of the posting it probes. It is written by the
+local model only, never Claude, whatever the chat is set to, and from the posting's asks alone, so nothing leaves
+your computer. As with the questions above, a question with a number the posting doesn't contain, a repeat, or one
+of no kind is dropped, and the order is the code's, from the model's 1 to 5 likelihood for each. They are kept per
+posting, so the next open of the sheet shows them without asking again. To practise them out loud:
+
+```
+jobwatch prep c1 --ranked --rehearse        # writes a rehearsal page and opens it
+```
+
+The page is the one `jobwatch rehearse` makes: each question read aloud, a countdown, an optional recording. The
+answer side holds only what jobwatch already has, your closest resume line for the ask a question probes, the
+posting's own lines about the company for a why-us, or a nudge to pick a story of your own; no model writes your
+answers. MCP clients get them from `get_interview_prep(ranked=true)`, as `ranked_questions`.
+
 **Your pay floor stays on your computer.** Set `pay.target` and `pay.floor` (a yearly base, in the posting's
 currency) in the watchlist; the target may be a range (`target: 180000-210000`, or `target_max: 210000`), and
 the sheet says whether it sits below, inside, across or above the posted range. The sheet shows the floor labelled private. It is never put in a prompt for Claude:

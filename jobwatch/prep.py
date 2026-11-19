@@ -20,6 +20,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass, field, replace
 
 from . import drafts
+from . import questions as ranking
 from .config import Config
 from .learn import _fit, for_job
 from .models import Job
@@ -107,6 +108,10 @@ class Sheet:
     # asked for; none: expect's generic ones stand. questions_note says where they came from, or why there are none.
     role_questions: list[str] = field(default_factory=list)
     questions_note: str = ""
+    # Ranked, typed questions from the local model (see questions.py): [{rank, question, kind, ask, likelihood}],
+    # saved ones, or made when asked for with ranked. ranked_note says where they came from, or why there are none.
+    ranked_questions: list[dict] = field(default_factory=list)
+    ranked_note: str = ""
     brief: dict = field(default_factory=dict)            # the company, as the posting and your notes tell it
     pay: dict = field(default_factory=dict)              # the posted range, your target and your private floor
     # Asked for with draft (see drafts.check for each one's fields); none: expect's questions stand.
@@ -305,9 +310,12 @@ def role_questions(cfg: Config, store: Store, key: str, generate: bool = True) -
     return got or list(SCREEN_QUESTIONS if screen else INTERVIEW_QUESTIONS)
 
 
-def build(cfg: Config, store: Store, key: str, draft: bool = False, questions: bool = False) -> Sheet:
+def build(cfg: Config, store: Store, key: str, draft: bool = False, questions: bool = False,
+          ranked: bool = False) -> Sheet:
     """The sheet, rule-based and instant. questions: also have the chat's model write questions for this role
     from the posting's asks (saved ones are always read; with the claude backend the posting goes to Anthropic).
+    ranked: also have the local model (never Claude) write ranked, typed questions (questions.py; saved ones are
+    always read).
     draft: also ask it for role-specific questions with answers drafted from the stories and resume (slower, and
     with the claude backend they're sent to Anthropic too)."""
     job, rec = store.find(key)
@@ -332,6 +340,8 @@ def build(cfg: Config, store: Store, key: str, draft: bool = False, questions: b
     else:
         written, questions_note = drafts.questions(cfg, store, job.key, ask_lines, screen, posting.to_text(), pay,
                                                    generate=questions)
+    ranked_list, ranked_note = ranking.ranked(cfg, store, job.key, ask_lines, screen, posting.to_text(),
+                                              generate=ranked)
     data = pkg.data()
     return Sheet(key=job.key, company=job.display_company, title=job.title, status=stage, url=posting.url or job.url,
                  posting_key=posting.key if posting is not job else "",
@@ -341,6 +351,7 @@ def build(cfg: Config, store: Store, key: str, draft: bool = False, questions: b
                  sent={"files": [f["name"] for f in data["files"]], "answers": data["answers"], "note": data["note"]},
                  expect=expect, ask=ask, posting=posting.to_text(), drafted=drafted, draft_note=draft_note,
                  role_questions=written, questions_note=questions_note, pay=pay,
+                 ranked_questions=ranked_list, ranked_note=ranked_note,
                  brief=company_brief(cfg, job, posting, rec), practised=pkg.practised())
 
 
@@ -436,6 +447,11 @@ def markdown(s: Sheet) -> str:
     else:
         out += ["", "## They'll likely ask"] + [f"_{n}_" for n in (s.draft_note, s.questions_note) if n] \
             + [f"- {q}" for q in s.role_questions or s.expect]
+    if s.ranked_questions or s.ranked_note:
+        out += ["", "## Likely questions, ranked"] + ([f"_{s.ranked_note}_"] if s.ranked_note else [])
+        for q in s.ranked_questions:
+            probes = f" (probes: {q['ask']})" if q["ask"] else ""
+            out.append(f"{q['rank']}. **{ranking.LABELS[q['kind']]}** {q['question']}{probes}")
     if s.practised:
         out += ["", "## Practised answers", "Tightened in mock interviews, from what you said and your stories."]
         for p in s.practised:
@@ -628,6 +644,17 @@ def _expect_part(s: Sheet):
     return "Likely questions for this role, with drafted answers", note + f'<div class="cards">{"".join(cards)}</div>'
 
 
+def _ranked_part(s: Sheet):
+    if not (s.ranked_questions or s.ranked_note):
+        return None
+    note = f'<p class="small muted">{_e(s.ranked_note)}</p>' if s.ranked_note else ""
+    cards = "".join(
+        f'<div class="card"><div class="kind">{q["rank"]}. {_e(ranking.LABELS[q["kind"]])}'
+        + (f" · probes: {_e(q['ask'])}" if q["ask"] else "") + f'</div><div><b>{_e(q["question"])}</b></div></div>'
+        for q in s.ranked_questions)
+    return "Likely questions, ranked", note + f'<div class="cards">{cards}</div>'
+
+
 def _practised_part(s: Sheet):
     if s.practised:
         cards = "".join(f'<div class="card"><div><b>{_e(p["question"])}</b></div>'
@@ -680,7 +707,8 @@ def html(s: Sheet, theme: str = "system", width: str = "standard") -> str:
             if s.posting_key else "") + "</span>")
     head = [f"<h1>Prep: {_e(s.title)}, {_e(s.company)}</h1>", f'<div class="meta">{"".join(meta)}</div>', _tiles(s)]
     parts = [p for p in (_notes_part(s), _fit_part(s), _brief_part(s), _matches_part(s), _gaps_part(s),
-                         _pay_part(s), _sent_part(s), _expect_part(s), _practised_part(s), _ask_part(s)) if p]
+                         _pay_part(s), _sent_part(s), _expect_part(s), _ranked_part(s), _practised_part(s),
+                         _ask_part(s)) if p]
     full = {"Your notes, newest first", "What you sent"}  # long text reads better across the page
     sections = "\n".join(
         (f'<section{" class=wide" if h in full or not h or b.count("card") > 2 else ""}><h2>{_e(h)}</h2>{b}</section>'

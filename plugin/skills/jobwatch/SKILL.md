@@ -75,7 +75,9 @@ call `mark_job` only for the ones the user confirms.
 
 `get_interview_prep` puts the posting, the resume and what was sent on one sheet, with `story_gaps`: questions
 a story from the user's own past would answer. Ask the user about one, and keep what they confirm with
-`save_story`. `get_application_package` reads back exactly what was sent.
+`save_story`. `ranked=true` adds ranked questions: likely questions, most likely first, each technical,
+behavioral or why-us, from the posting alone; use them to seed practice. `get_application_package` reads back
+exactly what was sent.
 
 ## Other tools
 

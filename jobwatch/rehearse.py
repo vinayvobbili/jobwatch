@@ -184,6 +184,12 @@ def write(sheet: Path, out: Path | None = None, ui: str = UI) -> Path:
     if not cards:
         raise ValueError(f"no questions with answers in {sheet.name}: it needs a table with a Question and an "
                          "Answer column, or question headings (<h3 class=\"q\">) with a say block")
-    out = Path(out).expanduser() if out else sheet.with_name(f"{sheet.stem}-rehearse.html")
-    out.write_text(build(title or sheet.stem, cards, ui), encoding="utf-8")
+    return write_cards(title or sheet.stem, cards, Path(out).expanduser() if out else
+                       sheet.with_name(f"{sheet.stem}-rehearse.html"), ui)
+
+
+def write_cards(title: str, cards: list[drill.Card], out: Path, ui: str = UI) -> Path:
+    """Write the rehearsal page for cards made in code (`jobwatch prep KEY --ranked --rehearse`) to out."""
+    out = Path(out)
+    out.write_text(build(title, cards, ui), encoding="utf-8")
     return out
