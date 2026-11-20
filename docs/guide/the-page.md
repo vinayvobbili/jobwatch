@@ -49,6 +49,12 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
   to watch**, at the side, lists
   companies whose jobs keep coming in from alerts or Hacker News posts while you don't watch them (see
   [Companies to watch](applying.md#companies-to-watch)).
+  The **Companies** list beside Today has a checkbox on each company: untick one to leave its jobs out from now on
+  (it waits unticked at the bottom of the list, and each change has Undo). Its box filters the list as you type,
+  and **All** and **None** tick or untick every company shown, or just the ones that match what you typed.
+  **Details** on a job opens its full posting, whose **Stage** picker moves it to any stage (queued, applied,
+  screening, interviewing, offer, rejected, withdrawn, skipped or snoozed) with an Undo, so a rejection or a
+  withdrawal is one pick away.
 - **Queue:** your short list. Apply on the company's site, then press **I applied**. The pace line counts
   it: once you reach your 3 for the day it says so, and at 5 that the rest can wait until tomorrow. It's
   advice; nothing is ever blocked.
@@ -68,6 +74,9 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
   Mac, and Today says so in red if the newest archive is more than 2 days old. `--also PATH` keeps another file or
   folder in the archive, such as one your private repo ignores. `jobwatch backup --verify` unpacks the newest archive
   somewhere temporary and opens what's in it. To restore, stop the page and unpack the newest archive into that folder.
+  `jobwatch prune` shrinks a big database: it lists old closed jobs nobody acted on (those it would delete) and
+  old open ones (whose posting text it would drop), and `--apply` does it after copying the database first (`--days`
+  sets how old, 30 by default). A job you queued, applied to, scored, noted or kept anything for is never touched.
 - **Settings:** the whole watchlist, one card per part, with a bar that jumps to each card and keeps Save in
   reach: the companies you watch (with each one's name and careers link) and how often to check them; filters
   (titles, places, departments, pay, age, minimum fit score, and warnings to flag in a posting); keywords;

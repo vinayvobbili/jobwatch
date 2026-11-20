@@ -38,6 +38,9 @@ filters:
   require_salary: false                   # true: drop postings without pay
   max_age_days: 30                        # for jobs added by hand, from alerts, HN or a VC board: a board's are open while listed
   min_fit: 70                             # hide jobs whose fit score is below this; unscored jobs still show
+  nearby_offices: ["Initech"]             # companies with an office near you: their jobs anywhere show, with a
+                                          # warning to ask about that office (`jobwatch offices` finds them)
+  known_offices: ["Globex"]               # ones you know have a tech office near you: never doubted
   flags:                                  # not filters: a warning on queued jobs whose posting says this
     "active (TS|top secret)": clearance
     "on-?site 5 days": on-site

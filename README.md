@@ -87,9 +87,8 @@ Fit 78/100, must-haves 4/6 (scored by Qwen3.5-9B · local)
 
 - About 2,400 tests in 121 modules, none of which touch the network (a fixture fails any test that tries).
 - CI runs ruff and the whole suite on Python 3.10 and 3.13 for every push; the same checks run before every push.
-- Fit scoring was checked on a small eval of 29 expected verdicts. The suggested 16 GB model (Qwen3.5-9B, 4-bit)
-  agreed on 28, a 6-bit build on 27 and Gemma 4 12B on 29, at 27, 36 and 42 seconds a call: within noise. Only the
-  16 GB row of the model table was tested.
+- Fit scoring was checked on a small eval of 29 expected verdicts: the suggested 16 GB model (Qwen3.5-9B, 4-bit)
+  agreed on 28, Gemma 4 12B on 29. Only the 16 GB row of the model table was tested.
   [Fit scores](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/fit-scores.md)
 
 ## Design in 5 lines
@@ -107,10 +106,8 @@ Fit 78/100, must-haves 4/6 (scored by Qwen3.5-9B · local)
 - It reads the boards in the table below. A company on any other system isn't watched; add its jobs through
   job-alert emails, a link or pasted text. It doesn't scrape LinkedIn or Indeed.
 - It finds and ranks. It never applies; you answer the forms and press Submit.
-- Fit scores are an LLM's judgment, checked against your resume's text, not against how a recruiter reads it. The
-  eval is small (29 verdicts, one model row).
-- The always-on service (`jobwatch service install`) covers macOS (launchd), Linux (a systemd user unit) and Windows
-  (Task Scheduler). Linux needs systemd; elsewhere run `jobwatch ui` when you want the page.
+- Fit scores are an LLM's judgment, checked against your resume's text, not against how a recruiter reads it.
+- The always-on service needs launchd, systemd or Task Scheduler; elsewhere run `jobwatch ui` when you want the page.
 
 ## What it does
 
@@ -120,9 +117,11 @@ Fit 78/100, must-haves 4/6 (scored by Qwen3.5-9B · local)
 | **Scores fit** | Your resume against each posting: must-haves met, gaps, a score out of 100. On the Claude API, Antigravity, or this Mac. [Fit scores](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/fit-scores.md) |
 | **Keeps a short queue** | Today's picks, a queue to apply from, job-alert emails and status emails read for you, reposts caught. [Applying](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/applying.md) |
 | **Tailors a resume per job** | With [resume-kit](https://github.com/vinayvobbili/resume-kit) installed, one button on a queued job builds a resume from your confirmed facts and keeps it with the application for Apply and the extension to attach. [Tailoring](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/applying.md#tailoring-a-resume-to-a-job) |
+| **Drafts the paperwork** | An ATS keyword check, cover letters, follow-up emails; a local model writes them and nothing is sent. [ATS](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/applying.md#checking-a-resume-for-ats-keywords) · [Cover letters](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/applying.md#drafting-a-cover-letter) · [Follow-ups](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/tracking.md#follow-up-and-thank-you-drafts) |
+| **Fills forms for review** | A [Chrome extension](https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi) fills from your details and earlier answers; you press Submit. [Filling forms](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/applying.md#filling-application-forms) |
 | **Tracks applications** | Every stage, the next step, follow-ups for the ones gone quiet, a calendar feed. [Tracking](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/tracking.md) |
-| **Preps interviews** | A prep sheet per interview, answers drafted from your own stories, a mock interview, a drill video. [Interview prep](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/interview-prep.md) |
-| **Compares offers** | Pay, career value and company health side by side. [Comps](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/comps.md) |
+| **Preps interviews** | A prep sheet per interview, answers drafted from your own stories, a mock interview, a drill video, ranked likely questions. [Interview prep](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/interview-prep.md) |
+| **Compares offers** | Pay, career value and company health side by side, and an estimate where a posting lists no pay. [Comps](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/comps.md) |
 | **Shows who you know** | Your LinkedIn connections at each company, the people you actually talk to first. [Who you know](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/contacts.md) |
 | **Answers questions** | A chat about today's jobs and each posting, and the skills your matches keep asking for. [Chat](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/chat.md) · [Skills](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/skills.md) |
 | **Works with assistants** | An MCP server and an agent skill, so Claude can run your search with you. [MCP server](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/mcp.md) |
@@ -132,8 +131,7 @@ or Antigravity get the posting and your resume (and your stories, for drafted an
 
 ## Tutorials
 
-Seven videos of two minutes or less, made from made-up data. If one stops after a second or two (GitHub's video
-links last five minutes), reload the page.
+Seven videos of two minutes or less, made from made-up data. If one stops early, reload the page.
 
 - [Getting started](https://github.com/user-attachments/assets/f95f85df-406f-4ede-b84c-59569d1a586a): install, the four onboarding steps, Today.
 - [Your daily routine](https://github.com/user-attachments/assets/8653c4ca-a79d-4135-9be1-51ba3c9fccf6): picks, a job's details, the queue, "I applied", the prep sheet.
@@ -145,14 +143,9 @@ links last five minutes), reload the page.
 
 ## Why it doesn't auto-apply
 
-Tools that auto-apply to hundreds of jobs make the process worse for everyone and rarely work:
-
-- Recruiters recognize mass applications.
-- Some companies cap how many roles one person can apply to.
-- Application forms ask legal questions (work authorization, export control, signatures) that you answer
-  yourself.
-
-jobwatch makes sure you never miss a role worth applying to, and spends your time on those.
+Tools that auto-apply to hundreds of jobs rarely work: recruiters recognize mass applications, some companies cap
+how many roles one person can apply to, and forms ask legal questions (work authorization, export control,
+signatures) that you answer yourself. jobwatch makes sure you never miss a role worth applying to.
 [Getting more interviews](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/more-interviews.md)
 has what moves an application from the pile to a recruiter's call.
 

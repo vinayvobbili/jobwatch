@@ -187,6 +187,15 @@ then the extension fills the rest from what `jobwatch ui` knows:
 
 It fills only fields that are still empty, never submits for you, and talks only to jobwatch on your computer.
 
+Install it from the [Chrome Web Store](https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi).
+Clicking its icon opens a review panel in Chrome's side panel. In an installed web app's window (a PWA, such as
+LinkedIn installed as an app), which has no side panel, the same panel opens as a small popup window beside the app.
+The extension's [README](https://github.com/vinayvobbili/jobwatch/blob/main/chrome-extension/README.md) covers
+the rest of what it does: reading the job lists you have open, and **Draft reply** for a recruiter's LinkedIn message.
+
+On the page, **Apply ↗** on a job's card opens its application form in a new tab (with the extension, click its icon
+there; it marks the job applied when you submit), and **Tailor resume** builds the resume to attach, as above.
+
 To set it up, copy the token from **Settings > Applying > Browser extension** into the extension's options.
 **Your details** on the same tab (name, contact, links, work authorization; the voluntary self-identification
 questions are "decline" unless you say otherwise) fill any of those fields your other autofill left empty. The
@@ -203,6 +212,31 @@ applicant:
 ```
 
 A salary question is offered with that number but never ticked for you: tick it when you want the form to say it.
+
+## Companies with an office near you
+
+A company's job in another city is out of reach, unless it also has an office near you and the recruiter lets you work
+from it. `jobwatch offices` finds those companies: any one that has posted a tech job (IT, security, automation, AI,
+software; not field sales or a customer-facing role) in one of your `filters.locations` places that isn't
+"remote", open or closed, has an office there. It lists the ones found and not counted yet, with where and how many
+jobs:
+
+```
+jobwatch offices                         # the companies found, and the counted ones with no tech job seen there
+jobwatch offices --add Initech           # count one (repeatable); --add-all counts every company listed
+jobwatch offices --known Globex          # count one you know has a tech office near you, and never doubt it
+jobwatch offices --drop Initech          # stop counting one
+jobwatch offices --jobs Initech          # what that company has posted in your places, open or closed
+jobwatch offices --remote-offers         # open jobs outside your places that show only because the posting
+                                         # offers remote by arrangement ("unless designated remote")
+```
+
+A counted company is kept in `filters.nearby_offices` (**Companies with an office near you**, under the
+filters' **Places** in Settings). Its jobs anywhere in your country pass the place filter, and the queue warns you to ask the recruiter in
+the phone screen about working from the office near you. `--known` also fills `filters.known_offices`, for the
+company you know has a tech office there even though jobwatch has seen only some of its postings. Each change
+rewrites the watchlist and keeps the old file as `.bak`. With `suggestions.auto_watch` on, a counted company's board is
+watched without your adding it (see [Companies to watch](#companies-to-watch)).
 
 ## Job-alert emails
 
