@@ -180,6 +180,9 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
                                         f"there about this one instead of applying cold, or {later}"}
     met, total = (fit.get("must_haves_met", 0), fit.get("must_haves_total", 0)) if fit else (0, 0)
     if total and met * 4 < total * 3:
+        if score is not None and score >= STRONG_FIT:  # a caveat that agrees with the score, not a contradiction
+            return {"call": "stretch", "text": f"{go}: a strong score ({score}/100), but only {met} of {total} "
+                                               "must-haves are met, so check the gaps first."}
         return {"call": "stretch", "text": f"{go}, but it's a stretch: it meets {met} of {total} must-haves."}
     if score is not None and score < STRONG_FIT:
         return {"call": "stretch", "text": f"{go}, but it's a stretch: a fair fit ({score}/100)."}

@@ -118,8 +118,15 @@ def test_the_bottom_line_says_apply_stretch_hold_or_skip(watchlist):
     assert call(entry(job(**paid), fit(88, 4, 4), status="queued"))["text"].startswith("Apply: the posted pay")
     assert call(entry(job(**paid), fit(80, 1, 4))) == {  # most must-haves missing: advise says skip
         "call": "skip", "text": "Skip it: it meets 1 of 4 must-haves."}
+    # Missing must-haves with a strong score: a caveat that agrees with the score, not "a stretch" against it.
     assert call(entry(job(**paid), fit(80, 5, 7))) == {
-        "call": "stretch", "text": "Queue it, but it's a stretch: it meets 5 of 7 must-haves."}
+        "call": "stretch", "text": "Queue it: a strong score (80/100), but only 5 of 7 must-haves are met, so "
+                                   "check the gaps first."}
+    assert call(entry(job(**paid), fit(84, 7, 10), status="queued"))["text"] == \
+        "Apply: a strong score (84/100), but only 7 of 10 must-haves are met, so check the gaps first."
+    # A fair score with missing must-haves: the stretch wording doesn't contradict anything.
+    assert call(entry(job(**paid), fit(68, 7, 10))) == {
+        "call": "stretch", "text": "Queue it, but it's a stretch: it meets 7 of 10 must-haves."}
     assert call(entry(job(**paid), fit(68, 4, 4), status="queued"))["text"] == \
         "Apply, but it's a stretch: a fair fit (68/100)."
     assert call(entry(job(**paid), fit(55, 4, 4)))["text"] == "Skip it: not a close match (55/100)."
