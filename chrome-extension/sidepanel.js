@@ -184,8 +184,9 @@
     'import-list': ['Read the jobs on this list', () => importList()],
     posting: [null, () => savePosting()],
   };
-  const KICKER = { form: 'scan', thread: 'reply', list: 'import-list', posting: 'posting', idle: 'idle' };
+  const KICKER = { form: 'scan', thread: 'reply', list: 'import-list', posting: 'posting', bubble: 'reply', idle: 'idle' };
   const WHY = {
+    bubble: '',
     form: 'Fields that already have a value start unticked. You review every field before anything is filled.',
     thread: 'jobwatch reads the open conversation and drafts a reply. It never presses Send.',
     list: 'Every page of the list is scrolled and read; jobwatch tracks the jobs it did not have.',
@@ -199,7 +200,7 @@
     const offered = action && (ctx.primary === 'scan' || features.includes(ctx.primary === 'reply' ? 'reply' : ctx.primary === 'posting' ? 'posting' : 'import-list'));
     const label = ctx.primary === 'posting'
       ? POSTING[tab && JW.postingMode(tab.url) === 'linkedin' ? 'linkedin' : 'site'] : action && action[0];
-    const kicker = h('div', { class: 'kicker' }, icon(KICKER[ctx.kind]).firstChild, { form: 'Application', thread: 'Message', list: 'Jobs', posting: 'Posting', idle: 'Idle' }[ctx.kind]);
+    const kicker = h('div', { class: 'kicker' }, icon(KICKER[ctx.kind]).firstChild, { form: 'Application', thread: 'Message', list: 'Jobs', posting: 'Posting', bubble: 'Message', idle: 'Idle' }[ctx.kind]);
     return h('div', { id: 'lead', class: `lead ${ctx.kind}` }, kicker,
       h('h2', { textContent: ctx.heading }),
       ctx.detail ? h('div', { class: 'detail', textContent: ctx.detail }) : null,

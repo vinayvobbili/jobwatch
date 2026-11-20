@@ -373,6 +373,7 @@ def test_a_form_is_replaced_when_most_of_its_fields_are_gone(tmp_path):
     assert got == [True, True, False, False, False, False]
 
 
+BUBBLE_HINT = "Have a recruiter's message open in the bubble? Draft reply reads it."
 CONTEXT_CASES = [
     # (address, tab title, kind, heading, detail, primary)
     ("https://job-boards.greenhouse.io/initech/jobs/4012345", "Job Application for Platform Engineer at Initech", "form", "Application form", "Initech: Platform Engineer", "scan"),
@@ -389,7 +390,8 @@ CONTEXT_CASES = [
     ("https://jobs.lever.co/initech/0a1b2c3d", "", "posting", "Job posting", "Initech", "posting"),
     ("https://careers.globex.example/jobs/senior-engineer", "", "posting", "Job posting", "", "posting"),
     ("https://www.example.com/", "Example", "idle", "Nothing to do on this page", "", ""),
-    ("https://www.linkedin.com/feed/", "Feed | LinkedIn", "idle", "Nothing to do on this page", "", ""),
+    ("https://www.linkedin.com/feed/", "Feed | LinkedIn", "bubble", "LinkedIn", BUBBLE_HINT, ""),
+    ("https://www.linkedin.com/in/dana-whitfield/", "Dana Whitfield | LinkedIn", "bubble", "LinkedIn", BUBBLE_HINT, ""),
     ("chrome://extensions", "", "idle", "Nothing to do on this page", "", ""),
     ("", "", "idle", "Nothing to do on this page", "", ""),
 ]

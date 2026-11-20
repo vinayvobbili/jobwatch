@@ -87,7 +87,7 @@
       }
       .lead::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: linear-gradient(90deg, var(--k), var(--accent-2)); }
       .lead::after { content: ""; position: absolute; width: 190px; height: 190px; right: -70px; top: -90px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--k) 26%, transparent), transparent 68%); pointer-events: none; }
-      .lead.thread { --k: var(--g-msg); } .lead.list { --k: var(--g-jobs); } .lead.posting { --k: var(--g-jobs); }
+      .lead.thread, .lead.bubble { --k: var(--g-msg); } .lead.list { --k: var(--g-jobs); } .lead.posting { --k: var(--g-jobs); }
       .lead.idle { --k: var(--muted); box-shadow: none; }
       .lead.idle::before { opacity: .35; } .lead.idle::after { display: none; }
       .kicker { display: inline-flex; align-items: center; gap: 6px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--k); }

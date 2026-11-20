@@ -1,6 +1,6 @@
 # Chrome Web Store Listing: jobwatch: Application Filler
 
-> Last Updated: 2026-11-17
+> Last Updated: 2026-11-20
 
 Live: https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi
 (item ID `abackmpdpfflgiaccgfkababjplgolfi`)
@@ -326,6 +326,11 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
   tab, focused instead of duplicated, closed with its tab; ordinary windows keep the side panel. `panelHome` and
   `panelBounds` in `logic.js` decide; no new permission. Checked in a real PWA window (LinkedIn's) on 2026-11-19 after
   reloading the unpacked extension: the click opens the popup panel.
+
+- 0.12.0 told a LinkedIn page that is not Messaging (the feed, a profile) "IDLE / Nothing to do on this page" even
+  though Draft reply works from a conversation open in the message bubble. Fixed for the next version (not yet bumped
+  or submitted): `pageContext` gives those pages a "LinkedIn" lead card (kind `bubble`) that says "Have a recruiter's
+  message open in the bubble? Draft reply reads it." with the Draft reply tile lit. Panel text only; no new permission.
 
 - The 0.10.0 content script on LinkedIn and Indeed is a new host access (adds a "broad host access" review and
   possible in-depth review). The paste blocks above are the 0.10.0 answers; the 0.9.0 claim "reads nothing from

@@ -443,7 +443,7 @@
   /**
    * What the side panel leads with for a tab: { kind, heading, detail, primary, matches }.
    * `kind`: 'form' (an application form), 'thread' (a LinkedIn conversation), 'list' (LinkedIn or Indeed jobs), 'posting'
-   * (a job posting), else 'idle'. `primary` is the id of the one action to lead with ('' when idle), `matches` the ids of the
+   * (a job posting), 'bubble' (another LinkedIn page, where a conversation may be open in the message bubble), else 'idle'. `primary` is the id of the one action to lead with ('' when idle), `matches` the ids of the
    * actions that suit the page (the others are shown dimmed, not hidden). Only the address says which; the title is read for
    * a name, and a company is read from the address when it has one.
    */
@@ -475,7 +475,9 @@
     if (postingMode(url) === 'site' && ((site && site.posting && site.posting.test(u.pathname)) || (!site && POSTING_PATH.test(u.pathname)))) {
       return { kind: 'posting', heading: 'Job posting', detail: site ? titleCase(String(site.company(u) || '')) : '', primary: 'posting', matches: ['posting'] };
     }
-    return { ...idle, matches: reply };
+    // Any other LinkedIn page (the feed, a profile) can have a conversation open in the message bubble, which Draft reply reads.
+    if (reply.length) return { kind: 'bubble', heading: 'LinkedIn', detail: 'Have a recruiter\'s message open in the bubble? Draft reply reads it.', primary: '', matches: reply };
+    return idle;
   }
 
   /** The theme the side panel and settings page apply: 'light', 'dark', or 'system' (the default, for anything else). */
