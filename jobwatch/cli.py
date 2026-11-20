@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 
@@ -32,6 +33,7 @@ from . import (
     comps,
     config,
     cover,
+    credit,
     drill,
     dupes,
     estimate,
@@ -66,7 +68,7 @@ from . import (
     suggest,
     tailor,
 )
-from .config import BACKENDS, ConfigError, duration, fallback_entry
+from .config import BACKENDS, ConfigError, credit_entry, duration, fallback_entry
 from .filters import KINDS, rejection, staffing_firm
 from .rounds import ROUNDS
 from .score import ScoringUnavailable, calls_at_once, check_prompts, prompt_info, resume_id, scorer_label
@@ -74,6 +76,7 @@ from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, S
 from .watch import (
     CHECKED,
     MANY_ROLES,
+    _step,
     build_digest,
     check_daily,
     check_postings,
@@ -389,6 +392,64 @@ def _cost(cfg, store):
         print(f"  {r['day']}  {r['model']}{' (batch)' if r['batch'] else ''}: {plural(r['jobs'], 'job')}, "
               f"{r['input_tokens']:,} in, {r['output_tokens']:,} out, {r['cache_read_tokens']:,} cache read  "
               + (f"${usd:.2f}" if usd is not None else "not priced"))
+
+
+def cmd_credit(args, cfg, store):
+    """`credit`: the dated Claude entry of scoring.fallback (an API credit that ends, see credit.py): its end day,
+    what the ledger says it has spent against the caps, and whether it would score now. --test scores the one
+    unscored job with the shortest posting through it alone (no other scorer is tried), to see a charge arrive."""
+    entry = credit_entry(args.entry, "--entry") if args.entry else next(
+        (e for e in cfg.score_fallback if credit.is_dated(e)), "")
+    if not entry:
+        print("No dated Claude entry in scoring.fallback (claude:claude-sonnet-5-5 until YYYY-MM-DD): the credit "
+              "step is off. `--entry 'claude:MODEL until YYYY-MM-DD'` shows or tests one that isn't in the watchlist.")
+        return
+    cfg = replace(cfg, score_fallback=(entry,))
+    s = credit.status(cfg, store)[0]
+    print(f"{s['entry']}: " + (f"skipped, {s['skipped']}" if s["skipped"] else "scoring"))
+    print(f"  spent today ${s['spent_today']:.4f} of ${s['daily_cap']:.2f}, in all ${s['spent_total']:.4f} of "
+          f"${s['total_cap']:.2f} (Eastern days, list price)")
+    for r in store.credit_ledger():
+        print(f"  {r['day']}  {r['model']}: {plural(r['jobs'], 'job')}, {r['input_tokens']:,} in, "
+              f"{r['output_tokens']:,} out, {r['cache_write_tokens']:,} cache write, "
+              f"{r['cache_read_tokens']:,} cache read, ${r['usd']:.4f}")
+    if not args.test:
+        return
+    if s["skipped"]:
+        raise SystemExit(f"Not testing: {s['skipped']}")
+    if not (cfg.resume and cfg.resume.is_file()):
+        raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
+    if args.job:  # a job `unscored` leaves to the button (same role scored already): this one, by its key
+        job = store.job(args.job)
+        rid = resume_id(cfg.resume, cfg.prompts)
+        if job is None or not job.description.strip():
+            raise SystemExit(f"{args.job}: no such job, or it has no posting text to score")
+        if store.score(job.key, rid):
+            raise SystemExit(f"{args.job} already has a fit score: nothing to test with.")
+        pick = SimpleNamespace(job=job, keys=[job.key])
+    else:
+        todo = unscored(cfg, store)
+        if not todo:
+            raise SystemExit("Every job on Today has a fit score: nothing to test with.")
+        pick = min(todo, key=lambda e: len(e.job.description))
+    _, model = fallback_entry(entry)
+    print(f"Testing with {pick.job.display_company}: {pick.job.title} ({len(pick.job.description):,} characters), "
+          f"through {model} only", file=sys.stderr)
+    try:
+        results, errors = _step(cfg, store, [pick.job], "claude", model,
+                                on_usage=lambda u: credit.record(store, u))
+    except ScoringUnavailable as e:
+        raise SystemExit(f"Claude couldn't score: {e}") from None
+    if errors:
+        key, err = next(iter(errors.items()))
+        raise SystemExit(f"Claude failed on {key}: {err[:300]}")
+    rid = resume_id(cfg.resume, cfg.prompts)
+    fit = results[pick.job.key]
+    for key in pick.keys:
+        store.save_score(key, rid, fit)
+    after = credit.status(cfg, store)[0]
+    print(f"Scored {pick.job.key}: {fit['score']:.0f}/100 by {fit['scored_by']}")
+    print(f"  this call ${after['spent_total'] - s['spent_total']:.4f}; ledger now ${after['spent_total']:.4f} in all")
 
 
 def cmd_unscored(args, cfg, store):
@@ -1527,6 +1588,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help="what scoring has used and cost (as Settings shows it: jobs per backend, the Claude API's "
                    "dollars this month, the recorded runs by day) and stop")
     p.set_defaults(func=cmd_score)
+
+    p = sub.add_parser("credit", help="the dated Claude entry of scoring.fallback (an API credit that ends): its "
+                       "end day, spend against the caps, and --test, one real call through it")
+    p.add_argument("--entry", default=None, metavar="'claude:MODEL until YYYY-MM-DD'",
+                   help="look at or test this entry instead of the watchlist's (it is not saved)")
+    p.add_argument("--test", action="store_true",
+                   help="score the one unscored job with the shortest posting through it alone, and show the "
+                   "ledger's charge for the call (saved as that job's score)")
+    p.add_argument("--job", default=None, metavar="KEY",
+                   help="with --test: this job (a key from `unscored`, which lists jobs left to the Score fit "
+                   "button too) instead of the shortest posting")
+    p.set_defaults(func=cmd_credit)
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")
     p.add_argument("--no-text", action="store_true", help="only the jobs waiting for their posting's text, each with "

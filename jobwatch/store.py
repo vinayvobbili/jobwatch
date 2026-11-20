@@ -115,6 +115,17 @@ CREATE TABLE IF NOT EXISTS score_cost (
     cache_read_tokens INTEGER NOT NULL,
     PRIMARY KEY (day, backend, model, batch)
 );
+CREATE TABLE IF NOT EXISTS credit_spend (
+    day TEXT NOT NULL,
+    model TEXT NOT NULL,
+    jobs INTEGER NOT NULL,
+    input_tokens INTEGER NOT NULL,
+    output_tokens INTEGER NOT NULL,
+    cache_write_tokens INTEGER NOT NULL,
+    cache_read_tokens INTEGER NOT NULL,
+    usd REAL NOT NULL,
+    PRIMARY KEY (day, model)
+);
 CREATE TABLE IF NOT EXISTS pay_pages (
     url TEXT PRIMARY KEY,
     body TEXT NOT NULL,
@@ -997,6 +1008,32 @@ class Store:
                 "cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens",
                 ((day or date.today()).isoformat(), backend, model, int(batch), jobs, input_tokens, output_tokens,
                  cache_write_tokens, cache_read_tokens))
+
+    def add_credit_spend(self, day: date, model: str, jobs: int, input_tokens: int, output_tokens: int,
+                         cache_write_tokens: int, cache_read_tokens: int, usd: float):
+        """What a dated Claude entry in scoring.fallback spent (see credit.py): tokens from the API replies and the
+        dollars they come to at list price, by Eastern day and model. The caps are checked against this."""
+        with self.db:
+            self.db.execute(
+                "INSERT INTO credit_spend (day, model, jobs, input_tokens, output_tokens, cache_write_tokens, "
+                "cache_read_tokens, usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (day, model) DO UPDATE SET "
+                "jobs = jobs + excluded.jobs, input_tokens = input_tokens + excluded.input_tokens, "
+                "output_tokens = output_tokens + excluded.output_tokens, "
+                "cache_write_tokens = cache_write_tokens + excluded.cache_write_tokens, "
+                "cache_read_tokens = cache_read_tokens + excluded.cache_read_tokens, usd = usd + excluded.usd",
+                (day.isoformat(), model, jobs, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
+                 usd))
+
+    def credit_spent(self, day: date) -> tuple[float, float]:
+        """(dollars spent on this day, dollars spent in all) from the credit ledger, across models."""
+        today = self.db.execute("SELECT COALESCE(SUM(usd), 0) AS n FROM credit_spend WHERE day=?",
+                                (day.isoformat(),)).fetchone()["n"]
+        total = self.db.execute("SELECT COALESCE(SUM(usd), 0) AS n FROM credit_spend").fetchone()["n"]
+        return float(today), float(total)
+
+    def credit_ledger(self) -> list[dict]:
+        """The credit ledger's rows, oldest day first."""
+        return [dict(r) for r in self.db.execute("SELECT * FROM credit_spend ORDER BY day, model")]
 
     def score_costs(self, since: date | None = None) -> list[dict]:
         """The recorded token usage (see add_score_cost) from this local day on (default: all of it)."""

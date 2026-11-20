@@ -46,7 +46,7 @@ def test_cost_is_tokens_times_the_price_and_half_for_a_batch():
     assert scorestats.cost_usd({**RUN, "batch": True}) == pytest.approx(1.5)
     cached = {**RUN, "input_tokens": 0, "output_tokens": 0, "cache_write_tokens": 1_000_000,
               "cache_read_tokens": 1_000_000}
-    assert scorestats.cost_usd(cached) == pytest.approx(2.5 + 0.2)
+    assert scorestats.cost_usd(cached) == pytest.approx(2.5 + 0.1)  # Sonnet 5.5's cache reads are $0.10 a million
     assert scorestats.cost_usd({**RUN, "model": "claude-mystery"}) is None
 
 

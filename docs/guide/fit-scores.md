@@ -180,6 +180,30 @@ scoring:
   same_as: claude:claude-sonnet-5-5               # the same Sonnet, through the API
 ```
 
+**An API credit that ends.** To spend a promotional credit on scoring and then go back to the free scorers, give the
+Claude entry its last day: `claude:claude-sonnet-5-5 until 2026-12-20`. A dated entry scores first, ahead of
+`scoring.backend`, until that day in New York time (the credit's own clock); on that day and after it is skipped,
+with one line in the Activity log ("credit window ended"), and the chain is the free scorers again. While it runs,
+a ledger adds up what its calls cost at list price (from the tokens the API reports; the prices are in
+`scorestats.PRICES`, and a model with no price isn't used) and stops it at a daily cap for the rest of that day
+(`scoring.credit.daily_usd`, 3) and a total cap for good (`scoring.credit.total_usd`, 90). The caps are checked
+every 5 jobs, so a run can pass one by a few cents. An account that refuses it (no credit, a key refused, a rate
+limit) is skipped for an hour without a retry storm, the jobs go to the next scorer, and none is marked failed.
+Its scores aren't marked as a fallback, so list it in `same_as` to have `--rescore` leave them alone.
+
+```yaml
+scoring:
+  backend: agy
+  fallback: ["claude:claude-sonnet-5-5 until 2026-12-20", agy:gemini-4-argon-medium, local]
+  same_as: claude:claude-sonnet-5-5
+  credit: {daily_usd: 3, total_usd: 90}           # these are the defaults
+```
+
+`jobwatch credit` shows the entry, what the ledger has spent against the caps and whether it would score now;
+`jobwatch credit --test` scores the one unscored job with the shortest posting through it alone (nothing else is
+tried), to see one charge arrive in the Anthropic Console before turning it on. `--entry 'claude:MODEL until
+YYYY-MM-DD'` tests an entry that isn't in the watchlist. The key comes from `scoring.keychain` like any Claude call.
+
 A new shortlist-ai (a release, or its prompts or scoring code changed) is another scorer: new jobs are scored
 by it, and a job scored before shows its old score as "old score" until you score it again. When the change doesn't
 change what a score means (a prompt reordered for caching, say), `jobwatch score --keep-old` keeps the scores

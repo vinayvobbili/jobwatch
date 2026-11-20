@@ -354,6 +354,7 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
 
 _QUOTA = re.compile(r"quota|rate.?limit|usage limit|resource_exhausted|too many requests|\b429\b", re.I)
 _RESETS = re.compile(r"resets? in\s+(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?", re.I)
+_NO_CREDIT = re.compile(r"insufficient[ _](credit|funds|balance)|billing[ _]error|payment required|\b402\b", re.I)
 _DOWN = re.compile(r"API at \S+ answered 5\d\d\b")  # a provider's own 5xx (shortlist-ai's OpenAIBackend words it so)
 PAUSE = timedelta(hours=1)  # how long a step out of credit (or with no reset time given) is skipped before a retry
 PAUSE_DOWN = timedelta(minutes=10)  # a provider answering 5xx: usually brief
@@ -364,9 +365,9 @@ def paused_until(error: str, now: datetime | None = None) -> tuple[str, datetime
     refused (an hour: credit can be bought any time), or out of quota (until the reset the error names, else an
     hour). None for a failure of one job."""
     now = now or datetime.now(timezone.utc)
-    if "credit balance is too low" in error or "out of credit" in error:
+    if "credit balance is too low" in error or "out of credit" in error or _NO_CREDIT.search(error):
         return "out of credit", now + PAUSE
-    if "refused the key" in error:
+    if "refused the key" in error or "AuthenticationError" in error or "PermissionDeniedError" in error:
         return "API key refused", now + PAUSE
     if "refused the model" in error:  # a model the API no longer serves (a 404): no job will score with it
         return "model not served", now + PAUSE

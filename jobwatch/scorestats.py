@@ -29,7 +29,8 @@ PRICES = {
     "claude-haiku-4-5": (1.00, 5.00),
 }
 # Where a model's prompt-cache reads aren't a tenth of its input price (USD per million tokens).
-CACHE_READ_PRICES = {"claude-opus-5-5": 0.20, "claude-fable-5-1": 0.25, "claude-fable-5": 0.25}
+CACHE_READ_PRICES = {"claude-opus-5-5": 0.20, "claude-fable-5-1": 0.25, "claude-fable-5": 0.25,
+                     "claude-sonnet-5-5": 0.10}
 CACHE_WRITE = 1.25  # 5-minute cache writes, as a multiple of the input price
 CACHE_READ = 0.10   # cache reads, as a multiple of the input price, unless CACHE_READ_PRICES says
 BATCH = 0.5         # the Message Batches API charges half

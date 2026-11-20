@@ -6,7 +6,7 @@ import io
 import os
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import time, timedelta
+from datetime import date, time, timedelta
 from pathlib import Path
 from string import Formatter
 from urllib.parse import urlsplit
@@ -132,6 +132,17 @@ def _whole(raw, name: str, path: Path, zero: str) -> int:
     return raw
 
 
+CREDIT_DAILY_USD = 3.0   # a dated Claude entry (scoring.fallback) spends at most this a day...
+CREDIT_TOTAL_USD = 90.0  # ...and this in all, unless scoring.credit says otherwise
+
+
+def _dollars(raw, name: str, path: Path) -> float:
+    """A spending cap in dollars: a number above 0."""
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw <= 0:
+        raise ConfigError(f"{path}: {name} is a number of dollars above 0, got {raw!r}")
+    return float(raw)
+
+
 def _between(raw, name: str, path: Path, low: float, high: float | None = None, means: str = "",
              whole: bool = True):
     """A number from low to high (no top without high); `means` says what it is."""
@@ -201,11 +212,43 @@ BACKENDS = ("claude", "local", "agy")  # Anthropic's API, the on-device model (A
 CHAT_BACKENDS = ("claude", "local")  # what the assistant can run on (agy only scores)
 
 
+_UNTIL = re.compile(r"\s+until\s+(\S+)\s*$")
+
+
+def split_until(entry: str) -> tuple[str, str]:
+    """A scoring.fallback entry without its " until YYYY-MM-DD" end, and that date as written ("" when none)."""
+    m = _UNTIL.search(entry)
+    return (entry[:m.start()].strip(), m[1]) if m else (entry.strip(), "")
+
+
+def entry_until(entry: str) -> date | None:
+    """The day a dated scoring.fallback entry (claude:claude-sonnet-5-5 until 2026-12-20) ends, or None. A date that
+    isn't one is None too: config.load refuses such an entry, so no entry in a loaded Config has one."""
+    try:
+        return date.fromisoformat(split_until(entry)[1])
+    except ValueError:
+        return None
+
+
 def fallback_entry(entry: str) -> tuple[str, str]:
     """A scoring.fallback entry's (backend, model): "agy" is ("agy", ""), "agy:gemini-3.8-flash-medium" names the
-    model, so one backend can be tried again with another model (its own quota) before the next backend."""
-    backend, _, model = entry.partition(":")
+    model, so one backend can be tried again with another model (its own quota) before the next backend. A dated
+    entry's " until DATE" is left out (see entry_until)."""
+    backend, _, model = split_until(entry)[0].partition(":")
     return backend.strip(), model.strip()
+
+
+def credit_entry(entry: str, where: str = "scoring.fallback") -> str:
+    """A dated entry (claude:<model> until YYYY-MM-DD) checked and written out the one way; ConfigError otherwise.
+    Only Claude's API takes a date (a promotional credit that ends), and it needs its model, to price its calls."""
+    until = split_until(entry)[1]
+    backend, model = fallback_entry(entry)
+    if not (until and re.fullmatch(r"\d{4}-\d{2}-\d{2}", until)) or entry_until(entry) is None:
+        raise ConfigError(f"{where} entry {entry!r}: the end is a date, as 'claude:claude-sonnet-5-5 until 2026-12-20'")
+    if backend != "claude" or not model:
+        raise ConfigError(f"{where} entry {entry!r}: only Claude's API takes an 'until' date, and it needs its model "
+                          "(claude:claude-sonnet-5-5 until 2026-12-20)")
+    return f"claude:{model} until {until}"
 CHAT_PLACEHOLDERS = ("today", "context")  # what chat.prompt must keep: today's date, and the data it reads
 
 
@@ -746,6 +789,8 @@ class Config:
     api_key_command: str = ""  # scoring.key_command: a command that prints the key, in place of the keychain read
     score_fallback: tuple[str, ...] = ()  # scoring.fallback: backends tried in turn when this can't score
     score_same_as: tuple[str, ...] = ()   # scoring.same_as: other scorers (backend:model) whose scores count as its own
+    score_credit_daily: float = 3.0    # scoring.credit.daily_usd: what a dated Claude entry may spend a day
+    score_credit_total: float = 90.0   # scoring.credit.total_usd: ...and in all
     agy_model: str = ""        # scoring.agy_model: agy's model as a fallback (scoring.model as the backend)
     score_daily: int = 0       # scoring.daily: the most jobs the backend scores a day, then the fallback (0: no cap)
     score_per_company: int = 0  # scoring.per_company: the most jobs from one company scored in the background a day
@@ -1226,7 +1271,14 @@ def load(explicit: str | Path | None = None) -> Config:
     if bare := [b for b in fallback if fallback_entry(b)[0] in named and not fallback_entry(b)[1]]:
         raise ConfigError(f"{path}: scoring.fallback entry {bare[0]!r} is an API from scoring.providers: "
                           f"name its model, as {bare[0]}:<model>")
-    fallback = [":".join(p for p in fallback_entry(b) if p) for b in fallback]
+    fallback = [credit_entry(b) if split_until(b)[1] else ":".join(p for p in fallback_entry(b) if p)
+                for b in fallback]
+    credit = scoring.get("credit") or {}
+    if not isinstance(credit, dict) or set(credit) - {"daily_usd", "total_usd"}:
+        raise ConfigError(f"{path}: scoring.credit is {{daily_usd: 3, total_usd: 90}}, the dollars a dated Claude "
+                          f"entry in scoring.fallback may spend a day and in all, got {scoring.get('credit')!r}")
+    credit_caps = [_dollars(credit.get(k, d), f"scoring.credit.{k}", path)
+                   for k, d in (("daily_usd", CREDIT_DAILY_USD), ("total_usd", CREDIT_TOTAL_USD))]
     same_as = scoring.get("same_as") or []
     same_as = [same_as] if isinstance(same_as, str) else same_as
     if not isinstance(same_as, list) or any(not isinstance(s, str) or fallback_entry(s)[0] not in known
@@ -1289,7 +1341,7 @@ def load(explicit: str | Path | None = None) -> Config:
         score_rest=_whole(scoring.get("rest", 10), "scoring.rest", path, "0 rests not at all"),
         unload_after=_whole(scoring.get("unload_after", 5), "scoring.unload_after", path, "0 keeps the model loaded"),
         api_keychain=str(scoring.get("keychain") or "").strip(), score_fallback=tuple(fallback),
-        score_same_as=tuple(same_as),
+        score_same_as=tuple(same_as), score_credit_daily=credit_caps[0], score_credit_total=credit_caps[1],
         api_key_command=str(scoring.get("key_command") or "").strip(),
         agy_model=str(scoring.get("agy_model") or "").strip(),
         score_daily=_whole(scoring.get("daily", 0), "scoring.daily", path, "0 sets no daily limit"),
@@ -1433,6 +1485,10 @@ scoring:
   # fallback: [agy, local]  # other backends, tried in order, when this can't score (no key, no credit) or is at...
   # daily: 40            # ...the most jobs it scores a day (0: no limit); the fallback's are scored again later
   # per_company: 25      # the most jobs from one company the page scores a day (0: no cap); the rest wait for tomorrow
+  # An API credit that ends: a dated Claude entry scores first until that day (Eastern), then is skipped, and
+  # stops at a daily and a total spend cap (see `jobwatch credit`):
+  #   fallback: ["claude:claude-sonnet-5-5 until 2026-12-20", local]
+  #   credit: {daily_usd: 3, total_usd: 90}
   # agy_model: claude-sonnet-5-5-medium  # agy's model as a fallback (`agy models`); as backend: `model`
   # An entry can name its model, so one backend is tried again on another model's quota first:
   #   backend: agy, model: claude-sonnet-5-5-medium, fallback: [agy:gemini-3.8-flash-medium, local]
