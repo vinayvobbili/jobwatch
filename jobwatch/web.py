@@ -2240,7 +2240,13 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     return self._json(HTTPStatus.FORBIDDEN, {"error": "missing or wrong token; reload the page"})
                 found = app.logo(unquote(name))
                 if found is None:
-                    return self._json(HTTPStatus.NOT_FOUND, {"error": "no logo"})
+                    # 204, not 404: the <img> still fires `error` (the page falls back to initials), but the
+                    # browser console doesn't log a red failed request for every company without a logo.
+                    self.send_response(HTTPStatus.NO_CONTENT)
+                    self.send_header("Content-Length", "0")
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    return
                 return self._send_logo(*found)
             if method == "GET" and url.path == "/events":
                 # The page's EventSource can't send the token header: the token is in the address, as for logos.

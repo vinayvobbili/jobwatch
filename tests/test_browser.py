@@ -44,12 +44,11 @@ def browser():
 @pytest.fixture
 def page(browser, server):
     """The page, open on Today; `page.errors` collects script errors and failed requests from then on. A company
-    with no logo is a 404 by design (the page shows its initials), so those don't count."""
+    with no logo is a 204 by design (the page shows its initials)."""
     page = browser.new_page()
     page.errors = []
     page.on("pageerror", lambda e: page.errors.append(str(e)))
-    page.on("response", lambda r: r.status >= 400 and "/logo/" not in r.url and
-            page.errors.append(f"{r.status} {r.url}"))
+    page.on("response", lambda r: r.status >= 400 and page.errors.append(f"{r.status} {r.url}"))
     page.goto(f"http://127.0.0.1:{server}/#today")
     page.wait_for_load_state("networkidle")
     yield page

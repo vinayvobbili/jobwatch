@@ -146,7 +146,8 @@ def test_the_page_shows_a_kept_logo_and_asks_for_one_it_lacks(server, watchlist,
     status, body, headers = request(server, "GET", f"/logo/{TOKEN}/{quote('Acme, Inc.')}", with_headers=True)
     assert (status, body, headers["Content-Type"]) == (200, PNG, "image/png")
     assert headers["Content-Security-Policy"] == "sandbox" and "max-age" in headers["Cache-Control"]
-    assert request(server, "GET", f"/logo/{TOKEN}/Globex")[0] == 404
+    # No logo is a 204 with no body (the page shows initials; a 404 would be a red line in the console per company).
+    assert request(server, "GET", f"/logo/{TOKEN}/Globex") == (204, b"")
     assert request(server, "GET", f"/logo/wrong/{quote('Acme')}")[0] == 403
     page = request(server, "GET", "/")[1].decode()
     assert "/logo/${TOKEN}/${encodeURIComponent(name)}" in page and 'el.classList.add("logo")' in page
