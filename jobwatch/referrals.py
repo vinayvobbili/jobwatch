@@ -6,9 +6,8 @@ from __future__ import annotations
 
 from . import GUIDE
 from .config import Config
-from .filters import reject_reason
 from .store import ENDED, STAGES, Store, closed_state
-from .watch import load_contacts
+from .watch import judged_pass, load_contacts
 
 OPEN = ("new", "shown", "queued", *(s for s in STAGES if s not in ENDED))
 
@@ -24,11 +23,16 @@ def view(cfg: Config, store: Store) -> dict:
     if not known:
         return {"people": [], "skipped": [], "has_connections": False}
     found: dict[str, dict] = {}
-    for job, rec in store.jobs(OPEN, include_closed=True):
+    # A board's other openings (a chip maker's hundreds) aren't jobs you'd ask about: of the new and shown jobs,
+    # only those the filters pass are read in full. They were judged once for every tab (jobpass.py); a min_fit
+    # rejection doesn't count here, since a score isn't one of the filters of this list.
+    wanted = [v.key for v in judged_pass(cfg, store).in_status(("new", "shown"), closed=True)
+              if v.kind in (None, "fit")]
+    rows = {j.key: (j, rec) for j, rec in store.jobs(tuple(s for s in OPEN if s not in ("new", "shown")),
+                                                      include_closed=True)} | store.rows(wanted)
+    for job, rec in (rows[k] for k in store.newest_first(OPEN) if k in rows):
         if closed_state(rec) == "closed" and rec["status"] in ("new", "shown", "queued"):
             continue
-        if rec["status"] in ("new", "shown") and reject_reason(job, cfg.filters_for(job)):
-            continue  # a board's other openings (a chip maker's hundreds) aren't jobs you'd ask about
         names = (job.display_company, job.company)
         for p in known.at(*names) + known.left_out(*names):
             row = found.setdefault(p["key"], {**p, "jobs": []})

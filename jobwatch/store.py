@@ -461,6 +461,43 @@ class Store:
     def close(self):
         self.db.close()
 
+    def stamp(self) -> tuple:
+        """What changes whenever anything is written to the state file, by this process or another one, and
+        nothing else: a cheap stamp (three stat calls and a 24-byte read) to key remembered work on, so it's
+        used again until a write. It is the file's and the write-ahead log's size and time, and the commit
+        counter in the log's index (SQLite bumps that on every commit, so two writes in one clock tick still
+        differ)."""
+        out = []
+        for suffix in ("", "-wal"):
+            try:
+                st = Path(f"{self.path}{suffix}").stat()
+                out += [st.st_mtime_ns, st.st_size]
+            except OSError:
+                out += [None, None]
+        try:
+            with open(f"{self.path}-shm", "rb") as f:
+                out.append(f.read(24))
+        except OSError:
+            out.append(None)
+        return tuple(out)
+
+    def newest_first(self, statuses: tuple[str, ...]) -> list[str]:
+        """The keys of the jobs with these statuses (closed ones too), in the order jobs() lists them: newest first
+        seen, a tie by when it was recorded. Only keys are read, not the postings."""
+        return [r[0] for r in self.db.execute(
+            f"SELECT key FROM jobs WHERE status IN ({','.join('?' * len(statuses))}) ORDER BY first_seen DESC",
+            statuses)]
+
+    def rows(self, keys) -> dict[str, tuple[Job, dict]]:
+        """{key: (job, record)} for the jobs with exactly these keys (those that exist), in the order the keys
+        are given, a chunk of keys per query."""
+        keys, got = list(dict.fromkeys(keys)), {}
+        for i in range(0, len(keys), 500):  # SQLite's limit on query variables
+            chunk = keys[i:i + 500]
+            for r in self.db.execute(f"{_ROW} WHERE key IN ({','.join('?' * len(chunk))})", chunk):
+                got[r["key"]] = Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}
+        return {k: got[k] for k in keys if k in got}
+
     def sync(self, source: str, company: str, jobs: list[Job], close_missing: bool = True,
              spare: tuple[str, ...] = ()) -> list[str]:
         """Record one board's current roles; returns the keys seen for the first time.
