@@ -846,6 +846,14 @@ class Store:
         with self.db:
             self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
 
+    def replace_text(self, key: str, text: str):
+        """Replace the posting text kept for a job from its board with a fuller one read again (a text that was
+        read while the page was only partly served), keeping everything else about it."""
+        job, _ = self.find(key)
+        job.description = text.strip()
+        with self.db:
+            self.db.execute("UPDATE jobs SET data=?, slim=NULL WHERE key=?", (json.dumps(job.to_dict()), job.key))
+
     def set_description(self, key: str, text: str, posting: Job | None = None):
         """Give an application added by hand the posting's text, pasted (found later, or from a copy once the
         posting is gone), so it can be scored and prepped. The pay is read from it if none is set, and the

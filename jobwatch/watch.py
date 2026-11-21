@@ -1283,17 +1283,63 @@ def fallback_model(cfg: Config, entry: str) -> str:
     return model or (cfg.agy_model if backend == "agy" else "")
 
 
+def chain_after(cfg: Config, backend: str, model: str) -> tuple[str, ...]:
+    """The scoring chain (scoring.backend, then scoring.fallback) as fallback entries, without the step that
+    was asked for: what a score asked for by hand falls back to when that step's account refuses it (no credit,
+    a key refused, a rate limit), so a job is never left unscored while a free scorer is up."""
+    main = cfg.backend + (f":{cfg.score_model}" if cfg.score_model else "")
+    asked = scorer_id(backend, model)
+    return tuple(e for e in (main, *(e for e in cfg.score_fallback if not credit.is_dated(e)))
+                 if scorer_id(*fallback_entry(e)) != asked)
+
+
+def rescore_label(backend: str, model: str) -> str:
+    """A scorer as the page says it: "claude-sonnet-5-5 (API)", "gemini-3.8-flash-medium (agy)", "local"."""
+    return f"{model.split('/')[-1] or backend} ({'API' if backend == 'claude' else backend})" if model else backend
+
+
+NO_REQUIREMENTS = "produced no requirements"  # the scorer's word for a posting text with nothing to score
+
+
+def reread_texts(store: Store, errors: dict[str, str], get=None) -> list[Job]:
+    """The jobs whose scoring failed because their kept posting text has no requirements (a page read while it was
+    only partly served keeps the company's boilerplate, and a board never reads a known job's text again): each is
+    read again from its own page, and when the page now gives a fuller text, that replaces it. The jobs it did
+    so for, with the new text, to be scored again; a page that can't be read leaves the job as it is."""
+    again = []
+    for key, error in errors.items():
+        if NO_REQUIREMENTS not in error:
+            continue
+        job, _ = store.find(key)
+        try:
+            read = sources.posting(job.posting_url or job.url, get, hosts=(job.company,)) if job.url else None
+        except sources.SourceError:
+            continue
+        if read and len(read.description.strip()) > len(job.description.strip()):
+            store.replace_text(job.key, read.description)
+            again.append(store.find(job.key)[0])
+    return again
+
+
 def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Callable[[str], None] | None = None,
-                  background: bool = False, batch: bool = False, by: str = "") -> tuple[int, dict[str, str]]:
+                  background: bool = False, batch: bool = False, by: str = "", get=None
+                  ) -> tuple[int, dict[str, str]]:
     """Score these jobs against the resume and store each result, for the job and its same-title postings.
     (how many were scored, {job key: error}). A fallback score for a job the backend failed on records that
     failure too, so the backend tries it again only after SCORE_RETRY (one over the daily limit, tomorrow).
     What was scored, and by which model, goes in the Activity log (Store.log)."""
     rid = resume_id(cfg.resume, cfg.prompts)
     before = {e.job.key: store.score(e.job.key, rid) for e in entries}  # a re-score's old result, for news()
-    results, errors = score_with_fallback(cfg, store, [e.job for e in entries],
-                                          progress=progress or (lambda m: print(f"  {m}", file=sys.stderr)),
+    progress = progress or (lambda m: print(f"  {m}", file=sys.stderr))
+    results, errors = score_with_fallback(cfg, store, [e.job for e in entries], progress=progress,
                                           background=background, batch=batch)
+    if again := reread_texts(store, errors, get):  # a text with no requirements may have been read in part
+        more, more_errors = score_with_fallback(cfg, store, again, progress=progress, background=background,
+                                                batch=batch)
+        results.update(more)
+        for j in again:
+            errors.pop(j.key, None)
+        errors.update(more_errors)
     for e in entries:
         if e.job.key in results:
             fit = results[e.job.key]

@@ -84,12 +84,13 @@ from .config import ConfigError
 from .filters import KINDS
 from .package import Package
 from .rounds import ROUNDS
-from .score import Provider, ScoringUnavailable, brief, prompt_info, provider_key, resume_id
+from .score import Provider, ScoringUnavailable, brief, paused_until, prompt_info, provider_key, resume_id
 from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, Store
 from .watch import (
     MANY_ROLES,
     Entry,
     build_digest,
+    chain_after,
     entries_for,
     fallback_model,
     fetch_all,
@@ -100,6 +101,7 @@ from .watch import (
     plural,
     queue,
     read_mail,
+    rescore_label,
     save_job,
     scorable,
     score_entries,
@@ -1703,12 +1705,26 @@ class App:
                     Entry(job, record, 0.0, [])
                 one = replace(cfg, backend=backend, score_model=model, score_fallback=(), score_daily=0)
                 _, errors = score_entries(one, store, [entry], progress=lambda m: None, by="rescore")
-                return entry, errors.get(job.key)
-            entry, error = self._with_store(run)
+                error, note = errors.get(job.key), ""
+                if error and (found := paused_until(error)) and (chain := chain_after(cfg, backend, model)):
+                    # The account refused the step asked for (no credit, a key refused, a rate limit): the job
+                    # goes down the user's chain, and the page says what failed and which scorer made the score.
+                    note = f"{rescore_label(backend, model)} failed: {found[0]}"
+                    again = replace(cfg, backend=backend, score_model=model, score_fallback=chain, score_daily=0)
+                    _, errors = score_entries(again, store, [entry], progress=lambda m: None, by="rescore")
+                    error = errors.get(job.key)
+                    if error:
+                        error = f"{note}; then {error}"
+                    elif entry.fit and entry.fit.get("scored_by"):
+                        note += f". Scored with {rescore_label(*entry.fit['scored_by'].partition(':')[::2])} instead"
+                elif error and paused_until(error):
+                    error = f"{rescore_label(backend, model)} failed: {paused_until(error)[0]}; nothing else to try"
+                return entry, error, note
+            entry, error, note = self._with_store(run)
             if error or not entry.fit:
                 self.events.publish("score-failed", {"key": key, "error": error or "scoring failed"})
             else:
-                self.events.publish("score", {"key": key, "keys": entry.keys, "fit": entry.fit})
+                self.events.publish("score", {"key": key, "keys": entry.keys, "fit": entry.fit, "note": note})
         except Exception as e:  # never lose a rescore silently: the page is waiting to hear
             why = str(e) if isinstance(e, ApiError | ScoringUnavailable) else f"{type(e).__name__}: {e}"
             self.events.publish("score-failed", {"key": key, "error": why})

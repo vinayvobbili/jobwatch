@@ -206,6 +206,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .card.job > .fitbox .ring { width: 48px; height: 48px; grid-row: 1 / 3; margin: 0; }
 .card.job > .fitbox .ring span { width: 38px; height: 38px; font-size: 15px; }
 .card.job > .fitbox small { margin-top: 0; align-self: end; }
+.fitbox .fit-note { grid-column: 1 / -1; margin-top: 6px; max-width: 280px; line-height: 1.35; }
 .card.job > .fitbox .scorer { margin-top: 3px; justify-self: start; align-self: start; }
 .card.job > .jc-rows { grid-area: 2 / 1 / 3 / -1; min-width: 0; margin-top: 10px; }
 .card.job > .verdict { grid-area: 3 / 1 / 4 / -1; }
@@ -1843,6 +1844,13 @@ async function openRescore(key) {
     list,
     h("div", { class: "row", style: "margin-top:14px;align-items:center" }, go, msg));
 }
+// A line under the job's score on every card showing it: why a rescore failed, or which scorer made the score instead
+function cardNote(key, text, bad) {
+  document.querySelectorAll(`[data-fit="${CSS.escape(key)}"]`).forEach(el => {
+    el.querySelectorAll(":scope > .fit-note").forEach(n => n.remove());
+    el.append(h("div", { class: "small fit-note" + (bad ? " error" : ""), role: "status" }, text));
+  });
+}
 // /events: a rescore's new score (or why it failed) takes the place of the job's rings on the page
 function listenForEvents() {
   if (typeof EventSource === "undefined") return;
@@ -1852,13 +1860,16 @@ function listenForEvents() {
     RESCORING.delete(d.key);
     for (const k of d.keys || [d.key])
       document.querySelectorAll(`[data-fit="${CSS.escape(k)}"]`).forEach(el => el.replaceWith(fitBox(d.fit, k)));
-    toast(`New score: ${Math.round(d.fit.score)} by ${scorerLabel(d.fit.scored_by || "")}`, null, "win");
+    toast(`New score: ${Math.round(d.fit.score)} by ${scorerLabel(d.fit.scored_by || "")}` + (d.note ? `. ${d.note}` : ""),
+      null, d.note ? "" : "win");
+    if (d.note) for (const k of d.keys || [d.key]) cardNote(k, d.note);
   });
   es.addEventListener("score-failed", e => {
     const d = JSON.parse(e.data);
     RESCORING.delete(d.key);
     document.querySelectorAll(`[data-fit="${CSS.escape(d.key)}"]`).forEach(el => el.classList.remove("rescoring"));
     toast(`Scoring again failed: ${d.error}`);
+    cardNote(d.key, `Scoring again failed: ${d.error}`, true);  // stays on the card: a toast is easy to miss
   });
 }
 // Under the ring: the model that made the score and where it ran ("Sonnet 5.5 · agy", "Qwen3.5-9B · local"). A score

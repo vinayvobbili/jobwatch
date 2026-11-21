@@ -3,6 +3,7 @@ the new score reaches the page as a Server-Sent Event on /events."""
 
 import http.client
 import threading
+from dataclasses import replace
 
 import pytest
 import yaml
@@ -115,3 +116,60 @@ def test_the_event_stream_needs_the_token_and_carries_what_is_published(watchlis
         srv.app.refresher.stop(10)
         srv.shutdown()
         srv.server_close()
+
+
+CREDIT = ("BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', "
+          "'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing'}}")
+
+
+def test_a_rescore_the_api_refuses_for_credit_falls_down_the_chain_and_says_so(app, monkeypatch):
+    """Claude's API out of credit: the job is scored by the next scorer of the user's chain (agy, then local), and
+    the event says what failed and which scorer made the score, never a silent end."""
+    def fake(jobs, resume, backend, cache_dir, model="", **kw):
+        app.calls.append((backend, model))
+        if backend == "claude":
+            return {}, {j.key: CREDIT for j in jobs}
+        return {j.key: {**FIT, "scored_by": f"{backend}:{model}"} for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    heard = app.events.subscribe()
+    app.post_rescore({"key": KEY, "backend": "claude", "model": "claude-sonnet-5-5"})
+    kind, data = heard.get(timeout=10)
+    assert kind == "score" and data["fit"]["scored_by"] == "agy:claude-sonnet-5-5-medium"
+    assert data["note"] == ("claude-sonnet-5-5 (API) failed: out of credit. "
+                            "Scored with claude-sonnet-5-5-medium (agy) instead")
+    assert app.calls == [("claude", "claude-sonnet-5-5"), ("agy", "claude-sonnet-5-5-medium")]  # one try, then agy
+
+
+def test_a_rescore_nothing_can_score_ends_with_a_message_naming_each_failure(app, monkeypatch):
+    def fake(jobs, resume, backend, cache_dir, model="", **kw):
+        return {}, {j.key: CREDIT if backend == "claude" else "model said no" for j in jobs}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    heard = app.events.subscribe()
+    app.post_rescore({"key": KEY, "backend": "claude", "model": "claude-sonnet-5-5"})
+    kind, data = heard.get(timeout=10)
+    assert kind == "score-failed" and data["error"].startswith("claude-sonnet-5-5 (API) failed: out of credit; then ")
+    assert "model said no" in data["error"]
+
+
+def test_a_posting_text_with_no_requirements_is_read_again_and_scored(app, monkeypatch):
+    """A text kept from a page read while it was only partly served (the company's boilerplate) has nothing to
+    score: the posting is read again, the fuller text replaces it, and the job is scored."""
+    texts = []
+
+    def fake(jobs, resume, backend, cache_dir, model="", **kw):
+        texts.append(jobs[0].description)
+        if "Requirements" not in jobs[0].description:
+            return {}, {j.key: "ValueError: The job description produced no requirements." for j in jobs}
+        return {j.key: {**FIT, "scored_by": f"{backend}:{model}"} for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    job = app._with_store(lambda cfg, store: store.find(KEY)[0])
+    assert "Requirements" not in job.description
+    full = replace(job, description="Requirements: Python, LLMs, RAG and a lot more than the boilerplate")
+    monkeypatch.setattr(watch.sources, "posting", lambda url, get=None, hosts=(): full)
+    heard = app.events.subscribe()
+    app.post_rescore({"key": KEY, "backend": "agy", "model": "gemini-4-argon-medium"})
+    kind, data = heard.get(timeout=10)
+    assert kind == "score", data
+    assert data["fit"]["score"] == 70
+    assert "Requirements" not in texts[0] and "Requirements" in texts[1]
+    assert "Requirements" in app._with_store(lambda cfg, store: store.find(KEY)[0]).description
