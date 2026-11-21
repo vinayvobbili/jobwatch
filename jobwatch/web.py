@@ -11,6 +11,7 @@ counts how it sounded, and answers no other site's page.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import queue as queue_mod
@@ -118,6 +119,8 @@ from .watch import (
 MAX_UPLOAD = 20 * 1024 * 1024
 PREP_SAVE_MAX = 2 * 1024 * 1024  # the edits to one prep sheet
 EVENT_PING = 15  # seconds between keep-alive comments on /events
+GZIP_MIN = 1024  # a smaller reply isn't worth compressing
+GZIP_TYPES = ("text/html", "application/json", "text/calendar")  # what compresses well; images and video don't
 IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background scorer works through
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 # What the extension may offer beyond filling forms, named in /ext/ping: an extension paired with an older jobwatch
@@ -1163,6 +1166,22 @@ class App:
     def get_queue(self, q) -> list[dict]:
         return self._with_store(lambda cfg, store: self._cards(cfg, store, queue(cfg, store)))
 
+    def get_counts(self, q) -> dict:
+        """The numbers on the tab bar, cheaply: how many jobs are queued (what /api/queue lists), how many
+        applications are due a follow-up now (not the long-quiet ones, as the Applied tab counts them), how many
+        interviews have a time today, and how many applications there are. The page asks after every action and tab,
+        so none of it reads a posting's text, scores a job or looks up pay."""
+        def run(cfg, store):
+            store.wake_snoozed()
+            rows = store.applications()
+            found = quiet.find(rows, cfg.quiet)
+            today = date.today()
+            return {"queue": store.db.execute("SELECT COUNT(*) FROM jobs WHERE status='queued'").fetchone()[0],
+                    "due": sum(1 for j, rec in rows if report.due(rec) and not found.get(j.key, {}).get("long")),
+                    "interviews": sum(1 for i in interviews.upcoming(rows) if i.meeting and i.day == today),
+                    "applications": len(rows)}
+        return self._with_store(run)
+
     def get_snoozed(self, q) -> list[dict]:
         """The jobs waiting for an application at their company to end, and which applications those are."""
         def run(cfg, store):
@@ -1981,6 +2000,7 @@ ROUTES = {
     ("GET", "/api/digest"): App.get_digest,
     ("GET", "/api/hidden"): App.get_hidden,
     ("GET", "/api/queue"): App.get_queue,
+    ("GET", "/api/counts"): App.get_counts,
     ("GET", "/api/pace"): App.get_pace,
     ("GET", "/api/jobs"): App.get_jobs,
     ("GET", "/api/job"): App.get_job,
@@ -2033,6 +2053,16 @@ APP_FILES = {
 }
 
 
+def accepts_gzip(header: str) -> bool:
+    """Whether an Accept-Encoding header allows gzip ("gzip, deflate, br" does; "gzip;q=0" and "identity" don't)."""
+    for part in header.split(","):
+        name, _, params = part.strip().partition(";")
+        if name.strip().lower() in ("gzip", "x-gzip"):
+            q = re.search(r"q\s*=\s*(\d+(?:\.\d*)?|\.\d+)", params)
+            return not q or float(q.group(1)) > 0
+    return False
+
+
 def page(token: str) -> bytes:
     html = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     return html.replace("__JOBWATCH_TOKEN__", token).encode()
@@ -2053,6 +2083,13 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 self.send_header("Content-Disposition", f"{'inline' if inline else 'attachment'}; "
                                  f"filename*=UTF-8''{quote(filename)}")
                 self.send_header("Content-Security-Policy", "sandbox")
+            elif (len(body) >= GZIP_MIN and ctype.startswith(GZIP_TYPES)
+                  and accepts_gzip(self.headers.get("Accept-Encoding", ""))):
+                # The page is 450 KB and Today's list a megabyte: a fifth of that over loopback or a tunnel, for a
+                # few milliseconds. Not a stored file (it's sent as it is) nor a ranged video (_send_file).
+                body = gzip.compress(body, compresslevel=5)
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")

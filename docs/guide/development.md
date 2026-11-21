@@ -16,6 +16,10 @@ link still resolves: `JOBWATCH_LINK_TESTS=1 pytest tests/test_learn.py`. To see 
 `scripts/screenshots.py` captures every tab in light and dark, at wide, desktop and phone widths, plus the
 chat with a canned reply (it needs
 `pip install playwright && python -m playwright install chromium`).
+When a tab feels slow, `jobwatch timing` measures it: it makes each tab's API calls (what the page itself asks for)
+a few times and lists them slowest first, against a running page (`--url jobwatch.localhost:8765`) or, without one,
+against the watchlist's store in a server started for the purpose. Today marks the jobs it lists as seen, so point
+`-c` at a copy of the store when timing a real one (`--tab Queue`, `-n 5` and `--json` narrow or reshape it).
 `scripts/demo/make-video` rebuilds the demo video from made-up data: see
 `scripts/demo/README.md`.
 

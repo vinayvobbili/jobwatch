@@ -10,14 +10,26 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 
-from . import alerts, closed_notice, credit, dupes, estimate, filltext, lca, levels, linkedin, sources, suggest
+from . import (
+    alerts,
+    closed_notice,
+    credit,
+    dupes,
+    estimate,
+    filltext,
+    jobpass,
+    lca,
+    levels,
+    linkedin,
+    sources,
+    suggest,
+)
 from .config import UNKNOWN_SOURCE, Board, Config, fallback_entry
 from .contacts import Contacts, company_key
 from .filters import (
     KINDS,
     Filters,
     company_note,
-    excluded_company,
     focus_hits,
     office_nearby,
     place_rejection,
@@ -456,7 +468,7 @@ def entries_for(cfg: Config, store: Store, rows: list[tuple[Job, dict]], pay_bud
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
     contacts = load_contacts(cfg)
     reader = levels.Reader(store, pay_budget) if cfg.pay.levels else None
-    index = dupes.Index(store)
+    index = jobpass.acted_index(store)
     applications = store.applications()
     filings = lca.Index.open(lca.cache_path(cfg))
     kept = store.comps()
@@ -977,6 +989,13 @@ def job_fit(cfg: Config, store: Store, key: str) -> dict | None:
     return _fits(store, resume_id(cfg.resume, cfg.prompts)).get(key)
 
 
+def judged_pass(cfg: Config, store: Store) -> jobpass.Pass:
+    """Every new and shown job judged by the filters with its stored fit score, run once and remembered until
+    something is written (see jobpass.py): what Today, hidden, the scorer's line, Skills and Referrals share."""
+    rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
+    return jobpass.judged(cfg, store, rid, lambda: _fits(store, rid))
+
+
 def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
               redo_passes: bool = False) -> tuple[list[Entry], dict[str, int]]:
     """Jobs with these statuses that pass the filters, with stored fit scores for the current resume, and
@@ -988,8 +1007,22 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
     entries = []
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
     fits = _fits(store, rid) if rid else {}
-    index = dupes.Index(store)
-    for job, record in store.iter_jobs(statuses):  # one at a time: most are filtered out
+    index = jobpass.acted_index(store)
+    # The filters have judged every job already (see jobpass.py, remembered until something is written). Only
+    # the jobs that pass, and the ones whose verdict a second look can change, are read in full: a req posted
+    # again (below) and, with redo_passes, a min_fit rejection that a stale score caused.
+    verdicts = judged_pass(cfg, store).in_status(statuses)
+    again = {v.key for v in verdicts if v.kind is None or v.why.startswith("posted")
+             or (redo_passes and v.kind == "fit")}
+    rows = store.rows(again)
+    for v in verdicts:
+        if v.key not in again:
+            kind = v.why.split()[0]  # title, department, location, pay, posted, fit
+            rejected[kind] = rejected.get(kind, 0) + 1
+            continue
+        if v.key not in rows:
+            continue
+        job, record = rows[v.key]
         fit = fits.get(job.key)
         f = cfg.filters_for(job)
         judged = None if redo_passes and fit and (fit.get("fallback") or fit.get("stale")) else fit
@@ -1481,24 +1514,22 @@ def hidden(cfg: Config, store: Store, kind: str = "", limit: int = 100, since: d
         raise ValueError(f"kind must be one of {', '.join(KINDS)}")
     by: dict[str, int] = {}
     companies = dict.fromkeys(cfg.filters.exclude_companies, 0)
-    jobs = []
-    fits = _fits(store, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
-    for job, rec in store.iter_jobs(("new", "shown")):  # Today's statuses: see build_digest
-        if (since and datetime.fromisoformat(rec["first_seen"]) < since) or (source and job.source != source):
+    listed = []
+    for v in judged_pass(cfg, store).in_status(jobpass.STATUSES):  # Today's statuses: see build_digest
+        if (since and datetime.fromisoformat(v.first_seen) < since) or (source and v.source != source) or not v.kind:
             continue
-        f = cfg.filters_for(job)
-        if r := rejection(job, f, fits.get(job.key)):
-            by[r[0]] = by.get(r[0], 0) + 1
-            if r[0] == "company" and not rejection(job, replace(f, exclude_companies=[]), fits.get(job.key)):
-                name = excluded_company(job, f.exclude_companies)
-                companies[name] = companies.get(name, 0) + 1
-            if r[0] == kind or (since and not kind):
-                jobs.append({"key": job.key, "title": job.title, "company": job.display_company,
-                             "url": job.url, "locations": job.places, "pay": job.pay(),
-                             "age_days": job.age_days(), "kind": r[0], "why": r[1]})
-    jobs.sort(key=lambda j: j["age_days"] if j["age_days"] is not None else 10_000)
+        by[v.kind] = by.get(v.kind, 0) + 1
+        if v.kind == "company" and v.alone:
+            companies[v.company] = companies.get(v.company, 0) + 1
+        if v.kind == kind or (since and not kind):
+            listed.append(v)
+    listed.sort(key=lambda v: v.age_days if v.age_days is not None else 10_000)
+    rows = store.rows(v.key for v in listed[:limit])  # only the jobs listed are read in full
+    jobs = [{"key": job.key, "title": job.title, "company": job.display_company, "url": job.url,
+             "locations": job.places, "pay": job.pay(), "age_days": v.age_days, "kind": v.kind, "why": v.why}
+            for v in listed[:limit] if v.key in rows for job in [rows[v.key][0]]]
     return {"total": sum(by.values()), "by": {k: by[k] for k in KINDS if k in by}, "kind": kind or None,
-            "jobs": jobs[:limit], "more": max(0, len(jobs) - limit), "companies": companies}
+            "jobs": jobs, "more": max(0, len(listed) - limit), "companies": companies}
 
 
 def _group(entries: list[Entry]) -> list[Entry]:

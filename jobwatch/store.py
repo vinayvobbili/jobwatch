@@ -277,6 +277,7 @@ def _letters(text: str | None) -> str:
 # a closed posting needs before it counts as closed: see closed_notices), else 0: the mark alone is still 'checking'.
 _ROW = ("SELECT *, EXISTS (SELECT 1 FROM closed_confirmed c WHERE c.key=jobs.key AND c.closed=jobs.closed) "
         "AS closed_confirmed FROM jobs")
+_ROW_ID = _ROW.replace("SELECT *,", "SELECT rowid AS rid, *,", 1)  # the same, with when it was recorded (the order)
 
 def closed_state(rec: dict) -> str | None:
     """What a job's record says about its posting: 'closed' (the mark was confirmed by a second look), 'checking'
@@ -405,6 +406,7 @@ class Store:
         path = Path(path).expanduser()
         self.path = path
         self.packages = path.parent / "packages"  # what was sent with each application (see package.py)
+        self._titles: dict[str, str | None] = {}  # titles() remembers what it resolved, until a job is written
         if read_only:
             self.db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
             self.db.row_factory = sqlite3.Row
@@ -474,6 +476,69 @@ class Store:
     def close(self):
         self.db.close()
 
+    def stamp(self) -> tuple:
+        """What changes whenever anything is written to the state file, by this process or another one, and
+        nothing else: a cheap stamp (three stat calls and a 24-byte read) to key remembered work on, so it's
+        used again until a write. It is the file's and the write-ahead log's size and time, and the commit
+        counter in the log's index (SQLite bumps that on every commit, so two writes in one clock tick still
+        differ). An empty log has no time: SQLite makes a new one each time the first connection opens, which
+        isn't a write."""
+        out = []
+        for suffix in ("", "-wal"):
+            try:
+                st = Path(f"{self.path}{suffix}").stat()
+                out += [st.st_mtime_ns if st.st_size or not suffix else None, st.st_size]
+            except OSError:
+                out += [None, 0]
+        try:
+            with open(f"{self.path}-shm", "rb") as f:
+                out.append(f.read(24))
+        except OSError:
+            out.append(None)
+        return tuple(out)
+
+    def newest_first(self, statuses: tuple[str, ...]) -> list[str]:
+        """The keys of the jobs with these statuses (closed ones too), in the order jobs() lists them: newest first
+        seen, a tie by when it was recorded. Only keys are read, not the postings."""
+        return [r[0] for r in self.db.execute(
+            f"SELECT key FROM jobs WHERE status IN ({','.join('?' * len(statuses))}) ORDER BY first_seen DESC",
+            statuses)]
+
+    def board_rows(self, boards, statuses: tuple[str, ...] | None = None, closed_only: bool = False,
+                   title_ok: Callable[[str, str, str], bool] | None = None) -> list[tuple[Job, dict]]:
+        """(job, record) for every job, closed ones too, on any of these (source, company) boards, in the order
+        jobs() lists them (newest first seen, a tie by when it was recorded): each board is read by its index.
+        statuses: only jobs with one of these; closed_only: only those marked closed; title_ok(source, company,
+        title): only jobs it says yes to, decided in the query from the title alone, so a board's thousands of
+        postings aren't each read in full to be turned away."""
+        where, args = "", []
+        if statuses:
+            where += f" AND status IN ({','.join('?' * len(statuses))})"
+            args += list(statuses)
+        if closed_only:
+            where += " AND closed IS NOT NULL"
+        if title_ok:
+            self.db.create_function("title_ok", 3, lambda *a: int(bool(title_ok(*a))))
+            where += " AND title_ok(source, company, json_extract(data, '$.title'))"
+        found = []
+        for source, company in boards:
+            for r in self.db.execute(f"{_ROW_ID} WHERE source=? AND company=?{where}", (source, company, *args)):
+                found.append((r["first_seen"], r["rid"], Job.from_dict(json.loads(r["data"])),
+                              {k: r[k] for k in r.keys() if k not in ("data", "rid")}))
+        found.sort(key=lambda f: f[1])
+        found.sort(key=lambda f: f[0], reverse=True)  # stable: a tie stays in the order recorded
+        return [(job, rec) for _, _, job, rec in found]
+
+    def rows(self, keys) -> dict[str, tuple[Job, dict]]:
+        """{key: (job, record)} for the jobs with exactly these keys (those that exist), in the order the keys
+        are given, a chunk of keys per query."""
+        keys, got = list(dict.fromkeys(keys)), {}
+        for i in range(0, len(keys), 500):  # SQLite's limit on query variables
+            chunk = keys[i:i + 500]
+            for r in self.db.execute(f"{_ROW} WHERE key IN ({','.join('?' * len(chunk))})", chunk):
+                got[r["key"]] = Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}
+        return {k: got[k] for k in keys if k in got}
+
     def sync(self, source: str, company: str, jobs: list[Job], close_missing: bool = True,
              spare: tuple[str, ...] = ()) -> list[str]:
         """Record one board's current roles; returns the keys seen for the first time.
@@ -485,6 +550,7 @@ class Store:
         words, up to a cap, so a role you follow that isn't in it may simply not match; the daily check of the
         posting itself decides (watch.check_postings)."""
         now, new = _now(), []
+        self._titles.clear()
         with self.db:
             rows = self.db.execute("SELECT key, slim, status FROM jobs WHERE source=? AND company=?",
                                    (source, company)).fetchall()
@@ -520,6 +586,7 @@ class Store:
         """Record one job read from its link, leaving the rest of its board alone (it may not be watched).
         Returns whether it's new."""
         now = _now()
+        self._titles.clear()
         with self.db:
             new = self.db.execute("INSERT OR IGNORE INTO jobs (key, source, company, data, first_seen, last_seen) "
                                   "VALUES (?, ?, ?, ?, ?, ?)", (job.key, job.source, job.company,
@@ -689,6 +756,26 @@ class Store:
         row = self.db.execute("SELECT data FROM jobs WHERE key=?", (key,)).fetchone()
         return Job.from_dict(json.loads(row["data"])) if row else None
 
+    def titles(self, keys) -> dict[str, str]:
+        """{key: title} for the jobs these keys name, as find() reads a key (the full key, else a unique ending):
+        a key that names no job, or several, is left out. The full keys are read in one indexed query that skips
+        the postings' text; only the rest go through find(). What was looked up stays for this connection, so a
+        page of jobs resolves the same comp keys once, not once a job."""
+        known = self._titles
+        todo = [k for k in dict.fromkeys(keys) if k not in known]
+        for i in range(0, len(todo), 500):  # SQLite's limit on query variables
+            chunk = todo[i:i + 500]
+            for r in self.db.execute(f"SELECT key, json_extract(data, '$.title') AS title FROM jobs WHERE key IN "
+                                     f"({','.join('?' * len(chunk))})", chunk):
+                known[r["key"]] = r["title"]
+        for k in todo:
+            if k not in known:
+                try:
+                    known[k] = self.find(k)[0].title
+                except KeyError:
+                    known[k] = None
+        return {k: known[k] for k in keys if known[k] is not None}
+
     def iter_jobs(self, statuses: tuple[str, ...] | None = None, include_closed: bool = False
                   ) -> Iterator[tuple[Job, dict]]:
         """jobs(), one pair at a time: a caller that keeps only some of them (the filters pass a few hundred of a
@@ -741,9 +828,11 @@ class Store:
         name or part of it, in any case, when that names one job: the one queued or applied to there, or the only
         one there at all. prefer_open: when a company still names several jobs, the one open application (applied,
         screening or interviewing) among them wins."""
-        rows = self.db.execute(f"{_ROW} WHERE key=? OR key LIKE ?", (key, f"%{key}")).fetchall()
-        exact = [r for r in rows if r["key"] == key]
-        rows = exact or rows
+        # The full key is one lookup in the key's index. Only a partial key (an ending, or a company's name) reads
+        # every row for LIKE: an exact match always wins over the endings, so it never needs that scan.
+        rows = self.db.execute(f"{_ROW} WHERE key=?", (key,)).fetchall()
+        if not rows:
+            rows = self.db.execute(f"{_ROW} WHERE key LIKE ?", (f"%{key}",)).fetchall()
         by_company = not rows
         if by_company:
             rows = self._at_company(key)
@@ -945,6 +1034,7 @@ class Store:
         company, title, url = company.strip(), title.strip(), url.strip()
         if not company or not title:
             raise ValueError("an application needs a company and a job title")
+        self._titles.clear()
         if status not in STATUSES:
             raise ValueError(f"status must be one of {', '.join(STATUSES)}")
         if url and (row := self.db.execute("SELECT key FROM jobs WHERE json_extract(data, '$.url')=?",
@@ -1216,6 +1306,7 @@ class Store:
 
     def update(self, job: Job):
         """Save a recorded job's posting data as it is now (a fetch does this for a watched board's jobs)."""
+        self._titles.clear()
         with self.db:
             self.db.execute("UPDATE jobs SET data=?, slim=NULL WHERE key=?", (json.dumps(job.to_dict()), job.key))
 

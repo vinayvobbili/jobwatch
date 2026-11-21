@@ -329,6 +329,43 @@ def test_company_endpoints(server, watchlist, tracked):
     assert request(server, "GET", "/api/company?q=acme")[0] in (401, 403)  # needs the page's token
 
 
+def test_a_company_is_read_from_its_boards_not_the_whole_table(store, cfg):
+    """view() used to parse every job to find a company's: now it reads the boards the company's jobs are on, in
+    the order the whole-table read gave (newest first seen, a tie in the order recorded)."""
+    store.sync("lever", "globex", [board_job(str(i), f"Role {i}") for i in range(5)])           # one first_seen
+    store.sync("greenhouse", "globex", [board_job(str(i), f"Role {i}", source="greenhouse") for i in range(3)])
+    store.sync("lever", "globex-eu", [board_job("e1", "EU role", board="globex-eu", company_="Globex")])
+    store.sync("lever", "initech", [board_job("i1", "Other", "Initech", board="initech")])
+    store.add("Globex", "Hand-added role", status="applied")
+    store.set_status(["lever:globex:3"], "queued")
+    groups = company._groups(store)
+    assert len(groups["globex"]["boards"]) == 4 and groups["initech"]["boards"] == {("lever", "initech")}
+    for key, g in groups.items():
+        old = [(j.key, r["status"], r["first_seen"]) for j, r in store.iter_jobs(include_closed=True)
+               if company.dupes.company_key(j.display_company) == key]
+        new = [(j.key, r["status"], r["first_seen"]) for j, r in store.board_rows(g["boards"])
+               if company.dupes.company_key(j.display_company) == key]
+        assert new == old and new, key
+    seen = []
+    store.db.set_trace_callback(seen.append)
+    got = company.view(cfg, store, "globex", every=True)
+    assert got["company"] == "Globex" and len(got["jobs"]) == 10
+    # no statement reads every job's text: the whole-table read had no status in it (`... WHERE 1=1 ORDER BY ...`)
+    assert not [s for s in seen if "WHERE 1=1" in s and "status IN" not in s]
+
+
+def test_the_company_groups_are_kept_until_a_write(store):
+    store.sync("lever", "globex", [board_job("1", "Role")])
+    seen = []
+    store.db.set_trace_callback(seen.append)
+    company.search(store, "globex")
+    company.search(store, "glob")
+    assert len([s for s in seen if "GROUP BY source" in s]) == 1
+    store.sync("lever", "globex", [board_job("1", "Role"), board_job("2", "Another")])
+    assert company.search(store, "globex")[0]["jobs"] == 2
+    assert len([s for s in seen if "GROUP BY source" in s]) == 2
+
+
 def test_page_has_the_company_search(server):
     """A search box at the top of the Company tab, reached by `/` from any tab, and a hint where a tab's own search
     finds nothing."""

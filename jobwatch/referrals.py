@@ -4,13 +4,32 @@ you've said about them (use, or don't use, and a note). The page's Referrals tab
 
 from __future__ import annotations
 
-from . import GUIDE
+from . import GUIDE, jobpass
 from .config import Config
-from .filters import reject_reason
+from .filters import reject_reason, title_ok
+from .models import Job
 from .store import ENDED, STAGES, Store, closed_state
-from .watch import load_contacts
+from .watch import judged_pass, load_contacts
 
 OPEN = ("new", "shown", "queued", *(s for s in STAGES if s not in ENDED))
+
+
+def _marked_closed(cfg: Config, store: Store, known) -> dict[str, tuple]:
+    """The new and shown jobs marked closed whose posting hasn't been confirmed closed (they may be open still)
+    that pass the filters, at companies you know someone at: the only ones of the many a board marks that could
+    show here. Today's pass leaves closed jobs out, so these are read from just the boards of those companies."""
+    from .company import _groups  # company reads watch, as this module does
+    boards = set()
+    for g in _groups(store).values():
+        if any(known.at(name, board) or known.left_out(name, board) for name in g["names"]
+               for _, board in g["boards"]):
+            boards |= g["boards"]
+    # A title that fails the title filters fails the job: that is decided in the query, before a posting is read.
+    passes = lambda source, company, title: title_ok(  # noqa: E731
+        title, cfg.filters_for(Job(source=source, company=company, id="", title=title, url="")))
+    return {job.key: (job, rec)
+            for job, rec in store.board_rows(boards, ("new", "shown"), closed_only=True, title_ok=passes)
+            if closed_state(rec) != "closed" and not reject_reason(job, cfg.filters_for(job))}
 
 
 def view(cfg: Config, store: Store) -> dict:
@@ -24,11 +43,22 @@ def view(cfg: Config, store: Store) -> dict:
     if not known:
         return {"people": [], "skipped": [], "has_connections": False}
     found: dict[str, dict] = {}
-    for job, rec in store.jobs(OPEN, include_closed=True):
+    # A board's other openings (a chip maker's hundreds) aren't jobs you'd ask about: of the new and shown jobs,
+    # only those the filters pass are read in full. They were judged once for every tab (jobpass.py); a min_fit
+    # rejection doesn't count here, since a score isn't one of the filters of this list.
+    wanted = [v.key for v in judged_pass(cfg, store).in_status(("new", "shown")) if v.kind in (None, "fit")]
+    rows = {j.key: (j, rec) for j, rec in store.jobs(tuple(s for s in OPEN if s not in ("new", "shown")),
+                                                      include_closed=True)} | store.rows(wanted)
+    try:
+        mtime = cfg.connections.stat().st_mtime_ns
+    except OSError:
+        mtime = None
+    rows |= jobpass.remembered(  # the people come from the connections file and what was said of them (the store)
+        store, "marked-closed", (jobpass.config_stamp(cfg), mtime, repr(cfg.connections_skip), cfg.employer),
+        lambda: _marked_closed(cfg, store, known))
+    for job, rec in (rows[k] for k in store.newest_first(OPEN) if k in rows):
         if closed_state(rec) == "closed" and rec["status"] in ("new", "shown", "queued"):
             continue
-        if rec["status"] in ("new", "shown") and reject_reason(job, cfg.filters_for(job)):
-            continue  # a board's other openings (a chip maker's hundreds) aren't jobs you'd ask about
         names = (job.display_company, job.company)
         for p in known.at(*names) + known.left_out(*names):
             row = found.setdefault(p["key"], {**p, "jobs": []})
