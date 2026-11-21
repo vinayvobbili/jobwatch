@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .service import ServiceError, _domain, _launchctl, _mac
-from .store import IN_PROGRESS, STATUSES, Store
+from .store import IN_PROGRESS, STATUSES, Store, closed_state
 
 LABEL = "io.github.jobwatch.notify-closed"
 HOUR, MINUTE = 9, 0
@@ -83,8 +83,15 @@ def act(store: Store, action: str, keys: list[str] | None = None) -> list[dict]:
     if keys is None:
         keys = [k for k, n in showing.items() if n["status"] == at]
     for key in keys:
-        if key not in showing:
-            raise ValueError(f"{key} has no closed-posting notice showing")
+        if key not in showing:  # a notice cleared ("Got it"), or a Queue card: closed on two looks is enough
+            try:
+                job, rec = store.find(key)
+            except KeyError:
+                raise ValueError(f"{key} has no closed-posting notice showing") from None
+            if closed_state(rec) != "closed":
+                raise ValueError(f"{job.display_company}: {job.title}: its posting isn't confirmed closed")
+            showing[key] = {"key": job.key, "company": job.display_company, "title": job.title,
+                            "status": rec["status"], "day": local_day(rec["closed"])}
         if showing[key]["status"] != at:
             raise ValueError(f"{showing[key]['company']}: {showing[key]['title']} is {showing[key]['status']}: "
                              f"{action} only applies to {at} jobs")

@@ -137,7 +137,10 @@ def test_queue_shows_closed_postings(web, watchlist):
     watch.fetch_all(cfg, store)
     store.set_status(["ashby:initech:c1"], "queued")
     store.set_closed("ashby:initech:c1", True)  # its posting closed (a board listing nothing at all closes none)
-    assert "**Closed**" in report.queue_markdown(watch.queue(cfg, store))
+    assert "**Checking**" in report.queue_markdown(watch.queue(cfg, store))  # one look: not yet closed
+    store.confirm_closed(["ashby:initech:c1"])  # a second look
+    text = report.queue_markdown(watch.queue(cfg, store))
+    assert "**Closed**" in text and "**Checking**" not in text
     store.close()
 
 

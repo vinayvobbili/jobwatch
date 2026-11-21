@@ -11,7 +11,7 @@ from .models import Job
 from .quiet import snoozed_until
 from .score import scorer_label
 from .sources import candidate_home
-from .store import ENDED, STAGES
+from .store import ENDED, STAGES, closed_state
 from .watch import MANY_ROLES, Digest, Entry, FetchReport, scorable
 
 
@@ -111,8 +111,9 @@ def _line(e: Entry) -> list[str]:
         out.append(f"Keywords: {', '.join(e.keywords)}")
     if e.contacts:
         out.append(f"You know: {people(e.contacts)}")
-    if e.record.get("closed"):
-        out.append(f"**Closed** {e.record['closed'][:10]}: the posting is gone from the board.")
+    if state := closed_state(e.record):
+        out.append(f"**Closed** {e.record['closed'][:10]}: the posting is gone from the board." if state == "closed"
+                   else f"**Checking** {e.record['closed'][:10]}: the posting looks gone; one more look confirms it.")
     if e.record.get("note"):
         out.append(f"Note: {e.record['note']}")
     out.append(f"Source: {found_on(j, e.record.get('via'))}")
@@ -215,7 +216,8 @@ def applications_markdown(rows: list[tuple[Job, dict]], today: str | None = None
     for job, rec in rows:
         title = f"[{job.title}]({job.url})" if job.url else job.title
         facts = [f"**{rec['status']}**", f"applied {rec['applied_at']}" if rec.get("applied_at") else "",
-                 job.pay(), "posting closed" if rec.get("closed") else ""]
+                 job.pay(),
+                 {"closed": "posting closed", "checking": "posting may have closed"}.get(closed_state(rec), "")]
         out += [f"### {job.display_company}: {title}", " · ".join(f for f in facts if f)]
         if rec.get("next_step") or rec.get("follow_up"):
             when = f" by {rec['follow_up']}" if rec.get("follow_up") else ""

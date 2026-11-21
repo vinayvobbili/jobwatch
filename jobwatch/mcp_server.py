@@ -47,7 +47,7 @@ from . import (
 )
 from .filters import staffing_firm
 from .score import resume_id
-from .store import Store
+from .store import Store, closed_state
 from .watch import build_digest, fetch_all, load_contacts, queue, save_job, set_link, unscored_reason, watched_name
 
 server = MCPServer(
@@ -629,7 +629,7 @@ def list_applications(
         found = quiet.find(rows, cfg.quiet, known=watch.load_contacts(cfg))
         return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, "pay": j.pay(),
                  "candidate_home": store.candidate_home(j), "due": report.due(rec), "quiet": found.get(j.key),
-                 **{k: rec.get(k) for k in fields}}
+                 "closed_state": closed_state(rec), **{k: rec.get(k) for k in fields}}
                 for j, rec in quiet.order(rows, found) if report.due(rec) or not due_only]
     finally:
         store.close()
@@ -761,7 +761,8 @@ def list_queued_jobs() -> list[dict]:
     try:
         return [{"key": e.job.key, "company": e.job.display_company, "title": e.job.title, "url": e.job.url,
                  "pay": e.job.pay(), "fit": e.fit, "contacts": e.contacts, "note": e.record.get("note"),
-                 "queued_at": e.record.get("status_at"), "closed": e.record.get("closed"), "warnings": e.warnings,
+                 "queued_at": e.record.get("status_at"), "closed": e.record.get("closed"),
+                 "closed_state": closed_state(e.record), "warnings": e.warnings,
                  "duplicate_of": e.duplicate.to_dict() if e.duplicate else None, **_pay(e.pay, e.job),
                  **_lca(e.lca)}
                 for e in queue(cfg, store, pay_budget=levels.QUEUE)]

@@ -74,7 +74,19 @@ from .config import BACKENDS, ConfigError, credit_entry, duration, fallback_entr
 from .filters import KINDS, rejection, staffing_firm
 from .rounds import ROUNDS
 from .score import ScoringUnavailable, calls_at_once, check_prompts, prompt_info, resume_id, scorer_label
-from .store import COMP_FIELDS, COMPANY_KINDS, HEALTH_FIELDS, LISTINGS, ROLES, STAGES, STATUSES, Store, day, day_start
+from .store import (
+    COMP_FIELDS,
+    COMPANY_KINDS,
+    HEALTH_FIELDS,
+    LISTINGS,
+    ROLES,
+    STAGES,
+    STATUSES,
+    Store,
+    closed_state,
+    day,
+    day_start,
+)
 from .watch import (
     CHECKED,
     MANY_ROLES,
@@ -1516,7 +1528,7 @@ def cmd_service(args):
 def cmd_list(args, cfg, store):
     rows = store.jobs(tuple(args.status) if args.status else None, include_closed=True)
     for job, rec in rows:
-        closed = " [closed]" if rec["closed"] else ""
+        closed = {"closed": " [closed]", "checking": " [checking: closed once]"}.get(closed_state(rec), "")
         note = f"  ({rec['note']})" if rec.get("note") else ""
         print(f"{rec['status']:8} {(rec['status_at'] or rec['first_seen'])[:10]}  {job.display_company}: "
               f"{job.title}{closed}{note}  `{job.key}`")

@@ -7,7 +7,7 @@ from __future__ import annotations
 from . import GUIDE
 from .config import Config
 from .filters import reject_reason
-from .store import ENDED, STAGES, Store
+from .store import ENDED, STAGES, Store, closed_state
 from .watch import load_contacts
 
 OPEN = ("new", "shown", "queued", *(s for s in STAGES if s not in ENDED))
@@ -25,7 +25,7 @@ def view(cfg: Config, store: Store) -> dict:
         return {"people": [], "skipped": [], "has_connections": False}
     found: dict[str, dict] = {}
     for job, rec in store.jobs(OPEN, include_closed=True):
-        if rec["closed"] and rec["status"] in ("new", "shown", "queued"):
+        if closed_state(rec) == "closed" and rec["status"] in ("new", "shown", "queued"):
             continue
         if rec["status"] in ("new", "shown") and reject_reason(job, cfg.filters_for(job)):
             continue  # a board's other openings (a chip maker's hundreds) aren't jobs you'd ask about

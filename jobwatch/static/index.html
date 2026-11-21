@@ -310,6 +310,9 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .badge.new { color: #fff; background: var(--grad);
   box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); animation: pulse 2.4s ease-out infinite; }
 .badge.closed { background: var(--bad); color: #fff; }
+/* found closed once: a second look confirms it, so amber (not red) until then */
+.badge.checking { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); text-transform: none; letter-spacing: 0; }
 /* a posting that closed since you last looked: amber, gently pulsing, until cleared (click it) */
 .badge.closed-new { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn);
   border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); text-transform: none; letter-spacing: 0;
@@ -330,7 +333,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .closed-strip .cs-what a:hover { color: var(--warn); border-bottom-color: var(--warn); }
 .closed-strip .cs-meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 .closed-strip .cs-note { margin: 0 0 4px; }
-.closed-strip .cs-confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
+.cs-confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
   animation: fade .2s ease both; }
 .closed-strip .cs-live { flex: none; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
   padding: 1px 8px; border-radius: 999px; color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
@@ -2038,6 +2041,16 @@ function peopleRow(job, most = 2) {
 // Every job card has this skeleton: the header (logo, title, company · place · age; the ring top right), the labeled
 // rows, `above` (the queue's note box) and the actions at the bottom. `stage` is a chip before the title, on the
 // company page, where a job can be at any status. The company's name opens that page.
+// A posting's state: "closed" (found closed twice, a second look at least hours later), "checking" (found closed
+// once) or "" (open). The server sends closed_state; an older one sends only `closed`.
+const closedState = j => j.closed_state !== undefined ? j.closed_state || "" : j.closed ? "closed" : "";
+function closedBadge(job) {
+  const on = (job.closed || "").slice(0, 10), state = closedState(job);
+  return state === "closed" ? h("span", { class: "badge closed", title: "The posting was taken down: found closed on two looks." },
+      `closed ${fmtDay(on)}`)
+    : state === "checking" ? h("span", { class: "badge checking", title: "Found closed once. jobwatch looks again before calling it closed." },
+      "checking") : null;
+}
 function jobCard(job, actions, i = 0, above = null, stage = null) {
   const sep = () => h("span", { class: "sep" }, "·");
   const meta = [h("b", { class: "co", title: `See everything at ${job.company}`, role: "link", tabindex: 0,
@@ -2062,7 +2075,7 @@ function jobCard(job, actions, i = 0, above = null, stage = null) {
       h("div", { class: "jc-title" },
         stage,
         job.status === "new" ? h("span", { class: "badge new" }, "new") : null,
-        job.closed ? h("span", { class: "badge closed" }, "closed") : null,
+        closedBadge(job),
         dupeBadge(job.duplicate_of), worthChip(job),
         job.same_title ? h("span", { class: "chip", title: `${job.same_title} more posting${job.same_title > 1 ? "s" : ""} with this title` },
           `+${job.same_title}`) : null,
@@ -2194,7 +2207,7 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
 const SNOOZE_LIMIT = "3 weeks";
 function snoozeButton(job, act) {
   const on = job.waiting_on || [];
-  if (!on.length || job.closed || job.status === "snoozed") return null;
+  if (!on.length || closedState(job) === "closed" || job.status === "snoozed") return null;
   const what = on.length === 1 ? `your ${on[0].title} application` : `your ${on.length} applications there`;
   return h("button", { class: "btn", title: `Set it aside while ${what} is in progress. It comes back to your queue ` +
       `when ${on.length === 1 ? "that ends" : "they end"}, or in ${SNOOZE_LIMIT} if there's no news.`,
@@ -2205,7 +2218,7 @@ function snoozeButton(job, act) {
 // Opens the application form in a new tab (a link, so the browser lets it open); `then` runs alongside, e.g.
 // queueing the job. The jobwatch browser extension fills the form there and records it when it's submitted.
 function applyButton(job, primary, then) {
-  if (job.closed || !(job.apply_url || job.url)) return null;
+  if (closedState(job) === "closed" || !(job.apply_url || job.url)) return null;
   return h("a", { class: "btn" + (primary ? " primary" : ""), href: job.apply_url || job.url, target: "_blank",
     rel: "noopener", title: "Open the application form. With the jobwatch browser extension, click its icon there to fill " +
       "the form; it marks the job applied when you submit.", onclick: () => then && then() }, "Apply ↗");
@@ -2479,7 +2492,7 @@ function detailsFacts(j) {
   const tile = (lbl, val) => val ? h("div", { class: "d-fact" }, h("div", { class: "lbl" }, lbl), h("div", { class: "val" }, val)) : null;
   return h("div", { class: "d-facts" },
     h("div", { class: "d-fact stage", style: `--sc:var(--s-${j.status}, var(--accent))` }, h("div", { class: "lbl" }, "Stage"), sel),
-    tile("Applied", day(j.applied_at)), tile("Posting closed", day(j.closed)), tile("First seen", day(j.first_seen)));
+    tile("Applied", day(j.applied_at)), tile(closedState(j) === "checking" ? "Posting closed? (checking)" : "Posting closed", day(j.closed)), tile("First seen", day(j.first_seen)));
 }
 function detailsScore(j) {
   if (j.fit && !j.fit.stale) return null;
@@ -4774,6 +4787,25 @@ function snoozedPanel() {
   return el;
 }
 
+// A closed posting on the Queue: Skip, as in the Closed postings strip: one click, an inline question (no browser
+// dialog), then Undo for 8 seconds (status, dated note and notice all come back).
+function skipClosedButton(job) {
+  const box = h("span", { class: "cs-confirm" });
+  const ask = () => fill(box, h("button", { class: "btn", title: "The posting is closed: skip this job.",
+    onclick: () => fill(box, h("span", { class: "small" }, "Skip this job? You can change the status back."),
+      h("button", { class: "btn primary", onclick: go }, "Yes"), h("button", { class: "btn ghost", onclick: ask }, "Cancel")) }, "Skip"));
+  const go = async () => {
+    try {
+      const r = await api("/api/closed/act", { action: "skip", key: job.key });
+      await leave(document.getElementById("job-" + job.key), -1);
+      toast(`Skipped: ${job.title}.`, async () => { await api("/api/closed/undo", { undo: r.undo }); render(); }, "onward", "Undo", 8000);
+      render();
+    } catch (e) { toast(e.message); ask(); }
+  };
+  ask();
+  return box;
+}
+
 function queueCard(job, i) {
   const note = h("input", { type: "text", placeholder: "Note (optional): referred by…, applied with…" });
   note.value = job.note || "";
@@ -4783,6 +4815,7 @@ function queueCard(job, i) {
     h("button", { class: "btn", onclick: () => mark(job, "applied", note.value || null,
       `Marked applied: ${job.title}`, "queued") }, icon("check", 14), "I applied"),
     snoozeButton(job, (status, label) => mark(job, status, null, label, "queued")),
+    closedState(job) === "closed" ? skipClosedButton(job) : null,
     h("button", { class: "btn", onclick: () => mark(job, "shown", null, `Removed from the queue: ${job.title}`, "queued") },
       "Remove from queue"),
     detailsButton(job), scoreButton(job, job.can_score, j => queueCard(j, 0)),
@@ -5227,7 +5260,9 @@ function appCard(a, d, i = 0) {
     a.closed_new ? h("button", { class: "badge closed-new", title: "The posting was taken down since you last looked. Click to clear this notice: the application stays tracked.",
       onclick: async () => { try { await api("/api/closed/dismiss", { key: a.key }); render(); } catch (e) { toast(e.message); } } },
       `closed ${closedOn}`) : null,
-    a.pay ? h("span", { class: "pay" }, a.pay) : null, a.closed ? `posting closed ${closedOn}` : null].filter(Boolean);
+    a.pay ? h("span", { class: "pay" }, a.pay) : null,
+    closedState(a) === "closed" ? `posting closed ${closedOn}` : closedState(a) === "checking" ? h("span", { class: "badge checking",
+      title: "Found closed once. jobwatch looks again before calling it closed." }, "checking") : null].filter(Boolean);
   const view = () => { const [draftBtn, draftBox] = isEndedStatus(a.status) ? [null, null] : followupButton(a); fill(card,
     monogram(a.company),
     h("div", {},
@@ -6732,7 +6767,8 @@ function companyFacts(j, today) {
   const waiting = j.status === "snoozed" && (j.waiting_on || []).length;
   const lines = [
     j.applied_at ? `Applied ${fmtDay(j.applied_at, today)}` : null,
-    j.closed ? `Posting closed ${fmtDay(j.closed, today)}` : null,
+    closedState(j) === "closed" ? `Posting closed ${fmtDay(j.closed, today)}`
+      : closedState(j) === "checking" ? `Posting may have closed ${fmtDay(j.closed, today)}: checking` : null,
     waiting ? `Waiting on ${j.waiting_on.map(a => a.title).join(", ")}` + (j.follow_up ? `; back by ${fmtDay(j.follow_up, today)}` : "") : null,
     j.status !== "snoozed" && (j.next_step || j.follow_up) ? (j.due ? "Due: " : "Next: ") +
       [j.next_step, j.follow_up && `follow up ${fmtDay(j.follow_up, today)}`].filter(Boolean).join(" · ") : null,
@@ -6763,7 +6799,7 @@ function companyCard(j, i, c) {
       toast(r.warning ? `${label}. ${r.warning}` : label, async () => { await move(was); redraw(); drawCompanyTiles(); }, TONES[status]);
     } catch (e) { toast(e.message); }
   };
-  const queueIt = (label = "Queue") => j.closed ? null : h("button", { class: "btn primary",
+  const queueIt = (label = "Queue") => closedState(j) === "closed" ? null : h("button", { class: "btn primary",
     onclick: () => act("queued", `📌 Queued: ${j.title}. ${pick(QUEUED)}`) }, label);
   const skipIt = () => h("button", { class: "btn", onclick: () => act("skipped", `Skipped: ${j.title}. ${pick(SKIPPED)}`) }, "Skip");
   const posting = () => link(j.url, "Posting ↗");
@@ -6776,7 +6812,7 @@ function companyCard(j, i, c) {
     : j.status === "snoozed" ? [queueIt("Queue now"), applyButton(j, false), skipIt(), detailsButton(j), score()]
     : j.status === "skipped" ? [queueIt(), applyButton(j, false), detailsButton(j), score()]
     : [queueIt(), applyButton(j, false, () => act("queued", `📌 Queued and opened: ${j.title}. Submit it there.`)),
-      snoozeButton(j, act), j.closed ? null : skipIt(), detailsButton(j), score()];
+      snoozeButton(j, act), closedState(j) === "closed" ? null : skipIt(), detailsButton(j), score()];
   return jobCard(j, actions, i, companyFacts(j, today), stageChip(j, today));
 }
 

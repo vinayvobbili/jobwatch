@@ -284,7 +284,8 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
             report.boards += 1
             report.jobs += len(jobs)
             keys = set(found := store.sync(b.source, b.board, jobs,
-                                           close_missing=b.entry not in partial and not src.newest_first))
+                                           close_missing=b.entry not in partial and not src.newest_first,
+                                           spare=FOLLOWED if src.search else ()))
             report.new += found
             new += [j for j in jobs if j.key in keys]
             if src.many_companies and keys:
@@ -662,6 +663,7 @@ def still_open(job: Job, get=None, page=None, boards: dict | None = None,
 
 
 CHECKED = ("queued", "applied", "screening", "interviewing")  # the statuses whose postings are checked
+FOLLOWED = (*CHECKED, "offer")  # jobs you follow: a searched board's listing never closes them (Store.sync)
 CHECK_CAP = 40  # postings checked per scheduled run: each costs a request or two, and the rest wait for the next
 CHECK_EVERY = timedelta(days=1)  # a posting isn't checked again sooner
 

@@ -31,9 +31,15 @@ def store(cfg):
     s.close()
 
 
+def ago(days):
+    """A posting date relative to today: a role a board lists for the first time more than a fortnight after it was
+    posted is taken as reposted today (Store.sync), so fixed dates in a test go stale."""
+    return (datetime.now(timezone.utc) - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def board_job(id_, title, company_="Globex", source="lever", board="globex", **kw):
     kw.setdefault("locations", ["Denver, CO"])  # one of the test watchlist's places
-    kw.setdefault("posted", datetime(2026, 9, 1, tzinfo=timezone.utc))
+    kw.setdefault("posted", ago(5))
     return Job(source=source, company=board, id=id_, title=title, url=f"https://jobs.example/{board}/{id_}",
                company_name=company_, **kw)
 
@@ -107,16 +113,16 @@ def test_a_watched_board_has_no_hint_and_lists_its_open_roles(cfg, store, tracke
     assert v["watch"] == {"watched": True, "entry": None, "command": None, "add_board": None, "careers": None,
                           "suggested": False}
     assert sorted(j["title"] for j in v["jobs"]) == ["Data Engineer", "Platform Engineer"]
-    assert {j["status"] for j in v["jobs"]} == {"new"} and v["jobs"][0]["posted"] == "2026-09-01"
+    assert {j["status"] for j in v["jobs"]} == {"new"} and v["jobs"][0]["posted"] == ago(5).date().isoformat()
 
 
 def test_open_roles_not_acted_on_list_the_latest_posting_first(cfg, store):
     """A board's roles all arrive together when it's first watched, so the order they came says nothing."""
     store.sync("lever", "globex", [
         board_job("g1", "Platform Engineer", posted=datetime(2025, 2, 20, tzinfo=timezone.utc)),
-        board_job("g2", "Data Engineer", posted=datetime(2026, 10, 30, tzinfo=timezone.utc)),
+        board_job("g2", "Data Engineer", posted=ago(3)),
         board_job("g3", "Site Reliability Engineer", posted=None),
-        board_job("g4", "ML Engineer", posted=datetime(2026, 8, 14, tzinfo=timezone.utc))])
+        board_job("g4", "ML Engineer", posted=ago(10))])
     v = company.view(cfg, store, "globex", every=True)
     assert [j["title"] for j in v["jobs"]] == ["Data Engineer", "ML Engineer", "Platform Engineer",
                                               "Site Reliability Engineer"]

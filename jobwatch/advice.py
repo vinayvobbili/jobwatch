@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from . import quiet as quiet_
 from .config import Config, Quiet
 from .dupes import companies
-from .store import STAGES, Store
+from .store import STAGES, Store, closed_state
 from .watch import STRONG_FIT, Entry, plural
 
 WEEK = timedelta(days=7)
@@ -158,6 +158,8 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
     Today, apply once queued), or go ahead as a stretch when must-haves are missing or the fit is only fair. None
     while the job has no fit score and nothing else to go on."""
     fit, company = entry.fit, entry.job.display_company
+    if closed_state(entry.record or {}) == "closed":  # confirmed by a second look: the one reason that settles it
+        return {"call": "skip", "text": "The posting is closed."}
     why = dict(zip(said.codes, said.reasons, strict=False)) if said else {}  # older advice may carry no codes
     hard = [c for c in ("applied_before", "turned_down", "under_floor", "must_haves")
             if c in why and said.action == "skip"]

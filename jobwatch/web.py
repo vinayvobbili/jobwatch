@@ -85,7 +85,7 @@ from .filters import KINDS
 from .package import Package
 from .rounds import ROUNDS
 from .score import Provider, ScoringUnavailable, brief, paused_until, prompt_info, provider_key, resume_id
-from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, Store
+from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, Store, closed_state
 from .watch import (
     MANY_ROLES,
     Entry,
@@ -606,7 +606,8 @@ class App:
                 "apply_url": sources.apply_url(j.url), "where": j.where,
                 "locations": j.places, "pay": j.pay(), "age_days": j.age_days(), "department": j.department,
                 "status": e.record.get("status"), "note": e.record.get("note"), "closed": e.record.get("closed"),
-                "status_at": e.record.get("status_at"), "relevance": e.relevance, "keywords": e.keywords,
+                "closed_state": closed_state(e.record), "status_at": e.record.get("status_at"),
+                "relevance": e.relevance, "keywords": e.keywords,
                 "focus": e.focus, "roles": rolekinds.role_kinds(j.title), "fit": e.fit, "contacts": e.contacts,
                 "same_title": len(e.same_title), "keys": e.keys,
                 "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max,
@@ -1169,6 +1170,7 @@ class App:
 
         def run(cfg, store):
             return [{"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
+                     "closed_state": closed_state(rec),
                      **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen")}}
                     for j, rec in store.jobs((status,) if status else None, include_closed=True)]
         return self._with_store(run)
@@ -1187,6 +1189,7 @@ class App:
                 {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
                  "manual": j.source == MANUAL, "due": report.due(rec), "quiet": found.get(j.key),
                  "closed_day": closed_notice.local_day(rec.get("closed")), "closed_new": j.key in new,
+                 "closed_state": closed_state(rec),
                  "snoozed_until": quiet.snoozed_until(rec),
                  "package": Package(store.packages, j.key).summary(),
                  **{k: rec.get(k) for k in ("status", "status_at", "applied_at", "next_step", "round", "follow_up",
@@ -1405,6 +1408,7 @@ class App:
                     "meeting": None if rec.get("status") in ENDED else interviews.meeting_dict(
                         rec.get("next_step"), round_id=rec.get("round")),
                     **self._pay(cfg, store, [(job, None)]).get(job.key, {}),
+                    "closed_state": closed_state(rec),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen", "next_step",
                                                "round", "follow_up", "applied_at")}}
         return self._with_store(run)

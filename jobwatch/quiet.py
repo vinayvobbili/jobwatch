@@ -9,7 +9,7 @@ from datetime import date, datetime
 from .config import Quiet
 from .contacts import Contacts
 from .models import Job
-from .store import ENDED, STAGES
+from .store import ENDED, STAGES, closed_state
 
 SNOOZED = "Snoozed"  # a note line starting with this is a snooze (see Store.snooze), not news
 _LINE = re.compile(r"(\d{4}-\d{2}-\d{2}): (.*?)(?=\s\d{4}-\d{2}-\d{2}: |$)", re.S)
@@ -67,7 +67,7 @@ def assess(job: Job, rec: dict, quiet: Quiet, today: date | None = None,
     days = ((today or date.today()) - since).days
     if days < wait:
         return None
-    is_open, long = not rec.get("closed"), bool(quiet.long) and days >= quiet.long
+    is_open, long = closed_state(rec) != "closed", bool(quiet.long) and days >= quiet.long
     close = not is_open or long
     why = "its posting is gone" if not is_open else f"nothing for {days} days"
     return {"days": days, "since": since.isoformat(), "posting_open": is_open, "long": long,

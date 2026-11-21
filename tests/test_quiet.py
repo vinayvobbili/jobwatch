@@ -35,6 +35,8 @@ def put(store, company, title, status="applied", news="2026-10-01", note=None, f
     store.db.execute("UPDATE jobs SET status_at=?, note=?, closed=? WHERE key=?",
                      (f"{news}T09:00:00+00:00", note, "2026-10-10T00:00:00+00:00" if closed else None, job.key))
     store.db.commit()
+    if closed:  # seen closed twice: confirmed (one look alone is only 'checking', and not taken as closed)
+        store.confirm_closed([job.key])
     return job.key
 
 
@@ -135,7 +137,11 @@ def test_a_closed_posting_or_a_very_old_one_is_likely_closed(store):
     assert (gone["move"], gone["posting_open"], gone["long"]) == ("close", False, False)
     assert gone["advice"] == "Likely closed (its posting is gone): mark it rejected or withdrawn."
     assert not gone["contacts"]
-    old = assess(store, put(store, "Initech", "Data Engineer", news="2026-08-01"))
+    key = put(store, "Hooli", "Data Engineer", news="2026-09-20", closed=True)
+    store.db.execute("DELETE FROM closed_confirmed WHERE key=?", (key,))  # found closed once only: not yet closed
+    store.db.commit()
+    assert assess(store, key)["posting_open"] is True
+    old =assess(store, put(store, "Initech", "Data Engineer", news="2026-08-01"))
     assert (old["move"], old["long"], old["days"]) == ("close", True, 74)
     assert "nothing for 74 days" in old["advice"]
 

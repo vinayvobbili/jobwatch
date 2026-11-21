@@ -272,6 +272,17 @@ def _letters(text: str | None) -> str:
     return re.sub(r"[\W_]+", "", re.sub(r"&|\band\b", " ", (text or "").lower()))
 
 
+# A job's record carries closed_confirmed: 1 when its closed mark was seen again by a later check (the second look
+# a closed posting needs before it counts as closed: see closed_notices), else 0: the mark alone is still 'checking'.
+_ROW = ("SELECT *, EXISTS (SELECT 1 FROM closed_confirmed c WHERE c.key=jobs.key AND c.closed=jobs.closed) "
+        "AS closed_confirmed FROM jobs")
+
+def closed_state(rec: dict) -> str | None:
+    """What a job's record says about its posting: 'closed' (the mark was confirmed by a second look), 'checking'
+    (marked once, not yet confirmed: shown amber, not as closed) or None (open)."""
+    return None if not rec.get("closed") else "closed" if rec.get("closed_confirmed") else "checking"
+
+
 # Columns added after the first release, and how to fill them in an older state file.
 _ADDED = {"applied_at": "UPDATE jobs SET applied_at=substr(status_at, 1, 10) WHERE status='applied'",
           "next_step": None, "follow_up": None, "round": None, "via": None, "duplicate_of": None,  # round: rounds.py
@@ -397,6 +408,10 @@ class Store:
             self.db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
             self.db.row_factory = sqlite3.Row
             self.db.create_function("one_role", 1, names_one_role, deterministic=True)
+            if not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='closed_confirmed'").fetchone():
+                # an older file has no confirmations: an empty temp table (the file itself isn't touched) makes
+                # every closed mark 'checking' for the _ROW queries
+                self.db.execute("CREATE TEMP TABLE closed_confirmed (key TEXT, closed TEXT, confirmed_at TEXT)")
             return
         path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, timeout=BUSY)
@@ -445,12 +460,16 @@ class Store:
     def close(self):
         self.db.close()
 
-    def sync(self, source: str, company: str, jobs: list[Job], close_missing: bool = True) -> list[str]:
+    def sync(self, source: str, company: str, jobs: list[Job], close_missing: bool = True,
+             spare: tuple[str, ...] = ()) -> list[str]:
         """Record one board's current roles; returns the keys seen for the first time.
 
         Roles that have disappeared from the board are marked closed (and reopened if they come back), unless
         `close_missing` is off: a board read only partway (sources.Partial) says nothing about the rest, and a
-        board that listed no roles at all closes none."""
+        board that listed no roles at all closes none. Roles with a status in `spare` are never closed by a
+        listing: a searched board (Workday, a careers site's sitemap) lists only the roles matching the watchlist's
+        words, up to a cap, so a role you follow that isn't in it may simply not match; the daily check of the
+        posting itself decides (watch.check_postings)."""
         now, new = _now(), []
         with self.db:
             rows = self.db.execute("SELECT key, slim, status FROM jobs WHERE source=? AND company=?",
@@ -478,7 +497,8 @@ class Store:
                     print(f"jobwatch: skipped {job.key}: {type(e).__name__}: {e}", file=sys.stderr)
             # a board that lists nothing at all is down or changed, not empty: it closes nothing (a posting that
             # really went is found by the daily check of the ones you follow)
-            gone = known - {j.key for j in jobs} if close_missing and jobs else set()
+            spared = {r["key"] for r in rows if r["status"] in spare}
+            gone = (known - {j.key for j in jobs} - spared) if close_missing and jobs else set()
             self.db.executemany("UPDATE jobs SET closed=? WHERE key=? AND closed IS NULL", [(now, k) for k in gone])
         return new
 
@@ -659,7 +679,7 @@ class Store:
                   ) -> Iterator[tuple[Job, dict]]:
         """jobs(), one pair at a time: a caller that keeps only some of them (the filters pass a few hundred of a
         hundred thousand) never holds the rest, with their postings' text, in memory at once."""
-        sql, args = "SELECT * FROM jobs WHERE 1=1", []
+        sql, args = _ROW + " WHERE 1=1", []
         if statuses:
             sql += f" AND status IN ({','.join('?' * len(statuses))})"
             args += list(statuses)
@@ -677,7 +697,7 @@ class Store:
             return []
         fields = ("note", "next_step", "via", "json_extract(data, '$.title')", "company",
                   "json_extract(data, '$.company_name')", "key", "json_extract(data, '$.url')")
-        rows = self.db.execute(f"SELECT * FROM jobs WHERE {' OR '.join(f'instr(lower({f}), ?)' for f in fields)} "
+        rows = self.db.execute(f"{_ROW} WHERE {' OR '.join(f'instr(lower({f}), ?)' for f in fields)} "
                                "ORDER BY first_seen DESC", [text] * len(fields)).fetchall()
         return [(Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}) for r in rows]
 
@@ -707,7 +727,7 @@ class Store:
         name or part of it, in any case, when that names one job: the one queued or applied to there, or the only
         one there at all. prefer_open: when a company still names several jobs, the one open application (applied,
         screening or interviewing) among them wins."""
-        rows = self.db.execute("SELECT * FROM jobs WHERE key=? OR key LIKE ?", (key, f"%{key}")).fetchall()
+        rows = self.db.execute(f"{_ROW} WHERE key=? OR key LIKE ?", (key, f"%{key}")).fetchall()
         exact = [r for r in rows if r["key"] == key]
         rows = exact or rows
         by_company = not rows
@@ -729,7 +749,7 @@ class Store:
         """The job whose link is one of these, exactly as kept: the one queued or applied to when several are."""
         if not urls:
             return None
-        rows = self.db.execute(f"SELECT * FROM jobs WHERE json_extract(data, '$.url') IN ({','.join('?' * len(urls))})"
+        rows = self.db.execute(f"{_ROW} WHERE json_extract(data, '$.url') IN ({','.join('?' * len(urls))})"
                                " ORDER BY key", urls).fetchall()
         rows = [r for r in rows if r["status"] in ("queued", *STAGES)] or rows
         if not rows:
@@ -742,12 +762,12 @@ class Store:
         name = name.strip().lower()
         if not name:
             return []
-        rows = self.db.execute("SELECT * FROM jobs WHERE instr(lower(company), ?) "
+        rows = self.db.execute(f"{_ROW} WHERE instr(lower(company), ?) "
                                "OR instr(lower(json_extract(data, '$.company_name')), ?) ORDER BY key",
                                (name, name)).fetchall()
         if not rows and (bare := _letters(name)):
             self.db.create_function("letters", 1, _letters, deterministic=True)
-            rows = self.db.execute("SELECT * FROM jobs WHERE instr(letters(company), ?) "
+            rows = self.db.execute(f"{_ROW} WHERE instr(letters(company), ?) "
                                    "OR instr(letters(json_extract(data, '$.company_name')), ?) ORDER BY key",
                                    (bare, bare)).fetchall()
         return [r for r in rows if r["status"] in ("queued", *STAGES)] or rows

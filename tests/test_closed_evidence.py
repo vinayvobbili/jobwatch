@@ -11,6 +11,7 @@ import pytest
 from jobwatch import closed_notice, config, sources, watch
 from jobwatch.models import Job
 from jobwatch.store import Store
+from jobwatch.web import ApiError, App
 
 BOARD = "globex.avature.net"
 LINK = f"https://{BOARD}/careers/JobDetail/Incident-Response-Sr-Staff-Engineer-19166/19166"
@@ -155,6 +156,45 @@ def test_a_sync_of_an_empty_board_closes_nothing(store):
     assert store.find(j.key)[1]["closed"] is not None
 
 
+def test_a_searched_boards_listing_never_closes_a_job_you_follow(tmp_path, monkeypatch):
+    """A Workday or sitemap board lists only the roles whose titles match the watchlist (up to a cap): a queued job
+    that isn't in it may just not match. It stays open (the daily check of its own page decides); one you never
+    acted on, missing from the same listing, is still closed."""
+    from tests.test_big_boards import eightfold_web
+    path = tmp_path / "watchlist.yaml"
+    path.write_text("companies:\n  - eightfold:globex\nfilters:\n  titles: [engineer]\n", encoding="utf-8")
+    cfg, store = config.load(path), Store(tmp_path / "state.db")
+    followed = {s: Job(source="eightfold", company="globex", id=f"90{i}", title=f"Platform Architect {i}", url="u",
+                       description="x") for i, s in enumerate(("queued", "applied", "screening", "interviewing",
+                                                              "offer", "new"))}
+    store.sync("eightfold", "globex", list(followed.values()))
+    for status, j in followed.items():
+        if status != "new":
+            store.set_status([j.key], status)
+    monkeypatch.setattr(watch, "check_daily", lambda *a, **k: [])  # the fetch's own listing is what's tested
+    watch.fetch_all(cfg, store, get=eightfold_web())
+    closed = {s: store.find(j.key)[1]["closed"] is not None for s, j in followed.items()}
+    assert closed == {"queued": False, "applied": False, "screening": False, "interviewing": False, "offer": False,
+                      "new": True}
+
+
+def test_a_complete_boards_listing_still_closes_a_dropped_job(store):
+    gh = [Job(source="greenhouse", company="globex", id=i, title=f"Engineer {i}", url="u") for i in ("1", "2")]
+    store.sync("greenhouse", "globex", gh)
+    store.set_status([gh[0].key], "queued")
+    store.sync("greenhouse", "globex", [gh[1]])
+    assert store.find(gh[0].key)[1]["closed"] is not None  # a complete listing: closed, then to be confirmed
+    assert store.closed_notices() == []  # and not a notice until a second look (see test_one_closed_look...)
+
+
+def test_sync_spares_the_statuses_it_is_told_to(store):
+    a, b, c = (Job(source="workday", company="globex.wd1/Site", id=i, title=f"Architect {i}", url="u") for i in "abc")
+    store.sync("workday", "globex.wd1/Site", [a, b, c])
+    store.set_status([a.key], "queued")
+    store.sync("workday", "globex.wd1/Site", [c], spare=("queued",))
+    assert [store.find(j.key)[1]["closed"] is not None for j in (a, b, c)] == [False, True, False]
+
+
 # -- what is
 
 def test_a_404_is_closed(store):
@@ -277,3 +317,80 @@ def test_recheck_is_a_command(cfg, store, capsys):
     store.db.commit()
     main(["-c", str(cfg.path), "notify-closed", "--recheck"])
     assert "Looked again at 0 jobs marked closed." in capsys.readouterr().out
+
+
+# -- what every tab reads: closed (two looks), checking (one), or open
+
+def queued_jobs(store):
+    """Three queued jobs: closed on two looks, closed on one, open."""
+    two, one, none = (tracked(store, status="queued", source="greenhouse", company="globex", pid=p,
+                              url=f"https://boards.greenhouse.io/globex/jobs/{p}", title=t)
+                      for p, t in (("1", "Staff Engineer"), ("2", "Platform Engineer"), ("3", "Data Engineer")))
+    store.set_closed(two.key, True)
+    store.set_closed(one.key, True)
+    store.confirm_closed([two.key])
+    return two, one, none
+
+
+def test_every_record_says_closed_checking_or_open(store):
+    from jobwatch.store import closed_state
+    two, one, none = queued_jobs(store)
+    assert [closed_state(store.find(j.key)[1]) for j in (two, one, none)] == ["closed", "checking", None]
+    queued = store.jobs(("queued",), include_closed=True)
+    assert [closed_state(r) for j, r in queued if j.key == one.key] == ["checking"]
+    assert [closed_state(r) for j, r in store.search("Platform")] == ["checking"]
+    store.set_closed(two.key, False)  # reopened and closed again: a new mark, to be confirmed again
+    store.set_closed(two.key, True)
+    assert closed_state(store.find(two.key)[1]) == "checking"
+
+
+def test_the_queue_page_and_the_other_tabs_read_the_same_state(cfg, store):
+    from jobwatch.web import App
+    two, one, none = queued_jobs(store)
+    app = App(cfg.path)
+    queue = {j["key"]: j for j in app.get_queue({})}
+    assert {k: j["closed_state"] for k, j in queue.items()} == {two.key: "closed", one.key: "checking", none.key: None}
+    assert queue[two.key]["verdict"] == {"call": "skip", "text": "The posting is closed."}
+    assert not (queue[one.key]["verdict"] or {}).get("text", "").startswith("The posting is closed")  # one look: no
+    assert {j["key"]: j["closed_state"] for j in app.get_jobs({"status": ["queued"]})} == \
+        {two.key: "closed", one.key: "checking", none.key: None}
+    assert app.get_job({"key": [one.key]})["closed_state"] == "checking"
+    assert app.get_job({"key": [two.key]})["closed_state"] == "closed"
+    from jobwatch import company
+    view = company.view(cfg, store, "Globex")
+    assert {j["key"]: j["closed_state"] for j in view["jobs"]} == {
+        two.key: "closed", one.key: "checking", none.key: None}
+    assert "posting may have closed" in company.text(view) and "posting closed" in company.text(view)
+
+
+def test_the_command_line_and_the_queue_text_say_checking_for_one_look(store, cfg, capsys):
+    from jobwatch.cli import main
+    two, one, none = queued_jobs(store)
+    main(["-c", str(cfg.path), "list", "--status", "queued"])
+    lines = {line.split("`")[1]: line for line in capsys.readouterr().out.splitlines() if "`" in line}
+    assert "[closed]" in lines[two.key] and "[checking" in lines[one.key]
+    assert "[closed" not in lines[none.key] and "[checking" not in lines[none.key]
+
+
+def test_a_queue_card_can_skip_a_confirmed_closed_job_with_undo_and_not_an_unconfirmed_one(cfg, store):
+    two, one, _ = queued_jobs(store)
+    app = App(cfg.path)
+    with pytest.raises(ApiError, match="isn't confirmed closed"):
+        app.post_closed_act({"action": "skip", "key": one.key})
+    store.dismiss_closed_notices()  # 'Got it' was pressed: the Queue card still skips
+    done = app.post_closed_act({"action": "skip", "key": two.key})
+    rec = store.find(two.key)[1]
+    assert rec["status"] == "skipped" and "Posting closed" in rec["note"] and done["done"] == 1
+    app.post_closed_undo({"undo": done["undo"]})
+    assert store.find(two.key)[1]["status"] == "queued"
+
+
+def test_the_queue_page_shows_checking_amber_closed_red_and_skip_with_an_inline_confirm():
+    from pathlib import Path
+    page = (Path(closed_notice.__file__).parent / "static" / "index.html").read_text()
+    for text in (".badge.checking", "badge checking", "`closed ${fmtDay(on)}`", "function skipClosedButton",
+                 'closedState(job) === "closed" ? skipClosedButton(job)', '"Undo", 8000', "/api/closed/act",
+                 "Skip this job? You can change the status back."):
+        assert text in page, text
+    assert "window.confirm" not in page[page.index("function skipClosedButton"):page.index("function queueCard")]
+    assert 'job.closed ? h("span", { class: "badge closed" }' not in page  # the old unconditional red badge

@@ -121,7 +121,12 @@ absence from a board's own listing that loaded and had jobs. A maintenance or "t
 page, a 403, 429 or 5xx, a redirect to the site's home page, or a board that lists no jobs at all says nothing: the
 check calls the posting *unknown* and marks and notices nothing. Even a closed posting becomes a notice only after a
 second look at least six hours after the first, and the popup looks a third time just before it speaks, so a one-off
-blip never notifies. `jobwatch notify-closed --recheck` looks again at every job marked closed now and reopens the
+blip never notifies. Until that second look a posting found closed once shows an amber **checking** badge (not the
+red **closed 21 Nov**), keeps its Apply and Queue buttons, and has no "The posting is closed." verdict; once confirmed
+a closed queued job also offers **Skip** (an inline question, then Undo for 8 seconds) beside Remove from queue. The
+Queue, Today, company pages, Details, `jobwatch list` and the MCP tools all read the same state. A board that lists
+only the roles matching your watchlist (Workday, a careers site's sitemap) never closes a job you follow by leaving
+it out of a listing: only that job's own page can. `jobwatch notify-closed --recheck` looks again at every job marked closed now and reopens the
 ones that are open or can't be told.
 
 ```

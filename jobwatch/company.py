@@ -23,7 +23,7 @@ from .filters import KINDS, focus_hits, rejection
 from .models import Job
 from .package import Package
 from .score import resume_id
-from .store import ENDED, STAGES, Store, _letters
+from .store import ENDED, STAGES, Store, _letters, closed_state
 from .watch import _fits, load_contacts
 
 MIN_KEY = 2     # a shorter search ("a") would match nearly everything
@@ -126,7 +126,8 @@ def _job(store: Store, job: Job, rec: dict, index: dupes.Index) -> dict:
     same = index.match(job, rec)
     pkg = Package(store.packages, job.key).summary()
     return {"key": job.key, "title": job.title, "url": job.url, "locations": job.places, "pay": job.pay(),
-            "status": rec["status"], "closed": _day(rec.get("closed")), "first_seen": _day(rec.get("first_seen")),
+            "status": rec["status"], "closed": _day(rec.get("closed")), "closed_state": closed_state(rec),
+            "first_seen": _day(rec.get("first_seen")),
             "posted": job.posted.date().isoformat() if job.posted else None, "applied_at": rec.get("applied_at"),
             "status_at": _day(rec.get("status_at")), "next_step": rec.get("next_step"),
             "round": rec.get("round"), "follow_up": rec.get("follow_up"),
@@ -228,7 +229,8 @@ def _line(j: dict) -> list[str]:
     elif j["status_at"]:
         facts.append(f"since {j['status_at']}")
     if j["closed"]:
-        facts.append(f"posting closed {j['closed']}")
+        facts.append(f"posting closed {j['closed']}" if j["closed_state"] == "closed"
+                     else f"posting may have closed {j['closed']} (checking)")
     if j["has_package"]:
         facts.append("package saved")
     out = [f"  {j['company'] + ': ' if j.get('company') else ''}{j['title']}", f"    {' · '.join(facts)}"]
