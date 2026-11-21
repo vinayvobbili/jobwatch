@@ -128,7 +128,7 @@ class Partial(SourceError):
 RETRIES = 5  # a board that says "slow down" (429) or "busy" (503) is asked again, waiting longer each time (~1 min)
 MAX_WAIT = 30
 # A lookup by a guessed name (probe) asks dozens of boards, most of them wrong guesses: one that says "slow down" is
-# asked once more after a short wait, not waited out, or a single `find` ran past ten minutes (11/10, "Hugging Face")
+# asked once more after a short wait, not waited out, or a single `find` ran past ten minutes (11/10, "Globex")
 PROBE_RETRIES, PROBE_WAIT = 1, 5
 _patience: contextvars.ContextVar[tuple[int, float]] = contextvars.ContextVar("patience", default=(RETRIES, MAX_WAIT))
 

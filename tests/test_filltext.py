@@ -50,7 +50,7 @@ INDEED_PAGE = """Skip to main content
 Platform Engineer
 Initech
 Remote
-$90 - $140 an hour
+$100 - $150 an hour
 Apply with Indeed
 Job details
 Full job description
@@ -60,7 +60,7 @@ About Initech
 Initech builds reporting tools for banks. This role designs and runs the platform behind them: Rust services,
 Python tooling, observability and the on-call rotation for the data platform, with the support team.
 
-Pay: $90.00 - $140.00 per hour
+Pay: $100.00 - $150.00 per hour
 
 Report job
 Senior Engineer jobs in Remote
