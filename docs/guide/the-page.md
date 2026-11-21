@@ -62,7 +62,9 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
 - **Applications:** every job you applied to and where it stands (applied, screening, interviewing, offer,
   rejected, withdrawn), with the next step and a follow-up day. Those due come first. Filter by status with
   the chips over the list (or click the pipeline bar), and switch between **Cards** and a sortable **Table**.
-  **Add an application** covers jobs you found elsewhere, such as a referral or a recruiter.
+  **Add an application** covers jobs you found elsewhere, such as a referral or a recruiter. A posting that
+  closed shows "posting closed Nov 17", an amber badge until you clear it, and a line in the **Closed postings**
+  strip on top; [`jobwatch notify-closed`](tracking.md#closed-postings) pops that up on your Mac once a day.
 - **Company:** everything tracked at one company, whatever its status, as the same cards with the buttons each
   status calls for. Find one with the box at the top (`/` from any tab), or click a company's name on a card.
   **Snooze** on a card sets a job aside while you have an application in progress at that company: it isn't a

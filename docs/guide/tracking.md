@@ -67,17 +67,25 @@ and Add note; the MCP `list_applications` gives each a `quiet` field.
 
 ## Follow-up and thank-you drafts
 
-When the follow-up day comes, or after an interview, jobwatch drafts the email from what it already keeps for the
-job: its stage and round, the day you applied, the next step and follow-up day, the note's dated lines, what you sent,
-and the interviewer's name when the next step or note has one after "call with", "interviewer:" or "met":
+When the follow-up day comes, or after an interview, jobwatch drafts the email from a few things it already keeps for
+the job: the company, the job title, its stage and round, the day you applied, the note's dated lines, and the first
+name of the person to greet. That name comes from the next step or the note, after "call with", "interviewer:",
+"met", "recruiter", "hiring manager", "HM", or a verb like "nudge", "ask", "ping", "email", "message", "contact" or
+"reach out to" ("optionally nudge Dana Whitfield once" greets Dana), or from `--interviewer`, which wins:
 
 ```
 jobwatch followup c1                                  # a follow-up on the application
 jobwatch followup c1 --thanks --interviewer "Dana Lee"   # a thank-you after the call; --interviewer can repeat
 ```
 
-It prints the draft and sends and saves nothing: you read it and send it yourself. The local model writes it (the
-same shared server the extension's Draft reply uses), so the tracker's lines stay on this computer.
+It prints the draft and sends and saves nothing: you read it and send it yourself. Claude (`claude-haiku-5-5`) writes
+it from that allowlist only, with the API key from your environment or macOS keychain as the chat uses it. A note
+line about pay or compensation, your employer or leaving it, immigration, health, or one holding an email address,
+phone number, link or ID number is left out whole, and so are the next step, the resume, the form answers, the cover
+letter and your stories: none of it leaves this computer. With no key, or when the call fails, the local model writes
+the draft from the very same lines, and the card and the command say which one wrote it ("Written by Claude" or
+"Written by local model"). A line naming your current employer (`employer:` in the watchlist) or a word of
+`reply: {deny: [...]}` stays home too. To keep drafts on this computer always, set `reply: {followup: local}`.
 Under the draft, warnings list what to check: a figure the tracker doesn't hold, a stock opener ("hope this finds you
 well"), an exclamation mark, a word about pay, a greeting without the named person, or a thank-you for an
 application with no interview on record. A job that isn't applied to yet, or has ended, has no one to write to.
@@ -85,6 +93,32 @@ application with no interview on record. A job that isn't applied to yet, or has
 On the Applications page each open application has a **Draft follow-up** button (a thank-you for one in a
 screening or interviewing stage) with the subject, an editable body, a Copy button and the same warnings. The MCP
 `draft_followup` tool gives the same draft to your agent.
+
+## Closed postings
+
+A posting you cared about that gets taken down used to show only a gray "posting closed" chip. Now jobwatch keeps a
+**notice** for each application (in any open stage) or queued job whose posting closed in the last two weeks, and
+tells you in three places. Jobs on Today that you never acted on get none.
+
+- **The card** says when: "posting closed Nov 17", and an amber **closed Nov 17** badge until you clear it (click it).
+- **The Closed postings strip** at the top of Applications lists the notices you haven't cleared, applications
+  first, each linking to its card, with a status chip, a small **live** marker on a screening or interviewing
+  application (a closed posting there isn't a loss) and **Got it** / **Got it, all**. Clearing a notice only hides it:
+  nothing is removed or changed in your applications.
+- **A popup** on your Mac, once a day, through `jobwatch notify-closed`: "jobwatch: 2 postings closed" and up to three
+  `Company: Title` lines, applications first, then "+N more". It first runs the daily posting check (a posting checked
+  in the last 12 hours isn't checked again), then tells each notice once.
+
+```
+jobwatch notify-closed --dry-run      # print what the popup would say; check nothing, tell no one
+jobwatch notify-closed --test         # pop up a sample
+jobwatch notify-closed --install      # run it daily at 9:00 through launchd (io.github.jobwatch.notify-closed)
+jobwatch notify-closed --uninstall    # stop the daily job
+jobwatch notify-closed --clear        # clear every notice, as "Got it, all" does (--dismiss works too)
+```
+
+The popup uses `osascript` (nothing to install); the first time, macOS may ask to allow notifications from Script
+Editor. The daily job's log is `~/Library/Logs/jobwatch-notify-closed.log`.
 
 Every company on Workday has its own careers site with its own sign-in, so after a few applications it's hard
 to remember where each one lives. For a Workday application, `jobwatch show`, `jobwatch applications` and

@@ -177,6 +177,13 @@ CREATE TABLE IF NOT EXISTS posting_checked (
     key TEXT PRIMARY KEY,
     checked_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS closed_notices (
+    key TEXT PRIMARY KEY,
+    closed TEXT NOT NULL,
+    found_at TEXT NOT NULL,
+    notified_at TEXT,
+    dismissed_at TEXT
+);
 CREATE TABLE IF NOT EXISTS drafts (
     key TEXT NOT NULL,
     inputs TEXT NOT NULL,
@@ -515,6 +522,57 @@ class Store:
         """Note that this job's posting was checked now."""
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO posting_checked (key, checked_at) VALUES (?, ?)", (key, _now()))
+
+    # Closed-posting notices (closed_notice.py): a job you care about whose posting came down, kept until you
+    # dismiss it, and told once in the daily popup. `closed` is the job's own closed stamp, so a posting that
+    # reopens and closes again is a new notice.
+
+    def record_closed_notices(self, statuses: tuple[str, ...], since: str) -> list[str]:
+        """Note the jobs with one of these statuses whose posting closed at or after `since` (an ISO stamp) and
+        have no notice yet; drop the notices of jobs that reopened or left these statuses. Returns the new keys."""
+        marks = ",".join("?" * len(statuses))
+        new = []
+        with self.db:
+            self.db.execute("DELETE FROM closed_notices WHERE key NOT IN (SELECT key FROM jobs WHERE closed IS NOT "
+                            f"NULL AND status IN ({marks}))", statuses)
+            have = {r["key"]: r["closed"] for r in self.db.execute("SELECT key, closed FROM closed_notices")}
+            for r in self.db.execute(f"SELECT key, closed FROM jobs WHERE closed >= ? AND status IN ({marks})",
+                                     (since, *statuses)).fetchall():
+                if have.get(r["key"]) == r["closed"]:
+                    continue
+                self.db.execute("INSERT OR REPLACE INTO closed_notices (key, closed, found_at) VALUES (?, ?, ?)",
+                                (r["key"], r["closed"], _now()))
+                new.append(r["key"])
+        return new
+
+    def closed_notices(self, untold: bool = False) -> list[dict]:
+        """The notices not dismissed (only those not yet told in the popup, if `untold`), newest closed first: key,
+        closed (ISO), found_at, notified_at, status, company, title, url."""
+        rows = self.db.execute(
+            "SELECT n.key, n.closed, n.found_at, n.notified_at, j.status, j.data FROM closed_notices n "
+            "JOIN jobs j ON j.key=n.key WHERE n.dismissed_at IS NULL"
+            + (" AND n.notified_at IS NULL" if untold else "") + " ORDER BY n.closed DESC")
+        out = []
+        for r in rows:
+            job = Job.from_dict(json.loads(r["data"]))
+            out.append({"key": r["key"], "closed": r["closed"], "found_at": r["found_at"],
+                        "notified_at": r["notified_at"], "status": r["status"], "company": job.display_company,
+                        "title": job.title, "url": job.url})
+        return out
+
+    def mark_closed_notified(self, keys: list[str]):
+        """The popup told about these notices."""
+        with self.db:
+            self.db.executemany("UPDATE closed_notices SET notified_at=? WHERE key=?", [(_now(), k) for k in keys])
+
+    def dismiss_closed_notices(self, keys: list[str] | None = None) -> int:
+        """Dismiss these notices (every undismissed one, with no keys). Returns how many were."""
+        with self.db:
+            if keys is None:
+                return self.db.execute("UPDATE closed_notices SET dismissed_at=? WHERE dismissed_at IS NULL",
+                                       (_now(),)).rowcount
+            return sum(self.db.execute("UPDATE closed_notices SET dismissed_at=? WHERE key=? AND dismissed_at IS "
+                                       "NULL", (_now(), k)).rowcount for k in keys)
 
     def set_duplicate(self, key: str, other: str):
         """Record that a job is the same opening as another one already acted on (see dupes.py), by its key."""

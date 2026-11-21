@@ -309,6 +309,31 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .badge.new { color: #fff; background: var(--grad);
   box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); animation: pulse 2.4s ease-out infinite; }
 .badge.closed { background: var(--bad); color: #fff; }
+/* a posting that closed since you last looked: amber, gently pulsing, until cleared (click it) */
+.badge.closed-new { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent); text-transform: none; letter-spacing: 0;
+  cursor: pointer; font-family: inherit; animation: glow 2.6s ease-out infinite; transition: transform .15s; }
+.badge.closed-new:hover { transform: translateY(-1px); }
+@keyframes glow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 50%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 7px transparent; } }
+/* the Closed postings strip over the Applications list */
+.closed-strip { border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); border-radius: 14px;
+  padding: 12px 14px; margin: 0 0 16px; animation: rise .45s cubic-bezier(.2, .7, .2, 1) both;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--warn) 13%, var(--panel)), var(--panel) 70%); }
+.closed-strip .cs-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.closed-strip .cs-head b { font-size: 14px; letter-spacing: .01em; }
+.closed-strip .cs-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-top: 1px dashed var(--line); }
+.closed-strip .cs-row:first-of-type { border-top: 0; }
+.closed-strip .cs-what { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.closed-strip .cs-what a { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--muted); cursor: pointer; }
+.closed-strip .cs-what a:hover { color: var(--warn); border-bottom-color: var(--warn); }
+.closed-strip .cs-meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.closed-strip .cs-note { margin: 0 0 4px; }
+.closed-strip .cs-live { flex: none; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  padding: 1px 8px; border-radius: 999px; color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.card.app.ping { animation: ping 1.4s ease-out 1; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 60%, transparent); }
+  100% { box-shadow: 0 0 0 14px transparent; } }
 .badge.round { background: var(--grad); color: #fff; text-transform: none; letter-spacing: 0; margin-left: 8px;
   vertical-align: 2px; }
 .badge.dupe { background: var(--warn); color: #fff; text-transform: none; letter-spacing: 0; }
@@ -2291,12 +2316,14 @@ function coverCompare(c) {
 }
 
 // "Draft follow-up" on an application: the email to send a week after applying, or (for a stage with a call
-// behind it) a thank-you, written from the tracker by the local model (see followup.py). A draft to edit and copy:
+// behind it) a thank-you, written by Claude from a few allowed fields of the tracker, or by the local model when Claude
+// can't answer (see followup.py). A draft to edit and copy:
 // nothing is sent or saved. Returns [button, panel].
 function followupButton(a) {
   const out = h("div", { class: "tailor followup", hidden: true });
   const b = h("button", { class: "btn ghost", title: "Draft a follow-up or thank-you email from what's tracked " +
-    "(local model; nothing is sent)" }, icon("pencil", 13), "Draft follow-up");
+    "(written by Claude from the company, title, stage, day applied, a first name and safe note lines; pay, " +
+    "employer, visa, health and contact lines stay on this computer; no email is sent)" }, icon("pencil", 13), "Draft follow-up");
   const kind = h("select", { "aria-label": "Kind of email" },
     h("option", { value: "followup" }, "Follow-up"), h("option", { value: "thanks" }, "Thank-you"));
   kind.value = ["screening", "interviewing"].includes(a.status) ? "thanks" : "followup";
@@ -2311,7 +2338,8 @@ function followupButton(a) {
       fill(out,
         h("div", { class: "fu-head" }, kind,
           r.to.length ? h("span", { class: "small" }, "To: " + r.to.join(", ")) : null,
-          r.model ? h("span", { class: "small muted" }, r.local ? "local model" : r.model) : null),
+          r.written_by ? h("span", { class: "small muted", title: r.local ? "Written on this computer" :
+            `Written by ${r.model} from an allowlist of fields` }, "Written by " + r.written_by) : null),
         r.drafted ? [subject, body,
           h("div", { class: "row" },
             h("button", { class: "btn", onclick: async () => {
@@ -5004,7 +5032,7 @@ async function renderApplied() {
             onclick: () => pick(s) }))),
         h("div", { style: "margin-top:10px" }, stages)) : null,
       panel(null, search),
-    ], [addArea, all.length ? liveFilter : null, all.length ? filters : null, showing, body, pager]));
+    ], [closedStrip(d), addArea, all.length ? liveFilter : null, all.length ? filters : null, showing, body, pager]));
   drawLive();
   drawFilters();
   draw();
@@ -5069,6 +5097,35 @@ function appRow(a, d) {
 
 function isEndedStatus(s) { return s === "rejected" || s === "withdrawn"; }
 
+// Postings of your applications and queued jobs that were taken down, kept until cleared (see closed_notice.py):
+// each links to its card (or its details when the card isn't on this page), with a Got it button that only hides
+// the notice, and a "live" marker on an application still in process.
+function closedStrip(d) {
+  const list = d.closed_notices || [];
+  if (!list.length) return null;
+  const go = n => {
+    const card = [...document.querySelectorAll(".card.app")].find(c => c.dataset.key === n.key);
+    if (!card) return openDetails(n.key);
+    card.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "center" });
+    card.classList.remove("ping"); void card.offsetWidth; card.classList.add("ping");
+  };
+  const clear = async body => { try { await api("/api/closed/dismiss", body); render(); } catch (e) { toast(e.message); } };
+  return h("div", { class: "closed-strip", role: "region", "aria-label": "Closed postings" },
+    h("div", { class: "cs-head" }, h("b", {}, `Closed postings (${list.length})`),
+      h("span", { class: "small muted" }, "taken down by the company since you last looked"), h("span", { class: "spacer" }),
+      list.length > 1 ? h("button", { class: "btn ghost", title: "Clears these notices. Your applications stay tracked.",
+        onclick: () => clear({ all: true }) }, "Got it, all") : null),
+    h("div", { class: "small muted cs-note" }, "Clearing a notice only hides it here. Nothing is removed or changed in your applications."),
+    list.map(n => h("div", { class: "cs-row" },
+      h("span", { class: "cs-what", title: `${n.company}: ${n.title}` },
+        h("a", { onclick: () => go(n) }, `${n.company}: ${n.title}`)),
+      LIVE_STAGES.includes(n.status) ? h("span", { class: "cs-live", title: "This application is still in process: a closed posting is not a rejection." }, "live") : null,
+      h("span", { class: "cs-meta" }, `${n.application ? STAGE_NAMES[n.status] || n.status : "queued"} · closed ${fmtDay(n.day, d.today)}`),
+      h("button", { class: "btn ghost", title: "Clears this notice. The application stays tracked.",
+        onclick: () => clear({ key: n.key }) }, "Got it"))));
+}
+const LIVE_STAGES = ["screening", "interviewing"];
+
 // A stage picked on a card or a table row: save it, cheer the good news, offer an undo.
 async function changeStage(a, d, stage) {
   const before = a.status;
@@ -5100,14 +5157,18 @@ function nextLine(a, today) {
 }
 
 function appCard(a, d, i = 0) {
-  const card = h("div", { class: "card app" + (isEndedStatus(a.status) ? " ended" : ""),
+  const card = h("div", { class: "card app" + (isEndedStatus(a.status) ? " ended" : ""), "data-key": a.key,
     style: `--sc:var(--s-${a.status});--i:${Math.min(i, 12)}` });
   const stage = stageSelect(a.status, d.stages);
   stage.className = "stage";
   stage.onchange = () => changeStage(a, d, stage);
+  const closedOn = a.closed ? fmtDay(a.closed_day || a.closed.slice(0, 10), d.today) : "";
   const facts = [a.snoozed_until ? h("span", { class: "badge snooze", title: "Not counted as quiet until then" },
       `Snoozed until ${fmtDay(a.snoozed_until, d.today)}`) : null,
-    a.pay ? h("span", { class: "pay" }, a.pay) : null, a.closed ? "posting closed" : null].filter(Boolean);
+    a.closed_new ? h("button", { class: "badge closed-new", title: "The posting was taken down since you last looked. Click to clear this notice: the application stays tracked.",
+      onclick: async () => { try { await api("/api/closed/dismiss", { key: a.key }); render(); } catch (e) { toast(e.message); } } },
+      `closed ${closedOn}`) : null,
+    a.pay ? h("span", { class: "pay" }, a.pay) : null, a.closed ? `posting closed ${closedOn}` : null].filter(Boolean);
   const view = () => { const [draftBtn, draftBox] = isEndedStatus(a.status) ? [null, null] : followupButton(a); fill(card,
     monogram(a.company),
     h("div", {},

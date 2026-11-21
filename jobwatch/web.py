@@ -41,6 +41,7 @@ from . import (
     autofill,
     backup,
     chat,
+    closed_notice,
     company,
     comps,
     config,
@@ -1174,16 +1175,30 @@ class App:
         def run(cfg, store):
             rows = store.applications()
             found = quiet.find(rows, cfg.quiet, known=load_contacts(cfg))
+            closed_notice.collect(store)  # postings that closed since the page last asked
+            notices = closed_notice.unseen(store)
+            new = {n["key"] for n in notices}
             return {"stages": STAGES, "today": date.today().isoformat(), "reminders": reminders.enabled(cfg),
+                    "closed_notices": [{k: n[k] for k in ("key", "company", "title", "status", "day", "application")}
+                                       for n in notices],
                     "applications": [
                 {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
                  "manual": j.source == MANUAL, "due": report.due(rec), "quiet": found.get(j.key),
+                 "closed_day": closed_notice.local_day(rec.get("closed")), "closed_new": j.key in new,
                  "snoozed_until": quiet.snoozed_until(rec),
                  "package": Package(store.packages, j.key).summary(),
                  **{k: rec.get(k) for k in ("status", "status_at", "applied_at", "next_step", "round", "follow_up",
                                             "note", "closed")}}
                 for j, rec in quiet.order(rows, found)]}
         return self._with_store(run)
+
+    def post_closed_dismiss(self, body) -> dict:
+        """Dismiss closed-posting notices: the one `key`, or every one when `all` is true (see closed_notice.py)."""
+        key = body.get("key")
+        if not (isinstance(key, str) and key) and body.get("all") is not True:
+            raise ApiError("send a key, or all: true")
+        return self._with_store(lambda cfg, store: {
+            "dismissed": store.dismiss_closed_notices(None if body.get("all") is True else [key])})
 
     def get_interviews(self, q) -> dict:
         """The Interviews tab: the interviews and calls coming up (see interviews.py)."""
@@ -1926,6 +1941,7 @@ ROUTES = {
     ("GET", "/api/rescore"): App.get_rescore,
     ("POST", "/api/rescore"): App.post_rescore,
     ("POST", "/api/posting"): App.post_posting,
+    ("POST", "/api/closed/dismiss"): App.post_closed_dismiss,
     ("POST", "/api/pay"): App.post_pay,
     ("GET", "/api/scoring"): App.get_scoring,
     ("GET", "/api/scoring/usage"): App.get_scoring_usage,

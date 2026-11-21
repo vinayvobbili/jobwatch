@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 
-from . import alerts, credit, dupes, estimate, lca, levels, linkedin, sources, suggest
+from . import alerts, closed_notice, credit, dupes, estimate, lca, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config, fallback_entry
 from .contacts import Contacts, company_key
 from .filters import (
@@ -307,6 +307,10 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
         if closed:
             store.log("boards", f"Found {plural(len(closed), 'posting')} taken down",
                       detail=[f"{c.job.display_company}: {c.job.title}" for c in closed][:ACTIVITY_LINES], by=by)
+    try:  # a posting of yours taken down (by this check or a board's own fetch) becomes a notice (closed_notice.py)
+        closed_notice.collect(store)
+    except Exception as e:
+        report.warnings["closed_notices"] = str(e)
     # A new posting of a job already applied to (or queued, or skipped) is marked as its duplicate.
     report.duplicates = dupes.record(store, new) if new else {}
     # How each board's read went. With no board answering the network is down: that says nothing about any board.

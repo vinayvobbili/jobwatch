@@ -29,6 +29,7 @@ from . import (
     ats,
     backup,
     chat,
+    closed_notice,
     company,
     comps,
     config,
@@ -990,6 +991,21 @@ def cmd_backup(args, cfg, store):
         print(f"Backing up {backup.install(cfg.path, dest, args.keep, also)} to {dest}; log: {backup.log_path()}")
 
 
+def cmd_notify_closed(args, cfg, store):
+    if args.uninstall:
+        print("Stopped the daily popup." if closed_notice.uninstall() else "The daily popup wasn't installed.")
+        return
+    if args.clear:
+        closed_notice.collect(store)
+        print(f"Cleared {store.dismiss_closed_notices()} closed-posting notices (your applications are unchanged).")
+        return
+    if args.install:  # only sets the job up: the first popup is the daily one, so nothing is told early
+        print(f"Popping up closed postings {closed_notice.install(cfg.path)} ({closed_notice.LABEL}); "
+              f"log: {closed_notice.log_path()}")
+        return
+    print(closed_notice.run(cfg, store, dry_run=args.dry_run, test=args.test))
+
+
 def cmd_prune(args, cfg, store):
     """Shrink the state file: old closed jobs nobody acted on go, old open ones lose their posting's text."""
     size = store.path.stat().st_size
@@ -1804,6 +1820,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--install", action="store_true", help="back up now, and then daily through launchd (macOS)")
     p.set_defaults(func=cmd_backup)
 
+    p = sub.add_parser("notify-closed", help="one macOS popup summing up the postings of your applications and queued "
+                       "jobs that were taken down since the last one (the Closed postings strip on Applications "
+                       "keeps them until you dismiss them)",
+                       description="Checks the open applications' and queued jobs' postings (a posting checked in the "
+                       "last 12 hours isn't checked again), then pops up one notification: 'jobwatch: N postings "
+                       "closed' and up to 3 'Company: Title' lines, applications first. Only notices not told before "
+                       "are told, once. --install runs it daily at 9:00 through launchd (macOS).")
+    p.add_argument("--dry-run", action="store_true", help="print what the popup would say; check nothing, tell no one")
+    p.add_argument("--test", action="store_true", help="pop up a sample notification")
+    p.add_argument("--install", action="store_true", help="run it daily at 9:00 through launchd (macOS)")
+    p.add_argument("--uninstall", action="store_true", help="stop the daily job and remove it")
+    p.add_argument("--clear", "--dismiss", dest="clear", action="store_true",
+                   help="clear every closed-posting notice, as the page's 'Got it, all' does: it only hides the "
+                   "notices; no application or job is removed or changed")
+    p.set_defaults(func=cmd_notify_closed)
+
     p = sub.add_parser("snooze", help="push an application's follow-up out, keeping its stage; noted in its history")
     p.add_argument("keys", nargs="+", metavar="KEY", help="the application: its key, posting id or company")
     p.add_argument("--days", type=int, default=7, help="days from today (default 7)")
@@ -1918,11 +1950,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("followup", help="draft a follow-up email for an application (a week after applying), or a "
                        "thank-you after an interview with --thanks: a draft to read and send yourself",
-                       description="Writes the email from what jobwatch keeps for the job (its stage and round, the "
-                       "day applied, the next step and follow-up day, the note's dated lines, what was sent) with the "
-                       "local model, so none of it leaves this computer. It prints the draft and sends and saves "
-                       "nothing; warnings list what to check (a figure the tracker doesn't hold, a stock opener, "
-                       "no interviewer's name).")
+                       description="Claude writes the email from an allowlist of what jobwatch keeps for the job: the "
+                       "company, title, stage and round, the day applied, a first name and the note's dated lines "
+                       "that say nothing about pay, your employer, immigration, health or contact details. Those "
+                       "lines, the resume, form answers and cover letter never leave this computer. With no API key "
+                       "(or reply.followup: local in the watchlist) the local model writes it from the same lines. "
+                       "It prints the draft and sends and saves nothing; warnings list what to check (a figure the "
+                       "tracker doesn't hold, a stock opener, no interviewer's name).")
     p.add_argument("key")
     p.add_argument("--thanks", action="store_true", help="a thank-you after an interview or call instead of a "
                    "follow-up on the application")
