@@ -46,8 +46,8 @@ def tracked(store):
               note="phone screen done", next_step="onsite", follow_up=FOLLOW_UP)
     skipped = store.add("Acme Robotics", "Sales Lead", status="skipped")
     store.sync("lever", "globex", [board_job("g1", "Platform Engineer"), board_job("g2", "Data Engineer")])
-    store.sync("lever", "acme", [board_job("a1", "Old Role", "Acme Robotics", board="acme")])
-    store.sync("lever", "acme", [])  # closes it
+    [old] = store.sync("lever", "acme", [board_job("a1", "Old Role", "Acme Robotics", board="acme")])
+    store.set_closed(old, True)  # its posting closed
     store.add("Hooli Inc", "Staff Engineer", status="applied", applied="2026-09-01")
     return skipped
 

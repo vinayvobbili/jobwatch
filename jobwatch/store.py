@@ -20,9 +20,10 @@ from .score import resume_family, unjudged
 from .sources import SOURCES, candidate_home
 from .text import names_one_role, parse_salary
 
-# queued: to apply to next. After applying: applied, then screening, interviewing, offer, or it ends.
-STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdrawn")
-ENDED = ("rejected", "withdrawn")
+# queued: to apply to next. After applying: applied, then screening, interviewing, offer, or it ends: rejected (they
+# said no), withdrawn (you ended it) or closed (the company took the posting down: "Closed by company").
+STAGES = ("applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "closed")
+ENDED = ("rejected", "withdrawn", "closed")
 OPEN = ("applied", "screening", "interviewing")
 IN_PROGRESS = tuple(s for s in STAGES if s not in ENDED)
 # snoozed: wanted, but waiting for the application in progress at its company to end. It's queued again then, or
@@ -183,6 +184,11 @@ CREATE TABLE IF NOT EXISTS closed_notices (
     found_at TEXT NOT NULL,
     notified_at TEXT,
     dismissed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS closed_confirmed (
+    key TEXT PRIMARY KEY,
+    closed TEXT NOT NULL,
+    confirmed_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS drafts (
     key TEXT NOT NULL,
@@ -442,7 +448,8 @@ class Store:
         """Record one board's current roles; returns the keys seen for the first time.
 
         Roles that have disappeared from the board are marked closed (and reopened if they come back), unless
-        `close_missing` is off: a board read only partway (sources.Partial) says nothing about the rest."""
+        `close_missing` is off: a board read only partway (sources.Partial) says nothing about the rest, and a
+        board that listed no roles at all closes none."""
         now, new = _now(), []
         with self.db:
             rows = self.db.execute("SELECT key, slim, status FROM jobs WHERE source=? AND company=?",
@@ -461,7 +468,9 @@ class Store:
                     self.db.execute("INSERT INTO jobs (key, source, company, data, first_seen, last_seen) "
                                     "VALUES (?, ?, ?, ?, ?, ?)", (job.key, source, company, data, now, now))
                     new.append(job.key)
-            gone = known - {j.key for j in jobs} if close_missing else set()
+            # a board that lists nothing at all is down or changed, not empty: it closes nothing (a posting that
+            # really went is found by the daily check of the ones you follow)
+            gone = known - {j.key for j in jobs} if close_missing and jobs else set()
             self.db.executemany("UPDATE jobs SET closed=? WHERE key=? AND closed IS NULL", [(now, k) for k in gone])
         return new
 
@@ -545,12 +554,23 @@ class Store:
                 new.append(r["key"])
         return new
 
-    def closed_notices(self, untold: bool = False) -> list[dict]:
+    def confirm_closed(self, keys: list[str]):
+        """A second look found these postings still closed: the mark they have now counts as confirmed (see
+        closed_notices). A job that reopens and closes again has a new mark, and needs confirming again."""
+        with self.db:
+            self.db.executemany(
+                "INSERT OR REPLACE INTO closed_confirmed (key, closed, confirmed_at) "
+                "SELECT key, closed, ? FROM jobs WHERE key=? AND closed IS NOT NULL", [(_now(), k) for k in keys])
+
+    def closed_notices(self, untold: bool = False, pending: bool = False) -> list[dict]:
         """The notices not dismissed (only those not yet told in the popup, if `untold`), newest closed first: key,
-        closed (ISO), found_at, notified_at, status, company, title, url."""
+        closed (ISO), found_at, notified_at, status, company, title, url. Only confirmed ones (the closed mark was
+        seen again by a later check: one blip never notifies), or with `pending`, the unconfirmed ones instead."""
         rows = self.db.execute(
             "SELECT n.key, n.closed, n.found_at, n.notified_at, j.status, j.data FROM closed_notices n "
-            "JOIN jobs j ON j.key=n.key WHERE n.dismissed_at IS NULL"
+            "JOIN jobs j ON j.key=n.key WHERE n.dismissed_at IS NULL AND "
+            + ("NOT " if pending else "")
+            + "EXISTS (SELECT 1 FROM closed_confirmed c WHERE c.key=n.key AND c.closed=n.closed)"
             + (" AND n.notified_at IS NULL" if untold else "") + " ORDER BY n.closed DESC")
         out = []
         for r in rows:
@@ -573,6 +593,11 @@ class Store:
                                        (_now(),)).rowcount
             return sum(self.db.execute("UPDATE closed_notices SET dismissed_at=? WHERE key=? AND dismissed_at IS "
                                        "NULL", (_now(), k)).rowcount for k in keys)
+
+    def restore_closed_notices(self, keys: list[str]):
+        """Bring cleared notices back (an undo)."""
+        with self.db:
+            self.db.executemany("UPDATE closed_notices SET dismissed_at=NULL WHERE key=?", [(k,) for k in keys])
 
     def set_duplicate(self, key: str, other: str):
         """Record that a job is the same opening as another one already acted on (see dupes.py), by its key."""
@@ -657,7 +682,7 @@ class Store:
 
     def applications(self) -> list[tuple[Job, dict]]:
         """Everything applied to. Open applications come first, those with the soonest follow-up day at the top,
-        then the most recent; rejected and withdrawn ones last."""
+        then the most recent; rejected, withdrawn and closed-by-company ones last."""
         rows = self.jobs(STAGES, include_closed=True)
         rows.sort(key=lambda r: r[1]["applied_at"] or "", reverse=True)
         rows.sort(key=lambda r: (r[1]["status"] in ENDED, r[1]["follow_up"] is None, r[1]["follow_up"] or ""))

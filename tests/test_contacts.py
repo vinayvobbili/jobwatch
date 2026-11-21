@@ -136,8 +136,7 @@ def test_queue_shows_closed_postings(web, watchlist):
     store = Store(cfg.state)
     watch.fetch_all(cfg, store)
     store.set_status(["ashby:initech:c1"], "queued")
-    web.responses["https://api.ashbyhq.com/posting-api/job-board/initech?includeCompensation=true"] = {"jobs": []}
-    watch.fetch_all(cfg, store)
+    store.set_closed("ashby:initech:c1", True)  # its posting closed (a board listing nothing at all closes none)
     assert "**Closed**" in report.queue_markdown(watch.queue(cfg, store))
     store.close()
 

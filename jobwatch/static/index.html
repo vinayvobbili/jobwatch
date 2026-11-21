@@ -20,7 +20,7 @@
   --radius: 16px;
   --grad: linear-gradient(135deg, #5a5cf2, #a24af0);  /* filled surfaces carry white text in both themes */
   --s-applied: #3b82f6; --s-screening: #8b5cf6; --s-interviewing: #f59e0b; --s-offer: #10b981;
-  --s-rejected: #94a3b8; --s-withdrawn: #a8a29e;
+  --s-rejected: #94a3b8; --s-withdrawn: #a8a29e; --s-closed: #64748b;
   --s-queued: #06b6d4; --s-skipped: #a8a29e; --s-snoozed: #8b5cf6; --s-new: #5a5cf2; --s-shown: #5a5cf2;
   color-scheme: light;
 }
@@ -329,6 +329,8 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .closed-strip .cs-what a:hover { color: var(--warn); border-bottom-color: var(--warn); }
 .closed-strip .cs-meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 .closed-strip .cs-note { margin: 0 0 4px; }
+.closed-strip .cs-confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  animation: fade .2s ease both; }
 .closed-strip .cs-live { flex: none; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
   padding: 1px 8px; border-radius: 999px; color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
 .card.app.ping { animation: ping 1.4s ease-out 1; }
@@ -1579,7 +1581,7 @@ async function api(path, body, raw) {
 
 let toastTimer;
 // tone: "win" for good news, "onward" for a no or a skip, nothing for the rest (see .toast[data-tone]).
-function toast(text, undo, tone, label = "Undo") {
+function toast(text, undo, tone, label = "Undo", ms = 6000) {
   const t = document.getElementById("toast");
   document.getElementById("toastText").textContent = text;
   t.dataset.tone = tone || "";
@@ -1589,7 +1591,7 @@ function toast(text, undo, tone, label = "Undo") {
   b.onclick = async () => { t.style.display = "none"; await undo(); };
   t.style.display = "flex";
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.style.display = "none"; }, 6000);
+  toastTimer = setTimeout(() => { t.style.display = "none"; }, ms);
 }
 
 // -- delight: small celebrations for real progress. All of it stays still under "reduce motion".
@@ -1671,10 +1673,11 @@ function stageWords(company, to) {
     screening: `📞 ${company} wants to talk. Nice!`, interviewing: `🎯 Interviewing at ${company}. You've got this.`,
     offer: `🥂 An offer from ${company}! Congratulations!`, rejected: `🌱 ${company} passed. ${pick(PASSED)}`,
     withdrawn: `Withdrawn from ${company}. Good call: your time is worth protecting.`,
+    closed: `${company}: marked closed by the company.`,
     applied: `${company}: back to applied.` }[to] || `${company}: marked ${to}.`;
 }
 const TONES = { applied: "win", queued: "win", screening: "win", interviewing: "win", offer: "win",
-  rejected: "onward", withdrawn: "onward", skipped: "onward", snoozed: "onward" };
+  rejected: "onward", withdrawn: "onward", closed: "onward", skipped: "onward", snoozed: "onward" };
 
 // The day's hello on Today, by the local hour.
 // The greeting ends in an emoji, so a dash joins it to the line, not a full stop.
@@ -2426,7 +2429,7 @@ async function openDetails(key) {
   } catch (e) { dialog.classList.remove("with-chat"); showError(dialog, e); }
 }
 // Every stage a job can be put at from its details, in the order a search goes.
-const DETAIL_STAGES = ["queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "skipped", "snoozed"];
+const DETAIL_STAGES = ["queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "closed", "skipped", "snoozed"];
 // The details' top strip: the stage, as a picker (the one place to mark a job rejected, withdrawn...), then the days.
 function detailsFacts(j) {
   const names = { ...STAGE_NAMES, queued: "Queued", skipped: "Skipped", snoozed: "Snoozed", new: "Not acted on", shown: "Not acted on" };
@@ -3080,7 +3083,7 @@ document.addEventListener("keydown", e => {
 
 // -- what you sent: copies of the resume, letter and form answers for an application, kept with the job
 
-const APPLIED = ["applied", "screening", "interviewing", "offer", "rejected", "withdrawn"];
+const APPLIED = ["applied", "screening", "interviewing", "offer", "rejected", "withdrawn", "closed"];
 function hasPackage(p) { return !!p && (p.files.length || p.answers.length || p.note); }
 function fmtSize(n) { return n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`; }
 
@@ -4762,7 +4765,7 @@ function queueCard(job, i) {
 // -- applications: everything applied to, how it's going, and what to do next
 
 const STAGE_NAMES = { applied: "Applied", screening: "Screening", interviewing: "Interviewing", offer: "Offer",
-  rejected: "Rejected", withdrawn: "Withdrawn" };
+  rejected: "Rejected", withdrawn: "Withdrawn", closed: "Closed by company" };
 // Kept in step with rounds.ROUNDS (a test checks).
 const ROUND_NAMES = { recruiter_screen: "Recruiter screen", hiring_manager: "Hiring manager", technical: "Tech interview",
   system_design: "System design", panel: "Panel / onsite loop", executive: "VP / exec round", hr: "HR round",
@@ -4929,7 +4932,7 @@ async function renderApplied() {
   const feed = (await api("/api/calendar")).path;  // follow-ups and interviews, for a calendar app on this computer
   const counts = {};
   for (const a of all) counts[a.status] = (counts[a.status] || 0) + 1;
-  const isEnded = a => ["rejected", "withdrawn"].includes(a.status);
+  const isEnded = a => isEndedStatus(a.status);
   const talking = all.filter(a => ["screening", "interviewing", "offer"].includes(a.status)).length;
   const week = all.filter(a => !isEnded(a) && a.follow_up && a.follow_up <= addDays(d.today, 7)).length;
   const dueCount = all.filter(freshDue).length;
@@ -5010,7 +5013,7 @@ async function renderApplied() {
           group("Gone quiet", inPage("quiet"), "quiet", g("quiet").length),
           group("Waiting to hear", inPage("waiting"), null, g("waiting").length),
           fold("snoozed", "Snoozed", snoozed, nextWake ? `next back ${fmtDay(nextWake, d.today)}` : ""),
-          fold("closed", "Closed", closed, "rejected and withdrawn")]);
+          fold("closed", "Closed", closed, "rejected, withdrawn and closed by company")]);
     fill(pager, pg.nav);
   };
 
@@ -5095,7 +5098,7 @@ function appRow(a, d) {
   return tr;
 }
 
-function isEndedStatus(s) { return s === "rejected" || s === "withdrawn"; }
+function isEndedStatus(s) { return s === "rejected" || s === "withdrawn" || s === "closed"; }
 
 // Postings of your applications and queued jobs that were taken down, kept until cleared (see closed_notice.py):
 // each links to its card (or its details when the card isn't on this page), with a Got it button that only hides
@@ -5110,10 +5113,33 @@ function closedStrip(d) {
     card.classList.remove("ping"); void card.offsetWidth; card.classList.add("ping");
   };
   const clear = async body => { try { await api("/api/closed/dismiss", body); render(); } catch (e) { toast(e.message); } };
-  return h("div", { class: "closed-strip", role: "region", "aria-label": "Closed postings" },
+  // Closed by company (an applied application) and Skip (a queued job) change the status, so each asks inline first
+  // and is undoable for 8 seconds; a live application (screening, interviewing, offer) only gets "Got it".
+  const act = async (action, body) => {
+    try {
+      const r = await api("/api/closed/act", { action, ...body });
+      toast(action === "skip" ? "Skipped." : `${r.done === 1 ? "1 application" : r.done + " applications"} marked closed by the company.`,
+        async () => { await api("/api/closed/undo", { undo: r.undo }); render(); }, "onward", "Undo", 8000);
+      render();
+    } catch (e) { toast(e.message); }
+  };
+  const BUTTON = { close: "Closed by company", skip: "Skip" };
+  const ASK = { close: "Mark this application Closed by company? You can change the status back.",
+    skip: "Skip this job? You can change the status back." };
+  const applied = list.filter(n => n.action === "close");
+  const el = h("div", { class: "closed-strip", role: "region", "aria-label": "Closed postings" });
+  let asking = null;  // a row's key, or "all", waiting on its inline confirm
+  const confirm = (text, yes, no) => h("span", { class: "cs-confirm" }, h("span", { class: "small" }, text),
+    h("button", { class: "btn primary", onclick: yes }, "Yes"), h("button", { class: "btn ghost", onclick: no }, "Cancel"));
+  const draw = () => fill(el,
     h("div", { class: "cs-head" }, h("b", {}, `Closed postings (${list.length})`),
       h("span", { class: "small muted" }, "taken down by the company since you last looked"), h("span", { class: "spacer" }),
-      list.length > 1 ? h("button", { class: "btn ghost", title: "Clears these notices. Your applications stay tracked.",
+      asking === "all" ? confirm(`Mark ${applied.length} application${applied.length === 1 ? "" : "s"} Closed by company? You can change the status back.`,
+        () => act("close", { all: true }), () => { asking = null; draw(); })
+        : applied.length > 1 ? h("button", { class: "btn ghost", onclick: () => { asking = "all"; draw(); },
+          title: "Marks every applied application in this list Closed by company. Screening and interviewing ones are left alone." },
+          "Closed by company, all applied") : null,
+      list.length > 1 && asking !== "all" ? h("button", { class: "btn ghost", title: "Clears these notices. Your applications stay tracked.",
         onclick: () => clear({ all: true }) }, "Got it, all") : null),
     h("div", { class: "small muted cs-note" }, "Clearing a notice only hides it here. Nothing is removed or changed in your applications."),
     list.map(n => h("div", { class: "cs-row" },
@@ -5121,8 +5147,14 @@ function closedStrip(d) {
         h("a", { onclick: () => go(n) }, `${n.company}: ${n.title}`)),
       LIVE_STAGES.includes(n.status) ? h("span", { class: "cs-live", title: "This application is still in process: a closed posting is not a rejection." }, "live") : null,
       h("span", { class: "cs-meta" }, `${n.application ? STAGE_NAMES[n.status] || n.status : "queued"} · closed ${fmtDay(n.day, d.today)}`),
-      h("button", { class: "btn ghost", title: "Clears this notice. The application stays tracked.",
-        onclick: () => clear({ key: n.key }) }, "Got it"))));
+      asking === n.key ? confirm(ASK[n.action], () => act(n.action, { key: n.key }), () => { asking = null; draw(); }) : [
+        n.action ? h("button", { class: "btn ghost", onclick: () => { asking = n.key; draw(); },
+          title: n.action === "skip" ? "Skip this queued job: its posting is gone." : "The company took the posting down: mark the application Closed by company." },
+          BUTTON[n.action]) : null,
+        h("button", { class: "btn ghost", title: "Clears this notice. The application stays tracked.",
+          onclick: () => clear({ key: n.key }) }, "Got it")])));
+  draw();
+  return el;
 }
 const LIVE_STAGES = ["screening", "interviewing"];
 
@@ -6724,7 +6756,7 @@ function companyCard(j, i, c) {
 // Tiles across the top of a company's page: how many jobs at each status, jobs not acted on as one.
 function companyTiles(c) {
   const open = (c.counts.new || 0) + (c.counts.shown || 0);
-  const order = ["applied", "screening", "interviewing", "offer", "queued", "snoozed", "rejected", "withdrawn", "skipped"];
+  const order = ["applied", "screening", "interviewing", "offer", "queued", "snoozed", "rejected", "withdrawn", "closed", "skipped"];
   const tiles = order.filter(s => c.counts[s]).map(s => [c.counts[s], s]);
   return hero([open ? [open, "open to act on", "lead"] : null, ...tiles].filter(Boolean));
 }

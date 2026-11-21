@@ -26,12 +26,22 @@ def store(cfg):
     s.close()
 
 
-def close(store, job, days_ago: float = 0):
-    """Mark a job's posting closed, `days_ago` days back."""
+def close(store, job, days_ago: float = 0, confirmed: bool = True):
+    """Mark a job's posting closed, `days_ago` days back, and (unless `confirmed` is off) seen closed again."""
     store.set_closed(job.key, True)
     stamp = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat(timespec="microseconds")
     store.db.execute("UPDATE jobs SET closed=? WHERE key=?", (stamp, job.key))
     store.db.commit()
+    if confirmed:
+        store.confirm_closed([job.key])
+
+
+@pytest.fixture(autouse=True)
+def postings_still_closed(monkeypatch):
+    """The popup looks at each posting once more before telling (verify); here, with no network, every one is still
+    closed. tests/test_closed_evidence.py covers the real look."""
+    monkeypatch.setattr(closed_notice, "verify", lambda store, keys, *a, **k: [
+        SimpleNamespace(job=store.find(k)[0], result="closed", detail="") for k in keys])
 
 
 @pytest.fixture
@@ -277,3 +287,152 @@ def test_the_page_lists_the_notices_marks_the_cards_and_dismisses(cfg, store):
     assert app.get_applications({})["closed_notices"] == []
     with pytest.raises(ApiError):
         app.post_closed_dismiss({})
+
+
+# -- Closed by company: a real, ended status, and the strip's buttons that set it (or skip a queued job)
+
+def test_closed_is_a_real_ended_status_that_every_list_knows():
+    from jobwatch import store as store_module
+    assert "closed" in store_module.STATUSES and "closed" in store_module.STAGES and "closed" in store_module.ENDED
+    assert "closed" not in store_module.IN_PROGRESS and "closed" not in store_module.OPEN
+    page = (Path(closed_notice.__file__).parent / "static" / "index.html").read_text()
+    assert 'closed: "Closed by company"' in page and "--s-closed" in page
+    assert 's === "closed"' in page  # isEndedStatus: it leaves the live lists with rejected and withdrawn
+
+
+def test_mark_closed_works_from_the_command_and_validates_the_status(cfg, store, capsys):
+    j = store.add("Initech", "Principal Architect", status="applied")
+    main(["-c", str(cfg.path), "mark", "closed", j.key])
+    assert store.find(j.key)[1]["status"] == "closed"
+    with pytest.raises(SystemExit):
+        main(["-c", str(cfg.path), "mark", "gone", j.key])
+    with pytest.raises(ValueError, match="status must be one of"):
+        store.add("Globex", "Staff Engineer", status="gone")
+    with pytest.raises(ApiError, match="status must be one of"):
+        App(cfg.path).post_track({"key": j.key, "status": "gone"})
+
+
+def test_a_closed_application_leaves_the_live_lists_and_the_page_counts_it(cfg, store):
+    live = store.add("Globex", "Staff Engineer", status="interviewing", follow_up="2026-03-18")
+    ended = store.add("Initech", "Principal Architect", status="applied", follow_up="2026-03-18")
+    store.set_status([ended.key], "closed")
+    got = App(cfg.path).get_applications({})
+    assert "closed" in got["stages"]
+    by_status = {}
+    for a in got["applications"]:
+        by_status[a["status"]] = by_status.get(a["status"], 0) + 1
+    assert by_status == {"interviewing": 1, "closed": 1}  # the chip counts the page draws
+    assert next(a["key"] for a in got["applications"]) == live.key  # open ones first, the ended one last
+    from jobwatch import quiet, report
+    assert not report.due(store.find(ended.key)[1]) and not quiet.find([store.find(ended.key)], cfg.quiet)
+
+
+def test_only_applied_and_queued_rows_have_an_action_live_ones_have_none(store):
+    for company, status in (("Initech", "applied"), ("Globex", "queued"), ("Umbrella", "screening"),
+                            ("Acme", "interviewing"), ("Hooli", "offer")):
+        close(store, store.add(company, "Engineer", status=status))
+    closed_notice.collect(store)
+    assert {n["company"]: n["action"] for n in closed_notice.unseen(store)} == {
+        "Initech": "close", "Globex": "skip", "Umbrella": None, "Acme": None, "Hooli": None}
+
+
+def test_closed_by_company_sets_the_status_adds_the_dated_note_and_clears_the_notice(store):
+    j = store.add("Initech", "Principal Architect", status="applied", note="2026-03-01: Applied on the site")
+    close(store, j, days_ago=2)
+    closed_notice.collect(store)
+    [undo] = closed_notice.act(store, "close", [j.key])
+    rec = store.find(j.key)[1]
+    day = (date.today() - timedelta(days=2)).isoformat()
+    assert rec["status"] == "closed"
+    assert rec["note"] == f"2026-03-01: Applied on the site {date.today().isoformat()}: Posting closed {day}: " \
+                          "closed by company"
+    assert closed_notice.unseen(store) == [] and undo["status"] == "applied"
+
+
+def test_skip_sets_a_queued_job_to_skipped_with_its_note(store):
+    j = store.add("Globex", "Staff Engineer", status="queued")
+    close(store, j)
+    closed_notice.collect(store)
+    closed_notice.act(store, "skip", [j.key])
+    rec = store.find(j.key)[1]
+    assert rec["status"] == "skipped" and f"Posting closed {date.today().isoformat()}: skipped" in rec["note"]
+    assert closed_notice.unseen(store) == []
+
+
+def test_a_live_application_cant_be_closed_or_skipped_through_the_strip(store):
+    live = store.add("Umbrella", "Engineer", status="screening")
+    close(store, live)
+    closed_notice.collect(store)
+    for action in ("close", "skip"):
+        with pytest.raises(ValueError, match="only applies to"):
+            closed_notice.act(store, action, [live.key])
+    assert closed_notice.act(store, "close") == []  # in bulk, live rows are simply not touched
+    assert store.find(live.key)[1]["status"] == "screening" and len(closed_notice.unseen(store)) == 1
+    with pytest.raises(ValueError, match="no closed-posting notice"):
+        closed_notice.act(store, "close", ["manual:nobody:nothing"])
+    with pytest.raises(ValueError, match="action must be one of"):
+        closed_notice.act(store, "withdraw", [live.key])
+
+
+def test_closed_by_company_for_all_applied_leaves_live_and_queued_rows_alone(store):
+    jobs = {c: store.add(c, "Engineer", status=s) for c, s in (
+        ("Initech", "applied"), ("Globex", "applied"), ("Umbrella", "interviewing"), ("Acme", "queued"))}
+    for j in jobs.values():
+        close(store, j)
+    closed_notice.collect(store)
+    undo = closed_notice.act(store, "close")
+    assert {u["key"] for u in undo} == {jobs["Initech"].key, jobs["Globex"].key}
+    assert {c: store.find(j.key)[1]["status"] for c, j in jobs.items()} == {
+        "Initech": "closed", "Globex": "closed", "Umbrella": "interviewing", "Acme": "queued"}
+    assert {n["company"] for n in closed_notice.unseen(store)} == {"Umbrella", "Acme"}
+
+
+def test_undo_puts_back_the_status_the_note_and_the_notice(store):
+    j = store.add("Initech", "Principal Architect", status="applied", note="2026-03-01: Applied on the site")
+    close(store, j)
+    closed_notice.collect(store)
+    undo = closed_notice.act(store, "close", [j.key])
+    assert closed_notice.undo(store, undo) == 1
+    rec = store.find(j.key)[1]
+    assert rec["status"] == "applied" and rec["note"] == "2026-03-01: Applied on the site"
+    assert [n["key"] for n in closed_notice.unseen(store)] == [j.key]  # showing again
+    q = store.add("Globex", "Staff Engineer", status="queued")  # a queued job had no note at all
+    close(store, q)
+    closed_notice.collect(store)
+    closed_notice.undo(store, closed_notice.act(store, "skip", [q.key]))
+    assert store.find(q.key)[1]["status"] == "queued" and not store.find(q.key)[1]["note"]
+    with pytest.raises(ValueError, match="undo needs"):
+        closed_notice.undo(store, [{"key": q.key, "status": "gone", "note": ""}])
+
+
+def test_the_page_endpoints_act_and_undo(cfg, store):
+    a = store.add("Initech", "Principal Architect", status="applied")
+    q = store.add("Globex", "Staff Engineer", status="queued")
+    s = store.add("Umbrella", "Engineer", status="screening")
+    for j in (a, q, s):
+        close(store, j)
+    app = App(cfg.path)
+    notices = {n["company"]: n["action"] for n in app.get_applications({})["closed_notices"]}
+    assert notices == {"Initech": "close", "Globex": "skip", "Umbrella": None}
+    done = app.post_closed_act({"action": "close", "key": a.key})
+    assert done["done"] == 1 and store.find(a.key)[1]["status"] == "closed"
+    with pytest.raises(ApiError, match="only applies to"):
+        app.post_closed_act({"action": "close", "key": s.key})
+    with pytest.raises(ApiError):
+        app.post_closed_act({"action": "close"})
+    assert app.post_closed_undo({"undo": done["undo"]}) == {"restored": 1}
+    assert store.find(a.key)[1]["status"] == "applied"
+    assert app.post_closed_act({"action": "close", "all": True})["done"] == 1  # Initech only: not Globex, not Umbrella
+    with pytest.raises(ApiError, match="undo needs"):
+        app.post_closed_undo({"undo": [{"key": a.key, "status": "nope"}]})
+
+
+def test_the_strip_asks_inline_offers_undo_for_eight_seconds_and_has_no_button_for_live_rows():
+    page = (Path(closed_notice.__file__).parent / "static" / "index.html").read_text()
+    strip = page[page.index("function closedStrip"):page.index("const LIVE_STAGES")]
+    for text in ("Closed by company, all applied", "Skip this job? You can change the status back.", "n.action ?",
+                 "Mark this application Closed by company? You can change the status back.", '"Undo", 8000',
+                 "/api/closed/undo"):
+        assert text in strip, text
+    assert "confirm(" in strip and "window.confirm" not in strip  # an inline question, not a browser dialog
+    assert "ms = 6000" in page  # toast's new length argument

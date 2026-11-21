@@ -44,7 +44,7 @@ from .models import Job
 from .store import ENDED, STAGES, Store
 from .text import html_to_text
 
-# The stages an application moves forward through; rejected and withdrawn end it.
+# The stages an application moves forward through; rejected, withdrawn and closed end it.
 RANK = {"queued": 0, "applied": 1, "screening": 2, "interviewing": 3, "offer": 4}
 QUOTED = 90  # characters of a phrase the note quotes
 _URL = re.compile(r"https?://[^\s<>\"']+")

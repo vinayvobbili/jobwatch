@@ -54,12 +54,18 @@ def test_an_old_dated_role_new_to_a_board_read_before_counts_as_posted_today(sto
 
 
 def test_closed_roles_reopen_when_they_come_back(store):
+    store.sync("lever", "globex", [job("a"), job("b")])
+    store.sync("lever", "globex", [job("b")])
+    assert [j.id for j, _ in store.jobs()] == ["b"]
+    assert next(r["closed"] for j, r in store.jobs(include_closed=True) if j.id == "a")
+    assert store.sync("lever", "globex", [job("a"), job("b")]) == []
+    assert all(r["closed"] is None for _, r in store.jobs())
+
+
+def test_a_board_that_lists_nothing_closes_nothing(store):
     store.sync("lever", "globex", [job("a")])
-    store.sync("lever", "globex", [])
-    assert store.jobs() == []
-    assert store.jobs(include_closed=True)[0][1]["closed"]
-    assert store.sync("lever", "globex", [job("a")]) == []
-    assert store.jobs()[0][1]["closed"] is None
+    store.sync("lever", "globex", [])  # down or changed, not empty: the daily check of your own jobs decides
+    assert [j.id for j, _ in store.jobs()] == ["a"]
 
 
 def test_boards_are_independent(store):

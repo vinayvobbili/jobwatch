@@ -713,7 +713,7 @@ def cmd_logos(args, cfg, store):
         print(f"  {n}: {line}" + ("  (new)" if logos.key(n) in found else ""))
 
 
-LCA_DONE = ("skipped", "rejected", "withdrawn")  # `lca jobs` leaves these out
+LCA_DONE = ("skipped", "rejected", "withdrawn", "closed")  # `lca jobs` leaves these out
 
 
 def cmd_lca(args, cfg, store):
@@ -998,6 +998,9 @@ def cmd_notify_closed(args, cfg, store):
     if args.clear:
         closed_notice.collect(store)
         print(f"Cleared {store.dismiss_closed_notices()} closed-posting notices (your applications are unchanged).")
+        return
+    if args.recheck:
+        print(closed_notice.recheck(cfg, store))
         return
     if args.install:  # only sets the job up: the first popup is the daily one, so nothing is told early
         print(f"Popping up closed postings {closed_notice.install(cfg.path)} ({closed_notice.LABEL}); "
@@ -1647,7 +1650,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_show)
 
     p = sub.add_parser("mark", help="record that you queued, applied to or skipped jobs, or how an application "
-                       "is going (screening, interviewing, offer, rejected, withdrawn); without a status, each job "
+                       "is going (screening, interviewing, offer, rejected, withdrawn, closed: the company took the "
+                       "posting down); without a status, each job "
                        "keeps its own and only the rest changes")
     p.add_argument("what", nargs="+", metavar="[STATUS] KEY", help="the job: its key, its posting id, or its "
                    "company when that names one job (the one you queued or applied to there); and the status, "
@@ -1826,11 +1830,16 @@ def build_parser() -> argparse.ArgumentParser:
                        description="Checks the open applications' and queued jobs' postings (a posting checked in the "
                        "last 12 hours isn't checked again), then pops up one notification: 'jobwatch: N postings "
                        "closed' and up to 3 'Company: Title' lines, applications first. Only notices not told before "
-                       "are told, once. --install runs it daily at 9:00 through launchd (macOS).")
+                       "are told, once, and only after the posting was found closed twice (a blip, a maintenance "
+                   "page or a redirect home never counts) and once more just before the popup. --install runs it "
+                   "daily at 9:00 through launchd (macOS).")
     p.add_argument("--dry-run", action="store_true", help="print what the popup would say; check nothing, tell no one")
     p.add_argument("--test", action="store_true", help="pop up a sample notification")
     p.add_argument("--install", action="store_true", help="run it daily at 9:00 through launchd (macOS)")
     p.add_argument("--uninstall", action="store_true", help="stop the daily job and remove it")
+    p.add_argument("--recheck", action="store_true",
+                   help="look again at every job marked closed now: keep the mark only where the posting is "
+                   "positively closed; reopen the rest (open, or couldn't be told: maintenance, an outage)")
     p.add_argument("--clear", "--dismiss", dest="clear", action="store_true",
                    help="clear every closed-posting notice, as the page's 'Got it, all' does: it only hides the "
                    "notices; no application or job is removed or changed")

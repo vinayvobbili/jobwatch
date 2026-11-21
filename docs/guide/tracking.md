@@ -7,8 +7,8 @@ calendar feed, Interviews, looking up a company, what you sent.
 
 https://github.com/user-attachments/assets/e2e43a54-83d2-4154-9229-a063fafefe44
 
-An application moves through stages: `applied`, `screening`, `interviewing`, `offer`, and then `rejected`
-or `withdrawn`. Each can have a next step and a day to follow up. Jobs you found somewhere jobwatch doesn't
+An application moves through stages: `applied`, `screening`, `interviewing`, `offer`, and then `rejected`,
+`withdrawn` or `closed` ("Closed by company": they took the posting down; `jobwatch mark closed c1`). Each can have a next step and a day to follow up. Jobs you found somewhere jobwatch doesn't
 watch (a referral, a recruiter, LinkedIn) go in with `add`, so every application is in one list:
 
 ```
@@ -104,16 +104,32 @@ tells you in three places. Jobs on Today that you never acted on get none.
 - **The Closed postings strip** at the top of Applications lists the notices you haven't cleared, applications
   first, each linking to its card, with a status chip, a small **live** marker on a screening or interviewing
   application (a closed posting there isn't a loss) and **Got it** / **Got it, all**. Clearing a notice only hides it:
-  nothing is removed or changed in your applications.
+  nothing is removed or changed in your applications. Beside **Got it**, an application that is only applied has
+  **Closed by company** (and, in the header, **Closed by company, all applied**): it sets the status to *Closed by
+  company*, an ended status like rejected and withdrawn that leaves the live lists and shows in the status chips, with
+  the dated note "Posting closed Nov 17: closed by company". A queued job has **Skip** (status skipped, note "Posting
+  closed Nov 17: skipped"). Each asks "Mark this application Closed by company? You can change the status back."
+  inline first, then offers **Undo** for 8 seconds (status, note and notice all come back). Screening, interviewing
+  and offer rows get no such button: a closed posting there usually only means they stopped advertising it.
 - **A popup** on your Mac, once a day, through `jobwatch notify-closed`: "jobwatch: 2 postings closed" and up to three
   `Company: Title` lines, applications first, then "+N more". It first runs the daily posting check (a posting checked
-  in the last 12 hours isn't checked again), then tells each notice once.
+  in the last 12 hours isn't checked again), looks at each posting once more, then tells each notice once.
+
+A posting counts as closed only on positive evidence: a 404 or 410 at its link, a short page that says so ("this
+position has been filled", "job not found", "no longer available"), an end date in its markup that has passed, or its
+absence from a board's own listing that loaded and had jobs. A maintenance or "try again later" page, a challenge
+page, a 403, 429 or 5xx, a redirect to the site's home page, or a board that lists no jobs at all says nothing: the
+check calls the posting *unknown* and marks and notices nothing. Even a closed posting becomes a notice only after a
+second look at least six hours after the first, and the popup looks a third time just before it speaks, so a one-off
+blip never notifies. `jobwatch notify-closed --recheck` looks again at every job marked closed now and reopens the
+ones that are open or can't be told.
 
 ```
 jobwatch notify-closed --dry-run      # print what the popup would say; check nothing, tell no one
 jobwatch notify-closed --test         # pop up a sample
 jobwatch notify-closed --install      # run it daily at 9:00 through launchd (io.github.jobwatch.notify-closed)
 jobwatch notify-closed --uninstall    # stop the daily job
+jobwatch notify-closed --recheck      # look again at every job marked closed; reopen the unproven
 jobwatch notify-closed --clear        # clear every notice, as "Got it, all" does (--dismiss works too)
 ```
 
@@ -145,7 +161,7 @@ AM ET`, `call Wed 3/11 2:15-3:00 PM ET`, `intro call 2026-03-12T09:30:00-07:00`.
 (daylight saving applied), EST, EDT, CST, CDT, MST, MDT, PST, PDT, UTC or GMT, and without a zone they stay the
 same clock time wherever you are; an event with no end lasts an hour. When the text isn't clear (no time, a bare
 `10:00` with no am/pm, two dates, a weekday that isn't that date's) there is no timed event, only the follow-up.
-Rejected and withdrawn applications are left out. Each event keeps the same id, so importing the file again, or
+Rejected, withdrawn and closed-by-company applications are left out. Each event keeps the same id, so importing the file again, or
 a subscription refreshing, updates events instead of adding copies.
 
 To subscribe instead of importing, press **Add to calendar** in the Applications tab of `jobwatch ui`. It opens

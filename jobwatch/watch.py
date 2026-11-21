@@ -552,6 +552,10 @@ def _listed(job: Job, get, boards: dict) -> list[Job]:
             boards[k] = sources.fetch(job.source, job.company, get, search=[job.title], wanted=_never)
         except sources.NotFound:  # the board is gone (a company that moved to another ATS): nothing open on it
             boards[k] = []
+        else:
+            if not boards[k] and not searched:  # a whole board with no roles at all is an outage, not a clean sweep
+                del boards[k]
+                raise sources.Unavailable(f"{job.company}'s board listed no jobs: not taken as closed")
     return boards[k]
 
 
@@ -600,13 +604,36 @@ def find_repost(store: Store, job: Job, note: str = "", get=None, boards: dict |
     return found
 
 
+def _guarded(read):
+    """`read` (a page or JSON reader), raising sources.Unavailable for a text answer that is a maintenance, outage
+    or challenge page, and sources.NotFound for a short page that says the posting is gone ('position filled').
+    None stays None: the sources then use their own readers (get_text raises Unavailable the same way)."""
+    if read is None:
+        return None
+
+    def guarded(*args, **kwargs):
+        got = read(*args, **kwargs)
+        where = args[0] if args else ""
+        if why := sources.unavailable_page(got):
+            raise sources.Unavailable(f"{where}: {why}")
+        if said := sources.closed_page(got):
+            raise sources.NotFound(f"{where}: the page says {said!r}")
+        return got
+    return guarded
+
+
 def still_open(job: Job, get=None, page=None, boards: dict | None = None,
                robots: alerts.Robots | None = None) -> bool | None:
     """Whether a job's posting still takes applications: on its board, at its link (a supported board or a job
     site's page that robots.txt allows reading: see alerts.page_open), or None when jobwatch can't tell (a
     LinkedIn job: LinkedIn's robots.txt doesn't allow reading it). Raises SourceError when the board can't be
-    read now."""
+    read now, or answers with a maintenance, outage or challenge page or a redirect home (sources.Unavailable): that
+    says nothing about the posting. Closed only on positive evidence: a 404/410 at its link, its page's own words
+    or end date, or its absence from a board listing that loaded and had jobs."""
     boards = {} if boards is None else boards
+    if get is None and job.source in ("avature", "icims", "jobvite", "smartrecruiters", "sitemap"):
+        get = sources.get_text  # these boards' postings are web pages: read as text, guarded below
+    get, page = _guarded(get), _guarded(page or sources.get_text)
     # one posting can be read by its link: surer than a title search (the board's own link, when the job's link
     # is the company's careers site: see mark_hosted)
     if job.source in ("workday", "rippling", "amazon", "oracle", "smartrecruiters", "avature", "icims",
@@ -662,6 +689,15 @@ def check_daily(store: Store, get=None, page=None, watched: list[Board] = (), li
     return checks
 
 
+CONFIRM_AFTER = timedelta(hours=6)  # a closed mark is confirmed by a look at least this long after it was made
+
+
+def _seen_closed_before(stamp: str | None) -> bool:
+    """Whether a posting's closed mark (ISO, UTC) is old enough that a check finding it closed again is a second,
+    separate look (a manual `jobwatch check` run twice in a row doesn't count as two)."""
+    return bool(stamp) and datetime.now(timezone.utc) - datetime.fromisoformat(stamp) >= CONFIRM_AFTER
+
+
 def check_postings(store: Store, statuses: tuple[str, ...] = CHECKED,
                    get=None, page=None, watched: list[Board] = (),
                    jobs: list[tuple[Job, dict]] | None = None) -> list[Check]:
@@ -671,6 +707,9 @@ def check_postings(store: Store, statuses: tuple[str, ...] = CHECKED,
     opening posted again (see find_repost): its detail then says what it was reposted as.
     A job whose board's hosted pages are offline (see HostedPages) is still open while the board's API lists it:
     its detail says where to apply, and it links to the careers site its board has in `watched`, if any.
+    A job found closed twice, at least CONFIRM_AFTER apart (the mark, then a later check), is confirmed: only
+    confirmed closures become notices (closed_notice.py). A page that isn't the posting's (maintenance, an outage, a
+    challenge, a redirect home) or a refusal or server error is 'unknown': nothing is marked or noticed.
     `jobs` (job, record) pairs are checked instead of every job with one of the `statuses`."""
     boards: dict = {}
     hosted, pages, robots = HostedPages(store, page), {}, alerts.Robots(page)
@@ -695,6 +734,8 @@ def check_postings(store: Store, statuses: tuple[str, ...] = CHECKED,
         else:
             out.append(Check(job, "open" if up else "closed",
                              job.link_note if up else f"since {(rec['closed'] or '')[:10]}"))
+            if not up and _seen_closed_before(rec["closed"]):  # the second look: one blip never notifies
+                store.confirm_closed([job.key])
         if out[-1].result == "closed" and (new := find_repost(store, job, rec["note"] or "", get, boards,
                                                                 rec["closed"])):
             said = (f"reposted as {new[0].id}: {new[0].url}" if len(new) == 1 else

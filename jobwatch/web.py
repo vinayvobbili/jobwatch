@@ -1179,8 +1179,8 @@ class App:
             notices = closed_notice.unseen(store)
             new = {n["key"] for n in notices}
             return {"stages": STAGES, "today": date.today().isoformat(), "reminders": reminders.enabled(cfg),
-                    "closed_notices": [{k: n[k] for k in ("key", "company", "title", "status", "day", "application")}
-                                       for n in notices],
+                    "closed_notices": [{k: n[k] for k in ("key", "company", "title", "status", "day", "application",
+                                                          "action")} for n in notices],
                     "applications": [
                 {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
                  "manual": j.source == MANUAL, "due": report.due(rec), "quiet": found.get(j.key),
@@ -1199,6 +1199,34 @@ class App:
             raise ApiError("send a key, or all: true")
         return self._with_store(lambda cfg, store: {
             "dismissed": store.dismiss_closed_notices(None if body.get("all") is True else [key])})
+
+    def post_closed_act(self, body) -> dict:
+        """Mark an applied application Closed by company or skip a queued job whose posting closed: `action` close
+        or skip, for the one `key`, or for every showing notice it applies to with `all` true. Returns how many and
+        `undo`, what /api/closed/undo takes to put it back."""
+        key, action = body.get("key"), body.get("action")
+        if not (isinstance(key, str) and key) and body.get("all") is not True:
+            raise ApiError("send a key, or all: true")
+
+        def run(cfg, store):
+            try:
+                undo = closed_notice.act(store, action, None if body.get("all") is True else [key])
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+            reminders.refresh(cfg, store, [u["key"] for u in undo])
+            return {"done": len(undo), "undo": undo}
+        return self._with_store(run)
+
+    def post_closed_undo(self, body) -> dict:
+        """Put back what /api/closed/act changed: its `undo` records."""
+        def run(cfg, store):
+            try:
+                done = closed_notice.undo(store, body.get("undo") or [])
+            except (KeyError, ValueError) as e:
+                raise ApiError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
+            reminders.refresh(cfg, store, [r["key"] for r in body["undo"]])
+            return {"restored": done}
+        return self._with_store(run)
 
     def get_interviews(self, q) -> dict:
         """The Interviews tab: the interviews and calls coming up (see interviews.py)."""
@@ -1942,6 +1970,8 @@ ROUTES = {
     ("POST", "/api/rescore"): App.post_rescore,
     ("POST", "/api/posting"): App.post_posting,
     ("POST", "/api/closed/dismiss"): App.post_closed_dismiss,
+    ("POST", "/api/closed/act"): App.post_closed_act,
+    ("POST", "/api/closed/undo"): App.post_closed_undo,
     ("POST", "/api/pay"): App.post_pay,
     ("GET", "/api/scoring"): App.get_scoring,
     ("GET", "/api/scoring/usage"): App.get_scoring_usage,

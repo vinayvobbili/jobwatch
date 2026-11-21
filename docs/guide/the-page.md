@@ -53,14 +53,14 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
   (it waits unticked at the bottom of the list, and each change has Undo). Its box filters the list as you type,
   and **All** and **None** tick or untick every company shown, or just the ones that match what you typed.
   **Details** on a job opens its full posting, whose **Stage** picker moves it to any stage (queued, applied,
-  screening, interviewing, offer, rejected, withdrawn, skipped or snoozed) with an Undo, so a rejection or a
+  screening, interviewing, offer, rejected, withdrawn, closed by company, skipped or snoozed) with an Undo, so a rejection or a
   withdrawal is one pick away.
 - **Queue:** your short list. Apply on the company's site, then press **I applied**. The pace line counts
   it: once you reach your 3 for the day it says so, and at 5 that the rest can wait until tomorrow. It's
   advice; nothing is ever blocked.
 - Long lists come in pages (12, 24, 48 or 96 at a time, kept per browser).
 - **Applications:** every job you applied to and where it stands (applied, screening, interviewing, offer,
-  rejected, withdrawn), with the next step and a follow-up day. Those due come first. Filter by status with
+  rejected, withdrawn, closed by company), with the next step and a follow-up day. Those due come first. Filter by status with
   the chips over the list (or click the pipeline bar), and switch between **Cards** and a sortable **Table**.
   **Add an application** covers jobs you found elsewhere, such as a referral or a recruiter. A posting that
   closed shows "posting closed Nov 17", an amber badge until you clear it, and a line in the **Closed postings**

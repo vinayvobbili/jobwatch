@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .service import ServiceError, _domain, _launchctl, _mac
-from .store import IN_PROGRESS, Store
+from .store import IN_PROGRESS, STATUSES, Store
 
 LABEL = "io.github.jobwatch.notify-closed"
 HOUR, MINUTE = 9, 0
@@ -52,10 +52,98 @@ def collect(store: Store, today: date | None = None) -> list[str]:
 
 def unseen(store: Store, untold: bool = False) -> list[dict]:
     """The notices not dismissed (not yet told in the popup, if `untold`), each with `day` (when it closed) and
-    `application`; applications first, each group newest closed first."""
-    rows = [{**n, "day": local_day(n["closed"]), "application": n["status"] in APPLICATIONS}
-            for n in store.closed_notices(untold)]  # newest closed first
+    `application` and `action` (see action_for); applications first, each group newest closed first."""
+    rows = [{**n, "day": local_day(n["closed"]), "application": n["status"] in APPLICATIONS,
+             "action": action_for(n["status"])} for n in store.closed_notices(untold)]  # newest closed first
     return sorted(rows, key=lambda n: not n["application"])
+
+
+ACTIONS = {"close": ("applied", "closed", "closed by company"), "skip": ("queued", "skipped", "skipped")}
+# action: (the one status it applies to, the status it sets, what the note says). A screening, interviewing or offer
+# application has no action: a closed posting there usually only means they stopped advertising it.
+
+
+def action_for(status: str) -> str | None:
+    """The action the Closed postings strip offers a notice at this status: 'close' (mark it Closed by company) for
+    an application that is only applied, 'skip' for a queued job, none for the rest (an application in process gets
+    'Got it' only)."""
+    return next((name for name, (at, _, _) in ACTIONS.items() if at == status), None)
+
+
+def act(store: Store, action: str, keys: list[str] | None = None) -> list[dict]:
+    """Mark applied applications Closed by company, or skip queued jobs, whose notices are showing, through the
+    store's own status and note functions: the status is set, the dated note 'Posting closed <day>: closed by
+    company' (or 'skipped') is added and the notice is cleared. `keys`: these notices only (each must be one this
+    action applies to; ValueError
+    otherwise); none: every showing notice it applies to. Returns what undo() needs, one record per job."""
+    if action not in ACTIONS:
+        raise ValueError(f"action must be one of {', '.join(ACTIONS)}")
+    at, to, word = ACTIONS[action]
+    showing = {n["key"]: n for n in unseen(store)}
+    if keys is None:
+        keys = [k for k, n in showing.items() if n["status"] == at]
+    for key in keys:
+        if key not in showing:
+            raise ValueError(f"{key} has no closed-posting notice showing")
+        if showing[key]["status"] != at:
+            raise ValueError(f"{showing[key]['company']}: {showing[key]['title']} is {showing[key]['status']}: "
+                             f"{action} only applies to {at} jobs")
+    undo = []
+    for key in keys:
+        _, rec = store.find(key)
+        undo.append({"key": key, "status": rec["status"], "note": rec["note"] or ""})
+        store.set_status([key], to)
+        store.add_note(key, f"Posting closed {showing[key]['day']}: {word}")
+        store.dismiss_closed_notices([key])
+    return undo
+
+
+def undo(store: Store, records: list[dict]) -> int:
+    """Put back what act() changed: each job's status and note, and its notice. Returns how many."""
+    for r in records:
+        if not (isinstance(r, dict) and isinstance(r.get("key"), str) and r.get("status") in STATUSES
+                and isinstance(r.get("note", ""), str)):
+            raise ValueError("undo needs records of key, status and note")
+    for r in records:
+        store.find(r["key"])
+        store.set_status([r["key"]], r["status"])
+        store.track(r["key"], note=r.get("note", ""))
+    store.restore_closed_notices([r["key"] for r in records])
+    return len(records)
+
+
+def verify(store: Store, keys: list[str], get=None, page=None, watched=(), reopen_unknown: bool = False) -> list:
+    """Look at these jobs' postings again, now (watch.check_postings): the ones found open are reopened and lose
+    their notices; the ones found closed again stay (and count as confirmed when the mark is old enough). A posting
+    that can't be told either way (maintenance, an outage, a refusal) is 'unknown': left as it is, or with
+    `reopen_unknown` reopened too, since closed needs positive evidence. Returns the watch.Check of each."""
+    from .watch import check_postings  # watch imports this module for its own notes
+    checks = check_postings(store, get=get, page=page, watched=watched, jobs=[store.find(k) for k in keys])
+    if reopen_unknown:
+        for c in checks:
+            if c.result == "unknown":
+                store.set_closed(c.job.key, False)
+    collect(store)  # drops the notices of the reopened
+    return checks
+
+
+def recheck(cfg, store: Store, get=None, page=None) -> str:
+    """Look again at every wanted job marked closed (the Closed postings strip's, pending ones too) and keep the
+    mark only where the posting is positively closed: a job found open, or that can't be told (maintenance, an
+    outage, a refusal), is reopened and loses its notice. Returns one line per job, grouped by outcome."""
+    keys = [j.key for j, r in store.jobs(WANTED, include_closed=True) if r["closed"]]
+    checks = verify(store, keys, get, page, cfg.boards, reopen_unknown=True)
+    groups: dict[str, list[str]] = {"closed": [], "open": [], "unknown": []}
+    for c in checks:
+        why = f" ({c.detail})" if c.detail and c.result != "closed" else ""
+        groups["open" if c.result in ("open", "reopened") else c.result].append(
+            f"  {c.job.display_company}: {c.job.title}{why}")
+    lines = [f"Looked again at {len(checks)} jobs marked closed."]
+    for result, what in (("closed", "still closed (positive evidence)"), ("open", "open: reopened"),
+                         ("unknown", "could not be told (maintenance, an outage, a refusal): reopened")):
+        if groups[result]:
+            lines += [f"{len(groups[result])} {what}:", *groups[result]]
+    return "\n".join(lines)
 
 
 def summary(notices: list[dict], shown: int = SHOWN) -> tuple[str, str]:
@@ -102,6 +190,14 @@ def run(cfg, store: Store, dry_run: bool = False, test: bool = False, get=None, 
     title, body = summary(notices)
     if dry_run:
         return f"{warning}Would say:\n{title}\n{body}"
+    # just before telling, look at each posting once more: a blip, or a posting that came back, is not news
+    still = {c.job.key for c in verify(store, [n["key"] for n in notices], get, page, cfg.boards)
+             if c.result == "closed"}
+    held = len(notices) - len(still)
+    notices = [n for n in notices if n["key"] in still]
+    if not notices:
+        return f"{warning}No newly closed postings ({held} could not be confirmed just now, so nobody was told)."
+    title, body = summary(notices)
     show(title, body)
     store.mark_closed_notified([n["key"] for n in notices])
     return f"{warning}{title}\n{body}"

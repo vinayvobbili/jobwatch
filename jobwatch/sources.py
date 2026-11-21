@@ -62,6 +62,60 @@ class Refused(SourceError):
     """The site won't answer jobwatch (HTTP 401 or 403): asking again soon won't help."""
 
 
+class Unavailable(SourceError):
+    """The site answered, but not with the page: maintenance, an outage, a bot challenge, or a redirect to its home
+    page. It says nothing about whether a posting is still up (see unavailable_page)."""
+
+
+# Pages that stand in for the real one while a site is down or wary of us. Read from the page's title and, when the
+# page is short (a real posting is long), its text: a posting that merely mentions "try again later" isn't one.
+_DOWN_TITLE = re.compile(r"^\s*(maintenance|under maintenance|site maintenance|service unavailable|temporarily "
+                         r"unavailable|access denied|just a moment\.*|attention required.*|403 forbidden|"
+                         r"429 too many requests|50\d\b.*|we'll be right back|be right back|error)\s*$", re.I)
+_DOWN_TEXT = re.compile(
+    r"undergoing (scheduled )?maintenance|down for (scheduled )?maintenance|temporarily unavailable|"
+    r"service (is )?unavailable|try again later|we'?re sorry,? (the|our) (system|site|website|service)|"
+    r"will be back (shortly|soon)|be right back|checking your browser|verify you are (a )?human|"
+    r"enable javascript and cookies|are you a robot|unusual traffic|access denied|too many requests", re.I)
+_SHORT_PAGE = 3000  # characters of visible text: longer than this and the page is a real one
+
+
+_CLOSED_TEXT = re.compile(
+    r"no longer (available|accepting applications|open)|position (has been |is |was )?(now )?(filled|closed)|"
+    r"(job|posting|position|role|requisition)( you (are|were) looking for)? (was |has been |is )?not found|"
+    r"(job|posting|position|role) (has |have )?(expired|been removed|been closed)|"
+    r"this (job|position|posting|role) is (closed|no longer)", re.I)
+
+
+def _visible(text: str) -> str:
+    text = re.sub(r"<(script|style)\b.*?</\1>", " ", text, flags=re.I | re.S)
+    return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", text))).strip()
+
+
+def unavailable_page(text: str) -> str:
+    """Why this page is a maintenance, outage or challenge page rather than the one asked for (else '')."""
+    if not isinstance(text, str):
+        return ""
+    title = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
+    if title and _DOWN_TITLE.match(html.unescape(title.group(1)).strip()):
+        return f"the page is titled {html.unescape(title.group(1)).strip()!r}"
+    visible = _visible(text)
+    if len(visible) <= _SHORT_PAGE and (found := _DOWN_TEXT.search(visible)):
+        return f"the page says {found.group(0)!r}"
+    return ""
+
+
+def closed_page(text: str) -> str:
+    """The words of a short page that says the posting is gone ('this position has been filled', 'job not found',
+    'no longer available'), else ''. Positive evidence of closure, like a 404: a long page is a real posting, which
+    may say such things in passing, and a maintenance or challenge page (unavailable_page) says nothing."""
+    if not isinstance(text, str) or unavailable_page(text):
+        return ""
+    visible = _visible(text)
+    found = _CLOSED_TEXT.search(visible) if len(visible) <= _SHORT_PAGE else None
+    return found.group(0) if found else ""
+
+
 class Partial(SourceError):
     """The board stopped answering partway through (rate-limited): `jobs` are the roles read before it did, newest
     first. They are kept, and nothing missing from them is taken as closed (see Store.sync's `close_missing`)."""
@@ -97,6 +151,14 @@ def _wait(e: urllib.error.HTTPError, attempt: int, most: float = MAX_WAIT) -> fl
     return min(float(after) if after.strip().isdigit() else 2 ** (attempt + 1), most)
 
 
+def _not_home(asked: str, answered: str):
+    """Raise Unavailable when a link to one page was answered by the site's home page (a redirect): a site that
+    can't serve a page often sends everyone home, so it is no sign the page was taken down."""
+    path = lambda u: urlparse(u).path.strip("/")  # noqa: E731
+    if path(asked) and not path(answered) and urlparse(asked).netloc == urlparse(answered).netloc:
+        raise Unavailable(f"{asked}: redirected to the site's home page")
+
+
 def _read(url: str, timeout: float, body: dict | None, accept: str, headers: dict | None = None,
           cookies: dict | None = None) -> bytes:
     """`cookies`, when given, are sent with the request and take the ones the answer sets (see _Visit)."""
@@ -115,6 +177,7 @@ def _read(url: str, timeout: float, body: dict | None, accept: str, headers: dic
                     for c in resp.headers.get_all("Set-Cookie") or []:
                         name, _, value = c.split(";", 1)[0].partition("=")
                         cookies[name.strip()] = value.strip()
+                _not_home(url, getattr(resp, "geturl", lambda: url)())
                 return resp.read()
         except urllib.error.HTTPError as e:
             if e.code in (404, 410):  # 410: iCIMS's answer for a job that has closed
@@ -140,8 +203,12 @@ def get_json(url: str, timeout: float = 30, body: dict | None = None):
 
 
 def get_text(url: str, timeout: float = 30) -> str:
-    """A web page, as text (a careers page to look for job-board links in, a LinkedIn posting)."""
-    return _read(url, timeout, None, "text/html,application/xhtml+xml,*/*").decode("utf-8", "replace")
+    """A web page, as text (a careers page to look for job-board links in, a LinkedIn posting). Raises Unavailable
+    for a maintenance, outage or challenge page (see unavailable_page): that isn't the page."""
+    text = _read(url, timeout, None, "text/html,application/xhtml+xml,*/*").decode("utf-8", "replace")
+    if why := unavailable_page(text):
+        raise Unavailable(f"{url}: {why}")
+    return text
 
 
 def get_bytes(url: str, timeout: float = 30) -> bytes:

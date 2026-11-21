@@ -474,7 +474,7 @@ _CSS = """
 --shadow:0 1px 2px rgba(20,26,46,.04),0 10px 28px -16px rgba(20,26,46,.16);
 --shadow-hover:0 2px 4px rgba(20,26,46,.05),0 22px 44px -20px rgba(70,60,190,.34);--radius:16px;
 --grad:linear-gradient(135deg,#5a5cf2,#a24af0);--s-applied:#3b82f6;--s-screening:#8b5cf6;--s-interviewing:#f59e0b;
---s-offer:#10b981;--s-rejected:#94a3b8;--s-withdrawn:#a8a29e;color-scheme:light}
+--s-offer:#10b981;--s-rejected:#94a3b8;--s-withdrawn:#a8a29e;--s-closed:#64748b;color-scheme:light}
 :root:has(#theme-dark:checked){DARK}
 @media (prefers-color-scheme:dark){:root:has(#theme-system:checked){DARK}}
 *{box-sizing:border-box}
@@ -507,7 +507,7 @@ transform-origin:left;animation:grow .5s cubic-bezier(.2,.7,.2,1) both}
 text-transform:capitalize;background:var(--stage,var(--accent))}
 .s-applied{--stage:var(--s-applied)}.s-screening{--stage:var(--s-screening)}
 .s-interviewing{--stage:var(--s-interviewing)}.s-offer{--stage:var(--s-offer)}.s-rejected{--stage:var(--s-rejected)}
-.s-withdrawn{--stage:var(--s-withdrawn)}
+.s-withdrawn{--stage:var(--s-withdrawn)}.s-closed{--stage:var(--s-closed)}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
 .tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;
 box-shadow:var(--shadow);animation:rise .5s cubic-bezier(.2,.7,.2,1) both}

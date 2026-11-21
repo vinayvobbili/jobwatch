@@ -63,7 +63,8 @@ after, then `find_board` and `add_board` for each company, which creates the fil
    before applying.
 5. **Record what happened.** After the user submits, `mark_job` with `applied`, and
    `save_application_package` with the resume and answers they sent. Later stages are `screening`,
-   `interviewing`, `offer`, `rejected` (they said no) and `withdrawn` (the user ended it, or it went quiet).
+   `interviewing`, `offer`, `rejected` (they said no) and `withdrawn` (the user ended it, or it went quiet) and `closed` (the company took the posting down:
+   "Closed by company").
 
 ## Status emails
 
