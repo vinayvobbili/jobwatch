@@ -1153,6 +1153,22 @@ class App:
     def get_queue(self, q) -> list[dict]:
         return self._with_store(lambda cfg, store: self._cards(cfg, store, queue(cfg, store)))
 
+    def get_counts(self, q) -> dict:
+        """The numbers on the tab bar, cheaply: how many jobs are queued (what /api/queue lists), how many
+        applications are due a follow-up now (not the long-quiet ones, as the Applied tab counts them), how many
+        interviews have a time today, and how many applications there are. The page asks after every action and tab,
+        so none of it reads a posting's text, scores a job or looks up pay."""
+        def run(cfg, store):
+            store.wake_snoozed()
+            rows = store.applications()
+            found = quiet.find(rows, cfg.quiet)
+            today = date.today()
+            return {"queue": store.db.execute("SELECT COUNT(*) FROM jobs WHERE status='queued'").fetchone()[0],
+                    "due": sum(1 for j, rec in rows if report.due(rec) and not found.get(j.key, {}).get("long")),
+                    "interviews": sum(1 for i in interviews.upcoming(rows) if i.meeting and i.day == today),
+                    "applications": len(rows)}
+        return self._with_store(run)
+
     def get_snoozed(self, q) -> list[dict]:
         """The jobs waiting for an application at their company to end, and which applications those are."""
         def run(cfg, store):
@@ -1971,6 +1987,7 @@ ROUTES = {
     ("GET", "/api/digest"): App.get_digest,
     ("GET", "/api/hidden"): App.get_hidden,
     ("GET", "/api/queue"): App.get_queue,
+    ("GET", "/api/counts"): App.get_counts,
     ("GET", "/api/pace"): App.get_pace,
     ("GET", "/api/jobs"): App.get_jobs,
     ("GET", "/api/job"): App.get_job,

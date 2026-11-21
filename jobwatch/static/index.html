@@ -6645,14 +6645,14 @@ function renderSettings() {
 async function refreshQueueCount() {
   try {
     const ready = settings && settings.exists;
-    const n = ready ? (await api("/api/queue")).length : 0;
+    // One small call for the three numbers: reading the queue, the applications and the interviews in full after
+    // every click made each tab wait behind them (the queue alone is seconds of work).
+    const { queue: n, due, interviews: iv } = ready ? await api("/api/counts") : { queue: 0, due: 0, interviews: 0 };
     const q = document.getElementById("qcount");
     q.replaceChildren(n ? h("span", { class: "count" }, n) : "");
     if (n > (refreshQueueCount.last ?? n)) bump(q.firstChild);
     refreshQueueCount.last = n;
-    const due = ready ? (await api("/api/applications")).applications.filter(freshDue).length : 0;
     document.getElementById("duecount").replaceChildren(due ? h("span", { class: "count", title: "follow-ups due" }, due) : "");
-    const iv = ready ? (await api("/api/interviews")).interviews.filter(i => i.scheduled && i.day === todayIso()).length : 0;
     document.getElementById("ivcount").replaceChildren(iv ? h("span", { class: "count", title: "interviews today" }, iv) : "");
   } catch { /* the page still works without the counts */ }
 }
