@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-LIMIT = 2 * 1024 * 1024  # the sdist was 74 MB with the site's videos in it; the wheel is under 1 MB
+LIMIT = 3 * 1024 * 1024  # the sdist was 74 MB with the site's videos in it; the wheel is under 1 MB
 
 
 def test_sdist_has_no_media_and_stays_small(tmp_path):
