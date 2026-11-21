@@ -314,7 +314,7 @@ def parse_ashby(data: dict, board: str) -> list[Job]:
 
 
 def parse_workable(data: dict, board: str) -> list[Job]:
-    jobs = []
+    jobs, seen = [], {}
     for j in data.get("jobs", []):
         places = j.get("locations") if isinstance(j.get("locations"), list) else []
         where = [", ".join(p for p in (loc.get("city"), loc.get("region"), loc.get("country")) if p)
@@ -328,6 +328,11 @@ def parse_workable(data: dict, board: str) -> list[Job]:
             description=html_to_text(j.get("description") or ""),
         )
         _salary(job, job.description)
+        if same := seen.get(job.id):  # a role in several places is listed once each: one job, all its places
+            same.locations = split_locations(*same.locations, *job.locations)
+            same.remote = same.remote or job.remote
+            continue
+        seen[job.id] = job
         jobs.append(job)
     return jobs
 

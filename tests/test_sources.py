@@ -16,6 +16,19 @@ def test_greenhouse():
     assert jobs[1].remote is None and jobs[1].salary_min is None
 
 
+def test_a_workable_role_listed_once_per_place_is_one_job_with_every_place():
+    """Workable lists a role in several places once for each, with one shortcode: one job (its key is unique in the
+    store), not several that fail the sync with a UNIQUE constraint."""
+    def role(city, code="AB12CD34EF"):
+        return {"shortcode": code, "title": "Platform Engineer", "city": city, "state": "", "country": "United States",
+                "description": "Build platforms."}
+    data = {"name": "Initech Energy",
+            "jobs": [role("Boulder"), role("Denver"), role("Boulder"), role("Austin", "ZZ99")]}
+    jobs = sources.parse_workable(data, "initechenergy")
+    assert [j.key for j in jobs] == ["workable:initechenergy:AB12CD34EF", "workable:initechenergy:ZZ99"]
+    assert jobs[0].locations == ["Boulder, United States", "Denver, United States"]
+
+
 def test_lever():
     jobs = sources.parse_lever(LEVER, "globex")
     j = jobs[0]

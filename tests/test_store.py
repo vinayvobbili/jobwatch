@@ -68,6 +68,32 @@ def test_a_board_that_lists_nothing_closes_nothing(store):
     assert [j.id for j, _ in store.jobs()] == ["a"]
 
 
+def test_a_key_a_board_lists_twice_is_recorded_once(store):
+    """A board listing one role twice (a role in two departments, say) fails no sync with a UNIQUE constraint."""
+    assert store.sync("lever", "globex", [job("a"), job("a", "Engineer (Remote)"), job("b")]) == [
+        "lever:globex:a", "lever:globex:b"]
+    assert len(store.jobs()) == 2
+    assert store.sync("lever", "globex", [job("a"), job("a")]) == []
+
+
+def test_a_role_kept_under_another_company_is_updated_not_inserted_again(store):
+    """The key is unique across the table: a board that lists a role recorded under another company (an alert's
+    copy) updates it, and never fails the check with IntegrityError."""
+    store.sync("lever", "initech", [job("a", "Old title")])
+    store.db.execute("UPDATE jobs SET key='lever:globex:a' WHERE key='lever:initech:a'")  # kept under another board
+    assert store.sync("lever", "globex", [job("a", "New title"), job("b")]) == ["lever:globex:b"]
+    assert {j.title for j, _ in store.jobs()} == {"New title", "Engineer"}
+
+
+def test_one_bad_role_never_fails_the_boards_other_roles(store, capsys):
+    bad = job("a")
+    bad.title = "x" * 10
+    store.db.execute("CREATE TRIGGER refuse BEFORE INSERT ON jobs WHEN NEW.key LIKE '%:bad' "
+                     "BEGIN SELECT RAISE(ABORT, 'refused'); END")
+    assert store.sync("lever", "globex", [job("bad"), bad, job("c")]) == ["lever:globex:a", "lever:globex:c"]
+    assert "skipped lever:globex:bad" in capsys.readouterr().err
+
+
 def test_boards_are_independent(store):
     store.sync("lever", "globex", [job("a")])
     store.sync("lever", "other", [])

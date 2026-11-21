@@ -7,6 +7,7 @@ import json
 import re
 import secrets
 import sqlite3
+import sys
 import threading
 from collections.abc import Callable, Iterator, Mapping
 from datetime import date, datetime, timedelta, timezone
@@ -461,13 +462,20 @@ class Store:
                         (datetime.now(timezone.utc) - job.posted).days > REPOST_DAYS:
                     job.posted = datetime.now(timezone.utc)  # reposted: new to the board today, not months old
                 data = json.dumps(slimmed(job.to_dict()) if job.key in slim else job.to_dict())
-                if job.key in known:
-                    self.db.execute("UPDATE jobs SET data=?, last_seen=?, closed=NULL, slim=? WHERE key=?",
-                                    (data, now, "1" if job.key in slim else None, job.key))
-                else:
-                    self.db.execute("INSERT INTO jobs (key, source, company, data, first_seen, last_seen) "
-                                    "VALUES (?, ?, ?, ?, ?, ?)", (job.key, source, company, data, now, now))
-                    new.append(job.key)
+                try:
+                    # The key is unique across the whole table, so a role already recorded is updated whoever
+                    # recorded it: a key listed twice by one board, or one kept under another source or company
+                    # (an alert's copy), is an update, never a second insert that fails the board's whole sync.
+                    if job.key not in known and self.db.execute(
+                            "INSERT OR IGNORE INTO jobs (key, source, company, data, first_seen, last_seen) "
+                            "VALUES (?, ?, ?, ?, ?, ?)", (job.key, source, company, data, now, now)).rowcount:
+                        new.append(job.key)
+                    else:
+                        self.db.execute("UPDATE jobs SET data=?, last_seen=?, closed=NULL, slim=? WHERE key=?",
+                                        (data, now, "1" if job.key in slim else None, job.key))
+                    known.add(job.key)
+                except sqlite3.Error as e:  # one bad role never fails the board's other roles, or the check
+                    print(f"jobwatch: skipped {job.key}: {type(e).__name__}: {e}", file=sys.stderr)
             # a board that lists nothing at all is down or changed, not empty: it closes nothing (a posting that
             # really went is found by the daily check of the ones you follow)
             gone = known - {j.key for j in jobs} if close_missing and jobs else set()
