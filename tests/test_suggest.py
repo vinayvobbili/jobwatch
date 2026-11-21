@@ -505,6 +505,48 @@ def test_web_endpoints(web, watchlist):
     assert app.get_suggestions({})["companies"] == []
 
 
+def old_watched(boards, name, entry=""):
+    """suggest.watched as it was: every board's name compared with the company's."""
+    from jobwatch import linkedin
+    return any((entry and entry == b.entry) or linkedin.same_company(b.name or b.board, name)
+               or linkedin.same_company(b.board, name) for b in boards)
+
+
+def test_watched_by_name_set_gives_the_old_answer_without_comparing_every_board(monkeypatch):
+    from jobwatch import linkedin
+    boards = [config.Board("greenhouse", "initech", "Initech, Inc."), config.Board("lever", "globex"),
+              config.Board("ashby", "umbrella-corp", "Umbrella Corporation LLC"), config.Board("workday", "x", ""),
+              config.Board("lever", "hooli", "HOOLI 4.2")]
+    names = ["initech", "Initech Inc", "INITECH, LLC", "Globex", "globex corp", "Umbrella Corporation",
+             "umbrellacorp", "Hooli", "Vandelay Industries", "", "  ", "x", "Wayne Enterprises"]
+    entries = ["", "lever:globex", "ashby:umbrella-corp", "lever:nobody", "greenhouse:initech"]
+    want = {(n, e): old_watched(boards, n, e) for n in names for e in entries}
+    assert True in want.values() and False in want.values()
+    calls = []
+    monkeypatch.setattr(linkedin, "same_company", lambda *a: calls.append(a))
+    assert {(n, e): suggest.watched(boards, n, e) for n in names for e in entries} == want
+    assert calls == []  # no per-board comparison any more
+
+
+def test_a_page_of_unwatched_companies_is_filtered_without_a_comparison_per_board(web, watchlist, monkeypatch):
+    from dataclasses import replace
+
+    from jobwatch import linkedin
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    for i in range(30):
+        added(cfg, store, f"Company {i}", "Platform Engineer")
+    boards = [config.Board("greenhouse", f"board{i}", f"Board Company {i}") for i in range(200)] + [
+        config.Board("lever", "company-7", "Company 7")]
+    cfg = replace(cfg, boards=boards)
+    calls = []
+    real = linkedin.same_company
+    monkeypatch.setattr(linkedin, "same_company", lambda *a: calls.append(a) or real(*a))
+    got = suggest.suggestions(cfg, store, limit=0)
+    assert len(got) == 29 and "Company 7" not in [s.name for s in got] and calls == []
+    store.close()
+
+
 def test_page_has_companies_to_watch(server):
     page = request(server, "GET", "/")[1].decode()
     assert "function toWatchPanel(" in page and 'panel("Companies to watch"' in page

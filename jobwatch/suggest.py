@@ -30,6 +30,7 @@ import re
 import shlex
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from urllib.parse import urlparse
 
 from . import config, dupes, linkedin, sources
@@ -99,10 +100,32 @@ def company_id(name: str) -> str:
     return linkedin._bare(name)
 
 
+class Watching:
+    """The watchlist's boards by what a company can match: the board itself (source:board) and the company names
+    they go by, normalised once (linkedin.same_company's reading), so asking about a company is two set lookups
+    instead of comparing its name with every board's."""
+
+    def __init__(self, boards):
+        self.entries = {b.entry for b in boards}
+        self.names = {n for b in boards for n in (linkedin._bare(b.name or b.board), linkedin._bare(b.board)) if n}
+
+    def has(self, name: str, entry: str = "") -> bool:
+        return bool(entry and entry in self.entries) or linkedin._bare(name) in self.names
+
+
+@lru_cache(maxsize=4)
+def _watching(boards: tuple) -> Watching:
+    return Watching(boards)
+
+
+def watching(boards: list[Board]) -> Watching:
+    """The index of these boards, built once while the watchlist stays the same."""
+    return _watching(tuple(boards))
+
+
 def watched(boards: list[Board], name: str, entry: str = "") -> bool:
     """Is this company's board on the watchlist: the same board, or one under the company's name."""
-    return any((entry and entry == b.entry) or linkedin.same_company(b.name or b.board, name)
-               or linkedin.same_company(b.board, name) for b in boards)
+    return watching(boards).has(name, entry)
 
 
 def posted_on(job: Job) -> list[str]:
@@ -195,8 +218,9 @@ def suggestions(cfg: Config, store: Store, limit: int | None = None, look: bool 
     limit = cfg.suggest.limit if limit is None else limit
     half_life = cfg.suggest.half_life
     engaged = record_engaged(store, cfg.boards)
+    on_list = watching(cfg.boards)
     for row in store.unwatched():
-        if watched(cfg.boards, row["name"], row["entry"] or ""):
+        if on_list.has(row["name"], row["entry"] or ""):
             continue
         jobs = [(j, at) for j, at in row["jobs"] if reject_reason(j, cfg.filters_for(j)) is None]
         mine = engaged.get(row["company"], [])
