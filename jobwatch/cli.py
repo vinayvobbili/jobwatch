@@ -1454,6 +1454,34 @@ def cmd_ui(args):
         server.server_close()
 
 
+def cmd_timing(args):
+    from urllib.parse import urlparse
+
+    from . import timing
+
+    server = None
+    if args.url:
+        u = urlparse(args.url if "//" in args.url else f"//{args.url}")
+        host, port = u.hostname or "127.0.0.1", u.port or 8765
+        token = timing.page_token(host, port)
+    else:
+        cfg_path = config.locate(args.config)
+        if not cfg_path.is_file():
+            raise ValueError(f"no watchlist at {cfg_path}")
+        server, token = timing.serve_here(cfg_path)
+        host, port = "127.0.0.1", server.server_address[1]
+    try:
+        client = timing.Client(host, port, token, gzip=not args.no_gzip)
+        company = args.company or ("" if args.tab and "company" not in {t.lower() for t in args.tab}
+                                   else timing.pick_company(client))
+        rows = timing.measure(client.get, timing.calls(args.tab, company), args.runs)
+    finally:
+        if server:
+            server.shutdown()
+            server.server_close()
+    print(timing.to_json(rows) if args.json else timing.render(rows))
+
+
 def ui_running(port: int) -> bool:
     """Whether a jobwatch page already answers on this port (a quick probe, as the browser would reach it)."""
     import http.client
@@ -2147,6 +2175,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
     p.add_argument("--log", type=Path, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_ui, needs_config=False)
+
+    p = sub.add_parser("timing", help="time what each tab of the page takes to load, slowest first: the page's own "
+                       "API calls, N times each, against a running page (--url) or the watchlist's store in a server "
+                       "started here (use -c with a copy of the store: Today marks its jobs seen)")
+    p.add_argument("--url", help="a running page, such as jobwatch.localhost:8765 (its token is read from the page)")
+    p.add_argument("-n", "--runs", type=int, default=3, help="times each call is made (default 3; the first is cold)")
+    p.add_argument("--tab", action="append", help="only this tab (repeat for more): Page, Today, Queue, Counts, "
+                   "Applications, Interviews, Company, Comps, Referrals, Skills, Activity, Settings")
+    p.add_argument("--company", help="the company the Company tab opens (default: the first with an application)")
+    p.add_argument("--no-gzip", action="store_true", help="don't ask for compressed replies")
+    p.add_argument("--json", action="store_true", help="print JSON instead of the table")
+    p.set_defaults(func=cmd_timing, needs_config=False)
 
     p = sub.add_parser("mcp", help="run the MCP server (the same as `jobwatch-mcp`) for Claude or another assistant")
     p.set_defaults(func=cmd_mcp, needs_config=False)
