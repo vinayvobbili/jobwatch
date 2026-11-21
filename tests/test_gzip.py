@@ -47,13 +47,12 @@ def test_json_is_gzipped_when_it_is_big_enough_and_asked_for(server):
 
 
 def test_errors_and_the_token_check_still_answer_plainly_or_compressed_without_breaking_json(server):
-    status, body, headers = request(server, "GET", "/api/settings", headers={"X-Jobwatch-Token": "wrong",
-                                                                             "Accept-Encoding": "gzip"},
-                                    with_headers=True)
+    status, body = request(server, "GET", "/api/settings", headers={"X-Jobwatch-Token": "wrong",
+                                                                    "Accept-Encoding": "gzip"})
     assert status == 403 and json.loads(body)["error"]  # under GZIP_MIN: plain
 
 
 def test_a_stored_file_is_never_compressed(server):
-    status, body, headers = request(server, "GET", "/manifest.webmanifest", headers={"Accept-Encoding": "gzip"},
-                                    with_headers=True)
+    status, _, headers = request(server, "GET", "/manifest.webmanifest", headers={"Accept-Encoding": "gzip"},
+                                 with_headers=True)
     assert status == 200 and "Content-Encoding" not in headers

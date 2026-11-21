@@ -1,4 +1,4 @@
-"""The filter pass: every job Today could list (status new or shown), judged once by the filters.
+"""The filter pass: every open job Today could list (status new or shown), judged once by the filters.
 
 Judging the whole table (63,000 jobs and their postings' text) takes seconds, and Today, the page's "hidden" count,
 the scorer's line, Skills and Referrals all start from it. Each used to run it on its own, on every request. Here it
@@ -20,6 +20,7 @@ from typing import NamedTuple
 
 from .config import Config
 from .filters import excluded_company, rejection
+from .models import Job
 from .store import Store
 
 STATUSES = ("new", "shown")  # what Today lists, see watch.build_digest
@@ -30,7 +31,6 @@ class Verdict(NamedTuple):
     status: str
     source: str
     first_seen: str
-    closed: bool           # marked closed (not necessarily confirmed): the pass covers these for Referrals
     age_days: int | None
     kind: str | None       # the filter that rejected it (filters.KINDS), None: it passes
     why: str | None        # and why, in words: "title matches 'manager'", "posted 45 days ago"
@@ -41,25 +41,30 @@ class Verdict(NamedTuple):
 class Pass(NamedTuple):
     verdicts: list[Verdict]   # newest first, as Store.iter_jobs lists them
 
-    def in_status(self, statuses: Iterable[str], closed: bool = False) -> list[Verdict]:
-        """The verdicts of jobs with one of these statuses; marked-closed ones only when `closed`."""
+    def in_status(self, statuses: Iterable[str]) -> list[Verdict]:
+        """The verdicts of jobs with one of these statuses."""
         statuses = set(statuses)
-        return [v for v in self.verdicts if v.status in statuses and (closed or not v.closed)]
+        return [v for v in self.verdicts if v.status in statuses]
 
 
-def judge(cfg: Config, store: Store, fits: dict[str, dict]) -> Pass:
-    """Run every filter over every new or shown job, one at a time (the postings are never all in memory)."""
+def judge_rows(cfg: Config, fits: dict[str, dict], rows: Iterable[tuple[Job, dict]]) -> list[Verdict]:
+    """Run every filter over these jobs, one at a time (the postings are never all in memory)."""
     out = []
-    for job, rec in store.iter_jobs(STATUSES, include_closed=True):
+    for job, rec in rows:
         f, fit = cfg.filters_for(job), fits.get(job.key)
         r = rejection(job, f, fit)
         name = alone = None
         if r and r[0] == "company":
             name = excluded_company(job, f.exclude_companies)
             alone = not rejection(job, replace(f, exclude_companies=[]), fit)
-        out.append(Verdict(job.key, rec["status"], job.source, rec["first_seen"], bool(rec["closed"]),
-                           job.age_days(), r[0] if r else None, r[1] if r else None, name, bool(alone)))
-    return Pass(out)
+        out.append(Verdict(job.key, rec["status"], job.source, rec["first_seen"], job.age_days(),
+                           r[0] if r else None, r[1] if r else None, name, bool(alone)))
+    return out
+
+
+def judge(cfg: Config, store: Store, fits: dict[str, dict]) -> Pass:
+    """Every open new or shown job judged (closed ones are no part of Today)."""
+    return Pass(judge_rows(cfg, fits, store.iter_jobs(STATUSES)))
 
 
 def config_stamp(cfg: Config) -> tuple:
@@ -85,7 +90,8 @@ def remembered(store: Store, name: str, made_from: tuple, make: Callable[[], obj
     before the work starts, so a write during it leaves the result marked older than the file and it is made
     again next time, never served stale."""
     where = (str(store.path), name, variant)
-    stamp = (store.stamp(), made_from, datetime.now(timezone.utc).strftime("%Y%m%d%H"))  # an age's day turns on the hour
+    hour = datetime.now(timezone.utc).strftime("%Y%m%d%H")  # a job's age in days turns over on the hour, near enough
+    stamp = (store.stamp(), made_from, hour)
     with _guard:
         if (got := _kept.get(where)) and got[0] == stamp:
             return got[1]
@@ -104,6 +110,13 @@ def forget():
     """Drop everything remembered (for tests: a state file that is deleted and made again)."""
     with _guard:
         _kept.clear()
+
+
+def acted_index(store: Store):
+    """dupes.Index over the jobs acted on, built once while the state file stays as it is: the queue, Today, a
+    company's page and the scorer's line each built their own (every acted-on job read in full, 0.3 s)."""
+    from .dupes import Index
+    return remembered(store, "acted", (), lambda: Index(store))
 
 
 def judged(cfg: Config, store: Store, rid: str | None, fits: Callable[[], dict[str, dict]]) -> Pass:

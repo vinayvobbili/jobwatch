@@ -276,6 +276,7 @@ def _letters(text: str | None) -> str:
 # a closed posting needs before it counts as closed: see closed_notices), else 0: the mark alone is still 'checking'.
 _ROW = ("SELECT *, EXISTS (SELECT 1 FROM closed_confirmed c WHERE c.key=jobs.key AND c.closed=jobs.closed) "
         "AS closed_confirmed FROM jobs")
+_ROW_ID = _ROW.replace("SELECT *,", "SELECT rowid AS rid, *,", 1)  # the same, with when it was recorded (the order)
 
 def closed_state(rec: dict) -> str | None:
     """What a job's record says about its posting: 'closed' (the mark was confirmed by a second look), 'checking'
@@ -466,14 +467,15 @@ class Store:
         nothing else: a cheap stamp (three stat calls and a 24-byte read) to key remembered work on, so it's
         used again until a write. It is the file's and the write-ahead log's size and time, and the commit
         counter in the log's index (SQLite bumps that on every commit, so two writes in one clock tick still
-        differ)."""
+        differ). An empty log has no time: SQLite makes a new one each time the first connection opens, which
+        isn't a write."""
         out = []
         for suffix in ("", "-wal"):
             try:
                 st = Path(f"{self.path}{suffix}").stat()
-                out += [st.st_mtime_ns, st.st_size]
+                out += [st.st_mtime_ns if st.st_size or not suffix else None, st.st_size]
             except OSError:
-                out += [None, None]
+                out += [None, 0]
         try:
             with open(f"{self.path}-shm", "rb") as f:
                 out.append(f.read(24))
@@ -487,6 +489,31 @@ class Store:
         return [r[0] for r in self.db.execute(
             f"SELECT key FROM jobs WHERE status IN ({','.join('?' * len(statuses))}) ORDER BY first_seen DESC",
             statuses)]
+
+    def board_rows(self, boards, statuses: tuple[str, ...] | None = None, closed_only: bool = False,
+                   title_ok: Callable[[str, str, str], bool] | None = None) -> list[tuple[Job, dict]]:
+        """(job, record) for every job, closed ones too, on any of these (source, company) boards, in the order
+        jobs() lists them (newest first seen, a tie by when it was recorded): each board is read by its index.
+        statuses: only jobs with one of these; closed_only: only those marked closed; title_ok(source, company,
+        title): only jobs it says yes to, decided in the query from the title alone, so a board's thousands of
+        postings aren't each read in full to be turned away."""
+        where, args = "", []
+        if statuses:
+            where += f" AND status IN ({','.join('?' * len(statuses))})"
+            args += list(statuses)
+        if closed_only:
+            where += " AND closed IS NOT NULL"
+        if title_ok:
+            self.db.create_function("title_ok", 3, lambda *a: int(bool(title_ok(*a))))
+            where += " AND title_ok(source, company, json_extract(data, '$.title'))"
+        found = []
+        for source, company in boards:
+            for r in self.db.execute(f"{_ROW_ID} WHERE source=? AND company=?{where}", (source, company, *args)):
+                found.append((r["first_seen"], r["rid"], Job.from_dict(json.loads(r["data"])),
+                              {k: r[k] for k in r.keys() if k not in ("data", "rid")}))
+        found.sort(key=lambda f: f[1])
+        found.sort(key=lambda f: f[0], reverse=True)  # stable: a tie stays in the order recorded
+        return [(job, rec) for _, _, job, rec in found]
 
     def rows(self, keys) -> dict[str, tuple[Job, dict]]:
         """{key: (job, record)} for the jobs with exactly these keys (those that exist), in the order the keys

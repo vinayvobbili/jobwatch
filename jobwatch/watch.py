@@ -30,7 +30,6 @@ from .filters import (
     KINDS,
     Filters,
     company_note,
-    excluded_company,
     focus_hits,
     office_nearby,
     place_rejection,
@@ -466,7 +465,7 @@ def entries_for(cfg: Config, store: Store, rows: list[tuple[Job, dict]], pay_bud
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
     contacts = load_contacts(cfg)
     reader = levels.Reader(store, pay_budget) if cfg.pay.levels else None
-    index = dupes.Index(store)
+    index = jobpass.acted_index(store)
     applications = store.applications()
     filings = lca.Index.open(lca.cache_path(cfg))
     kept = store.comps()
@@ -1005,7 +1004,7 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
     entries = []
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
     fits = _fits(store, rid) if rid else {}
-    index = dupes.Index(store)
+    index = jobpass.acted_index(store)
     # The filters have judged every job already (see jobpass.py, remembered until something is written). Only
     # the jobs that pass, and the ones whose verdict a second look can change, are read in full: a req posted
     # again (below) and, with redo_passes, a min_fit rejection that a stale score caused.

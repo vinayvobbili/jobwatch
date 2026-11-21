@@ -82,7 +82,7 @@ def old_hidden(cfg, store, kind=""):
     from jobwatch.score import resume_id
     fits = watch._fits(store, resume_id(cfg.resume, cfg.prompts)) if cfg.resume and cfg.resume.is_file() else {}
     by, companies, jobs = {}, dict.fromkeys(cfg.filters.exclude_companies, 0), []
-    for j, rec in store.iter_jobs(("new", "shown")):
+    for j, _ in store.iter_jobs(("new", "shown")):
         f = cfg.filters_for(j)
         if r := rejection(j, f, fits.get(j.key)):
             by[r[0]] = by.get(r[0], 0) + 1
@@ -157,11 +157,22 @@ def old_referrals(cfg, store):
 
 def test_referrals_use_the_same_people_and_jobs_as_before(setup):
     cfg, store, _ = setup
+    # jobs a board marked closed: one still to be confirmed (it may be open: listed), one confirmed (not), one that
+    # fails the filters (not), and one at a company nobody is known at (not listed: no one to ask)
+    store.sync("greenhouse", "globex", [job(14, "Staff Engineer", "globex"), job(15, "Staff Analyst", "globex"),
+                                        job(16, "Chef", "globex")])
+    store.sync("greenhouse", "hooli", [job(17, "Staff Engineer", "hooli")])
+    for key in ("greenhouse:globex:14", "greenhouse:globex:15", "greenhouse:globex:16", "greenhouse:hooli:17"):
+        store.set_closed(key, True)
+    store.confirm_closed(["greenhouse:globex:15"])
     jobpass.forget()
     got = referrals.view(cfg, store)
+    assert "greenhouse:globex:14" in [j["key"] for j in got["people"][0]["jobs"]]
+    assert not {"greenhouse:globex:15", "greenhouse:globex:16"} & {j["key"] for j in got["people"][0]["jobs"]}
     assert [p["jobs"] for p in got["people"]] == [p["jobs"] for p in old_referrals(cfg, store)]
-    # Security Engineer (queued) and Analyst pass; SRE fails the titles filter
-    assert {j["key"] for j in got["people"][0]["jobs"]} == {"greenhouse:globex:8", "greenhouse:globex:9"}
+    # Security Engineer (queued), Analyst and the closed-unconfirmed Staff Engineer pass; SRE fails the titles filter
+    assert {j["key"] for j in got["people"][0]["jobs"]} == {"greenhouse:globex:8", "greenhouse:globex:9",
+                                                            "greenhouse:globex:14"}
 
 
 def test_digest_hidden_line_and_referrals_judge_the_table_once(setup, judgings):
@@ -223,8 +234,43 @@ def test_the_stamp_changes_with_every_write_and_not_with_reads(setup):
     assert store.stamp() != one
 
 
-def test_a_result_made_while_a_write_lands_is_made_again(setup):
+def test_the_stamp_is_the_same_for_every_request_that_opens_the_file_afresh(setup):
+    """The page opens the state file for each request and closes it after: SQLite then deletes and makes the log
+    again, and that mustn't look like a write (the filter pass would never be reused)."""
     cfg, store, _ = setup
+    store.close()
+    stamps = []
+    for _ in range(3):
+        again = Store(cfg.state)
+        stamps.append(again.stamp())
+        again.close()
+    assert stamps[0] == stamps[1] == stamps[2]
+    again = Store(cfg.state)
+    again.add_note("greenhouse:initech:1", "a write")
+    after = again.stamp()
+    again.close()
+    assert after != stamps[0]
+    again = Store(cfg.state)
+    later = again.stamp()  # the write was checkpointed into the file when the last connection closed
+    again.close()
+    again = Store(cfg.state)
+    assert again.stamp() == later != stamps[0]
+    again.close()
+
+
+def test_the_pass_is_reused_across_requests_that_each_open_the_store(setup, judgings):
+    cfg, store, _ = setup
+    store.close()
+    for _ in range(3):
+        fresh = Store(cfg.state)
+        watch.hidden(cfg, fresh)
+        referrals.view(cfg, fresh)
+        fresh.close()
+    assert judgings == [1]
+
+
+def test_a_result_made_while_a_write_lands_is_made_again(setup):
+    _, store, _ = setup
     jobpass.forget()
     runs = []
 

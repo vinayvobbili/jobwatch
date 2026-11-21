@@ -17,7 +17,7 @@ from dataclasses import replace
 from urllib.parse import urlparse
 
 from . import contacts as people
-from . import dupes, report, suggest
+from . import dupes, jobpass, report, suggest
 from .config import Config
 from .filters import KINDS, focus_hits, rejection
 from .models import Job
@@ -58,14 +58,22 @@ def _rank(query: str, keys: set[str]) -> int | None:
 
 
 def _groups(store: Store) -> dict[str, dict]:
-    """Every company the jobs name, by its key: name, the keys it goes by, and its jobs counted by status."""
+    """Every company the jobs name, by its key: name, the keys it goes by, its boards and its jobs counted by
+    status. Grouping the table takes most of a second, and the page's search box asks on every keystroke, so it is
+    kept until something is written (see jobpass.py)."""
+    return jobpass.remembered(store, "company-groups", (), lambda: _group_companies(store))
+
+
+def _group_companies(store: Store) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for r in store.company_counts():
         probe = Job(source=r["source"], company=r["company"], id="", title="", url="", company_name=r["name"] or "")
         key = dupes.company_key(probe.display_company)
         if not key:
             continue
-        g = out.setdefault(key, {"names": Counter(), "keys": set(), "status": Counter(), "open": 0})
+        g = out.setdefault(key, {"names": Counter(), "keys": set(), "status": Counter(), "open": 0,
+                                 "boards": set()})
+        g["boards"].add((r["source"], r["company"]))
         g["names"][probe.display_company] += r["n"]
         g["keys"] |= dupes.companies(probe)
         g["status"][r["status"]] += r["n"]
@@ -175,10 +183,10 @@ def view(cfg: Config, store: Store, text: str, every: bool | None = None) -> dic
     if not found:
         return None
     best, key = found[0], found[0]["key"]
-    index, mine = dupes.Index(store), []
-    for job, rec in store.iter_jobs(include_closed=True):
-        if dupes.company_key(job.display_company) == key:
-            mine.append((job, rec))
+    index = jobpass.acted_index(store)
+    # Only the boards the company's jobs are on are read (_groups knows them), not all 63,000 jobs.
+    mine = [(job, rec) for job, rec in store.board_rows(_groups(store).get(key, {}).get("boards", ()))
+            if dupes.company_key(job.display_company) == key]
     mine.sort(key=lambda r: _order(r[1]))  # stable: newest first within each
     acted = [r for r in mine if _order(r[1]) < 4]
     unacted = [r for r in mine if _order(r[1]) == 4 and not r[1].get("closed")]
