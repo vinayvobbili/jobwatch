@@ -133,6 +133,12 @@ scorer), plus what's running right now. It shows one list at a time, **Job Board
 jobs scored, with the pay and logo lookups), so the many jobs scored don't bury the rest. It updates by itself while
 it's open, and keeps the last 1,000 entries of each kind.
 
+A row about a job links to it: the company and title in the line open that job's card (on Today, Queue or
+Applications, scrolled to and highlighted for a moment) or, when it has no card there, its details; a row about several
+jobs ("Found 3 postings taken down") folds out a list of them, and a button beside the row (it shows when you hover it
+or tab to it) opens the card too. A prep sheet's row links to the application the sheet belongs to. Rows from before
+jobwatch kept this are matched by the "Company: Title" they name, only when exactly one job has it.
+
 Each card shows the company's logo once it's known, else its initials. The logo is the icon on the company's own
 site (no logo service is asked), found in the background the first time a company shows up: the site is the
 domain its postings link to whose name is the company's, else its name plus .com when that home page names it.

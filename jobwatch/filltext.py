@@ -125,6 +125,10 @@ def fill_text(cfg, store: Store, page=None, get=None, read_browser=None, statuse
         if len(out) >= limit:
             break
         out.append(_fill_one(store, job, resolver, get, read_browser, dry_run))
+    done = [o.job for o in out if o.how in ("board", "link", "browser")]
+    if done and not dry_run:
+        store.log("mail", f"Filled in the posting text of {len(done)} alert job{'s' * (len(done) != 1)}",
+                  detail=[f"{j.display_company}: {j.title}" for j in done], jobs=[j.key for j in done])
     return out
 
 
@@ -164,6 +168,9 @@ def save_page_posting(store: Store, key: str, read: PagePosting):
     """Keep what a browser read of a LinkedIn or Indeed posting page gave as the job's text, with a note saying
     where it came from (and that the site says the posting is closed, when it does: the person decides)."""
     store.set_description(key, read.text)
+    if job := store.job(key):
+        store.log("mail", f"Read the posting text of {job.display_company}: {job.title} from the "
+                  f"{SITES[read.site]} page in the browser", jobs=[key])
     store.add_note(key, f"Posting text read from the {SITES[read.site]} page, in the person's own browser")
     if read.closed:
         store.add_note(key, f"{SITES[read.site]} says it is not accepting applications any more")

@@ -23,6 +23,7 @@ from . import (
     APP_HOST,
     GUIDE,
     __version__,
+    actjobs,
     advice,
     alerts,
     answers,
@@ -517,6 +518,13 @@ def cmd_fill_text(args, cfg, store):
         return
     out = filltext.fill_text(cfg, store, statuses=statuses, limit=args.limit, dry_run=args.dry_run)
     print(filltext.summary(out, args.dry_run))
+
+
+def cmd_link_activity(args, cfg, store):
+    """`link-activity`: link the Activity rows that name no job yet to the job each names, when exactly one job has
+    that company and title (see actjobs.py). Rows are linked when the state file is first opened by a version that
+    keeps this; this is for the ones a better reading of their lines can now place."""
+    print(f"{actjobs.backfill(store.db)} Activity rows linked to their jobs")
 
 
 def cmd_scored(args, cfg, store):
@@ -1684,6 +1692,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=filltext.CAP, help=f"jobs looked at in a run (default {filltext.CAP})")
     p.add_argument("--dry-run", action="store_true", help="say what would be filled in; record nothing")
     p.set_defaults(func=cmd_fill_text)
+
+    p = sub.add_parser("link-activity", help="link the Activity rows that name no job yet to the one job each "
+                       "names (company and title, when exactly one job has them)")
+    p.set_defaults(func=cmd_link_activity)
 
     p = sub.add_parser("scored", help="fit scores made from a day on, best first, with who made each (Claude, "
                        "agy, or the on-device model as a fallback)")

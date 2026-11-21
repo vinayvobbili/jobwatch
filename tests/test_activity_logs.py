@@ -61,7 +61,7 @@ def test_only_configured_logs_are_served(server, watchlist, tmp_path):
     status, body = request(server, "GET", f"/api/activity-logs?path={secret}&name=secret", headers=headers)
     logs = json.loads(body)["logs"]
     assert status == 200 and [x["name"] for x in logs] == ["Globex watcher"]
-    assert logs[0]["lines"] == [{"at": "2026-01-02T03:04:05", "text": "hello"}]
+    assert logs[0]["lines"] == [{"at": "2026-01-02T03:04:05", "text": "hello", "jobs": []}]
     assert "not for the page" not in body.decode()
     assert request(server, "POST", "/api/activity-logs", {}, headers=headers)[0] in (404, 405)
 

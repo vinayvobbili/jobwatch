@@ -35,6 +35,7 @@ import yaml
 from . import (
     APP_HOST,
     __version__,
+    actjobs,
     advice,
     ai,
     ats,
@@ -460,7 +461,7 @@ class PayLookup:
         try:
             cfg = self.app._cfg()
             store = Store(cfg.state)
-            looked, found = [], 0
+            looked, looked_keys, found = [], [], 0
             try:
                 reader = levels.Reader(store, levels.QUEUE, robots=self.robots)
                 while cfg.pay.levels and reader.budget > 0 and not reader.refused:
@@ -471,10 +472,11 @@ class PayLookup:
                     job = store.find(key)[0]
                     pay = levels.expected(cfg, store, job, reader=reader)
                     looked.append(f"{job.display_company}: {job.title}")
+                    looked_keys.append(job.key)
                     found += isinstance(pay, levels.Estimate)
                 if looked:
                     store.log("pay", f"Looked up expected pay on Levels.fyi for {plural(len(looked), 'job')}: "
-                              f"{found} found", detail=looked, by="background")
+                              f"{found} found", detail=looked, by="background", jobs=looked_keys)
             finally:
                 store.close()
         except Exception as e:  # never take the page down
@@ -1061,10 +1063,10 @@ class App:
         return self.refresher.fetch()
 
     def log(self, kind: str, text: str, ok: bool = True, detail: list[str] = (), by: str = "",
-            notable: bool = False):
+            notable: bool = False, jobs: list[str] | None = None):
         """An Activity entry from the background work (see Store.log); never fails the work it's about."""
         try:
-            self._with_store(lambda cfg, store: store.log(kind, text, ok, detail, by, notable))
+            self._with_store(lambda cfg, store: store.log(kind, text, ok, detail, by, notable, jobs))
         except Exception as e:
             print(f"jobwatch: activity not logged: {type(e).__name__}: {e}", file=sys.stderr)
 
@@ -1083,8 +1085,16 @@ class App:
 
     def get_activity_logs(self, q) -> dict:
         """The last lines of each log the watchlist names (ui.activity_logs), newest first. Nothing in the
-        request picks a file: only the configured ones are read."""
-        return {"logs": logtail.activity_logs(self._cfg().ui.activity_logs)}
+        request picks a file: only the configured ones are read. A line that names a job by its key (source:board:id)
+        carries it as `jobs`, to link to its card."""
+        def run(cfg, store):
+            logs = logtail.activity_logs(cfg.ui.activity_logs)
+            refs = store.job_refs([k for log in logs for line in log["lines"] for k in actjobs.line_keys(line["text"])])
+            for log in logs:
+                for line in log["lines"]:
+                    line["jobs"] = [refs[k] for k in actjobs.line_keys(line["text"]) if k in refs]
+            return {"logs": logs}
+        return self._with_store(run)
 
     def get_checked(self, q) -> dict:
         """When the boards were last checked, and whether a check is running: see Refresher.status."""

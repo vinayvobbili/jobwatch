@@ -183,7 +183,7 @@ def _read_mailbox(cfg: Config, store: Store, report: FetchReport, mail, page, by
                       detail=[*[f"New: {j.display_company}: {j.title}" for j in yours][:ACTIVITY_LINES],
                               f"From {cfg.imap.host}: {plural(len(got.found), 'job')}, {len(fresh)} new, "
                               f"{len(fresh) - len(yours)} hidden by your filters"],
-                      by=by)
+                      by=by, jobs=[j.key for j in yours][:ACTIVITY_LINES])
     # Jobs that came in from alerts with no posting text are looked for again on their companies' boards (a few
     # a run, none more than once a day), so the page can score them.
     try:
@@ -193,7 +193,8 @@ def _read_mailbox(cfg: Config, store: Store, report: FetchReport, mail, page, by
     else:
         if filled.filled:
             store.log("mail", f"Found {plural(len(filled.filled), 'alert job')} on the company's own board",
-                      detail=[f"{j.display_company}: {j.title}" for j in filled.filled][:ACTIVITY_LINES], by=by)
+                      detail=[f"{j.display_company}: {j.title}" for j in filled.filled][:ACTIVITY_LINES], by=by,
+                      jobs=[j.key for j in filled.filled][:ACTIVITY_LINES])
 
 
 def read_mail(cfg: Config, store: Store, page=None, mail=None, by: str = "") -> FetchReport:
@@ -307,7 +308,8 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
     else:
         if closed:
             store.log("boards", f"Found {plural(len(closed), 'posting')} taken down",
-                      detail=[f"{c.job.display_company}: {c.job.title}" for c in closed][:ACTIVITY_LINES], by=by)
+                      detail=[f"{c.job.display_company}: {c.job.title}" for c in closed][:ACTIVITY_LINES], by=by,
+                      jobs=[c.job.key for c in closed][:ACTIVITY_LINES])
     try:  # a posting of yours taken down (by this check or a board's own fetch) becomes a notice (closed_notice.py)
         closed_notice.collect(store)
     except Exception as e:
@@ -350,7 +352,8 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
               + [f"Look at: {b}: {w}" for b, w in report.warnings.items()]
               + ([f"{report.jobs:,} open jobs, {checked} new, {checked - len(yours)} hidden by your filters"]
                  if report.boards else []), by=by,
-              notable=not report.boards and bool(boards))  # every board failed: no network, or worse
+              notable=not report.boards and bool(boards),  # every board failed: no network, or worse
+              jobs=[j.key for j in yours][:ACTIVITY_LINES])
     return report
 
 
@@ -1360,7 +1363,8 @@ def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Cal
         if strong and len(entries) > 1:
             text += f": {plural(len(strong), 'strong fit')}"
         store.log("score", text, ok, lines, by=by,
-                  notable=any(news(cfg, e, results[e.job.key], before[e.job.key]) for e in strong))
+                  notable=any(news(cfg, e, results[e.job.key], before[e.job.key]) for e in strong),
+                  jobs=[e.job.key for e in entries if e.job.key in results or e.job.key in errors])
     return len(results), errors
 
 

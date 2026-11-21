@@ -353,6 +353,8 @@ def _posted(store: Store, job: Job, said: str, added: bool) -> dict:
     has_text = bool(job.description.strip())
     if "already has" not in said:
         said += "; scoring now" if has_text else "; it has no posting text, so it can't be scored"
+        store.log("mail", f"{'Added' if added else 'Saved the posting text of'} {job.display_company}: {job.title} "
+                  "from the browser extension", jobs=[job.key])
     return {"key": job.key, "company": job.display_company, "title": job.title, "added": added, "has_text": has_text,
             "where": "today" if rec["status"] in ("new", "shown") else "queue" if rec["status"] == "queued"
             else "applied", "said": ("Added. " if added else "") + said}

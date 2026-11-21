@@ -207,6 +207,9 @@ def run(cfg, store: Store, dry_run: bool = False, test: bool = False, get=None, 
     title, body = summary(notices)
     show(title, body)
     store.mark_closed_notified([n["key"] for n in notices])
+    store.log("boards", f"Told you {len(notices)} posting{'s' * (len(notices) != 1)} taken down",
+              detail=[f"{n['company']}: {n['title']}" for n in notices], by="schedule",
+              jobs=[n["key"] for n in notices])
     return f"{warning}{title}\n{body}"
 
 

@@ -337,7 +337,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
   animation: fade .2s ease both; }
 .closed-strip .cs-live { flex: none; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
   padding: 1px 8px; border-radius: 999px; color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
-.card.app.ping { animation: ping 1.4s ease-out 1; }
+.card.app.ping, .card.job.ping { animation: ping 1.4s ease-out 1; }
 @keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 60%, transparent); }
   100% { box-shadow: 0 0 0 14px transparent; } }
 .badge.round { background: var(--grad); color: #fff; text-transform: none; letter-spacing: 0; margin-left: 8px;
@@ -1037,6 +1037,15 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .act .what { font-weight: 600; overflow-wrap: anywhere; }
 .act .when { flex: none; width: 62px; margin-top: 2px; color: var(--muted); font-size: 12.5px;
   font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.act a.act-job { color: var(--accent); text-decoration: none; cursor: pointer;
+  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 50%, transparent); }
+.act a.act-job:hover, .act a.act-job:focus-visible { border-bottom-style: solid; }
+.act .act-about { margin-top: 2px; }
+.act .act-open { align-self: center; flex: none; padding: 2px 10px; font-size: 12px; opacity: 0;
+  transform: translateX(-4px); transition: opacity .15s, transform .15s; }
+.act:hover .act-open, .act:focus-within .act-open { opacity: 1; transform: none; }
+@media (hover: none) { .act .act-open { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .act .act-open { transition: none; transform: none; } }
 .act details { margin-top: 4px; font-size: 13px; color: var(--muted); }
 .act details summary { cursor: pointer; }
 .act details ul { margin: 6px 0 0; padding-left: 18px; }
@@ -5160,18 +5169,42 @@ function appRow(a, d) {
 
 function isEndedStatus(s) { return s === "rejected" || s === "withdrawn" || s === "closed"; }
 
+// A job's card on the page being shown (a Today or Queue card, an Applications card), scrolled to and pinged; false
+// when there is none on this page.
+function jumpToCard(key) {
+  const card = document.getElementById("job-" + key) || [...document.querySelectorAll(".card.app")].find(c => c.dataset.key === key);
+  if (!card) return false;
+  card.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "center" });
+  card.classList.remove("ping"); void card.offsetWidth; card.classList.add("ping");
+  return true;
+}
+
+// Which tab a job's card is on, by its status: Today (new, shown), Queue, Applications (every stage and the ended
+// ones). A skipped or snoozed job has no card: its details open.
+const CARD_TAB = { new: "today", shown: "today", queued: "queue", applied: "applied", screening: "applied",
+  interviewing: "applied", offer: "applied", rejected: "applied", withdrawn: "applied", closed: "applied" };
+const TAB_NAMES = { today: "Today", queue: "Queue", applied: "Applications" };
+
+// Open a job from where it is named (an Activity row: {key, status}): its card on its tab, scrolled to and pinged;
+// its details when it has no card, or the tab doesn't list it (Today's filters hide it, say).
+async function openJobCard(ref) {
+  const name = CARD_TAB[ref.status];
+  if (!name) return openDetails(ref.key);
+  if (tab !== name) await go(name);
+  for (let i = 0; i < 15; i++) {  // a tab draws its cards a moment after its data arrives
+    if (jumpToCard(ref.key)) return;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  openDetails(ref.key);
+}
+
 // Postings of your applications and queued jobs that were taken down, kept until cleared (see closed_notice.py):
 // each links to its card (or its details when the card isn't on this page), with a Got it button that only hides
 // the notice, and a "live" marker on an application still in process.
 function closedStrip(d) {
   const list = d.closed_notices || [];
   if (!list.length) return null;
-  const go = n => {
-    const card = [...document.querySelectorAll(".card.app")].find(c => c.dataset.key === n.key);
-    if (!card) return openDetails(n.key);
-    card.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "center" });
-    card.classList.remove("ping"); void card.offsetWidth; card.classList.add("ping");
-  };
+  const go = n => { if (!jumpToCard(n.key)) openDetails(n.key); };
   const clear = async body => { try { await api("/api/closed/dismiss", body); render(); } catch (e) { toast(e.message); } };
   // Closed by company (an applied application) and Skip (a queued job) change the status, so each asks inline first
   // and is undoable for 8 seconds; a live application (screening, interviewing, offer) only gets "Got it".
@@ -6265,6 +6298,41 @@ const ACT_ICON = { boards: "refresh", mail: "inbox", score: "sparkle", pay: "dol
 // what started it, said only when it was you: the schedule and the background are what jobwatch always does
 const ACT_BY = { page: "You pressed Check for new jobs" };
 
+// A link to a job a row is about: its card on its tab (see openJobCard), its details when it has no card.
+function actJobLink(ref, label) {
+  const where = CARD_TAB[ref.status] ? `its card in ${TAB_NAMES[CARD_TAB[ref.status]]}` : "its details";
+  return h("a", { class: "act-job", href: "#", title: `${ref.company}: ${ref.title}. Opens ${where}`,
+    onclick: e => { e.preventDefault(); openJobCard(ref); } }, label || `${ref.company}: ${ref.title}`);
+}
+
+// A row's line, with the job it names a link when exactly one job is meant and its "Company: Title" is in the line.
+// The rows that name several jobs list them (see actJobsList); one whose line doesn't name its job says "About".
+function actWhat(e) {
+  const refs = e.jobs || [];
+  const one = refs.length === 1 ? refs[0] : null;
+  const name = one && `${one.company}: ${one.title}`;
+  const at = name ? e.text.indexOf(name) : -1;
+  if (at < 0) return [e.text];
+  return [e.text.slice(0, at), actJobLink(one), e.text.slice(at + name.length)];
+}
+
+function actAbout(e) {
+  const one = (e.jobs || []).length === 1 ? e.jobs[0] : null;
+  return one && !e.text.includes(`${one.company}: ${one.title}`)
+    ? h("div", { class: "small act-about" }, "About ", actJobLink(one)) : null;
+}
+
+// The jobs of a row that is about several, each a link, folded like the details.
+function actJobsList(e, open) {
+  const refs = e.jobs || [];
+  if (refs.length < 2) return null;
+  const more = h("details", { class: "act-jobs" }, h("summary", {}, `${refs.length} jobs`),
+    h("ul", {}, refs.map(r => h("li", {}, actJobLink(r)))));
+  more.open = open.has(e.at + "#jobs");
+  more.ontoggle = () => more.open ? open.add(e.at + "#jobs") : open.delete(e.at + "#jobs");
+  return more;
+}
+
 function activityTick() {
   clearTimeout(activityView.timer);
   activityView.timer = setTimeout(() => {
@@ -6312,14 +6380,18 @@ async function renderActivity() {
       more.open = activityView.open.has(e.at);
       more.ontoggle = () => more.open ? activityView.open.add(e.at) : activityView.open.delete(e.at);
     }
+    const one = (e.jobs || []).length === 1 ? e.jobs[0] : null;
     rows.push(h("div", { class: "act" + (e.ok ? "" : " fail") + (e.notable ? " notable" : "") + (e.notable && e.at > seen ? " unseen" : ""),
       title: e.notable ? "Worth a look" : null },
       // the time first, so a day's list reads down the clock
       h("span", { class: "when", title: `${at.toLocaleString()} (${ago(e.at)})` },
         at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })),
       icon(ACT_ICON[e.kind] || "file", 16),
-      h("div", { class: "body" }, h("div", { class: "what" }, e.text),
-        ACT_BY[e.by] ? h("div", { class: "small muted" }, ACT_BY[e.by]) : null, more)));
+      h("div", { class: "body" }, h("div", { class: "what" }, actWhat(e)), actAbout(e),
+        ACT_BY[e.by] ? h("div", { class: "small muted" }, ACT_BY[e.by]) : null, actJobsList(e, activityView.open), more),
+      // for the keyboard and the hover: a button to the one job's card, beside the link in the line
+      one ? h("button", { class: "btn ghost act-open", title: `Open ${one.company}: ${one.title}`,
+        onclick: () => openJobCard(one) }, "open card", icon("arrow", 12)) : null));
   }
   if (log) {
     // a log's last lines, newest first; a line with no time of its own sits under the day above it
@@ -6333,7 +6405,7 @@ async function renderActivity() {
         h("span", { class: "when sec", title: at ? `${at.toLocaleString()} (${ago(at.toISOString())})` : null },
           at ? at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" }) : ""),
         icon("file", 16),
-        h("div", { class: "body" }, h("div", { class: "what logline" }, e.text)),
+        h("div", { class: "body" }, h("div", { class: "what logline" }, actWhat(e)), actAbout(e)),
         h("span", { class: "src-badge" }, log.name)));
     }
   }
@@ -6943,7 +7015,7 @@ async function loading(button, work, delay = 150) {
 function go(name) {
   tab = name;
   history.replaceState(null, "", "#" + name + (name === "company" && companyView.q ? "/" + encodeURIComponent(companyView.q) : ""));
-  render();
+  return render();
 }
 for (const b of document.querySelectorAll("#tabs button")) b.onclick = () => go(b.dataset.tab);
 listenForEvents();
