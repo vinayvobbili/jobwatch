@@ -19,6 +19,7 @@ score, so a guess can't outrank a figure someone gave.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from statistics import median
 
 from . import lca, levels
@@ -61,17 +62,17 @@ def similar_bases(store: Store, job: Job, comps: dict[str, dict] | None = None) 
     """The base ranges (low, high) recruiters gave for other jobs of the same kind of work as this one."""
     from .comps import amount  # here, not at the top: comps reads watch, and watch reads this module
     mine = lca.title_words(job.title)
-    out = []
-    for key, comp in (store.comps() if comps is None else comps).items():
-        if key == job.key or not (base := amount(comp.get("base"))):
-            continue
-        try:
-            other = store.find(key)[0]
-        except KeyError:
-            continue
-        if lca.same_work(mine, lca.title_words(other.title)):
-            out.append(base)
-    return out
+    given = {key: base for key, comp in (store.comps() if comps is None else comps).items()
+             if (base := amount(comp.get("base")))}
+    titles = store.titles(given)  # one indexed read of every comp's title, kept for the next job
+    return [base for key, base in given.items()
+            if key != job.key and key in titles and lca.same_work(mine, _words(titles[key]))]
+
+
+@lru_cache(maxsize=4096)
+def _words(title: str) -> list[frozenset[str]]:
+    """lca.title_words, remembered: the same few comp titles are read against every job of a page."""
+    return lca.title_words(title)
 
 
 def estimate(job: Job, *, comp: dict | None = None, similar: list[tuple[int, int]] | None = None,

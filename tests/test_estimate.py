@@ -78,6 +78,76 @@ def test_similar_jobs_are_found_by_the_kind_of_work_not_by_company(store):
     assert estimate.similar_bases(store, me) == [(150000, 170000)]
 
 
+def old_similar_bases(store, job, comps):
+    """similar_bases as it was: store.find per comp, which read the whole table for each."""
+    from jobwatch.comps import amount
+    mine = lca.title_words(job.title)
+    out = []
+    for key, comp in comps.items():
+        if key == job.key or not (base := amount(comp.get("base"))):
+            continue
+        try:
+            other = store.find(key)[0]
+        except KeyError:
+            continue
+        if lca.same_work(mine, lca.title_words(other.title)):
+            out.append(base)
+    return out
+
+
+def traced(store):
+    """The SQL the store runs, as a list: a full scan for an ending shows as a `LIKE` on the key."""
+    seen = []
+    store.db.set_trace_callback(seen.append)
+    return seen
+
+
+def scans(seen):
+    return [s for s in seen if "key LIKE" in s]
+
+
+def test_similar_bases_is_the_old_answer_without_a_scan_per_comp(store):
+    titles = ["Platform Engineer", "Senior Platform Engineer", "Marketing Manager", "Staff Platform Engineer",
+              "Data Engineer", "Senior Data Engineer", "Platform Reliability Engineer"]
+    jobs = [store.add(f"Company {i}", t, status="queued" if i % 2 else "applied") for i, t in enumerate(titles * 3)]
+    for i, j in enumerate(jobs[:14]):
+        store.set_comp(j.key, base=f"{120 + i}-{140 + i}K")
+    store.set_comp(jobs[14].key, note="no base here")
+    comps = store.comps()
+    comps["greenhouse:gone:404"] = {"base": "100-110K"}  # a comp whose job was pruned: no title, no figure
+    comps["initech:ghost"] = {"base": "90-95K"}          # and one that names nothing either
+    seen = traced(store)
+    new = [estimate.similar_bases(store, j, comps) for j in jobs]
+    new_scans = len(scans(seen))
+    seen.clear()
+    old = [old_similar_bases(store, j, comps) for j in jobs]
+    assert new == old and any(new)
+    # the old reading scanned for every comp of every job; the new one only for the two keys that name no job,
+    # once each, not once a job
+    assert new_scans == 2 < len(scans(seen))
+
+
+def test_a_digest_of_jobs_never_scans_the_table_for_a_comp_title(cfg, store):
+    jobs = [store.add(f"Company {i}", "Platform Engineer", status="queued") for i in range(40)]
+    for j in jobs[:10]:
+        store.set_comp(j.key, base="150-170K")
+    seen = traced(store)
+    comps = store.comps()
+    got = [estimate.for_job(cfg, store, j, comps=comps, filings=None, result=None) for j in jobs]
+    assert all(g.basis in ("recruiter", "similar") for g in got)
+    assert scans(seen) == []
+    assert len([s for s in seen if "json_extract(data, '$.title')" in s]) == 1  # the titles: one query for all
+
+
+def test_find_by_full_key_is_an_index_lookup_and_an_ending_still_works(store):
+    j = store.add("Globex", "Platform Engineer", status="queued")
+    seen = traced(store)
+    assert store.find(j.key)[0].key == j.key
+    assert scans(seen) == []
+    assert store.find(j.key.split(":")[-1].upper())[0].key == j.key  # an ending, in any case, as before
+    assert len(scans(seen)) == 1
+
+
 def test_for_job_reads_the_store_and_the_job_with_a_posting_has_none(cfg, store):
     me = store.add("Initech", "Platform Engineer", status="queued")
     other = store.add("Globex", "Platform Engineer", status="applied")
