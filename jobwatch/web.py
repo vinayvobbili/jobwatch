@@ -11,6 +11,7 @@ counts how it sounded, and answers no other site's page.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import queue as queue_mod
@@ -117,6 +118,8 @@ from .watch import (
 MAX_UPLOAD = 20 * 1024 * 1024
 PREP_SAVE_MAX = 2 * 1024 * 1024  # the edits to one prep sheet
 EVENT_PING = 15  # seconds between keep-alive comments on /events
+GZIP_MIN = 1024  # a smaller reply isn't worth compressing
+GZIP_TYPES = ("text/html", "application/json", "text/calendar")  # what compresses well; images and video don't
 IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background scorer works through
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 # What the extension may offer beyond filling forms, named in /ext/ping: an extension paired with an older jobwatch
@@ -2040,6 +2043,16 @@ APP_FILES = {
 }
 
 
+def accepts_gzip(header: str) -> bool:
+    """Whether an Accept-Encoding header allows gzip ("gzip, deflate, br" does; "gzip;q=0" and "identity" don't)."""
+    for part in header.split(","):
+        name, _, params = part.strip().partition(";")
+        if name.strip().lower() in ("gzip", "x-gzip"):
+            q = re.search(r"q\s*=\s*(\d+(?:\.\d*)?|\.\d+)", params)
+            return not q or float(q.group(1)) > 0
+    return False
+
+
 def page(token: str) -> bytes:
     html = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     return html.replace("__JOBWATCH_TOKEN__", token).encode()
@@ -2060,6 +2073,13 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 self.send_header("Content-Disposition", f"{'inline' if inline else 'attachment'}; "
                                  f"filename*=UTF-8''{quote(filename)}")
                 self.send_header("Content-Security-Policy", "sandbox")
+            elif (len(body) >= GZIP_MIN and ctype.startswith(GZIP_TYPES)
+                  and accepts_gzip(self.headers.get("Accept-Encoding", ""))):
+                # The page is 450 KB and Today's list a megabyte: a fifth of that over loopback or a tunnel, for a
+                # few milliseconds. Not a stored file (it's sent as it is) nor a ranged video (_send_file).
+                body = gzip.compress(body, compresslevel=5)
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
