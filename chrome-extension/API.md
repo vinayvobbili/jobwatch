@@ -175,8 +175,11 @@ Nothing is taken from LinkedIn's pages: `linkedin` is the job's address or numbe
  "company": "Globex", "title": "Machine Learning Engineer", "text": "<the company page's visible job text>"}
 ```
 
-Every field is optional but one of `linkedin`, `page_url` or `company` with `title` is needed. The job is found by its
-LinkedIn number (its link, or the note saying where it was found), else by `page_url`, else by company and title. It is
+Every field is optional but one of `linkedin`, `indeed`, `page_url` or `company` with `title` is needed. `indeed` is an
+Indeed job's key (the `jk` of its address), sent by Read posting (`read-posting.js`) with the page's description as `text`,
+and `closed: true` when LinkedIn says the posting takes no more applications (kept as a note, nothing is closed). The job is
+found by its LinkedIn number (its link, or the note saying where it was found) or Indeed key (its link), else by
+`page_url`, else by company and title. It is
 filled in, keeping its key, status and notes: from `page_url` when that is a posting on a supported board (read as for
 a link added by hand), else from `text`. No job found: one is added. → `{"key": "…", "company": "Globex",
 "title": "…", "added": false, "has_text": true, "where": "queue", "said": "Filled in from Lever; scoring now"}`;

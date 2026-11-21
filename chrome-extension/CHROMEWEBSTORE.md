@@ -151,7 +151,7 @@ The dashboard has one box for every match pattern, content-script sites included
 
 Local app (http://127.0.0.1/*, http://localhost/*): the only network destination is the jobwatch app the user runs on their own computer. It supplies the user's details, earlier answers and resume, and receives imported job cards and applications. Nothing goes to the developer or any third party; the developer runs no server.
 
-LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*): the content script does nothing unless the page is a list of jobs. There it reads only the job cards already drawn (job number, title, company, place, pay, posted date), never profiles or account data. Messages are read only when the user presses Draft reply, and only the one open conversation. Passive mode is off by default; if ticked, cards browsed stay in local storage until Import. Read the jobs on this list runs only when pressed: it pages that list tab (4 pages by default, at most 10) and sends the cards to the local jobwatch only.
+LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*): the content script does nothing unless the page is a list of jobs, or a job page the user's own jobwatch opened with #jobwatch-read in the address (Read posting: it reads that job's description). On a list it reads only the job cards already drawn (job number, title, company, place, pay, posted date), never profiles or account data. Messages are read only when the user presses Draft reply, and only the one open conversation. Passive mode is off by default; if ticked, cards browsed stay in local storage until Import. Read the jobs on this list runs only when pressed: it pages that list tab (4 pages by default, at most 10) and sends the cards to the local jobwatch only.
 
 ### Justification: host permissions (http://127.0.0.1/* and http://localhost/*)
 
@@ -159,7 +159,7 @@ These are the only network destinations the extension talks to: the jobwatch app
 
 ### Justification: content script on LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*)
 
-A content script runs on LinkedIn and Indeed pages. It does nothing unless the address is a list of jobs (a search, "Jobs based on your preferences", "Jobs for you"). On such a list it reads only the job cards the page has already drawn: the job number on the site, title, company, place, pay and how long ago it was posted. Nothing else on the page is read: no profile, job descriptions or account data.
+A content script runs on LinkedIn and Indeed pages. It does nothing unless the address is a list of jobs (a search, "Jobs based on your preferences", "Jobs for you"), or a single job page whose address ends in #jobwatch-read, which only the user's own jobwatch adds (its Read posting button opens the job in a new tab that way). On a list it reads only the job cards the page has already drawn: the job number on the site, title, company, place, pay and how long ago it was posted. On a #jobwatch-read job page it reads that job's description, title and company, and whether LinkedIn says it no longer accepts applications, gives them to the user's local jobwatch (the job's number comes from the tab's address), shows a banner and closes the tab. Nothing else on either page is read: no profile or account data.
 
 Draft reply (only when the user presses the button in the side panel; a script injected for that press, not the content script above): on a LinkedIn conversation the user has open, it reads the other person's name and the text and times of the messages already on screen in that one conversation. It does not scroll, open another conversation or read the message list, and keeps nothing: the text goes to the user's own local jobwatch, which writes a draft. When the user presses Put in the message box it types the draft into that conversation's message box and nothing else; it never clicks Send or any other button. If jobwatch is set to use a cloud model for replies, jobwatch (not the extension) sends the conversation to it, and the panel says so.
 
@@ -319,6 +319,17 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
 - 0.12.0 submitted for review 2026-11-17 (auto-publish when approved; the host-permission banner warned of an in-depth review).
 
 ### Known Issues / Limitations
+
+- Next version (not yet bumped or submitted): Read posting. jobwatch's Queue/Today card button opens a LinkedIn or Indeed job
+  in a new tab with `#jobwatch-read` in its address; the new content script `read-posting.js` (added to the existing
+  LinkedIn/Indeed content-script entry in `manifest.json`, so no new permission or host) reads that page's description only
+  then, sends it to the local jobwatch through the service worker (`readPosting` in `background.js`, `POST /ext/posting`
+  with `indeed` or `linkedin` + `text`) and closes the tab. This is the first time the extension reads a job's description
+  on LinkedIn/Indeed: when submitting, update the dashboard's host-permission and content-script justifications (the two
+  paragraphs above already carry the new wording; the 1,000-character box needs the first one), the Website content row
+  of the data-use table (job descriptions on LinkedIn/Indeed), the privacy policy (updated in `PRIVACY.md`), and the
+  "What's new" text. Built and tested against made-up pages only (`tests/test_read_posting.py`), not yet against a live
+  sign-in with the unpacked extension.
 
 - 0.12.0 does nothing when the toolbar icon is clicked in an installed web app's window (LinkedIn's PWA): Chrome offers
   no side panel there and `background.js` swallowed the error. Fixed for the next version (not yet bumped or submitted):

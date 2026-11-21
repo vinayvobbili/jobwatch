@@ -10,7 +10,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/*", "https://*.indeed.com/*"],
-      "js": ["logic.js", "job-lists.js", "passive.js"],
+      "js": ["logic.js", "job-lists.js", "passive.js", "read-posting.js"],
       "run_at": "document_idle"
     }
   ],

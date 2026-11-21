@@ -12,7 +12,7 @@ import re
 import secrets
 from dataclasses import asdict
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from . import answers, chat, linkedin, sources, stories, tailor
 from .config import Config
@@ -249,15 +249,27 @@ def _own_site(url: str) -> bool:
     return bool(host) and not host.endswith("linkedin.com")
 
 
-def _listing(store: Store, pid: str, links: list[str], company: str, title: str) -> tuple[Job, dict] | None:
+def _indeed_key(given: str) -> str:
+    """Indeed's key for a job (the jk of its link, or the key alone), else ''."""
+    key = parse_qs(urlparse(given).query).get("jk", [given])[0] if given else ""
+    return key if re.fullmatch(r"[0-9a-f]{8,}", key, re.I) else ""
+
+
+def _listing(store: Store, pid: str, links: list[str], company: str, title: str,
+             jk: str = "") -> tuple[Job, dict] | None:
     """The job the posting on screen is: the one that came from that LinkedIn id (its link, or the note saying
-    where it was found), else the one kept at the company's link, else the same company and title (a text-less
-    one first)."""
+    where it was found) or Indeed key (its link), else the one kept at the company's link, else the same company
+    and title (a text-less one first)."""
     rows = store.jobs()
     if pid:
         seen = re.compile(rf"linkedin\.com/jobs/view/\S*{pid}\b")
         for job, rec in rows:
             if linkedin.job_id(job.url) == pid or seen.search(rec.get("note") or ""):
+                return job, rec
+    if jk:
+        seen = re.compile(rf"indeed\.com/\S*[?&]jk={jk}\b")
+        for job, rec in rows:
+            if seen.search(job.url or "") or seen.search(rec.get("note") or ""):
                 return job, rec
     for link in links:
         if found := job_for(store, link):
@@ -296,10 +308,12 @@ def posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
     company, title = str(body.get("company") or "").strip(), str(body.get("title") or "").strip()
     text = str(body.get("text") or "").strip()[:MAX_TEXT]
     links = [u for u in [str(body.get("page_url") or "").strip()] if _own_site(u)]
-    if not (pid or links or (company and title)):
+    jk = _indeed_key(str(body.get("indeed") or "").strip())
+    if not (pid or jk or links or (company and title)):
         raise ValueError("send the posting's company and title, or its link")
-    came = f"Found on LinkedIn: https://www.linkedin.com/jobs/view/{pid}/" if pid else None
-    if found := _listing(store, pid, links, company, title):
+    came = (f"Found on LinkedIn: https://www.linkedin.com/jobs/view/{pid}/" if pid
+            else f"Found on Indeed: https://www.indeed.com/viewjob?jk={jk}" if jk else None)
+    if found := _listing(store, pid, links, company, title, jk):
         job = found[0]
         if job.description.strip():
             return _posted(store, job, "jobwatch already has this posting's text", False)
@@ -319,6 +333,8 @@ def posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
         store.set_description(job.key, read.description if read else text, read)
         if not read:
             store.add_note(job.key, "Posting text sent from the page you had open, by the browser extension")
+            if body.get("closed"):
+                store.add_note(job.key, "The site says it is not accepting applications any more")
         return _posted(store, store.find(job.key)[0], _said(read or job), False)
     for link in links:
         try:

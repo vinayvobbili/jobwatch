@@ -38,6 +38,7 @@ from . import (
     drill,
     dupes,
     estimate,
+    filltext,
     followup,
     ics,
     inbox,
@@ -472,6 +473,38 @@ def cmd_unscored(args, cfg, store):
     for w in why.values():
         counts[w["code"]] = counts.get(w["code"], 0) + 1
     print(f"\n{len(why)} without a score: " + ", ".join(f"{n} {code.replace('_', ' ')}" for code, n in counts.items()))
+
+
+def cmd_fill_text(args, cfg, store):
+    """`fill-text`: give the queued, new and shown jobs with no posting text some (see filltext.py): from the
+    company's board, then the job's own link; LinkedIn and Indeed pages only the person's browser can read, so those
+    are listed (--open) or saved from the page's text a browser read (--set KEY --page-text FILE)."""
+    if args.set:
+        if not args.page_text:
+            raise ValueError("--set KEY needs --page-text FILE (- reads stdin): the text the browser read "
+                             "from the page")
+        job, _ = store.find(args.set)
+        site = filltext.browser_site(job.url)
+        if not site:
+            raise ValueError(f"{job.key}'s link ({job.url or 'none'}) isn't a LinkedIn or Indeed posting: use "
+                             "`mark KEY --text FILE` for text from anywhere else")
+        raw = (sys.stdin.read() if str(args.page_text) == "-"
+               else args.page_text.expanduser().read_text(encoding="utf-8"))
+        try:
+            read = filltext.posting_from_page(site, raw)
+        except filltext.PageError as e:
+            raise SystemExit(f"{job.key}: {e}") from None
+        filltext.save_page_posting(store, job.key, read)
+        print(f"{job.key}: {len(read.text):,} characters of posting text saved"
+              + ("; the site says it is not accepting applications any more" if read.closed else "")
+              + "\n  `jobwatch score` scores it, or the page does in the background")
+        return
+    statuses = tuple(args.status) if args.status else filltext.STATUSES
+    if args.open:  # no lookups: the jobs whose link only a browser can read
+        print(filltext.open_list([j for j in filltext.textless(store, statuses) if filltext.browser_site(j.url)]))
+        return
+    out = filltext.fill_text(cfg, store, statuses=statuses, limit=args.limit, dry_run=args.dry_run)
+    print(filltext.summary(out, args.dry_run))
 
 
 def cmd_scored(args, cfg, store):
@@ -1624,6 +1657,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-text", action="store_true", help="only the jobs waiting for their posting's text, each with "
                    "its link: give them the text with `mark KEY --url LINK` or `mark KEY --text FILE`")
     p.set_defaults(func=cmd_unscored)
+
+    p = sub.add_parser("fill-text", help="give queued, new and shown jobs with no posting text some: from the "
+                       "company's board, then the job's own link; LinkedIn and Indeed pages only your browser can "
+                       "read (--open lists them; --set saves what a browser read)")
+    p.add_argument("--open", action="store_true", help="only list the jobs whose link is a LinkedIn or Indeed "
+                   "posting, one link a line, to open each in a new tab for the extension's Read posting button (or "
+                   "Chrome) to read; nothing is looked up")
+    p.add_argument("--set", metavar="KEY", help="save the text a browser read from this LinkedIn or Indeed job's page "
+                   "(its description is cut out of the page's text; a sign-in wall or captcha is refused)")
+    p.add_argument("--page-text", type=Path, metavar="FILE", help="with --set: the page's text (- reads stdin)")
+    p.add_argument("--status", action="append", choices=("new", "shown", "queued"),
+                   help="which jobs to look at (repeat; default new, shown and queued)")
+    p.add_argument("--limit", type=int, default=filltext.CAP, help=f"jobs looked at in a run (default {filltext.CAP})")
+    p.add_argument("--dry-run", action="store_true", help="say what would be filled in; record nothing")
+    p.set_defaults(func=cmd_fill_text)
 
     p = sub.add_parser("scored", help="fit scores made from a day on, best first, with who made each (Claude, "
                        "agy, or the on-device model as a fallback)")

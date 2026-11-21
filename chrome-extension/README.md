@@ -65,7 +65,17 @@ Lever and Ashby, and tries its best on other single-page forms. Workday is not s
 A job that came from a LinkedIn alert has no posting text. On Today, **Open on LinkedIn** opens its LinkedIn page. There,
 click the extension's icon and press **Open the company's posting**: it presses LinkedIn's Apply button (never Easy
 Apply) so the company's page opens, and jobwatch reads the posting from that page when it is on a job site it supports.
-On any other company page, press **Save this posting to jobwatch**. Apart from job lists, that is all the extension reads from LinkedIn, except a conversation you ask a reply for (next).
+On any other company page, press **Save this posting to jobwatch**. Apart from job lists, that is all the extension reads from LinkedIn, except a job page jobwatch's **Read posting** button opened (below) and a conversation you ask a reply for (after that).
+
+### Read posting
+
+LinkedIn and Indeed show a job's description only to a signed-in browser, so jobwatch can't read it for a job that came from
+an alert email. Such a job's card on Queue and Today says why ("No posting text: LinkedIn blocks automatic reading; open it and
+press Read posting") and has a **Read posting** button. It opens the job in a new tab of your own browser with `#jobwatch-read`
+added to the address; the extension reads that page's description (only then: on any other page of those sites its script does
+nothing), gives it to jobwatch, shows a banner and closes the tab. Back in jobwatch the card fills in and the job is scored. You
+must be signed in to the site in that browser; if the page shows a sign-in or a captcha, the banner says so and nothing is sent.
+`jobwatch fill-text --open` lists every such job's link.
 
 ## Drafting a reply to a recruiter
 
@@ -94,6 +104,7 @@ logic.js            classification, matching, option picking, the review plan; n
 page.js             content script per frame: scan, fill, read company and title, watch for the person's submit
 job-lists.js        reads LinkedIn / Indeed job lists, paced like a person (PACING); a copy ships in jobwatch/static
 passive.js          content script on LinkedIn and Indeed: notes the job cards seen while browsing (passive mode)
+read-posting.js     content script on LinkedIn and Indeed: reads a job's description, only on a page opened with #jobwatch-read (Read posting)
 reply.js            injected by Draft reply only: reads the one open LinkedIn conversation, types the draft into its box (never presses Send)
 sidepanel.*         the review panel in Chrome's side panel: pairing status, the lead card and action tiles for the page, scan, rows, fill, drafts, results
 look.js             the System / Light / Dark theme (set on the options page) for the panel and the options page

@@ -7,9 +7,11 @@
  */
 import './logic.js';
 import './passive.js';
+import './read-posting.js';
 import { ApiError, api, getSettings, toBase64 } from './lib.js';
 
 const JW = globalThis.JW;
+const JWRead = globalThis.JWRead;
 const JWPassive = globalThis.JWPassive;
 const PENDING_MAX_MS = 30 * 60 * 1000;
 const TAILOR_TIMEOUT_MS = 6 * 60 * 1000; // resume-kit drafts, then renders the PDF: a minute or two, up to its own limits
@@ -91,6 +93,7 @@ async function handle(msg, tabId, sender) {
     case 'draftReply': return draftReply(tabId, msg.followup);
     case 'fillReply': return fillReply(tabId, msg.text, msg.fingerprint, msg.replace);
     case 'posting': return posting(tabId);
+    case 'readPosting': return readPosting(msg, sender);
     case 'importList': return importList(tabId);
     case 'importState': return { running: [...listImports].map(([tabId, source]) => ({ tabId, source })) };
     case 'passiveSeen': return sender.tab ? passiveSeen(msg.records) : {};
@@ -368,6 +371,24 @@ async function posting(tabId) {
   if (last && Date.now() - last.at < LINKEDIN_MAX_MS) body.linkedin = last.id;
   const r = await api('/ext/posting', { method: 'POST', body, settings });
   return { stage: 'done', ...r, link: `${settings.serverUrl}/#${r.where}` };
+}
+
+/**
+ * A LinkedIn or Indeed job page that jobwatch's own Read posting button opened: read-posting.js, running in that tab,
+ * sends the job's description. Which job is taken from the tab's address here, not from the message, and the text goes
+ * to the person's own jobwatch only (POST /ext/posting), which fills in the job it has from an alert.
+ */
+async function readPosting(msg, sender) {
+  const settings = await pairedSettings();
+  const url = sender.tab && sender.tab.url;
+  const site = JWRead.siteOf(url);
+  const id = site && JWRead.jobId(site, url);
+  if (!id) throw new Expected("This isn't a LinkedIn or Indeed job page.");
+  const text = String(msg.text || '');
+  if (text.length < 200) throw new Expected("This page doesn't show a job posting's text.");
+  const body = { [site]: id, company: msg.company, title: msg.title, text, closed: !!msg.closed };
+  const r = await api('/ext/posting', { method: 'POST', body, settings });
+  return { ...r, link: `${settings.serverUrl}/#${r.where}` };
 }
 
 // --- a job site's list of jobs ----------------------------------------------------------------------

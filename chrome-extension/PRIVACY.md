@@ -21,13 +21,23 @@ nowhere until you press **Import** in the side panel ("N jobs seen while browsin
 the same as an imported list, and are deleted from the extension. With the checkbox off (the default), the script reads and stores nothing.
 Removing the extension deletes what it kept.
 
-**LinkedIn job pages:** apart from a list you import, passive mode's job cards, or the one conversation you ask a reply for (below), it reads nothing from LinkedIn's pages: no title, company,
+**LinkedIn job pages:** apart from a list you import, passive mode's job cards, a job page jobwatch's Read posting button opened (next paragraphs), or the one conversation you ask a reply for (below), it reads nothing from LinkedIn's pages: no title, company,
 description or page data. From a LinkedIn tab it takes only the address, for the job's number. When you press **Open the company's posting**, it presses
 LinkedIn's Apply button (the one that opens the company's own site, never Easy Apply or anything that submits), and
 then gives the address of the tab that opens, with the job's number, to your own jobwatch. For that it uses the `tabs`
 permission, to see the address of that one new tab (opened within two minutes of the press) and of the active tab.
 On a company's page, **Save this posting to jobwatch** sends your jobwatch the page's address and the job text the page
 shows, only when you press it.
+
+**Read posting (LinkedIn and Indeed job pages):** a job jobwatch has from an alert email has no posting text, and those two
+sites show a posting only to a signed-in browser. When you press **Read posting** on a job's card in your own jobwatch, jobwatch
+opens that job's page in a new tab with `#jobwatch-read` added to its address. The extension reads a LinkedIn or Indeed page
+only when its address ends that way, which only that button adds (on every other page of those sites the script does nothing).
+On that page it reads the job's description (its text, without the rest of the page), the job's title and company as the
+page shows them, and whether LinkedIn says it is no longer accepting applications. It gives them, with the job's number from the
+address, to your own jobwatch, shows a small banner on the page, and closes the tab. Nothing else on the page is read, nothing
+is kept by the extension, and it never clicks anything. If the page asks you to sign in or shows a captcha, the banner says so and
+nothing is sent.
 
 **LinkedIn messages (Draft reply):** only when you press **Draft reply to this conversation** in the side panel, on a
 LinkedIn conversation you have open, it reads that one conversation as it is on the screen: the other person's name as the

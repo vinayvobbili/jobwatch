@@ -71,6 +71,23 @@ def test_an_easy_apply_job_takes_the_text_from_the_page(app):
     assert "browser extension" in rec["note"]
 
 
+def test_an_indeed_job_is_found_by_its_key_and_gets_the_text_the_extension_read(app):
+    """Read posting on an Indeed page: the job's key (jk) finds the job from its alert link, whatever the page's
+    title says, and a closed LinkedIn page's note comes along when the site says so."""
+    indeed = "https://www.indeed.com/viewjob?jk=9cf96221e712e37e"
+    key = _alert_job(app, "Initech", "Cyber Platform Lead", indeed)
+    got = app.ext_posting({"indeed": indeed + "&from=serp", "company": "Initech Federal", "title": "Lead",
+                           "text": "Run the cyber platform for Initech.", "closed": True})
+    assert got["key"] == key and not got["added"] and got["has_text"] and got["where"] == "queue"
+    job, rec = _job(app, key)
+    assert job.description == "Run the cyber platform for Initech." and job.url == indeed
+    assert "not accepting applications" in rec["note"]
+    again = app.ext_posting({"indeed": "9cf96221e712e37e", "text": "x"})
+    assert again["key"] == key and "already has" in again["said"]
+    new = app.ext_posting({"indeed": "ab12cd34ef56ab78", "company": "Globex", "title": "SRE", "text": "Run Globex."})
+    assert new["added"] and "ab12cd34ef56ab78" in _job(app, new["key"])[0].url
+
+
 def test_a_job_without_the_linkedin_link_is_found_by_company_and_title(app):
     key = app.post_add({"company": "Umbrella, Inc.", "title": "Platform Engineer (Remote)", "status": "queued"})["key"]
     got = app.ext_posting({"linkedin": "4000000003", "company": "Umbrella", "title": "Platform Engineer",

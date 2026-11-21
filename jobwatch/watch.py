@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 
-from . import alerts, closed_notice, credit, dupes, estimate, lca, levels, linkedin, sources, suggest
+from . import alerts, closed_notice, credit, dupes, estimate, filltext, lca, levels, linkedin, sources, suggest
 from .config import UNKNOWN_SOURCE, Board, Config, fallback_entry
 from .contacts import Contacts, company_key
 from .filters import (
@@ -834,7 +834,7 @@ def set_link(store: Store, key: str, url: str, get=None) -> str:
 
 
 NO_RESUME = ("no_resume", "No resume to score against: add it in Settings (resume: in the watchlist)")
-NO_TEXT = ("no_text", "No posting text: add a link to the company's posting or paste it")
+NO_TEXT = filltext.NO_TEXT  # a job from LinkedIn or Indeed gets filltext.no_text_why's more specific line
 MANY_ROLES = ("many_roles", "Not scored: a post listing several roles; watch the company's board to score each one")
 STALE = ("stale", "An older scorer's score: press ↻ or run `jobwatch score --rescore` to score it again")
 
@@ -896,7 +896,7 @@ def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str]
     if not has_resume:
         return NO_RESUME
     if not e.job.description.strip():
-        return NO_TEXT
+        return filltext.no_text_why(e.job)
     if e.job.key in failed:
         return "failed", f"Scoring failed: {failed[e.job.key]}"
     if e.job.key == current:
@@ -922,7 +922,7 @@ def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict
     if has_resume and store.score(job.key, resume_id(cfg.resume, cfg.prompts)):
         return None
     code, text = (MANY_ROLES if not scorable(job) else NO_RESUME if not has_resume
-                  else NO_TEXT if not job.description.strip()
+                  else filltext.no_text_why(job) if not job.description.strip()
                   else ("manual", "Only queued and Today's jobs are scored in the background: press Score fit"))
     return {"code": code, "text": text}
 
