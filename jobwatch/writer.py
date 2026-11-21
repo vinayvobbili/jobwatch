@@ -13,11 +13,12 @@ from .config import Config
 from .reply import _THINK
 
 
-def complete(cfg: Config, prompt: str, ask: str, max_tokens: int) -> tuple[str, dict]:
+def complete(cfg: Config, prompt: str, ask: str, max_tokens: int, local: bool = False) -> tuple[str, dict]:
     """(the model's text with its reasoning taken out, where it ran: chat.where's dict). chat.ChatUnavailable when
-    the backend can't run; any other error is the model's or its server's."""
+    the backend can't run; any other error is the model's or its server's. `local`: the shared local model,
+    whatever reply.backend says."""
     c = cfg.chat
-    backend, model = (c.backend, c.model) if cfg.reply.backend == "chat" else ("local", "")
+    backend, model = (c.backend, c.model) if cfg.reply.backend == "chat" and not local else ("local", "")
     where = chat.where(backend, model)
     if backend == "claude":
         chat.check(backend, c.keychain, c.key_command)

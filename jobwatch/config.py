@@ -345,8 +345,16 @@ REPLY_BACKENDS = ("local", "chat")
 class Reply:
     """reply in the watchlist: the extension's Draft reply (see reply.py). A recruiter's thread is private, so by
     default it goes only to the shared local model, whatever the chat is set to. `chat` is the opt-in: the draft is
-    written by the chat's backend and model instead (claude: the thread goes to Anthropic)."""
+    written by the chat's backend and model instead (claude: the thread goes to Anthropic).
+    `followup` is who writes the follow-up and thank-you drafts (see followup.py): claude (default) from a short
+    allowlist of fields, with the local model as the fallback; local keeps them on this computer. `deny` is more
+    words (your employer's name, a project) that a note line must not hold to be sent."""
     backend: str = "local"
+    followup: str = "claude"
+    deny: tuple[str, ...] = ()
+
+
+FOLLOWUP_WRITERS = ("claude", "local")
 
 
 def _reply(raw, path: Path) -> Reply:
@@ -355,7 +363,15 @@ def _reply(raw, path: Path) -> Reply:
     if chosen not in REPLY_BACKENDS:
         raise ConfigError(f"{path}: reply.backend must be one of {', '.join(REPLY_BACKENDS)} (local keeps a thread "
                           f"on this computer; chat uses the chat's backend), got {chosen!r}")
-    return Reply(backend=chosen)
+    writer = str(raw.get("followup") or Reply.followup).strip().lower()
+    if writer not in FOLLOWUP_WRITERS:
+        raise ConfigError(f"{path}: reply.followup must be one of {', '.join(FOLLOWUP_WRITERS)} (claude writes "
+                          f"follow-up drafts from an allowlist of fields; local keeps them on this computer), "
+                          f"got {writer!r}")
+    deny = raw.get("deny") or []
+    if not (isinstance(deny, list) and all(isinstance(w, str) and w.strip() for w in deny)):
+        raise ConfigError(f"{path}: reply.deny is a list of words, such as [Initech], got {deny!r}")
+    return Reply(backend=chosen, followup=writer, deny=tuple(w.strip() for w in deny))
 
 
 @dataclass(frozen=True)
@@ -1523,6 +1539,10 @@ scoring:
 # chat.backend: claude the thread goes to Anthropic.
 # reply:
 #   backend: local
+#   # followup: claude   # who writes follow-up and thank-you drafts: claude (a few allowlisted fields only: company,
+#   #                    # title, stage, day applied, a first name, dated note lines without pay, employer, visa,
+#   #                    # health or contact details) or local (never leaves this computer)
+#   # deny: [Initech]    # more words (your employer's name, say): a note line holding one is never sent
 
 # Where a spoken answer is turned into text (the voice mock interview, the rehearsal page's mic): an OpenAI-style
 # endpoint. Default: LOCAL_STT_URL, else the local model server's (LOCAL_LLM_URL) /audio/transcriptions.

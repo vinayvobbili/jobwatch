@@ -952,11 +952,13 @@ def draft_followup(
         "Who to address, as the person named them. Left out, jobwatch takes a name from the next step or the note "
         "(after 'call with', 'interviewer:', 'met'...)."))] = None,
 ) -> dict:
-    """Draft the follow-up or thank-you email for an application, from what jobwatch keeps for it: stage and
-    round, the day applied, the next step and follow-up day, the note's dated lines and what was sent. Written by
-    jobwatch's local model, so none of it leaves this computer. Returns to (names), subject, body and warnings:
-    what to check before sending (a figure the tracker doesn't hold, a stock opener, a word about pay, no
-    interviewer's name); drafted is false, with the why in warnings, when no model could run. It only drafts:
+    """Draft the follow-up or thank-you email for an application. Written by Claude from an allowlist of what
+    jobwatch keeps: the company, job title, stage and round, the day applied, the first name of the person to
+    greet and the note's dated lines that have nothing about pay, the employer, immigration, health or contact
+    details (those, the resume, form answers and cover letter never leave this computer); with no key or no
+    answer, jobwatch's local model writes it from the same lines. Returns to (names), subject, body, written_by
+    and warnings: what to check before sending (a figure the tracker doesn't hold, a stock opener, a word about
+    pay, no interviewer's name); drafted is false, with the why in warnings, when no model could run. It only drafts:
     nothing is sent or saved, and the person reads the email and sends it themselves. Offer it at the
     application's follow-up day or after an interview."""
     cfg, store = _open()

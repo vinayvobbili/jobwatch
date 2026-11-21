@@ -161,6 +161,16 @@ def no_hook_git_env(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def no_real_claude_for_followups(monkeypatch):
+    """Follow-up drafts ask Claude first: a test never reaches the real API or reads the real keychain."""
+    from jobwatch import chat, followup
+
+    def unavailable(cfg):
+        raise chat.ChatUnavailable("no Anthropic API key in tests")
+    monkeypatch.setattr(followup, "_claude_client", unavailable)
+
+
 @pytest.fixture
 def web(monkeypatch):
     fake = FakeWeb()
