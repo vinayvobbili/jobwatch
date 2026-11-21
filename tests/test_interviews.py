@@ -94,9 +94,73 @@ def test_an_application_gets_its_own_sheets_among_its_companys(tmp_path):
               company_name="Globex")
     named = {"note": "Booked Fri. Prep sheet: prep/globex-31245-pat.html", "next_step": "Talk with Pat Fri"}
     assert interviews.job_sheets(folder, job, named) == ["globex-31245-pat.html"]  # the one its note names
-    # none named: all but the sheet for another opening's number
-    assert sorted(interviews.job_sheets(folder, job, {"note": None})) == [
-        "globex-31245-pat.html", "globex-platform-engineer.html", "globex-tips.html"]
+    # none named: the newest, less the sheet for another opening's number
+    for name, age in (("globex-31245-pat.html", 30), ("globex-platform-engineer.html", 20), ("globex-tips.html", 10)):
+        os.utime(folder / name, (1_800_000_000 - age,) * 2)
+    assert interviews.job_sheets(folder, job, {"note": None}) == ["globex-tips.html"]
+    assert interviews.job_sheet(None, job, named) is None and interviews.job_sheets(folder, job, {}) == [
+        "globex-tips.html"]
+
+
+def _page(folder, name, role=None, title=None, extra=""):
+    marker = f'<meta name="jobwatch-prep-role" content="{role}">' if role else ""
+    (folder / name).write_text(f"<html><head><meta charset='utf-8'><title>{title or name}</title>{marker}{extra}"
+                               "</head><body>hi</body></html>")
+
+
+def test_a_pages_role_is_read_from_its_marker_with_fallbacks_for_older_pages(tmp_path):
+    _page(tmp_path, "acme-role.html", "module")
+    _page(tmp_path, "acme-loop-playlist.html", "playlist")
+    _page(tmp_path, "acme-loop.html")
+    _page(tmp_path, "acme-loop-rehearse.html", "rehearse")
+    _page(tmp_path, "acme-old-rehearse.html", title="Rehearse: Acme")  # written before the marker existed
+    _page(tmp_path, "acme-old-playlist.html")
+    _page(tmp_path, "acme-run-sheet.html", extra='<meta name="prep-sheet" content="companion">')
+    _page(tmp_path, "acme-odd.html", "nonsense")
+    got = {p.name: interviews.sheet_role(p) for p in tmp_path.iterdir()}
+    assert got == {"acme-role.html": "module", "acme-loop-playlist.html": "playlist", "acme-loop.html": "sheet",
+                   "acme-loop-rehearse.html": "rehearse", "acme-old-rehearse.html": "rehearse",
+                   "acme-old-playlist.html": "playlist", "acme-run-sheet.html": "companion", "acme-odd.html": "sheet"}
+    assert interviews.sheet_info(tmp_path / "acme-loop.html") == ("sheet", "acme-loop.html")
+    assert interviews.sheet_info(tmp_path / "gone.html") == ("sheet", "gone")  # unreadable: a sheet by its file name
+    # only the first ROLE_BYTES are read: a marker far down the page is not found, so it's cheap on a long sheet
+    _page(tmp_path, "acme-long.html", extra="<style>" + "x" * interviews.ROLE_BYTES + "</style>"
+          '<meta name="jobwatch-prep-role" content="module">')
+    assert interviews.sheet_role(tmp_path / "acme-long.html") == "sheet"
+
+
+def test_a_card_links_one_sheet_never_a_module_playlist_or_rehearse_page(tmp_path):
+    folder = tmp_path / "prep"
+    folder.mkdir()
+    pages = {"acme-12345-hm.html": None, "acme-12345-hm-playlist.html": "playlist",
+             "acme-12345-hm-rehearse.html": "rehearse", "acme-teams.html": "module", "acme-roles.html": "module",
+             "acme-67890-screen.html": None, "acme-old.html": None}
+    for age, (name, role) in enumerate(pages.items()):
+        _page(folder, name, role, title=f"Title of {name}")
+        os.utime(folder / name, (1_800_000_000 - age * 10,) * 2)  # in the order given, newest first
+    os.utime(folder / "acme-teams.html", (1_800_000_100,) * 2)  # a module is the very newest file
+    job = Job(source="manual", company="acme", id="lead-67890", title="Lead", url="", company_name="Acme")
+
+    def pick(note=None, step=None):
+        return interviews.job_sheets(folder, job, {"note": note, "next_step": step})
+
+    assert pick() == ["acme-67890-screen.html"]  # not the newest page, not another posting's, not a module
+    # the sheet the note names, whatever it is: the last one labelled "Prep sheet:", else the first named
+    assert pick("Prep sheet: prep/acme-old.html") == ["acme-old.html"]
+    assert pick("Prep sheet: prep/acme-old.html", "then prep/acme-12345-hm.html") == ["acme-old.html"]
+    assert pick("2026-11-01: Prep sheet: prep/acme-old.html. 2026-11-02: Prep sheet: acme-12345-hm.html") == [
+        "acme-12345-hm.html"]  # a note's newest line comes last
+    assert pick("see acme-old.html and acme-12345-hm.html") == ["acme-old.html"]  # first by position, not by age
+    assert pick(None, "prep sheet acme-12345-hm.html") == ["acme-12345-hm.html"]  # the colon is optional
+    # naming a rehearse page, a playlist or a module only: they are never the chip, so the default applies
+    assert pick("prep for the call: prep/acme-12345-hm-rehearse.html, drill clips acme-12345-hm-playlist.html "
+                "and acme-teams.html") == ["acme-67890-screen.html"]
+    # ...but a sheet named after them still is the one
+    assert pick("practice acme-12345-hm-rehearse.html, sheet acme-12345-hm.html") == ["acme-12345-hm.html"]
+    assert pick("see xacme-old.html") == ["acme-67890-screen.html"]  # a name inside another name isn't a mention
+    _page(folder, "sam-screen.html")  # not named for the company: only a note can link it
+    assert pick("Prep sheet: prep/sam-screen.html") == ["sam-screen.html"] and "sam-screen.html" not in pick()
+    assert interviews.job_sheets(tmp_path / "missing", job, {}) == []
 
 
 def test_only_files_directly_in_the_sheets_folder_are_served(tmp_path):
@@ -137,7 +201,8 @@ def test_the_page_lists_interviews_with_their_sheets(watchlist, tmp_path, web):
     assert d["sheets_folder"] == str(tmp_path / "prep")
     [iv] = d["interviews"]
     assert (iv["key"], iv["day"], iv["scheduled"]) == (key, d["today"], True)
-    assert iv["sheets"] == ["acme-onsite.html", "acme-screen.html", "acme.htm"]
+    assert iv["sheets"] == ["acme-onsite.html"] and iv["sheet"] == "acme-onsite.html"  # the newest, one
+    assert iv["sheet_title"] == "acme onsite"  # no <title> in the page: its name as words
     def slow(*a):
         raise AssertionError("an application isn't in the scorer's line: its details don't work that out")
     app.scorer.reasons = slow
@@ -159,7 +224,7 @@ def test_page_has_an_interviews_tab(server):
     assert '<button data-tab="interviews">Interviews<span id="ivcount"></span></button>' in page
     assert '"today", "interviews", "queue"' in page and "interviews: renderInterviews" in page
     assert 'api("/api/interviews")' in page and "openDetails(iv.key)" in page
-    assert "sheetButtons(j.sheets, j.sheets_base)" in page and "sheetButtons(iv.sheets, d.sheets_base)" in page
+    assert "sheetChip(j, j.sheets_base)" in page and "sheetChip(iv, d.sheets_base)" in page
 
 
 def test_a_sheets_web_links_open_in_new_tabs(server, watchlist, tmp_path):

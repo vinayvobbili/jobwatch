@@ -175,8 +175,13 @@ prep:
   sheets: prep    # next to the watchlist, or a full path
 ```
 
-Every `.html` sheet whose name starts with the company's name shows as a button on its interviews and in its
-details, newest first. A sheet opens in a new tab from that folder, so the stylesheet, images and
+Each interview shows one sheet, the main one, as a "Start here" chip titled with the sheet's own `<title>` (so
+name it for the interviewer or the round: "Acme: hiring manager call with Sam"). It is the sheet the application's
+note or next step names by file name (`Prep sheet: prep/acme-hm-sam.html`; the last labelled one wins, else the first
+named), else the company's newest sheet that doesn't name another posting's number. Companion pages are never the
+chip: a page says what it is in `<meta name="jobwatch-prep-role" content="...">`, with `module` (one drill clip's
+page), `playlist` and `rehearse` (the practice page `jobwatch rehearse` writes) kept off it, and a plain sheet
+carrying no marker. Link the playlist and the practice page from the sheet itself. A sheet opens in a new tab from that folder, so the stylesheet, images and
 [drill video](interview-prep.md#drill-video) beside it show as they do from disk (a video can be skipped through). The page
 serves the folder at an address with a secret in it, like the calendar feed, only to this computer, and
 sandboxed: a sheet can't run scripts.

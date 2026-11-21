@@ -38,6 +38,12 @@ def test_cards_come_through_from_the_sheet(sheet):
     assert data["cards"][0]["a"].startswith("Latency. Each region")
 
 
+def test_page_says_it_is_a_rehearse_page_for_the_interviews_tab(sheet):
+    from jobwatch import interviews
+    out = rehearse.write(sheet)
+    assert interviews.sheet_role(out) == "rehearse"
+
+
 def test_page_reads_only_the_card_fields_it_is_given(sheet):
     """The page once read c.answer from cards that carry only q and a, so showing an answer threw."""
     keys = set(_cards(rehearse.write(sheet).read_text(encoding="utf-8"))["cards"][0])

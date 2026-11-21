@@ -1,20 +1,26 @@
 """The Interviews tab: the interviews and calls your open applications' next steps name, today's first, then the
-days ahead, each with the prep sheets you wrote for that company.
+days ahead, each with the one prep sheet to open first.
 
 A next step is read the way the calendar feed reads it (ics.meetings): a date and a time it can be sure of, and
 one card for each meeting it names (a step with two calls is on the tab twice). One
 that names a meeting but no time it can read ("panel interview, the recruiter to schedule") is listed as not scheduled
 yet while its follow-up day is today or ahead, so it isn't lost, once the application is past applied (before
-that, "wait for a recruiter screen" is a hope, not an interview). Prep sheets are the .html files in the
-watchlist's prep.sheets folder whose name starts with the company's ("acme-onsite.html" for Acme), narrowed to
-one application's: the ones its note or next step names, else all but those naming another posting's number. The page
-serves that folder at an address with a secret in it, so a sheet's stylesheet, images and drill video next to
-it load as they do from disk, and sandboxed: a sheet can't run scripts or reach the page's token. Its web links
-open in new tabs, outside the sandbox, so the sheet stays open during the call.
+that, "wait for a recruiter screen" is a hope, not an interview). A card links one prep sheet, the main one: the
+.html files in the watchlist's prep.sheets folder whose name starts with the company's ("acme-onsite.html" for Acme)
+are the candidates, and the one it links is the sheet its note or next step names ("Prep sheet: prep/acme-onsite.html":
+the last labelled one, else the first named), else the newest that doesn't name another posting's number. Only a
+page whose role is "sheet" can be it. A page says its role in `<meta name="jobwatch-prep-role">`: "module" (one
+drill clip's page), "playlist" (the clips in order) or "rehearse" (the practice page `jobwatch rehearse` writes); a
+page without the marker is a sheet, except a rehearse page by its title or name, a playlist by its name and a
+"companion" page (`<meta name="prep-sheet" content="companion">`). Playlist and practice pages are reached from the
+main sheet itself. The page serves that folder at an address with a secret in it, so a sheet's stylesheet, images
+and drill video next to it load as they do from disk, and sandboxed: a sheet can't reach the page's token. Its web
+links open in new tabs, outside the sandbox, so the sheet stays open during the call.
 """
 
 from __future__ import annotations
 
+import html as _html
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -88,16 +94,79 @@ def sheets(folder: Path | None, *names: str) -> list[str]:
 _REQ = re.compile(r"(?<!\d)\d{5,}(?!\d)")  # a req or posting number in a sheet's name ("initech-40125-dana")
 
 
-def job_sheets(folder: Path | None, job: Job, rec: dict) -> list[str]:
-    """One application's prep sheets among its company's: those its note or next step names by file name, if any;
-    else the company's sheets less those naming another posting's number (a company you apply to often has a
-    sheet per opening)."""
+ROLE_BYTES = 2048  # how much of a page is read for its role and title: the <head> is at the top
+_ROLE = re.compile(r"""<meta\b[^>]*\bname=["']?jobwatch-prep-role["']?[^>]*\bcontent=["']?([a-z]+)""", re.I)
+_COMPANION = re.compile(r"""<meta\b[^>]*\bname=["']?prep-sheet["']?[^>]*\bcontent=["']?companion""", re.I)
+_TITLE = re.compile(r"<title>(.*?)</title>", re.I | re.S)
+ROLES = ("sheet", "module", "playlist", "rehearse", "companion")
+
+
+def sheet_info(path: Path) -> tuple[str, str]:
+    """(role, title) of a page in the sheets folder, from its first ROLE_BYTES: its role is the one it says in
+    `<meta name="jobwatch-prep-role">` (one of ROLES), else a rehearse page by its title or name, a playlist by its
+    name, a "companion" page by its prep-sheet marker, and anything else a "sheet". The title is its <title>, else
+    its file name read as words."""
+    try:
+        with open(path, "rb") as f:
+            top = f.read(ROLE_BYTES).decode("utf-8", "replace")
+    except OSError:
+        top = ""
+    title = _html.unescape(re.sub(r"\s+", " ", m.group(1))).strip() if (m := _TITLE.search(top)) else ""
+    stem = Path(path).stem
+    if (said := _ROLE.search(top)) and said.group(1).lower() in ROLES:
+        role = said.group(1).lower()
+    elif title.startswith("Rehearse:") or stem.endswith("-rehearse"):
+        role = "rehearse"
+    elif stem.endswith("-playlist"):
+        role = "playlist"
+    else:
+        role = "companion" if _COMPANION.search(top) else "sheet"
+    return role, title or stem.replace("-", " ")
+
+
+def sheet_role(path: Path) -> str:
+    return sheet_info(path)[0]
+
+
+# "Prep sheet: prep/acme-onsite.html" in a note: the sheet its writer calls the main one.
+_LABELLED = re.compile(r"prep sheet:?\s*(?:[^\s,;()]*/)?([^\s,;()/]+\.html?)", re.I)
+
+
+def job_sheet(folder: Path | None, job: Job, rec: dict) -> str | None:
+    """The one prep sheet an application's card links. The sheet its note or next step names by file name (any
+    page in the folder, so a sheet named for the interviewer, not the company, works): the last one labelled
+    "Prep sheet:" (a note's newest line comes last), else the first named. None named, or none of them a sheet (a
+    rehearse page, a playlist, a module): the company's newest that doesn't name another posting's number (a company
+    you apply to often has a sheet per opening)."""
     found = sheets(folder, job.display_company, job.company)
     text = " ".join(rec.get(k) or "" for k in ("note", "next_step"))
-    if named := [s for s in found if s in text]:
-        return named
+    # a sheet the note names is the one, whatever its name starts with ("acme-sam-screen.html" for Acme Corp)
+    anywhere = sorted(p.name for p in folder.iterdir() if p.is_file() and p.suffix.lower() in SHEET_TYPES) \
+        if folder and folder.is_dir() else []
+
+    def is_sheet(name: str) -> bool:
+        return sheet_role(folder / name) == "sheet"
+
+    labelled = [n for n in (m.group(1) for m in _LABELLED.finditer(text)) if n in anywhere]
+    named = [(m.start(), s) for s in anywhere if (m := re.search(rf"(?<![\w.-]){re.escape(s)}", text))]
+    for name in [*reversed(labelled), *(s for _, s in sorted(named))]:
+        if is_sheet(name):
+            return name
     own = " ".join((job.id, job.title, job.url or ""))
-    return [s for s in found if all(n in own for n in _REQ.findall(Path(s).stem))]
+    return next((s for s in found if all(n in own for n in _REQ.findall(Path(s).stem)) and is_sheet(s)), None)
+
+
+def job_sheets(folder: Path | None, job: Job, rec: dict) -> list[str]:
+    """job_sheet as a list: the card's one prep sheet, or none."""
+    return [name] if (name := job_sheet(folder, job, rec)) else []
+
+
+def sheet_fields(folder: Path | None, job: Job, rec: dict) -> dict:
+    """What a card or the details view needs of the main prep sheet: its name, its title, and `sheets`, the same
+    name as a list (the one chip's name, or none)."""
+    sheet = job_sheet(folder, job, rec)
+    return {"sheets": [sheet] if sheet else [], "sheet": sheet,
+            "sheet_title": sheet_info(folder / sheet)[1] if sheet else None}
 
 
 def sheet_file(folder: Path | None, name: str) -> tuple[Path, str]:
@@ -124,7 +193,7 @@ def to_dict(i: Interview, folder: Path | None) -> dict:
             "start": m.start.isoformat() if m else None, "end": m.end.isoformat() if m else None,
             "zoned": bool(m and m.zoned), "label": m.label if m else rounds.kind(rec.get("round")) or "Interview",
             "round": rec.get("round") or None, "round_label": rounds.label(rec.get("round")),
-            "sheets": job_sheets(folder, j, rec),
+            **sheet_fields(folder, j, rec),
             **{k: rec.get(k) for k in ("status", "next_step", "follow_up", "note")}}
 
 

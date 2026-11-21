@@ -1355,7 +1355,7 @@ class App:
                         cfg, store, job, self.scorer.reasons(cfg, store) if rec.get("status") in IN_LINE else {}),
                     "manual": job.source == MANUAL,
                     "duplicate_of": (same := dupes.check(store, job.key)) and same.to_dict(),
-                    "sheets": interviews.job_sheets(cfg.prep.sheets, job, rec),
+                    **interviews.sheet_fields(cfg.prep.sheets, job, rec),
                     "sheets_base": self._sheets_base(store),
                     "meeting": None if rec.get("status") in ENDED else interviews.meeting_dict(
                         rec.get("next_step"), round_id=rec.get("round")),
