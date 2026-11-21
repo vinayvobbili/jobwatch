@@ -80,6 +80,14 @@
   }
   // ?nobox: the messages only, no message box drawn (read still works; filling is refused)
   if (location.search.includes('nobox')) document.querySelector('#main-thread form').remove();
+  // ?shadow: the thread inside an open shadow root, as LinkedIn draws its message bubble (#interop-outlet)
+  if (location.search.includes('shadow')) {
+    const host = document.createElement('div');
+    host.id = 'interop-outlet';
+    document.body.append(host);
+    const root = host.attachShadow({ mode: 'open' });
+    root.append(document.querySelector('style').cloneNode(true), document.getElementById('main-thread'));
+  }
   // ?filled: the person has already started typing
   if (location.search.includes('filled')) document.querySelector('[role=textbox]').innerHTML = '<p>Hi Dana,</p>';
   window.__sent = 0;

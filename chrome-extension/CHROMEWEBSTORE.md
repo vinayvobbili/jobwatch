@@ -326,6 +326,11 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
   tab, focused instead of duplicated, closed with its tab; ordinary windows keep the side panel. `panelHome` and
   `panelBounds` in `logic.js` decide; no new permission. Checked in a real PWA window (LinkedIn's) on 2026-11-19 after
   reloading the unpacked extension: the click opens the popup panel.
+- 0.12.0's Draft reply answered "No conversation is open (0 editable boxes, 0 messages)" with a LinkedIn message bubble
+  plainly open: LinkedIn now draws the bubble inside an open shadow root (`#interop-outlet`), which the page queries in
+  `reply.js` stopped at. Fixed for the next version (not yet bumped or submitted): `reply.js` walks open shadow roots
+  (`deepAll`, `closestDeep`, `holds`, `activeDeep`) to find the box, read the messages and fill the reply; the demo page
+  has a `?shadow` shape and the e2e test covers it. Checked against the live feed page's `#interop-outlet` on 2026-11-20.
 
 - 0.12.0 told a LinkedIn page that is not Messaging (the feed, a profile) "IDLE / Nothing to do on this page" even
   though Draft reply works from a conversation open in the message bubble. Fixed for the next version (not yet bumped

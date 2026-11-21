@@ -426,7 +426,7 @@ def test_draft_reply_reads_the_open_thread_shows_where_it_was_written_and_never_
         page.close()
 
 
-@pytest.mark.parametrize("query", ["?live", "?nobox", "?overlay", "?live&overlay"])
+@pytest.mark.parametrize("query", ["?live", "?nobox", "?overlay", "?live&overlay", "?shadow", "?live&shadow"])
 def test_draft_reply_finds_the_thread_on_the_current_site_shape(reply_stack, ext, panels, query):
     page, panel = reply_panel(reply_stack, ext, panels, query)
     try:
@@ -436,9 +436,11 @@ def test_draft_reply_finds_the_thread_on_the_current_site_shape(reply_stack, ext
         assert sent["sender"] == "Dana Whitfield"
         assert sent["thread"].count("\n\n") == 3
         assert "No conversation is open" not in panel.inner_text("#view")
-        if query == "?live":  # filling is checked where there is one box
+        if query in ("?live", "?shadow", "?live&shadow"):  # filling is checked where there is one box; ?shadow is LinkedIn's bubble inside a shadow root
             assert "In the message box" in put_in_box(panel)
             assert page.evaluate("[window.__clicks, window.__sent]") == [0, 0]
+            if "shadow" in query:
+                assert page.evaluate("document.getElementById('interop-outlet').shadowRoot.querySelector('[contenteditable]').textContent").strip() != ""
     finally:
         page.close()
 

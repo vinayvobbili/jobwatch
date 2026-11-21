@@ -39,29 +39,62 @@
   const text = (el) => String(el.textContent || '').replace(/[​​\s]+/g, ' ').trim();
   const shown = (el) => el.getClientRects().length > 0;
 
+  // LinkedIn draws its message bubble inside an open shadow root (#interop-outlet), which querySelectorAll, closest,
+  // contains and parentElement all stop at. These walk through the roots, in document order.
+  /** Every element under `root` (the document, a shadow root or an element) that matches, shadow roots included. */
+  function deepAll(selector, root) {
+    const out = [];
+    (function walk(node) {
+      for (const el of node.children) {
+        if (el.matches(selector)) out.push(el);
+        if (el.shadowRoot) walk(el.shadowRoot);
+        walk(el);
+      }
+    })(root || document);
+    return out;
+  }
+  /** The parent, stepping from a shadow root out to its host. */
+  const upFrom = (el) => el.parentElement || (el.getRootNode() instanceof ShadowRoot ? el.getRootNode().host : null);
+  /** `el` itself or its nearest ancestor matching, crossing shadow roots. */
+  function closestDeep(el, selector) {
+    for (let e = el; e; e = upFrom(e)) if (e.matches(selector)) return e;
+    return null;
+  }
+  /** Whether `inner` sits inside `outer`, crossing shadow roots. */
+  function holds(outer, inner) {
+    for (let e = inner; e; e = upFrom(e)) if (e === outer) return true;
+    return false;
+  }
+  /** The element with the cursor, looking inside shadow roots. */
+  function activeDeep() {
+    let a = document.activeElement;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    return a;
+  }
+
   /** Climb from a message box to the conversation around it: the nearest ancestor with message bodies in it and no other message box. */
   function conversationOf(composer, composers) {
-    for (let el = composer.parentElement; el && el !== document.body; el = el.parentElement) {
-      if (composers.some((c) => c !== composer && el.contains(c))) return null;
-      if (el.querySelector(BODY)) return el;
+    for (let el = upFrom(composer); el && el !== document.body; el = upFrom(el)) {
+      if (composers.some((c) => c !== composer && holds(el, c))) return null;
+      if (deepAll(BODY, el).length) return el;
     }
     return null;
   }
 
   const isComposer = (el) => el.getAttribute('role') === 'textbox' ||
     /message|reply|write/i.test(`${el.getAttribute('aria-label') || ''} ${el.getAttribute('data-placeholder') || ''}`) ||
-    !!el.closest('form');
+    !!closestDeep(el, 'form');
 
   /** The message boxes drawn on the page; when none reports a size (a layout that hides it from measuring), every box. */
   function composersShown() {
-    const all = [...document.querySelectorAll(EDITABLE)].filter(isComposer);
+    const all = deepAll(EDITABLE).filter(isComposer);
     const drawn = all.filter(shown);
     return drawn.length ? drawn : all;
   }
 
   /** What the page showed, for the error: so a failure on a layout nobody has seen says what was there. */
   function census() {
-    return `${[...document.querySelectorAll(EDITABLE)].length} editable boxes, ${document.querySelectorAll(BODY).length} messages`;
+    return `${deepAll(EDITABLE).length} editable boxes, ${deepAll(BODY).length} messages`;
   }
 
   /**
@@ -69,12 +102,12 @@
    * exactly one thread's messages are showing, read those. The box is then missing, so fill() will refuse.
    */
   function threadWithoutBox() {
-    const all = [...document.querySelectorAll(BODY)];
+    const all = deepAll(BODY);
     const bodies = all.filter(shown).length ? all.filter(shown) : all;
     if (!bodies.length) return null;
     const groups = new Map();
     for (const b of bodies) {
-      const box = b.closest(THREAD) || b.closest('main') || b.closest('ul, ol') || b.parentElement;
+      const box = closestDeep(b, THREAD) || closestDeep(b, 'main') || closestDeep(b, 'ul, ol') || upFrom(b);
       groups.set(box, (groups.get(box) || 0) + 1);
     }
     if (groups.size > 1) return null;
@@ -87,16 +120,17 @@
     const found = composers.map((composer) => ({ composer, box: conversationOf(composer, composers) })).filter((c) => c.box);
     if (!found.length) return threadWithoutBox() || { error: `${NONE} (The page showed ${census()}.)` };
     if (found.length === 1) return found[0];
-    const focused = found.find((c) => c.composer.contains(document.activeElement) || c.box.contains(document.activeElement));
+    const active = activeDeep();
+    const focused = found.find((c) => holds(c.composer, active) || holds(c.box, active));
     return focused || { error: TOO_MANY };
   }
 
   /** Who the conversation is with: the name in its header, else the sender of its last message. */
   function counterpart(box, composers, last) {
     let up = box;
-    for (let i = 0; i < 4 && up; i++, up = up.parentElement) {
-      if (composers.some((c) => up.contains(c) && !box.contains(c))) break;
-      const header = up.querySelector(HEADER);
+    for (let i = 0; i < 4 && up; i++, up = upFrom(up)) {
+      if (composers.some((c) => holds(up, c) && !holds(box, c))) break;
+      const header = deepAll(HEADER, up)[0];
       if (header && text(header)) return text(header);
     }
     return last || '';
@@ -106,7 +140,7 @@
   function messagesIn(box) {
     const out = [];
     let sender = '', date = '', stamp = '';
-    for (const el of box.querySelectorAll(`${NAME}, ${STAMP}, ${BODY}`)) {
+    for (const el of deepAll(`${NAME}, ${STAMP}, ${BODY}`, box)) {
       if (el.matches(NAME)) {
         sender = text(el);
         stamp = '';
