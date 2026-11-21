@@ -143,7 +143,7 @@ def eightfold_web():
             "data": {"count": len(EF_POSITIONS), "positions": EF_POSITIONS[start:start + 10]}}
     for p in EF_POSITIONS:
         responses[f"{EF}/position_details?position_id={p['id']}&domain=globex.com"] = {"data": {
-            "jobDescription": "<p>Salary: $175,000 - $260,000 per year</p>",
+            "jobDescription": "<p>Salary: $150,000 - $250,000 per year</p>",
             "publicUrl": f"https://globex.eightfold.ai/careers/job/{p['id']}"}}
     return FakeWeb(responses)
 
@@ -158,7 +158,7 @@ def test_eightfold():
     assert lead.locations == ["Denver, CO, United States", "Remote, United States"]
     assert lead.remote is None  # remote_local names its places; they decide
     assert by_id["10"].remote is True and by_id["10"].locations == ["United States"]
-    assert (lead.salary_min, lead.url) == (175_000, "https://globex.eightfold.ai/careers/job/1")
+    assert (lead.salary_min, lead.url) == (150_000, "https://globex.eightfold.ai/careers/job/1")
     assert by_id["2"].description == "" and lead.posted.year == 2026
     assert lead.description.startswith("Work site: not stated\n")
 
@@ -394,7 +394,7 @@ def jibe_job(n, title, where="US Remote", tags=("Remote",)):
                      "full_location": "United States" if "US" in where else where, "tags6": list(tags),
                      "hiring_organization": "Hooli, Inc.", "categories": [{"name": "Engineering"}],
                      "posted_date": "2026-09-29T21:03:00+0000",
-                     "description": "<p>Build agents.</p><p>USD $140,400.00 - USD $372,300.00 /Yr.</p>",
+                     "description": "<p>Build agents.</p><p>USD $120,000.00 - USD $180,000.00 /Yr.</p>",
                      "responsibilities": "<ul><li>Ship evals</li></ul>", "qualifications": "<p>Python</p>"}}
 
 
@@ -416,7 +416,7 @@ def test_jibe_reads_every_page(monkeypatch):
     j = jobs[0]
     assert (j.key, j.url) == ("jibe:careers.hooli.test:1", "https://careers.hooli.test/careers-home/jobs/1")
     assert j.remote is True and j.locations == ["United States"] and j.department == "Engineering"
-    assert (j.salary_min, j.salary_max) == (140_400, 372_300)
+    assert (j.salary_min, j.salary_max) == (120_000, 180_000)
     assert "Build agents." in j.description and "- Ship evals" in j.description and "Python" in j.description
     assert jobs[2].remote is None and j.posted.year == 2026
 

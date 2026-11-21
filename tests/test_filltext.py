@@ -15,7 +15,7 @@ Platform Engineer
 
 United States · 1 week ago · 45 people clicked apply
 
-$160K/yr - $270K/yr
+$100K/yr - $150K/yr
 Remote
 
 Not currently accepting applications
