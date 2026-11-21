@@ -4,7 +4,7 @@ you've said about them (use, or don't use, and a note). The page's Referrals tab
 
 from __future__ import annotations
 
-from . import GUIDE
+from . import GUIDE, jobpass
 from .config import Config
 from .filters import reject_reason, title_ok
 from .models import Job
@@ -49,7 +49,13 @@ def view(cfg: Config, store: Store) -> dict:
     wanted = [v.key for v in judged_pass(cfg, store).in_status(("new", "shown")) if v.kind in (None, "fit")]
     rows = {j.key: (j, rec) for j, rec in store.jobs(tuple(s for s in OPEN if s not in ("new", "shown")),
                                                       include_closed=True)} | store.rows(wanted)
-    rows |= _marked_closed(cfg, store, known)
+    try:
+        mtime = cfg.connections.stat().st_mtime_ns
+    except OSError:
+        mtime = None
+    rows |= jobpass.remembered(  # the people come from the connections file and what was said of them (the store)
+        store, "marked-closed", (jobpass.config_stamp(cfg), mtime, repr(cfg.connections_skip), cfg.employer),
+        lambda: _marked_closed(cfg, store, known))
     for job, rec in (rows[k] for k in store.newest_first(OPEN) if k in rows):
         if closed_state(rec) == "closed" and rec["status"] in ("new", "shown", "queued"):
             continue
