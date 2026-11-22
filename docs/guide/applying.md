@@ -110,7 +110,8 @@ results say which step is running and how each ended; a step that can't run (res
 model) says why in its own panel, and the steps after it still run. Press **Prepare again** to redo all three
 (each press drafts a new cover letter version; the resume is rebuilt, not redrafted). The same three are in the
 Chrome extension's side panel, on the job's own application page (see [Filling application forms](#filling-application-forms)).
-Each step is also a command, described below.
+Each step is also a command, described below. A reload keeps the chips: they come back from what's saved (the kept resume,
+the last ATS check, the newest letter), and an ATS chip marked *older* was checked before the posting or resume changed.
 
 ## Tailoring a resume to a job
 

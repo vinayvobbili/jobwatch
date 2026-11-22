@@ -65,6 +65,7 @@ from . import (
     onboard,
     paysources,
     prep,
+    prepare,
     prepedit,
     providers,
     quiet,
@@ -1174,10 +1175,13 @@ class App:
         worth = comps.worth(cfg, store, [(e.job, e.fit) for e in entries])
         can_tailor = tailor.ready(cfg.resume_kit)
         open_now = store.in_progress()
+        kept = {e.job.key: self._resume_name(store, e.job) for e in entries}
         # A job applied to is past advice.
         return [{**self._entry(e), "worth": worth[e.job.key],
                  "can_tailor": can_tailor, "tailor_setup": None if can_tailor else tailor.SETUP,
-                 "resume": self._resume_name(store, e.job),
+                 "resume": kept[e.job.key],
+                 # What Prepare saved (resume, last ATS check, newest letter): the card's chips after a reload.
+                 "prepare": prepare.state(cfg, store, e.job, kept[e.job.key]),
                  # A job added by hand can be scored once it has the posting's text.
                  "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
                  "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),

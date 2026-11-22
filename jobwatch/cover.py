@@ -84,9 +84,29 @@ _STOCK = re.compile(r"\bi am (?:writing to (?:apply|express)|(?:very |really )?e
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
 
+def folder_of(store: Store, job_key: str) -> Path:
+    """Where a job's letter versions are kept, from its full key (no lookup)."""
+    return store.packages.parent / "covers" / _safe(job_key)
+
+
 def folder(store: Store, key: str) -> Path:
     """Where a job's letter versions are kept: covers/ beside jobwatch's history, a folder per job."""
-    return store.packages.parent / "covers" / _safe(store.find(key)[0].key)
+    return folder_of(store, store.find(key)[0].key)
+
+
+def latest(store: Store, job_key: str) -> dict | None:
+    """The newest saved version without reading the others: {version, tone, drafted (day), words}, or None. For a
+    page that only needs to say a letter exists (see prepare.py)."""
+    found = [(int(p.stem[1:]), p) for p in folder_of(store, job_key).glob("v*.md") if p.stem[1:].isdigit()]
+    if not found:
+        return None
+    n, path = max(found)
+    try:
+        meta = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        meta = {}
+    words = len(path.read_text(encoding="utf-8").split())
+    return {"version": n, "tone": meta.get("tone", ""), "drafted": meta.get("drafted", ""), "words": words}
 
 
 def versions(store: Store, key: str) -> list[dict]:

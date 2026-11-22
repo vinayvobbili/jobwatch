@@ -2,6 +2,8 @@
 the posting's keywords the resume for a job doesn't show, read the way an applicant tracking system's parser reads
 it: from the built PDF's text, not from the version's source.
 
+The latest result for a job's own resume is kept (see prepare.py), so the Queue card shows it again after a reload.
+
 Everything is checked here, on this computer, with no model:
 - the keywords are the skills the posting names (the catalog behind `jobwatch skills`, so "K8s" and "Kubernetes"
   are one) plus the tools and acronyms its requirement lines name (PostgreSQL, CI/CD, C++). One asked for under
@@ -21,7 +23,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import prep
+from . import prep, prepare
 from .autofill import resume_for
 from .config import Config
 from .learn import catalog
@@ -160,12 +162,18 @@ def check(cfg: Config, store: Store, key: str, resume: Path | None = None) -> di
     weight = {"must": MUST_WEIGHT, "nice": 1, "mentioned": 1}
     total = sum(weight[r["kind"]] for r in rows)
     got = sum(weight[r["kind"]] for r in rows if r["found"])
-    return {"key": job.key, "company": job.display_company, "title": job.title, "file": Path(path).name,
-            "tailored": bool(kept), "read_with": how, "chars": len(text.strip()),
-            "score": round(100 * got / total) if total else None,
-            "found": [{k: r[k] for k in ("term", "kind", "count")} for r in rows if r["found"]],
-            "missing": [{k: r[k] for k in ("term", "kind", "count")} for r in rows if not r["found"]],
-            "checks": format_checks(text, posting.title)}
+    result = {"key": job.key, "company": job.display_company, "title": job.title, "file": Path(path).name,
+              "tailored": bool(kept), "read_with": how, "chars": len(text.strip()),
+              "score": round(100 * got / total) if total else None,
+              "found": [{k: r[k] for k in ("term", "kind", "count")} for r in rows if r["found"]],
+              "missing": [{k: r[k] for k in ("term", "kind", "count")} for r in rows if not r["found"]],
+              "checks": format_checks(text, posting.title)}
+    if not resume:  # a check of some other file isn't the job's: only the job's own resume is kept for the page
+        try:
+            prepare.save_ats(store, job, posting, result, Path(path))
+        except OSError:
+            pass  # the check still answers; the page just won't show it again after a reload
+    return result
 
 
 def render(r: dict) -> str:

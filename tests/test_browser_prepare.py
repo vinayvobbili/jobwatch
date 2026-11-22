@@ -161,12 +161,13 @@ def test_prepare_runs_resume_then_ats_check_then_cover_letter_and_keeps_them(pag
     finally:
         store.close()
     assert page.errors == []
-    # a reload shows the resume that is kept; a second press rebuilds it, checks it and writes version 2
+    # a reload shows what is saved (all three here); a second press rebuilds the resume, checks it and writes version 2
     page.reload()
     page.locator(CARD).wait_for(timeout=15000)
-    assert [c.inner_text() for c in page.locator(f"{CARD} .prep-chip:visible").all()] == ["Resume"]  # only what's kept
+    assert [c.inner_text() for c in page.locator(f"{CARD} .prep-chip:visible").all()] == [
+        "Resume", states[1][1], "Cover letter v1"]
     assert "Jordan_Rivera_Resume_X.pdf" in shown(page.locator(CARD), "tailor").inner_text()
-    page.locator(CARD).get_by_role("button", name="Prepare", exact=True).click()
+    page.locator(CARD).get_by_role("button", name="Prepare again", exact=True).click()
     sync_api.expect(page.locator(CARD).get_by_role("button", name="Prepare again")).to_be_visible(timeout=60000)
     assert chips(page)[2][1] == "Cover letter v2" and steps.count("cover draft") == 2
     assert "resume draft" == steps[0] and steps.count("resume draft") == 1  # rebuilt, not redrafted
@@ -339,4 +340,100 @@ def test_a_redraw_of_the_queue_keeps_the_open_panel_and_the_letter_being_edited(
     assert card.locator('button.prep-chip[data-step="cover"]').get_attribute("aria-expanded") == "true"
     assert card.locator("textarea").input_value() == "My own edit of the letter."
     assert card.get_by_role("button", name="Prepare again").is_enabled()
+    assert page.errors == []
+
+
+# -- a reload shows what was saved --
+
+def seed(watchlist, *, resume=True, check=True, letters=1):
+    """Save Prepare results the way the steps do (the kept resume, the ATS check, cover versions), with nothing running
+    in the page."""
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    try:
+        if resume:
+            store.package(KEY).attach("Jordan_Rivera_Resume_X.pdf", b"%PDF-1 fake", "resume")
+        if check:
+            ats.check(cfg, store, KEY)
+        for n in range(letters):
+            cover.save(store, KEY, LETTER if n == 0 else LETTER.replace("Hello", "Dear"), "direct", "", "m")
+    finally:
+        store.close()
+
+
+def reload_card(page):
+    page.reload()
+    page.locator(CARD).wait_for(timeout=15000)
+    return page.locator(CARD)
+
+
+def test_a_reload_restores_the_chips_and_panels_from_what_is_saved_without_running_anything(page, steps, watchlist):
+    seed(watchlist, letters=2)
+    ran = list(steps)
+    requests = []
+    page.on("request", lambda r: requests.append(f"{r.method} {r.url.split('/', 3)[3]}"))
+    card = reload_card(page)
+    assert card.get_by_role("button", name="Prepare again", exact=True).is_visible()
+    assert card.get_by_role("button", name="Prepare", exact=True).count() == 0
+    states = chips(page)
+    assert [s for s, _ in states] == ["ok", "ok", "ok"] and states[0][1] == "Resume", states
+    assert states[1][1].startswith("ATS ") and "older" not in states[1][1] and states[2][1] == "Cover letter v2"
+    assert card.locator('button.prep-chip[data-step="ats"]').get_attribute("data-older") is None
+    # each chip opens its saved result; the letter is the newest version, editable, with Draft another to write more
+    assert "Jordan_Rivera_Resume_X.pdf" in shown(card, "tailor").inner_text()
+    ats_panel = shown(card, "ats")
+    assert ats_panel.locator(".badge").inner_text().startswith("ATS ") and "Checked" not in ats_panel.inner_text()
+    letter = shown(card, "cover")
+    assert letter.locator("textarea").input_value().startswith("Dear Initech team,")  # v2
+    letter.locator("textarea").fill("My edit.")
+    assert letter.get_by_role("button", name="Draft another", exact=True).is_enabled()
+    assert letter.locator(".cover-compare").is_visible()  # two versions: side by side, as after a live draft
+    # opening panels read the saved files: no step ran, no check, no draft, no tailor, no model
+    assert steps == ran
+    assert [r for r in requests if r.startswith("POST ") or "api/ats" in r or "api/tailor" in r] == []
+    assert [r.split("?")[0] for r in requests if "api/cover" in r] == ["GET api/cover", "GET api/cover/compare"]
+    # folding the letter and opening it again reads nothing more, and keeps the edit
+    card.locator('button.prep-chip[data-step="cover"]').click()
+    card.locator('button.prep-chip[data-step="cover"]').click()
+    assert len([r for r in requests if "api/cover" in r]) == 2
+    assert card.locator("textarea").input_value() == "My edit."
+    assert page.errors == []
+    # a second reload keeps all of it
+    card = reload_card(page)
+    assert [t for _, t in chips(page)] == ["Resume", states[1][1], "Cover letter v2"]
+    assert card.get_by_role("button", name="Prepare again", exact=True).is_visible()
+
+
+def test_only_the_steps_that_have_a_saved_result_show_a_chip(page, watchlist):
+    seed(watchlist, resume=False, check=False)  # a letter and nothing else
+    card = reload_card(page)
+    assert card.locator(".prep-chip:visible").count() == 1
+    assert [t for _, t in chips(page) if t == "Cover letter v1"] == ["Cover letter v1"]
+    assert card.get_by_role("button", name="Prepare again", exact=True).is_visible()
+    assert shown(card, "cover").locator("textarea").input_value().startswith("Hello Initech team,")
+    assert page.errors == []
+
+
+def test_a_check_made_before_the_posting_changed_is_marked_older_not_hidden(page, watchlist):
+    seed(watchlist, letters=0)
+    store = Store(config.load(watchlist).state)
+    try:
+        store.replace_text(KEY, store.find(KEY)[0].description +"\n\nAlso: Scala and Go.\n")
+    finally:
+        store.close()
+    card = reload_card(page)
+    chip = card.locator('button.prep-chip[data-step="ats"]')
+    assert chip.inner_text().endswith("· older") and chip.get_attribute("data-older") == ""
+    assert "changed since" in chip.get_attribute("title")
+    assert "press Prepare again" in shown(card, "ats").inner_text()  # still opens: the old result and why it's old
+    assert shown(card, "ats").locator(".badge").inner_text().startswith("ATS ")
+    assert page.errors == []
+
+
+def test_the_company_page_card_restores_its_chips_too(page, queued, watchlist):
+    seed(watchlist)
+    page.goto(f"http://127.0.0.1:{queued}/#company/Initech")
+    card = page.locator(CARD)
+    card.wait_for(timeout=15000)
+    assert chips(page)[0][1] == "Resume" and card.get_by_role("button", name="Prepare again").is_visible()
     assert page.errors == []

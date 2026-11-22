@@ -485,6 +485,7 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
   box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
 .prep-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .prep-chip[aria-expanded="true"] { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+.prep-chip[data-older] { border-style: dashed; }
 .prep-chip:disabled { cursor: default; opacity: .6; }
 .prep-chip:disabled::after { display: none; }
 /* a step's result opens under the chips, one at a time, and scrolls inside itself so the card stays about its size */
@@ -2329,6 +2330,8 @@ function atsPanel(job) {
     out.hidden = false;
     out.dataset.tone = r.error || (r.checks && (r.checks.length || r.score < 70)) ? "warn" : "ok";
     fill(out,
+      r.older ? h("div", { class: "small muted" }, `Checked ${String(r.at || "").slice(0, 10)}. The posting or the resume has ` +
+        "changed since: press Prepare again to check it again.") : null,
       r.error ? h("span", { class: "problems" }, r.error) : [
         h("span", { class: "badge" + (out.dataset.tone === "warn" ? " warn" : "") },
           r.score == null ? "no keywords" : `ATS ${r.score}% · ${r.found.length} of ${r.found.length + r.missing.length}`),
@@ -2345,7 +2348,17 @@ function atsPanel(job) {
       return [out.dataset.tone, r.score == null ? "ATS: no keywords" : `ATS ${r.score}%`, r.checks.join(" ")];
     } catch (e) { draw({ error: e.message }); return ["err", "ATS check failed", e.message]; }
   };
-  return { el: out, run };
+  // The last check saved with the job (job.prepare.ats), drawn again after a reload: no check is run. [state, text,
+  // detail, older] for its chip, or null when none is saved. `older`: the posting or the resume changed after it.
+  const restore = () => {
+    const r = job.prepare && job.prepare.ats;
+    if (!r) return null;
+    draw(r);
+    const day = String(r.at || "").slice(0, 10);
+    return [out.dataset.tone, (r.score == null ? "ATS: no keywords" : `ATS ${r.score}%`) + (r.older ? " · older" : ""),
+      r.older ? `Checked ${day}; the posting or the resume has changed since.` : `Checked ${day}.`, !!r.older];
+  };
+  return { el: out, run, restore };
 }
 
 // The cover letter step: a draft in a tone you pick, leaning on what you say, from the posting, resume and
@@ -2383,7 +2396,7 @@ function coverPanel(job) {
     draw({ ...s, compare, ...extra });
   };
   async function draft() {
-    out.hidden = false;
+    out.hidden = false; unread = false;
     draw({ versions: [], warnings: [] }, true);
     const [t, e] = [tone.value || "direct", emphasis.value];
     let result;
@@ -2399,7 +2412,23 @@ function coverPanel(job) {
     tone.value = t; emphasis.value = e;
     return result;
   }
-  return { el: out, run: draft };
+  // Versions saved with the job (job.prepare.cover) show after a reload: the chip is there at once, and the letters
+  // are read from disk (GET, no model) the first time its panel opens.
+  let unread = false;
+  const restore = () => {
+    const c = job.prepare && job.prepare.cover;
+    if (!c) return null;
+    out.hidden = false; unread = true;
+    out.dataset.tone = "ok";
+    fill(out, h("span", { class: "small muted" }, "Loading the letter…"));
+    return ["ok", `Cover letter v${c.version}`, `${c.tone || "letter"}, ${c.words} words, drafted ${c.at}`];
+  };
+  const opened = async () => {
+    if (!unread) return;
+    unread = false;
+    try { await load(); } catch (e) { draw({ versions: [], error: e.message }); }
+  };
+  return { el: out, run: draft, restore, opened };
 }
 
 // "Prepare": the three steps above, one after the other, for one job. Each step's result stays with the card but
@@ -2429,7 +2458,9 @@ function prepareButton(job) {
         "aria-expanded": "false", "aria-controls": p.el.id, onclick: () => toggle(id) }, name);
     }));
   const status = h("span", { class: "sr-only", role: "status", "aria-live": "polite" });
-  const out = h("div", { class: "prepare", hidden: !(job.resume || job.tailor_help) }, chips, status, steps.map(([, , p]) => p.el));
+  const saved = job.prepare || {};  // what Prepare saved with the job: chips after a reload (the resume is job.resume)
+  const anySaved = !!(job.resume || saved.resume || saved.ats || saved.cover);
+  const out = h("div", { class: "prepare", hidden: !(anySaved || job.tailor_help) }, chips, status, steps.map(([, , p]) => p.el));
   const chipOf = id => chips.querySelector(`[data-step="${id}"]`);
   let open = null;
   // A chip with nothing behind it yet (its panel is hidden) can't open; the others toggle.
@@ -2444,13 +2475,18 @@ function prepareButton(job) {
       c.title = (d ? `${d}\n` : "") + (c.disabled ? "Nothing to show yet." : shown ? "Click to fold it away." : "Click to open it.");
     }
   };
-  const toggle = id => { open = open === id ? null : id; sync(); };
+  const toggle = id => {
+    open = open === id ? null : id; sync();
+    const panel = steps.find(([sid]) => sid === id)[2];
+    if (open === id && panel.opened) panel.opened();
+  };
   const b = h("button", { class: "btn prepare-go", title: "Tailor a resume for this job, check it against the posting's " +
     "keywords (ATS), and draft a cover letter, in that order. All three are kept with the job; you review them before " +
-    "you apply. Local model; nothing is sent." }, icon("sparkle", 14), "Prepare");
-  const chip = (id, state, text, detail = "") => {
+    "you apply. Local model; nothing is sent." }, icon("sparkle", 14), anySaved ? "Prepare again" : "Prepare");
+  const chip = (id, state, text, detail = "", older = false) => {
     const c = chipOf(id);
     c.dataset.state = state; c.textContent = text; details[id] = detail;
+    c.toggleAttribute("data-older", older);
   };
   b.onclick = async () => {
     b.disabled = true; b.classList.add("spin"); out.hidden = false; open = null;
@@ -2472,6 +2508,12 @@ function prepareButton(job) {
     toast(`✨ Prepared ${job.company}: ${done.join(", ")}. Review them, then apply.`,
       null, steps.every(([id]) => chipOf(id).dataset.state === "ok") ? "win" : "");
   };
+  // Saved results come back as chips, each opening the same panel a live run fills; none of this runs a step.
+  if (job.resume || saved.resume) chip("tailor", "ok", "Resume", job.resume || saved.resume.name);
+  for (const [id, , panel] of steps) {
+    const r = panel.restore && panel.restore();
+    if (r) chip(id, ...r);
+  }
   sync();
   prepared.set(job, [b, out]);
   return [b, out];
