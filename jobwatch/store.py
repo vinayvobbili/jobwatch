@@ -859,6 +859,18 @@ class Store:
             return None
         return Job.from_dict(json.loads(rows[0]["data"])), {k: rows[0][k] for k in rows[0].keys() if k != "data"}
 
+    def open_at(self, name: str) -> list[tuple[Job, dict]]:
+        """The open (not closed) jobs whose company's name or board holds `name`, spaces and punctuation aside, at any
+        status: the candidates for telling which of a company's jobs a page is for."""
+        bare = _letters(name)
+        if not bare:
+            return []
+        self.db.create_function("letters", 1, _letters, deterministic=True)
+        rows = self.db.execute(f"{_ROW} WHERE closed IS NULL AND (instr(letters(company), ?) "
+                               "OR instr(letters(json_extract(data, '$.company_name')), ?)) ORDER BY key",
+                               (bare, bare)).fetchall()
+        return [(Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}) for r in rows]
+
     def _at_company(self, name: str) -> list[sqlite3.Row]:
         """Jobs whose company name or board contains `name` (any case), or failing that, contains it once spaces
         and punctuation are ignored ("Smith Wesson" for Smith & Wesson): the ones queued or applied to, if any."""

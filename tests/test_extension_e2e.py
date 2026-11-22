@@ -27,14 +27,15 @@ sys.path.insert(0, str(TOOLS))
 import harness  # noqa: E402
 import panel_states  # noqa: E402
 import store_assets  # noqa: E402
+from fake_server import State  # noqa: E402
+
+FEATURES = State().features  # what the fake jobwatch's /ext/ping says, put back after a test changes it
 
 
 def test_the_fake_jobwatch_offers_what_the_real_one_does():
-    from fake_server import State
-
     from jobwatch.web import EXT_FEATURES
 
-    assert set(State().features) == set(EXT_FEATURES)  # else a panel test sees fewer tiles than the real panel has
+    assert set(FEATURES) == set(EXT_FEATURES)  # else a panel test sees fewer tiles than the real panel has
 
 
 @pytest.fixture(scope="module")
@@ -59,6 +60,10 @@ def ext(stack):
     stack.server.submitted.clear()
     stack.server.answers.clear()
     stack.server.drafts.clear()
+    for calls in (stack.server.contexts, stack.server.ats_calls, stack.server.covers, stack.server.tailors):
+        calls.clear()
+    stack.server.tailored = False
+    stack.server.ats_answer, stack.server.cover_answer, stack.server.cover_delay = {}, {}, 0.0
     yield page
     page.close()
 
@@ -364,7 +369,7 @@ def test_an_older_jobwatch_without_the_posting_call_gets_no_posting_button(stack
         panel.wait_for_selector("#scan")  # filling still works
         assert panel.locator("#posting").count() == 0  # its call would fail on that jobwatch
     finally:
-        stack.server.features = ["posting", "reply", "import-list"]
+        stack.server.features = list(FEATURES)
         harness.pair(stack, stack.api_url, harness.TOKEN)
         page.close()
 
@@ -381,7 +386,7 @@ def reply_stack(stack):
     server.reply_answer = {}
     server.reply_status = 200
     server.reply_delay = 0.0
-    server.features = ["posting", "reply", "import-list"]
+    server.features = list(FEATURES)
 
 
 def reply_panel(stack, ext, panels, query: str = ""):
@@ -566,6 +571,212 @@ def test_an_older_jobwatch_without_the_reply_call_gets_no_draft_reply_button(rep
         panel.wait_for_selector("#scan")
         assert panel.locator("#reply").count() == 0
     finally:
+        page.close()
+
+
+# --- ATS check and Cover letter, on the company's own careers page (demo/cover.html, demo/cover-file.html) -----------
+
+
+def careers_panel(stack, ext, panels, path: str = "/openings/platform-engineer"):
+    """The company's careers page for the demo job in a tab, and the panel for it. Returns (page, panel, url)."""
+    url = stack.url("careers.initech.example", path)
+    page = open_form(stack, ext, url)
+    panel = harness.side_panel(stack, url)
+    panels.append(panel)
+    panel.wait_for_selector("#lead")
+    return page, panel, url
+
+
+def toast_text(panel) -> str:
+    panel.wait_for_selector("#toast", timeout=20000)
+    return panel.inner_text("#toast")
+
+
+def test_the_page_company_and_title_go_to_jobwatch_so_it_can_tell_the_job(stack, ext, panels):
+    page, panel, url = careers_panel(stack, ext, panels)
+    try:
+        panel.click("#scan")
+        panel.wait_for_selector(".row", timeout=20000)
+        assert stack.server.contexts[-1] == {"url": url, "company": "Initech", "title": "Platform Engineer"}
+    finally:
+        page.close()
+
+
+def test_ats_check_shows_what_a_screener_would_miss_and_tailors_on_request(stack, ext, panels):
+    page, panel, url = careers_panel(stack, ext, panels)
+    try:
+        assert "dim" not in panel.get_attribute("#ats", "class") and "dim" not in panel.get_attribute("#cover", "class")
+        panel.click("#ats")
+        panel.wait_for_selector("#ats-score", timeout=20000)
+        sent = stack.server.ats_calls[-1]
+        assert sent == {"url": url, "company": "Initech", "title": "Platform Engineer"}
+        assert panel.inner_text("#ats-score") == "ATS 50%: 2 of 4 keywords found"
+        assert "pill cloud" in panel.get_attribute("#ats-score", "class")  # under 70: a warning colour
+        assert row(panel, "What a screener would miss").locator(".kw").all_inner_texts() == ["Terraform *", "Kafka"]
+        assert row(panel, "Found in the resume").locator(".kw").all_inner_texts() == ["Python *", "Kubernetes *"]
+        assert "not tailored" in panel.inner_text("#ats-file")
+        assert panel.locator("#matched-by").count() == 0
+        assert "Initech" in panel.inner_text("#where")
+        # the general resume was read, so a tailored one is offered; pressing it tailors, then checks that one
+        panel.click("#ats-tailor")
+        panel.wait_for_function("() => document.getElementById('ats-file')?.textContent.includes('tailored for this job')", timeout=20000)
+        assert stack.server.tailors[-1]["company"] == "Initech" and "Jordan_Rivera_Initech.pdf" in panel.inner_text("#ats-file")
+        assert panel.locator("#ats-tailor").count() == 0
+        panel.click("#ats-again")
+        panel.wait_for_selector("#ats-score", timeout=20000)
+        assert len(stack.server.ats_calls) == 3
+        assert page.evaluate("window.__submits") == 0 and stack.server.submitted == []
+    finally:
+        page.close()
+
+
+def test_the_panel_says_when_a_job_was_matched_only_by_its_company_and_title(stack, ext, panels):
+    stack.server.ats_answer = stack.server.cover_answer = {"matched_by": "name"}
+    page, panel, url = careers_panel(stack, ext, panels)
+    try:
+        panel.click("#ats")
+        panel.wait_for_selector("#matched-by", timeout=20000)
+        assert "company and title" in panel.inner_text("#matched-by") and "Check it is the right one" in panel.inner_text("#matched-by")
+        cover = harness.side_panel(stack, url)  # a second panel for the same tab
+        panels.append(cover)
+        cover.click("#cover")
+        cover.wait_for_selector("#matched-by", timeout=30000)
+        assert "company and title" in cover.inner_text("#matched-by")
+    finally:
+        page.close()
+
+
+def test_a_page_for_a_job_jobwatch_does_not_track_says_what_to_do(stack, ext, panels):
+    url = f"http://127.0.0.1:{stack.site_port}/generic.html"
+    page = open_form(stack, ext, url)
+    try:
+        panel = harness.side_panel(stack, url)
+        panels.append(panel)
+        panel.wait_for_selector("#ats")
+        assert "dim" in panel.get_attribute("#ats", "class")  # not a job's page, but the tile still works
+        for tile in ("ats", "cover"):
+            panel.click(f"#{tile}")
+            panel.wait_for_selector(".empty.home .msg", timeout=20000)
+            assert "doesn't track this job yet: save the posting to jobwatch first" in panel.inner_text(".empty.home .msg")
+            panel.wait_for_selector("#ats")
+    finally:
+        page.close()
+
+
+def test_cover_letter_is_drafted_shown_and_put_in_the_form_but_never_submitted(stack, ext, panels):
+    stack.server.cover_delay = 1.5
+    page, panel, url = careers_panel(stack, ext, panels)
+    try:
+        panel.click("#cover")
+        panel.wait_for_selector(".spinner")  # a slow local model shows the working view with its counter
+        panel.wait_for_selector("#cover-text", timeout=30000)
+        sent = stack.server.covers[-1]
+        assert (sent["url"], sent["company"], sent["title"]) == (url, "Initech", "Platform Engineer")
+        assert panel.input_value("#cover-text").startswith("Hello Initech team,")
+        assert "pill local" in panel.get_attribute("#cover-where", "class") and "Nothing left it" in panel.inner_text("#cover-where")
+        assert "Saved with the job as version 1" in panel.inner_text(".rows")
+        assert "cover letter box" in panel.inner_text("#cover-box") and page.input_value("#cl") == ""  # nothing is put in until asked
+        # the person edits the draft; what goes in the box is the edit
+        panel.fill("#cover-text", "Hello Initech team,\n\nMy own words.")
+        panel.click("#cover-fill")
+        assert "In the cover letter box" in toast_text(panel)
+        assert page.input_value("#cl") == "Hello Initech team,\n\nMy own words."
+        assert page.evaluate("window.__submits") == 0 and stack.server.submitted == [] and stack.server.answers == []
+        # another tone and a lean: a second version, asked for with those
+        panel.select_option("#cover-tone", "warm")
+        panel.fill("#cover-emphasis", "my platform work")
+        panel.click("#cover-again")
+        panel.wait_for_function("() => document.getElementById('cover-text') && document.getElementById('cover-tone').value === 'warm'", timeout=30000)
+        assert (stack.server.covers[-1]["tone"], stack.server.covers[-1]["emphasis"]) == ("warm", "my platform work")
+        assert "version 2" in panel.inner_text(".rows") and panel.input_value("#cover-emphasis") == "my platform work"
+        panel.evaluate("() => document.getElementById('toast')?.remove()")
+        panel.click("#cover-copy")
+        assert toast_text(panel) in ("Copied.", "Couldn't copy. Select the text and copy it.")
+    finally:
+        page.close()
+
+
+def test_cover_letter_leaves_what_the_person_typed_until_asked_to_replace_it(stack, ext, panels):
+    page, panel, _url = careers_panel(stack, ext, panels, "/openings/platform-engineer?typed")
+    try:
+        panel.click("#cover")
+        panel.wait_for_selector("#cover-text", timeout=30000)
+        assert "text in it already" in panel.inner_text("#cover-box")
+        assert panel.locator("#cover-replace").is_hidden()
+        panel.click("#cover-fill")
+        assert "already has text" in toast_text(panel)
+        assert page.input_value("#cl") == "Already typed by the person."
+        panel.locator("#cover-replace").wait_for(state="visible")
+        panel.evaluate("() => document.getElementById('toast')?.remove()")
+        panel.click("#cover-replace")
+        assert "In the cover letter box" in toast_text(panel)
+        assert page.input_value("#cl").startswith("Hello Initech team,")
+        assert page.evaluate("window.__submits") == 0
+    finally:
+        page.close()
+
+
+def test_a_form_that_takes_the_cover_letter_as_a_file_gets_no_fill_button(stack, ext, panels):
+    page, panel, _url = careers_panel(stack, ext, panels, "/openings/file")
+    try:
+        panel.click("#cover")
+        panel.wait_for_selector("#cover-text", timeout=30000)
+        assert panel.locator("#cover-fill").count() == 0 and panel.locator("#cover-copy").count() == 1
+        assert "as a file" in panel.inner_text("#cover-box")
+        assert page.evaluate("document.getElementById('cl').files.length") == 0
+    finally:
+        page.close()
+
+
+def test_a_page_with_no_cover_letter_box_offers_only_copy(stack, ext, panels):
+    page, panel, _url = careers_panel(stack, ext, panels, "/careers")  # the embedded Greenhouse form: no such box
+    try:
+        panel.click("#cover")
+        panel.wait_for_selector("#cover-text", timeout=30000)
+        assert panel.locator("#cover-fill").count() == 0 and "No cover letter box" in panel.inner_text("#cover-box")
+    finally:
+        page.close()
+
+
+def test_a_cover_letter_written_by_a_cloud_model_says_so_and_no_draft_shows_only_why(stack, ext, panels):
+    stack.server.cover_answer = {"local": False, "model": "a-cloud-model"}
+    page, panel, _url = careers_panel(stack, ext, panels)
+    try:
+        panel.click("#cover")
+        panel.wait_for_selector("#cover-text", timeout=30000)
+        assert "pill cloud" in panel.get_attribute("#cover-where", "class")
+        assert "written by a-cloud-model, off this Mac" in panel.inner_text("#cover-where")
+        stack.server.cover_answer = {"drafted": False, "letter": "", "version": None, "model": None,
+                                     "warnings": ["No draft: the local model isn't running. Start it with `local-llm`, then draft again."]}
+        panel.click("#cover-again")
+        panel.wait_for_selector(".warnrow", timeout=30000)
+        assert "local model isn't running" in panel.inner_text(".warnrow")
+        assert panel.locator("#cover-text").count() == 0 and panel.locator("#cover-fill").count() == 0
+        assert panel.locator("#cover-again").count() == 1
+    finally:
+        page.close()
+
+
+def test_an_older_jobwatch_gets_no_ats_or_cover_tile(stack, ext, panels):
+    url = stack.url("careers.initech.example", "/openings/platform-engineer")
+    page = open_form(stack, ext, url)
+    stack.server.features = ["posting", "reply", "import-list"]  # jobwatch 0.12: no ats, no cover
+    try:
+        harness.pair(stack, stack.api_url, "")
+        panel = harness.side_panel(stack, url)
+        panels.append(panel)
+        harness.pair(stack, stack.api_url, harness.TOKEN)
+        panel.wait_for_function("() => document.getElementById('pair').textContent.includes('paired ')")
+        panel.wait_for_selector("#scan")
+        assert panel.locator("#ats").count() == 0 and panel.locator("#cover").count() == 0
+        # a call made anyway: that jobwatch answers an unknown path "not found", and the worker says to update it
+        tab = harness.tab_id_for(ext, url)
+        for call, name in (("ats", "ATS check"), ("cover", "Cover letter")):
+            reply = ext.evaluate("([type, tabId]) => chrome.runtime.sendMessage({type, tabId})", [call, tab])
+            assert reply["ok"] is False and f"too old for {name}. Update jobwatch" in reply["error"]
+    finally:
+        stack.server.features = list(FEATURES)
+        harness.pair(stack, stack.api_url, harness.TOKEN)
         page.close()
 
 

@@ -99,6 +99,9 @@ async function handle(msg, tabId, sender) {
     case 'passiveSeen': return sender.tab ? passiveSeen(msg.records) : {};
     case 'importPassive': return importPassive();
     case 'tailor': return tailor(tabId);
+    case 'ats': return ats(tabId);
+    case 'cover': return cover(tabId, msg.tone, msg.emphasis);
+    case 'fillCover': return fillCover(tabId, msg.text, msg.replace);
     case 'captured': return captured(tabId, msg, sender);
     case 'looksSubmitted': return record(tabId);
     case 'formChanged': return {}; // for the side panel, which hears it straight from the content script
@@ -137,6 +140,38 @@ async function tabUrl(tabId) {
   return (await chrome.tabs.get(tabId)).url || '';
 }
 
+const OWN_PAGE = /(^|\.)(linkedin|indeed)\.com$/i; // their pages' titles are theirs, not the job's: jobwatch tells those jobs by their id
+
+/**
+ * The company and title the tab's page shows (page.js `info`), read when the person asks for something about this job.
+ * jobwatch uses them to tell the job when the page's address is not one it keeps: the company's own careers site, for a
+ * job it found on LinkedIn or Indeed. Nothing is read from a LinkedIn or Indeed page, and a page that can't be read gives ''.
+ */
+async function pageInfo(tabId) {
+  const none = { company: '', title: '' };
+  try {
+    if (OWN_PAGE.test(new URL(await tabUrl(tabId)).hostname)) return none;
+    const t = { tabId, allFrames: true };
+    await chrome.scripting.executeScript({ target: t, files: ['logic.js', 'page.js'] });
+    const results = await chrome.scripting.executeScript({ target: t, func: () => (globalThis.JWPage ? globalThis.JWPage.info() : null) });
+    return results.reduce((got, r) => ({ company: got.company || (r.result && r.result.company) || '', title: got.title || (r.result && r.result.title) || '' }), none);
+  } catch {
+    return none;
+  }
+}
+
+/** What jobwatch needs to tell which job this tab is for: its address, and the company and title the page shows (kept from the last scan, else read now). */
+async function where(tabId) {
+  const url = await tabUrl(tabId);
+  const key = ctxKey(tabId);
+  const kept = (await chrome.storage.session.get(key))[key];
+  const same = kept && kept.url === url ? kept : {};
+  if (same.info) return { url, ...same.info };
+  const info = await pageInfo(tabId);
+  await chrome.storage.session.set({ [key]: { ...same, url, info } });
+  return { url, ...info };
+}
+
 /**
  * Scan every frame, gather what jobwatch knows, and build the review rows. Fields another tool
  * (Simplify, Chrome autofill, a password manager) already filled come back as "filled" and start unticked.
@@ -145,8 +180,6 @@ async function analyze(tabId) {
   const url = await tabUrl(tabId);
   const settings = await getSettings();
   if (!settings.token) throw new Expected('Pair the extension with jobwatch first: run "jobwatch", then paste its token into this extension\'s options.');
-  const ctx = await api(`/ext/context?url=${encodeURIComponent(url)}`, { settings });
-  const details = ctx.applicant || {};
 
   const results = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: () => (globalThis.JWPage ? globalThis.JWPage.scan() : null) });
   const fields = [];
@@ -158,10 +191,13 @@ async function analyze(tabId) {
   }
   if (!fields.length) throw new Expected('No form fields found on this page. Open the application form and try again.');
 
+  // the page's company and title go along: on the company's own careers page of a job found on LinkedIn, they are what tells the job
+  const ctx = await api(`/ext/context?${new URLSearchParams({ url, company: info.company, title: info.title })}`, { settings });
+  const details = ctx.applicant || {};
   const resume = ctx.resume;
   const items = JW.buildPlan(fields, details, ctx.answers || [], { resume: resume && resume.name });
   items.forEach((it, i) => { it.frameId = fields[i].frameId; });
-  await chrome.storage.session.set({ [ctxKey(tabId)]: { job: ctx.job, resume: resume || null, url } });
+  await chrome.storage.session.set({ [ctxKey(tabId)]: { job: ctx.job, resume: resume || null, url, info } });
   return {
     items, info,
     job: ctx.job ? { title: ctx.job.title, company: ctx.job.company } : null,
@@ -173,8 +209,7 @@ async function analyze(tabId) {
 
 /** Tailor a resume to this page's job with resume-kit (in jobwatch), and attach that one from now on. */
 async function tailor(tabId) {
-  const url = await tabUrl(tabId);
-  const r = await api('/ext/tailor', { method: 'POST', body: { url }, timeout: TAILOR_TIMEOUT_MS });
+  const r = await api('/ext/tailor', { method: 'POST', body: await where(tabId), timeout: TAILOR_TIMEOUT_MS });
   const key = ctxKey(tabId);
   const ctx = (await chrome.storage.session.get(key))[key] || {};
   await chrome.storage.session.set({ [key]: { ...ctx, resume: r.resume } });
@@ -206,14 +241,93 @@ async function fill(tabId, items) {
 
 async function fetchResume(url, tabId) {
   const ctx = (await chrome.storage.session.get(ctxKey(tabId)))[ctxKey(tabId)] || {};
-  const got = await api(`/ext/resume?url=${encodeURIComponent(url)}`, { raw: true });
+  const { company = '', title = '' } = ctx.info || {};
+  const got = await api(`/ext/resume?${new URLSearchParams({ url, company, title })}`, { raw: true });
   const name = (ctx.resume && ctx.resume.name) || 'resume.pdf';
   return { name, type: (ctx.resume && ctx.resume.type) || got.type, b64: toBase64(got.bytes) };
 }
 
 async function draft(tabId, question, words, others) {
-  const r = await api('/ext/draft', { method: 'POST', body: { url: await tabUrl(tabId), question, words: words || 150, others: others || [] } });
+  const r = await api('/ext/draft', { method: 'POST', body: { ...(await where(tabId)), question, words: words || 150, others: others || [] } });
   return { answer: r.answer, model: r.model };
+}
+
+// --- the job on this page: ATS check and cover letter --------------------------------------------------
+
+const JOB_OLD = (what) => `This jobwatch is too old for ${what}. Update jobwatch (pip install -U jobwatch), then try again.`;
+
+/** A call an older jobwatch doesn't have answers "not found" (a job it doesn't track says so in its own words). */
+const oldJobwatch = (e, what) => (e instanceof ApiError && e.message === 'not found' ? new Expected(JOB_OLD(what)) : e);
+
+/**
+ * "ATS check": jobwatch's keyword check of the resume kept for this page's job (the tailored one, else the default)
+ * against the posting, with what a screener would miss. Local to jobwatch; nothing is read from the page but its
+ * company and title, and nothing is changed anywhere.
+ */
+async function ats(tabId) {
+  const settings = await pairedSettings();
+  try {
+    return await api('/ext/ats', { method: 'POST', body: await where(tabId), settings });
+  } catch (e) {
+    throw oldJobwatch(e, 'ATS check');
+  }
+}
+
+/**
+ * Where the form's cover letter box is, and (with `text`) puts the letter in it. Runs in every frame with the page's
+ * own script. Only a textarea is filled, only an empty one unless `replace`, and nothing is pressed or sent. Answers
+ * { found, file, filled, reason?, error? } for the first frame that has a box: `file` is a form that takes the letter only as
+ * a file; `reason` 'has-text' is a box with something in it already.
+ */
+async function coverBox(tabId, text, replace) {
+  let results;
+  try {
+    const t = { tabId, allFrames: true };
+    await chrome.scripting.executeScript({ target: t, files: ['logic.js', 'page.js'] });
+    results = await chrome.scripting.executeScript({ target: t, args: [text == null ? null : text, !!replace], func: async (letter, again) => {
+      const fields = globalThis.JWPage ? globalThis.JWPage.gather() : [];
+      const got = globalThis.JW.coverField(fields);
+      if (!got || !got.field) return { found: false, file: !!(got && got.file), filled: false };
+      const f = got.field;
+      if (letter == null) return { found: true, file: false, filled: f.filled };
+      if (f.filled && !again) return { found: true, file: false, filled: false, reason: 'has-text' };
+      const [done] = await globalThis.JWPage.fill([{ id: f.id, kind: f.kind, value: letter }]);
+      return { found: true, file: false, filled: !!done.ok, error: done.ok ? '' : done.error };
+    } });
+  } catch {
+    return { found: false, file: false, filled: false, unreadable: true };
+  }
+  const got = results.map((r) => r.result).filter(Boolean);
+  return got.find((r) => r.found) || { found: false, file: got.some((r) => r.file), filled: false };
+}
+
+/**
+ * "Cover letter": jobwatch drafts one for this page's job with the model on its own computer and keeps it with the job
+ * as its next version (the same draft the Cover letter step of Prepare makes). The answer says where it was written
+ * and whether the form has a cover letter box to put it in (`box`). Nothing is put in the page until fillCover.
+ */
+async function cover(tabId, tone, emphasis) {
+  const settings = await pairedSettings();
+  let r;
+  try {
+    r = await api('/ext/cover', { method: 'POST', body: { ...(await where(tabId)), tone: tone || '', emphasis: emphasis || '' }, settings });
+  } catch (e) {
+    throw oldJobwatch(e, 'Cover letter');
+  }
+  return { ...r, box: await coverBox(tabId, null, false) };
+}
+
+/**
+ * Puts the (possibly edited) letter in the form's cover letter box. Never presses Submit or Next. `filled: false` comes
+ * back with a `reason` (has-text: the box has something in it; none: no box on this page) or an `error` for the panel
+ * to say, rather than an error.
+ */
+async function fillCover(tabId, text, replace) {
+  const box = await coverBox(tabId, text, replace);
+  if (box.filled) return { filled: true };
+  if (box.unreadable) throw new Expected("This page can't be written to. Click the jobwatch icon on the application's tab, and try again.");
+  if (!box.found) return { filled: false, reason: 'none', error: box.file ? 'This form takes the cover letter as a file: copy the letter and attach it yourself.' : 'No cover letter box on this page. Copy the letter instead.' };
+  return { filled: false, reason: box.reason || 'failed', error: box.error || '' };
 }
 
 // --- a LinkedIn conversation -------------------------------------------------------------------------

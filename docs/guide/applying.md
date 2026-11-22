@@ -102,20 +102,30 @@ goes in as a fresh find, the way a board fetch would, with no applied date. A jo
 In the browser, press **Add a job** on the Queue page. Many job sites (LinkedIn's "Apply on company
 website", job-alert emails) link through to the company's own board: that link is the one to use.
 
+## Preparing a job: resume, ATS check, cover letter
+
+A queued job's card has one **Prepare** button. It runs three steps in order and keeps each result with the job:
+a tailored resume, the ATS check of that resume against the posting, and a cover letter draft. Chips above the
+results say which step is running and how each ended; a step that can't run (resume-kit isn't set up, no local
+model) says why in its own panel, and the steps after it still run. Press **Prepare again** to redo all three
+(each press drafts a new cover letter version; the resume is rebuilt, not redrafted). The same three are in the
+Chrome extension's side panel, on the job's own application page (see [Filling application forms](#filling-application-forms)).
+Each step is also a command, described below.
+
 ## Tailoring a resume to a job
 
 With [resume-kit](https://github.com/vinayvobbili/resume-kit) set up (an optional add-on, the way shortlist-ai is
-for fit scores), a queued job's card has a **Tailor resume** button. It sends the posting to `resume draft`,
+for fit scores), **Prepare** (the first step) sends the posting to `resume draft`,
 which picks and orders your confirmed facts by what the posting asks for, then runs `resume build` and keeps the
 PDF with the job's application. **Apply** and the extension attach it in place of your general resume (the card
-shows `Resume: <file>.pdf`, and the button becomes **Rebuild resume**). The command line has
+shows `Resume: <file>.pdf`). The command line has
 `jobwatch tailor <job>` and an assistant has the `tailor_resume` tool.
 
 - Each job gets a resume-kit version named from the company and title (`initech-staff-data-engineer`). The
   first press drafts it; later presses rebuild it without redrafting, so edits you made to the version in
   resume-kit are kept.
 - A draft's headline and summary are the ones of the version it extends. jobwatch writes nothing for you: tailor
-  them in resume-kit with facts you've confirmed, then press **Rebuild resume**.
+  them in resume-kit with facts you've confirmed, then press **Prepare again**.
 - Review the PDF (the link on the card) before you apply. If resume-kit says the page target or a fact check
   failed, the card shows what it said.
 - Rendering takes a few seconds and needs node and LibreOffice, as resume-kit does. Set it up from its README.
@@ -128,7 +138,7 @@ resume_kit: ~/tools/resume-kit/.venv/bin/resume
 
 ## Checking a resume for ATS keywords
 
-Before you apply, `jobwatch ats <job>` (or the **ATS check** button beside **Tailor resume**) shows which of the
+Before you apply, `jobwatch ats <job>` (or the second step of **Prepare**, or **ATS check** in the extension) shows which of the
 posting's keywords the job's resume doesn't show, read the way an applicant tracking system's parser reads it: from
 the text of the built PDF, not from its source. It runs on your computer and uses no model.
 
@@ -148,7 +158,7 @@ jobwatch ats c1 --format json
 
 ## Drafting a cover letter
 
-`jobwatch cover <job>` (or the **Cover letter** button on a queued job) drafts a letter from the posting, your
+`jobwatch cover <job>` (or the last step of **Prepare**, or **Cover letter** in the extension) drafts a letter from the posting, your
 resume and your [stories](interview-prep.md), with the local model, so none of it leaves this computer. Pick a tone
 and say what to lean on:
 
@@ -194,7 +204,11 @@ The extension's [README](https://github.com/vinayvobbili/jobwatch/blob/main/chro
 the rest of what it does: reading the job lists you have open, and **Draft reply** for a recruiter's LinkedIn message.
 
 On the page, **Apply ↗** on a job's card opens its application form in a new tab (with the extension, click its icon
-there; it marks the job applied when you submit), and **Tailor resume** builds the resume to attach, as above.
+there; it marks the job applied when you submit), and **Prepare** builds the resume to attach, checks it and drafts
+the cover letter, as above. In the extension's side panel, **ATS check** and **Cover letter** do the same for the job
+on the page you have open: the cover letter can be copied or put in the form's cover letter box (the extension never
+presses Submit). jobwatch finds the job from the page's address; for a company's own careers page it also uses the
+company and title the page shows, when exactly one open job in jobwatch fits.
 
 To set it up, copy the token from **Settings > Applying > Browser extension** into the extension's options.
 **Your details** on the same tab (name, contact, links, work authorization; the voluntary self-identification

@@ -1,6 +1,6 @@
 # Chrome Web Store Listing: jobwatch: Application Filler
 
-> Last Updated: 2026-11-20
+> Last Updated: 2026-11-21
 
 Live: https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi
 (item ID `abackmpdpfflgiaccgfkababjplgolfi`)
@@ -43,6 +43,7 @@ How it works
 • On a LinkedIn job, press Open the company's posting and the extension presses LinkedIn's Apply button for you, so the company's own page opens. jobwatch reads the posting there. On a company page it can't read, press Save this posting to jobwatch.
 • On a LinkedIn or Indeed list of jobs, press Read the jobs on this list to send the list's job cards to your jobwatch. While you browse those two sites, the job cards you see are also noted on your computer, and nothing leaves it until you press Import. A checkbox in the side panel turns this off.
 • On a LinkedIn conversation with a recruiter, press Draft reply to this conversation. The extension reads that one open conversation and gives it to your jobwatch, which writes a draft with the model on your computer. The panel shows the draft, warnings and what to check, and says where it was written. Put in the message box types it into LinkedIn's box. The extension never presses Send: you read it and send it yourself.
+• On a job's page, press ATS check to see which of the posting's keywords the resume jobwatch keeps for that job doesn't show (checked by jobwatch on your computer, with no model, and nothing is changed). Press Cover letter to have jobwatch draft one with the model on your computer and keep it with the job. The panel shows the letter to edit and copy. Fill the cover letter box puts it in the form's own cover letter box only if that box is empty (Replace is a second, separate press) and never presses Submit.
 
 Works with
 • Greenhouse, Lever and Ashby application forms, including a Greenhouse form embedded in a company's own page.
@@ -56,6 +57,7 @@ Privacy
 • A draft is written by the model you chose in jobwatch's settings: one on your own computer, or a cloud API you set up with your own key.
 • On LinkedIn and Indeed it reads only the job cards of a list (job number, title, company, place, pay, how long ago it was posted), and on a LinkedIn job page only the address. It presses LinkedIn's Apply button only when you ask, and never Easy Apply or Submit.
 • Only when you press Draft reply, it reads the one LinkedIn conversation that is open (the messages already on screen, no scrolling, no other conversation) and gives it to your jobwatch. It never presses Send. If you set jobwatch to use a cloud model for replies, jobwatch (not the extension) sends the conversation to it, and the panel says so.
+• When you press Fill this application, ATS check or Cover letter, the extension sends your jobwatch the page's address and the company and job title the page shows, so it can tell which job you mean. It reads nothing else for them; the page's fields are looked at for a cover letter box only to offer to fill it, and nothing from them is kept or sent.
 • No analytics, tracking or advertising.
 
 Support: https://github.com/vinayvobbili/jobwatch/issues
@@ -193,6 +195,10 @@ Fixes: reading a LinkedIn or Indeed list takes the visible job title (no more "S
 
 No new permission is requested.
 
+### What's new (next version, draft)
+
+New: ATS check and Cover letter, on a job's page. ATS check shows which of the posting's keywords the resume your jobwatch keeps for that job doesn't show, so you can see what a screener would miss; it is a keyword check on your own computer and changes nothing. Cover letter has your jobwatch draft a letter with the model on your computer, keeps it with the job, and shows it in the side panel to edit and copy. "Fill the cover letter box" puts it in the form's cover letter box when that box is empty (replacing text is a second press) and never presses Submit. For these two buttons the extension sends your own jobwatch, at the address you entered, the page's address and the company and job title it shows. No new permission is requested; the privacy policy is updated.
+
 ### What's new (0.10.0, live)
 
 New: import the jobs from a LinkedIn or Indeed list into your own jobwatch. Press "Read the jobs on this list" on a list you have open, or tick "Note jobs while I browse" in the side panel (it is off by default) and import the jobs noted while you browsed. The jobs go only to the jobwatch on your own computer. Also: one side panel per tab, and list imports can run in several tabs at once. This version adds LinkedIn and Indeed (job-list pages) as a site the extension runs on; the privacy policy is updated.
@@ -250,7 +256,7 @@ Tick **Personally identifiable information**, **Health information**, **Personal
 | Location | No | | The city and state in the user's details are an address for the form, not the device's location. | |
 | Web history | No | | Only the active tab's address, and the address of the one tab LinkedIn's Apply button opens, are used, only to give to the user's own jobwatch; nothing is kept as a history. | |
 | User activity | No | | No clicks, keystrokes or mouse movement are recorded. After a scan it only notices that the form was submitted (the form's submit event, or a click on its Submit button), so it can send the answers as they stood to jobwatch. | |
-| Website content | Yes | No (only to the user's own jobwatch) | Reads the form's questions, answer options, current values, the page address, and the company and job title shown on the page; on LinkedIn and Indeed lists, the job cards; with Save this posting to jobwatch, the job text a company's page shows. Sent to the local jobwatch to find earlier answers, draft an answer, import jobs, keep the answers when the user presses Submit, and record the application. | No |
+| Website content | Yes | No (only to the user's own jobwatch) | Reads the form's questions, answer options, current values, the page address, and the company and job title shown on the page; on LinkedIn and Indeed lists, the job cards; with Save this posting to jobwatch, the job text a company's page shows. Sent to the local jobwatch to find earlier answers, draft an answer, import jobs, keep the answers when the user presses Submit, and record the application. With ATS check and Cover letter (next version) the page's company and job title go to the local jobwatch to tell which job it is. | No |
 
 ### Data Use Certification
 
@@ -300,7 +306,8 @@ The extension fills job application forms from the jobwatch app, which runs on t
 3. In jobwatch, open Settings > Applying and fill in a few applicant details (any made-up name, email and phone). Then open Settings > Browser extension and copy the token.
 4. In the extension's options (right-click its icon > Options), paste the token and press Test. It says "Connected to jobwatch".
 5. Open any Greenhouse, Lever or Ashby job's application page, for example a job from https://job-boards.greenhouse.io, click the jobwatch icon (the side panel opens) and press "Fill this application". Each field shows what would be filled; tick rows and press "Fill selected". The extension never submits the form; please don't submit it.
-6. Draft reply (optional): it needs a LinkedIn account and an open message conversation, and a local model set up in jobwatch, so a reviewer can skip it. Nothing is read from LinkedIn unless Draft reply is pressed on an open conversation.
+6. ATS check and Cover letter (optional, next version): in jobwatch, queue a job (or press Save this posting to jobwatch on its page), set a resume in Settings, then open the job's page and press "ATS check" (a keyword check on the computer, no model) or "Cover letter" (needs a local model set up in jobwatch). "Fill the cover letter box" fills an empty cover letter box on a form, only when pressed, and never submits. The extension sends jobwatch only the page's address, company and job title for these two.
+7. Draft reply (optional): it needs a LinkedIn account and an open message conversation, and a local model set up in jobwatch, so a reviewer can skip it. Nothing is read from LinkedIn unless Draft reply is pressed on an open conversation.
 
 ## Version History
 
@@ -319,6 +326,26 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
 - 0.12.0 submitted for review 2026-11-17 (auto-publish when approved; the host-permission banner warned of an in-depth review).
 
 ### Known Issues / Limitations
+
+- Next version (not yet bumped or submitted; `manifest.json` stays 0.12.0 until it is): ATS check and Cover letter. Two
+  new tiles in the Apply group (`ats`, `cover`), shown only when jobwatch's `/ext/ping` lists those features. Pressing
+  one sends the local jobwatch the page's address plus the company and title the page shows (`pageInfo` in
+  `background.js`, read with the existing `page.js` on the page the user is on; LinkedIn and Indeed pages are not read),
+  through the new `POST /ext/ats` and `POST /ext/cover` (documented in `API.md`); the other `/ext` calls that find a job
+  (`context`, `resume`, `tailor`, `draft`) now send the same two fields, so jobwatch can match an alert job to the
+  company's own site by company plus title when exactly one open job fits. ATS check is jobwatch's local keyword check
+  (no model); the letter is written by jobwatch's local model (unless the person set `reply.backend: chat`, and the panel
+  says which) and kept with the job as a version. Fill the cover letter box (`fillCover`, an in-page function injected
+  only on that press with `logic.js` and `page.js`, the same pair Fill this application injects) writes into a textarea
+  whose label says cover letter, only if it is empty unless the person presses Replace; it never touches a file input,
+  never clicks anything and never submits. No new permission, host or content script. When submitting: the single
+  purpose (adds "and, when asked, checks the resume against the job's posting and drafts a cover letter with the local
+  app, which the user may put in the form's cover letter box"), the scripting justification (one more injected
+  function, after the user presses Fill the cover letter box, that fills that one box), the Website content row (the
+  company and title shown on the page go to the local jobwatch for these two buttons), the privacy policy
+  (`PRIVACY.md`, updated) and the "What's new" text. Built and tested against made-up pages only
+  (`demo/cover.html`, `demo/cover-file.html`, `tests/test_extension_e2e.py`), not yet against a real application form
+  with the unpacked extension.
 
 - Next version (not yet bumped or submitted): Read posting. jobwatch's Queue/Today card button opens a LinkedIn or Indeed job
   in a new tab with `#jobwatch-read` in its address; the new content script `read-posting.js` (added to the existing

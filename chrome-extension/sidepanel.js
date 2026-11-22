@@ -25,6 +25,7 @@
   let features = []; // what that jobwatch offers beyond filling (/ext/ping): an older one has no posting call
   let state = null; // the last scan: { items, info, job }
   let replyState = null; // the draft reply on show: jobwatch's answer with the conversation's fingerprint
+  let resultState = null; // the ATS check or cover letter on show: { kind: 'ats' | 'cover', ...jobwatch's answer }
   let busy = false;
   let idleText = ''; // what idle() last said, shown again when the tab loads another page
   let homeShown = null; // the note the home view shows ('' for none) while it is on screen, else null: it is drawn again when the tab or the seen count changes
@@ -115,6 +116,8 @@
     'import-list': '<path d="M8 6h12M8 12h12M8 18h12"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
     'passive-import': '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     idle: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+    ats: '<path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
+    cover: '<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 8l9 6 9-6"/>',
   };
   const icon = (name) => {
     const span = h('span', { class: 'ico' });
@@ -138,10 +141,13 @@
     const lit = (id) => ctx.matches.includes(id) || ctx.primary === id;
     const mode = tab ? JW.postingMode(tab.url) : 'site';
     const post = mode === 'linkedin' ? 'linkedin' : 'site';
+    const job = ctx.kind === 'form' || ctx.kind === 'posting'; // a page that is a job's application or posting
     const groups = [
       ['Apply', '', [
         tile({ id: 'scan', label: 'Fill this application', title: 'Fill this application', onclick: scan, lit: lit('scan') }),
-        features.includes('posting') ? tile({ id: 'posting', label: POSTING_TILE[post], title: POSTING[post], onclick: savePosting, lit: lit('posting') }) : null]],
+        features.includes('posting') ? tile({ id: 'posting', label: POSTING_TILE[post], title: POSTING[post], onclick: savePosting, lit: lit('posting') }) : null,
+        features.includes('ats') ? tile({ id: 'ats', label: 'ATS check', title: "Check this job's resume against the posting's keywords", onclick: checkAts, lit: job }) : null,
+        features.includes('cover') ? tile({ id: 'cover', label: 'Cover letter', title: 'Draft a cover letter for this job', onclick: () => draftCover(), lit: job }) : null]],
       ['Messages', 'msg-g', [
         features.includes('reply') ? tile({ id: 'reply', label: 'Draft reply', title: 'Draft reply to this conversation', onclick: draftReply, lit: lit('reply') }) : null]],
       ['Jobs', 'jobs-g', features.includes('import-list') ? [
@@ -228,6 +234,7 @@
   function idle(text) {
     state = null;
     replyState = null;
+    resultState = null;
     idleText = text;
     $('where').textContent = '';
     if (!ready) {
@@ -291,6 +298,135 @@
     if (r.filled) return toast('In the message box. Read it, then press Send yourself.', true);
     if (r.reason === 'has-text') replaceButton.hidden = false;
     toast(r.reason === 'has-text' ? 'The message box already has text. Replace it, or copy the draft instead.' : r.error, false);
+  }
+
+  /** Which job the answer is for, said once at the top: its name, and how jobwatch told it when that was by name only. */
+  const jobNote = (r) => (r.matched_by === 'name'
+    ? h('div', { id: 'matched-by', class: 'row', textContent: 'jobwatch matched this page to the job by its company and title, not by its address. Check it is the right one.' }) : null);
+
+  /**
+   * The ATS check: the score, which resume was read, the keywords a screener would miss (* is one the posting asks for),
+   * and what would trip a parser. Offers a tailored resume when the check read the general one. A prompt to look at
+   * the resume, never a change to it.
+   */
+  function atsShown(r) {
+    resultState = { kind: 'ats', ...r };
+    $('where').textContent = `${r.title} at ${r.company}`;
+    const total = r.found.length + r.missing.length;
+    const good = r.score != null && r.score >= 70 && !r.checks.length;
+    const kws = (list) => h('div', { class: 'kws' }, list.map((m) => h('span', { class: `kw${m.kind === 'must' ? ' must' : ''}`, title: `${m.count}x in the posting`, textContent: m.term + (m.kind === 'must' ? ' *' : '') })));
+    view(
+      h('div', { class: 'scroll' },
+        h('div', { class: 'rows' },
+          h('div', { id: 'ats-score', class: `pill${good ? '' : ' cloud'}`, textContent: r.score == null ? 'The posting names no keywords to check.' : `ATS ${r.score}%: ${r.found.length} of ${total} keywords found` }),
+          jobNote(r),
+          h('div', { class: 'row' }, h('div', { class: 'q', textContent: 'Resume checked' }),
+            h('div', { id: 'ats-file', class: 'meta', textContent: `${r.file}${r.tailored ? ', tailored for this job' : ", your general resume (not tailored for this job)"}` }),
+            !r.tailored && r.can_tailor ? h('button', { id: 'ats-tailor', class: 'small', textContent: 'Tailor a resume for this job, then check it', onclick: tailorThenCheck }) : null),
+          r.missing.length ? h('div', { class: 'row' }, h('div', { class: 'q', textContent: "What a screener would miss" }), kws(r.missing),
+            h('div', { class: 'meta', textContent: "* is asked for in the posting. Add a keyword only where it is true of you." })) : null,
+          r.found.length ? h('div', { class: 'row' }, h('div', { class: 'q', textContent: 'Found in the resume' }), kws(r.found)) : null,
+          r.checks.length ? h('div', { class: 'row' }, h('div', { class: 'q', textContent: 'How a parser reads it' }),
+            h('ul', { class: 'checks' }, r.checks.map((c) => h('li', { textContent: c })))) : null,
+          h('div', { class: 'meta', textContent: 'Checked by jobwatch on this computer, with no model. Nothing was changed.' }))),
+      h('footer', {}, h('span', { class: 'count', textContent: r.missing.length ? `${r.missing.length} missing` : 'Nothing missing.' }),
+        h('button', { id: 'ats-again', class: 'ghost', textContent: 'Check again', onclick: checkAts })));
+  }
+
+  /**
+   * A drafted cover letter: where it was written (on this Mac, or by a cloud model the person chose), jobwatch's warnings,
+   * the letter in a box that can be edited, a tone to draft again in, and, when the form has a cover letter box, a button
+   * that puts it there. That button never presses Submit; it fills an empty box, and replaces text only when asked.
+   */
+  function coverShown(r, tone, emphasis) {
+    resultState = { kind: 'cover', ...r };
+    $('where').textContent = `${r.title} at ${r.company}`;
+    const box = r.box || {};
+    const model = r.model || 'a cloud model';
+    const pill = r.local === false
+      ? h('div', { id: 'cover-where', class: 'pill cloud', textContent: r.drafted ? `This letter was written by ${model}, off this Mac.` : `Drafts are set to use ${model}, off this Mac.` })
+      : h('div', { id: 'cover-where', class: 'pill local', textContent: r.drafted ? `Written on this Mac by ${model}. Nothing left it.` : 'Nothing was sent off this Mac.' });
+    const text = h('textarea', { id: 'cover-text', class: 'val', rows: 12, value: r.letter || '' });
+    const toneBox = h('select', { id: 'cover-tone', title: 'Tone for the next draft' },
+      ['direct', 'warm', 'formal', 'concise'].map((t) => h('option', { value: t, selected: t === (tone || r.tone || 'direct'), textContent: t[0].toUpperCase() + t.slice(1) })));
+    const lean = h('input', { id: 'cover-emphasis', type: 'text', class: 'val', maxLength: 300, placeholder: 'Lean on... (optional)', value: emphasis || r.emphasis || '' });
+    const replace = h('button', { id: 'cover-replace', class: 'ghost', textContent: 'Replace what is in the box', hidden: true, onclick: () => putCover(text, replace, true) });
+    const put = box.found ? h('button', { id: 'cover-fill', class: 'go', textContent: 'Fill the cover letter box', onclick: () => putCover(text, replace, false) }) : null;
+    const copy = h('button', { id: 'cover-copy', class: 'ghost', textContent: 'Copy', onclick: () => navigator.clipboard.writeText(text.value).then(() => toast('Copied.', true), () => toast("Couldn't copy. Select the text and copy it.", false)) });
+    const where = box.found ? (box.filled ? 'The form has a cover letter box with text in it already: it is left alone unless you replace it.' : 'The form has a cover letter box. It is filled only when you press the button.')
+      : box.file ? 'This form takes the cover letter as a file: copy the letter and attach it yourself.'
+        : box.unreadable ? "This page can't be read for a cover letter box. Copy the letter instead." : 'No cover letter box on this page. Copy the letter instead.';
+    view(
+      h('div', { class: 'scroll' },
+        h('div', { class: 'rows' },
+          pill,
+          jobNote(r),
+          (r.warnings || []).map((w) => h('div', { class: 'row warnrow', textContent: w })),
+          r.drafted ? h('div', { class: 'row' }, h('div', { class: 'q', textContent: 'Draft' }), text,
+            h('div', { class: 'meta', textContent: `Saved with the job as version ${r.version || 1} (${r.tone}). A draft: edit it here, edits are not saved. Read it, then submit the form yourself.` })) : null,
+          r.drafted ? h('div', { id: 'cover-box', class: 'meta', textContent: where }) : null,
+          h('div', { class: 'row' }, h('div', { class: 'q', textContent: 'Draft again' }), toneBox, lean))),
+      h('footer', {}, h('span', { class: 'count', textContent: r.drafted ? 'Edit it, then use it.' : 'No draft for this one.' }),
+        h('button', { id: 'cover-again', class: 'ghost', textContent: 'Draft again', onclick: () => draftCover(toneBox.value, lean.value) }),
+        r.drafted ? [copy, replace, put] : null));
+  }
+
+  async function putCover(text, replaceButton, replace) {
+    const letter = text.value.trim();
+    if (!letter) return toast('The letter is empty.', false);
+    const r = await send({ type: 'fillCover', tabId, text: letter, replace });
+    if (!r.ok) return toast(r.error, false);
+    if (r.filled) return toast('In the cover letter box. Read it, then submit the form yourself.', true);
+    if (r.reason === 'has-text') replaceButton.hidden = false;
+    toast(r.reason === 'has-text' ? 'The cover letter box already has text. Replace it, or copy the letter instead.' : r.error || "Couldn't fill the box. Copy the letter instead.", false);
+  }
+
+  async function onTab(none) {
+    if (!tabId) {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      tabId = tab && tab.id;
+    }
+    return tabId || failed(none);
+  }
+
+  async function checkAts() {
+    if (busy || !(await onTab('No tab to read. Open the job\'s page and try again.'))) return;
+    busy = true;
+    const readId = tabId;
+    showWorking('Checking the resume against the posting...');
+    const r = await send({ type: 'ats', tabId: readId });
+    busy = false;
+    if (readId !== tabId) return;
+    if (!r.ok) return failed(r.error);
+    atsShown(r);
+  }
+
+  /** The ATS check's button for a general resume: tailor one for this job (a minute or two), then check that one. */
+  async function tailorThenCheck() {
+    if (busy) return;
+    busy = true;
+    const readId = tabId;
+    showWorking('Tailoring a resume for this job...', h('div', { class: 'msg small', textContent: 'A minute or two.' }));
+    const made = await send({ type: 'tailor', tabId: readId });
+    const r = made.ok ? await send({ type: 'ats', tabId: readId }) : made;
+    busy = false;
+    if (readId !== tabId) return;
+    if (!r.ok) return failed(r.error);
+    atsShown(r);
+    if (!made.checked) toast(`Tailored, but check it in jobwatch first: ${(made.problems || [])[0] || "resume-kit's checks didn't pass"}`, false);
+  }
+
+  async function draftCover(tone, emphasis) {
+    if (busy || !(await onTab("No tab to read. Open the job's page and try again."))) return;
+    busy = true;
+    resultState = null;
+    const readId = tabId;
+    showWorking('Drafting a cover letter for this job...', h('div', { class: 'msg small', textContent: 'A local model can take a minute.' }));
+    const r = await send({ type: 'cover', tabId: readId, tone, emphasis });
+    busy = false;
+    if (readId !== tabId) return;
+    if (!r.ok) return failed(r.error);
+    coverShown(r, tone, emphasis);
   }
 
   /** LinkedIn's Apply button was pressed: the company's site opens in a new tab, and jobwatch follows it there. */
@@ -545,6 +681,7 @@
   function tabChanged() {
     if (state) idle(CHANGED);
     else if (replyState) idle('This tab changed since the draft was written. Press Draft reply to read the conversation again.');
+    else if (resultState) idle('This tab changed since that was made. Press ATS check or Cover letter to do it for this page.');
   }
 
   if (!pinned) {
@@ -558,7 +695,7 @@
     if (id !== tabId) return;
     if (change.status === 'loading' || change.url) tabChanged();
     // the lead card and the lit tiles follow the page: its address, and its title (LinkedIn names a conversation late)
-    if ((change.status === 'complete' || change.url || change.title) && !state && !replyState && !busy && homeShown !== null) home(homeShown);
+    if ((change.status === 'complete' || change.url || change.title) && !state && !replyState && !resultState && !busy && homeShown !== null) home(homeShown);
   });
   chrome.tabs.onRemoved.addListener((id) => {
     if (id === tabId) idle(DEFAULT_IDLE);
@@ -582,7 +719,7 @@
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.settings && !busy && !state) init();
-    if (area === 'local' && changes.passiveSeen && !busy && !state && !replyState && homeShown !== null) home(homeShown); // the badge
+    if (area === 'local' && changes.passiveSeen && !busy && !state && !replyState && !resultState && homeShown !== null) home(homeShown); // the badge
   });
 
   $('options').addEventListener('click', (e) => {

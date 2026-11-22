@@ -72,17 +72,72 @@ def _links(url: str) -> list[str]:
     return list(dict.fromkeys(out))
 
 
-def job_for(store: Store, url: str) -> tuple[Job, dict] | None:
-    """The job an application page is for: by the posting id in its address on a supported board, else by the
-    link kept for it (a job added by hand). None when jobwatch doesn't have it."""
-    if found := sources.detect(url):
-        source, board = found
-        if pid := sources._posting_id(source, url):
-            try:
-                return store.find(f"{source}:{board}:{pid}")
-            except KeyError:
-                pass
-    return store.with_url(_links(url))
+def _page_ids(url: str) -> tuple[str, str]:
+    """(LinkedIn's job id, Indeed's job key) the page's address names, else '': LinkedIn's /jobs/view/<id> or a list
+    page's ?currentJobId=<id>; Indeed's viewjob?jk=<key> or a search page's ?vjk=<key>."""
+    parsed = urlparse(url if "//" in url else f"https://{url}")
+    query = parse_qs(parsed.query)
+    key = next((k for k in query.get("jk", []) + query.get("vjk", [])
+                if parsed.netloc.lower().endswith("indeed.com") and re.fullmatch(r"[0-9a-f]{8,}", k, re.I)), "")
+    return linkedin.job_id(url) or "", key
+
+
+def _with_ids(store: Store, pid: str, jk: str) -> tuple[Job, dict] | None:
+    """The open job that came from this LinkedIn id or Indeed key: by its link, or by the note saying where it was
+    found, which is where an alert's link is kept once the job is matched to the company's own board. One queued or
+    applied to when several are."""
+    found = []
+    if pid:
+        seen = re.compile(rf"linkedin\.com/jobs/view/\S*{pid}\b")
+        found += [(j, r) for j, r in store.search(pid)
+                  if linkedin.job_id(j.url) == pid or seen.search(r.get("note") or "")]
+    if jk:
+        seen = re.compile(rf"indeed\.com/\S*[?&]jk={jk}\b")
+        found += [(j, r) for j, r in store.search(jk) if seen.search(j.url or "") or seen.search(r.get("note") or "")]
+    found = [(j, r) for j, r in found if not r.get("closed")]
+    return next(((j, r) for j, r in found if r["status"] in ("queued", *STAGES)), found[0] if found else None)
+
+
+def _by_name(store: Store, company: str, title: str) -> tuple[Job, dict] | None:
+    """The one open job at this company with this title (the same words, what's in brackets aside), else None: with
+    two or more it doesn't guess."""
+    if not (company.strip() and title.strip()):
+        return None
+    like = [(j, r) for j, r in store.open_at(linkedin.company_names(company)[-1])
+            if linkedin.same_company(j.display_company, company) and linkedin.same_words(j.title, title)]
+    return like[0] if len(like) == 1 else None
+
+
+def match(store: Store, url: str, company: str = "", title: str = "") -> tuple[Job, dict, str] | None:
+    """The job an application page is for and how it was told: (job, record, how). `how` is "board" (the posting id
+    in the address, on a supported board), "link" (the link kept for the job), "linkedin" or "indeed" (the job's id
+    on that site, in the page's address: how a job an alert found is told when its board link is the one kept) or
+    "name" (the company and title the page shows: for a page on a host jobwatch can't read, such as the company's own
+    careers site, where the application of a job found on LinkedIn or Indeed goes). A name matches only when exactly
+    one open job has that company and title, and never for a page on a supported board (another posting id there is
+    another opening) or on LinkedIn or Indeed (the page's title is theirs). None when jobwatch doesn't have the job."""
+    found = sources.detect(url)
+    pid = sources._posting_id(found[0], url) if found else None
+    if pid:
+        try:
+            return *store.find(f"{found[0]}:{found[1]}:{pid}"), "board"
+        except KeyError:
+            pass
+    if got := store.with_url(_links(url)):
+        return *got, "link"
+    li, jk = _page_ids(url)
+    if got := _with_ids(store, li, jk):
+        return *got, "linkedin" if li else "indeed"
+    on_site = urlparse(url).netloc.lower().endswith(("linkedin.com", "indeed.com"))
+    if not (pid or on_site) and (got := _by_name(store, company, title)):
+        return *got, "name"
+    return None
+
+
+def job_for(store: Store, url: str, company: str = "", title: str = "") -> tuple[Job, dict] | None:
+    """The job an application page is for (see `match`), None when jobwatch doesn't have it."""
+    got = match(store, url, company, title)
+    return got[:2] if got else None
 
 
 def applicant(cfg: Config) -> dict:
@@ -107,39 +162,83 @@ def _file(path: Path | None) -> dict | None:
     return {"name": path.name, "type": mimetypes.guess_type(path.name)[0] or "application/octet-stream"}
 
 
-def _job(job: Job, rec: dict) -> dict:
+def _job(job: Job, rec: dict, how: str = "") -> dict:
     return {"key": job.key, "title": job.title, "company": job.display_company, "status": rec.get("status"),
-            "url": job.url}
+            "url": job.url, "matched_by": how}
 
 
-def context(cfg: Config, store: Store, url: str) -> dict:
-    """What GET /ext/context answers (see API.md)."""
-    found = job_for(store, url)
+def context(cfg: Config, store: Store, url: str, company: str = "", title: str = "") -> dict:
+    """What GET /ext/context answers (see API.md). `company` and `title` are what the page shows, to tell a job
+    found on LinkedIn or Indeed from the company's own page for it (see `match`)."""
+    matched = match(store, url, company, title)
+    found = matched[:2] if matched else None
     job = found[0] if found else None
     past = [{"question": a["question"], "answer": a["answer"], "company": a["company"], "title": a["title"],
              "applied_at": a["applied"]} for a in answers.find(store, full=True) if a["answer"]]
     resume = _file(resume_for(cfg, store, job))
     if resume:  # tailored: kept with this job's application, not the watchlist's default
         resume["tailored"] = bool(job and store.package(job.key).resume())
-    return {"job": _job(*found) if found else None, "applicant": applicant(cfg), "resume": resume,
+    return {"job": _job(*matched) if matched else None, "applicant": applicant(cfg), "resume": resume,
             "answers": past, "can_tailor": bool(job) and tailor.ready(cfg.resume_kit)}
 
 
-def tailored(cfg: Config, store: Store, url: str) -> dict:
+NOT_TRACKED = "jobwatch doesn't track this job yet: save the posting to jobwatch first"
+
+
+def _tracked(store: Store, url: str, company: str, title: str) -> tuple[Job, dict, str]:
+    """The job for the page (see `match`), or KeyError saying to save the posting first."""
+    if not (matched := match(store, url, company, title)):
+        raise KeyError(NOT_TRACKED)
+    return matched
+
+
+def tailored(cfg: Config, store: Store, url: str, company: str = "", title: str = "") -> dict:
     """Tailor a resume to the job at this page with resume-kit (see tailor.py) and keep it with the job, so the
     extension attaches it: what POST /ext/tailor answers, with the resume to attach now. KeyError when jobwatch
     doesn't track the job; tailor.TailorError when resume-kit isn't set up or fails."""
-    found = job_for(store, url)
-    if not found:
-        raise KeyError("jobwatch doesn't track this job yet: save the posting to jobwatch first")
-    made = tailor.tailor(cfg, store, found[0].key)
-    resume = _file(resume_for(cfg, store, found[0]))
-    return {**made, "resume": {**resume, "tailored": True} if resume else None}
+    job, _, how = _tracked(store, url, company, title)
+    made = tailor.tailor(cfg, store, job.key)
+    resume = _file(resume_for(cfg, store, job))
+    return {**made, "matched_by": how, "resume": {**resume, "tailored": True} if resume else None}
 
 
-def resume_file(cfg: Config, store: Store, url: str) -> tuple[bytes, str, str]:
+def ats_check(cfg: Config, store: Store, url: str, company: str = "", title: str = "") -> dict:
+    """The ATS check (see ats.py) of the resume kept for the job at this page (the tailored one, else the watchlist's):
+    what POST /ext/ats answers, with `matched_by` and `can_tailor`. KeyError when jobwatch doesn't track the job;
+    ValueError, in words for the side panel, when the job has no posting text or there is no resume to check."""
+    from . import ats  # ats and cover use resume_for from here
+    job, _, how = _tracked(store, url, company, title)
+    try:
+        got = ats.check(cfg, store, job.key)
+    except ValueError as e:
+        if "no posting text" in str(e):
+            raise ValueError(f"{job.display_company}: {job.title} has no posting text to take keywords from. Press "
+                             "Save this posting to jobwatch on the job's page, then check again.") from None
+        raise
+    return {**got, "matched_by": how, "can_tailor": tailor.ready(cfg.resume_kit)}
+
+
+def cover_letter(cfg: Config, store: Store, url: str, company: str = "", title: str = "", tone: str = "",
+                 emphasis: str = "") -> dict:
+    """A cover letter for the job at this page, drafted the way the Cover letter on a job's card is (see cover.py: the
+    shared local model, kept as the job's next version): what POST /ext/cover answers, with `matched_by`. `letter` is
+    "" when nothing was drafted, with the why in `warnings`. KeyError when jobwatch doesn't track the job; ValueError
+    for an unknown tone or a job with no posting text."""
+    from . import cover
+    job, _, how = _tracked(store, url, company, title)
+    try:
+        got = cover.draft(cfg, store, job.key, tone=tone or cover.DEFAULT_TONE, emphasis=emphasis)
+    except ValueError as e:
+        if "no posting text" in str(e):
+            raise ValueError(f"{job.display_company}: {job.title} has no posting text to write to. Press Save this "
+                             "posting to jobwatch on the job's page, then draft again.") from None
+        raise
+    return {**got, "matched_by": how}
+
+
+def resume_file(cfg: Config, store: Store, url: str, company: str = "", title: str = "") -> tuple[bytes, str, str]:
     """(bytes, content type, file name) of the resume context named. KeyError when there's none."""
-    found = job_for(store, url)
+    found = job_for(store, url, company, title)
     path = resume_for(cfg, store, found[0] if found else None)
     if not path:
         raise KeyError("no resume: add one in Settings > Resume")
@@ -155,10 +254,12 @@ def _others(others) -> list[str]:
     return kept[:12]
 
 
-def draft(cfg: Config, store: Store, url: str, question: str, words: int = WORDS, others=None) -> dict:
+def draft(cfg: Config, store: Store, url: str, question: str, words: int = WORDS, others=None, company: str = "",
+          title: str = "") -> dict:
     """An answer to one form question from the resume, the stories and the posting, by the chat's model: a draft
     for the person to read before it's filled in. `others` are the form's other answers so far, so the draft
-    doesn't retell their story. ValueError with what to set up when the model can't run."""
+    doesn't retell their story. `company` and `title` are what the page shows (see `match`). ValueError with what
+    to set up when the model can't run."""
     question = " ".join(str(question or "").split())
     if not question:
         raise ValueError("send the question to answer")
@@ -168,7 +269,7 @@ def draft(cfg: Config, store: Store, url: str, question: str, words: int = WORDS
         chat.check(c.backend, c.keychain, c.key_command)
     except chat.ChatUnavailable as e:
         raise ValueError(str(e)) from None
-    found = job_for(store, url)
+    found = job_for(store, url, company, title)
     job = found[0] if found else None
     parts = []
     if job:

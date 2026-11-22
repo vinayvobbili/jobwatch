@@ -14,6 +14,6 @@ the [home page](https://vinayvobbili.github.io/jobwatch/); this folder only list
 | `jobwatch-06-interview-prep.mp4` | 0:46 | Prep sheets, drafted answers from your stories, mock interview, drill video, find a story |
 | `jobwatch-07-comps-and-contacts.mp4` | 0:42 | The Comps tab, who you know there, referrals |
 
-Features added since these were recorded are in the [guide](../guide/README.md), not in a video: the ATS check, cover
-letter and follow-up drafts, ranked interview questions, offices near you, the estimated pay, the Companies list's
+Features added since these were recorded are in the [guide](../guide/README.md), not in a video: the Prepare button (resume,
+ATS check and cover letter in one press, which the video's separate buttons became), follow-up drafts, ranked interview questions, offices near you, the estimated pay, the Companies list's
 All and None, the job details' stage picker, and the extension's popup panel and Draft reply.

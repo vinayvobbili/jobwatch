@@ -40,7 +40,7 @@ def capture(out_dir: Path, headless: bool = True, playwright=None) -> list[Path]
             return capture(out_dir, headless, pw)
     written: list[Path] = []
     with harness.demo_stack(playwright, headless) as stack:
-        stack.server.features = ["posting", "reply", "import-list"]
+        stack.server.features = ["posting", "reply", "import-list", "ats", "cover"]
         options = stack.extension_page("options.html")
         options.evaluate("() => chrome.storage.local.set({ passiveSeen: Object.fromEntries("
                          "[...Array(7).keys()].map((i) => ['job-' + i, { company: 'Initech' }])) })")

@@ -52,6 +52,18 @@ model instead, and with the chat set to Claude the conversation (with your resum
 company) is sent to Anthropic by jobwatch, not by the extension; the side panel then says the thread was sent off your
 computer. That is a setting in jobwatch, off by default.
 
+**ATS check and Cover letter:** only when you press **ATS check** or **Cover letter** in the side panel, on a job's page. The
+extension sends your own jobwatch the page's address and the company and job title the page shows (taken from the page's
+own title and headings, the same two values it already reads when you press Fill this application; on LinkedIn and Indeed
+pages it sends only the address), so jobwatch can tell which job you mean.
+jobwatch checks the job's resume against the posting's keywords on your computer, or has its model on your computer draft
+a letter from the posting, your resume and your stories, and keeps the letter with the job. If you turn on
+`reply: {backend: chat}` in jobwatch's watchlist, the chat model writes the letter instead, and the panel says so. To offer
+**Fill the cover letter box**, the extension looks at the page's form fields for one labelled as a cover letter, and keeps
+nothing; only whether such a box exists, and whether it is empty, leaves the page, and that goes only to the side panel. Only when you press **Fill the cover letter box**
+does it type the letter into that box, if it is empty (replacing text is a separate press), and it never presses Submit or any
+other button.
+
 **What it receives, and writes into the form:** from your own jobwatch, your applicant details (name, email, phone,
 address, links, work authorization, and the voluntary self-identification answers you have set there), your answers to
 earlier applications, and the job's resume file. It writes the ones you tick into the form you are looking at, and
@@ -62,7 +74,7 @@ nothing else; the form's own site receives them only when you press its Submit b
 other written answers on that form (so a draft doesn't repeat them), and, when you press the form's Submit, the
 questions and answers on the form as they stood (not your name, contact details or voluntary self-identification
 answers), which jobwatch keeps in that job's application package; once the page shows it went through, also the
-company and job title and the name of the resume file, so the application is recorded; and the job cards of a list you import; and, when you press Draft reply, the text of the open LinkedIn conversation and the other person's name. What jobwatch does with a draft request, such as which language
+company and job title and the name of the resume file, so the application is recorded; and the job cards of a list you import; and, when you press Draft reply, the text of the open LinkedIn conversation and the other person's name; and, when you press Fill this application, ATS check or Cover letter, the company and job title the page shows (so jobwatch can tell which of your jobs the page is). What jobwatch does with a draft request, such as which language
 model it asks, is set in jobwatch, not in the extension. The extension's authors run no server and receive nothing.
 
 **What it stores:**

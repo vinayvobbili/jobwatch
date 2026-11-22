@@ -467,6 +467,27 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .followup .fu-head select { width: auto; }
 .followup input[type="text"], .followup textarea { width: 100%; margin-bottom: 6px; }
 .followup .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+/* Prepare: chips that say how far the three steps got, above the panels each step fills */
+.prepare { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; }
+.prepare[hidden] { display: none; }
+.prep-steps { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.prep-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 650; color: var(--muted); border: 1px solid var(--line); background: var(--chip);
+  transition: background .2s, color .2s, border-color .2s; }
+.prep-chip[data-state="run"] { color: var(--accent); border-color: var(--accent);
+  background: var(--accent-soft); animation: pulse 1.2s ease-in-out infinite; }
+.prep-chip[data-state="ok"] { color: #fff; border-color: transparent; background: var(--grad); }
+.prep-chip[data-state="warn"] { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
+  background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.prep-chip[data-state="err"] { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+  background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.prep-chip[data-state="skip"] { color: var(--muted); border-style: dashed; }
+button.btn.prepare-go { color: var(--accent); font-weight: 650;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: linear-gradient(135deg, var(--accent-soft), transparent 85%), var(--panel-solid); }
+button.btn.prepare-go:hover:not(:disabled) { transform: translateY(-1px); background: var(--accent-soft);
+  box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--accent) 80%, transparent); }
+button.btn.prepare-go:disabled { opacity: .8; }
 .ats-miss { display: inline-block; margin: 2px 4px 2px 0; padding: 1px 9px; border-radius: 999px; font-size: 12.5px;
   font-weight: 600; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line)); }
@@ -2233,18 +2254,20 @@ function applyButton(job, primary, then) {
       "the form; it marks the job applied when you submit.", onclick: () => then && then() }, "Apply ↗");
 }
 
-// "Tailor resume": resume-kit drafts a version from the posting and builds its PDF (seconds), kept as this job's
+// "Prepare" on a queued job runs three steps in order and keeps each result with the job: a tailored resume, the ATS
+// check of that resume against the posting, and a cover letter draft. Each step is a panel that draws its own
+// result ({ el, run }: run() does the step and answers [state, text], the state being ok, warn, err or skip), and a
+// strip of chips above them says how far it got. Nothing is sent or submitted: you review all three, then apply.
+//
+// The resume step: resume-kit drafts a version from the posting and builds its PDF (seconds), kept as this job's
 // resume, which the extension attaches. Updates in place, and says to review the PDF before applying. When
-// resume-kit isn't set up, the button says how to (job.tailor_setup). `job.resume` is the name kept so far.
+// resume-kit isn't set up, the panel says how to (job.tailor_setup). `job.resume` is the name kept so far.
 function tailorResultLine(r) {
   const pages = r.pages == null ? "" : `${r.pages} page${r.pages === 1 ? "" : "s"}`;
   return [r.new ? "new" : "rebuilt", pages, r.ok ? "ok" : "needs a look"].filter(Boolean).join(" · ");
 }
-function tailorButton(job) {
-  const out = h("div", { class: "tailor" });
-  const b = h("button", { class: "btn", title: "Build a resume for this job with resume-kit from the posting, and keep it " +
-    "with the application. You review it before you apply." });
-  const label = () => job.resume ? "Rebuild resume" : "Tailor resume";
+function tailorPanel(job) {
+  const out = h("div", { class: "tailor", "data-step": "tailor" });
   const draw = r => {
     out.hidden = !(job.resume || r || job.tailor_help);
     out.dataset.tone = r ? (r.ok ? "ok" : "warn") : job.tailor_help ? "warn" : "";
@@ -2258,32 +2281,26 @@ function tailorButton(job) {
       r ? h("div", { class: "review small" }, "Review this PDF before you apply: the page picks your confirmed facts " +
         "by what the posting asks for, but the headline and summary are the ones your version already had.") : null);
   };
-  b.textContent = label();
-  b.onclick = async () => {
-    if (!job.can_tailor) { job.tailor_help = job.tailor_setup; draw(); return; }
-    b.disabled = true; b.replaceChildren(icon("refresh", 14), "Building… (a few seconds)");
-    b.classList.add("spin");
+  const run = async () => {
+    if (!job.can_tailor) { job.tailor_help = job.tailor_setup; draw(); return ["skip", "Resume: set up resume-kit"]; }
     try {
       const r = await api("/api/tailor", { key: job.key });
       job.resume = r.pdf; job.tailor_help = null;
       draw(r);
-      toast(`📄 ${r.new ? "Drafted" : "Rebuilt"} a resume for ${job.company}: review it, then apply.`, null, r.ok ? "win" : "");
-    } catch (e) { job.tailor_help = e.message; draw(); toast("Couldn't build the resume: see the card"); }
-    b.classList.remove("spin"); b.disabled = false; b.textContent = label();
+      return [r.ok ? "ok" : "warn", `Resume ${r.new ? "drafted" : "rebuilt"}`];
+    } catch (e) { job.tailor_help = e.message; draw(); return ["err", "Resume failed"]; }
   };
   draw();
-  return [b, out];
+  return { el: out, run };
 }
 
-// "ATS check": which of the posting's keywords this job's resume doesn't show, read from the PDF's text the way a
+// The ATS step: which of the posting's keywords this job's resume doesn't show, read from the PDF's text the way a
 // parser reads it (see ats.py), and what would trip the parser. Local; nothing is changed.
-function atsButton(job) {
-  const out = h("div", { class: "tailor ats", hidden: true });
-  const b = h("button", { class: "btn", title: "Check the resume kept for this job against the posting's keywords, " +
-    "as an applicant tracking system's parser would read it." }, "ATS check");
+function atsPanel(job) {
+  const out = h("div", { class: "tailor ats", hidden: true, "data-step": "ats" });
   const draw = r => {
     out.hidden = false;
-    out.dataset.tone = r.checks && (r.checks.length || r.score < 70) ? "warn" : "ok";
+    out.dataset.tone = r.error || (r.checks && (r.checks.length || r.score < 70)) ? "warn" : "ok";
     fill(out,
       r.error ? h("span", { class: "problems" }, r.error) : [
         h("span", { class: "badge" + (out.dataset.tone === "warn" ? " warn" : "") },
@@ -2294,22 +2311,21 @@ function atsButton(job) {
           h("span", { class: "muted" }, " (* asked for). Add one only where it's true of you.")) : null,
         r.checks.length ? h("div", { class: "problems" }, r.checks.join("\n")) : null]);
   };
-  b.onclick = async () => {
-    b.disabled = true; b.classList.add("spin");
-    try { draw(await api("/api/ats?key=" + encodeURIComponent(job.key))); }
-    catch (e) { draw({ error: e.message }); }
-    b.classList.remove("spin"); b.disabled = false;
+  const run = async () => {
+    try {
+      const r = await api("/api/ats?key=" + encodeURIComponent(job.key));
+      draw(r);
+      return [out.dataset.tone, r.score == null ? "ATS: no keywords" : `ATS ${r.score}%`];
+    } catch (e) { draw({ error: e.message }); return ["err", "ATS check failed"]; }
   };
-  return [b, out];
+  return { el: out, run };
 }
 
-// "Cover letter" on a queued job: a draft in a tone you pick, leaning on what you say, from the posting, resume and
+// The cover letter step: a draft in a tone you pick, leaning on what you say, from the posting, resume and
 // stories by the local model (see cover.py). Each draft is kept as a version; with two or more, the last two show
-// side by side. A draft to edit and copy: nothing is sent. Returns [button, panel].
-function coverButton(job) {
-  const out = h("div", { class: "tailor cover", hidden: true });
-  const b = h("button", { class: "btn", title: "Draft a cover letter from the posting, your resume and your stories " +
-    "(local model; nothing is sent)" }, "Cover letter");
+// side by side. A draft to edit and copy: nothing is sent. "Draft another" in the panel writes a new version.
+function coverPanel(job) {
+  const out = h("div", { class: "tailor cover", hidden: true, "data-step": "cover" });
   const tone = h("select", { "aria-label": "Tone" });
   const emphasis = h("input", { type: "text", placeholder: "Lean on… (optional, e.g. my incident-response work)",
     "aria-label": "Emphasis", maxlength: 300 });
@@ -2340,20 +2356,56 @@ function coverButton(job) {
     draw({ ...s, compare, ...extra });
   };
   async function draft() {
+    out.hidden = false;
     draw({ versions: [], warnings: [] }, true);
-    b.classList.add("spin");
-    const [t, e] = [tone.value, emphasis.value];
+    const [t, e] = [tone.value || "direct", emphasis.value];
+    let result;
     try {
       const r = await api("/api/cover", { key: job.key, tone: t, emphasis: e });
       await load({ warnings: r.warnings });
-    } catch (err) { await load({ error: err.message }); }
+      result = r.drafted ? [r.warnings.length ? "warn" : "ok", `Cover letter v${r.version}`] : ["warn", "Cover letter: no draft"];
+    } catch (err) {
+      try { await load({ error: err.message }); } catch { draw({ versions: [], error: err.message }); }
+      result = ["err", "Cover letter failed"];
+    }
     tone.value = t; emphasis.value = e;
-    b.classList.remove("spin");
+    return result;
   }
+  return { el: out, run: draft };
+}
+
+// "Prepare": the three steps above, one after the other, for one job. Each step's result stays on the card; the
+// chips say which step is running and how each ended. A step that can't run (resume-kit isn't set up, no model, no
+// posting text) says why in its own panel, and the steps after it still run. Returns [button, panel].
+function prepareButton(job) {
+  const steps = [["tailor", "Resume", tailorPanel(job)], ["ats", "ATS check", atsPanel(job)],
+    ["cover", "Cover letter", coverPanel(job)]];
+  const chips = h("div", { class: "prep-steps", role: "status", "aria-live": "polite" },
+    steps.map(([id, name]) => h("span", { class: "prep-chip", "data-step": id, "data-state": "wait" }, name)));
+  const out = h("div", { class: "prepare", hidden: !(job.resume || job.tailor_help) }, chips, steps.map(([, , p]) => p.el));
+  const b = h("button", { class: "btn prepare-go", title: "Tailor a resume for this job, check it against the posting's " +
+    "keywords (ATS), and draft a cover letter, in that order. All three are kept with the job; you review them before " +
+    "you apply. Local model; nothing is sent." }, icon("sparkle", 14), "Prepare");
+  const chip = (id, state, text) => {
+    const c = chips.querySelector(`[data-step="${id}"]`);
+    c.dataset.state = state; c.textContent = text;
+  };
   b.onclick = async () => {
-    out.hidden = !out.hidden;
-    if (out.hidden) return;
-    try { await load(); } catch (err) { out.hidden = false; draw({ versions: [], error: err.message }); }
+    b.disabled = true; b.classList.add("spin"); out.hidden = false;
+    for (const [id, name] of steps) chip(id, "wait", name);
+    const done = [];
+    for (const [id, name, panel] of steps) {
+      chip(id, "run", `${name}…`);
+      b.replaceChildren(icon("refresh", 14), `Preparing: ${name.toLowerCase()}…`);
+      let state, text;
+      try { [state, text] = await panel.run(); } catch (e) { [state, text] = ["err", `${name} failed`]; }
+      chip(id, state, text);
+      done.push(text);
+    }
+    b.classList.remove("spin"); b.disabled = false;
+    b.replaceChildren(icon("sparkle", 14), "Prepare again");
+    toast(`✨ Prepared ${job.company}: ${done.join(", ")}. Review them, then apply.`,
+      null, steps.every((_, i) => chips.children[i].dataset.state === "ok") ? "win" : "");
   };
   return [b, out];
 }
@@ -4820,7 +4872,7 @@ function queueCard(job, i) {
   note.value = job.note || "";
   return jobCard(job, [
     applyButton(job, true),
-    tailorButton(job), atsButton(job), coverButton(job),
+    prepareButton(job),
     h("button", { class: "btn", onclick: () => mark(job, "applied", note.value || null,
       `Marked applied: ${job.title}`, "queued") }, icon("check", 14), "I applied"),
     snoozeButton(job, (status, label) => mark(job, status, null, label, "queued")),
@@ -6535,7 +6587,7 @@ function renderSettings() {
   const applicantC = applicantCard(s), extensionC = extensionCard(), incomingC = incomingCard(s);
   const resumeKit = textInput(s.resume_kit, "resume");
   const tailorC = setCard("tailor", "Tailor resumes", "optional",
-    h("p", { class: "small muted lead" }, "The Tailor resume button on a queued job drafts a resume for it with resume-kit " +
+    h("p", { class: "small muted lead" }, "The Prepare button on a queued job drafts a resume for it with resume-kit " +
       "and keeps the PDF with the application, so Apply and the extension attach it. " +
       (s.tailor_ready ? "resume-kit is ready." : s.tailor_setup)),
     h("div", { class: "fields" },
@@ -6878,7 +6930,7 @@ function companyCard(j, i, c) {
   const score = () => scoreButton(j, j.can_score, x => companyCard(x, i, c));
   const actions = APPLIED.includes(j.status) ? [detailsButton(j), posting(),
       j.has_package ? h("span", { class: "sent-chip", title: "What you sent is saved with this job" }, icon("clip", 13), "package saved") : null]
-    : j.status === "queued" ? [applyButton(j, true), tailorButton(j), atsButton(j), coverButton(j),
+    : j.status === "queued" ? [applyButton(j, true), prepareButton(j),
       h("button", { class: "btn", onclick: () => act("applied") }, icon("check", 14), "I applied"),
       snoozeButton(j, act), skipIt(), detailsButton(j), score()]
     : j.status === "snoozed" ? [queueIt("Queue now"), applyButton(j, false), skipIt(), detailsButton(j), score()]

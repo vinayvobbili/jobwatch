@@ -1,6 +1,6 @@
-"""ATS check (`jobwatch ats KEY`, the "ATS check" button on a queued job): which of the posting's keywords the resume
-for a job doesn't show, read the way an applicant tracking system's parser reads it: from the built PDF's text,
-not from the version's source.
+"""ATS check (`jobwatch ats KEY`, the second step of Prepare on a queued job, and the extension's ATS check): which of
+the posting's keywords the resume for a job doesn't show, read the way an applicant tracking system's parser reads
+it: from the built PDF's text, not from the version's source.
 
 Everything is checked here, on this computer, with no model:
 - the keywords are the skills the posting names (the catalog behind `jobwatch skills`, so "K8s" and "Kubernetes"

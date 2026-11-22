@@ -67,6 +67,12 @@
       .row.warnrow { border-color: color-mix(in srgb, var(--warn) 55%, transparent); color: var(--warn); font-size: 13px; font-weight: 600; }
       .checks { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
       .checks li { margin-top: 3px; overflow-wrap: anywhere; }
+      .kws { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+      .kw { padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 650; background: var(--chip); color: var(--muted); border: 1px solid var(--line); }
+      .kw.must { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+      #matched-by { font-size: 12.5px; color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+      #cover-tone { margin: 6px 6px 0 0; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 12.5px; }
+      #cover-emphasis { width: calc(100% - 100px); display: inline-block; vertical-align: top; }
       .small { margin-top: 6px; padding: 3px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--chip); color: var(--text); font-size: 12px; }
       .small:hover { border-color: var(--accent); }
       footer { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--panel); }

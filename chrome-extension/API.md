@@ -46,9 +46,29 @@ One flat object, as the watchlist's `applicant:` section keeps it. Every field i
 
 `{"ok": true, "version": "0.9.0", "features": ["posting", "import-list"]}`. Used by the options page to test pairing. `features`
 names what jobwatch offers beyond filling: the side panel shows **Save this posting to jobwatch** only when it has
-`posting` (`POST /ext/posting`), so an older jobwatch, which sends no `features`, gets no button that would fail.
+`posting` (`POST /ext/posting`), so an older jobwatch, which sends no `features`, gets no button that would fail. The
+other names: `import-list`, `reply`, `ats` (`POST /ext/ats`) and `cover` (`POST /ext/cover`).
 
-### `GET /ext/context?url=<the page's address>`
+### How a page is matched to a job
+
+`context`, `resume`, `tailor`, `draft`, `ats` and `cover` all take the page's `url` and, optionally, the `company` and
+`title` the page shows (the extension sends them on a page that is not LinkedIn or Indeed; on those two it sends the
+address only). The job is found, in this order, by:
+
+1. the posting id of a supported board's address (`matched_by: "board"`);
+2. a link jobwatch stored for the job (`"link"`);
+3. a LinkedIn job number (the address's `currentJobId` or `/jobs/view/<n>`, in the job's link or in the note saying where
+   an alert found it) (`"linkedin"`), or an Indeed `jk` or `vjk` (in the job's link, or a note) (`"indeed"`);
+4. company plus normalised title (`"name"`): only for a page on a company's own site (not linkedin.com or indeed.com, and
+   not a supported board's page with a posting id of its own), and only when exactly one open job at that company has
+   that title. Never a guess among several; a closed job is never matched this way.
+
+`matched_by` is in `job` (`context`) and in every `ats` and `cover` answer, so the panel can tell the person when a job
+was matched by name alone. A page with no match: `job` is `null` (`context`), or `404 {"error": "jobwatch doesn't track
+this job yet: save the posting to jobwatch first"}` (`ats`, `cover`). `/ext/submitted` and `/ext/answers` still match by
+address only (a wrong name match there would mark the wrong job applied).
+
+### `GET /ext/context?url=<the page's address>&company=&title=`
 
 What jobwatch knows for the application on that page.
 
@@ -64,20 +84,21 @@ What jobwatch knows for the application on that page.
 }
 ```
 
-- `job` is `null` when the page isn't for a job jobwatch can tell (then `/ext/submitted` adds it).
+- `job` is `null` when the page isn't for a job jobwatch can tell (then `/ext/submitted` adds it). Otherwise it carries
+  `matched_by` (see above).
 - `resume` is the one saved with this job's application package if there is one (`tailored: true`), else the
   watchlist's `resume:`; `null` when there's neither.
 - `can_tailor` is true when jobwatch knows the job and resume-kit is set up: `/ext/tailor` can make one.
 - `answers` are the form answers kept from earlier applications, newest first, each in full.
 
-### `GET /ext/resume?url=<the page's address>`
+### `GET /ext/resume?url=<the page's address>&company=&title=`
 
 The resume file `context` named, as bytes, with its `Content-Type` and a `Content-Disposition` filename.
 404 when there's none.
 
 ### `POST /ext/tailor`
 
-`{"url": "<the page's address>"}`: tailors a resume to that page's job with resume-kit (a minute or two) and
+`{"url": "<the page's address>", "company": "", "title": ""}` (`company` and `title` optional): tailors a resume to that page's job with resume-kit (a minute or two) and
 keeps it with the job's application, so `/ext/resume` gives that one from now on. Answers what jobwatch's own
 Tailor resume does (`version`, `new`, `pages`, `ok`: resume-kit's checks passed, `problems`), plus `resume`:
 `{"name", "type", "tailored": true}`. 404 when jobwatch doesn't track the job; 400 when resume-kit isn't set
@@ -86,7 +107,7 @@ up or fails.
 ### `POST /ext/draft`
 
 ```json
-{"url": "<the page's address>", "question": "Why do you want to work here?", "words": 150,
+{"url": "<the page's address>", "company": "", "title": "", "question": "Why do you want to work here?", "words": 150,
  "others": [{"question": "Tell us about a project you led.", "answer": "…"}]}
 ```
 
@@ -95,6 +116,48 @@ stories file and the posting (when the job is known). `words` is a rough length 
 are the form's other written answers so far (drafted, past or typed): the draft won't retell their stories. A model that
 isn't set up answers `400 {"error": "..."}` saying what to set up. Drafts are for the person to review: the
 extension never ticks one by default.
+
+### `POST /ext/ats`
+
+`{"url": "<the page's address>", "company": "", "title": ""}`: the ATS check of the job's resume (the tailored one
+kept with the job, else the watchlist's `resume:`), the same check as `jobwatch ats` and the Prepare button on a queued
+job's card. A local keyword check with no model; nothing is sent anywhere and nothing is changed.
+
+```json
+{"key": "ashby:initech/4f1c…", "company": "Initech", "title": "Platform Engineer", "file": "resume.pdf",
+ "tailored": false, "read_with": "pdftotext", "chars": 2400, "score": 50,
+ "found": [{"term": "Python", "kind": "must", "count": 3}],
+ "missing": [{"term": "Terraform", "kind": "must", "count": 2}, {"term": "Kafka", "kind": "nice", "count": 1}],
+ "checks": [], "matched_by": "link", "can_tailor": true}
+```
+
+`score` is 0 to 100 (must-have terms count double), `null` when the posting names no keywords. `missing` is what a
+screener would miss; `checks` are formatting problems a parser would trip on. `can_tailor` is true when resume-kit is
+set up (`/ext/tailor`). `404` when jobwatch doesn't track the job (see above); `400 {"error": "…"}`, in words for the
+panel, when the job has no posting text (press **Save this posting to jobwatch**) or there is no resume or no way to
+read it. Only shown when `/ext/ping`'s `features` has `ats`.
+
+### `POST /ext/cover`
+
+`{"url": "<the page's address>", "company": "", "title": "", "tone": "direct", "emphasis": "my deploy work"}`
+(`tone`: direct, warm, formal or concise; `emphasis`, optional, what to lean on): drafts a cover letter for the job
+with `cover.draft`, the same function as `jobwatch cover` and the Prepare button's last step, and keeps it with the job
+as its next version (`covers/<job>/vN.md`).
+
+```json
+{"key": "ashby:initech/4f1c…", "company": "Initech", "title": "Platform Engineer", "tone": "direct", "emphasis": "",
+ "letter": "Hello Initech team, …", "warnings": [], "model": "local model", "local": true, "drafted": true,
+ "version": 1, "matched_by": "link"}
+```
+
+Like `/ext/reply`, it is written by the shared local model only, so the posting, the resume and the stories stay on the
+computer; the watchlist's `reply: {backend: chat}` makes the chat's model write it instead, and then `local` is `false`
+and `model` names it. A model that isn't running, or a resume with no text, answers `drafted: false`, `letter: ""` and
+the why in `warnings`. `warnings` also lists what the code found in a letter (a figure the resume doesn't show, a stock
+opener). An unknown tone, or a job with no posting text: `400`; no such job: `404`. A slow local model can take a
+minute or two, so the extension waits up to 120 seconds. Only shown when `/ext/ping`'s `features` has `cover`. The
+extension puts the letter in the form's cover letter box only when the person presses **Fill the cover letter box** (an
+empty textarea; replacing text is a separate press) and never presses Submit.
 
 ### `POST /ext/reply`
 

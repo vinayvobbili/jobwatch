@@ -293,6 +293,26 @@ console.log(JSON.stringify([JW.fingerprint(a) === JW.fingerprint(a), JW.fingerpr
 
 
 @needs_node
+def test_the_cover_letter_box_is_a_textarea_asked_for_one(tmp_path):
+    """Only a textarea is a place for a letter: a one-line box ("Cover letter link") isn't, and a file input is only
+    reported, never filled."""
+    got = run_js(tmp_path, """
+const f = (kind, question, extra = {}) => ({ id: question, kind, question, hint: '', filled: false, ...extra });
+const cases = [
+  [f('textarea', 'Cover Letter')],
+  [f('text', 'Name'), f('textarea', 'Anything else?'), f('textarea', 'Why do you want to work here? (cover letter)', { filled: true }), f('textarea', "Cover letter or note")],
+  [f('textarea', 'Letter of interest')],
+  [f('text', 'Cover letter link'), f('file', 'Resume')],
+  [f('file', 'Cover letter'), f('file', 'Resume')],
+  [f('file', 'Resume/CV'), f('textarea', 'Describe a project')],
+  [f('textarea', 'Cover letter', { hint: '' }), f('file', 'Cover letter')],
+  [], null,
+];
+console.log(JSON.stringify(cases.map(c => { const r = JW.coverField(c); return r && (r.field ? r.field.question : 'file'); })));""")
+    assert got == ["Cover Letter", "Cover letter or note", "Letter of interest", None, "file", None, "Cover letter", None, None]
+
+
+@needs_node
 def test_elapsed_time_reads_as_seconds_then_minutes(tmp_path):
     got = run_js(tmp_path, """
 console.log(JSON.stringify([0, 12, 12.9, 59, 60, 65, 3725, -3, null, 'x'].map(JW.elapsedLabel)));""")

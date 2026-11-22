@@ -223,6 +223,21 @@
     return f.kind === 'file' && /\b(resume|cv|curriculum)\b/.test(q + ' ' + normalize(f.hint)) && !/\bcover\b/.test(q);
   }
 
+  const COVER = /\bcover (letter|note)\b|\bletter of (interest|motivation)\b|\bmotivation letter\b/;
+
+  /**
+   * The form's cover letter box among its scanned fields: { field } when a textarea is asked for one (an empty one
+   * first), { file: true } when the form takes it only as a file to attach, and null when the form asks for none.
+   * A one-line box ("Cover letter link") is not a place for a letter. The extension fills only a textarea, never a file.
+   */
+  function coverField(fields) {
+    const asks = (f) => COVER.test(normalize(`${f.question} ${f.hint}`));
+    const boxes = (fields || []).filter((f) => f.kind === 'textarea' && asks(f));
+    boxes.sort((a, b) => (a.filled ? 1 : 0) - (b.filled ? 1 : 0));
+    if (boxes.length) return { field: boxes[0] };
+    return (fields || []).some((f) => f.kind === 'file' && asks(f)) ? { file: true } : null;
+  }
+
   /**
    * One review row per scanned field. Ticked at the start only when it's a sure applicant-detail
    * match, the resume, or a past answer whose question reads almost the same (HIGH), on a field the page
@@ -509,7 +524,7 @@
     return bounds;
   }
 
-  const JW = { panelHome, panelBounds, elapsedLabel, pageContext, titleJob, threadName, themeChoice, replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
+  const JW = { panelHome, panelBounds, elapsedLabel, coverField, pageContext, titleJob, threadName, themeChoice, replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
     linkedinJobId, postingMode, listMode, importOnTab, progressIsMine, IMPORT_RUNNING, IMPORT_HIDDEN, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;

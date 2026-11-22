@@ -63,8 +63,28 @@ DRAFTS = {
 }
 
 
+NOT_TRACKED = "jobwatch doesn't track this job yet: save the posting to jobwatch first"
+# What jobwatch's ats.check answers for the demo job (autofill.ats_check adds matched_by and can_tailor)
+ATS = {"key": "ashby:initech/4f1c", "company": "Initech", "title": "Platform Engineer", "file": "resume.pdf",
+       "tailored": False, "read_with": "pdftotext", "chars": 2400, "score": 50,
+       "found": [{"term": "Python", "kind": "must", "count": 3}, {"term": "Kubernetes", "kind": "must", "count": 2}],
+       "missing": [{"term": "Terraform", "kind": "must", "count": 2}, {"term": "Kafka", "kind": "nice", "count": 1}],
+       "checks": [], "matched_by": "link", "can_tailor": True}
+COVER = ("Hello Initech team,\n\nAt Globex I ran 40 Kubernetes clusters and wrote the Python tooling the on-call "
+         "rotation used. That is the platform work your posting asks for, and I would like to bring it to Initech.\n\n"
+         "Thank you for your time.")
+
+
 class State:
     def __init__(self) -> None:
+        self.contexts: list[dict] = []  # /ext/context: the query of each call (url, company, title)
+        self.ats_calls: list[dict] = []  # /ext/ats: what the extension sent
+        self.covers: list[dict] = []  # /ext/cover: what the extension sent
+        self.tailors: list[dict] = []  # /ext/tailor: what the extension sent
+        self.tailored = False  # after /ext/tailor: the resume is the job's own, and the ATS check says so
+        self.ats_answer: dict = {}  # /ext/ats: fields to change in the canned answer (score, checks, ...)
+        self.cover_answer: dict = {}  # /ext/cover: fields to change in the canned answer (local, warnings, ...)
+        self.cover_delay = 0.0  # /ext/cover: seconds to take before answering, to see the panel's working view
         self.submitted: list[dict] = []
         self.answers: list[dict] = []  # /ext/answers: a snapshot per Submit press
         self.drafts: list[dict] = []
@@ -74,7 +94,8 @@ class State:
         self.requests: list[tuple[str, str]] = []
         self.token = TOKEN
         self.know_every_page = False  # live_check.py: every page is a known job, with a resume
-        self.features = ["posting", "reply", "import-list"]  # /ext/ping's (web.EXT_FEATURES); older has none
+        # /ext/ping's features (web.EXT_FEATURES); an older jobwatch has none
+        self.features = ["posting", "reply", "import-list", "ats", "cover"]
         self.replies: list[dict] = []  # /ext/reply: what the extension sent from a conversation
         self.reply_answer: dict = {}  # /ext/reply: fields to change in the canned answer (local, warnings, ...)
         self.reply_delay = 0.0  # /ext/reply: seconds to take before answering, to see the panel's working view
@@ -115,10 +136,12 @@ def _handler(state: State):
             if url.path == "/ext/ping":
                 self._json(200, {"ok": True, "version": JOBWATCH_VERSION, "features": state.features})
             elif url.path == "/ext/context":
+                state.contexts.append({k: v[0] for k, v in parse_qs(url.query).items()})
                 job = {"key": "ashby:initech/4f1c", "title": "Platform Engineer", "company": "Initech",
-                       "status": "queued", "url": page} if known else None
+                       "status": "queued", "url": page, "matched_by": "link"} if known else None
                 self._json(200, {"job": job, "applicant": APPLICANT, "answers": ANSWERS,
-                                 "resume": {"name": "resume.pdf", "type": "application/pdf"} if known else None})
+                                 "resume": {"name": "resume.pdf", "type": "application/pdf",
+                                            "tailored": state.tailored} if known else None})
             elif url.path == "/ext/resume" and known:
                 self._send(200, RESUME, "application/pdf", {"Content-Disposition": 'attachment; filename="resume.pdf"'})
             else:
@@ -136,6 +159,32 @@ def _handler(state: State):
                 canned = next((a for q, a in DRAFTS.items() if q in body["question"].lower()), None)
                 answer = state.draft_answer or canned or f"A drafted answer to: {body['question']}"
                 self._json(200, {"answer": answer, "model": "fake-model"})
+            elif self.path in ("/ext/ats", "/ext/cover", "/ext/tailor"):
+                feature = {"/ext/ats": "ats", "/ext/cover": "cover"}.get(self.path)
+                if feature and feature not in state.features:  # an older jobwatch has no such call
+                    return self._json(404, {"error": "not found"})
+                if not (state.know_every_page or "initech" in str(body.get("url"))):
+                    return self._json(404, {"error": NOT_TRACKED})
+                if self.path == "/ext/tailor":
+                    state.tailors.append(body)
+                    state.tailored = True
+                    return self._json(200, {"version": "initech-platform-engineer", "new": True, "pages": 2, "ok": True,
+                                            "problems": [], "pdf": "Jordan_Rivera_Initech.pdf", "matched_by": "link",
+                                            "resume": {"name": "Jordan_Rivera_Initech.pdf", "type": "application/pdf",
+                                                       "tailored": True}})
+                if self.path == "/ext/ats":
+                    state.ats_calls.append(body)
+                    file = "Jordan_Rivera_Initech.pdf" if state.tailored else "resume.pdf"
+                    return self._json(200, {**ATS, "tailored": state.tailored, "file": file, **state.ats_answer})
+                state.covers.append(body)
+                if state.cover_delay:
+                    time.sleep(state.cover_delay)
+                # the real endpoint (autofill.cover_letter) has the local model write it and keeps it as a version
+                self._json(200, {"key": "ashby:initech/4f1c", "company": "Initech", "title": "Platform Engineer",
+                                 "tone": body.get("tone") or "direct", "emphasis": body.get("emphasis") or "",
+                                 "letter": COVER, "warnings": [], "model": "fake-local-model", "local": True,
+                                 "drafted": True, "version": len(state.covers), "path": "", "changes": "",
+                                 "matched_by": "link", **state.cover_answer})
             elif self.path == "/ext/reply":
                 state.replies.append(body)
                 if state.reply_delay:

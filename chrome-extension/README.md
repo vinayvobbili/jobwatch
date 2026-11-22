@@ -89,6 +89,28 @@ the draft into LinkedIn's box (it asks before replacing text already there, and 
 now). It never presses Send: you read it and send it yourself. Needs a jobwatch with the `reply` call (the button is
 absent on an older one).
 
+## ATS check and cover letter for a job
+
+On a job's page (a company's careers page, an application form, a posting) the Apply group has two more tiles. jobwatch has
+to know the job: it is matched to the page by the board's posting id, the link it stored, a LinkedIn or Indeed job number,
+or, for a job found by an alert and opened on the company's own site, by the page's company and title when exactly one open
+job fits (the panel says so and asks you to check it is the right one). If it doesn't track the job the panel says to
+press **Save this posting to jobwatch** first.
+
+- **ATS check** shows the keyword score of the resume jobwatch keeps for that job (the tailored one, else your general one)
+  against the posting: what a screener would miss (`*` is a term the posting asks for), what it found, and what would
+  trip a parser. It is jobwatch's own keyword check on your computer, with no model, and it changes nothing. When it read
+  the general resume, **Tailor a resume for this job, then check it** makes one with resume-kit and checks that.
+- **Cover letter** has your jobwatch draft a letter with the model on your computer (the same draft the Prepare button on
+  a queued job's card makes) and keeps it with the job as its next version. The panel shows it (edit it), where it was
+  written (on this Mac, or, if you set `reply: {backend: chat}`, by the chat model, in amber), and Copy. **Fill the cover
+  letter box** types it into the form's cover letter box when the page has one, only if that box is empty; **Replace what
+  is in the box** is a separate press. A form that takes the letter as a file gets no fill button: copy the letter and
+  attach it yourself. The extension never presses Submit.
+
+Both need a jobwatch with the `ats` and `cover` calls (the tiles are absent on an older one). The extension sends your
+jobwatch the page's address and the company and job title the page shows (not on LinkedIn or Indeed pages), nothing else.
+
 ## Privacy
 
 Nothing leaves your computer except to jobwatch, which runs on it. See [PRIVACY.md](PRIVACY.md).
@@ -106,6 +128,7 @@ job-lists.js        reads LinkedIn / Indeed job lists, paced like a person (PACI
 passive.js          content script on LinkedIn and Indeed: notes the job cards seen while browsing (passive mode)
 read-posting.js     content script on LinkedIn and Indeed: reads a job's description, only on a page opened with #jobwatch-read (Read posting)
 reply.js            injected by Draft reply only: reads the one open LinkedIn conversation, types the draft into its box (never presses Send)
+                    (ATS check and Cover letter inject no new script: the cover letter box is found with logic.js + page.js, and filled only on its own press)
 sidepanel.*         the review panel in Chrome's side panel: pairing status, the lead card and action tiles for the page, scan, rows, fill, drafts, results
 look.js             the System / Light / Dark theme (set on the options page) for the panel and the options page
 options.*           the options page (server, token, theme and width)

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Platform Engineer - Initech</title>
+<style>body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 24px auto; padding: 0 16px; } p { margin: 12px 0; } textarea { width: 100%; }</style>
+</head>
+<body>
+<!-- the company's own careers page for a job found on LinkedIn: a cover letter box, as a textarea, or (cover-file) as a file -->
+<h1>Platform Engineer</h1>
+<form action="#" novalidate>
+  <p><label for="fn">First name</label><br><input id="fn" name="fn" type="text"></p>
+  <p><label for="cl">Cover letter</label><br><textarea id="cl" name="cl" rows="6"></textarea></p>
+  <button type="submit">Submit</button>
+</form>
+<script>
+  // ?typed: the person already wrote something in the box
+  if (location.search.includes('typed')) document.getElementById('cl').value = 'Already typed by the person.';
+  window.__submits = 0;
+  document.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); window.__submits++; });
+</script>
+</body>
+</html>

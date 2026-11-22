@@ -31,7 +31,7 @@ export async function api(path, { method = 'GET', body, settings, raw = false, t
   const headers = { Accept: raw ? '*/*' : 'application/json', 'X-Jobwatch-Extension': cfg.token };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   const controller = new AbortController();
-  const limit = timeout || (path.startsWith('/ext/draft') || path.startsWith('/ext/reply') ? DRAFT_TIMEOUT_MS : TIMEOUT_MS);
+  const limit = timeout || (['/ext/draft', '/ext/reply', '/ext/cover'].some((p) => path.startsWith(p)) ? DRAFT_TIMEOUT_MS : TIMEOUT_MS);
   const timer = setTimeout(() => controller.abort(), limit);
   // Chrome stops a service worker whose fetch hasn't been answered in 30 seconds, and the panel then waits for ever:
   // an extension API call every so often keeps it alive for the wait

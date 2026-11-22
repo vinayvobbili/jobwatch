@@ -1,6 +1,6 @@
-"""A cover letter draft for a job (`jobwatch cover KEY`, the Cover letter button on a queued job): written from the
-posting, your resume and your stories by the shared local model (writer.py), in a tone you pick and with the
-emphasis you give, so none of it leaves this computer.
+"""A cover letter draft for a job (`jobwatch cover KEY`, the last step of Prepare on a queued job, and the extension's
+Cover letter): written from the posting, your resume and your stories by the shared local model (writer.py), in a
+tone you pick and with the emphasis you give, so none of it leaves this computer.
 
 Every draft is kept as a numbered version (covers/<job>/v1.md, with v1.json beside it for the tone, emphasis and
 model) so a second try with another tone or emphasis can be compared with the first: a diff of the sentences, in the

@@ -125,7 +125,7 @@ IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background 
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 # What the extension may offer beyond filling forms, named in /ext/ping: an extension paired with an older jobwatch
 # hides a button whose call that jobwatch doesn't have, instead of failing when it's pressed.
-EXT_FEATURES = ("posting", "import-list", "reply")
+EXT_FEATURES = ("posting", "import-list", "reply", "ats", "cover")
 
 
 class ApiError(Exception):
@@ -884,16 +884,38 @@ class App:
         """A new token: the extension stops working until the new one is pasted in."""
         return {"token": autofill.token(self._state(), renew=True)}
 
-    def ext_context(self, url: str) -> dict:
-        return self._with_store(lambda cfg, store: autofill.context(cfg, store, url))
+    def ext_context(self, url: str, company: str = "", title: str = "") -> dict:
+        return self._with_store(lambda cfg, store: autofill.context(cfg, store, url, company, title))
 
-    def ext_resume(self, url: str) -> tuple[bytes, str, str]:
-        return self._with_store(lambda cfg, store: autofill.resume_file(cfg, store, url))
+    def ext_resume(self, url: str, company: str = "", title: str = "") -> tuple[bytes, str, str]:
+        return self._with_store(lambda cfg, store: autofill.resume_file(cfg, store, url, company, title))
 
     def ext_draft(self, body) -> dict:
         return self._with_store(lambda cfg, store: autofill.draft(
             cfg, store, str(body.get("url") or ""), body.get("question") or "", body.get("words") or autofill.WORDS,
-            body.get("others")))
+            body.get("others"), str(body.get("company") or ""), str(body.get("title") or "")))
+
+    def ext_ats(self, body) -> dict:
+        """The ATS check of the resume kept for the job on the extension's page (see autofill.ats_check)."""
+        def run(cfg, store):
+            try:
+                return autofill.ats_check(cfg, store, str(body.get("url") or ""), str(body.get("company") or ""),
+                                          str(body.get("title") or ""))
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+        return self._with_store(run)
+
+    def ext_cover(self, body) -> dict:
+        """A cover letter for the job on the extension's page, kept as that job's next version (see
+        autofill.cover_letter)."""
+        def run(cfg, store):
+            try:
+                return autofill.cover_letter(cfg, store, str(body.get("url") or ""), str(body.get("company") or ""),
+                                             str(body.get("title") or ""), str(body.get("tone") or ""),
+                                             str(body.get("emphasis") or ""))
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+        return self._with_store(run)
 
     def ext_reply(self, body) -> dict:
         """A drafted reply to the recruiter thread the extension read (see reply.draft)."""
@@ -922,7 +944,8 @@ class App:
         """Tailor a resume to the job on the extension's page (see autofill.tailored)."""
         def run(cfg, store):
             try:
-                return autofill.tailored(cfg, store, str(body.get("url") or ""))
+                return autofill.tailored(cfg, store, str(body.get("url") or ""), str(body.get("company") or ""),
+                                         str(body.get("title") or ""))
             except KeyError as e:
                 raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
             except tailor.TailorError as e:
@@ -2445,22 +2468,25 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 if length > MAX_UPLOAD:
                     raise ApiError("too large", HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
                 raw = self.rfile.read(length) if length else b""
-                page = (parse_qs(url.query).get("url") or [""])[0]
+                query = parse_qs(url.query)
+                page, company, title = ((query.get(k) or [""])[0] for k in ("url", "company", "title"))
                 if method == "GET" and url.path == "/ext/ping":
                     data = {"ok": True, "version": __version__, "features": list(EXT_FEATURES)}
                 elif method == "GET" and url.path == "/ext/context":
-                    data = app.ext_context(page)
+                    data = app.ext_context(page, company, title)
                 elif method == "GET" and url.path == "/ext/resume":
-                    return self._send(HTTPStatus.OK, *app.ext_resume(page))
+                    return self._send(HTTPStatus.OK, *app.ext_resume(page, company, title))
                 elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/answers", "/ext/posting",
-                                                       "/ext/tailor", "/ext/import-list", "/ext/reply"):
+                                                       "/ext/tailor", "/ext/import-list", "/ext/reply", "/ext/ats",
+                                                       "/ext/cover"):
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
                     data = {"/ext/draft": app.ext_draft, "/ext/submitted": app.ext_submitted,
                             "/ext/answers": app.ext_answers,
                             "/ext/posting": app.ext_posting, "/ext/tailor": app.ext_tailor,
-                            "/ext/import-list": app.ext_import_list, "/ext/reply": app.ext_reply}[url.path](body)
+                            "/ext/import-list": app.ext_import_list, "/ext/reply": app.ext_reply,
+                            "/ext/ats": app.ext_ats, "/ext/cover": app.ext_cover}[url.path](body)
                 else:
                     raise ApiError("not found", HTTPStatus.NOT_FOUND)
                 self._json(HTTPStatus.OK, data)

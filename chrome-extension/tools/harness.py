@@ -33,6 +33,8 @@ TLS_HOSTS = ("jobs.ashbyhq.com",)
 ROUTES = [
     (r"^/initech/jobs/\d+$", "greenhouse.html"),
     (r"^/embed/job_app$", "greenhouse.html"),
+    (r"^/openings/file$", "cover-file.html"),
+    (r"^/openings/[^/]+$", "cover.html"),
     (r"^/[^/]+/[^/]+/apply$", "lever.html"),
     (r"^/[^/]+/[^/]+/thanks$", "lever-thanks.html"),
     (r"^/[^/]+/[^/]+/application$", "ashby.html"),
