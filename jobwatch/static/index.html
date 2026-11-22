@@ -471,9 +471,26 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .prepare { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; }
 .prepare[hidden] { display: none; }
 .prep-steps { display: flex; flex-wrap: wrap; gap: 6px 8px; }
-.prep-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 999px;
-  font-size: 12.5px; font-weight: 650; color: var(--muted); border: 1px solid var(--line); background: var(--chip);
-  transition: background .2s, color .2s, border-color .2s; }
+.prep-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 12px; border-radius: 999px;
+  font: inherit; font-size: 12.5px; font-weight: 650; color: var(--muted); border: 1px solid var(--line); background: var(--chip);
+  cursor: pointer; max-width: 100%; transition: background .2s, color .2s, border-color .2s, transform .15s, box-shadow .2s; }
+.prep-chip[hidden] { display: none; }
+.prep-chip::after { content: ""; flex: none; width: 6px; height: 6px; margin: -3px 1px 0 0; border: solid currentColor;
+  border-width: 0 2px 2px 0; transform: rotate(45deg); opacity: .75; transition: transform .2s, margin .2s; }
+.prep-chip[aria-expanded="true"]::after { transform: rotate(-135deg); margin-top: 3px; }
+.prep-chip:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06);
+  box-shadow: 0 6px 14px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
+.prep-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.prep-chip[aria-expanded="true"] { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+.prep-chip:disabled { cursor: default; opacity: .6; }
+.prep-chip:disabled::after { display: none; }
+/* a step's result opens under the chips, one at a time, and scrolls inside itself so the card stays about its size */
+.prepare .tailor { display: none; }
+.prepare .tailor.open:not([hidden]) { display: flex; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
+.prepare .tailor .problems, .prepare .tailor .small { overflow-wrap: anywhere; }
+.prepare .tailor.cover.open:not([hidden]) { display: block; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap; border: 0; }
 .prep-chip[data-state="run"] { color: var(--accent); border-color: var(--accent);
   background: var(--accent-soft); animation: pulse 1.2s ease-in-out infinite; }
 .prep-chip[data-state="ok"] { color: #fff; border-color: transparent; background: var(--grad); }
@@ -1043,6 +1060,8 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .more-all { display: flex; justify-content: center; margin: 18px 0 4px; }
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 14px; }
 .grid-cards > .card { margin: 0; }
+/* job cards differ in height (an opened Prepare panel, a long note): each keeps its own, never stretched to its row */
+.grid-cards.top-aligned { align-items: start; }
 .grid-cards > .empty { grid-column: 1 / -1; }
 /* activity: what jobwatch did in the background, newest first, a day at a time */
 .acts-day { margin: 18px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
@@ -2282,13 +2301,13 @@ function tailorPanel(job) {
         "by what the posting asks for, but the headline and summary are the ones your version already had.") : null);
   };
   const run = async () => {
-    if (!job.can_tailor) { job.tailor_help = job.tailor_setup; draw(); return ["skip", "Resume: set up resume-kit"]; }
+    if (!job.can_tailor) { job.tailor_help = job.tailor_setup; draw(); return ["skip", "Resume: set up resume-kit", job.tailor_help]; }
     try {
       const r = await api("/api/tailor", { key: job.key });
       job.resume = r.pdf; job.tailor_help = null;
       draw(r);
-      return [r.ok ? "ok" : "warn", `Resume ${r.new ? "drafted" : "rebuilt"}`];
-    } catch (e) { job.tailor_help = e.message; draw(); return ["err", "Resume failed"]; }
+      return [r.ok ? "ok" : "warn", `Resume ${r.new ? "drafted" : "rebuilt"}`, r.problems.join(" ")];
+    } catch (e) { job.tailor_help = e.message; draw(); return ["err", "Resume failed", e.message]; }
   };
   draw();
   return { el: out, run };
@@ -2315,8 +2334,8 @@ function atsPanel(job) {
     try {
       const r = await api("/api/ats?key=" + encodeURIComponent(job.key));
       draw(r);
-      return [out.dataset.tone, r.score == null ? "ATS: no keywords" : `ATS ${r.score}%`];
-    } catch (e) { draw({ error: e.message }); return ["err", "ATS check failed"]; }
+      return [out.dataset.tone, r.score == null ? "ATS: no keywords" : `ATS ${r.score}%`, r.checks.join(" ")];
+    } catch (e) { draw({ error: e.message }); return ["err", "ATS check failed", e.message]; }
   };
   return { el: out, run };
 }
@@ -2363,10 +2382,11 @@ function coverPanel(job) {
     try {
       const r = await api("/api/cover", { key: job.key, tone: t, emphasis: e });
       await load({ warnings: r.warnings });
-      result = r.drafted ? [r.warnings.length ? "warn" : "ok", `Cover letter v${r.version}`] : ["warn", "Cover letter: no draft"];
+      result = r.drafted ? [r.warnings.length ? "warn" : "ok", `Cover letter v${r.version}`, r.warnings.join(" ")]
+        : ["warn", "Cover letter: no draft", r.warnings.join(" ")];
     } catch (err) {
       try { await load({ error: err.message }); } catch { draw({ versions: [], error: err.message }); }
-      result = ["err", "Cover letter failed"];
+      result = ["err", "Cover letter failed", err.message];
     }
     tone.value = t; emphasis.value = e;
     return result;
@@ -2374,39 +2394,78 @@ function coverPanel(job) {
   return { el: out, run: draft };
 }
 
-// "Prepare": the three steps above, one after the other, for one job. Each step's result stays on the card; the
-// chips say which step is running and how each ended. A step that can't run (resume-kit isn't set up, no model, no
+// "Prepare": the three steps above, one after the other, for one job. Each step's result stays with the card but
+// folded away: the card shows only a row of chips that say which step is running and how each ended, and each chip is
+// a toggle that opens its result in a panel under the row (one at a time, scrolling inside itself, so a long error
+// or a whole cover letter never stretches the card). A step that can't run (resume-kit isn't set up, no model, no
 // posting text) says why in its own panel, and the steps after it still run. Returns [button, panel].
+// The same job object gets the same button and panel back when its card is drawn again (a re-sort, a score arriving),
+// so an open panel, and a letter being edited in it, survive the redraw.
+const prepared = new WeakMap();
+const firstSentence = t => {
+  const s = String(t || "").replace(/\s+/g, " ").trim(), m = s.match(/^.*?[.!?](?=\s|$)/);
+  const one = m ? m[0] : s;
+  return one.length > 140 ? one.slice(0, 137).trimEnd() + "…" : one;
+};
 function prepareButton(job) {
+  if (prepared.has(job)) return prepared.get(job);
   const steps = [["tailor", "Resume", tailorPanel(job)], ["ats", "ATS check", atsPanel(job)],
     ["cover", "Cover letter", coverPanel(job)]];
-  const chips = h("div", { class: "prep-steps", role: "status", "aria-live": "polite" },
-    steps.map(([id, name]) => h("span", { class: "prep-chip", "data-step": id, "data-state": "wait" }, name)));
-  const out = h("div", { class: "prepare", hidden: !(job.resume || job.tailor_help) }, chips, steps.map(([, , p]) => p.el));
+  const uid = Math.random().toString(36).slice(2, 8), details = {};
+  const chips = h("div", { class: "prep-steps", role: "group", "aria-label": "Prepare results" },
+    steps.map(([id, name, p]) => {
+      p.el.id = `prep-${uid}-${id}`;
+      p.el.setAttribute("role", "region");
+      p.el.setAttribute("aria-label", `${name} result`);
+      return h("button", { type: "button", class: "prep-chip", "data-step": id, "data-state": "wait",
+        "aria-expanded": "false", "aria-controls": p.el.id, onclick: () => toggle(id) }, name);
+    }));
+  const status = h("span", { class: "sr-only", role: "status", "aria-live": "polite" });
+  const out = h("div", { class: "prepare", hidden: !(job.resume || job.tailor_help) }, chips, status, steps.map(([, , p]) => p.el));
+  const chipOf = id => chips.querySelector(`[data-step="${id}"]`);
+  let open = null;
+  // A chip with nothing behind it yet (its panel is hidden) can't open; the others toggle.
+  const sync = () => {
+    for (const [id, , p] of steps) {
+      const c = chipOf(id), shown = open === id && !p.el.hidden;
+      c.disabled = p.el.hidden;
+      c.hidden = c.disabled && c.dataset.state === "wait";  // a step that hasn't run has nothing to show or fold
+      c.setAttribute("aria-expanded", String(shown));
+      p.el.classList.toggle("open", shown);
+      const d = firstSentence(details[id] || (id === "tailor" ? job.tailor_help : ""));
+      c.title = (d ? `${d}\n` : "") + (c.disabled ? "Nothing to show yet." : shown ? "Click to fold it away." : "Click to open it.");
+    }
+  };
+  const toggle = id => { open = open === id ? null : id; sync(); };
   const b = h("button", { class: "btn prepare-go", title: "Tailor a resume for this job, check it against the posting's " +
     "keywords (ATS), and draft a cover letter, in that order. All three are kept with the job; you review them before " +
     "you apply. Local model; nothing is sent." }, icon("sparkle", 14), "Prepare");
-  const chip = (id, state, text) => {
-    const c = chips.querySelector(`[data-step="${id}"]`);
-    c.dataset.state = state; c.textContent = text;
+  const chip = (id, state, text, detail = "") => {
+    const c = chipOf(id);
+    c.dataset.state = state; c.textContent = text; details[id] = detail;
   };
   b.onclick = async () => {
-    b.disabled = true; b.classList.add("spin"); out.hidden = false;
+    b.disabled = true; b.classList.add("spin"); out.hidden = false; open = null;
     for (const [id, name] of steps) chip(id, "wait", name);
+    sync();
     const done = [];
     for (const [id, name, panel] of steps) {
-      chip(id, "run", `${name}…`);
+      chip(id, "run", `${name}…`); sync();
       b.replaceChildren(icon("refresh", 14), `Preparing: ${name.toLowerCase()}…`);
-      let state, text;
-      try { [state, text] = await panel.run(); } catch (e) { [state, text] = ["err", `${name} failed`]; }
-      chip(id, state, text);
+      let state, text, detail;
+      try { [state, text, detail] = await panel.run(); } catch (e) { [state, text, detail] = ["err", `${name} failed`, e.message]; }
+      chip(id, state, text, detail);
+      sync();
       done.push(text);
     }
     b.classList.remove("spin"); b.disabled = false;
     b.replaceChildren(icon("sparkle", 14), "Prepare again");
+    status.textContent = `Prepared: ${done.join(", ")}.`;
     toast(`✨ Prepared ${job.company}: ${done.join(", ")}. Review them, then apply.`,
-      null, steps.every((_, i) => chips.children[i].dataset.state === "ok") ? "win" : "");
+      null, steps.every(([id]) => chipOf(id).dataset.state === "ok") ? "win" : "");
   };
+  sync();
+  prepared.set(job, [b, out]);
   return [b, out];
 }
 
@@ -4795,7 +4854,7 @@ async function renderQueue() {
   const [jobs, p] = await Promise.all([api("/api/queue"), api("/api/pace").then(r => r.pace).catch(() => null)]);
   queueJobs = jobs;
   const pace = paceLine(h("div", { class: "pace" }), p);
-  const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
+  const list = h("div", { class: "cards grid-cards top-aligned" }), showing = h("div", { class: "showing" }), pager = h("div", {});
   drawQueue = () => {
     worthShown = queueView.sort === "worth";
     const ordered = worthShown ? [...queueJobs].sort(byWorth) : queueJobs;
@@ -6987,7 +7046,7 @@ async function renderCompany() {
       render();
     } catch (e) { b.disabled = false; toast(e.message); }
   };
-  const tiles = h("div", {}), list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
+  const tiles = h("div", {}), list = h("div", { class: "cards grid-cards top-aligned" }), showing = h("div", { class: "showing" }), pager = h("div", {});
   drawCompanyTiles = () => fill(tiles, companyTiles(c));
   const draw = () => {
     const pg = paged(c.jobs, v, c.company, draw);

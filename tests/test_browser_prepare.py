@@ -104,8 +104,19 @@ def page(browser, queued, steps):  # the fakes are in place before the page asks
 
 
 def step_panel(card, step: str):
-    """A step's result panel (the chip above it carries the same data-step)."""
+    """A step's result panel (the chip above it carries the same data-step). It's folded away until its chip is
+    pressed: `shown` opens it first."""
     return card.locator(f'div[data-step="{step}"]')
+
+
+def shown(card, step: str):
+    """A step's result panel, opened by its chip if it isn't open yet."""
+    chip = card.locator(f'button.prep-chip[data-step="{step}"]')
+    if chip.get_attribute("aria-expanded") != "true":
+        chip.click()
+    panel = step_panel(card, step)
+    sync_api.expect(panel).to_be_visible()
+    return panel
 
 
 def chips(page) -> list[tuple[str, str]]:
@@ -136,10 +147,11 @@ def test_prepare_runs_resume_then_ats_check_then_cover_letter_and_keeps_them(pag
     assert [s for s, _ in states] == ["ok", "ok", "ok"], states
     assert states[0][1] == "Resume drafted" and states[1][1].startswith("ATS ") and states[2][1] == "Cover letter v1"
     # each result is on the card: the resume to open, the ATS score, the letter to copy
-    assert "Jordan_Rivera_Resume_X.pdf" in step_panel(card, "tailor").inner_text()
-    assert step_panel(card, "ats").locator(".badge").inner_text().startswith("ATS ")
+    assert all(step_panel(card, s).is_hidden() for s in ("tailor", "ats", "cover"))  # folded until a chip is pressed
+    assert "Jordan_Rivera_Resume_X.pdf" in shown(card, "tailor").inner_text()
+    assert shown(card, "ats").locator(".badge").inner_text().startswith("ATS ")
     assert "not tailored" not in step_panel(card, "ats").inner_text()  # it read the tailored one
-    assert step_panel(card, "cover").locator("textarea").input_value().startswith("Hello Initech team,")
+    assert shown(card, "cover").locator("textarea").input_value().startswith("Hello Initech team,")
     assert card.get_by_role("button", name="Prepare again").is_enabled()
     # and kept with the job, where the old buttons kept them
     store = Store(config.load(watchlist).state)
@@ -152,7 +164,8 @@ def test_prepare_runs_resume_then_ats_check_then_cover_letter_and_keeps_them(pag
     # a reload shows the resume that is kept; a second press rebuilds it, checks it and writes version 2
     page.reload()
     page.locator(CARD).wait_for(timeout=15000)
-    assert "Jordan_Rivera_Resume_X.pdf" in page.locator(f"{CARD} .prepare").inner_text()
+    assert [c.inner_text() for c in page.locator(f"{CARD} .prep-chip:visible").all()] == ["Resume"]  # only what's kept
+    assert "Jordan_Rivera_Resume_X.pdf" in shown(page.locator(CARD), "tailor").inner_text()
     page.locator(CARD).get_by_role("button", name="Prepare", exact=True).click()
     sync_api.expect(page.locator(CARD).get_by_role("button", name="Prepare again")).to_be_visible(timeout=60000)
     assert chips(page)[2][1] == "Cover letter v2" and steps.count("cover draft") == 2
@@ -174,9 +187,9 @@ def test_a_step_that_cannot_run_says_why_and_the_steps_after_it_still_run(page, 
     # no resume-kit: the resume step is skipped, and the general resume is what the ATS check reads; no model: a warning
     assert [s for s, _ in states] == ["skip", "ok", "warn"], states
     assert states[0][1] == "Resume: set up resume-kit" and states[2][1] == "Cover letter: no draft"
-    assert "Tailoring needs resume-kit" in step_panel(card, "tailor").inner_text()
-    assert "general resume" in step_panel(card, "ats").inner_text()
-    assert "local model isn't running" in step_panel(card, "cover").inner_text()
+    assert "Tailoring needs resume-kit" in shown(card, "tailor").inner_text()
+    assert "general resume" in shown(card, "ats").inner_text()
+    assert "local model isn't running" in shown(card, "cover").inner_text()
     assert step_panel(card, "cover").locator("textarea").count() == 0
     assert steps == ["ats read resume.txt"]  # nothing was built or drafted
     assert card.get_by_role("button", name="Prepare again").is_enabled()
@@ -185,7 +198,7 @@ def test_a_step_that_cannot_run_says_why_and_the_steps_after_it_still_run(page, 
 
 def test_a_step_that_fails_is_marked_and_the_next_one_still_runs(page, queued, steps, monkeypatch):
     def broken(path):
-        raise ValueError("Can't read the PDF's text: install poppler (`brew install poppler`).")
+        raise ValueError("Can't read the PDF's text. Install poppler (`brew install poppler`) and press Prepare again.")
     monkeypatch.setattr(ats, "read_file", broken)
     card = page.locator(CARD)
     card.get_by_role("button", name="Prepare", exact=True).click()
@@ -193,7 +206,9 @@ def test_a_step_that_fails_is_marked_and_the_next_one_still_runs(page, queued, s
     states = chips(page)
     assert [s for s, _ in states] == ["ok", "err", "ok"], states
     assert states[1][1] == "ATS check failed"
-    assert "install poppler" in step_panel(card, "ats").inner_text()
+    assert "brew install poppler" in shown(card, "ats").inner_text()  # the whole message is in the panel
+    tip = card.locator('button.prep-chip[data-step="ats"]').get_attribute("title")
+    assert "Can't read the PDF's text." in tip and "poppler" not in tip  # the tooltip has the first sentence only
     assert step_panel(card, "cover").locator("textarea").input_value().startswith("Hello Initech team,")
 
 
@@ -204,4 +219,124 @@ def test_the_company_page_card_has_the_same_one_button(page, queued):
     assert card.get_by_role("button", name="Prepare", exact=True).count() == 1
     for gone in ("Tailor resume", "ATS check", "Cover letter"):
         assert card.get_by_role("button", name=gone, exact=True).count() == 0, gone
+    assert page.errors == []
+
+
+# -- layout: one card with all three results beside ordinary ones --
+
+OTHERS = ["greenhouse:acme:101", "lever:globex:aaaa-1111"]
+
+
+@pytest.fixture
+def crowd(browser, queued, steps, watchlist):
+    """Three queued jobs (the Initech one that will carry Prepare results, two ordinary ones) and a page opener."""
+    store = Store(config.load(watchlist).state)
+    store.set_status(OTHERS, "queued", None)
+    store.close()
+    pages = []
+
+    def open_queue(width: int):
+        page = browser.new_page(viewport={"width": width, "height": 1100})
+        pages.append(page)
+        page.set_default_timeout(20000)
+        page.errors = []
+        page.on("pageerror", lambda e: page.errors.append(str(e)))
+        page.goto(f"http://127.0.0.1:{queued}/#queue")
+        page.locator(CARD).wait_for(timeout=15000)
+        sync_api.expect(page.locator(".card.job")).to_have_count(3)
+        return page
+    yield open_queue
+    for p in pages:
+        p.close()
+
+
+def heights(page) -> dict[str, int]:
+    return page.evaluate(
+        "Object.fromEntries([...document.querySelectorAll('.card.job')].map(c => [c.id, c.offsetHeight]))")
+
+
+def prepare(page):
+    card = page.locator(CARD)
+    card.get_by_role("button", name="Prepare", exact=True).click()
+    sync_api.expect(card.get_by_role("button", name="Prepare again")).to_be_visible(timeout=60000)
+
+
+def test_a_card_with_prepare_results_does_not_stretch_its_neighbours(crowd):
+    page = crowd(1999)
+    before = heights(page)
+    prepare(page)
+    card = page.locator(CARD)
+    after = heights(page)
+    # (a) the ordinary cards keep their own height, collapsed or with a panel open
+    others = [k for k in before if k != f"job-{KEY}"]
+    assert len(others) == 2
+    for k in others:
+        assert abs(after[k] - before[k]) <= 2, (k, before, after)
+    # (b) folded away, the results add a row of chips, not a page
+    own = f"job-{KEY}"
+    assert after[own] - before[own] <= 120, (before, after)
+    # (c) each chip opens its panel; one at a time; aria-expanded follows
+    chip = lambda s: card.locator(f'button.prep-chip[data-step="{s}"]')  # noqa: E731
+    assert [chip(s).get_attribute("aria-expanded") for s in ("tailor", "ats", "cover")] == ["false"] * 3
+    chip("ats").click()
+    assert chip("ats").get_attribute("aria-expanded") == "true"
+    sync_api.expect(step_panel(card, "ats")).to_be_visible()
+    assert chip("ats").get_attribute("aria-controls") == step_panel(card, "ats").get_attribute("id")
+    chip("cover").click()
+    assert [chip(s).get_attribute("aria-expanded") for s in ("tailor", "ats", "cover")] == ["false", "false", "true"]
+    sync_api.expect(step_panel(card, "ats")).to_be_hidden()
+    sync_api.expect(step_panel(card, "cover")).to_be_visible()
+    cover = step_panel(card, "cover")
+    assert cover.bounding_box()["height"] <= 322  # its own scroll, never the card's growth
+    assert cover.locator("textarea").is_visible()
+    for name in ("Draft another", "Copy"):
+        assert cover.get_by_role("button", name=name, exact=True).is_visible()
+    assert cover.get_by_role("combobox", name="Tone").is_visible() and cover.get_by_label("Emphasis").is_visible()
+    opened = heights(page)
+    assert opened[own] - before[own] <= 420, (before, opened)
+    for k in others:
+        assert abs(opened[k] - before[k]) <= 2, (k, before, opened)
+    chip("cover").click()  # pressing the open chip folds it away
+    assert chip("cover").get_attribute("aria-expanded") == "false"
+    sync_api.expect(cover).to_be_hidden()
+    # keyboard: Tab to a chip, Enter or Space opens it
+    chip("ats").focus()
+    page.keyboard.press("Enter")
+    assert chip("ats").get_attribute("aria-expanded") == "true"
+    page.keyboard.press("Space")
+    assert chip("ats").get_attribute("aria-expanded") == "false"
+    assert page.errors == []
+
+
+@pytest.mark.parametrize("width", [1999, 1280])
+def test_the_grid_never_scrolls_sideways_in_any_width_setting(crowd, width):
+    page = crowd(width)
+    prepare(page)
+    card = page.locator(CARD)
+    card.locator('button.prep-chip[data-step="cover"]').click()
+    for setting in ("standard", "wide", "full"):
+        page.evaluate("s => document.documentElement.dataset.width = s", setting)
+        over = page.evaluate("""() => {
+            const g = document.querySelector('.grid-cards'), edge = g.getBoundingClientRect().right;
+            const right = Math.max(...[...g.children].map(c => c.getBoundingClientRect().right));
+            return [document.documentElement.scrollWidth - innerWidth, g.scrollWidth - g.clientWidth, right - edge];
+        }""")
+        assert all(o <= 1 for o in over), (width, setting, over)
+        assert page.locator(".card.job").count() == 3
+    assert page.errors == []
+
+
+def test_a_redraw_of_the_queue_keeps_the_open_panel_and_the_letter_being_edited(crowd):
+    page = crowd(1280)
+    prepare(page)
+    card = page.locator(CARD)
+    card.locator('button.prep-chip[data-step="cover"]').click()
+    box = card.locator("textarea")
+    box.fill("My own edit of the letter.")
+    page.get_by_role("button", name="Worth it", exact=True).click()  # draws the cards again
+    page.get_by_role("button", name="Oldest first", exact=True).click()
+    card = page.locator(CARD)
+    assert card.locator('button.prep-chip[data-step="cover"]').get_attribute("aria-expanded") == "true"
+    assert card.locator("textarea").input_value() == "My own edit of the letter."
+    assert card.get_by_role("button", name="Prepare again").is_enabled()
     assert page.errors == []
