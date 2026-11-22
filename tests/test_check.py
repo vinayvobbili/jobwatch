@@ -149,7 +149,7 @@ def test_warnings_before_applying(watchlist, web, tmp_path):
     got = {e.job.id: e.warnings for e in queue(cfg, Store(cfg.state))}
     assert got["aaaa-1111"] == ["pay $150K–$210K is below $220K", "stack: “models in Python”"]
     # queued by hand: the filters never passed it (its $60–$80 an hour comes to $125K–$166K a year)
-    assert got["bbbb-2222"][:2] == ["pay $125K–$166K is below $220K", "location: Toronto, ON"]
+    assert got["bbbb-2222"][:2] == ["pay $60–$80/hr, about $125K–$166K a year is below $220K", "location: Toronto, ON"]
     assert got["c1"] == []
     text = report.queue_markdown(queue(cfg, Store(cfg.state)))
     assert "**Check:** pay $150K–$210K is below $220K; stack: “models in Python”" in text

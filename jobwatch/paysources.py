@@ -89,7 +89,10 @@ def sources(job: Job, *, comp: dict | None = None, result=None, levels_on: bool 
             est: lca.Estimate | None = None, lca_cached: bool = False) -> list[dict]:
     """The six sources for a job, in order. `result` is levels.py's answer (an Estimate, PENDING, REFUSED, LATER or
     None), `est` lca.py's, `comp` what store.comp kept."""
-    return [_src("posted", job.pay(), reason="the posting lists no pay"),
+    posted = (_src("posted", job.pay(), rate=True, short=job.pay().split(", about ")[0],
+                   detail=f"{job.pay()}: a rate worked out as a year's pay, not a salary")
+              if job.is_rate else _src("posted", job.pay(), reason="the posting lists no pay"))
+    return [posted,
             _levels(job, result, levels_on), _lca(est, lca_cached), _recruiter(comp), _glassdoor(comp),
             _ask(result, levels_on)]
 

@@ -395,7 +395,8 @@ def get_job(key: Key) -> dict:
         result, est = levels.for_one_job(cfg, store, job), lca.for_one_job(cfg, job)
         return {"key": job.key, "company": job.display_company, "title": job.title, "url": job.url,
                 "link_note": job.link_note or None,
-                "pay": job.pay(), "pay_sources": paysources.as_dict(paysources.gather(cfg, store, job, result, est)),
+                "pay": job.pay(), "pay_per": job.pay_per or None,
+                "pay_sources": paysources.as_dict(paysources.gather(cfg, store, job, result, est)),
                 "pay_estimate": guess.to_dict() if (guess := estimate.for_job(cfg, store, job, filings=est,
                                                                               result=result)) else None,
                 "locations": job.places, "text": job.to_text(), **rec,

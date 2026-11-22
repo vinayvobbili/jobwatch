@@ -45,7 +45,16 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import __version__
 from .models import Job
-from .text import annual, hiring_locations, html_to_text, in_us, is_remote, parse_salary, pay_period, split_locations
+from .text import (
+    annual,
+    hiring_locations,
+    html_to_text,
+    in_us,
+    is_remote,
+    parse_pay,
+    pay_period,
+    split_locations,
+)
 
 USER_AGENT = f"jobwatch/{__version__} (+https://github.com/vinayvobbili/jobwatch)"
 
@@ -231,9 +240,8 @@ def _time(value) -> datetime | None:
 
 def _salary(job: Job, text: str) -> None:
     """Fill the pay range from free text when the board has no structured field for it."""
-    if job.salary_min is None and (found := parse_salary(text)):
-        job.salary_min, job.salary_max = found
-        job.currency = job.currency or "USD"
+    if job.salary_min is None and (found := parse_pay(text)):
+        job.set_pay(*found[:2], job.currency or "USD", found[2])
 
 
 def parse_greenhouse(data: dict, board: str) -> list[Job]:
@@ -273,8 +281,8 @@ def parse_lever(data: list, board: str) -> list[Job]:
         )
         pay = j.get("salaryRange") or {}
         if (per := pay_period(pay.get("interval"))) and pay.get("min"):  # an hourly wage as the year's pay
-            job.salary_min, job.salary_max = annual(pay["min"], per), annual(pay.get("max") or pay["min"], per)
-            job.currency = pay.get("currency") or "USD"
+            job.set_pay(annual(pay["min"], per), annual(pay.get("max") or pay["min"], per),
+                        pay.get("currency") or "USD", per)
         elif not pay:
             _salary(job, j.get("salaryDescriptionPlain") or job.description)
         jobs.append(job)
@@ -303,10 +311,12 @@ def parse_ashby(data: dict, board: str) -> list[Job]:
         salaries = [c for t in comp.get("compensationTiers") or [] for c in t.get("components") or []
                     if c.get("compensationType") == "Salary" and pay_period(c.get("interval")) and c.get("minValue")]
         if salaries:  # "1 YEAR", or a rate ("1 HOUR") as the year's pay
-            job.salary_min = min(annual(c["minValue"], pay_period(c["interval"])) for c in salaries)
-            job.salary_max = max(annual(c.get("maxValue") or c["minValue"], pay_period(c["interval"]))
-                                 for c in salaries)
-            job.currency = salaries[0].get("currencyCode") or "USD"
+            job.set_pay(min(annual(c["minValue"], pay_period(c["interval"])) for c in salaries),
+                        max(annual(c.get("maxValue") or c["minValue"], pay_period(c["interval"]))
+                            for c in salaries),
+                        salaries[0].get("currencyCode") or "USD",
+                        pay_period(salaries[0]["interval"]) if len({pay_period(c["interval"]) for c in salaries}) == 1
+                        else "")
         else:
             _salary(job, comp.get("scrapeableCompensationSalarySummary") or job.description)
         jobs.append(job)
@@ -1485,8 +1495,7 @@ def parse_recruitee(data: dict, board: str) -> list[Job]:
         if (per := pay_period(pay.get("period"))) and pay.get("min"):
             try:
                 low, high = float(pay["min"]), float(pay.get("max") or pay["min"])
-                job.salary_min, job.salary_max = annual(low, per), annual(high, per)
-                job.currency = pay.get("currency") or "USD"
+                job.set_pay(annual(low, per), annual(high, per), pay.get("currency") or "USD", per)
             except (TypeError, ValueError):
                 _salary(job, text)
         else:
@@ -2050,8 +2059,8 @@ def _hn_post(c: dict, board: str, description: str) -> Job | None:
               locations=split_locations(*places), remote=True if remote else None, posted=posted,
               description=description, posting_url=hn if url else "", boards=boards)
     if not _HN_OTHER_PAY.search(pay or head):  # "€80k", "$150k CAD": not a range in dollars
-        if pay and (found := parse_salary(pay)):
-            job.salary_min, job.salary_max, job.currency = *found, "USD"
+        if pay and (found := parse_pay(pay)):
+            job.set_pay(*found[:2], "USD", found[2])
         _salary(job, description)
     return job
 
@@ -2203,8 +2212,8 @@ def _vc_posted(d: dict) -> datetime | None:
     return _time(value)
 
 
-def _vc_pay(d: dict) -> tuple[int, int, str] | None:
-    """(yearly min, max, currency) from a role's pay, as each kind of board writes it."""
+def _vc_pay(d: dict) -> tuple[int, int, str, str] | None:
+    """(yearly min, max, currency, period) from a role's pay, as each kind of board writes it."""
     s = d.get("salary") if isinstance(d.get("salary"), dict) else {}
     low, high, cur, per = s.get("minValue", s.get("min")), s.get("maxValue", s.get("max")), s.get("currency"), \
         s.get("period")
@@ -2218,7 +2227,7 @@ def _vc_pay(d: dict) -> tuple[int, int, str] | None:
         return None
     high = high if isinstance(high, (int, float)) and high >= low else low
     per = pay_period(per or "") or ("hour" if low < 1000 else "year")
-    return annual(low, per), annual(high, per), str(cur or "USD").upper()
+    return annual(low, per), annual(high, per), str(cur or "USD").upper(), per
 
 
 def _vc_job(d: dict, board: str) -> Job | None:
@@ -2242,7 +2251,7 @@ def _vc_job(d: dict, board: str) -> Job | None:
               department=str(departments[0] if departments else d.get("department") or ""),
               posted=_vc_posted(d), boards=[f"{found[0]}:{found[1]}"] if found else [])
     if pay := _vc_pay(d):
-        job.salary_min, job.salary_max, job.currency = pay
+        job.set_pay(*pay)
     return job
 
 

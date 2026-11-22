@@ -19,7 +19,7 @@ from .models import Job
 from .package import POSTING, Package
 from .score import resume_family, unjudged
 from .sources import SOURCES, candidate_home
-from .text import names_one_role, parse_salary
+from .text import names_one_role, parse_pay
 
 # queued: to apply to next. After applying: applied, then screening, interviewing, offer, or it ends: rejected (they
 # said no), withdrawn (you ended it) or closed (the company took the posting down: "Closed by company").
@@ -472,6 +472,30 @@ class Store:
                 actjobs.backfill(self.db)
             except Exception as e:  # a link missing from an old row is no reason to stop
                 print(f"jobwatch: activity rows not linked to their jobs: {type(e).__name__}: {e}", file=sys.stderr)
+
+        if self.db.execute("PRAGMA user_version").fetchone()[0] < 1:  # jobs from before pay kept its rate
+            try:
+                self.backfill_pay_per()
+                self.db.execute("PRAGMA user_version=1")
+            except Exception as e:  # a rate left unlabelled on an old job is no reason to stop
+                print(f"jobwatch: hourly pay not labelled on older jobs: {type(e).__name__}: {e}", file=sys.stderr)
+
+    def backfill_pay_per(self) -> int:
+        """Mark the jobs whose posted pay was an hourly wage worked out as a year's, from before a job kept the rate
+        (so the page said "$83K–$166K" for "$40 - $80 per hour"): the ones whose text still gives that wage.
+        Returns how many were marked. A board's job gets its rate again from the board at its next fetch."""
+        n = 0
+        rows = self.db.execute("SELECT key, data FROM jobs WHERE data LIKE '%\"salary_min\": %' "
+                               "AND data NOT LIKE '%\"salary_min\": null%'").fetchall()
+        with self.db:
+            for r in rows:
+                job = Job.from_dict(json.loads(r["data"]))
+                found = parse_pay(job.description) if job.description and not job.pay_per else None
+                if found and found[2] and found[:2] == (job.salary_min, job.salary_max or job.salary_min):
+                    job.pay_per = found[2]
+                    self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
+                    n += 1
+        return n
 
     def close(self):
         self.db.close()
@@ -1001,13 +1025,13 @@ class Store:
         job.description = text.strip()
         if posting:
             if job.salary_min is None and posting.salary_min is not None:
-                job.salary_min, job.salary_max, job.currency = posting.salary_min, posting.salary_max, posting.currency
+                job.set_pay(posting.salary_min, posting.salary_max, posting.currency, posting.pay_per)
             job.locations = job.locations or list(posting.locations)
             job.remote = posting.remote if job.remote is None else job.remote
             job.department = job.department or posting.department
             job.posted = job.posted or posting.posted
-        if job.salary_min is None and (pay := parse_salary(job.description)):
-            job.salary_min, job.salary_max, job.currency = *pay, "USD"
+        if job.salary_min is None and (pay := parse_pay(job.description)):
+            job.set_pay(*pay[:2], "USD", pay[2])
         with self.db:
             self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
         kept = self.package(job.key)
@@ -1061,8 +1085,8 @@ class Store:
             id_ = f"{base}-{n}"
         job = Job(source=MANUAL, company=board, id=id_, title=title, url=url, company_name=company,
                   locations=[location.strip()] if location.strip() else [], description=description.strip())
-        if job.description and (pay := parse_salary(job.description)):
-            job.salary_min, job.salary_max, job.currency = *pay, "USD"
+        if job.description and (pay := parse_pay(job.description)):
+            job.set_pay(*pay[:2], "USD", pay[2])
         now = _now()
         with self.db:
             self.db.execute("INSERT INTO jobs (key, source, company, data, first_seen, last_seen) VALUES "

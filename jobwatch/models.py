@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
-from .text import is_remote
+from .text import RATE_UNITS, is_remote, pay_label
 
 
 @dataclass
@@ -22,6 +22,9 @@ class Job:
     salary_min: int | None = None
     salary_max: int | None = None
     currency: str = ""
+    # The rate the posting gave when salary_min/max are the year it comes to: "hour" for "$40 - $80 per hour"
+    # (also day, week, month). "" when the posting states a yearly pay.
+    pay_per: str = ""
     posted: datetime | None = None
     description: str = ""
     # When the board's hosted job pages are offline (see sources.Hosted): a line to show with the job, saying so
@@ -56,12 +59,21 @@ class Job:
         kinds = [("remote", any(is_remote(p) for p in places)), ("onsite", any(not is_remote(p) for p in places))]
         return [k for k, has in kinds if has]
 
+    def set_pay(self, low: int, high: int | None, currency: str = "", per: str = "") -> None:
+        """Keep a posted pay: the year's range, and the rate it was worked out from when it wasn't yearly."""
+        self.salary_min, self.salary_max, self.currency = low, high, currency or self.currency
+        self.pay_per = per if per in RATE_UNITS else ""
+
+    @property
+    def is_rate(self) -> bool:
+        """True when the pay is a rate (an hourly contract wage) turned into a year's: not a salary."""
+        return self.salary_min is not None and self.pay_per in RATE_UNITS
+
     def pay(self) -> str:
+        """The posted pay as shown everywhere: "$150K–$196K", or for a rate "$40–$80/hr, about $83K–$166K a year"."""
         if self.salary_min is None:
             return ""
-        cur = "" if self.currency in ("", "USD") else f" {self.currency}"
-        low, high = self.salary_min, self.salary_max or self.salary_min
-        return f"${low / 1000:.0f}K–${high / 1000:.0f}K{cur}" if high != low else f"${low / 1000:.0f}K{cur}"
+        return pay_label(self.salary_min, self.salary_max or self.salary_min, self.pay_per, self.currency)
 
     def age_days(self, now: datetime | None = None) -> int | None:
         if not self.posted:

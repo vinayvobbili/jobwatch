@@ -616,7 +616,7 @@ class App:
                 "focus": e.focus, "roles": rolekinds.role_kinds(j.title), "fit": e.fit, "contacts": e.contacts,
                 "same_title": len(e.same_title), "keys": e.keys,
                 "find_referral": contacts.linkedin_search(j.display_company), "salary_max": j.salary_max,
-                "warnings": e.warnings, "link_note": j.link_note or None,
+                "pay_per": j.pay_per or None, "warnings": e.warnings, "link_note": j.link_note or None,
                 "duplicate_of": e.duplicate.to_dict() if e.duplicate else None}
 
     def _pay(self, cfg, store, rows: list[tuple], most: int = 1000) -> dict[str, dict]:

@@ -291,7 +291,7 @@ def fetch_all(cfg: Config, store: Store, workers: int = 8, get=None, page=None, 
                 mark_hosted(j, up, b.careers)
                 # Pay listed by place: the tier for the home state, which the pay filter and the display use.
                 if (home := cfg.filters_for(j).home_state) and (pay := local_salary(j.description, home)):
-                    j.salary_min, j.salary_max, j.currency = *pay, j.currency or "USD"
+                    j.set_pay(*pay, j.currency or "USD")  # a yearly tier: not a rate
             if up is False and not b.careers:
                 report.warnings[b.entry] = offline_warning(b)
             report.boards += 1

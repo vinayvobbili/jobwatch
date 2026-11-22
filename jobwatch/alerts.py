@@ -48,7 +48,7 @@ from . import dupes, linkedin, sources, suggest
 from .filters import reject_reason, rejection
 from .models import Job
 from .store import MANUAL, Store, _slug
-from .text import annual, html_to_text, parse_salary, pay_period, split_locations
+from .text import annual, html_to_text, parse_pay, parse_salary, pay_period, split_locations
 
 
 class AlertError(RuntimeError):
@@ -774,10 +774,9 @@ def _fill(job: Job, data: dict):
     if job.salary_min is None and per:  # YEAR, or a rate (HOUR, MONTH) as the year's pay
         low, high = value.get("minValue"), value.get("maxValue") or value.get("minValue")
         if isinstance(low, (int, float)) and isinstance(high, (int, float)):
-            job.salary_min, job.salary_max = annual(low, per), annual(high, per)
-            job.currency = str(pay.get("currency") or "USD")
-    if job.salary_min is None and (found := parse_salary(job.description)):
-        job.salary_min, job.salary_max, job.currency = *found, "USD"
+            job.set_pay(annual(low, per), annual(high, per), str(pay.get("currency") or "USD"), per)
+    if job.salary_min is None and (found := parse_pay(job.description)):
+        job.set_pay(*found[:2], "USD", found[2])
     try:
         posted = datetime.fromisoformat(str(data.get("datePosted", ""))[:10])
         job.posted = posted.replace(tzinfo=timezone.utc)
@@ -834,8 +833,8 @@ def email_job(a: Alert) -> Job:
               company_name=a.company, locations=split_locations(a.location) if a.location else [])
     if a.remote or re.search(r"\bremote\b", a.location, re.I) or _REMOTE_TITLE.search(a.title):
         job.remote = True
-    if found := parse_salary(a.pay):
-        job.salary_min, job.salary_max, job.currency = *found, "USD"
+    if found := parse_pay(a.pay):
+        job.set_pay(*found[:2], "USD", found[2])
     return job
 
 

@@ -648,7 +648,8 @@ def test_a_jobs_pay_is_one_row_of_labelled_chips_and_empty_ones_say_why(tmp_path
     empty source is a dimmed chip showing its blank word with the reason on hover, and a job without sources (an
     older server) still gets the plain pay chip."""
     js = tmp_path / "pay.js"
-    js.write_text(page_function("paySources") + "\n" + page_function("payTop") + """
+    js.write_text(page_function("paySources") + "\n" + page_function("payTop") + "\n" + page_function("isRate")
+                  + "\n" + page_function("payClass") + """
 const h = (tag, attrs, ...kids) =>
   ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
 const chips = el => el.kids.map(c => [c.attrs.class, c.kids[0].kids[0], c.kids[1], c.attrs.title]);
@@ -674,6 +675,19 @@ console.log(JSON.stringify({ attrs: row.attrs, chips: chips(row), old: paySource
         ["psrc psrc-none", "Recruiter", "none", "no recruiter figures kept"],
         ["psrc psrc-ask", "Ask", "$180K", "$180K"]]
     assert got["old"] == ["$1K"] and got["none"] is None
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_an_hourly_pay_chip_is_amber_not_the_green_of_a_salary(tmp_path):
+    js = tmp_path / "rate.js"
+    js.write_text(page_function("isRate") + "\n" + page_function("payClass") + """
+console.log(JSON.stringify([
+  payClass("pay", "$40–$80/hr, about $83K–$166K a year"), payClass("paychip", "$70/hr, about $146K a year"),
+  payClass("pay", "$150K–$196K"), payClass("pay", ""), payClass("pay", null)]));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["pay rate", "paychip rate", "pay", "pay", "pay"]
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")

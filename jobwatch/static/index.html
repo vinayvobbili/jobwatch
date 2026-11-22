@@ -297,6 +297,9 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .meta b { color: var(--text); font-weight: 600; }
 .meta .sep { opacity: .45; }
 .pay { color: var(--good); font-weight: 650; font-variant-numeric: tabular-nums; }
+/* an hourly (rate) pay shown as a year's: amber, not the green of a salary */
+.pay.rate, .paychip.rate { color: var(--warn, #b45309); }
+.psrc-posted.rate { background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent); color: var(--warn, #b45309); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .actions { margin-top: 12px; }
 .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
@@ -1980,13 +1983,18 @@ function whyScore(fit) {
       (r.evidence || []).slice(0, 2).map(q => h("q", {}, q))))));
 }
 
+// A pay that is a rate worked out as a year's ("$40–$80/hr, about $83K–$166K a year": Job.pay in models.py) is
+// an hourly contract wage, not a salary: amber, never the green of a figure that meets a target.
+function isRate(s) { return /\/(?:hr|day|wk|mo), about /.test(s || ""); }
+function payClass(base, s) { return isRate(s) ? `${base} rate` : base; }
+
 // A job's pay, one small chip per source in a fixed order (Posted, Levels, LCA, Recruiter, Glassdoor, Ask; see
 // paysources.py). A source with nothing is a dimmed chip and its reason shows on hover, so a blank is never a mystery.
 function paySources(job) {
   const items = job.pay_sources;
-  if (!items) return job.pay ? h("span", { class: "paychip" }, job.pay) : null;
+  if (!items) return job.pay ? h("span", { class: payClass("paychip", job.pay) }, job.pay) : null;
   return h("div", { class: "psrcs", "data-pay": job.key }, [...items.map(s => s.value
-    ? h("span", { class: `psrc psrc-${s.key}`, title: s.detail || s.value }, h("b", {}, s.label), s.short || s.value)
+    ? h("span", { class: `psrc psrc-${s.key}${s.rate ? " rate" : ""}`, title: s.detail || s.value }, h("b", {}, s.label), s.short || s.value)
     : h("span", { class: "psrc psrc-none", title: s.reason }, h("b", {}, s.label), s.blank)),
     // A guess for a posting with no pay (estimate.py): always marked Est., with its basis on hover.
     job.est_pay ? h("span", { class: "psrc psrc-est", title: `${job.est_pay.detail} An estimate, not a posted figure.`,
@@ -3927,7 +3935,7 @@ async function openHidden(kind) {
       h("div", { class: "hidden-list", style: "margin-top:10px" }, d.jobs.map(j => h("div", { class: "list-item" },
         h("div", { style: "flex:1;min-width:0" }, link(j.url, j.title, "title"),
           h("div", { class: "meta" }, h("b", {}, j.company),
-            [j.locations.slice(0, 3).join("; "), j.pay ? h("span", { class: "pay" }, j.pay) : null, age(j.age_days)]
+            [j.locations.slice(0, 3).join("; "), j.pay ? h("span", { class: payClass("pay", j.pay) }, j.pay) : null, age(j.age_days)]
               .filter(Boolean).map(x => [h("span", { class: "sep" }, "·"), x]))),
         h("span", { class: "chip why" }, j.why)))),
       d.more ? h("p", { class: "small muted" }, `and ${d.more.toLocaleString()} more, newest shown first`) : null);
@@ -5084,7 +5092,7 @@ function interviewCard(iv, d, i = 0) {
           h("span", { class: "title", style: "font-weight:700;font-size:17px" }, iv.title),
           iv.round_label ? h("span", { class: "badge round", title: "The interview round set on this application" }, iv.round_label) : null,
           h("div", { class: "meta" }, h("b", {}, iv.company), h("span", { class: "sep" }, "·"), STAGE_NAMES[iv.status] || iv.status,
-            iv.pay ? [h("span", { class: "sep" }, "·"), h("span", { class: "pay" }, iv.pay)] : null)),
+            iv.pay ? [h("span", { class: "sep" }, "·"), h("span", { class: payClass("pay", iv.pay) }, iv.pay)] : null)),
         h("div", { class: "iv-when" + (live ? " now" : "") }, h("b", {}, meetingTime(iv)), h("span", {}, `${iv.label} · ${when}`))),
       h("div", { class: "next" }, h("span", { class: "what" }, iv.next_step)),
       sheetChip(iv, d.sheets_base)));
@@ -5254,7 +5262,7 @@ function appRow(a, d) {
   stage.onchange = () => changeStage(a, d, stage);
   const view = () => fill(tr,
     h("td", { class: "co" }, h("div", { class: "co-cell" }, monogram(a.company), h("b", {}, a.company))),
-    h("td", { class: "role" }, a.url ? link(a.url, a.title) : a.title, a.pay ? h("div", { class: "pay small" }, a.pay) : null),
+    h("td", { class: "role" }, a.url ? link(a.url, a.title) : a.title, a.pay ? h("div", { class: payClass("pay", a.pay) + " small" }, a.pay) : null),
     h("td", {}, stage),
     h("td", { class: "nowrap" }, a.applied_at ? [fmtDay(a.applied_at, d.today), h("div", { class: "muted small" }, relDay(a.applied_at, d.today))] : ""),
     h("td", { class: "next-cell" }, nextLine(a, d.today) || h("span", { class: "muted" }, "—"),
@@ -5404,7 +5412,7 @@ function appCard(a, d, i = 0) {
     a.closed_new ? h("button", { class: "badge closed-new", title: "The posting was taken down since you last looked. Click to clear this notice: the application stays tracked.",
       onclick: async () => { try { await api("/api/closed/dismiss", { key: a.key }); render(); } catch (e) { toast(e.message); } } },
       `closed ${closedOn}`) : null,
-    a.pay ? h("span", { class: "pay" }, a.pay) : null,
+    a.pay ? h("span", { class: payClass("pay", a.pay) }, a.pay) : null,
     closedState(a) === "closed" ? `posting closed ${closedOn}` : closedState(a) === "checking" ? h("span", { class: "badge checking",
       title: "Found closed once. jobwatch looks again before calling it closed." }, "checking") : null].filter(Boolean);
   const view = () => { const [draftBtn, draftBox] = isEndedStatus(a.status) ? [null, null] : followupButton(a); fill(card,

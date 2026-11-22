@@ -88,13 +88,9 @@ def pay_period(interval: str) -> str | None:
     return next((p for p in ("year", "month", "week", "day", "hour") if p in words), None)
 
 
-def parse_salary(text: str) -> tuple[int, int] | None:
-    """The yearly pay range in the text, e.g. "$180,000 — $220,000" or "$180K - $220K".
-
-    A yearly range comes first; without one, an hourly wage ("$75 - $80/hr", "$70 an hour") is turned into
-    the yearly pay it comes to (2,080 hours a year). Amounts per day, week or month are skipped: in free text
-    they're as often a stipend or a budget ("$15k/month for compute") as pay. So are amounts too small to be
-    a yearly salary."""
+def parse_pay(text: str) -> tuple[int, int, str] | None:
+    """(low, high, per): the yearly pay range in the text, and per "hour" when it was an hourly wage turned into
+    the year it comes to, else "" (a stated yearly pay). See parse_salary."""
     text, hourly = text or "", None
     for m in _RANGE.finditer(text):
         low, high = _dollars(m.group(1), m.group(2)), _dollars(m.group(3), m.group(4) or m.group(2))
@@ -104,14 +100,39 @@ def parse_salary(text: str) -> tuple[int, int] | None:
             if PER_YEAR[per.group(1).lower()] == PER_YEAR["hour"]:
                 hourly = hourly or (annual(low, "hour"), annual(high, "hour"))
         elif low >= _LOWEST:
-            return low, high
+            return low, high, ""
     for m in _USD_AFTER.finditer(text):
         low, high = _dollars(m.group(1), None), _dollars(m.group(2), None)
         if not (_NOT_ANNUAL.match(text, m.end()) or high < low):
-            return low, high
+            return low, high, ""
     if not hourly and (m := _HOURLY.search(text)):
         hourly = (annual(_dollars(m.group(1), m.group(2)), "hour"),) * 2
-    return hourly if hourly and hourly[0] >= _LOWEST else None
+    return (*hourly, "hour") if hourly and hourly[0] >= _LOWEST else None
+
+
+def parse_salary(text: str) -> tuple[int, int] | None:
+    """The yearly pay range in the text, e.g. "$180,000 — $220,000" or "$180K - $220K".
+
+    A yearly range comes first; without one, an hourly wage ("$75 - $80/hr", "$70 an hour") is turned into
+    the yearly pay it comes to (2,080 hours a year; parse_pay also says it was hourly). Amounts per day, week
+    or month are skipped: in free text they're as often a stipend or a budget ("$15k/month for compute") as
+    pay. So are amounts too small to be a yearly salary."""
+    found = parse_pay(text)
+    return found[:2] if found else None
+
+
+RATE_UNITS = {"hour": "hr", "day": "day", "week": "wk", "month": "mo"}  # a rate's period, as written after a "/"
+
+
+def pay_label(low: int, high: int, per: str = "", currency: str = "") -> str:
+    """A yearly pay range as the page shows it: "$150K–$196K". One that came from a rate says so, with the rate
+    first: "$40–$80/hr, about $83K–$166K a year"."""
+    cur = "" if currency in ("", "USD") else f" {currency}"
+    year = f"${low / 1000:.0f}K–${high / 1000:.0f}K{cur}" if high != low else f"${low / 1000:.0f}K{cur}"
+    if per not in RATE_UNITS:
+        return year
+    lo, hi = (f"{x / PER_YEAR[per]:,.2f}".removesuffix(".00") for x in (low, high))
+    return f"${lo}{f'–${hi}' if hi != lo else ''}/{RATE_UNITS[per]}, about {year} a year"
 
 
 STATES = {

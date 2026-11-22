@@ -118,7 +118,8 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
         skip.append(("turned_down", f"{company} has turned you down {n} times: this application does more good "
                                     "at a company that hasn't said no"))
     if top and floor and top < floor:
-        skip.append(("under_floor", f"the posted pay tops out at {_k(top)}, under your floor"))
+        skip.append(("under_floor", f"the posted pay tops out at {_k(top)}"
+                                    f"{' a year (' + job.pay() + ')' if job.is_rate else ''}, under your floor"))
     elif not top and floor and expected.get("base") and expected["base"] < floor:
         skip.append(("under_floor", f"Levels.fyi's median base for this level is {_k(expected['base'])}, under "
                                     "your floor"))
@@ -128,7 +129,7 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
 
     target, high = cfg.pay.target, cfg.pay.target_max or cfg.pay.target
     vs = lambda n: f"{'above' if n > high else 'within'} your {_target(cfg)} target"  # noqa: E731
-    if target and top and top >= target:
+    if target and top and top >= target and not job.is_rate:  # an hourly contract wage isn't a salary that meets it
         go.append(("pay", f"the posted pay goes up to {_k(top)}, {vs(top)}"))
     elif target and not top and expected.get("ask") and expected["ask"] >= target:
         go.append(("pay", f"Levels.fyi suggests asking ~{_k(expected['ask'])} base, {vs(expected['ask'])}"))
