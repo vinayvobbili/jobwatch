@@ -26,6 +26,7 @@ from . import (
     actjobs,
     advice,
     alerts,
+    alerts_job,
     answers,
     ats,
     backup,
@@ -863,6 +864,18 @@ def cmd_profile(args):
 
 
 def cmd_alerts(args, cfg, store):
+    if args.uninstall:
+        print("Stopped the daily alerts read." if alerts_job.uninstall() else "The daily alerts read wasn't installed.")
+        return
+    if args.install:  # only sets the job up: the first read is the daily one
+        if not cfg.imap:
+            raise ConfigError("--install reads the mailbox set in alerts.imap in the watchlist, and there's none: "
+                              f"see {GUIDE}/applying.md#job-alert-emails")
+        senders = tuple(args.sender or alerts_job.SENDER.split())
+        days = args.days or alerts_job.DAYS
+        print(f"Reading job-alert emails from {', '.join(senders)} (last {days} days) "
+              f"{alerts_job.install(cfg.path, senders, days)} ({alerts_job.LABEL}); log: {alerts_job.log_path()}")
+        return
     if args.backfill:
         r = alerts.backfill(cfg, store, dry_run=args.dry_run, limit=args.limit,
                             **({"every": timedelta(0)} if args.again else {}))
@@ -876,7 +889,11 @@ def cmd_alerts(args, cfg, store):
         if not cfg.imap:
             raise ConfigError("--imap reads the mailbox set in alerts.imap in the watchlist, and there's none: "
                               f"see {GUIDE}/applying.md#job-alert-emails")
-        msgs += alerts.imap_messages(cfg.imap)
+        # a dry run records nothing, mail flags included; --days / --sender widen or narrow this one read only
+        imap = replace(cfg.imap, **({"mark_read": False} if args.dry_run else {}),
+                       **({"days": args.days} if args.days else {}),
+                       **({"senders": tuple(args.sender)} if args.sender else {}))
+        msgs += alerts.imap_messages(imap)
     r = alerts.intake(cfg, store, msgs, follow=not args.no_follow, dry_run=args.dry_run)
     if args.format == "json":
         print(json.dumps(alerts.to_dict(r), indent=2, ensure_ascii=False))
@@ -1799,6 +1816,14 @@ def build_parser() -> argparse.ArgumentParser:
                    "or - for stdin")
     p.add_argument("--imap", action="store_true", help="also read the last few days' alerts from the mailbox set in "
                    "alerts.imap (read-only: nothing is marked read, moved or deleted)")
+    p.add_argument("--days", type=int, default=0, metavar="N", help="with --imap: read the last N days' alerts "
+                   "instead of alerts.imap.days (to catch up after a gap, or when a sender's mail moved folders)")
+    p.add_argument("--sender", action="append", metavar="ADDRESS | DOMAIN", help="with --imap: read only alerts "
+                   "from this sender (repeatable) instead of alerts.imap.senders")
+    p.add_argument("--install", action="store_true", help="read the mailbox daily at 9:15 through launchd (macOS): "
+                   "the last 7 days (or --days) of alerts from builtin.com (or --sender), so mail that skips the "
+                   "Inbox is still taken even when the page isn't running")
+    p.add_argument("--uninstall", action="store_true", help="stop the daily read and remove it")
     p.add_argument("--backfill", action="store_true", help="instead of reading emails, look again on the company's "
                    "own board for the jobs tracked from alerts with no posting text, and fill in the ones found "
                    "(every check does this too, for a few jobs a day)")

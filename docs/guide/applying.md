@@ -311,6 +311,17 @@ boards'. A mailbox it can't read (no password yet, or a login it refuses) shows 
 are still checked. `jobwatch hidden --since 6h --source manual` lists the alert jobs that came in but that your
 filters keep off Today, and why.
 
+Mail that skips the Inbox (a Gmail filter to a label) is only found if `folder` is `[Gmail]/All Mail`. To catch up
+after a gap, or read one sender, widen a single read; a `--dry-run` records nothing and flags nothing read:
+
+```
+jobwatch alerts --imap --sender builtin.com --days 60 --dry-run
+jobwatch alerts --imap --install      # daily at 9:15 through launchd (macOS): the last 7 days from builtin.com
+jobwatch alerts --uninstall           # stop it (the log is ~/Library/Logs/jobwatch-alerts.log)
+```
+
+Reading the same mail twice is harmless: jobs already tracked are left alone.
+
 A Gmail app password isn't limited to reading: it can read, send and delete all of the account's mail. jobwatch
 only reads the folder (and with `mark_read`, flags what it read), but that's jobwatch's doing, not the password's. Keep it in the keychain (run
 the `security` command in a terminal: it asks for the password, so it never lands in your shell history), and

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from jobwatch import alerts, cli, config, sources, watch
+from jobwatch import alerts, alerts_job, cli, config, sources, watch
 from jobwatch import web as ui
 from jobwatch.filters import Filters, reject_reason
 from jobwatch.store import Store
@@ -708,6 +708,46 @@ def test_imap_reads_without_marking_anything(tmp_path, watchlist, web, capsys, m
     cli.main(["-c", str(path), "alerts", "--imap", "--no-follow"])
     out = capsys.readouterr()
     assert "Read 2 email(s)" in out.out and "not-a-real-password" not in out.out + out.err
+
+
+def test_alerts_imap_days_and_sender_widen_one_read_and_a_dry_run_marks_nothing(tmp_path, watchlist, monkeypatch):
+    path = tmp_path / "w.yaml"
+    path.write_text(watchlist.read_text() + IMAP_WATCHLIST + "    password_env: JOBWATCH_IMAP_PASSWORD\n"
+                    "    mark_read: true\n")
+    monkeypatch.setenv("JOBWATCH_IMAP_PASSWORD", "not-a-real-password")
+    monkeypatch.setattr(alerts.imaplib, "IMAP4_SSL", FakeIMAP)
+    cli.main(["-c", str(path), "alerts", "--imap", "--no-follow", "--dry-run", "--days", "60",
+              "--sender", "jobalert.indeed.com"])
+    calls = FakeIMAP.last.calls
+    assert ("select", '"INBOX"', True) in calls and not [c for c in calls if c[0] == "store"]  # dry run: read-only
+    searches = [c for c in calls if c[0] == "search"]
+    assert len(searches) == 1 and searches[0][-1] == '"jobalert.indeed.com"'  # only the sender asked for
+    day = date.today() - timedelta(days=60)
+    assert searches[0][1:3] == ("SINCE", f"{day.day:02d}-{alerts._MONTHS[day.month - 1]}-{day.year}")
+    cli.main(["-c", str(path), "alerts", "--imap", "--no-follow"])  # a real run still marks them read
+    assert [c for c in FakeIMAP.last.calls if c[0] == "store"]
+
+
+def test_the_daily_alerts_job_reads_one_sender_over_a_week_at_a_clock_time(tmp_path, watchlist, monkeypatch, capsys):
+    job = alerts_job.definition(tmp_path / "w.yaml")
+    args = job["ProgramArguments"]
+    assert args[args.index("alerts"):][:2] == ["alerts", "--imap"]
+    assert args[args.index("--days") + 1] == "7" and args[args.index("--sender") + 1] == "builtin.com"
+    assert job["StartCalendarInterval"] == {"Hour": 9, "Minute": 15} and str(tmp_path / "w.yaml") in args
+    assert "--sender" not in alerts_job.definition(tmp_path / "w.yaml", ())["ProgramArguments"]  # none: all senders
+    ran = []
+    monkeypatch.setattr(alerts_job, "_mac", lambda: None)
+    monkeypatch.setattr(alerts_job, "_launchctl", lambda *a, check=True: ran.append(a))
+    monkeypatch.setattr(alerts_job.Path, "home", lambda: tmp_path)
+    with pytest.raises(SystemExit, match="there's none"):
+        cli.main(["-c", str(watchlist), "alerts", "--install"])  # no alerts.imap: nothing to read
+    path = tmp_path / "w.yaml"
+    path.write_text(watchlist.read_text() + IMAP_WATCHLIST + "    password_env: X\n")
+    cli.main(["-c", str(path), "alerts", "--install"])
+    assert "daily at 9:15" in capsys.readouterr().out and ran[-1][0] == "bootstrap"
+    assert alerts_job.plist_path().exists()
+    cli.main(["-c", str(path), "alerts", "--uninstall"])
+    assert not alerts_job.plist_path().exists()
 
 
 def test_mark_read_marks_each_alert_it_read_as_read(tmp_path, watchlist, monkeypatch):
