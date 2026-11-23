@@ -11,7 +11,9 @@
  * (msg-s-...) are only the names of the parts inside it, matched by `[class*=...]` so a renamed prefix still works.
  * They were checked against the live thread page (Nov 2026); tests/test_extension_e2e.py runs this against
  * demo/linkedin-messages.html, which imitates it (?live is the current shape). When no box can be tied to the messages,
- * the one thread whose messages are showing is read anyway.
+ * the one thread whose messages are showing is read anyway. When none of the class names is on the page, a paragraph
+ * in a list item (outside every box and form) is a message. background.js runs this in every frame of the tab, so a
+ * thread LinkedIn draws in a frame is found too.
  *
  * Needs logic.js loaded first (formatThread, fingerprint).
  */
@@ -27,7 +29,10 @@
   const BODY = '[class*="event-listitem__body"], [data-event-urn] p, [data-view-name="message-list-item"] p';
   // Wrappers LinkedIn gives a whole thread, used when no message box can be tied to the messages.
   const THREAD = '[class*="msg-thread"], [class*="msg-convo"], [class*="message-list-container"], [data-view-name*="thread"]';
-  const NAME = '[class*="message-group__name"]';
+  // When none of those names is on the page (LinkedIn renamed them all): a paragraph in a list item or a log region.
+  // Never one inside a box, a form or a header, which is where the message being written and the page's chrome live.
+  const BODY_BARE = '[role="listitem"] p, [role="log"] p, li p';
+  const NAME = '[class*="message-group__name"], [class*="message-group__profile-link"], [class*="message-group__meta"] a';
   const STAMP = 'time, [class*="message-group__timestamp"], [class*="time-heading"]';
   const HEADER = '[class*="msg-entity-lockup__entity-title"], [class*="msg-overlay-bubble-header__title"], ' +
     '[class*="msg-thread__link-to-profile"], [class*="thread-header"] h2';
@@ -72,11 +77,18 @@
     return a;
   }
 
+  /** The message paragraphs under `root`: by LinkedIn's names, else by structure alone (a paragraph in a list item, outside every box and form). */
+  function bodiesIn(root) {
+    const named = deepAll(BODY, root);
+    if (named.length) return named;
+    return deepAll(BODY_BARE, root).filter((el) => !closestDeep(el, `${EDITABLE}, form, nav, header`));
+  }
+
   /** Climb from a message box to the conversation around it: the nearest ancestor with message bodies in it and no other message box. */
   function conversationOf(composer, composers) {
     for (let el = upFrom(composer); el && el !== document.body; el = upFrom(el)) {
       if (composers.some((c) => c !== composer && holds(el, c))) return null;
-      if (deepAll(BODY, el).length) return el;
+      if (bodiesIn(el).length) return el;
     }
     return null;
   }
@@ -94,7 +106,7 @@
 
   /** What the page showed, for the error: so a failure on a layout nobody has seen says what was there. */
   function census() {
-    return `${deepAll(EDITABLE).length} editable boxes, ${deepAll(BODY).length} messages`;
+    return `${deepAll(EDITABLE).length} editable boxes, ${bodiesIn(document).length} messages`;
   }
 
   /**
@@ -102,7 +114,7 @@
    * exactly one thread's messages are showing, read those. The box is then missing, so fill() will refuse.
    */
   function threadWithoutBox() {
-    const all = deepAll(BODY);
+    const all = bodiesIn(document);
     const bodies = all.filter(shown).length ? all.filter(shown) : all;
     if (!bodies.length) return null;
     const groups = new Map();
@@ -118,7 +130,7 @@
   function find() {
     const composers = composersShown();
     const found = composers.map((composer) => ({ composer, box: conversationOf(composer, composers) })).filter((c) => c.box);
-    if (!found.length) return threadWithoutBox() || { error: `${NONE} (The page showed ${census()}.)` };
+    if (!found.length) return threadWithoutBox() || { none: true, error: `${NONE} (The page showed ${census()}.)` };
     if (found.length === 1) return found[0];
     const active = activeDeep();
     const focused = found.find((c) => holds(c.composer, active) || holds(c.box, active));
@@ -140,12 +152,15 @@
   function messagesIn(box) {
     const out = [];
     let sender = '', date = '', stamp = '';
-    for (const el of deepAll(`${NAME}, ${STAMP}, ${BODY}`, box)) {
-      if (el.matches(NAME)) {
+    const bodies = new Set(bodiesIn(box));
+    for (const el of deepAll(`${NAME}, ${STAMP}, ${BODY}, ${BODY_BARE}`, box)) {
+      if (bodies.has(el)) {
+        out.push({ sender, when: [date, stamp].filter(Boolean).join(', '), text: el.innerText || el.textContent });
+      } else if (el.matches(NAME)) {
         sender = text(el);
         stamp = '';
-      } else if (el.matches(BODY)) {
-        out.push({ sender, when: [date, stamp].filter(Boolean).join(', '), text: el.innerText || el.textContent });
+      } else if (!el.matches(STAMP)) {
+        continue; // a paragraph the structure fallback matched that is not a message (outside the conversation's bodies)
       } else if (el.matches('[class*="time-heading"]') || !/\d{1,2}:\d{2}/.test(text(el))) {
         date = text(el);
       } else {
@@ -157,7 +172,7 @@
 
   function read() {
     const hit = find();
-    if (hit.error) return { ok: false, error: hit.error };
+    if (hit.error) return { ok: false, none: !!hit.none, error: hit.error };
     const messages = messagesIn(hit.box);
     const thread = JW.formatThread(messages);
     if (!thread) return { ok: false, error: UNREADABLE };

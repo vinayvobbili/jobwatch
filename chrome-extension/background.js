@@ -335,6 +335,14 @@ async function fillCover(tabId, text, replace) {
 const REPLY_PAGE = 'Open a conversation on LinkedIn (Messaging, or a message bubble), then try again.';
 const REPLY_OLD = 'This jobwatch is too old for Draft reply. Update jobwatch (pip install -U jobwatch), then try again.';
 
+/** What reply.js read in every frame of the tab (LinkedIn has put the thread in a frame as well as in the top page). */
+async function readFrames(tabId) {
+  const t = { tabId, allFrames: true };
+  await chrome.scripting.executeScript({ target: t, files: ['logic.js', 'reply.js'] });
+  const results = await chrome.scripting.executeScript({ target: t, func: () => (globalThis.JWReply ? globalThis.JWReply.read() : null) });
+  return results.map((r) => r.result);
+}
+
 /**
  * "Draft reply": reads the one conversation that is open (reply.js, only now, because the person pressed the button),
  * sends its text to jobwatch on this computer, and returns the draft, jobwatch's warnings and "check this" notes, and
@@ -344,16 +352,18 @@ const REPLY_OLD = 'This jobwatch is too old for Draft reply. Update jobwatch (pi
 async function draftReply(tabId, followup) {
   const settings = await pairedSettings();
   if (!JW.replyMode(await tabUrl(tabId))) throw new Expected(REPLY_PAGE);
-  let read;
+  let reads;
   try {
-    const t = { tabId };
-    await chrome.scripting.executeScript({ target: t, files: ['logic.js', 'reply.js'] });
-    [read] = await chrome.scripting.executeScript({ target: t, func: () => (globalThis.JWReply ? globalThis.JWReply.read() : null) });
+    reads = await readFrames(tabId);
+    // LinkedIn draws the thread a moment after the page: when nothing shows yet, look once more
+    if (JW.pickRead(reads).none) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      reads = await readFrames(tabId);
+    }
   } catch {
     throw new Expected("This page can't be read. Click the jobwatch icon on the LinkedIn tab, and try again.");
   }
-  const got = read && read.result;
-  if (!got) throw new Expected('Reload this page, then try again.');
+  const got = JW.pickRead(reads);
   if (!got.ok) throw new Expected(got.error);
   let r;
   try {
@@ -373,11 +383,11 @@ async function draftReply(tabId, followup) {
 async function fillReply(tabId, text, fingerprint, replace) {
   if (!JW.replyMode(await tabUrl(tabId))) throw new Expected(REPLY_PAGE);
   try {
-    const t = { tabId };
+    const t = { tabId, allFrames: true };
     await chrome.scripting.executeScript({ target: t, files: ['logic.js', 'reply.js'] });
-    const [done] = await chrome.scripting.executeScript({ target: t, args: [text, { fingerprint, replace: !!replace }],
+    const done = await chrome.scripting.executeScript({ target: t, args: [text, { fingerprint, replace: !!replace }],
       func: (reply, opts) => (globalThis.JWReply ? globalThis.JWReply.fill(reply, opts) : { filled: false, reason: 'gone', error: 'Reload this page, then try again.' }) });
-    return done.result;
+    return JW.pickFill(done.map((r) => r.result));
   } catch {
     throw new Expected("This page can't be written to. Click the jobwatch icon on the LinkedIn tab, and try again.");
   }

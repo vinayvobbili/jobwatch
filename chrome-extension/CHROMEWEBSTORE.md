@@ -370,6 +370,18 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
   (`deepAll`, `closestDeep`, `holds`, `activeDeep`) to find the box, read the messages and fill the reply; the demo page
   has a `?shadow` shape and the e2e test covers it. Checked against the live feed page's `#interop-outlet` on 2026-11-20.
 
+- 0.12.0's Draft reply answered "No conversation is open (0 editable boxes, 0 messages)" on an InMail thread in
+  Messaging (2026-11-23). A fresh Messaging tab read fine with the 0.12.0 selectors (an InMail thread and an ordinary
+  chat), so the failing read had looked at a document with no box at all. Hardened for the next version (not yet bumped
+  or submitted; `manifest.json` stays 0.12.0): `draftReply` and `fillReply` in `background.js` now inject `reply.js`
+  into every frame of the tab (`allFrames`, the same access `activeTab` already grants; `pickRead` and `pickFill` in
+  `logic.js` take the frame that holds the conversation), look once more after 1.5 s when nothing shows yet, and
+  `reply.js` falls back to structure when LinkedIn's class names are gone (a paragraph in a list item or log region
+  outside every box and form; sender from the profile link in the message header). A failure now also says how many
+  frames were looked at. No new permission, host or content script, so no new store wording. Demo page shapes
+  `?inmail`, `?bare` and `?frame` and the e2e test cover them. The user reloads the unpacked extension at
+  `chrome://extensions` (the reload button on jobwatch's card), then reloads the LinkedIn tab.
+
 - 0.12.0 told a LinkedIn page that is not Messaging (the feed, a profile) "IDLE / Nothing to do on this page" even
   though Draft reply works from a conversation open in the message bubble. Fixed for the next version (not yet bumped
   or submitted): `pageContext` gives those pages a "LinkedIn" lead card (kind `bubble`) that says "Have a recruiter's

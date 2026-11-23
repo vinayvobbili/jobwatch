@@ -272,6 +272,31 @@ console.log(JSON.stringify({
     }
 
 
+@needs_node
+def test_the_frame_whose_thread_was_read_is_the_one_used(tmp_path):
+    """read() and fill() run in every frame of the tab; a thread in a frame is found even though the top page has none."""
+    got = run_js(tmp_path, """
+const none = { ok: false, none: true, error: 'No conversation is open. (The page showed 0 editable boxes, 0 messages.)' };
+const thread = { ok: true, thread: 'Dana, Nov 12\\nHi', count: 1 };
+const many = { ok: false, none: false, error: 'More than one conversation is open here.' };
+console.log(JSON.stringify({
+  inFrame: JW.pickRead([none, null, thread]).thread,
+  topFirst: JW.pickRead([{ ...thread, thread: 'top' }, thread]).thread,
+  complaint: JW.pickRead([none, many]).error,
+  noneInOne: JW.pickRead([none]).error,
+  noneInThree: JW.pickRead([none, none, null]).error,
+  nothing: JW.pickRead([null]).error,
+  fillFrame: JW.pickFill([{ filled: false, reason: 'gone' }, { filled: true }]),
+  refusal: JW.pickFill([{ filled: false, reason: 'gone' }, { filled: false, reason: 'has-text' }]).reason,
+  noFill: JW.pickFill([]).reason,
+}));""")
+    assert got["inFrame"] == "Dana, Nov 12\nHi" and got["topFirst"] == "top"
+    assert got["complaint"].startswith("More than one")
+    assert got["noneInOne"].endswith("0 messages.)") and got["noneInThree"].endswith("(2 frames looked at.)")
+    assert got["nothing"] == "Reload this page, then try again."
+    assert got["fillFrame"] == {"filled": True} and got["refusal"] == "has-text" and got["noFill"] == "gone"
+
+
 def test_the_reply_script_cannot_press_send():
     """reply.js reads one conversation and types into its box. It has no way to click, submit or press Enter, and it
     never scrolls or opens another conversation."""

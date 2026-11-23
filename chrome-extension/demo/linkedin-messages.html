@@ -88,6 +88,43 @@
     const root = host.attachShadow({ mode: 'open' });
     root.append(document.querySelector('style').cloneNode(true), document.getElementById('main-thread'));
   }
+  // ?inmail: the shape of an InMail thread on the current site: a subject line (h3) above the message, whose paragraph
+  // holds line breaks, inside list items that carry the message-list classes
+  if (location.search.includes('inmail')) {
+    const list = document.querySelector('#main-thread ul');
+    list.className = 'msg-s-message-list-content';
+    list.innerHTML = `
+      <li class="msg-s-message-list__event"><time class="msg-s-message-list__time-heading">Today</time></li>
+      <li class="msg-s-message-list__event">
+        <div class="msg-s-event-listitem msg-s-event-listitem--inmail msg-s-event-listitem--other" data-event-urn="urn:li:msg_event:9">
+          <div class="msg-s-message-group__meta"><span><a href="#"><span class="msg-s-message-group__profile-link msg-s-message-group__name">Dana Whitfield</span></a></span><time class="msg-s-message-group__timestamp">9:41 AM</time></div>
+          <div class="msg-s-event-listitem__message-bubble">
+            <h3 class="msg-s-event-listitem__subject">Hiring for Platform Engineer in Austin</h3>
+            <div class="msg-s-event-with-indicator"><div class="msg-s-event__content">
+              <p class="msg-s-event-listitem__body"><br>Hi Jordan,<br><br>I'm a recruiter at Northwind Talent hiring a Platform Engineer for a client.<br><br>Would you be open to a quick call this week?<br></p>
+            </div></div>
+          </div>
+        </div>
+      </li>`;
+  }
+  // ?bare: every class name and data hook gone (LinkedIn renamed them all): roles, aria labels and tags only
+  if (location.search.includes('bare')) {
+    document.querySelectorAll('#main-thread *').forEach((e) => {
+      e.removeAttribute('class');
+      e.removeAttribute('data-event-urn');
+      e.removeAttribute('data-view-name');
+    });
+    document.getElementById('main-thread').removeAttribute('class');
+  }
+  // ?frame: the whole conversation inside a same-origin frame, the top page holding none of it
+  if (location.search.includes('frame')) {
+    const thread = document.getElementById('main-thread');
+    const frame = document.createElement('iframe');
+    frame.id = 'thread-frame';
+    frame.style.cssText = 'width:100%;height:560px;border:0';
+    frame.srcdoc = `<!doctype html><html><head>${document.querySelector('style').outerHTML}</head><body>${thread.outerHTML}<script>window.__sent = 0; window.__clicks = 0;<\/script></body></html>`;
+    thread.replaceWith(frame);
+  }
   // ?filled: the person has already started typing
   if (location.search.includes('filled')) document.querySelector('[role=textbox]').innerHTML = '<p>Hi Dana,</p>';
   window.__sent = 0;

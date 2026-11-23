@@ -395,6 +395,28 @@
     return /^\/messaging(\/|$)/.test(u.pathname) ? 'messaging' : 'linkedin';
   }
 
+  /**
+   * The answer to use from reply.js's read() in each frame of a tab (the top page first): the first frame that read a
+   * conversation, else a frame's own complaint (more than one open, unreadable), else "none open" with how many frames
+   * were looked at, so a thread LinkedIn draws in a frame is found and a failure says where it looked.
+   */
+  function pickRead(reads) {
+    const all = (reads || []).filter(Boolean);
+    const ok = all.find((r) => r.ok);
+    if (ok) return ok;
+    const other = all.find((r) => !r.none);
+    if (other) return other;
+    if (!all.length) return { ok: false, error: 'Reload this page, then try again.' };
+    return { ...all[0], error: `${all[0].error}${all.length > 1 ? ` (${all.length} frames looked at.)` : ''}` };
+  }
+
+  /** The answer to use from reply.js's fill() in each frame: the frame that filled the box, else the first that had a conversation to refuse about, else any. */
+  function pickFill(results) {
+    const all = (results || []).filter(Boolean);
+    return all.find((r) => r.filled) || all.find((r) => r.reason !== 'gone') || all[0] ||
+      { filled: false, reason: 'gone', error: 'Reload this page, then try again.' };
+  }
+
   const THREAD_MAX = 12000; // characters of a conversation sent: the newest part, the way a reply reads it
 
   /**
@@ -524,7 +546,7 @@
     return bounds;
   }
 
-  const JW = { panelHome, panelBounds, elapsedLabel, coverField, pageContext, titleJob, threadName, themeChoice, replyMode, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
+  const JW = { panelHome, panelBounds, elapsedLabel, coverField, pageContext, titleJob, threadName, themeChoice, replyMode, pickRead, pickFill, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
     linkedinJobId, postingMode, listMode, importOnTab, progressIsMine, IMPORT_RUNNING, IMPORT_HIDDEN, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;

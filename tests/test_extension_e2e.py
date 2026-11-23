@@ -450,6 +450,36 @@ def test_draft_reply_finds_the_thread_on_the_current_site_shape(reply_stack, ext
         page.close()
 
 
+@pytest.mark.parametrize("query", ["?inmail", "?inmail&live", "?bare", "?frame", "?inmail&frame"])
+def test_draft_reply_reads_an_inmail_a_page_without_linkedins_class_names_and_a_thread_in_a_frame(reply_stack, ext, panels, query):
+    """The InMail shape (a subject above a message with line breaks), a page whose class names are all gone (structure
+    and roles only) and a thread drawn in a frame: each is read, each reply goes in the box, and nothing is sent."""
+    page, panel = reply_panel(reply_stack, ext, panels, query)
+    try:
+        panel.click("#reply")
+        panel.wait_for_selector("#reply-text", timeout=60000)
+        thread = reply_stack.server.replies[-1]["thread"]
+        assert "No conversation is open" not in panel.inner_text("#view")
+        if "inmail" in query:
+            assert reply_stack.server.replies[-1]["sender"] == "Dana Whitfield"
+            assert thread == ("Dana Whitfield, Today, 9:41 AM\nHi Jordan,\n\nI'm a recruiter at Northwind Talent hiring a Platform Engineer "
+                              "for a client.\n\nWould you be open to a quick call this week?")
+        else:
+            assert "Hi Jordan, I'm a recruiter at Northwind Talent." in thread
+            assert "The range is 140-150K base. Are you free Thursday?" in thread
+            assert "Write a message" not in thread  # the box's own paragraph is not a message
+        panel.fill("#reply-text", "Thanks Dana. Thursday works.")
+        assert "In the message box" in put_in_box(panel)
+        scope = page.frame_locator("#thread-frame") if "frame" in query else page
+        assert scope.locator("[contenteditable]").inner_text() == "Thanks Dana. Thursday works."  # ?live has no role on the box
+        if "frame" not in query:
+            assert page.evaluate("[window.__clicks, window.__sent]") == [0, 0]
+        else:
+            assert page.frames[1].evaluate("[window.__clicks, window.__sent]") == [0, 0]
+    finally:
+        page.close()
+
+
 def test_a_slow_draft_shows_a_spinner_and_a_ticking_counter_that_stop_when_it_returns(reply_stack, ext, panels):
     reply_stack.server.reply_delay = 3.5
     page, panel = reply_panel(reply_stack, ext, panels)
