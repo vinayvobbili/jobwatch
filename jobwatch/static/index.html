@@ -2164,7 +2164,7 @@ function jobCard(job, actions, i = 0, above = null, stage = null) {
     onkeydown: e => { if (e.key === "Enter") openCompany(job.company); } }, job.company), placeItem(job.locations),
     age(job.age_days) ? h("span", { class: "posted", title: age(job.age_days) }, age(job.age_days).replace(/^posted /, "")) : null]
     .filter(Boolean);
-  // An unscored job's "Score fit" button (scoreButton) has a twin that sits in the score slot, where the dash was.
+  // An unscored job's "Score" button (scoreButton) has a twin that sits in the score slot, where the dash was.
   const scorer = job.fit ? null : actions.flat(Infinity).find(a => a && a.corner), corner = scorer?.corner;
   const parts = {
     pay: paySources(job),
@@ -2238,7 +2238,7 @@ async function mark(job, status, note, label, undoStatus) {
 // classes `act act-<kind>` (the page's CSS gives each kind its look); its name for a screen reader is its label (the icon
 // is aria-hidden), or the `aria-label` a caller gives. An `href` makes it a link.
 const ACT = { queue: ["bookmark", "Queue"], apply: ["external", "Apply"], skip: ["x", "Skip"], details: ["info", "Details"],
-  score: ["gauge", "Score fit"], prepare: ["sparkle", "Prepare"], applied: ["check", "I applied"], snooze: ["pause", "Snooze"],
+  score: ["gauge", "Score"], prepare: ["sparkle", "Prepare"], applied: ["check", "I applied"], snooze: ["pause", "Snooze"],
   remove: ["minus", "Remove from queue"] };
 const actLabel = (kind, label = ACT[kind][1]) => [icon(ACT[kind][0], 14), h("span", { class: "label" }, label)];
 function actButton(kind, attrs = {}, label = ACT[kind][1]) {
@@ -2249,7 +2249,7 @@ function actButton(kind, attrs = {}, label = ACT[kind][1]) {
 function detailsButton(job) { return actButton("details", { onclick: () => openDetails(job.key) }); }
 
 // Why a job has no fit score yet (the server's `unscored`: in line, no posting text, failed...).
-// No Score fit button while it's being scored, or for a post listing several roles (never scored).
+// No Score button while it's being scored, or for a post listing several roles (never scored).
 const NO_SCORE_BUTTON = ["scoring", "many_roles"];
 function unscoredNote(job) {
   return job.unscored ? h("span", { class: "muted small", title: job.unscored.text }, job.unscored.text) : null;
@@ -2309,12 +2309,12 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
       redraw(job);
     }), linkedinButton(job), unscoredNote(job)];
   if (!canScore || NO_SCORE_BUTTON.includes(job.unscored?.code)) return unscoredNote(job);
-  // Two buttons, one handler: the bottom row's "Score fit" and the card's corner "Score" (jobCard puts that one where
-  // the empty score slot was and drops the bottom one). Either press sets both to "Scoring…".
+  // Two buttons, one handler and one label: the bottom row's "Score" and the card's corner one (jobCard puts that one
+  // where the empty score slot was and drops the bottom one). Either press sets both to "Scoring…".
   const title = "Compare this posting with your resume (can take a while)";
-  const idle = text => actLabel("score", text), busy = () => [h("span", { class: "spin" }), "Scoring…"];
+  const idle = () => actLabel("score"), busy = () => [h("span", { class: "spin" }), "Scoring…"];
   const b = actButton("score", { title });
-  const corner = actButton("score", { class: "score-corner", title, "aria-label": "Score fit" }, "Score");
+  const corner = actButton("score", { class: "score-corner", title });
   const run = async () => {
     for (const x of [b, corner]) { x.disabled = true; x.replaceChildren(...busy()); }
     try {
@@ -2322,7 +2322,7 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
       redraw(job);
     } catch (e) {
       for (const x of [b, corner]) x.disabled = false;
-      b.replaceChildren(...idle("Score fit")); corner.replaceChildren(...idle("Score")); toast(e.message);
+      b.replaceChildren(...idle()); corner.replaceChildren(...idle()); toast(e.message);
     }
   };
   b.onclick = corner.onclick = run;
@@ -6860,7 +6860,7 @@ function renderSettings() {
       h("div", { class: "fields" },
         field("Score per digest", top, "jobwatch digest scores this many new jobs; 0 none."),
         field("Per company a day", perCompany, "The most jobs from one company the page scores by itself a day; " +
-          "Score fit still scores any. 0: no cap.")),
+          "Score still scores any. 0: no cap.")),
       auto.el, batchApi.el),
     setCard("providers", "Cloud providers", null, providersCard(s, aiS)),
     setCard("people", "People you know", "optional",

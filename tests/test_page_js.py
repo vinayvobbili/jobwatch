@@ -852,7 +852,7 @@ console.log(JSON.stringify([92, 84.4, 60, 20].map(s => fitChip(s))));
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_an_unscored_card_has_a_score_button_in_its_corner_that_runs_the_same_scoring(tmp_path):
-    """The Score button sits in the score slot (not a dash) and shares the bottom Score fit button's handler: one
+    """The Score button sits in the score slot (not a dash) and shares the bottom Score button's handler and label: one
     press disables both and shows Scoring…, a failure toasts the server's message and lets either retry, a score
     redraws the card."""
     js = tmp_path / "corner.js"
@@ -897,11 +897,11 @@ const out = { cornerLabel: corner.text, cornerCls: corner.cls, cornerIcon: corne
     out = json.loads(r.stdout)
     assert out["cornerLabel"] == "Score" and "act-score" in out["cornerCls"] and "score-corner" in out["cornerCls"]
     assert out["cornerIcon"] == "gauge"
-    assert out["bottomLabel"] == "Score fit" and out["same"]
+    assert out["bottomLabel"] == "Score" and out["same"]
     assert out["boxCls"] == "fitbox noscore" and out["boxHolds"] and out["boxNote"] == "not scored yet"
     assert out["plainDash"] == "–"  # the details dialog has no card to score from: it keeps the dash
     assert out["during"] == [True, True, "Scoring…", "Scoring…"]
-    assert out["failed"] == [False, False, "Score", "Score fit", ["agy is out of quota"], 0]
+    assert out["failed"] == [False, False, "Score", "Score", ["agy is out of quota"], 0]
     assert out["retried"] == [[["/api/score", "k1"], ["/api/score", "k1"]], 71, ["k1"]]
 
 
@@ -949,7 +949,7 @@ console.log(JSON.stringify(out));
         assert f".btn.act-{kind}" in page or f".btn.act.act-{kind}" in page, kind
     # No view builds its own copy: one Apply definition, and no hand-made button or link carrying one of these labels
     assert page.count('actButton("apply"') == 1 and page.count("function applyButton") == 1
-    labels = "Apply|Details|Queue|Queue now|I applied|Snooze|Remove from queue|Prepare|Score fit"
+    labels = "Apply|Details|Queue|Queue now|I applied|Snooze|Remove from queue|Prepare|Score|Score fit"
     assert re.findall(rf'h\("(?:button|a)",\s*\{{[^{{}}]*\}},\s*(?:icon\([^)]*\),\s*)?"(?:{labels})"', page) == []
 
 
@@ -957,7 +957,7 @@ def test_the_job_card_puts_the_corner_score_button_in_the_score_slot_and_drops_t
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     card = page_function("jobCard")
     assert "a.corner" in card and "noFitBox(job, corner)" in card
-    assert "filter(a => a !== scorer)" in card  # the bottom Score fit button isn't drawn beside its twin
+    assert "filter(a => a !== scorer)" in card  # the bottom Score button isn't drawn beside its twin
     assert ".score-corner" in page
 
 

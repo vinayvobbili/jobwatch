@@ -1714,7 +1714,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="score the one unscored job with the shortest posting through it alone, and show the "
                    "ledger's charge for the call (saved as that job's score)")
     p.add_argument("--job", default=None, metavar="KEY",
-                   help="with --test: this job (a key from `unscored`, which lists jobs left to the Score fit "
+                   help="with --test: this job (a key from `unscored`, which lists jobs left to the Score "
                    "button too) instead of the shortest posting")
     p.set_defaults(func=cmd_credit)
 

@@ -32,7 +32,7 @@ While `jobwatch ui` runs, it scores every matching job in the background, one at
 queued first (they're the ones you're about to apply to), then Today's, most relevant first. It runs when
 the page starts, after each "Check for new jobs", when you queue a job, and after you add a new resume. Today shows
 how many are left, and a button brings in the new scores when you're ready (the cards don't move on their
-own). The local model server queues a chat reply or a "Score fit" click with the background scoring. It's on by default
+own). The local model server queues a chat reply or a "Score" click with the background scoring. It's on by default
 with `scoring.backend: local`. With `claude` every score is a paid API call, so turn it on with
 `scoring.auto: true`. `jobwatch score [--limit N]` does the same in the terminal.
 
@@ -121,7 +121,7 @@ and which model made it) and stays: it's scored again only when you ask (the ↻
 fallback scores them (or, with no fallback, they wait for tomorrow). The cap holds back background scoring
 only: `jobwatch score` scores what you ask, and counts it. `scoring.per_company: 25` caps the jobs the page
 scores from one company a day, so one big board can't fill the line; the company's other jobs say so
-("hit today's cap"), wait for tomorrow, and score at once when you press Score fit (0, the default, sets no cap;
+("hit today's cap"), wait for tomorrow, and score at once when you press Score (0, the default, sets no cap;
 Settings has it too). After switching backend or model, `jobwatch score
 --rescore 50` scores Today's and queued jobs again, best first, where another model or an older scorer made the
 score and it's at least 50.
@@ -230,7 +230,7 @@ Claude scores `scoring.workers` jobs at once (4 by default; the on-device model 
 waiting on (a new resume, a backlog, a `--rescore`), `jobwatch score --batch-api` sends it all through Claude's
 Message Batches API at half the price. The scoring steps depend on each other, so it goes in rounds of one
 batch each (about three); each batch takes minutes, at most a day. Stopping is safe: the next run collects what
-was sent instead of paying for it again. A score you ask for on the page (**Score fit**) is wanted now, so it's
+was sent instead of paying for it again. A score you ask for on the page (**Score**) is wanted now, so it's
 never batched.
 
 When nothing is urgent, the page's background scoring can batch too, at half price. Turn on **Half price**

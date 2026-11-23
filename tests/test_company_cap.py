@@ -50,7 +50,7 @@ def test_the_reason_says_the_company_hit_its_cap_and_the_line_counts_only_whats_
     store.add_company_usage("initech", 1)
     why = watch.unscored_reasons(cfg, store)
     assert why[INITECH]["code"] == "company_cap"
-    assert why[INITECH]["text"] == ("Initech hit today's cap of 1 background scores: press Score fit, "
+    assert why[INITECH]["text"] == ("Initech hit today's cap of 1 background scores: press Score, "
                                     "or it's scored tomorrow")
     assert why[GLOBEX]["code"] == "queued" and why[GLOBEX]["text"].endswith("1st of 2")
 

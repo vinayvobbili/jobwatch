@@ -78,7 +78,7 @@ def test_queued_jobs_are_scored_first(resume_watchlist, scored):
     store.set_status(["greenhouse:acme:101"], "applied")  # applied: out of the line
     assert "greenhouse:acme:101" not in [e.job.key for e in watch.unscored(cfg, store)]
     assert watch.unscored_reason(cfg, store, job)["text"] == \
-        "Only queued and Today's jobs are scored in the background: press Score fit"
+        "Only queued and Today's jobs are scored in the background: press Score"
     store.close()
 
 
@@ -123,7 +123,7 @@ def test_a_queued_job_is_scored_on_request_when_background_scoring_is_off(resume
     store.set_status(["greenhouse:acme:101"], "queued")
     job, _ = store.find("greenhouse:acme:101")
     assert watch.unscored_reason(cfg, store, job) == \
-        {"code": "manual", "text": "Background scoring is off: press Score fit"}
+        {"code": "manual", "text": "Background scoring is off: press Score"}
     store.close()
 
 
@@ -319,7 +319,7 @@ def test_the_note_shows_instead_of_a_score(resume_watchlist, scored, capsys, mon
     cli.main(["--config", str(resume_watchlist), "show", post.key])
     out = capsys.readouterr().out
     assert NOTE in out and "Fit 4/100" not in out
-    # the page: the note where the score would be, and no Score fit button
+    # the page: the note where the score would be, and no Score button
     app = App(resume_watchlist)
     got = app.get_job({"key": [post.key]})
     assert got["fit"] is None and got["can_score"] is False and got["unscored"]["code"] == "many_roles"

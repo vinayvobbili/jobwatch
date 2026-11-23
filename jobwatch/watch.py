@@ -875,7 +875,7 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
     """Why each queued and Today's job has no fit score: {job key: {"code", "text"}}. Codes: no_resume, no_text (a job
     from an alert email may have only its title), failed (with the error), scoring (now), queued (in the
     background scorer's line: "3rd of 4"), stopped (background scoring stopped, and why), manual (background
-    scoring is off), company_cap (its company is at scoring.per_company for today: press Score fit, or tomorrow),
+    scoring is off), company_cap (its company is at scoring.per_company for today: press Score, or tomorrow),
     same_role (another posting of the same role was scored before this one came in),
     many_roles (a post listing several roles, never scored: see scorable) and stale (an older scorer's score,
     shown until it's scored again when asked: never in the line).
@@ -897,7 +897,7 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
             # its group's score was saved before this posting came in
             if job is not e.job and e.fit and not e.fit.get("stale"):
                 why = ("same_role", f"Same role as another posting here, which scored {e.fit['score']}: press "
-                       "Score fit to score this one")
+                       "Score to score this one")
             if why:
                 out[job.key] = {"code": why[0], "text": why[1]}
     return out
@@ -919,7 +919,7 @@ def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str]
     if e.job.key == current:
         return "scoring", "Being scored now"
     if not auto:
-        return "manual", "Background scoring is off: press Score fit"
+        return "manual", "Background scoring is off: press Score"
     if stopped:
         return "stopped", f"Background scoring stopped: {stopped}"
     if capped and e.job.key in capped:
@@ -940,7 +940,7 @@ def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict
         return None
     code, text = (MANY_ROLES if not scorable(job) else NO_RESUME if not has_resume
                   else filltext.no_text_why(job) if not job.description.strip()
-                  else ("manual", "Only queued and Today's jobs are scored in the background: press Score fit"))
+                  else ("manual", "Only queued and Today's jobs are scored in the background: press Score"))
     return {"code": code, "text": text}
 
 
@@ -1078,7 +1078,7 @@ def _company(e: Entry) -> str:
 def _split_capped(cfg: Config, store: Store, entries: list[Entry], line: list[str]
                   ) -> tuple[list[str], dict[str, str]]:
     """The keys in `line` (in order) that fit under scoring.per_company today, and {key: reason} for the rest: a
-    company's jobs past the cap wait for tomorrow (pressing Score fit still scores them). Counts what the
+    company's jobs past the cap wait for tomorrow (pressing Score still scores them). Counts what the
     background scorer scored for the company today (Store.company_usage). No cap: the line as it is."""
     cap = cfg.score_per_company
     if not cap:
@@ -1091,8 +1091,8 @@ def _split_capped(cfg: Config, store: Store, entries: list[Entry], line: list[st
             continue
         c = _company(e)
         if used.get(c, 0) >= cap:
-            capped[e.job.key] = (f"{e.job.display_company} hit today's cap of {cap} background scores: press Score "
-                                 "fit, or it's scored tomorrow")
+            capped[e.job.key] = (f"{e.job.display_company} hit today's cap of {cap} background scores: press Score, "
+                                 "or it's scored tomorrow")
         else:
             used[c] = used.get(c, 0) + 1
             kept.append(e.job.key)
