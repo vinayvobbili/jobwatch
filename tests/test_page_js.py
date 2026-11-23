@@ -850,6 +850,117 @@ console.log(JSON.stringify([92, 84.4, 60, 20].map(s => fitChip(s))));
         {"cls": "fitchip lo", "text": "20/100 Weak fit"}]
 
 
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_an_unscored_card_has_a_score_button_in_its_corner_that_runs_the_same_scoring(tmp_path):
+    """The Score button sits in the score slot (not a dash) and shares the bottom Score fit button's handler: one
+    press disables both and shows Scoring…, a failure toasts the server's message and lets either retry, a score
+    redraws the card."""
+    js = tmp_path / "corner.js"
+    js.write_text(page_const("NO_SCORE_BUTTON") + page_function("unscoredNote") + page_function("scoreButton")
+                  + page_function("noFitBox") + page_const("ACT") + page_const("actLabel")
+                  + page_function("actButton") + """
+const words = kids => kids.map(k => typeof k === "string" ? k : k.kids ? words(k.kids) : "").join("");
+const node = (tag, attrs, kids) => ({ tag, cls: attrs?.class, kids, disabled: false, text: words(kids),
+  replaceChildren(...k) { this.text = words(k); this.kids = k; } });
+const h = (tag, attrs, ...kids) => node(tag, attrs, kids.flat(Infinity).filter(k => k != null && k !== false));
+const icon = name => ({ svg: name });
+let calls = [], failWith = null, drawn = [], toasts = [];
+const api = async (path, body) => {
+  calls.push([path, body.key]);
+  if (failWith) throw new Error(failWith);
+  return { score: 71 };
+};
+const toast = m => toasts.push(m);
+const job = { key: "k1", unscored: null };
+const [bottom] = scoreButton(job, true, j => ({ id: j.key }));
+globalThis.document = { getElementById: () => ({ replaceWith: c => drawn.push(c.id) }) };
+const corner = bottom.corner;
+const box = noFitBox(job, corner), plain = noFitBox(job);
+const out = { cornerLabel: corner.text, cornerCls: corner.cls, cornerIcon: corner.kids[0].svg,
+  bottomLabel: bottom.text, boxCls: box.cls,
+  boxHolds: box.kids[0] === corner, boxNote: box.kids[1].text, plainDash: plain.kids[0].kids[0].text,
+  same: bottom.onclick === corner.onclick };
+(async () => {
+  failWith = "agy is out of quota";
+  const p = corner.onclick();
+  out.during = [corner.disabled, bottom.disabled, corner.text, bottom.text];
+  await p;
+  out.failed = [corner.disabled, bottom.disabled, corner.text, bottom.text, toasts, drawn.length];
+  failWith = null;
+  await bottom.onclick();
+  out.retried = [calls, job.fit.score, drawn];
+  console.log(JSON.stringify(out));
+})();
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["cornerLabel"] == "Score" and "act-score" in out["cornerCls"] and "score-corner" in out["cornerCls"]
+    assert out["cornerIcon"] == "gauge"
+    assert out["bottomLabel"] == "Score fit" and out["same"]
+    assert out["boxCls"] == "fitbox noscore" and out["boxHolds"] and out["boxNote"] == "not scored yet"
+    assert out["plainDash"] == "–"  # the details dialog has no card to score from: it keeps the dash
+    assert out["during"] == [True, True, "Scoring…", "Scoring…"]
+    assert out["failed"] == [False, False, "Score", "Score fit", ["agy is out of quota"], 0]
+    assert out["retried"] == [[["/api/score", "k1"], ["/api/score", "k1"]], 71, ["k1"]]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_each_card_action_has_its_own_icon_class_and_accessible_name(tmp_path):
+    """Queue, Apply, Skip, Details and Score each keep one icon and one act-* class, so they look different from
+    each other in every view that draws the shared card, and keep a name for screen readers."""
+    js = tmp_path / "actions.js"
+    js.write_text(page_const("ACT") + page_const("actLabel") + page_function("actButton")
+                  + page_function("detailsButton") + page_function("applyButton") + page_const("NO_SCORE_BUTTON")
+                  + page_function("unscoredNote") + page_function("scoreButton") + """
+const h = (tag, attrs, ...kids) =>
+  ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const icon = name => ({ svg: name });
+const closedState = () => "open", openDetails = () => {}, api = async () => ({}), toast = () => {};
+const words = kids => kids.map(k => typeof k === "string" ? k : k.kids ? words(k.kids) : "").join("");
+const say = el => ({ tag: el.tag, cls: el.attrs.class, name: el.attrs["aria-label"],
+  svg: el.kids.find(k => k.svg)?.svg, text: words(el.kids) });
+const job = { key: "k", url: "https://example.com/j", unscored: null };
+const [score] = scoreButton(job, true);
+const out = Object.fromEntries(Object.keys(ACT).map(k => [k, say(actButton(k, { onclick: () => {} }))]));
+// the shared builders give the same markup however a view calls them
+out.apply2 = say(applyButton(job)); out.apply3 = say(applyButton(job, () => {}));
+out.details2 = say(detailsButton(job)); out.score2 = say(score);
+out.queueNow = say(actButton("queue", {}, "Queue now"));
+console.log(JSON.stringify(out));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    icons = {"queue": "bookmark", "apply": "external", "skip": "x", "details": "info", "score": "gauge",
+             "prepare": "sparkle", "applied": "check", "snooze": "pause", "remove": "minus"}
+    assert set(icons) == set(out) - {"apply2", "apply3", "details2", "score2", "queueNow"}
+    for action, svg in icons.items():
+        assert out[action]["cls"] == f"btn act act-{action}" and out[action]["svg"] == svg, action
+        assert out[action]["text"], action  # its name for a screen reader (the icon is aria-hidden)
+    assert len({o["svg"] for o in (out[a] for a in icons)}) == len(icons)  # no two actions share an icon
+    # Apply is one markup everywhere: same class, icon and label whichever view (and with or without a then())
+    assert out["apply2"] == out["apply3"] and out["apply2"]["tag"] == "a"
+    assert out["apply2"]["cls"] == out["apply"]["cls"] and out["apply2"]["svg"] == "external"
+    assert out["details2"]["cls"] == out["details"]["cls"] and out["score2"]["cls"].startswith("btn act act-score")
+    assert out["queueNow"]["cls"] == out["queue"]["cls"] and out["queueNow"]["text"] == "Queue now"
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    for kind in icons:
+        assert f".btn.act-{kind}" in page or f".btn.act.act-{kind}" in page, kind
+    # No view builds its own copy: one Apply definition, and no hand-made button or link carrying one of these labels
+    assert page.count('actButton("apply"') == 1 and page.count("function applyButton") == 1
+    labels = "Apply|Details|Queue|Queue now|I applied|Snooze|Remove from queue|Prepare|Score fit"
+    assert re.findall(rf'h\("(?:button|a)",\s*\{{[^{{}}]*\}},\s*(?:icon\([^)]*\),\s*)?"(?:{labels})"', page) == []
+
+
+def test_the_job_card_puts_the_corner_score_button_in_the_score_slot_and_drops_the_bottom_one():
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    card = page_function("jobCard")
+    assert "a.corner" in card and "noFitBox(job, corner)" in card
+    assert "filter(a => a !== scorer)" in card  # the bottom Score fit button isn't drawn beside its twin
+    assert ".score-corner" in page
+
+
 def test_home_page_carries_the_hero_headline_and_mono_captions():
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     assert 'heroHead("Today"' in page and "h1 .grad-text" in page

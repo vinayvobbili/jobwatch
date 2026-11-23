@@ -184,6 +184,38 @@ button.primary:hover, a.btn.primary:hover { border-color: transparent; filter: b
 button.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 5px 10px; }
 button.ghost:hover { color: var(--text); background: var(--chip); border-color: transparent; }
 button.btn:disabled { opacity: .55; cursor: default; }
+/* The action buttons (actButton), one icon and one color each, the same on every view and card state: Queue purple
+   and Apply green are filled; Skip rose, Snooze amber, I applied blue, Prepare magenta, Score cyan are tinted;
+   Details slate and Remove from queue grey. Nothing else restyles them. */
+.btn.act { --t: var(--chip-text); padding: 6px 12px; color: var(--t);
+  background: color-mix(in srgb, var(--t) 10%, var(--panel-solid)); border-color: color-mix(in srgb, var(--t) 38%, var(--line)); }
+.btn.act:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--t);
+  background: color-mix(in srgb, var(--t) 18%, var(--panel-solid)); }
+.btn.act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.act-skip { --t: var(--bad); }
+.btn.act-snooze { --t: var(--warn); }
+.btn.act-applied { --t: #2563eb; }
+.btn.act-prepare { --t: #c026d3; font-weight: 650; }
+.btn.act-score { --t: #0e7490; }
+:root[data-theme="dark"] .btn.act-applied { --t: #7aa2ff; }
+:root[data-theme="dark"] .btn.act-prepare { --t: #e879f9; }
+:root[data-theme="dark"] .btn.act-score { --t: #67e8f9; }
+.btn.act-details { background: var(--chip); border-color: transparent; }
+.btn.act-details:hover:not(:disabled) { border-color: var(--line); background: var(--chip); color: var(--text); }
+.btn.act-remove { --t: var(--muted); background: transparent; border-style: dashed; }
+.btn.act.act-queue, .btn.act.act-apply { color: #fff; border-color: transparent;
+  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
+.btn.act.act-queue { background: var(--grad); }
+.btn.act.act-apply { background: linear-gradient(135deg, #0c9468, #14b8a6); box-shadow: 0 6px 16px -8px rgba(12, 148, 104, .8); }
+:root[data-theme="dark"] .btn.act.act-apply { color: #04281c; background: linear-gradient(135deg, #3ddc97, #5eead4); }
+.btn.act.act-queue:hover:not(:disabled), .btn.act.act-apply:hover:not(:disabled) { border-color: transparent; filter: brightness(1.07); }
+.btn.act.act-queue:hover:not(:disabled) { background: var(--grad); }
+.btn.act.act-apply:hover:not(:disabled) { background: linear-gradient(135deg, #0c9468, #14b8a6); }
+:root[data-theme="dark"] .btn.act.act-apply:hover:not(:disabled) { background: linear-gradient(135deg, #3ddc97, #5eead4); }
+.btn.act-score:disabled { animation: score-pulse 1.3s ease-in-out infinite; opacity: .8; transform: none; }
+@keyframes score-pulse { 50% { opacity: .5; } }
+.btn.act-score .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-top-color: currentColor; animation: spin .8s linear infinite; }
 .spin .ico { animation: spin 1s linear infinite; }
 
 /* cards */
@@ -206,6 +238,17 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .card.job > .fitbox .ring { width: 48px; height: 48px; grid-row: 1 / 3; margin: 0; }
 .card.job > .fitbox .ring span { width: 38px; height: 38px; font-size: 15px; }
 .card.job > .fitbox small { margin-top: 0; align-self: end; }
+/* An unscored card: the Score button where the ring would be, "not scored yet" beneath it */
+.card.job > .fitbox.noscore { grid-template-columns: auto; justify-items: center; row-gap: 5px; }
+.card.job > .fitbox.noscore small { align-self: auto; }
+/* the corner one is the loud one: filled with the cyan gradient, white text */
+.btn.act-score.score-corner { padding: 5px 14px; font-size: 13.5px; font-weight: 650; justify-content: center; min-width: 76px;
+  color: #fff; border-color: transparent; background: linear-gradient(135deg, #0e7490, #2563eb);
+  box-shadow: 0 6px 16px -8px rgba(37, 99, 235, .8); transition: transform .15s, box-shadow .15s, filter .15s; }
+.btn.act-score.score-corner:hover { transform: translateY(-2px); filter: brightness(1.08); border-color: transparent;
+  background: linear-gradient(135deg, #0e7490, #2563eb); box-shadow: 0 10px 22px -10px rgba(37, 99, 235, .9); }
+.btn.act-score.score-corner:active { transform: translateY(0); }
+.btn.act-score.score-corner:disabled { filter: saturate(.8); transform: none; }
 .fitbox .fit-note { grid-column: 1 / -1; margin-top: 6px; max-width: 280px; line-height: 1.35; }
 .card.job > .fitbox .scorer { margin-top: 3px; justify-self: start; align-self: start; }
 .card.job > .jc-rows { grid-area: 2 / 1 / 3 / -1; min-width: 0; margin-top: 10px; }
@@ -503,12 +546,7 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .prep-chip[data-state="err"] { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
   background: color-mix(in srgb, var(--bad) 10%, transparent); }
 .prep-chip[data-state="skip"] { color: var(--muted); border-style: dashed; }
-button.btn.prepare-go { color: var(--accent); font-weight: 650;
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
-  background: linear-gradient(135deg, var(--accent-soft), transparent 85%), var(--panel-solid); }
-button.btn.prepare-go:hover:not(:disabled) { transform: translateY(-1px); background: var(--accent-soft);
-  box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--accent) 80%, transparent); }
-button.btn.prepare-go:disabled { opacity: .8; }
+button.btn.prepare-go:disabled { opacity: .8; }  /* its look is act-prepare's, with the other card actions */
 .ats-miss { display: inline-block; margin: 2px 4px 2px 0; padding: 1px 9px; border-radius: 999px; font-size: 12.5px;
   font-weight: 600; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line)); }
@@ -1521,6 +1559,12 @@ const ICONS = {
   calendar: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
   users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
   plus: "M12 5v14M5 12h14",
+  minus: "M5 12h14",
+  info: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01",
+  bookmark: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z",
+  external: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3",
+  gauge: "M12 14l4-4M3.34 19a10 10 0 1 1 17.32 0",
+  chevron: "M9 18l6-6-6-6",
   pencil: "M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
   check: "M20 6 9 17l-5-5",
   arrow: "M5 12h14M13 5l7 7-7 7",
@@ -1958,8 +2002,12 @@ function adviceLine(job) {
     h("span", { class: "atext", title: why }, why.charAt(0).toUpperCase() + why.slice(1)));
 }
 // In a job's details, where the ring would be: why there's no score yet (no posting text, still in line, ...).
-function noFitBox(job) {
+// On a job card, `corner` is its Score button (scoreButton's): the button takes the place of the dash, with the
+// "not scored yet" note beneath it.
+function noFitBox(job, corner = null) {
   const why = job.unscored?.code === "no_text" ? "no posting text" : "not scored yet";
+  if (corner) return h("div", { class: "fitbox noscore", title: job.unscored?.text || "Not scored yet" },
+    corner, h("small", {}, why));
   return h("div", { class: "fitbox", title: job.unscored?.text || "Not scored yet" },
     h("div", { class: "ring", style: "--p:0" }, h("span", {}, "–")), h("small", {}, why));
 }
@@ -2116,6 +2164,8 @@ function jobCard(job, actions, i = 0, above = null, stage = null) {
     onkeydown: e => { if (e.key === "Enter") openCompany(job.company); } }, job.company), placeItem(job.locations),
     age(job.age_days) ? h("span", { class: "posted", title: age(job.age_days) }, age(job.age_days).replace(/^posted /, "")) : null]
     .filter(Boolean);
+  // An unscored job's "Score fit" button (scoreButton) has a twin that sits in the score slot, where the dash was.
+  const scorer = job.fit ? null : actions.flat(Infinity).find(a => a && a.corner), corner = scorer?.corner;
   const parts = {
     pay: paySources(job),
     why: adviceLine(job) || noAdvice(job),
@@ -2142,8 +2192,8 @@ function jobCard(job, actions, i = 0, above = null, stage = null) {
     h("div", { class: "jc-rows" }, cardRows(parts)),
     verdictLine(job),
     above ? h("div", { class: "jc-note" }, above) : null,
-    h("div", { class: "row jc-foot" }, actions),
-    fitBox(job.fit, job.key) || noFitBox(job));
+    h("div", { class: "row jc-foot" }, corner ? actions.flat(Infinity).filter(a => a !== scorer) : actions),
+    fitBox(job.fit, job.key) || noFitBox(job, corner));
 }
 
 // The same opening (or maybe) as a job already applied to, queued or skipped: flagged, never hidden.
@@ -2183,9 +2233,20 @@ async function mark(job, status, note, label, undoStatus) {
   }
 }
 
-function detailsButton(job) {
-  return h("button", { class: "btn ghost", onclick: () => openDetails(job.key) }, "Details", icon("arrow", 13));
+// The recurring actions (Queue, Apply, Skip, Details, Score, Prepare, I applied, Snooze, Remove from queue) each keep one
+// icon and one color on every view, so a hand finds them without reading. Every one is built here: icon + label, the
+// classes `act act-<kind>` (the page's CSS gives each kind its look); its name for a screen reader is its label (the icon
+// is aria-hidden), or the `aria-label` a caller gives. An `href` makes it a link.
+const ACT = { queue: ["bookmark", "Queue"], apply: ["external", "Apply"], skip: ["x", "Skip"], details: ["info", "Details"],
+  score: ["gauge", "Score fit"], prepare: ["sparkle", "Prepare"], applied: ["check", "I applied"], snooze: ["pause", "Snooze"],
+  remove: ["minus", "Remove from queue"] };
+const actLabel = (kind, label = ACT[kind][1]) => [icon(ACT[kind][0], 14), h("span", { class: "label" }, label)];
+function actButton(kind, attrs = {}, label = ACT[kind][1]) {
+  const { class: more, ...rest } = attrs;
+  return h(attrs.href ? "a" : "button", { ...rest, class: `btn act act-${kind}` + (more ? ` ${more}` : "") },
+    actLabel(kind, label));
 }
+function detailsButton(job) { return actButton("details", { onclick: () => openDetails(job.key) }); }
 
 // Why a job has no fit score yet (the server's `unscored`: in line, no posting text, failed...).
 // No Score fit button while it's being scored, or for a post listing several roles (never scored).
@@ -2248,14 +2309,24 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
       redraw(job);
     }), linkedinButton(job), unscoredNote(job)];
   if (!canScore || NO_SCORE_BUTTON.includes(job.unscored?.code)) return unscoredNote(job);
-  const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");
-  b.onclick = async () => {
-    b.disabled = true; b.textContent = "Scoring…";
+  // Two buttons, one handler: the bottom row's "Score fit" and the card's corner "Score" (jobCard puts that one where
+  // the empty score slot was and drops the bottom one). Either press sets both to "Scoring…".
+  const title = "Compare this posting with your resume (can take a while)";
+  const idle = text => actLabel("score", text), busy = () => [h("span", { class: "spin" }), "Scoring…"];
+  const b = actButton("score", { title });
+  const corner = actButton("score", { class: "score-corner", title, "aria-label": "Score fit" }, "Score");
+  const run = async () => {
+    for (const x of [b, corner]) { x.disabled = true; x.replaceChildren(...busy()); }
     try {
       job.fit = await api("/api/score", { key: job.key });
       redraw(job);
-    } catch (e) { b.disabled = false; b.textContent = "Score fit"; toast(e.message); }
+    } catch (e) {
+      for (const x of [b, corner]) x.disabled = false;
+      b.replaceChildren(...idle("Score fit")); corner.replaceChildren(...idle("Score")); toast(e.message);
+    }
   };
+  b.onclick = corner.onclick = run;
+  b.corner = corner;
   return [b, unscoredNote(job)];
 }
 
@@ -2267,19 +2338,19 @@ function snoozeButton(job, act) {
   const on = job.waiting_on || [];
   if (!on.length || closedState(job) === "closed" || job.status === "snoozed") return null;
   const what = on.length === 1 ? `your ${on[0].title} application` : `your ${on.length} applications there`;
-  return h("button", { class: "btn", title: `Set it aside while ${what} is in progress. It comes back to your queue ` +
+  return actButton("snooze", { title: `Set it aside while ${what} is in progress. It comes back to your queue ` +
       `when ${on.length === 1 ? "that ends" : "they end"}, or in ${SNOOZE_LIMIT} if there's no news.`,
-    onclick: () => act("snoozed", `😴 Snoozed: ${job.title}. Back in your queue when ${what} ends, or in ${SNOOZE_LIMIT}.`) },
-    icon("pause", 14), "Snooze");
+    onclick: () => act("snoozed", `😴 Snoozed: ${job.title}. Back in your queue when ${what} ends, or in ${SNOOZE_LIMIT}.`) });
 }
 
 // Opens the application form in a new tab (a link, so the browser lets it open); `then` runs alongside, e.g.
 // queueing the job. The jobwatch browser extension fills the form there and records it when it's submitted.
-function applyButton(job, primary, then) {
+function applyButton(job, then) {
   if (closedState(job) === "closed" || !(job.apply_url || job.url)) return null;
-  return h("a", { class: "btn" + (primary ? " primary" : ""), href: job.apply_url || job.url, target: "_blank",
-    rel: "noopener", title: "Open the application form. With the jobwatch browser extension, click its icon there to fill " +
-      "the form; it marks the job applied when you submit.", onclick: () => then && then() }, "Apply ↗");
+  return actButton("apply", { href: job.apply_url || job.url, target: "_blank", rel: "noopener",
+    "aria-label": "Apply (opens the application form in a new tab)",
+    title: "Open the application form. With the jobwatch browser extension, click its icon there to fill " +
+      "the form; it marks the job applied when you submit.", onclick: () => then && then() });
 }
 
 // "Prepare" on a queued job runs three steps in order and keeps each result with the job: a tailored resume, the ATS
@@ -2480,9 +2551,9 @@ function prepareButton(job) {
     const panel = steps.find(([sid]) => sid === id)[2];
     if (open === id && panel.opened) panel.opened();
   };
-  const b = h("button", { class: "btn prepare-go", title: "Tailor a resume for this job, check it against the posting's " +
-    "keywords (ATS), and draft a cover letter, in that order. All three are kept with the job; you review them before " +
-    "you apply. Local model; nothing is sent." }, icon("sparkle", 14), anySaved ? "Prepare again" : "Prepare");
+  const b = actButton("prepare", { class: "prepare-go", title: "Tailor a resume for this job, check it against the " +
+    "posting's keywords (ATS), and draft a cover letter, in that order. All three are kept with the job; you review them " +
+    "before you apply. Local model; nothing is sent." }, anySaved ? "Prepare again" : "Prepare");
   const chip = (id, state, text, detail = "", older = false) => {
     const c = chipOf(id);
     c.dataset.state = state; c.textContent = text; details[id] = detail;
@@ -2575,13 +2646,13 @@ function followupButton(a) {
 
 function todayCard(job, canScore, i) {
   return jobCard(job, [
-    h("button", { class: "btn primary",
-      onclick: () => mark(job, "queued", null, `📌 Queued: ${job.title}. ${pick(QUEUED)}`, job.status) }, "Queue"),
-    applyButton(job, false, () => mark(job, "queued", null, `📌 Queued and opened: ${job.title}. Submit it there.`,
+    actButton("queue", {
+      onclick: () => mark(job, "queued", null, `📌 Queued: ${job.title}. ${pick(QUEUED)}`, job.status) }),
+    applyButton(job, () => mark(job, "queued", null, `📌 Queued and opened: ${job.title}. Submit it there.`,
       job.status)),
     snoozeButton(job, (status, label) => mark(job, status, null, label, job.status)),
-    h("button", { class: "btn",
-      onclick: () => mark(job, "skipped", null, `Skipped: ${job.title}. ${pick(SKIPPED)}`, job.status) }, "Skip"),
+    actButton("skip", {
+      onclick: () => mark(job, "skipped", null, `Skipped: ${job.title}. ${pick(SKIPPED)}`, job.status) }),
     detailsButton(job), scoreButton(job, canScore),
   ], i);
 }
@@ -2668,11 +2739,11 @@ function detailsScore(j) {
   if (j.fit && !j.fit.stale) return null;
   if (j.unscored?.code === "no_text" && j.manual) return [postingButton(j, () => openDetails(j.key)), unscoredNote(j)];
   if (!j.can_score || NO_SCORE_BUTTON.includes(j.unscored?.code)) return unscoredNote(j);
-  const b = h("button", { class: "btn", title: "Compare this posting with your resume (can take a while)" }, "Score fit");
+  const b = actButton("score", { title: "Compare this posting with your resume (can take a while)" });
   b.onclick = async () => {
-    b.disabled = true; b.textContent = "Scoring…";
+    b.disabled = true; b.replaceChildren(h("span", { class: "spin" }), "Scoring…");
     try { await api("/api/score", { key: j.key }); openDetails(j.key); }
-    catch (e) { b.disabled = false; b.textContent = "Score fit"; toast(e.message); }
+    catch (e) { b.disabled = false; b.replaceChildren(...actLabel("score")); toast(e.message); }
   };
   return [b, unscoredNote(j)];
 }
@@ -4947,7 +5018,7 @@ function snoozedPanel() {
         onclick: e => { e.preventDefault(); openCompany(j.company); } }, `${j.company}: ${j.title}`),
       h("div", { class: "hint" }, `Waiting on ${j.waiting_on.map(a => a.title).join(", ")}` +
         (j.back_by ? `; back by ${fmtDay(j.back_by)}` : "")),
-      h("div", {}, h("button", { class: "btn ghost", onclick: async () => {
+      h("div", {}, actButton("queue", { onclick: async () => {
         try {
           await api("/api/mark", { keys: [j.key], status: "queued" });
           render();
@@ -4961,9 +5032,9 @@ function snoozedPanel() {
 // dialog), then Undo for 8 seconds (status, dated note and notice all come back).
 function skipClosedButton(job) {
   const box = h("span", { class: "cs-confirm" });
-  const ask = () => fill(box, h("button", { class: "btn", title: "The posting is closed: skip this job.",
+  const ask = () => fill(box, actButton("skip", { title: "The posting is closed: skip this job.",
     onclick: () => fill(box, h("span", { class: "small" }, "Skip this job? You can change the status back."),
-      h("button", { class: "btn primary", onclick: go }, "Yes"), h("button", { class: "btn ghost", onclick: ask }, "Cancel")) }, "Skip"));
+      h("button", { class: "btn primary", onclick: go }, "Yes"), h("button", { class: "btn ghost", onclick: ask }, "Cancel")) }));
   const go = async () => {
     try {
       const r = await api("/api/closed/act", { action: "skip", key: job.key });
@@ -4980,14 +5051,13 @@ function queueCard(job, i) {
   const note = h("input", { type: "text", placeholder: "Note (optional): referred by…, applied with…" });
   note.value = job.note || "";
   return jobCard(job, [
-    applyButton(job, true),
+    applyButton(job),
     prepareButton(job),
-    h("button", { class: "btn", onclick: () => mark(job, "applied", note.value || null,
-      `Marked applied: ${job.title}`, "queued") }, icon("check", 14), "I applied"),
+    actButton("applied", { onclick: () => mark(job, "applied", note.value || null,
+      `Marked applied: ${job.title}`, "queued") }),
     snoozeButton(job, (status, label) => mark(job, status, null, label, "queued")),
     closedState(job) === "closed" ? skipClosedButton(job) : null,
-    h("button", { class: "btn", onclick: () => mark(job, "shown", null, `Removed from the queue: ${job.title}`, "queued") },
-      "Remove from queue"),
+    actButton("remove", { onclick: () => mark(job, "shown", null, `Removed from the queue: ${job.title}`, "queued") }),
     detailsButton(job), scoreButton(job, job.can_score, j => queueCard(j, 0)),
   ], i, note);
 }
@@ -5312,8 +5382,7 @@ function appRow(a, d) {
     h("td", { class: "col-sent" }, sentChip(a)),
     h("td", { class: "acts nowrap" }, d.reminders ? bellButton(a) : null,
       h("button", { class: "btn ghost", onclick: edit, title: "Edit next step, follow-up and notes" }, icon("pencil", 13)),
-      h("button", { class: "btn ghost", onclick: () => openDetails(a.key), title: "Details" },
-        h("span", { class: "label" }, "Details"), icon("arrow", 13))));
+      detailsButton(a)));
   const edit = () => {
     const f = trackFields(a);
     fill(tr, h("td", { colspan: APP_COLUMNS.length, class: "editing" },
@@ -5471,7 +5540,7 @@ function appCard(a, d, i = 0) {
         h("span", { class: "when" }, a.applied_at ? `Applied ${fmtDay(a.applied_at, d.today)} · ${relDay(a.applied_at, d.today)}` : ""),
         h("div", { class: "acts" }, sentChip(a), d.reminders ? bellButton(a) : null, draftBtn,
           h("button", { class: "btn ghost", onclick: edit }, icon("pencil", 13), "Edit"),
-          h("button", { class: "btn ghost", onclick: () => openDetails(a.key) }, "Details", icon("arrow", 13)))),
+          detailsButton(a))),
       draftBox)); };
   const edit = () => {
     const f = trackFields(a);
@@ -6296,7 +6365,7 @@ function compActions(o) {
   return h("div", { style: "display:flex;gap:6px;margin-top:8px;flex-wrap:wrap" },
     o.kind === "job" ? h("button", { class: "btn", onclick: () => { compView.editing = o.key; compView.health = null; render(); } }, icon("pencil", 13), " Pay details") : null,
     h("button", { class: "btn", onclick: () => { compView.health = o.company; compView.editing = null; render(); } }, icon("pencil", 13), " Company health"),
-    o.kind === "job" ? h("button", { class: "btn ghost", onclick: () => openDetails(o.key) }, "Details") : null,
+    o.kind === "job" ? detailsButton(o) : null,
     compView.picked ? h("button", { class: "btn ghost", title: "Take out of the comparison", "aria-label": "Take " + o.company + " out",
       onclick: () => { pickSave(compView.picked.filter(p => p.id !== o.key && !(p.kind === "company" && o.kind === "company" && p.id === o.company))); render(); } }, "Remove") : null);
 }
@@ -7032,19 +7101,19 @@ function companyCard(j, i, c) {
       toast(r.warning ? `${label}. ${r.warning}` : label, async () => { await move(was); redraw(); drawCompanyTiles(); }, TONES[status]);
     } catch (e) { toast(e.message); }
   };
-  const queueIt = (label = "Queue") => closedState(j) === "closed" ? null : h("button", { class: "btn primary",
+  const queueIt = (label = "Queue") => closedState(j) === "closed" ? null : actButton("queue", {
     onclick: () => act("queued", `📌 Queued: ${j.title}. ${pick(QUEUED)}`) }, label);
-  const skipIt = () => h("button", { class: "btn", onclick: () => act("skipped", `Skipped: ${j.title}. ${pick(SKIPPED)}`) }, "Skip");
+  const skipIt = () => actButton("skip", { onclick: () => act("skipped", `Skipped: ${j.title}. ${pick(SKIPPED)}`) });
   const posting = () => link(j.url, "Posting ↗");
   const score = () => scoreButton(j, j.can_score, x => companyCard(x, i, c));
   const actions = APPLIED.includes(j.status) ? [detailsButton(j), posting(),
       j.has_package ? h("span", { class: "sent-chip", title: "What you sent is saved with this job" }, icon("clip", 13), "package saved") : null]
-    : j.status === "queued" ? [applyButton(j, true), prepareButton(j),
-      h("button", { class: "btn", onclick: () => act("applied") }, icon("check", 14), "I applied"),
+    : j.status === "queued" ? [applyButton(j), prepareButton(j),
+      actButton("applied", { onclick: () => act("applied") }),
       snoozeButton(j, act), skipIt(), detailsButton(j), score()]
-    : j.status === "snoozed" ? [queueIt("Queue now"), applyButton(j, false), skipIt(), detailsButton(j), score()]
-    : j.status === "skipped" ? [queueIt(), applyButton(j, false), detailsButton(j), score()]
-    : [queueIt(), applyButton(j, false, () => act("queued", `📌 Queued and opened: ${j.title}. Submit it there.`)),
+    : j.status === "snoozed" ? [queueIt("Queue now"), applyButton(j), skipIt(), detailsButton(j), score()]
+    : j.status === "skipped" ? [queueIt(), applyButton(j), detailsButton(j), score()]
+    : [queueIt(), applyButton(j, () => act("queued", `📌 Queued and opened: ${j.title}. Submit it there.`)),
       snoozeButton(j, act), closedState(j) === "closed" ? null : skipIt(), detailsButton(j), score()];
   return jobCard(j, actions, i, companyFacts(j, today), stageChip(j, today));
 }

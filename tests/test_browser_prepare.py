@@ -130,7 +130,7 @@ def test_the_card_has_one_prepare_button_in_place_of_the_three(page):
         assert card.get_by_role("button", name=gone, exact=True).count() == 0, gone
     for kept in ("I applied", "Remove from queue", "Details"):
         assert card.get_by_role("button", name=kept, exact=True).count() == 1, kept
-    assert card.get_by_role("link", name="Apply ↗").count() == 1
+    assert card.get_by_role("link", name="Apply").count() == 1
     assert card.locator(".prepare").is_hidden()  # nothing to show until it has run (this job has no resume yet)
     assert page.errors == []
 

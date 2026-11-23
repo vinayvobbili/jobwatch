@@ -204,7 +204,7 @@ LinkedIn installed as an app), which has no side panel, the same panel opens as 
 The extension's [README](https://github.com/vinayvobbili/jobwatch/blob/main/chrome-extension/README.md) covers
 the rest of what it does: reading the job lists you have open, and **Draft reply** for a recruiter's LinkedIn message.
 
-On the page, **Apply ↗** on a job's card opens its application form in a new tab (with the extension, click its icon
+On the page, **Apply** on a job's card opens its application form in a new tab (with the extension, click its icon
 there; it marks the job applied when you submit), and **Prepare** builds the resume to attach, checks it and drafts
 the cover letter, as above. In the extension's side panel, **ATS check** and **Cover letter** do the same for the job
 on the page you have open: the cover letter can be copied or put in the form's cover letter box (the extension never
