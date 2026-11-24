@@ -124,8 +124,8 @@ def test_a_keyword_cant_break_the_finder(monkeypatch):
 
 @pytest.mark.parametrize("url, expected", [
     (f"{SITE}/job/342776", ("oracle", BOARD)),
-    ("https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/job/210784683/?utm_source=x",
-     ("oracle", "jpmc.fa/CX_1001")),
+    ("https://initech.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/job/210784683/?utm_source=x",
+     ("oracle", "initech.fa/CX_1001")),
     ("https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_45001/requisitions/preview/342776",
      ("oracle", BOARD)),
     ("https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_45001", ("oracle", BOARD)),
@@ -138,8 +138,8 @@ def test_oracle_links(url, expected):
 
 def test_oracle_careers_url_and_bad_boards():
     assert sources.careers_url("oracle", BOARD) == SITE
-    assert sources.careers_url("oracle", "jpmc.fa/CX_1001") == \
-        "https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001"
+    assert sources.careers_url("oracle", "initech.fa/CX_1001") == \
+        "https://initech.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001"
     for bad in ("eeho.fa.us2", "eeho/CX_1", "eeho.fa.us2/CX 1,limit=1"):
         with pytest.raises(sources.SourceError):
             sources.fetch("oracle", bad, FakeWeb({}), search=["engineer"])
@@ -162,7 +162,7 @@ def test_find_reads_an_oracle_board_from_a_link_and_never_guesses_one(oracle):
 
 
 LIVE = [("eeho.fa.us2/CX_45001", "software engineer"),  # Oracle's own careers site
-        ("jpmc.fa/CX_1001", "software engineer")]       # JPMorgan Chase
+        ("jpmc.fa/CX_1001", "software engineer")]       # a second real Oracle Cloud site
 
 
 @pytest.mark.network
