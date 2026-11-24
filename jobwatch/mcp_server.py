@@ -10,10 +10,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Literal
 
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import AcceptedElicitation, Context, Elicit, ElicitationResult, MCPServer, Resolve
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from . import (
     __version__,
@@ -411,6 +411,65 @@ def get_job(key: Key) -> dict:
         store.close()
 
 
+class SubmissionProof(BaseModel):
+    """The form mark_job shows before it records an application as applied."""
+
+    proof: Annotated[Literal["confirmation page seen", "confirmation email seen", "not yet"], Field(
+        title="Did you see a confirmation page or email for this application?")]
+    note: Annotated[str | None, Field(title="Note (optional)", description=(
+        "Anything worth keeping with it: the email's subject, a confirmation number."))] = None
+
+
+# What _ask_proof answers when it doesn't ask: the status isn't applied (or already was, or the person said they
+# saw proof), or the client can't show a form, so mark_job goes on as it always did (and warns, for the latter).
+_NO_QUESTION, _NO_FORMS = "no question", "client can't ask"
+# mark_job's default for what the person answered: a direct call (not through a client) asks nothing. Not None:
+# Python 3.10 reads a None default as Optional, which a Resolve parameter can't be.
+_UNASKED = AcceptedElicitation[str].model_construct(data=_NO_QUESTION)
+
+
+def _ask_proof(key: str, status: str | None, proof_seen: bool, ctx: Context) -> Elicit[SubmissionProof] | str:
+    """Ask for proof of submission before a job is recorded as applied (the person's rule: a profile update or a
+    form left open is not an application)."""
+    if status != "applied" or proof_seen:
+        return _NO_QUESTION
+    try:
+        _, store = _open()
+        try:
+            if store.find(key)[1]["status"] == "applied":  # already recorded: only its other fields change
+                return _NO_QUESTION
+        finally:
+            store.close()
+    except Exception:  # an unknown key or a missing watchlist: mark_job says so itself
+        return _NO_QUESTION
+    asked = ctx.client_capabilities.elicitation if ctx.client_capabilities else None
+    if asked is None or (asked.form is None and asked.url is not None):
+        return _NO_FORMS
+    return Elicit("Before jobwatch records this as applied: did you see a confirmation page or email for it?",
+                  SubmissionProof)
+
+
+def _judge_proof(key: str, proof: ElicitationResult[SubmissionProof]) -> tuple[str, str, str]:
+    """What the person's answer means for mark_job: (the reply that stops it, or ""; the dated note that records
+    the proof; a warning to end the reply with)."""
+    answer = proof.data if isinstance(proof, AcceptedElicitation) else None
+    if answer == _NO_QUESTION:
+        return "", "", ""
+    if answer == _NO_FORMS:
+        return "", "", (" Warning: proof of submission was not confirmed, because this client can't ask the "
+                        "person. Check the company's confirmation page or email, and if none came, set the "
+                        "job back to queued.")
+    if isinstance(answer, SubmissionProof) and answer.proof != "not yet":
+        note = (answer.note or "").strip()
+        return "", f"Applied: {answer.proof}" + (f" ({note})" if note else ""), ""
+    why = ("the person has not seen a confirmation page or email yet" if answer
+           else f"the person {proof.action}d the question" if proof.action == "decline"
+           else "the person cancelled the question")
+    return (f"{key}: not marked applied, and nothing was changed, because {why}. Keep it queued; check for the "
+            "confirmation page or the company's \"thank you for applying\" email (search the mailbox the same "
+            "day), and call mark_job again once one is seen."), "", ""
+
+
 @server.tool(annotations=_hints(destructive=True, idempotent=True, web=True))
 def mark_job(
     key: Key,
@@ -436,6 +495,10 @@ def mark_job(
     text: Annotated[str | None, Field(description=(
         "The posting's text, pasted (found later, or a copy once the posting is gone), so it can be scored and "
         "prepped."))] = None,
+    proof_seen: Annotated[bool, Field(description=(
+        "Set it true only when the person has told you they saw the confirmation page or email for this "
+        "application: it skips the question. Never set it yourself."))] = False,
+    proof: Annotated[ElicitationResult[SubmissionProof], Resolve(_ask_proof)] = _UNASKED,
 ) -> str:
     """Record a job's status: new, shown, queued (to apply to next), applied, screening, interviewing, offer,
     rejected, withdrawn or skipped (omit status to keep it and only update the rest). key is the job's key, its
@@ -452,7 +515,14 @@ def mark_job(
     posting is gone), so it can be scored and prepped. An empty string clears a field.
     For a job jobwatch doesn't track yet, use add_application.
     Queuing a job that's (maybe) the same opening as one applied to or queued still queues it, and the reply
-    ends with the warning: tell the person."""
+    ends with the warning: tell the person.
+    Before a job is recorded as applied, the person is asked whether they saw a confirmation page or email (a
+    form in clients that can ask; proof_seen skips it). Without proof, "not yet", declining or cancelling, nothing
+    is changed and the job stays as it was: say so, and keep it queued until the proof shows. A client that can't
+    ask gets the reply with a warning that the proof was not confirmed: pass it on."""
+    stop, proof_note, warning = _judge_proof(key, proof) if status == "applied" else ("", "", "")
+    if stop:
+        return stop
     cfg, store = _open()
     said = ""
     try:
@@ -468,9 +538,11 @@ def mark_job(
             said = f" ({set_link(store, job.key, url)})"
         if add_note:
             store.add_note(job.key, add_note)
+        if proof_note:
+            store.add_note(job.key, proof_note)
         reminders.refresh(cfg, store, [job.key])
         same = dupes.check(store, job.key) if status == "queued" else None
-        return f"{job.key}: {status or rec['status']}{said}" + (f". Check: {same.line}" if same else "")
+        return (f"{job.key}: {status or rec['status']}{said}" + (f". Check: {same.line}" if same else "") + warning)
     finally:
         store.close()
 

@@ -112,7 +112,8 @@ exactly what was sent.
 ## Rules
 
 - **Never apply for the user.** Fill in what you can, then stop for them to review and submit. Use `applied`
-  only after they say they submitted.
+  only after they say they submitted. `mark_job` then asks them whether they saw a confirmation page or email;
+  if they say "not yet" (or decline), the job stays queued. Pass proof_seen=true only when they told you so.
 - **Check for duplicates first.** Before a referral request or an application, check `get_job`'s
   `duplicate_of` and the warnings in `list_queued_jobs`: a strong match means it was already applied to.
 - **Only confirmed facts.** Don't put anything on a resume, form or saved story that the user hasn't confirmed.

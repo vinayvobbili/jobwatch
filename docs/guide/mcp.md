@@ -32,6 +32,15 @@ claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- jobwatch-m
 claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- uvx --with 'mcp>=2.2' jobwatch mcp
 ```
 
+**Proof before "applied".** `mark_job` with status `applied` pauses and asks you, through MCP elicitation, "Did you
+see a confirmation page or email for this application?": confirmation page seen, confirmation email seen, or not
+yet, with an optional note. A confirmation records the job as applied with a dated note of the proof
+("Applied: confirmation email seen"). "Not yet", declining or cancelling changes nothing: the job stays as it was
+(queued), and the reply says to check for the confirmation first. A job already applied to isn't asked again, and
+no other status is. If your client can't show forms (no elicitation support), jobwatch records it as before and
+ends the reply with a warning that the proof wasn't confirmed. `proof_seen=true` skips the question when you've
+already told the assistant you saw the proof.
+
 It's listed in the [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.vinayvobbili/jobwatch`.
 
 [plugin/skills/jobwatch/SKILL.md](../../plugin/skills/jobwatch/SKILL.md) is an agent skill that tells an assistant
