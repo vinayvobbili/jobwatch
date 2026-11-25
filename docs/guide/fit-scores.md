@@ -57,7 +57,9 @@ Why an alert job has no text: the email carries a title, company and place (some
 Indeed show a posting only to a signed-in browser, so jobwatch can't fetch it. `jobwatch fill-text` fills what
 it can without you: from the company's own board, then the job's own link. For a LinkedIn or Indeed link, the
 card says so and has a **Read posting** button: it opens the job in a new tab of your own browser and the
-jobwatch extension copies the posting's text to jobwatch and closes the tab (you must be signed in there).
+jobwatch extension copies the posting's text to jobwatch and closes the tab (you must be signed in there). With
+the newest extension the tab opens behind this one and only the card changes; with an older one the tab opens in
+front, and jobwatch says once to update or reload the extension.
 `jobwatch fill-text --open` lists those links, and `jobwatch fill-text --set KEY --page-text FILE` saves the text
 of a page you or an assistant read in the browser (the description is cut out of the page; a sign-in wall or a
 captcha is refused).

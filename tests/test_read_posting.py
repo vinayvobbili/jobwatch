@@ -95,6 +95,21 @@ console.log(JSON.stringify([B.doneMessage({{ key: 'k', ok: true, closed: true, h
 
 
 @needs_node
+def test_the_bridge_tells_the_page_what_the_extension_can_do_and_an_old_one_can_do_nothing(tmp_path):
+    """The ping's answer becomes the page's capability list; an extension from before `ping` says "unknown message"
+    (ok: false), or nothing, which is an empty list, so the page reads the old way."""
+    bridge = SCRIPT.parent / "page-bridge.js"
+    js = tmp_path / "caps.js"
+    js.write_text(f"""const B = require({json.dumps(str(bridge))});
+console.log(JSON.stringify([B.capsText({{ ok: true, capabilities: ['readInBackground'] }}),
+  B.capsText({{ ok: false, error: 'Something went wrong: unknown message ping' }}), B.capsText(undefined), B.capsText({{ ok: true }}),
+  B.capsText({{ ok: true, capabilities: ['readInBackground', 'two words', 7] }})]));""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["readInBackground", "", "", "", "readInBackground"]
+
+
+@needs_node
 def test_a_page_with_no_posting_says_why_and_other_pages_are_refused(tmp_path):
     got = run_js(tmp_path, f"""const wall = {{ body: {{ innerText: {json.dumps(SIGN_IN)} }}, querySelector: () => null }};
 console.log(JSON.stringify([R.readPage(wall, {json.dumps(LI)}), R.readPage(wall, 'https://www.linkedin.com/feed/'),

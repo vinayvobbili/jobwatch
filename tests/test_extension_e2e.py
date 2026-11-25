@@ -978,6 +978,18 @@ def test_read_posting_from_jobwatchs_page_opens_behind_and_changes_only_that_car
         page.close()
 
 
+def test_the_extension_answers_the_pages_ping_with_what_it_can_do(stack, ext):
+    """The page picks its way to read from this attribute, which the bridge sets from the service worker's `ping`."""
+    page = stack.context.new_page()
+    try:
+        page.goto(f"{stack.api_url}/demo/today")
+        harness.wait_until(lambda: page.evaluate("() => document.documentElement.dataset.jobwatchCaps") is not None,
+                           what="the capabilities")
+        assert page.evaluate("() => document.documentElement.dataset.jobwatchCaps") == "readInBackground"
+    finally:
+        page.close()
+
+
 def test_an_open_posting_read_from_jobwatchs_page_says_so(stack, ext):
     page = read_from_jobwatch(stack, "?open=1")
     try:

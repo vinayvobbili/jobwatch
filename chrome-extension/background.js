@@ -83,8 +83,14 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   if (id) chrome.windows.remove(id).catch(() => {}); // its tab is gone, so is its panel
 });
 
+// What jobwatch's own page may ask of this extension (page-bridge.js asks with `ping`). The page works with an older
+// extension too, which doesn't know `ping` and so counts as having none of these: a new one is added here when the
+// page starts to use it.
+const CAPABILITIES = ['readInBackground'];
+
 async function handle(msg, tabId, sender) {
   switch (msg.type) {
+    case 'ping': return { capabilities: CAPABILITIES };
     case 'open': return open(tabId);
     case 'status': return status();
     case 'test': return { ...(await api('/ext/ping', { settings: msg.settings })) };

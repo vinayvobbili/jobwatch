@@ -365,6 +365,11 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
   `tabs.create({active: false})`) and the answer back. It reads nothing from the page. When submitting, add it to the
   content-script justification below ("a content script on the user's own local jobwatch page, so the Read posting
   button there can open the posting without taking the user away from the page").
+  The bridge also asks the service worker a `ping` on load, which answers `capabilities: ['readInBackground']`, and
+  writes that to the page (`<html data-jobwatch-caps>`), so jobwatch's page, which is served by the latest jobwatch and
+  often newer than the Web Store build, reads in the background only with an extension that can; an older one (which
+  answers "unknown message") gets the tab in front as before, with a one-time hint to update or reload the extension.
+  No new permission, host or message beyond `ping`; nothing sensitive is in its answer.
 
 - 0.12.0 does nothing when the toolbar icon is clicked in an installed web app's window (LinkedIn's PWA): Chrome offers
   no side panel there and `background.js` swallowed the error. Fixed for the next version (not yet bumped or submitted):

@@ -75,6 +75,8 @@ press Read posting") and has a **Read posting** button. It opens the job in a ne
 added to the address; the extension reads that page's description (only then: on any other page of those sites its script does
 nothing), gives it to jobwatch, shows a banner and closes the tab. Back in jobwatch the card fills in and the job is scored. You
 must be signed in to the site in that browser; if the page shows a sign-in or a captcha, the banner says so and nothing is sent.
+With the newest extension that tab opens behind the one you are on and only that card changes; with an older one (jobwatch's
+page checks) it opens in front as described, and jobwatch says once to update or reload the extension.
 `jobwatch fill-text --open` lists every such job's link.
 
 ## Drafting a reply to a recruiter

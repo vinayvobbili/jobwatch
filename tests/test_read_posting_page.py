@@ -19,10 +19,17 @@ window.addEventListener('message', (e) => {
   if (e.source !== window || !e.data || e.data.type !== 'jobwatch:read-posting') return;
   window.requests.push(e.data);
   const ok = window.bridgeOk !== false;
-  setTimeout(() => window.postMessage({ type: 'jobwatch:read-posting-done', key: e.data.key, ok, error: 'sign in first',
-    closed: true, has_text: true, said: 'Filled in from the pages text; scoring now' }, location.origin), 1500);
+  // an extension from before the request existed: its service worker answers every message it does not know like this
+  const error = window.bridgeOld ? 'Something went wrong: unknown message readInBackground' : 'sign in first';
+  const answer = { type: 'jobwatch:read-posting-done', key: e.data.key, ok: ok && !window.bridgeOld, error,
+    closed: true, has_text: true, said: 'Filled in from the pages text; scoring now' };
+  setTimeout(() => window.postMessage(answer, location.origin), window.bridgeOld ? 50 : 1500);
 });
 """
+# What the bridge writes after asking the extension to `ping` (page-bridge.js): an extension that knows the request, and
+# an older one, which answers "unknown message ping" and so has no capabilities
+CAPS = {"new": "document.documentElement.dataset.jobwatchCaps = 'readInBackground';",
+        "old": "document.documentElement.dataset.jobwatchCaps = '';"}
 
 
 @pytest.fixture
@@ -54,12 +61,21 @@ def browser():
         b.close()
 
 
-def open_today(browser, server, bridge: bool):
+def open_today(browser, server, bridge: bool, caps: str = "", old: bool = False):
+    """Today with the bridge stand-in (`caps`: "new" or "old" for what the ping said, "" for no answer yet; `old`: its
+    service worker doesn't know the read request) or without the bridge."""
     page = browser.new_page(viewport={"width": 1100, "height": 600})
     page.errors = []
     page.on("pageerror", lambda e: page.errors.append(str(e)))
     if bridge:
         page.add_init_script(BRIDGE)
+        if old:
+            page.add_init_script("window.bridgeOld = true;")
+        if caps:
+            set_caps = CAPS[caps]
+            page.add_init_script(
+                f"document.addEventListener('readystatechange', () => {{ {set_caps} }}, {{ once: true }});"
+                f" if (document.documentElement) {{ {set_caps} }}")
     page.goto(f"http://127.0.0.1:{server}/#today")
     page.wait_for_load_state("networkidle")
     try:
@@ -131,6 +147,61 @@ def test_without_the_bridge_the_tab_opens_and_coming_back_keeps_the_place(browse
         assert abs(page.evaluate("() => window.scrollY") - before) <= 40
         box = page.locator(f'[id="{key}"]').bounding_box()
         assert box["y"] + box["height"] > 0 and box["y"] < 600, box
+        assert page.errors == []
+    finally:
+        page.close()
+
+
+def test_with_an_extension_that_has_the_capability_it_reads_in_the_background(browser, server, alert_jobs):
+    page = open_today(browser, server, bridge=True, caps="new")
+    try:
+        card, _key, _before = scroll_to_a_lower_card(page)
+        card.locator("button", has_text="Read posting").click()
+        sync_api.expect(page.locator("#toast")).to_contain_text("scoring now")
+        assert len(page.evaluate("() => window.requests")) == 1 and len(page.context.pages) == 1
+        assert "Update or reload" not in page.inner_text("#toast")
+        assert page.errors == []
+    finally:
+        page.close()
+
+
+def test_an_extension_that_does_not_answer_the_ping_opens_the_posting_in_front_with_a_hint(browser, server, alert_jobs):
+    page = open_today(browser, server, bridge=True, caps="old")
+    try:
+        page.evaluate("() => { window.opened = []; window.open = (u) => { window.opened.push(u); return null; }; }")
+        card, _key, before = scroll_to_a_lower_card(page)
+        card.locator("button", has_text="Read posting").click()
+        opened = page.evaluate("() => window.opened")
+        assert len(opened) == 1 and opened[0].endswith("#jobwatch-read")
+        assert page.evaluate("() => window.requests") == []  # the request it can't answer is never sent
+        sync_api.expect(page.locator("#toast")).to_contain_text("Update or reload the jobwatch extension")
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")  # the person comes back
+        page.wait_for_timeout(2500)
+        page.wait_for_load_state("networkidle")
+        assert abs(page.evaluate("() => window.scrollY") - before) <= 40
+        assert page.errors == []
+    finally:
+        page.close()
+
+
+def test_an_extension_that_says_unknown_message_falls_back_and_hints_once(browser, server, alert_jobs):
+    """The ping not answered yet (or lost), the request goes out and comes back "unknown message": the posting still
+    opens, and the hint is said the first time only."""
+    page = open_today(browser, server, bridge=True, old=True)
+    try:
+        page.evaluate("() => { window.opened = []; window.open = (u) => { window.opened.push(u); return null; }; }")
+        card = page.locator("[id^=job-]").nth(2)
+        card.locator("button", has_text="Read posting").click()
+        sync_api.expect(page.locator("#toast")).to_contain_text("Update or reload the jobwatch extension")
+        assert "Couldn't read the posting" not in page.inner_text("#toast")
+        assert len(page.evaluate("() => window.opened")) == 1
+        sync_api.expect(card.locator("button", has_text="Read posting")).to_be_enabled()
+        page.evaluate("() => { document.getElementById('toastText').textContent = ''; }")  # the first toast's words
+        card = page.locator("[id^=job-]").nth(3)
+        card.locator("button", has_text="Read posting").click()
+        sync_api.expect(page.locator("#toast")).to_contain_text("Opened on LinkedIn")
+        assert "Update or reload" not in page.inner_text("#toast")
+        assert len(page.evaluate("() => window.opened")) == 2
         assert page.errors == []
     finally:
         page.close()

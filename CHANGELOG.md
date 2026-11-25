@@ -39,6 +39,10 @@
   in the job's note (with its pay estimate), and a job not found on a board has no link and a note saying to apply on
   the company's own site. The extension's button doesn't offer Ladders yet.
 - Fix: a job with no link no longer reads as a repeat of the one before it when a list or alert is taken in.
+- Fix: Read posting no longer fails with "unknown message readInBackground" when the extension is older than the page
+  (the Web Store build lags, or an unpacked copy was not reloaded). The extension tells the page what it can do; with an
+  older one the posting opens in a tab in front as before, the card still fills in when you come back (Today keeps its
+  place), and a one-time toast says to update or reload the jobwatch extension.
 - Fix: Read posting on a card no longer reloads Today from the top or pulls you to the new tab. With the extension
   (it adds a small script on your own localhost pages, which only your paired jobwatch may use), the posting opens in a
   tab behind the one you are on, is read there, and only that card changes (its text, closed badge and state); the

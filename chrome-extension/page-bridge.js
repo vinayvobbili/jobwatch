@@ -11,7 +11,11 @@
  * Messages (window.postMessage, same page only):
  *   page -> bridge   { type: 'jobwatch:read-posting', key, url }
  *   bridge -> page   { type: 'jobwatch:read-posting-done', key, ok, said?, closed?, has_text?, error? }
- * The bridge marks the page (<html data-jobwatch-bridge="1">) so the page knows, without waiting, whether to ask.
+ * The bridge marks the page (<html data-jobwatch-bridge="1">) so the page knows, without waiting, whether to ask, and
+ * then asks the service worker what it can do (a `ping`) and writes the answer to <html data-jobwatch-caps="...">, a
+ * space-separated list ("readInBackground"; empty for a service worker that does not know `ping`, which is an older
+ * extension). The attribute is absent until the answer comes. The page is built to work with every extension version:
+ * it reads in the background only when the capability is there, and otherwise opens the posting in front as before.
  */
 (function (root) {
   'use strict';
@@ -28,7 +32,14 @@
     return out;
   }
 
-  const api = { REQUEST, DONE, doneMessage };
+  /** The capabilities in the service worker's answer to `ping`, as the attribute's text: an extension that predates
+   * `ping` answers "unknown message" (ok: false) or nothing, which is no capabilities. */
+  function capsText(answer) {
+    const caps = answer && answer.ok !== false && Array.isArray(answer.capabilities) ? answer.capabilities : [];
+    return caps.filter((c) => typeof c === 'string' && /^\w+$/.test(c)).join(' ');
+  }
+
+  const api = { REQUEST, DONE, doneMessage, capsText };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JWBridge = api;
 
@@ -37,6 +48,10 @@
   const mark = () => { document.documentElement.dataset.jobwatchBridge = '1'; };
   if (document.documentElement) mark(); else document.addEventListener('readystatechange', mark, { once: true });
   const tell = (result) => window.postMessage(doneMessage(result), location.origin);
+
+  // What this extension can do: asked once, as soon as the page loads (the page may be built before it is answered)
+  const setCaps = (answer) => { document.documentElement.dataset.jobwatchCaps = capsText(answer); };
+  chrome.runtime.sendMessage({ type: 'ping' }).then(setCaps, () => setCaps(null));
 
   window.addEventListener('message', async (e) => {
     if (e.source !== window || !e.data || e.data.type !== REQUEST) return;

@@ -2290,11 +2290,29 @@ function linkedinButton(job) {
 const BROWSER_POSTING = /^https?:\/\/([\w-]+\.)?(linkedin\.com\/jobs\/view\/|indeed\.com\/(m\/)?(viewjob|rc\/clk))/i;
 // With the extension's page bridge (chrome-extension/page-bridge.js marks <html data-jobwatch-bridge>) the posting opens
 // in a tab behind this one, so the person keeps their place, and `done(answer)` updates just this card when it is read.
-// Without it the tab opens in front, and coming back redraws the page where it was.
+// Without it the tab opens in front, and coming back redraws the page where it was. This page is served by the latest
+// jobwatch and must work with any extension version (a Web Store release lags): the bridge also says what the extension
+// can do (<html data-jobwatch-caps="readInBackground">, set once it answers a ping; an older extension answers with an
+// empty list), and an extension that still says "unknown message" to the request is treated the same way. Both end in
+// the tab opening in front, with a one-time hint to update or reload the extension.
 const readWaiting = new Map(); // job key -> what to do with the extension's answer
 window.addEventListener("message", e => {
   if (e.source === window && e.data?.type === "jobwatch:read-posting-done") readWaiting.get(e.data.key)?.(e.data);
 });
+const OLD_EXTENSION = /unknown message/i; // what an extension without the request answers
+const EXTENSION_HINT = "Update or reload the jobwatch extension to read in the background.";
+function readsInBackground() {
+  const d = document.documentElement.dataset;
+  if (d.jobwatchBridge !== "1") return false;
+  return d.jobwatchCaps === undefined || d.jobwatchCaps.split(" ").includes("readInBackground"); // no answer yet: try it
+}
+function extensionHintOnce() {  // the hint, once per browser session: "" after that
+  try {
+    if (sessionStorage.getItem("readHintShown")) return "";
+    sessionStorage.setItem("readHintShown", "1");
+  } catch { /* no storage: say it each time */ }
+  return " " + EXTENSION_HINT;
+}
 async function redrawInPlace() {
   const y = window.scrollY;
   await render();
@@ -2305,24 +2323,26 @@ function readButton(job, done) {
   const site = /indeed/i.test(job.url) ? "Indeed" : "LinkedIn";
   const b = h("button", { class: "btn primary", title: `Open the posting on ${site} in a new tab (you need to be signed in). ` +
       "The jobwatch browser extension reads its text, gives it to jobwatch and closes the tab." }, "Read posting ↗");
-  b.onclick = () => {
-    if (done && document.documentElement.dataset.jobwatchBridge === "1") {
-      b.disabled = true;
-      b.textContent = "Reading…";
-      readWaiting.set(job.key, r => {
-        readWaiting.delete(job.key);
-        b.disabled = false;
-        b.textContent = "Read posting ↗";
-        if (!r.ok) return toast(`Couldn't read the posting: ${r.error}`);
-        toast(r.said);
-        done(r);
-      });
-      window.postMessage({ type: "jobwatch:read-posting", key: job.key, url: job.url.split("#")[0] }, location.origin);
-      return;
-    }
+  // The way every extension version reads: the tab opens in front, reads itself and closes; coming back redraws in place.
+  const openInFront = (hint = false) => {
     window.open(job.url.split("#")[0] + "#jobwatch-read", "_blank", "noopener");
-    toast(`Opened on ${site}. The extension reads the posting and closes the tab: come back here.`);
+    toast(`Opened on ${site}. The extension reads the posting and closes the tab: come back here.` + (hint ? extensionHintOnce() : ""));
     window.addEventListener("focus", () => setTimeout(redrawInPlace, 1500), { once: true });
+  };
+  b.onclick = () => {
+    if (!done || !readsInBackground()) return openInFront(document.documentElement.dataset.jobwatchBridge === "1" && !!done);
+    b.disabled = true;
+    b.textContent = "Reading…";
+    readWaiting.set(job.key, r => {
+      readWaiting.delete(job.key);
+      b.disabled = false;
+      b.textContent = "Read posting ↗";
+      if (!r.ok && OLD_EXTENSION.test(r.error || "")) return openInFront(true);
+      if (!r.ok) return toast(`Couldn't read the posting: ${r.error}`);
+      toast(r.said);
+      done(r);
+    });
+    window.postMessage({ type: "jobwatch:read-posting", key: job.key, url: job.url.split("#")[0] }, location.origin);
   };
   return b;
 }
