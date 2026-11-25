@@ -8,6 +8,35 @@ cd "$(dirname "$0")/.."
 # CI's matrix (.github/workflows/ci.yml) is 3.11 and 3.13; the local check runs the newest only, for speed.
 VERSIONS=(3.13)
 
+usage() {
+  cat <<'USAGE'
+Usage: scripts/check [--python VERSION]...
+
+Runs ruff and pytest, then the privacy audit (when PRE_PUSH_AUDIT is set), like CI does.
+
+  --python VERSION   run on this Python (for example 3.11) instead of the default, 3.13; repeat it to
+                     run several (--python 3.11 --python 3.13). The environments are .venv-pyVERSION.
+  -h, --help         show this help
+USAGE
+}
+
+chosen=()
+while (($#)); do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    --python|--python=*)
+      if [[ "$1" == --python=* ]]; then v="${1#--python=}"; shift
+      else
+        [[ $# -ge 2 ]] || { echo "scripts/check: --python needs a version, like 3.11" >&2; exit 2; }
+        v="$2"; shift 2
+      fi
+      [[ "$v" =~ ^3\.[0-9]+$ ]] || { echo "scripts/check: '$v' isn't a Python version like 3.11" >&2; exit 2; }
+      chosen+=("$v") ;;
+    *) echo "scripts/check: unknown option '$1' (see --help)" >&2; exit 2 ;;
+  esac
+done
+if ((${#chosen[@]})); then VERSIONS=("${chosen[@]}"); fi
+
 # Tests make their own watchlist and state; never let them find a real one.
 unset JOBWATCH_CONFIG
 

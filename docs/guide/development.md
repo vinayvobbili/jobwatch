@@ -9,7 +9,8 @@ python -m venv .venv && .venv/bin/pip install -e '.[dev,mcp]'
 
 CI tests on Python 3.11 and 3.13. `scripts/check` runs the same checks on 3.13 locally (it needs
 [uv](https://docs.astral.sh/uv/), which fetches the Python). `git config core.hooksPath .githooks` runs it before
-every push.
+every push. To run it on another Python (or several) for one run, `scripts/check --python 3.11`; repeat the option
+for more, as in `--python 3.11 --python 3.13`. CI is unchanged.
 
 Tests use canned board responses and never touch the network, except the check that every curated course
 link still resolves: `JOBWATCH_LINK_TESTS=1 pytest tests/test_learn.py`. To see how `jobwatch ui` looks after a change,
