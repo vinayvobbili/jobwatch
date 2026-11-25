@@ -349,6 +349,8 @@ The list is read by the extractor, a script that runs on the page you have open:
 jobwatch import-list list.json --dry-run   # what would happen, nothing recorded
 jobwatch import-list list.json             # or - for stdin
 jobwatch import-list --history             # each run, and coverage per site over the last week and overall
+jobwatch import-list --unplaced            # the jobs tracked from a list's text alone, and why (--format json)
+jobwatch import-list --unplaced --source indeed --since -7   # one site's, first seen in the last 7 days
 ```
 
 Each record is `{source, id, title, company, location, pay, posted}`. A job already tracked (its link on the site, or
@@ -357,6 +359,13 @@ board, as an alert's job is, and tracked from there as new, whatever your filter
 not what's tracked. One that isn't found there (no board under the company's name, or not that title on it) is
 tracked from the list's text and listed as couldn't place; watch its company's board and `jobwatch alerts --backfill
 --again` fills it in. Every company seen counts toward [Companies to watch](#companies-to-watch).
+
+`--unplaced` lists those jobs later, newest first: company, title, place, site, key and why they weren't placed (`no
+board found under its name`: watch the board once `jobwatch find` finds it, or give `find` a link to the careers
+page; or `not on its board`: the company's board is known but the job isn't on it, so it may be closed or posted
+under another title). Each import records the reason; for a job imported before that, it is taken from the run kept in
+`import-list.jsonl` or, failing that, guessed from what's known of the company now (shown as guessed). A job that has
+since been found on its board drops out. The MCP tool is `list_unplaced_jobs`.
 
 **Ladders** is a list of the companies' own jobs, and you apply on the company's own site, never through Ladders (not
 its Apply4Me, a paid service that applies for you). A Ladders record also has `url`, the job's page there. That link is

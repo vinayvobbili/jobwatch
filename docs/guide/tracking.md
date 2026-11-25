@@ -27,6 +27,23 @@ jobwatch applications --due      # only the ones to act on today
 The day you applied is kept as an application moves through the stages. `--next ""` or `--follow-up ""`
 clears a field.
 
+To give every job at one company a status in one go (you've decided against the company, or want all its new roles
+queued), use `--company`:
+
+```
+jobwatch mark skipped --company Initech --dry-run          # what would change, and nothing does
+jobwatch mark skipped --company Initech                    # every job at Initech: the keys changed are printed
+jobwatch mark skipped --company Initech --only-status new  # only the roles you haven't acted on
+jobwatch mark queued --company Globex --only-status new --add-note "worth a look"
+```
+
+The company is its exact name, or a name that matches no other company (a short one that matches several is an
+error). A job you applied to (`applied` or any later stage) is left alone and listed, unless you give
+`--include-active`: a status like `skipped` would drop its applied day. A job already in the status isn't touched.
+`--note`, `--add-note`, `--next`, `--follow-up` and `--on` apply to each job changed. The MCP tool is
+`mark_company_jobs` (it sets `new`, `shown`, `queued` or `skipped`; an application's stage is marked one job at a
+time with `mark_job`).
+
 Say which interview the next step is with `--round`: `recruiter_screen`, `hiring_manager`, `technical`,
 `system_design`, `panel` (onsite or loop), `executive` (VP, director, CXO), `hr`, `informal` (coffee,
 in-person talk, referral chat) or `offer_call` (`--round ""` clears it; the `mark_job` tool and the edit
@@ -251,6 +268,8 @@ a tracked job at a matching company is elsewhere, with a link to it. On the comm
 ```
 jobwatch company acme                # a name, part of one, or a domain: acme.com; --format json
 jobwatch company acme --all          # also the open roles your filters leave out
+jobwatch company acme --status new --status queued   # only jobs in these statuses: every one, none cut
+jobwatch company acme --status new --keys            # just their keys, one a line, for scripts
 ```
 
 It finds the company under any status (new, queued, applied, interviewing, rejected, skipped...), open or
@@ -260,7 +279,10 @@ to add it. Open roles you haven't acted on are listed only when your filters pas
 pay and fit, but not age: an older role still open is worth seeing), and the rest are counted by filter;
 "Show them" on the page, or `--all`, lists them too, and Settings → Display → Company page (`display.company:
 all`) lists every role each time. Jobs you queued, applied to or skipped are always listed. A long note shows as its latest dated entry, cut to about 200 characters (the page folds it until
-clicked); `--format json` and `jobwatch show KEY` have all of it. The MCP tool is `get_company`.
+clicked); `--format json` and `jobwatch show KEY` have all of it. `--status` (repeat it for more) lists only the jobs
+in those statuses, every one of them, closed postings and the roles your filters leave out too; with `--keys` it
+prints just their keys, one a line (a company that matches nothing is an error, a status with no jobs prints nothing),
+the way to feed `jobwatch mark` or a script. The MCP tool is `get_company` (its `status` is the same).
 
 To find a job by something you wrote or were told rather than by company, search the notes:
 

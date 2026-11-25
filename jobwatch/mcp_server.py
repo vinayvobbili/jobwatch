@@ -43,6 +43,7 @@ from . import (
     storyfind,
     suggest,
     tailor,
+    variants,
     watch,
 )
 from .filters import staffing_firm
@@ -74,7 +75,9 @@ server = MCPServer(
         "where it can) as new jobs for get_digest; it never needs the person's mail password. import_job_list takes "
         "the jobs on a LinkedIn, Indeed or Ladders list page the person has open, read with the extractor in their "
         "browser, "
-        "and says how many jobwatch already had (its coverage) and tracks the rest. "
+        "and says how many jobwatch already had (its coverage) and tracks the rest; list_unplaced_jobs lists the "
+        "ones it tracked from the list's text alone, with why. mark_company_jobs gives every job at one company a "
+        "status at once. "
         "read_status_emails reads emails about the person's applications (confirmations, rejections, interview "
         "invitations, assignments, offers, recruiter replies) and proposes each one's new status and a dated note: "
         "present the proposals and call mark_job only for the ones the person confirms. "
@@ -122,6 +125,8 @@ READ = _hints(read_only=True)
 # Kept in step with store.STATUSES and config.TIMELINES (tests check), so clients see the allowed values.
 Status = Literal["new", "shown", "queued", "applied", "screening", "interviewing", "offer", "rejected", "withdrawn",
                  "closed", "skipped", "snoozed"]
+# What mark_company_jobs may set: not the application stages, which need the proof mark_job asks for, one job at a time
+BulkStatus = Literal["new", "shown", "queued", "skipped"]
 Timeline = Literal["week", "month", "quarter", "any"]
 # Kept in step with rounds.ROUNDS (a test checks); "" clears the round.
 Round = Literal["recruiter_screen", "hiring_manager", "technical", "system_design", "panel", "executive", "hr",
@@ -193,6 +198,10 @@ def _boards(cfg: config.Config) -> list[dict]:
 def find_board(
     company: Annotated[str, Field(description=(
         "A company name (\"Stripe\"), or a link to one of its job postings or its careers page."))],
+    try_variants: Annotated[bool, Field(description=(
+        "Try the name's variants in turn until one finds a board (without Inc, LLC, Corp, Ltd or Holding, split into "
+        "words, cut to its first words), instead of only the name as given. Each entry then says found_as: the "
+        "variant that found it."))] = False,
 ) -> list[dict]:
     """Find a company's job board by name or by a job/careers link. Returns entries for the watchlist.
     A guessed board name can belong to another company: check the sample titles before adding one.
@@ -217,13 +226,15 @@ def find_board(
     found by "Hacker News" or the news.ycombinator.com/submitted?id=whoishiring link.
     A VC fund's portfolio job board (Consider, Getro, or the fund's own page) isn't found here: pass add_board
     vc:<host of its jobs page>, like vc:jobs.example.vc (vc:host/path when the list isn't at /jobs).
+    try_variants looks up a name written as "Initech Holdings, Inc." under the shorter names a board may go by
+    ("Initech"), one call instead of several.
     Use it before add_board; to track one job from its link, use add_application instead."""
     try:
-        found = sources.probe(company)
+        found_as, found = (company, sources.probe(company)) if not try_variants else variants.probe(company)[:2]
     except sources.SourceError as e:  # a ToolError, so the model reads why (a link's board answered 401, say)
         raise ToolError(str(e)) from None
     return [{"entry": f"{s}:{b}", "open_roles": sources.open_roles(jobs), "careers": sources.careers_url(s, b),
-             "sample_titles": [j.title for j in jobs[:5]]}
+             "sample_titles": [j.title for j in jobs[:5]], **({"found_as": found_as} if try_variants else {})}
             for s, b, jobs in found]
 
 
@@ -513,7 +524,8 @@ def mark_job(
     posting text and the link is to one job on a supported board, the posting is read from it (text, pay,
     places), so it can be scored. text sets its posting's text, pasted (found later, or from a copy once the
     posting is gone), so it can be scored and prepped. An empty string clears a field.
-    For a job jobwatch doesn't track yet, use add_application.
+    For a job jobwatch doesn't track yet, use add_application; to give every job at one company a status at once,
+    mark_company_jobs.
     Queuing a job that's (maybe) the same opening as one applied to or queued still queues it, and the reply
     ends with the warning: tell the person.
     Before a job is recorded as applied, the person is asked whether they saw a confirmation page or email (a
@@ -543,6 +555,42 @@ def mark_job(
         reminders.refresh(cfg, store, [job.key])
         same = dupes.check(store, job.key) if status == "queued" else None
         return (f"{job.key}: {status or rec['status']}{said}" + (f". Check: {same.line}" if same else "") + warning)
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(destructive=True, idempotent=True))
+def mark_company_jobs(
+    name: Annotated[str, Field(description=(
+        "The company's name (\"Initech\"), as get_company takes it: its exact name, or one that matches no other "
+        "company."))],
+    status: Annotated[BulkStatus, Field(description="The status to give its jobs.")],
+    only_status: Annotated[list[Status] | None, Field(description=(
+        "Only the jobs now in one of these statuses (e.g. [\"new\"]: the roles not acted on yet). Omit for every "
+        "job at the company."))] = None,
+    add_note: Annotated[str | None, Field(description=(
+        "A line to add to each job's note, dated today, keeping what's there."))] = None,
+    include_active: Annotated[bool, Field(description=(
+        "Also change the jobs the person applied to (applied, screening, interviewing, offer, rejected, withdrawn, "
+        "closed), which are left alone otherwise. Only when they asked for it."))] = False,
+    dry_run: Annotated[bool, Field(description="Say what would change, and change nothing.")] = False,
+) -> dict:
+    """Give every job at one company a status in one call ("skip everything at Initech", "queue all of Globex's
+    new roles"), instead of one mark_job per job. A job the person applied to is left alone unless include_active
+    (a status like skipped would drop its applied day), and one already in the status is left as it is. Returns
+    company, status, dry_run, changed (key, title, was: its status before), left_alone (the applied jobs held
+    back) and already. Run it with dry_run first when the company has many jobs, and get_company with status shows
+    them. For one job, or an application's stage (applied, screening...), use mark_job."""
+    cfg, store = _open()
+    try:
+        try:
+            r = company.mark_all(store, name, status, tuple(only_status or ()), include_active, dry_run,
+                                 add_note=add_note)
+        except ValueError as e:  # a ToolError, so the model reads why (no such company, several match)
+            raise ToolError(str(e)) from None
+        if r["changed"] and not dry_run:
+            reminders.refresh(cfg, store, [c["key"] for c in r["changed"]])
+        return r
     finally:
         store.close()
 
@@ -654,10 +702,34 @@ def import_job_list(
     added, unplaced) and coverage (jobwatch's own share: tracked over seen, 0-1; jobs an earlier import added count
     as missed), with a note when most of the list was imported before ("Same list as before: nothing new"),
     overall and by_source, and each job with its outcome and key. Every run is kept: `jobwatch import-list
-    --history` shows the trend per site."""
+    --history` shows the trend per site. list_unplaced_jobs lists every job the imports tracked from the list's
+    text alone, with why."""
     cfg, store = _open()
     try:
         return joblist.take(cfg, store, joblist.records(records), dry_run=dry_run).to_dict()
+    finally:
+        store.close()
+
+
+@server.tool(annotations=READ)
+def list_unplaced_jobs(
+    source: Annotated[str | None, Field(description=(
+        "Only this site's jobs: linkedin, indeed or ladders. Omit for all."))] = None,
+    since: Annotated[str | None, Field(description=(
+        "Only jobs first seen on or after this day: YYYY-MM-DD, today, yesterday or -N for N days ago."))] = None,
+) -> list[dict]:
+    """The jobs the job-list imports (import_job_list) tracked from the list's text alone, because they weren't
+    found on the company's own board, newest first. Each: company, title, location, source (the site), key, why (no
+    board found under its name, or not on its board; or that the lookup ran out of time), why_source (recorded,
+    history, or inferred: a guess for a job imported before the reason was kept), first_seen, status, closed and
+    url. For each, find_board and add_board watch the company's board when there is one, and the alerts backfill
+    then fills the job in. Read-only."""
+    cfg, store = _open()
+    try:
+        try:
+            return joblist.unplaced(cfg, store, source, since)
+        except ValueError as e:  # a ToolError, so the model reads why (a day it can't read)
+            raise ToolError(str(e)) from None
     finally:
         store.close()
 
@@ -918,6 +990,9 @@ def get_company(
     every_role: Annotated[bool, Field(description=(
         "Also list the open roles the filters leave out (other cities, low pay...). Default: the watchlist's "
         "display.company setting (matches: only the roles Today's filters pass)."))] = False,
+    status: Annotated[list[Status] | None, Field(description=(
+        "Only jobs in these statuses: every one of them, closed postings and the roles the filters leave out too, "
+        "none cut. Omit for the usual view."))] = None,
 ) -> dict:
     """Everything tracked at one company, whatever the status of its jobs (new, queued, applied, screening,
     interviewing, offer, rejected, withdrawn, skipped) and open or closed. company, counts (jobs by status), and
@@ -930,10 +1005,12 @@ def get_company(
     not acted on are listed up to 25 (more_open). also names other companies the name matched. Returns an error
     when none matches. Use it when the person names a company and you don't know which stage it's at; for one
     job's full text, fit and prep use get_job, for every application list_applications, and for all jobs of one
-    status list_jobs."""
+    status list_jobs. status limits it to jobs in those statuses, none cut (to act on them all at once, see
+    mark_company_jobs)."""
     cfg, store = _open()
     try:
-        if not (v := company.view(cfg, store, name, every=True if every_role else None)):
+        if not (v := company.view(cfg, store, name, every=True if every_role else None,
+                                  statuses=tuple(status or ()))):
             # a ToolError, so the model reads the message: any other exception's text stays on the server
             raise ToolError(f"no tracked job is at a company matching {name!r}")
         return v

@@ -101,6 +101,7 @@ def apply(store: Store, p: Plan) -> None:
             db.executemany("DELETE FROM jobs WHERE key=? AND status='new'", chunk)
             db.executemany("DELETE FROM posting_checked WHERE key=?", chunk)
             db.executemany("DELETE FROM backfill_tried WHERE key=?", chunk)
+            db.executemany("DELETE FROM list_unplaced WHERE key=?", chunk)
     for i in range(0, len(p.slim), BATCH):
         keys = p.slim[i:i + BATCH]
         with db:

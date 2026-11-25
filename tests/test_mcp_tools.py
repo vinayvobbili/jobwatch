@@ -40,6 +40,9 @@ def test_status_lists_its_values():
     ("read_status_emails", "mark_job"), ("import_job_alerts", "read_status_emails"),
     ("get_company", "get_job"), ("get_company", "list_applications"), ("get_company", "list_jobs"),
     ("get_interview_prep", "save_story"), ("save_story", "get_interview_prep"),
+    ("mark_job", "mark_company_jobs"), ("mark_company_jobs", "mark_job"), ("get_company", "mark_company_jobs"),
+    ("import_job_list", "list_unplaced_jobs"), ("list_unplaced_jobs", "import_job_list"),
+    ("list_unplaced_jobs", "find_board"),
 ])
 def test_overlapping_tools_point_to_each_other(tool, sibling):
     assert sibling in TOOLS[tool].description

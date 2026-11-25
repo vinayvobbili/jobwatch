@@ -23,7 +23,7 @@ from .filters import KINDS, focus_hits, rejection
 from .models import Job
 from .package import Package
 from .score import resume_id
-from .store import ENDED, STAGES, Store, _letters, closed_state
+from .store import ENDED, MANUAL, STAGES, STATUSES, Store, _letters, closed_state
 from .watch import _fits, load_contacts
 
 MIN_KEY = 2     # a shorter search ("a") would match nearly everything
@@ -45,6 +45,11 @@ def query_key(text: str) -> str:
         if labels:
             return dupes.company_key(labels[-1])
     return dupes.company_key(text)
+
+
+def on_a_board(store: Store, name: str) -> bool:
+    """Whether a job of a company this name goes by was read from a board (not added by hand)."""
+    return any(source != MANUAL for source, _ in _groups(store).get(dupes.company_key(name), {}).get("boards", ()))
 
 
 def _rank(query: str, keys: set[str]) -> int | None:
@@ -171,23 +176,32 @@ def _left_out(cfg: Config, store: Store, rows: list[tuple[Job, dict]]) -> dict[s
             and (r := rejection(job, replace(cfg.filters_for(job), max_age_days=None), fits.get(job.key)))}
 
 
-def view(cfg: Config, store: Store, text: str, every: bool | None = None) -> dict | None:
+def _mine(store: Store, key: str) -> list[tuple[Job, dict]]:
+    """Every job at the company with this key (see search), closed postings too, open applications first, then
+    queued ones, the ones that ended, skipped ones, and last the roles not acted on (newest first within each).
+    Only the boards the company's jobs are on are read (_groups knows them), not all 63,000 jobs."""
+    mine = [(job, rec) for job, rec in store.board_rows(_groups(store).get(key, {}).get("boards", ()))
+            if dupes.company_key(job.display_company) == key]
+    mine.sort(key=lambda r: _order(r[1]))  # stable: newest first within each
+    return mine
+
+
+def view(cfg: Config, store: Store, text: str, every: bool | None = None,
+         statuses: tuple[str, ...] = ()) -> dict | None:
     """Everything tracked at the company a name or domain matches best (None when none matches): each job with
     its status and dates, next step, follow-up, note, whether a package was saved, and a duplicate warning;
     people you know there; and whether its board is watched. Roles that closed without being acted on are only
     counted (closed_unacted). Open ones you haven't acted on that Today's filters would hide, age aside (a big
     board lists roles in other cities, a pharmacy chain's lists nurses), are only counted too: left_out, with
     left_out_by (filter -> count); `every` (by default display.company: all) lists them as well. The rest are
-    listed up to OPEN_SHOWN (more_open). Other companies the name matched are in `also`."""
+    listed up to OPEN_SHOWN (more_open). Other companies the name matched are in `also`. With `statuses`, every job
+    at one of them is listed instead (closed postings and the ones the filters leave out too, none cut)."""
     found = search(store, text, limit=6)
     if not found:
         return None
     best, key = found[0], found[0]["key"]
     index = jobpass.acted_index(store)
-    # Only the boards the company's jobs are on are read (_groups knows them), not all 63,000 jobs.
-    mine = [(job, rec) for job, rec in store.board_rows(_groups(store).get(key, {}).get("boards", ()))
-            if dupes.company_key(job.display_company) == key]
-    mine.sort(key=lambda r: _order(r[1]))  # stable: newest first within each
+    mine = _mine(store, key)
     acted = [r for r in mine if _order(r[1]) < 4]
     unacted = [r for r in mine if _order(r[1]) == 4 and not r[1].get("closed")]
     # A board's roles all arrive together when it's first watched: the latest posting leads, not the order they came
@@ -196,16 +210,20 @@ def view(cfg: Config, store: Store, text: str, every: bool | None = None) -> dic
     every = cfg.company_view == "all" if every is None else every
     hide = {} if every else _left_out(cfg, store, unacted)
     open_ = [r for r in unacted if r[0].key not in hide]
-    by = Counter(hide.values())
     listed = acted + open_
     shown = acted + open_[:OPEN_SHOWN]
+    closed_unacted = len(mine) - len(acted) - len(unacted)
+    if statuses:
+        listed = shown = [r for r in mine if r[1]["status"] in statuses]
+        hide, every, closed_unacted = {}, True, 0
+    by = Counter(hide.values())
     jobs = [j for j, _ in mine]
     known = load_contacts(cfg)
     names = {best["name"], *(j.company for j in jobs)}
     counts = Counter(rec["status"] for _, rec in listed)
     return {"company": best["name"], "query": text.strip(), "key": key,
             "counts": {s: counts[s] for s in counts}, "jobs": [_job(store, j, rec, index) for j, rec in shown],
-            "closed_unacted": len(mine) - len(acted) - len(unacted), "more_open": len(listed) - len(shown),
+            "closed_unacted": closed_unacted, "more_open": len(listed) - len(shown), "statuses": list(statuses),
             "left_out": len(hide), "left_out_by": {k: by[k] for k in KINDS if by[k]}, "every": every,
             "contacts": known.at(*names) if known else [],
             "find_referral": people.linkedin_search(best["name"]), "watch": _watch(cfg, store, best["name"], jobs),
@@ -281,6 +299,8 @@ def text(v: dict | None, query: str = "") -> str:
     if not v:
         return f"No tracked job is at a company matching {query!r}: nothing new, queued, applied to or skipped."
     n = sum(v["counts"].values())
+    if v.get("statuses") and not n:
+        return f"No {' or '.join(v['statuses'])} job at {v['company']}."
     by = ", ".join(f"{c} {s}" for s, c in sorted(v["counts"].items(), key=lambda x: _order({"status": x[0]})))
     out = [f"# {v['company']}", f"{n} job{'s' * (n != 1)}: {by}.", ""]
     for j in v["jobs"]:
@@ -305,4 +325,62 @@ def text(v: dict | None, query: str = "") -> str:
                    + (f" (add_board {w['add_board']['entry']})" if w["add_board"] else "") + ".")
     if v["also"]:
         out.append("Also matches: " + ", ".join(v["also"]) + " (give a longer name to see one)")
+    return "\n".join(out)
+
+
+def _brief(job: Job, rec: dict) -> dict:
+    return {"key": job.key, "title": job.title, "status": rec["status"]}
+
+
+def mark_all(store: Store, name: str, status: str, only: tuple[str, ...] = (), include_active: bool = False,
+             dry_run: bool = False, note: str | None = None, add_note: str | None = None, on: str | None = None,
+             next_step: str | None = None, follow_up: str | None = None, round: str | None = None) -> dict:
+    """Give every job at the company the name matches the status (`jobwatch mark STATUS --company NAME`): only
+    those now in a status of `only` when given. A job you applied to (applied or any later stage) is left alone
+    unless include_active: a status like skipped would drop its applied day. A job already in the status isn't
+    touched. dry_run changes nothing. Returns company, status, dry_run, changed (key, title, was: its status
+    before), left_alone (the jobs held back: key, title, status) and already (key, title). The name must match one
+    company: the exact name, or no other."""
+    if status not in STATUSES:
+        raise ValueError(f"status must be one of {', '.join(STATUSES)}")
+    if note is not None and not note.strip():
+        raise ValueError("--note is empty and would erase the note; leave it out to keep the note")
+    found = search(store, name, limit=6)
+    if not found:
+        raise ValueError(f"no tracked job is at a company matching {name!r}")
+    if len(found) > 1 and not (found[0]["exact"] and not found[1]["exact"]):
+        raise ValueError(f"{name!r} matches several companies ({', '.join(f['name'] for f in found)}): give the "
+                         "full name of one")
+    if not include_active and (held := [s for s in only if s in STAGES]):
+        raise ValueError(f"{', '.join(held)}: jobs you applied to are only changed with --include-active")
+    rows = [r for r in _mine(store, found[0]["key"]) if not only or r[1]["status"] in only]
+    left = [] if include_active else [r for r in rows if r[1]["status"] in STAGES]
+    rest = [r for r in rows if r not in left]
+    same = [r for r in rest if r[1]["status"] == status]
+    change = [r for r in rest if r not in same]
+    keys = [j.key for j, _ in change]
+    if keys and not dry_run:
+        store.set_status(keys, status, note, on=on)
+        for k in keys:
+            store.track(k, next_step=next_step, follow_up=follow_up, round=round)
+            if add_note:
+                store.add_note(k, add_note)
+    return {"company": found[0]["name"], "status": status, "dry_run": dry_run,
+            "changed": [{"key": j.key, "title": j.title, "was": rec["status"]} for j, rec in change],
+            "left_alone": [_brief(j, rec) for j, rec in left],
+            "already": [{"key": j.key, "title": j.title} for j, _ in same]}
+
+
+def mark_all_text(r: dict) -> str:
+    """`jobwatch mark --company`: a line per job changed (`key: status`, as `mark` prints one), then what was held
+    back and why."""
+    out = [f"would mark {c['key']}: {r['status']} (was {c['was']})" if r["dry_run"] else f"{c['key']}: {r['status']}"
+           for c in r["changed"]]
+    if r["left_alone"]:
+        out.append("Left alone, applied to (--include-active changes them): " + ", ".join(
+            f"{j['key']} ({j['status']})" for j in r["left_alone"]))
+    if r["already"]:
+        out.append(f"Already {r['status']}: {len(r['already'])}.")
+    if not r["changed"] and not r["left_alone"] and not r["already"]:
+        out.append(f"No job at {r['company']} to mark.")
     return "\n".join(out)

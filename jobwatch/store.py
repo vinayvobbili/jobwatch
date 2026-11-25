@@ -175,6 +175,11 @@ CREATE TABLE IF NOT EXISTS backfill_tried (
     key TEXT PRIMARY KEY,
     tried_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS list_unplaced (
+    key TEXT PRIMARY KEY,
+    why TEXT NOT NULL,
+    at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS posting_checked (
     key TEXT PRIMARY KEY,
     checked_at TEXT NOT NULL
@@ -646,6 +651,30 @@ class Store:
                                "ORDER BY t.tried_at IS NOT NULL, t.tried_at, j.first_seen DESC", (MANUAL,))
         out = []
         for r in rows:
+            job = Job.from_dict(json.loads(r["data"]))
+            if not job.description.strip():
+                out.append((job, {k: r[k] for k in r.keys() if k != "data"}))
+        return out
+
+    def set_unplaced(self, key: str, why: str):
+        """Note why an import-list job was tracked from the list's text alone (no board found under the company's
+        name, or not on its board), as of the latest import."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO list_unplaced (key, why, at) VALUES (?, ?, ?)",
+                            (key, why, _now()))
+
+    def unplaced_list_jobs(self, since: str | None = None) -> list[tuple[Job, dict]]:
+        """(job, record) pairs of the jobs a list import (via ends in "-list") tracked from the list's text alone:
+        still kept as listed, with no posting text, closed ones too; newest first. since: only those first seen on
+        or after that local day (YYYY-MM-DD). The record has why, when set_unplaced recorded one."""
+        sql = ("SELECT j.*, u.why FROM jobs j LEFT JOIN list_unplaced u ON u.key=j.key WHERE j.source=? "
+               "AND j.via LIKE '%-list'")
+        args: list = [MANUAL]
+        if since:
+            sql += " AND j.first_seen >= ?"
+            args.append(day_start(date.fromisoformat(since)))
+        out = []
+        for r in self.db.execute(sql + " ORDER BY j.first_seen DESC", args):
             job = Job.from_dict(json.loads(r["data"]))
             if not job.description.strip():
                 out.append((job, {k: r[k] for k in r.keys() if k != "data"}))

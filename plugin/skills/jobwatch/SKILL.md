@@ -55,9 +55,11 @@ after, then `find_board` and `add_board` for each company, which creates the fil
    "Recommended Jobs", a search) goes to `import_job_list`: run the extractor (`jobwatch import-list --script`) on
    the tab with the browser's JavaScript tool, then pass its records; it reports how many jobwatch already had and
    tracks the rest. A Ladders job is the company's own: apply on the company's own site, never through Ladders.
+   `list_unplaced_jobs` lists the ones it couldn't find on the company's board, with why.
 3. **Show what's new.** `get_digest` ranks the new matches. Show the top few, not the whole list, each with
    why it fits and anything to check first (pay, location).
-4. **Queue and apply.** `mark_job` with `queued` for the ones the user picks; `list_queued_jobs` lists them
+4. **Queue and apply.** `mark_job` with `queued` for the ones the user picks (`mark_company_jobs` gives every job at
+   one company a status at once, e.g. skipping them all; applications are left alone); `list_queued_jobs` lists them
    with people the user knows there (a referral is worth asking for before applying). `get_job` gives a
    posting's full text for tailoring a resume. With resume-kit installed, `tailor_resume` builds a resume for
    one job and keeps it with the application (the browser extension attaches it); the user reviews the PDF

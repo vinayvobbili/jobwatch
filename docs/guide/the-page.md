@@ -173,6 +173,13 @@ jobwatch find "Globex" --roles agent   # also list the board's open roles with "
 `--roles` lists each matching role with its place, pay (read from the posting's text when the board has no pay
 field) and posted day, without adding the board to your watchlist.
 
+A company's name as people write it ("Initech Holdings, Inc.") isn't always the one its board goes by.
+`jobwatch find --try-variants "Initech Holdings, Inc."` tries the name as given, then without Inc, LLC, Corp, Ltd or
+Holding (each in turn), a name written as one word split into words ("InitechSystems"), the first two words and the
+first word, and stops at the first that finds a board with open roles, saying which one did (the joined and hyphenated
+board names of each, `initechholdings` and `initech-holdings`, are tried for every variant). `--add` watches that
+board, named as you gave it. The MCP `find_board` has `try_variants`.
+
 `find` prints a line like `Globex: greenhouse:globex (627 open roles)`. For a Workday company it tries
 the usual site names; if that finds nothing, paste a job link from their careers site (it has
 `myworkdayjobs.com` in it) and `find` reads the board from it: `workday:initech.wd5/InitechCareers`.

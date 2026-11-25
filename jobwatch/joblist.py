@@ -44,8 +44,8 @@ from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
 
-from . import alerts, linkedin, sources, suggest
-from .store import MANUAL, Store
+from . import alerts, company, linkedin, sources, suggest
+from .store import MANUAL, Store, day
 
 HISTORY = "import-list.jsonl"
 LOOKUP_WORKERS = 6  # companies whose boards are looked for at once
@@ -270,6 +270,8 @@ def take(cfg, store: Store, recs: list[Record], dry_run: bool = False, page=None
                         alerts.fill_from_board(store, f.job, found)
                 else:
                     s.why = _why(taker, r, cut)
+                    if not dry_run:
+                        store.set_unplaced(f.key, s.why)
             if not dry_run:  # it counts toward watching the company's board, as when it first came in
                 suggest.record(store, cfg.boards, f.job, taker.resolver.looked(r.company))
         elif f.how == "email":
@@ -277,6 +279,8 @@ def take(cfg, store: Store, recs: list[Record], dry_run: bool = False, page=None
             boards = taker.resolver.looked(r.company)
             s.board = ", ".join(f"{src}:{b}" for src, b, _ in boards or [])
             s.why = _why(taker, r, cut)
+            if not dry_run:
+                store.set_unplaced(f.key, s.why)  # for `import-list --unplaced`
         else:
             s.outcome, s.board = "added", f"{f.job.source}:{f.job.company}"
         result.seen.append(s)
@@ -427,4 +431,66 @@ def history_text(runs: list[dict], now: datetime | None = None) -> str:
             base = sum(h["seen"] for h in rows)
             out.append(f"{_name(src)}, {label}: {_pct(own / base if base else None)} of {base} job(s) were found "
                        "by jobwatch itself.")
+    return "\n".join(out)
+
+
+def _history_why(cfg) -> dict[str, str]:
+    """Why each job couldn't be placed, by key, from the runs kept before the store recorded it (the latest run's
+    reason wins)."""
+    return {u["key"]: u["why"] for h in history(cfg) for u in h.get("unplaced_jobs", [])
+            if u.get("key") and u.get("why")}
+
+
+def _inferred_why(store: Store, looked: dict[str, dict], job) -> str:
+    """A best guess at why an older job wasn't placed, from what's known of its company now: a board found for it
+    (looked at by suggest.look_up, or tracked from a board) means the job isn't on it; a company looked for with
+    none found, or never looked for, has no board under its name."""
+    row = looked.get(suggest.company_id(job.display_company))
+    if row and row["entry"]:
+        return "not on its board"
+    if row and row["entry"] == "":
+        return "no board found under its name"
+    return "not on its board" if company.on_a_board(store, job.display_company) else "no board found under its name"
+
+
+def unplaced(cfg, store: Store, source: str | None = None, since: str | None = None) -> list[dict]:
+    """The jobs the list imports tracked from the list's text alone (not found on the company's board), newest
+    first: company, title, location, source (the site), key, why (no board found under its name, or not on its
+    board; or why the lookup didn't run), why_source (recorded: the import said so; history: the import's kept
+    run said so; inferred: a guess from what's known of the company now, for a job imported before the reason
+    was kept), first_seen, status, closed and url. source: only that site's; since: only those first seen on or
+    after that day (see store.day)."""
+    since = day(since) if since else None
+    said = _history_why(cfg)
+    looked = {r["company"]: r for r in store.unwatched(dismissed=True)}
+    out = []
+    for job, rec in store.unplaced_list_jobs(since):
+        site = rec["via"].removesuffix("-list")
+        if source and site != source.strip().lower():
+            continue
+        why, how = ((rec["why"], "recorded") if rec.get("why") else (said[job.key], "history") if job.key in said
+                    else (_inferred_why(store, looked, job), "inferred"))
+        out.append({"company": job.display_company, "title": job.title, "location": "; ".join(job.places),
+                    "source": site, "key": job.key, "why": why, "why_source": how,
+                    "first_seen": (rec["first_seen"] or "")[:10], "status": rec["status"],
+                    "closed": bool(rec["closed"]), "url": job.url or None})
+    return out
+
+
+def unplaced_text(rows: list[dict], source: str | None = None, since: str | None = None) -> str:
+    """`jobwatch import-list --unplaced`: the jobs to read."""
+    if not rows:
+        return ("No job tracked from " + (f"{_name(source.lower())} " if source else "a ") + "list's text alone"
+                + (f" since {day(since)}" if since else "") + ".")
+    out = [f"{len(rows)} job{'s' * (len(rows) != 1)} tracked from a list's text alone, not found on the company's "
+           "board, newest first:", ""]
+    for j in rows:
+        facts = [_name(j["source"]), f"first seen {j['first_seen']}",
+                 j["why"] + (" (guessed)" if j["why_source"] == "inferred" else "")]
+        if j["status"] not in ("new", "shown"):
+            facts.append(j["status"])
+        if j["closed"]:
+            facts.append("posting closed")
+        out += [f"  {j['company']}: {j['title']}" + (f" ({j['location']})" if j["location"] else ""),
+                f"    {' · '.join(facts)}", f"    `{j['key']}`"]
     return "\n".join(out)

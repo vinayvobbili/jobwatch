@@ -3,6 +3,20 @@
 ## Unreleased
 
 - Requires Python 3.11 or newer (3.10 reached end of life in October 2026).
+- `jobwatch company NAME --status STATUS` (repeatable) lists only the jobs in those statuses, every one of them (closed
+  postings and the roles your filters leave out too, none cut), and `--keys` prints just their keys, one a line, for
+  scripts. The MCP `get_company` takes `status`.
+- `jobwatch mark STATUS --company NAME` gives every job at a company a status in one go, printing the keys changed:
+  `--only-status` limits it to jobs now in a status, `--dry-run` shows what would change, and `--add-note`, `--note`,
+  `--next`, `--follow-up` and `--on` apply to each. Jobs you applied to (applied or any later stage) are left alone and
+  listed unless you give `--include-active`. New MCP tool `mark_company_jobs` (new, shown, queued or skipped).
+- `jobwatch import-list --unplaced [--source SITE] [--since DAY]` lists the jobs the imports tracked from the list's
+  text alone (not found on the company's board), newest first, with company, title, place, site, key and why (no
+  board found under its name, or not on its board); `--format json` too. The reason is now stored with each import; for
+  an older job it comes from the kept `import-list.jsonl` run or is guessed. New MCP tool `list_unplaced_jobs`.
+- `jobwatch find --try-variants NAME` tries a name's variants in turn (without Inc, LLC, Corp, Ltd or Holding, split
+  into words, cut to its first words) and says which one found a board, one call in place of several `find` calls;
+  `--add` works on the board found. The MCP `find_board` takes `try_variants`.
 - Today's Best fit order now marks a posting down for its age, so old postings stop outranking fresh ones: no
   penalty for the first 7 days, then 0.5 fit points a day off the rank score (a 30-day-old posting needs about 11
   points more fit than a fresh one), and a posting over 120 days old lists below every younger one; a posting with no

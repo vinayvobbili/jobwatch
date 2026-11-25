@@ -71,6 +71,7 @@ from . import (
     storyfind,
     suggest,
     tailor,
+    variants,
 )
 from .config import BACKENDS, ConfigError, credit_entry, duration, fallback_entry
 from .filters import KINDS, rejection, staffing_firm
@@ -135,9 +136,18 @@ def cmd_init(args):
 def cmd_find(args):
     limited: set[str] = set()  # one for every name: a source that said slow down isn't asked again
     untested = {q: set() for q in args.company}  # each name's sources that gave no answer
+    def look(q):  # (the name that found the boards, the boards, the names tried before it)
+        if args.try_variants:
+            return variants.probe(q, limited=limited, untested=untested[q])
+        return q, sources.probe(q, limited=limited, untested=untested[q]), []
+
     with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(lambda q: sources.probe(q, limited=limited, untested=untested[q]), args.company))
-    for query, hits in zip(args.company, results, strict=True):
+        results = list(pool.map(look, args.company))
+    for query, (found_as, hits, tried) in zip(args.company, results, strict=True):
+        if args.try_variants and hits and found_as != query:
+            print(f"{query}: found as {found_as!r}" + (f" (also tried {', '.join(map(repr, tried))})" if tried else ""))
+        elif args.try_variants and not hits and tried:
+            print(f"{query}: tried the names {', '.join(map(repr, tried))}")
         if not hits and untested[query]:
             print(f"{query}: {sources.untested_note(untested[query])}: no board found on the others. Try again "
                   "later, or give the link to their careers page or a job on it.")
@@ -147,13 +157,14 @@ def cmd_find(args):
                   "use another system.")
         for source, board, jobs in hits:
             if not jobs:
-                print(f"{query}: {source}:{board}  (no open roles listed)  {sources.careers_url(source, board)}\n"
+                print(f"{found_as}: {source}:{board}  (no open roles listed)  "
+                      f"{sources.careers_url(source, board)}\n"
                       "    The site may send visitors to the company's own careers site: give a link to that careers "
                       "page or a job on it.")
                 continue
             name = next((j.company_name for j in jobs if j.company_name), "")
-            print(f"{query}: {source}:{board}  ({sources.open_roles(jobs)} open roles{', ' + name if name else ''})  "
-                  f"{sources.careers_url(source, board)}\n    e.g. {jobs[0].title}")
+            print(f"{found_as}: {source}:{board}  ({sources.open_roles(jobs)} open roles"
+                  f"{', ' + name if name else ''})  {sources.careers_url(source, board)}\n    e.g. {jobs[0].title}")
             if args.roles:
                 _roles(source, board, jobs, args.roles)
         if args.add:
@@ -610,7 +621,31 @@ def cmd_show(args, cfg, store):
         print("\n".join(more))
 
 
+def _mark_company(args, cfg, store):
+    """`mark STATUS --company NAME`: every job at the company, or the ones in --only-status (see company.mark_all)."""
+    if len(args.what) != 1 or args.what[0] not in STATUSES:
+        raise ValueError(f"with --company, give the status alone, not a job: {', '.join(STATUSES)}")
+    for flag in ("url", "text", "attach"):
+        if getattr(args, flag, None):
+            raise ValueError(f"--{flag} is for one job: leave it out with --company")
+    status = args.what[0]
+    r = company.mark_all(store, args.company, status, tuple(args.only_status or ()), args.include_active,
+                         args.dry_run, note=args.note, add_note=args.add_note, on=args.on, next_step=args.next,
+                         follow_up=args.follow_up, round=args.round)
+    print(company.mark_all_text(r))
+    keys = [c["key"] for c in r["changed"]]
+    if keys and not args.dry_run:
+        for k in keys if status == "queued" else ():
+            if same := dupes.check(store, k):  # queued all the same: the person decides
+                print(f"  Check {k}: {same.line}")
+        reminders.refresh(cfg, store, keys)
+
+
 def cmd_mark(args, cfg, store):
+    if getattr(args, "company", None):
+        return _mark_company(args, cfg, store)
+    if any(getattr(args, a, None) for a in ("only_status", "include_active", "dry_run")):
+        raise ValueError("--only-status, --include-active and --dry-run are for --company")
     if not hasattr(args, "keys"):  # `mark [STATUS] KEY...` or `mark KEY... STATUS`; without one, each keeps its own
         what = args.what
         status, *keys = (what if what[0] in STATUSES else (what[-1], *what[:-1]) if what[-1] in STATUSES
@@ -821,8 +856,14 @@ def cmd_lca(args, cfg, store):
 def cmd_company(args, cfg, store):
     """Everything tracked at one company, whatever status its jobs are in: read-only."""
     name = " ".join(args.name)
-    v = company.view(cfg, store, name, every=True if args.all else None)
-    if args.format == "json":
+    if args.keys and args.format == "json":
+        raise ValueError("--keys prints the keys alone: leave --format json out")
+    v = company.view(cfg, store, name, every=True if args.all else None, statuses=tuple(args.status or ()))
+    if args.keys:  # for scripts: one key a line, nothing else; a name that matches no company is an error
+        if not v:
+            raise ValueError(f"no tracked job is at a company matching {name!r}")
+        print("".join(f"{j['key']}\n" for j in v["jobs"]), end="")
+    elif args.format == "json":
         print(json.dumps(v, indent=2, ensure_ascii=False))
     else:
         print(company.text(v, name))
@@ -906,9 +947,22 @@ def cmd_import_list(args):
         print(joblist.script(), end="")
         return
     cfg = config.load(args.config)
+    if args.since and not args.unplaced:
+        raise ValueError("--since is for --unplaced")
     if args.history:
         runs = joblist.history(cfg, args.source)
         print(json.dumps(runs, indent=2, ensure_ascii=False) if args.format == "json" else joblist.history_text(runs))
+        return
+    if args.unplaced:  # what the imports tracked from the list's text alone, newest first
+        if not Path(cfg.state).expanduser().is_file():
+            raise ValueError(f"no jobs tracked yet: {cfg.state} doesn't exist")
+        store = Store(cfg.state)
+        try:
+            rows = joblist.unplaced(cfg, store, args.source, args.since)
+        finally:
+            store.close()
+        print(json.dumps(rows, indent=2, ensure_ascii=False) if args.format == "json" else
+              joblist.unplaced_text(rows, args.source, args.since))
         return
     if not args.file:
         raise ValueError("give the list's records: a JSON file from the extractor (`jobwatch import-list --script` "
@@ -1622,6 +1676,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("find", help="find a company's job board (by name, or a job/careers link)")
     p.add_argument("company", nargs="+")
+    p.add_argument("--try-variants", action="store_true", help="when the name as given finds no board, try its "
+                   "variants in turn (without Inc, LLC, Corp, Ltd or Holding, cut to its first words, split into "
+                   "words) and say which one found a board; --add watches that board")
     p.add_argument("--roles", metavar="TEXT", help="also list each board's open roles with TEXT in the title, "
                    "with place, pay and posted day")
     p.add_argument("--add", action="store_true", help="watch the board found (the watchlist is rewritten, the old "
@@ -1780,6 +1837,16 @@ def build_parser() -> argparse.ArgumentParser:
                    "later, or from a copy once the posting is gone), to score and prep it (- reads stdin)")
     p.add_argument("--attach", type=Path, action="append", metavar="FILE",
                    help="keep a copy of what you sent (the resume, a cover letter); repeat for more")
+    p.add_argument("--company", metavar="NAME", help="instead of one job, every job at this company (its name, or "
+                   "the one it matches), whatever its status: `mark skipped --company Initech`. Jobs you applied to "
+                   "(applied or any later stage) are left alone unless --include-active; the keys changed are "
+                   "printed")
+    p.add_argument("--only-status", action="append", choices=STATUSES, metavar="STATUS",
+                   help="with --company: only the jobs now in this status (repeatable)")
+    p.add_argument("--include-active", action="store_true", help="with --company: change the jobs you applied to "
+                   "(applied, screening, interviewing, offer, rejected, withdrawn, closed) too")
+    p.add_argument("--dry-run", action="store_true", help="with --company: show what would change, and change "
+                   "nothing")
     p.set_defaults(func=cmd_mark)
 
     p = sub.add_parser("add", help="add a job found elsewhere (LinkedIn, a referral, a recruiter): `add <link>` "
@@ -1855,7 +1922,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("file", nargs="?", metavar="FILE | -", help="the extractor's JSON, or - for stdin")
     p.add_argument("--script", action="store_true", help="print the extractor (JavaScript) to run on the list's page")
     p.add_argument("--history", action="store_true", help="each run's counts and coverage per site, and the trend")
-    p.add_argument("--source", metavar="SITE", help="with --history: only this site's runs (linkedin, indeed, ladders)")
+    p.add_argument("--source", metavar="SITE", help="with --history or --unplaced: only this site's (linkedin, "
+                   "indeed, ladders)")
+    p.add_argument("--unplaced", action="store_true", help="instead of importing, list the jobs the imports tracked "
+                   "from the list's text alone (not found on the company's board), newest first: company, title, "
+                   "place, site, key and why (no board found under its name, or not on its board)")
+    p.add_argument("--since", metavar="DAY", help="with --unplaced: only jobs first seen on or after this day "
+                   "(YYYY-MM-DD, today, yesterday or -N days)")
     p.add_argument("--dry-run", action="store_true", help="show what would be tracked, and record nothing")
     p.add_argument("--no-follow", action="store_true", help="look for no boards: track each new job as listed")
     p.add_argument("--format", choices=["text", "json"], default="text")
@@ -2256,6 +2329,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("name", nargs="+", help="the company's name, part of it, or its domain (acme.com)")
     p.add_argument("--all", action="store_true", help="also the open roles your filters leave out (display.company: "
                    "all lists them every time)")
+    p.add_argument("--status", action="append", choices=STATUSES, metavar="STATUS",
+                   help="only jobs in this status (repeatable): every one, closed postings and the roles the filters "
+                   f"leave out too ({', '.join(STATUSES)})")
+    p.add_argument("--keys", action="store_true", help="print only the jobs' keys, one a line, for scripts "
+                   "(with --status, every job in it)")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_company, read_only=True)
 
