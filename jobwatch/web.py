@@ -24,7 +24,7 @@ import time
 import webbrowser
 from concurrent.futures import Future
 from dataclasses import replace
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -297,7 +297,7 @@ class Refresher:
             current = self._current
         if not mine:
             return current.result()
-        self.mail_read = datetime.now(timezone.utc)  # a check reads the mailbox too
+        self.mail_read = datetime.now(UTC)  # a check reads the mailbox too
         try:
             with self.app.lock:
                 out = self.app._with_store(lambda cfg, store: self._fetch(cfg, store, by))
@@ -320,7 +320,7 @@ class Refresher:
     def mail_due(self, now: datetime | None = None) -> bool:
         """Whether the mailbox is due a read of its own (alerts.imap.every): none since that long ago, alone or in a
         check, and no check running now, since that reads it anyway. A failed read waits the same interval."""
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         if not self.app.path.is_file() or self.running:
             return False
         try:
@@ -332,7 +332,7 @@ class Refresher:
 
     def read_mail(self, now: datetime | None = None, by: str = "schedule") -> int:
         """Read the mailbox alone, for the jobs that came in by email since; how many are new. Their scores follow."""
-        self.mail_read = now or datetime.now(timezone.utc)
+        self.mail_read = now or datetime.now(UTC)
         with self.app.lock:
             found = self.app._with_store(lambda cfg, store: read_mail(cfg, store, by=by))
         self.app.score_in_background()
@@ -343,7 +343,7 @@ class Refresher:
         than fetch_every (or there's none), and no scheduled check started in the last RETRY. With times of day
         (fetch_at), it's due once the latest of them has passed with no check since: one missed while the
         computer slept is caught up once, and a check by hand after it counts."""
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         if not self.app.path.is_file():
             return False
         try:
@@ -372,7 +372,7 @@ class Refresher:
         return {"running": self.running, "at": last["at"].isoformat() if last else None,
                 "every_hours": every.total_seconds() / 3600 if every else None,
                 "times": [t.strftime("%H:%M") for t in times],
-                "next": slot(times, datetime.now(timezone.utc), after=True).isoformat() if times else None,
+                "next": slot(times, datetime.now(UTC), after=True).isoformat() if times else None,
                 "new": last["new"] if last else 0, "errors": last["errors"] if last else {},
                 "warnings": last["warnings"] if last else {}, "error": self.error, "backup": backup.overdue()}
 
@@ -395,7 +395,7 @@ class Refresher:
         while not self._stop.is_set():
             try:
                 if self.due():
-                    self.tried = datetime.now(timezone.utc)
+                    self.tried = datetime.now(UTC)
                     out = self.fetch(by="schedule")
                     self.error = "" if out["boards"] or not out["errors"] else "every board failed"
             except Exception as e:  # never take the page down: say why, and try again later
@@ -414,7 +414,7 @@ class Refresher:
     def refresh_lca(self, now: datetime | None = None) -> bool:
         """Refreshes the H-1B LCA cache (lca.py) when it's older than lca.REFRESH, if `jobwatch lca update` made
         one: a download of several hundred MB, so a failed try waits LCA_RETRY. Whether it ran."""
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         if self.lca_tried and now - self.lca_tried < self.LCA_RETRY:
             return False
         try:

@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -34,7 +34,7 @@ def store(cfg):
 def ago(days):
     """A posting date relative to today: a role a board lists for the first time more than a fortnight after it was
     posted is taken as reposted today (Store.sync), so fixed dates in a test go stale."""
-    return (datetime.now(timezone.utc) - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (datetime.now(UTC) - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def board_job(id_, title, company_="Globex", source="lever", board="globex", **kw):
@@ -119,7 +119,7 @@ def test_a_watched_board_has_no_hint_and_lists_its_open_roles(cfg, store, tracke
 def test_open_roles_not_acted_on_list_the_latest_posting_first(cfg, store):
     """A board's roles all arrive together when it's first watched, so the order they came says nothing."""
     store.sync("lever", "globex", [
-        board_job("g1", "Platform Engineer", posted=datetime(2025, 2, 20, tzinfo=timezone.utc)),
+        board_job("g1", "Platform Engineer", posted=datetime(2025, 2, 20, tzinfo=UTC)),
         board_job("g2", "Data Engineer", posted=ago(3)),
         board_job("g3", "Site Reliability Engineer", posted=None),
         board_job("g4", "ML Engineer", posted=ago(10))])
@@ -160,7 +160,7 @@ def test_roles_in_other_places_or_below_the_pay_are_left_out_but_not_old_ones(cf
     store.sync("lever", "globex", [board_job("g1", "Staff Engineer"),
                                    board_job("g2", "Network Engineer", locations=["Omaha, NE"]),
                                    board_job("g3", "Data Engineer", salary_min=90_000, salary_max=120_000),
-                                   board_job("g4", "Old Engineer", posted=datetime(2025, 1, 1, tzinfo=timezone.utc))])
+                                   board_job("g4", "Old Engineer", posted=datetime(2025, 1, 1, tzinfo=UTC))])
     v = company.view(cfg, store, "globex")
     assert sorted(j["title"] for j in v["jobs"]) == ["Old Engineer", "Staff Engineer"]
     assert v["left_out_by"] == {"place": 1, "pay": 1} and v["every"] is False

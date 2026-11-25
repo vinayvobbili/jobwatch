@@ -18,7 +18,7 @@ import re
 import threading
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from . import sources
 from .models import Job
@@ -56,7 +56,7 @@ class Reader:
         self.store, self.budget, self.pause = store, budget, PAUSE if pause is None else pause
         self.get = get or sources.get_text
         self.robots = robots or Robots(self.get)
-        self.now = now or datetime.now(timezone.utc)
+        self.now = now or datetime.now(UTC)
         self.empty = empty
         self.asked = 0
         hit = store.pay_page(REFUSAL)

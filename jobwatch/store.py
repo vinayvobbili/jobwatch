@@ -10,7 +10,7 @@ import sqlite3
 import sys
 import threading
 from collections.abc import Callable, Iterator, Mapping
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from . import actjobs, linkedin, rounds
@@ -292,7 +292,7 @@ _ADDED = {"applied_at": "UPDATE jobs SET applied_at=substr(status_at, 1, 10) WHE
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="microseconds")  # orders actions within a second
+    return datetime.now(UTC).isoformat(timespec="microseconds")  # orders actions within a second
 
 
 # A role that first shows up on a board already read before, dated more than this many days back, was reposted:
@@ -321,7 +321,7 @@ def day(value: str | date | None, today: date | None = None) -> str | None:
 
 def day_start(d: date) -> str:
     """The start of a local calendar day as the store's UTC timestamps write it, to compare them with."""
-    return datetime.combine(d, datetime.min.time()).astimezone().astimezone(timezone.utc).isoformat(
+    return datetime.combine(d, datetime.min.time()).astimezone().astimezone(UTC).isoformat(
         timespec="microseconds")
 
 
@@ -582,8 +582,8 @@ class Store:
             slim = {r["key"] for r in rows if r["slim"] and r["status"] == "new"}  # not acted on: text stays dropped
             for job in jobs:
                 if known and job.key not in known and job.posted and \
-                        (datetime.now(timezone.utc) - job.posted).days > REPOST_DAYS:
-                    job.posted = datetime.now(timezone.utc)  # reposted: new to the board today, not months old
+                        (datetime.now(UTC) - job.posted).days > REPOST_DAYS:
+                    job.posted = datetime.now(UTC)  # reposted: new to the board today, not months old
                 data = json.dumps(slimmed(job.to_dict()) if job.key in slim else job.to_dict())
                 try:
                     # The key is unique across the whole table, so a role already recorded is updated whoever
@@ -1199,7 +1199,7 @@ class Store:
     def score_failures(self, resume: str, model: str, within: timedelta) -> dict[str, str]:
         """{job key: error} for the jobs that failed to score for this resume with this model in the last `within`.
         A new resume, edited prompts, another model or the time passing leaves a job out: it's tried again."""
-        since = (datetime.now(timezone.utc) - within).isoformat(timespec="microseconds")
+        since = (datetime.now(UTC) - within).isoformat(timespec="microseconds")
         return {r["key"]: r["error"] for r in self.db.execute(
             "SELECT key, error FROM score_failures WHERE resume=? AND model=? AND failed_at>=?",
             (resume, model, since))}
@@ -1215,11 +1215,11 @@ class Store:
     def set_scorer_down(self, scorer: str, reason: str, until: datetime):
         """A scoring chain step ("backend:model") that can't score until `until` (out of credit or quota): it's
         skipped without a call until then, and Settings shows it paused, with why."""
-        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        now = datetime.now(UTC).isoformat(timespec="seconds")
         with self.db:
             self.db.execute("INSERT INTO scorer_down (scorer, reason, since, until) VALUES (?, ?, ?, ?) ON CONFLICT "
                             "(scorer) DO UPDATE SET reason = excluded.reason, until = excluded.until",
-                            (scorer, reason, now, until.astimezone(timezone.utc).isoformat(timespec="seconds")))
+                            (scorer, reason, now, until.astimezone(UTC).isoformat(timespec="seconds")))
 
     def clear_scorer_down(self, scorer: str):
         with self.db:
@@ -1228,7 +1228,7 @@ class Store:
     def scorers_down(self) -> dict[str, dict]:
         """{scorer: {reason, since, until}} for the steps paused now; ones whose time is up are left out (and are
         tried again)."""
-        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        now = datetime.now(UTC).isoformat(timespec="seconds")
         return {r["scorer"]: {"reason": r["reason"], "since": r["since"], "until": r["until"]}
                 for r in self.db.execute("SELECT * FROM scorer_down WHERE until > ?", (now,))}
 
@@ -1303,7 +1303,7 @@ class Store:
         """(local day, scored_by) of every fit score made from this local day on, whatever the resume, for counting
         what each backend scored. Scores kept from an earlier scorer (keep_old_scores) aren't new work."""
         edge = (datetime.combine(since, datetime.min.time()).astimezone() - timedelta(hours=1)).astimezone(
-            timezone.utc).isoformat(timespec="microseconds")
+            UTC).isoformat(timespec="microseconds")
         out = []
         for r in self.db.execute("SELECT result, scored_at FROM scores WHERE scored_at>=?", (edge,)):
             day = datetime.fromisoformat(r["scored_at"]).astimezone().date()

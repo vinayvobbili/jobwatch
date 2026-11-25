@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 import yaml
@@ -261,7 +261,7 @@ def test_hidden_counts_what_each_filter_hides(app, web):
 def test_hidden_since_lists_what_just_came_in_from_every_filter(app, web):
     """`hidden --since 6h`: what a fetch or an alert email just brought in that the filters keep off Today."""
     app.post_fetch({})
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     got = app._with_store(lambda cfg, store: watch.hidden(cfg, store, since=now - timedelta(hours=1)))
     assert sorted((j["kind"], j["company"]) for j in got["jobs"]) == [("excluded", "globex"), ("place", "Acme")]
     assert app._with_store(lambda cfg, store: watch.hidden(cfg, store, since=now + timedelta(minutes=1)))["total"] == 0

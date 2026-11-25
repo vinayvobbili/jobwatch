@@ -9,12 +9,11 @@ description = "Watch company job boards (Greenhouse, Lever, Ashby, Workable, Wor
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = ["pyyaml>=6", "mcp>=2.2", "ruamel.yaml>=0.18"]
 keywords = ["jobs", "job-search", "job-tracker", "greenhouse", "lever", "ashby", "workable", "workday", "eightfold", "mcp", "resume", "llm"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -55,7 +54,7 @@ exclude = ["**/*.gif", "**/*.mp4"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "RUF"]

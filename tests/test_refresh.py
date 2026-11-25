@@ -3,7 +3,7 @@ on Today when they were last checked."""
 
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from datetime import time as dtime
 
 import pytest
@@ -27,7 +27,7 @@ def setting(watchlist, **raw_settings):
 
 def last_fetch_was(store, ago: timedelta):
     with store.db:
-        store.db.execute("UPDATE fetches SET at=?", ((datetime.now(timezone.utc) - ago).isoformat(),))
+        store.db.execute("UPDATE fetches SET at=?", ((datetime.now(UTC) - ago).isoformat(),))
 
 
 @pytest.mark.parametrize("raw, want", [
@@ -61,7 +61,7 @@ def test_every_fetch_is_recorded_and_one_that_read_nothing_doesnt_count(watchlis
     watch.fetch_all(cfg, store)
     last = store.last_fetch()
     assert (last["boards"], last["jobs"], last["new"], last["errors"]) == (3, 5, 5, {})
-    assert datetime.now(timezone.utc) - last["at"] < timedelta(minutes=1)
+    assert datetime.now(UTC) - last["at"] < timedelta(minutes=1)
     web.responses.clear()  # no network: every board fails
     watch.fetch_all(cfg, store)
     assert store.last_fetch()["at"] == last["at"]
@@ -79,7 +79,7 @@ def test_a_check_is_due_when_the_last_is_older_than_fetch_every(watchlist, web):
     assert not r.due()
     last_fetch_was(store, timedelta(hours=6, minutes=1))
     assert r.due()
-    r.tried = datetime.now(timezone.utc) - timedelta(minutes=5)  # a scheduled check just started (and failed)
+    r.tried = datetime.now(UTC) - timedelta(minutes=5)  # a scheduled check just started (and failed)
     assert not r.due()
     r.tried = None
     setting(watchlist, fetch_every="off")
@@ -254,7 +254,7 @@ def test_at_set_times_a_check_is_due_once_each_time_passes(watchlist, web):
     r._thread = object()  # as if the schedule were running
     got = r.status(config.load(watchlist), store)
     assert got["times"] == ["08:00", "14:00", "20:00"] and got["every_hours"] is None
-    assert datetime.fromisoformat(got["next"]) > datetime.now(timezone.utc)
+    assert datetime.fromisoformat(got["next"]) > datetime.now(UTC)
     r._thread = None
     store.close()
 

@@ -4,7 +4,7 @@ network: the boards are canned (the `web` fixture)."""
 
 import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import yaml
@@ -47,7 +47,7 @@ def added(cfg, store, company, title, location="Remote"):
 
 def came_in(store, key, days_ago):
     store.db.execute("UPDATE unwatched_jobs SET seen_at=? WHERE key=?",
-                     ((datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat(), key))
+                     ((datetime.now(UTC) - timedelta(days=days_ago)).isoformat(), key))
     store.db.commit()
 
 

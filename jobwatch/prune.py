@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .package import _safe
@@ -55,7 +55,7 @@ class Plan:
 
 
 def _iso(days: int, now: datetime | None = None) -> str:
-    return ((now or datetime.now(timezone.utc)) - timedelta(days=days)).isoformat(timespec="microseconds")
+    return ((now or datetime.now(UTC)) - timedelta(days=days)).isoformat(timespec="microseconds")
 
 
 def _in_packages(store: Store, keys: list[str]) -> set[str]:

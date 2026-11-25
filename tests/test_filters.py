@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -213,7 +213,7 @@ def test_home_state_is_a_us_state():
 def test_age_hides_only_jobs_jobwatch_cant_tell_are_still_up():
     """An old job on a company's board is open while it shows (an evergreen req): only a job added by hand or from
     an alert's link, or an HN post, is hidden for its age."""
-    posted = datetime.now(timezone.utc) - timedelta(days=45)
+    posted = datetime.now(UTC) - timedelta(days=45)
     for source in ("manual", "hn"):
         assert reject_reason(job(source=source, posted=posted), Filters(max_age_days=30)) == "posted 45 days ago"
     assert reject_reason(job(posted=posted), Filters(max_age_days=30)) is None  # greenhouse: checked every fetch
@@ -225,7 +225,7 @@ def test_rejection_names_the_filter():
     f = Filters(titles=["engineer"], exclude_titles=["manager"], exclude_departments=["sales"], locations=["remote"],
                 min_salary=200_000, require_salary=True, max_age_days=30, min_fit=60, exclude_companies=["Initech"])
     ok = dict(locations=["Remote (United States)"], salary_min=200_000, salary_max=250_000)
-    old = datetime.now(timezone.utc) - timedelta(days=45)
+    old = datetime.now(UTC) - timedelta(days=45)
     low = {"score": 42.0}
     cases = [
         (job(**ok), None, None),

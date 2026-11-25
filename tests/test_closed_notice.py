@@ -2,7 +2,7 @@
 the page's endpoints. The popup and launchctl are faked: these tests never show a notification or touch launchd."""
 
 import plistlib
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -29,7 +29,7 @@ def store(cfg):
 def close(store, job, days_ago: float = 0, confirmed: bool = True):
     """Mark a job's posting closed, `days_ago` days back, and (unless `confirmed` is off) seen closed again."""
     store.set_closed(job.key, True)
-    stamp = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat(timespec="microseconds")
+    stamp = (datetime.now(UTC) - timedelta(days=days_ago)).isoformat(timespec="microseconds")
     store.db.execute("UPDATE jobs SET closed=? WHERE key=?", (stamp, job.key))
     store.db.commit()
     if confirmed:

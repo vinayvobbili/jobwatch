@@ -29,7 +29,7 @@ from __future__ import annotations
 import re
 import shlex
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from urllib.parse import urlparse
 
@@ -214,7 +214,7 @@ def suggestions(cfg: Config, store: Store, limit: int | None = None, look: bool 
     record_engaged), best first: those with one, then by weight. `limit` of them (None:
     suggestions.limit; 0: all). look: look for the board of each one listed that hasn't been looked for yet (see
     look_up); one found that's already watched drops it."""
-    now, out = now or datetime.now(timezone.utc), []
+    now, out = now or datetime.now(UTC), []
     limit = cfg.suggest.limit if limit is None else limit
     half_life = cfg.suggest.half_life
     engaged = record_engaged(store, cfg.boards)
@@ -446,7 +446,7 @@ def auto_watch(cfg: Config, store: Store, get=None, page=None,
     company is left alone. Returns the watchlist as it now is and the companies added."""
     if not cfg.suggest.auto_watch:
         return cfg, []
-    now, added, looked = now or datetime.now(timezone.utc), [], 0
+    now, added, looked = now or datetime.now(UTC), [], 0
     for s in suggestions(cfg, store, limit=0, now=now):
         if len(added) >= AUTO_ADDS:
             break

@@ -39,7 +39,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -229,13 +229,12 @@ def _time(value) -> datetime | None:
     if value in (None, ""):
         return None
     if isinstance(value, (int, float)):  # Lever: milliseconds since the epoch
-        return datetime.fromtimestamp(value / 1000, timezone.utc)
+        return datetime.fromtimestamp(value / 1000, UTC)
     try:
-        # Python 3.10 reads only "+00:00": Jibe writes "+0000"
-        t = datetime.fromisoformat(re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", str(value).replace("Z", "+00:00")))
+        t = datetime.fromisoformat(str(value))  # reads "Z" and Jibe's "+0000" since Python 3.11
     except ValueError:
         return None
-    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    return t if t.tzinfo else t.replace(tzinfo=UTC)
 
 
 def _salary(job: Job, text: str) -> None:
@@ -369,7 +368,7 @@ def _workday_posted(text: str) -> datetime | None:
     days = 0 if "today" in text else 1 if "yesterday" in text else None
     if days is None and (m := re.search(r"(\d+)\+? days? ago", text)):
         days = int(m.group(1))
-    return None if days is None else datetime.now(timezone.utc) - timedelta(days=days)
+    return None if days is None else datetime.now(UTC) - timedelta(days=days)
 
 
 def _search_all(page: Callable[[int], tuple[list, int]], size: int, cap: int = SEARCH_CAP, workers: int = 4) -> list:
@@ -498,7 +497,7 @@ def _eightfold_job(board: str, pid: str, p: dict) -> Job:
                locations=split_locations(*_listish(p.get("locations"))), department=p.get("department") or "",
                remote=True if where == "remote" or (where == "remote_local" and not _listish(p.get("locations")))
                else None,
-               posted=datetime.fromtimestamp(int(posted), timezone.utc) if str(posted or "").isdigit() else None)
+               posted=datetime.fromtimestamp(int(posted), UTC) if str(posted or "").isdigit() else None)
 
 
 def _eightfold_read(j: Job, info: dict) -> Job:
@@ -1162,7 +1161,7 @@ def _ld_text(value) -> str:
 def _avature_date(text: str) -> datetime | None:
     for fmt in _AVATURE_DATES:
         try:
-            return datetime.strptime(text.strip(), fmt).replace(tzinfo=timezone.utc)
+            return datetime.strptime(text.strip(), fmt).replace(tzinfo=UTC)
         except ValueError:
             continue
     return None
@@ -1798,7 +1797,7 @@ def _amazon_places(p: dict) -> tuple[list[str], bool | None]:
 def _amazon_posted(text: str) -> datetime | None:
     """ "August 27, 2026" (or "October  8, 2026")."""
     try:
-        return datetime.strptime(" ".join((text or "").split()), "%B %d, %Y").replace(tzinfo=timezone.utc)
+        return datetime.strptime(" ".join((text or "").split()), "%B %d, %Y").replace(tzinfo=UTC)
     except ValueError:
         return None
 
@@ -2053,7 +2052,7 @@ def _hn_post(c: dict, board: str, description: str) -> Job | None:
                                                    and not _HN_NO_REMOTE.search(head))
     url, boards = _hn_link(links)
     hn = HN_ITEM.format(id=c["id"])
-    posted = datetime.fromtimestamp(c["created_at_i"], timezone.utc) if isinstance(c.get("created_at_i"), int) \
+    posted = datetime.fromtimestamp(c["created_at_i"], UTC) if isinstance(c.get("created_at_i"), int) \
         else _time(c.get("created_at"))
     job = Job(source="hn", company=board, id=str(c["id"]), title=title, url=url or hn, company_name=company,
               locations=split_locations(*places), remote=True if remote else None, posted=posted,
@@ -2208,7 +2207,7 @@ def _vc_getro(page: str) -> list[dict] | None:
 def _vc_posted(d: dict) -> datetime | None:
     value = d.get("createdAt") or d.get("posted_at") or d.get("postedAt") or d.get("timeStamp")
     if isinstance(value, (int, float)) and value < 1e11:  # Getro: seconds since the epoch
-        return datetime.fromtimestamp(value, timezone.utc)
+        return datetime.fromtimestamp(value, UTC)
     return _time(value)
 
 
@@ -2333,7 +2332,7 @@ def fetch_vc(board: str, get=None, search=(), wanted=None, known=None, cap=SEARC
         allowed(link)
         return visit.text(link)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     oldest = now - timedelta(days=VC_NEW_DAYS)
     newest = max((j.posted for j in known.values() if j.posted), default=None)
     since = max(oldest, newest - VC_SLACK) if newest else oldest
@@ -2870,7 +2869,7 @@ def roles_matching(source: str, board: str, text: str, sample: list[Job], get=No
         return text in title.lower()
     jobs = fetch(source, board, get, search=(text,), wanted=wanted) if SOURCES[source].search else sample
     return sorted((j for j in jobs if wanted(j.title)),
-                  key=lambda j: j.posted or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                  key=lambda j: j.posted or datetime.min.replace(tzinfo=UTC), reverse=True)
 
 
 def _never(title: str) -> bool:

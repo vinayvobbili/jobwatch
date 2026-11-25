@@ -77,9 +77,9 @@ def test_workday_known_postings_are_not_read_again():
 
 
 def test_workday_listed_ages():
-    assert sources._workday_posted("Posted Today").date() == sources.datetime.now(sources.timezone.utc).date()
+    assert sources._workday_posted("Posted Today").date() == sources.datetime.now(sources.UTC).date()
     def days(text):
-        age = sources.datetime.now(sources.timezone.utc) - sources._workday_posted(text)
+        age = sources.datetime.now(sources.UTC) -sources._workday_posted(text)
         return round(age.total_seconds() / 86400)
     assert (days("Posted 30+ Days Ago"), days("Posted 3 Days Ago"), days("Posted Yesterday")) == (30, 3, 1)
     assert sources._workday_posted("") is None

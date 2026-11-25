@@ -315,6 +315,6 @@ def test_the_apply_button_opens_the_form(url, expected):
 
 
 def test_times_with_a_colonless_offset():
-    t = sources._time("2026-09-29T21:03:00+0000")  # Jibe; Python 3.10's fromisoformat needs "+00:00"
+    t = sources._time("2026-09-29T21:03:00+0000")  # Jibe
     assert (t.year, t.hour, t.utcoffset().total_seconds()) == (2026, 21, 0)
     assert sources._time("2026-09-29T21:03:00-0500").utcoffset().total_seconds() == -5 * 3600

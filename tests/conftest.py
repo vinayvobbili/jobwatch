@@ -5,16 +5,16 @@ from __future__ import annotations
 import http.client
 import json
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from jobwatch import models, sources
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 TOKEN = "test-token"
 # The saved alert emails (fixtures/alerts) were sent 10/5-10/23: their jobs' ages are counted from then
-ALERT_WEEK = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
+ALERT_WEEK = datetime(2026, 10, 24, 12, tzinfo=UTC)
 
 
 def iso(days_ago: int) -> str:

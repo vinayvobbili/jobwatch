@@ -86,7 +86,7 @@ Fit 78/100, must-haves 4/6 (scored by Qwen3.5-9B · local)
 ## Why trust it
 
 - About 2,400 tests in 121 modules, none of which touch the network (a fixture fails any test that tries).
-- CI runs ruff and the whole suite on Python 3.10 and 3.13 for every push; the same checks run before every push.
+- CI runs ruff and the whole suite on Python 3.11 and 3.13 for every push; the same checks run before every push.
 - Fit scoring was checked on a small eval of 29 expected verdicts: the suggested 16 GB model (Qwen3.5-9B, 4-bit)
   agreed on 28, Gemma 4 12B on 29. Only the 16 GB row of the model table was tested.
   [Fit scores](https://github.com/vinayvobbili/jobwatch/blob/main/docs/guide/fit-scores.md)

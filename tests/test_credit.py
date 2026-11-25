@@ -1,7 +1,7 @@
 """A dated, capped Claude step in the scoring chain (an API credit that ends): the date, the caps, an account that
 refuses it, and what the entry looks like in the watchlist."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -28,7 +28,7 @@ def _jobs(n):
 
 
 def _at(text):
-    return datetime.fromisoformat(text).astimezone(timezone.utc)
+    return datetime.fromisoformat(text).astimezone(UTC)
 
 
 @pytest.fixture

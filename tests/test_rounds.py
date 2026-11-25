@@ -2,7 +2,7 @@
 how it is stored and set (store, command, MCP tool, page)."""
 
 import re
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import get_args
 
 import pytest
@@ -18,7 +18,7 @@ from .test_cli import run
 from .test_mcp_tools import TOOLS
 
 TODAY = date(2026, 10, 12)  # a Monday
-NOW = datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 STEP = "Fri 10/16 3:30-3:45 PM ET"  # no word that says it is a meeting
 
 
@@ -45,7 +45,7 @@ def test_a_round_makes_any_next_step_a_meeting():
     assert ics.meeting(STEP, TODAY) is None and not ics.names_meeting(STEP)
     m = ics.meeting(STEP, TODAY, "informal")
     assert (m.label, m.round, m.zoned) == ("Call", "Informal chat", True)
-    assert m.start == datetime(2026, 10, 16, 19, 30, tzinfo=timezone.utc)
+    assert m.start == datetime(2026, 10, 16, 19, 30, tzinfo=UTC)
     assert ics.names_meeting("recruiter to schedule", "panel")
     assert ics.meeting(STEP, TODAY, "technical").label == "Interview"
     assert [m.round for m in ics.meetings(f"{STEP}; Mon 10/19 1:00 PM", TODAY, "hr")] == ["HR round"] * 2

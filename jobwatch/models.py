@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .text import RATE_UNITS, is_remote, pay_label
 
@@ -78,7 +78,7 @@ class Job:
     def age_days(self, now: datetime | None = None) -> int | None:
         if not self.posted:
             return None
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         return max(0, (now - self.posted).days)
 
     def to_text(self) -> str:

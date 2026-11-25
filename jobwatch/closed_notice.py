@@ -18,7 +18,7 @@ from __future__ import annotations
 import plistlib
 import subprocess
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from .service import ServiceError, _domain, _launchctl, _mac
@@ -45,7 +45,7 @@ def local_day(stamp: str | None) -> str | None:
 def collect(store: Store, today: date | None = None) -> list[str]:
     """Make a notice of each wanted job whose posting closed in the last WINDOW_DAYS and has none yet; drop the
     notices of jobs that reopened or moved on. Returns the keys of the new ones. Run it as often as you like."""
-    now = datetime.combine(today, datetime.min.time()).astimezone(timezone.utc) if today else datetime.now(timezone.utc)
+    now = datetime.combine(today, datetime.min.time()).astimezone(UTC) if today else datetime.now(UTC)
     since = (now - timedelta(days=WINDOW_DAYS)).isoformat(timespec="microseconds")
     return store.record_closed_notices(WANTED, since)
 

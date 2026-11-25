@@ -3,6 +3,7 @@ models' scores before trusting them side by side, and the Anthropic API key from
 
 import subprocess
 import sys
+from datetime import UTC
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -375,8 +376,8 @@ def test_past_the_daily_limit_the_fallback_scores_and_its_score_stays_until_aske
     ("Claude's API refused the key: Error code: 401", "API key refused", 1),
 ])
 def test_what_pauses_a_step_and_for_how_long(error, reason, hours):
-    from datetime import datetime, timezone
-    now = datetime(2026, 1, 5, 9, tzinfo=timezone.utc)
+    from datetime import datetime
+    now = datetime(2026, 1, 5, 9, tzinfo=UTC)
     why, until = score.paused_until(error, now)
     assert why == reason and abs((until - now).total_seconds() / 3600 - hours) < 1e-6
     assert score.paused_until("ValueError: the model judged 3 of 5 requirements", now) is None

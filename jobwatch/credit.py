@@ -15,7 +15,7 @@ it without marking any job failed: the next scorer takes the job.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 from .config import Config, entry_until, fallback_entry, split_until
 from .scorestats import PRICES, cost_usd
@@ -32,8 +32,8 @@ CHUNK = 5  # jobs scored between cap checks, so a run can pass a cap by one chun
 
 def today_eastern(now: datetime | None = None) -> date:
     """The date in America/New_York (`now` given in any time zone; naive means UTC)."""
-    now = now or datetime.now(timezone.utc)
-    return (now if now.tzinfo else now.replace(tzinfo=timezone.utc)).astimezone(EASTERN).date()
+    now = now or datetime.now(UTC)
+    return (now if now.tzinfo else now.replace(tzinfo=UTC)).astimezone(EASTERN).date()
 
 
 def skip_reason(cfg: Config, store: Store, entry: str, now: datetime | None = None) -> str:

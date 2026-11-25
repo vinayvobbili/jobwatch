@@ -15,7 +15,7 @@ import hashlib
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import NamedTuple
 
 from .config import Config
@@ -90,7 +90,7 @@ def remembered(store: Store, name: str, made_from: tuple, make: Callable[[], obj
     before the work starts, so a write during it leaves the result marked older than the file and it is made
     again next time, never served stale."""
     where = (str(store.path), name, variant)
-    hour = datetime.now(timezone.utc).strftime("%Y%m%d%H")  # a job's age in days turns over on the hour, near enough
+    hour = datetime.now(UTC).strftime("%Y%m%d%H")  # a job's age in days turns over on the hour, near enough
     stamp = (store.stamp(), made_from, hour)
     with _guard:
         if (got := _kept.get(where)) and got[0] == stamp:

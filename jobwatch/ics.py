@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import rounds
@@ -153,14 +153,14 @@ def _iso_meeting(text: str, label: str, round_label: str | None) -> Meeting | No
     except ValueError:
         return None
     if off:
-        start = start.replace(tzinfo=timezone.utc if off == "Z" else timezone(
+        start = start.replace(tzinfo=UTC if off == "Z" else timezone(
             (1 if off[0] == "+" else -1) * timedelta(hours=int(off[1:3]), minutes=int(off[-2:]))))
     elif zone := _ZONE.search(text[found[0].end():found[0].end() + 8]):
         if (tz := _zone(zone.group(1))) is None:
             return None
         start = start.replace(tzinfo=tz)
     if start.tzinfo:
-        start = start.astimezone(timezone.utc)
+        start = start.astimezone(UTC)
     return Meeting(start, start + DURATION, start.tzinfo is not None, label, round_label)
 
 
@@ -195,8 +195,8 @@ def meeting(next_step: str | None, today: date, round_id: str | None = None) -> 
     if zones:
         if (tz := _zone(zones.pop())) is None:
             return None
-        start = start.replace(tzinfo=tz).astimezone(timezone.utc)
-        end = end.replace(tzinfo=tz).astimezone(timezone.utc) if end else None
+        start = start.replace(tzinfo=tz).astimezone(UTC)
+        end = end.replace(tzinfo=tz).astimezone(UTC) if end else None
     return Meeting(start, end or start + DURATION, zoned, label, round_label)
 
 
@@ -233,7 +233,7 @@ def _uid(key: str, kind: str) -> str:
 
 
 def _stamp(at: datetime) -> str:
-    return at.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _event(uid: str, now: datetime, summary: str, description: str, url: str, when: dict[str, str],
@@ -255,7 +255,7 @@ def calendar(rows: list[tuple[Job, dict]], today: date | None = None, now: datet
     all-day follow-ups never have one). An event's UID is its application and kind (meeting, then meeting-2, ...),
     so importing the feed again updates the events instead of adding more."""
     today = today or date.today()
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0", f"PRODID:{PRODID}", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
              "X-WR-CALNAME:jobwatch follow-ups", "REFRESH-INTERVAL;VALUE=DURATION:PT1H", "X-PUBLISHED-TTL:PT1H"]
     for job, rec in rows:

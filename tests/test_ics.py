@@ -1,7 +1,7 @@
 """The follow-up and interview calendar feed: the file, the times read from next steps, the command, the page."""
 
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -12,7 +12,7 @@ from jobwatch.store import Store
 from .conftest import TOKEN, request
 
 TODAY = date(2026, 10, 12)  # a Monday
-NOW = datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
 
 
 def meet(text):
@@ -115,7 +115,7 @@ def test_uids_are_stable_and_distinct():
     def uids(rows, today, now):
         return [x for x in unfold(ics.calendar(rows, today=today, now=now)) if x.startswith("UID:")]
     first = uids([a, b], TODAY, NOW)
-    assert first == uids([a, b], date(2026, 10, 13), datetime(2026, 10, 13, tzinfo=timezone.utc))
+    assert first == uids([a, b], date(2026, 10, 13), datetime(2026, 10, 13, tzinfo=UTC))
     assert len(first) == len(set(first)) == 4
     # the date moving updates the same events
     moved = (a[0], rec(next_step="call 10/16 3pm ET", follow_up="2026-10-15"))

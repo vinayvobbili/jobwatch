@@ -1,4 +1,5 @@
 import json
+from datetime import UTC
 
 import pytest
 
@@ -39,9 +40,9 @@ def test_sync_reports_only_new_roles(store):
 
 def test_an_old_dated_role_new_to_a_board_read_before_counts_as_posted_today(store):
     """A reopened req can keep its first posting date; on a board's first read, old dates are kept."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old = job("a")
     old.posted = now - timedelta(days=200)
     store.sync("lever", "globex", [old])

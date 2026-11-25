@@ -3,7 +3,7 @@
 import json
 import os
 import time
-from datetime import date
+from datetime import UTC, date
 
 import pytest
 import yaml
@@ -232,12 +232,12 @@ def test_settings_round_trip(watchlist):
 def test_one_company_and_old_jobs_dont_fill_the_top():
     """Ranked Globex, Globex, Globex, Acme (stale), Initech: Globex's third goes after the rest, and Acme's job,
     shown 8 days ago and not acted on, goes below Initech's newer one."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from jobwatch.models import Job
     from jobwatch.watch import Entry, _spread
 
-    now = datetime(2026, 10, 23, 12, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 23, 12, tzinfo=UTC)
 
     def entry(company, n, days, status="shown"):
         seen = (now - timedelta(days=days)).isoformat()

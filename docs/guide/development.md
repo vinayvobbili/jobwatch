@@ -7,8 +7,8 @@ python -m venv .venv && .venv/bin/pip install -e '.[dev,mcp]'
 .venv/bin/ruff check . && .venv/bin/python -m pytest -q
 ```
 
-CI tests on Python 3.10 and 3.13. `scripts/check` runs the same checks on both locally (it needs
-[uv](https://docs.astral.sh/uv/), which fetches each Python). `git config core.hooksPath .githooks` runs it before
+CI tests on Python 3.11 and 3.13. `scripts/check` runs the same checks on 3.13 locally (it needs
+[uv](https://docs.astral.sh/uv/), which fetches the Python). `git config core.hooksPath .githooks` runs it before
 every push.
 
 Tests use canned board responses and never touch the network, except the check that every curated course

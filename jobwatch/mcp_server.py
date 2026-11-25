@@ -423,9 +423,6 @@ class SubmissionProof(BaseModel):
 # What _ask_proof answers when it doesn't ask: the status isn't applied (or already was, or the person said they
 # saw proof), or the client can't show a form, so mark_job goes on as it always did (and warns, for the latter).
 _NO_QUESTION, _NO_FORMS = "no question", "client can't ask"
-# mark_job's default for what the person answered: a direct call (not through a client) asks nothing. Not None:
-# Python 3.10 reads a None default as Optional, which a Resolve parameter can't be.
-_UNASKED = AcceptedElicitation[str].model_construct(data=_NO_QUESTION)
 
 
 def _ask_proof(key: str, status: str | None, proof_seen: bool, ctx: Context) -> Elicit[SubmissionProof] | str:
@@ -449,9 +446,11 @@ def _ask_proof(key: str, status: str | None, proof_seen: bool, ctx: Context) -> 
                   SubmissionProof)
 
 
-def _judge_proof(key: str, proof: ElicitationResult[SubmissionProof]) -> tuple[str, str, str]:
+def _judge_proof(key: str, proof: ElicitationResult[SubmissionProof] | None) ->tuple[str, str, str]:
     """What the person's answer means for mark_job: (the reply that stops it, or ""; the dated note that records
     the proof; a warning to end the reply with)."""
+    if proof is None:  # a direct call (not through a client) asks nothing
+        return "", "", ""
     answer = proof.data if isinstance(proof, AcceptedElicitation) else None
     if answer == _NO_QUESTION:
         return "", "", ""
@@ -498,7 +497,7 @@ def mark_job(
     proof_seen: Annotated[bool, Field(description=(
         "Set it true only when the person has told you they saw the confirmation page or email for this "
         "application: it skips the question. Never set it yourself."))] = False,
-    proof: Annotated[ElicitationResult[SubmissionProof], Resolve(_ask_proof)] = _UNASKED,
+    proof: Annotated[ElicitationResult[SubmissionProof], Resolve(_ask_proof)] = None,
 ) -> str:
     """Record a job's status: new, shown, queued (to apply to next), applied, screening, interviewing, offer,
     rejected, withdrawn or skipped (omit status to keep it and only update the rest). key is the job's key, its

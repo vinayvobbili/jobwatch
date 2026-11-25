@@ -5,7 +5,7 @@ company's careers site (the watchlist's careers: link), or says to apply there."
 import io
 import json
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -54,7 +54,7 @@ def fetch(watchlist):
 
 
 def age_hosted_answer(store, days=2):
-    when = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    when = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with store.db:
         store.db.execute("UPDATE hosted_pages SET checked_at=?", (when,))
 

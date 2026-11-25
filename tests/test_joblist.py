@@ -3,6 +3,7 @@ tracked, the rest tracked from the company's own board, coverage kept per site. 
 `web` fixture), and linkedin.com and indeed.com are never asked for anything."""
 
 import json
+from datetime import UTC
 
 import pytest
 
@@ -229,14 +230,14 @@ def test_the_extension_imports_a_list_with_its_token(server, web):
 
 def test_history_shows_local_time_and_reads_old_rows(monkeypatch):
     import time
-    from datetime import datetime, timezone
+    from datetime import datetime
     monkeypatch.setenv("TZ", "America/New_York")
     time.tzset()
     try:
         row = {"source": "linkedin", "seen": 3, "tracked": 2, "earlier": 0, "added": 1, "unplaced": 0,
                "coverage": 0.67}
         runs = [{"at": "2026-11-12T22:35:10+00:00", **row}, {"at": "2026-11-12T22:35:10", **row}]
-        text = joblist.history_text(runs, now=datetime(2026, 11, 13, tzinfo=timezone.utc))
+        text = joblist.history_text(runs, now=datetime(2026, 11, 13, tzinfo=UTC))
         assert text.count("2026-11-12 17:35") == 2 and "22:35" not in text
     finally:
         monkeypatch.undo()

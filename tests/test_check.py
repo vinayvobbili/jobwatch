@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -124,7 +124,7 @@ def test_a_posting_open_alongside_the_closed_one_is_another_opening(watchlist, w
     job, _ = store.find("lever:globex:aaaa-1111")
     web.responses[LEVER_API] = [{**LEVER[0], "id": "cccc-3333", "hostedUrl": "https://jobs.lever.co/globex/cccc-3333"}]
     store.keep(sources.fetch("lever", "globex", web)[0])  # tracked since before aaaa-1111 closed
-    later = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
+    later = (datetime.now(UTC) + timedelta(days=2)).isoformat()
     assert find_repost(store, job, get=web, closed=later) == []
     assert [j.id for j in find_repost(store, job, get=web)] == ["cccc-3333"]  # closed now: seen too recently to say
 

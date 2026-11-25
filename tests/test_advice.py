@@ -1,7 +1,7 @@
 """The suggestion on each job (advice.py): queue it or skip it, and why; and that the page gets it."""
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from jobwatch import cli, config
 from jobwatch.advice import Advice, History, advise, verdict
@@ -20,7 +20,7 @@ def cfg_with(watchlist, text=PAY):
 
 def job(n=1, low=None, high=None, days=10, company="Globex"):
     return Job("lever", company.lower(), str(n), "Staff Engineer", f"https://example.com/{n}", company_name=company,
-               salary_min=low, salary_max=high, posted=datetime.now(timezone.utc) - timedelta(days=days))
+               salary_min=low, salary_max=high, posted=datetime.now(UTC) - timedelta(days=days))
 
 
 def entry(j, fit=None, contacts=(), status="new"):

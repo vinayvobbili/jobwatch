@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from . import (
     alerts,
@@ -76,7 +76,7 @@ def boards_due(cfg: Config, store: Store, again: set[str] = frozenset(), now: da
     every = timedelta(days=cfg.slow_boards.every_days)
     if not every:
         return list(cfg.boards)
-    now, checks = now or datetime.now(timezone.utc), store.board_checks()
+    now, checks = now or datetime.now(UTC), store.board_checks()
 
     def due(b: Board) -> bool:
         c = checks.get(b.entry)
@@ -89,7 +89,7 @@ def boards_due(cfg: Config, store: Store, again: set[str] = frozenset(), now: da
 def just_quiet(store: Store, boards: list[Board], now: datetime | None = None) -> list[str]:
     """The boards that have just gone quiet (see QUIET_CHECKS), marked as told: each is said once, until it answers
     with jobs again."""
-    now, checks, out = now or datetime.now(timezone.utc), store.board_checks(), []
+    now, checks, out = now or datetime.now(UTC), store.board_checks(), []
     for b in boards:
         c = checks.get(b.entry)
         if (c and not c["told"] and c["quiet"] >= QUIET_CHECKS
@@ -115,7 +115,7 @@ class HostedPages:
     def due(self, boards: list[tuple[str, str]]) -> set[tuple[str, str]]:
         """The (source, board) pairs to ask about now: a source with the check, not asked in the last day, and
         robots.txt allows reading the page (it's read once per site)."""
-        now, out = datetime.now(timezone.utc), set()
+        now, out = datetime.now(UTC), set()
         for source, board in boards:
             if not (url := sources.hosted_url(source, board)):
                 continue
@@ -603,7 +603,7 @@ def find_repost(store: Store, job: Job, note: str = "", get=None, boards: dict |
         listed = _listed(job, get, {} if boards is None else boards)
     except sources.SourceError:
         return []
-    before = (datetime.fromisoformat(closed) if closed else datetime.now(timezone.utc)) - _ALONGSIDE
+    before = (datetime.fromisoformat(closed) if closed else datetime.now(UTC)) - _ALONGSIDE
     found = [j for j in listed if j.id != job.id and dupes.title_key(j.title) == want
              and not ((seen := store.first_seen(j.key)) and datetime.fromisoformat(seen) < before)]
     for i, new in enumerate(found):
@@ -690,7 +690,7 @@ def check_daily(store: Store, get=None, page=None, watched: list[Board] = (), li
     board that isn't watched (one alerts matched them to, or one taken off the watchlist when the company moved
     to another ATS: no fetch closes those). Up to `limit` jobs a run, none checked within `every`, the longest
     unchecked first. Returns the ones checked."""
-    done, now = store.posting_checked(), datetime.now(timezone.utc)
+    done, now = store.posting_checked(), datetime.now(UTC)
     on = {(b.source, b.board) for b in watched}
     rows = store.jobs(CHECKED, include_closed=True) + [
         (j, r) for j, r in store.iter_jobs(("new", "shown"))
@@ -712,7 +712,7 @@ CONFIRM_AFTER = timedelta(hours=6)  # a closed mark is confirmed by a look at le
 def _seen_closed_before(stamp: str | None) -> bool:
     """Whether a posting's closed mark (ISO, UTC) is old enough that a check finding it closed again is a second,
     separate look (a manual `jobwatch check` run twice in a row doesn't count as two)."""
-    return bool(stamp) and datetime.now(timezone.utc) - datetime.fromisoformat(stamp) >= CONFIRM_AFTER
+    return bool(stamp) and datetime.now(UTC) - datetime.fromisoformat(stamp) >= CONFIRM_AFTER
 
 
 def check_postings(store: Store, statuses: tuple[str, ...] = CHECKED,
@@ -964,7 +964,7 @@ def _spread(entries: list[Entry], now: datetime | None = None) -> list[Entry]:
     """Ranked entries reordered so one company's high scores don't fill the top: the newer jobs first, then the
     stale ones (see _stale), each company's first PER_COMPANY of them; then every company's others, in the same
     order. Each part keeps the rank order."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     stale = {id(e): _stale(e, now) for e in entries}
     ordered = sorted(entries, key=lambda e: stale[id(e)])  # stable: the rank order within each
     count: dict[str, int] = {}

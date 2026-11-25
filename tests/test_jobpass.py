@@ -2,7 +2,7 @@
 gets what the per-tab passes it replaced gave."""
 
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import yaml
@@ -12,7 +12,7 @@ from jobwatch.filters import KINDS, reject_reason, rejection, relevance
 from jobwatch.models import Job
 from jobwatch.store import Store
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 FIT = {"score": 40, "must_haves_met": 1, "must_haves_total": 3, "gaps": [], "summary": ""}
 
 

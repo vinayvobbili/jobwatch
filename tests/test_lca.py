@@ -3,7 +3,7 @@ the test, and nothing reaches the network."""
 
 import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -167,7 +167,7 @@ def test_a_failed_update_keeps_the_old_cache(cache, tmp_path):
 
 def test_the_cache_is_stale_after_30_days_only_once_it_exists(cache, tmp_path):
     path, *_ = cache
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     assert not lca.stale(path, now) and lca.stale(path, now + timedelta(days=31))
     assert not lca.stale(tmp_path / "never.db")
     assert lca.Index.open(tmp_path / "never.db") is None
@@ -382,7 +382,7 @@ def test_the_schedule_refreshes_an_old_cache_once_a_day_at_most(cache, watchlist
     refresher = ui.Refresher(app)
     calls = []
     monkeypatch.setattr(lca, "update", lambda path, say=print, **kw: calls.append(path) or {"rows": 7})
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     assert not refresher.refresh_lca(now) and calls == []  # fresh
     assert refresher.refresh_lca(now + timedelta(days=31)) and calls == [tmp_path / "lca.db"]
     assert not refresher.refresh_lca(now + timedelta(days=31, hours=2))  # not again within a day
@@ -392,4 +392,4 @@ def test_the_schedule_refreshes_an_old_cache_once_a_day_at_most(cache, watchlist
 def test_without_a_cache_the_schedule_downloads_nothing(watchlist, monkeypatch):
     refresher = ui.Refresher(ui.App(watchlist, background=False))
     monkeypatch.setattr(lca, "update", lambda *a, **k: pytest.fail("downloaded without being asked"))
-    assert not refresher.refresh_lca(datetime.now(timezone.utc) + timedelta(days=90))
+    assert not refresher.refresh_lca(datetime.now(UTC) + timedelta(days=90))

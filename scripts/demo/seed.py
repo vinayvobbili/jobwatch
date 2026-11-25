@@ -14,7 +14,7 @@ import argparse
 import csv
 import json
 import shutil
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from jobwatch import logos
@@ -80,7 +80,7 @@ def posting(intro: str, do: list[str], need: list[str], nice: list[str]) -> str:
     return "\n".join(lines)
 
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 def job(source, board, name, id_, title, locs, lo, hi, age, desc, dept="Engineering"):
@@ -319,7 +319,7 @@ def settle_dates(store: Store):
                 store.db.execute("UPDATE jobs SET first_seen=? WHERE key=?", (seen.isoformat(), job_.key))
     store.record_fetch(len(BOARDS), sum(map(len, BOARDS.values())), 6, {}, {})
     with store.db:
-        three_hours_ago = (local - timedelta(hours=3)).astimezone(timezone.utc)
+        three_hours_ago = (local - timedelta(hours=3)).astimezone(UTC)
         store.db.execute("UPDATE fetches SET at=?", (three_hours_ago.isoformat(),))
 
 

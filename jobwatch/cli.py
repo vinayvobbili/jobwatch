@@ -13,7 +13,7 @@ import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -730,7 +730,7 @@ def cmd_hidden(args, cfg, store):
     if args.since:
         if not (ago := duration(args.since)):
             raise SystemExit(f"jobwatch: --since looks like 6h, 90m or 1d, got {args.since!r}")
-        since = datetime.now(timezone.utc) - ago
+        since = datetime.now(UTC) - ago
     h = hidden(cfg, store, args.kind or "", args.limit, since, args.source or "")
     if args.format == "json":
         print(json.dumps(h, indent=2, ensure_ascii=False))

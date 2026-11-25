@@ -1,7 +1,7 @@
 """Expected pay from Levels.fyi. The pages here are made up (tests/fixtures/levels), and nothing reaches the network."""
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -163,7 +163,7 @@ ACME = "companies/acme/salaries/software-engineer"
 
 
 def _later(store, get, robots, hours, **kw):
-    return levels.Reader(store, 10, get=get, robots=robots, now=datetime.now(timezone.utc) + timedelta(hours=hours),
+    return levels.Reader(store, 10, get=get, robots=robots, now=datetime.now(UTC) + timedelta(hours=hours),
                          **kw)
 
 
@@ -206,7 +206,7 @@ def test_an_empty_answer_is_asked_again_after_hours(store):
 def test_an_old_empty_answer_is_not_known_yet_without_a_budget(store):
     store.save_pay_page(f"{levels.SITE}/{BLANK}.md", "")
     store.save_pay_page(f"{levels.SITE}/{NOBODY}.md", "", gone=True)
-    old = levels.Reader(store, 0, get=FakeWeb({}), now=datetime.now(timezone.utc) + timedelta(hours=7))
+    old = levels.Reader(store, 0, get=FakeWeb({}), now=datetime.now(UTC) + timedelta(hours=7))
     assert old.page(BLANK) is None and old.page(NOBODY) == ""
 
 
@@ -215,7 +215,7 @@ def test_show_retries_an_empty_answer_an_hour_old(store, tmp_path, monkeypatch):
     s.write_text("companies: [greenhouse:acme]\nstate: state.db\npay: {levels: true, years: 20}\n")  # `store`'s
     cfg = config.load(s)
     store.save_pay_page(SE.format("acme") + ".md", "")
-    store.db.execute("UPDATE pay_pages SET fetched_at=?", ((datetime.now(timezone.utc) - timedelta(hours=2))
+    store.db.execute("UPDATE pay_pages SET fetched_at=?", ((datetime.now(UTC) - timedelta(hours=2))
                                                            .isoformat(),))
     get = FakeWeb(site())
     monkeypatch.setattr(sources, "get_text", get)
@@ -273,7 +273,7 @@ def test_a_refusal_stops_asking_for_a_day_and_says_so(store):
     asked = len(get.calls)
     later = levels.Reader(store, 10, get=get)
     assert levels.estimate(job(), Pay(levels=True), None, later) == levels.REFUSED and len(get.calls) == asked
-    day_on = datetime.now(timezone.utc) + timedelta(days=1, hours=1)
+    day_on = datetime.now(UTC) + timedelta(days=1, hours=1)
     tomorrow = levels.Reader(store, 10, get=FakeWeb(site()), now=day_on)
     assert not tomorrow.refused
     assert isinstance(levels.estimate(job(), Pay(levels=True), None, tomorrow), levels.Estimate)

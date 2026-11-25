@@ -5,7 +5,7 @@ import asyncio
 import hashlib
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -178,7 +178,7 @@ def test_a_req_applied_to_and_closed_that_comes_back_shows_even_with_its_old_pos
     store = Store(cfg.state)
     app = store.add("Initech", "Solutions Engineer (61542)", applied="2026-03-02")
     store.set_status([app.key], "rejected")
-    back = board_job("61542", posted=datetime(2026, 3, 18, tzinfo=timezone.utc), locations=["Denver, CO"])
+    back = board_job("61542", posted=datetime(2026, 3, 18, tzinfo=UTC), locations=["Denver, CO"])
     store.sync("avature", AVATURE, [back])
     dupes.record(store, [back])
     entries = {e.job.key: e for e in build_digest(cfg, store, include_seen=True).entries}

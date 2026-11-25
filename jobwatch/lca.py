@@ -23,7 +23,7 @@ import sqlite3
 import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -221,7 +221,7 @@ def stale(path: Path, now: datetime | None = None) -> bool:
             db.close()
     except sqlite3.Error:
         return True
-    return not row or (now or datetime.now(timezone.utc)) - datetime.fromisoformat(row[0]) >= REFRESH
+    return not row or (now or datetime.now(UTC)) - datetime.fromisoformat(row[0]) >= REFRESH
 
 
 def update(path: Path, say=print, get_text=None, fetch=None, robots=None, pause: float | None = None) -> dict:
@@ -263,7 +263,7 @@ def update(path: Path, say=print, get_text=None, fetch=None, robots=None, pause:
             say(f"  FY{fy} Q{q}: {size / 1e6:,.0f} MB read, {n:,} certified full-time filings kept")
             done.append({"fy": fy, "quarter": q, "url": url, "bytes": size, "rows": n})
         db.execute("CREATE INDEX filings_ekey ON filings (ekey)")
-        db.execute("INSERT INTO meta VALUES ('updated', ?)", (datetime.now(timezone.utc).isoformat(),))
+        db.execute("INSERT INTO meta VALUES ('updated', ?)", (datetime.now(UTC).isoformat(),))
         db.commit()
         rows = db.execute("SELECT COUNT(*) FROM filings").fetchone()[0]
     except BaseException:

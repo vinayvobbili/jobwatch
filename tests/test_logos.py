@@ -1,6 +1,6 @@
 """Company logos (logos.py): the company's site from its jobs, the icon from the site, and the page's /logo/ route."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
 import pytest
@@ -132,7 +132,7 @@ def test_look_up_keeps_what_it_found_and_waits_before_asking_again(tmp_path, mon
     asked = len(get.calls)
     assert logos.look_up(store, ["Acme"], [job()], **kw) == [] and len(get.calls) == asked
     store.save_logo("globex", "", "", b"")
-    later = datetime.now(timezone.utc) + logos.MISSING + timedelta(hours=1)
+    later = datetime.now(UTC) + logos.MISSING + timedelta(hours=1)
     assert not logos.due(store.logo("globex")) and logos.due(store.logo("globex"), later)
     assert not logos.due(store.logo("acme"), later) and logos.due(None)
     store.close()

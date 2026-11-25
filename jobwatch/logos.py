@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 import time
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -183,7 +183,7 @@ def due(kept, now: datetime | None = None) -> bool:
     if not kept:
         return True
     _, _, body, at = kept
-    return (now or datetime.now(timezone.utc)) - at >= (FRESH if body else MISSING)
+    return (now or datetime.now(UTC)) - at >= (FRESH if body else MISSING)
 
 
 def look_up(store, names: list[str], jobs: list[Job], **kw) -> list[str]:

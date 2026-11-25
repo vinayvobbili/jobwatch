@@ -2,7 +2,7 @@
 the company is worth watching; slow boards are read less often; a board that stops answering is said once. No
 network: the boards are canned (the `web` fixture)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import yaml
@@ -17,7 +17,7 @@ HOOLI = "https://api.lever.co/v0/postings/hooli?mode=json"
 UMBRELLA = "https://boards-api.greenhouse.io/v1/boards/umbrella/jobs?content=true"
 JIBE = "https://careers.wayne.example/api/jobs?page=1&limit=100"
 ACME = "https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true"
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 def lever_job(title):

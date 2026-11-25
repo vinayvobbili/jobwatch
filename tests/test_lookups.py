@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -189,7 +189,7 @@ def test_find_without_roles_lists_none(web, capsys):
 
 def test_roles_of_a_searched_board_are_searched_and_read_in_full(monkeypatch):
     stub = Job(source="workday", company="x.wd5/Ext", id="1", title="Agent Engineer", url="", salary_min=150000,
-               salary_max=180000, posted=datetime(2026, 9, 1, tzinfo=timezone.utc))
+               salary_max=180000, posted=datetime(2026, 9, 1, tzinfo=UTC))
     seen = {}
 
     def fake(source, board, get=None, search=(), wanted=None, known=None, cap=0):

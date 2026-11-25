@@ -1,6 +1,6 @@
 """`jobwatch prune`: old jobs nobody acted on shrink, and nothing a person touched changes."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -8,7 +8,7 @@ from jobwatch import prune
 from jobwatch.models import Job
 from jobwatch.store import Store
 
-LONG_AGO = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+LONG_AGO = (datetime.now(UTC) - timedelta(days=90)).isoformat()
 
 
 def job(id_: str, title: str = "Engineer") -> Job:
@@ -50,7 +50,7 @@ def test_a_closed_old_job_is_deleted_and_an_open_old_one_is_slimmed(store):
 
 def test_a_job_closed_only_lately_is_slimmed_not_deleted_and_old_dated_jobs_count_by_posting_date(store):
     old_posted = job("1")
-    old_posted.posted = datetime.now(timezone.utc) - timedelta(days=90)
+    old_posted.posted = datetime.now(UTC) - timedelta(days=90)
     store.sync("lever", "globex", [old_posted, job("2")])
     store.sync("lever", "globex", [job("2")])  # 1 closed just now; first seen just now, but posted 90 days ago
     p = prune.plan(store)

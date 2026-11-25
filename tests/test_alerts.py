@@ -8,7 +8,7 @@ import io
 import json
 import re
 import subprocess
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -812,7 +812,7 @@ def test_the_page_reads_the_mailbox_between_checks(tmp_path, watchlist, web, mon
     monkeypatch.setattr(alerts, "intake", functools.partial(alerts.intake, follow=False))  # no links read
     monkeypatch.setattr(ui, "fetch_all", lambda *a, **k: pytest.fail("checked the boards"))
     refresher = ui.Refresher(ui.App(path, background=False))
-    start = datetime.now(timezone.utc)
+    start = datetime.now(UTC)
     assert refresher.mail_due(start)  # none read yet
     assert refresher.read_mail(start) > 0
     assert not refresher.mail_due(start + timedelta(hours=1, minutes=59))
@@ -829,7 +829,7 @@ def test_a_check_counts_as_a_read_of_the_mailbox(tmp_path, watchlist, web, monke
     refresher = ui.Refresher(ui.App(path, background=False))
     refresher.fetch()
     assert not refresher.mail_due()
-    assert refresher.mail_due(datetime.now(timezone.utc) + timedelta(hours=2))
+    assert refresher.mail_due(datetime.now(UTC) + timedelta(hours=2))
 
 
 def test_without_every_the_mailbox_waits_for_a_check(tmp_path, watchlist):

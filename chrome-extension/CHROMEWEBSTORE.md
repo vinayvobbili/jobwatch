@@ -301,7 +301,7 @@ The extension does nothing without the jobwatch app on the same computer, so the
 (no account or sign-in is needed):
 
 The extension fills job application forms from the jobwatch app, which runs on the same computer (free, open source). To try it:
-1. Install Python 3.10 or later, then run: pip install jobwatch
+1. Install Python 3.11 or later, then run: pip install jobwatch
 2. Run: jobwatch init, then: jobwatch. It opens http://127.0.0.1:8765.
 3. In jobwatch, open Settings > Applying and fill in a few applicant details (any made-up name, email and phone). Then open Settings > Browser extension and copy the token.
 4. In the extension's options (right-click its icon > Options), paste the token and press Test. It says "Connected to jobwatch".

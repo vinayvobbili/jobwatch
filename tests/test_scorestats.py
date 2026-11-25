@@ -2,7 +2,7 @@
 the tokens recorded for each run (priced when read), with scores made before that estimated."""
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -31,7 +31,7 @@ def _score(store, key, backend, model, days_ago=0, **more):
     with store.db:
         store.db.execute("INSERT INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)",
                          (key, "cv.md:1", json.dumps({**FIT, "scored_by": f"{backend}:{model}", **more}),
-                          at.astimezone(timezone.utc).isoformat()))
+                          at.astimezone(UTC).isoformat()))
 
 
 def _cfg(tmp_path, **scoring):

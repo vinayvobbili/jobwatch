@@ -33,7 +33,7 @@ import json
 import re
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from importlib import resources
 from pathlib import Path
 
@@ -202,7 +202,7 @@ def take(cfg, store: Store, recs: list[Record], dry_run: bool = False, page=None
     """Take in a list's jobs (see the module's docstring). dry_run: nothing is recorded (not even the history);
     the result says what would be. follow=False looks for no boards: each new job is tracked as listed. The boards
     are looked for `budget` seconds at most; a company not done by then is tracked as listed (Result.cut)."""
-    result = Result(dry_run=dry_run, at=(now or datetime.now(timezone.utc)).isoformat(timespec="seconds"))
+    result = Result(dry_run=dry_run, at=(now or datetime.now(UTC)).isoformat(timespec="seconds"))
     taker = alerts.Taker(cfg, store, alerts.Intake(), follow=follow, dry_run=dry_run, page=page, every=True)
     # The companies of the jobs not tracked yet have their boards looked for at once: the slow part
     cut: set[str] = set()
@@ -367,7 +367,7 @@ def summary(r: Result) -> str:
 
 def _utc(stamp: str) -> datetime:
     at = datetime.fromisoformat(stamp)
-    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)  # an old row with no offset is UTC too
+    return at if at.tzinfo else at.replace(tzinfo=UTC)  # an old row with no offset is UTC too
 
 
 def _local_when(stamp: str) -> str:
@@ -388,7 +388,7 @@ def history_text(runs: list[dict], now: datetime | None = None) -> str:
                    f"{h['tracked']:>7}  {h['earlier']:>7}  {h['added']:>5}  {h['unplaced']:>8}  "
                    # worked out here: older rows kept another figure
                    f"{_pct(h['tracked'] / h['seen'] if h['seen'] else None):>8}")
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     for src in dict.fromkeys(h["source"] for h in runs):
         mine = [h for h in runs if h["source"] == src]
         week = [h for h in mine if _utc(h["at"]) >= now - timedelta(days=7)]

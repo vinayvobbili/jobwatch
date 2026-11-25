@@ -1,7 +1,7 @@
 """What the CLI reports about scoring and the page's work, read from the store: `scored` (the scores made from a
 day on and who made each), `activity` (the page's Activity list) and `score --cost` (Settings' Fit scoring panel)."""
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 import yaml
@@ -33,7 +33,7 @@ def _score(store, cfg, i, score, by, at):
     with store.db:
         store.db.execute("INSERT INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)",
                          (f"greenhouse:initech:{i}", resume_id(cfg.resume, cfg.prompts),
-                          f'{{"score": {score}, "scored_by": "{by}"}}', at.astimezone(timezone.utc).isoformat()))
+                          f'{{"score": {score}, "scored_by": "{by}"}}', at.astimezone(UTC).isoformat()))
 
 
 def test_scored_lists_the_days_scores_best_first_with_who_made_each(setup, capsys):

@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .models import Job
@@ -364,7 +364,7 @@ def paused_until(error: str, now: datetime | None = None) -> tuple[str, datetime
     """Whether a scoring failure means the step can't score for a while, and until when: out of credit or its key
     refused (an hour: credit can be bought any time), or out of quota (until the reset the error names, else an
     hour). None for a failure of one job."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if "credit balance is too low" in error or "out of credit" in error or _NO_CREDIT.search(error):
         return "out of credit", now + PAUSE
     if "refused the key" in error or "AuthenticationError" in error or "PermissionDeniedError" in error:

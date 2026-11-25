@@ -23,7 +23,7 @@ from __future__ import annotations
 import html as _html
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from . import ics, rounds
@@ -201,7 +201,7 @@ def meeting_dict(next_step: str | None, today: date | None = None, round_id: str
     """A next step's interview time for the details view, or None: the next one that hasn't ended, else the last."""
     today = today or date.today()
     found = ics.meetings(next_step, today, round_id)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     m = next((m for m in found if (m.end if m.zoned else m.end.astimezone()) >= now), found[-1] if found else None)
     return m and {"start": m.start.isoformat(), "end": m.end.isoformat(), "zoned": m.zoned, "label": m.label,
                   "round_label": m.round, "day": _local_day(m).isoformat()}

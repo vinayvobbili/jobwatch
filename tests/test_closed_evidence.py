@@ -4,7 +4,7 @@ listed jobs is closed; and a notice needs two looks (and a third, at the popup).
 
 import contextvars
 import urllib.error
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -58,7 +58,7 @@ def serving(answer):
 
 def ago(store, job, hours):
     """Make the job's closed mark `hours` old."""
-    stamp = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="microseconds")
+    stamp = (datetime.now(UTC) - timedelta(hours=hours)).isoformat(timespec="microseconds")
     store.db.execute("UPDATE jobs SET closed=? WHERE key=?", (stamp, job.key))
     store.db.commit()
 

@@ -7,5 +7,5 @@
 name = "jobwatch-plugin"
 version = "0.12.0"
 description = "jobwatch's MCP server, as the Claude plugin runs it"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = ["jobwatch==0.12.0"]

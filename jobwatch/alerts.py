@@ -36,7 +36,7 @@ import subprocess
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from email.message import EmailMessage
 from email.policy import default as default_policy
 from email.utils import parseaddr
@@ -725,7 +725,7 @@ def _past(stamp) -> bool:
         return False
     if len(text) <= 10:
         when += timedelta(days=1)
-    return (when if when.tzinfo else when.replace(tzinfo=timezone.utc)) < datetime.now(timezone.utc)
+    return (when if when.tzinfo else when.replace(tzinfo=UTC)) < datetime.now(UTC)
 
 
 def page_open(job: Job, page=None, robots: Robots | None = None) -> bool | None:
@@ -779,7 +779,7 @@ def _fill(job: Job, data: dict):
         job.set_pay(*found[:2], "USD", found[2])
     try:
         posted = datetime.fromisoformat(str(data.get("datePosted", ""))[:10])
-        job.posted = posted.replace(tzinfo=timezone.utc)
+        job.posted = posted.replace(tzinfo=UTC)
     except ValueError:
         pass
 
@@ -1121,7 +1121,7 @@ def backfill(cfg, store: Store, page=None, limit: int = BACKFILL_CAP, dry_run: b
     status and notes. Up to `limit` jobs a run, none looked for within `every`. dry_run: nothing is recorded."""
     result = Backfill(dry_run=dry_run)
     resolver = _Resolver(cfg.boards, page, store)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for job, rec in store.textless_alert_jobs():
         if (rec["tried_at"] and now - datetime.fromisoformat(rec["tried_at"]) < every) or result.tried >= limit:
             result.waiting += 1
