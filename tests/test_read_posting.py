@@ -12,7 +12,7 @@ import pytest
 
 from jobwatch import filltext
 
-from .test_filltext import INDEED_PAGE, LINKEDIN_PAGE, SIGN_IN
+from .test_filltext import INDEED_PAGE, LINKEDIN_PAGE, REAL_SHAPE, SIGN_IN
 
 SCRIPT = Path(__file__).resolve().parent.parent / "chrome-extension" / "read-posting.js"
 needs_node = pytest.mark.skipif(not shutil.which("node"), reason="needs node")
@@ -49,6 +49,15 @@ console.log(JSON.stringify([R.readPage(withElement, {json.dumps(IN)}), R.readPag
     element, text = got
     assert element["text"] == "x" * 300 and element["company"] == "Initech" and element["id"] == "9cf96221e712e37e"
     assert text["text"] == filltext.posting_from_page("indeed", INDEED_PAGE).text
+
+
+@needs_node
+def test_it_sees_the_closed_banner_of_a_real_page_on_both_sites(tmp_path):
+    expired = INDEED_PAGE.replace("Job details\n", "Job details\nThis job has expired on Indeed\n")
+    got = run_js(tmp_path, f"""const page = (t) => ({{ body: {{ innerText: t }}, querySelector: () => null }});
+console.log(JSON.stringify([R.readPage(page({json.dumps(REAL_SHAPE)}), {json.dumps(LI)}).closed,
+  R.readPage(page({json.dumps(expired)}), {json.dumps(IN)}).closed, R.readPage(page({json.dumps(INDEED_PAGE)}), {json.dumps(IN)}).closed]));""")
+    assert got == [True, True, False]
 
 
 @needs_node

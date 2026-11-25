@@ -6,7 +6,7 @@ import json
 import pytest
 
 from jobwatch import config
-from jobwatch.store import Store
+from jobwatch.store import Store, closed_state
 from jobwatch.web import App
 
 from .conftest import TOKEN, request
@@ -135,3 +135,54 @@ def test_the_extension_posts_it_with_its_token(server):
     assert status == 200 and json.loads(data)["added"]
     status, data = request(server, "POST", "/ext/posting", {}, headers=ok)
     assert status == 400 and "company and title" in json.loads(data)["error"]
+
+
+CLOSED = {"linkedin": "4000000001", "company": "Globex", "title": "Machine Learning Engineer",
+          "text": "Train machine learning models for Globex.", "closed": True}
+
+
+def test_a_closed_page_marks_a_job_that_already_has_its_text(app):
+    """LinkedIn's "No longer accepting applications" must show even when jobwatch had the text already (a job read
+    or saved before): the job is marked closed, with a note, and the answer says so."""
+    key = _alert_job(app)
+    app.ext_posting({"linkedin": "4000000001", "company": "Globex", "title": "Machine Learning Engineer",
+                     "text": "Train machine learning models for Globex."})
+    assert not _job(app, key)[1]["closed"]
+    got = app.ext_posting(CLOSED)
+    assert got["key"] == key and got["closed"] is True and "LinkedIn says this posting is closed" in got["said"]
+    rec = _job(app, key)[1]
+    assert rec["closed"] and closed_state(rec) == "closed"
+    assert "LinkedIn says it is not accepting applications any more" in rec["note"]
+    again = app.ext_posting(CLOSED)  # a second read adds nothing new, and doesn't add the job twice
+    assert again["key"] == key and again["closed"] is True
+    assert _job(app, key)[1]["note"].count("not accepting applications") == 1
+
+
+def test_a_closed_page_marks_a_job_still_without_text_and_a_skipped_one(app):
+    key = _alert_job(app)
+    store = Store(config.load(app.path).state)
+    store.set_status([key], "skipped")
+    store.close()
+    got = app.ext_posting(CLOSED)
+    assert got["key"] == key and got["closed"] and got["has_text"] and got["where"] == "applied"
+    job, rec = _job(app, key)
+    assert rec["status"] == "skipped" and closed_state(rec) == "closed" and job.description.startswith("Train")
+
+
+def test_a_closed_page_for_a_job_jobwatch_hasnt_got_adds_it_closed(app):
+    got = app.ext_posting({**CLOSED, "linkedin": "4000000077", "company": "Initech"})
+    assert got["added"] and got["closed"] and "LinkedIn says this posting is closed" in got["said"]
+    assert closed_state(_job(app, got["key"])[1]) == "closed"
+
+
+def test_an_indeed_closed_page_says_indeed(app):
+    got = app.ext_posting({"indeed": "ab12cd34ef56ab78", "company": "Globex", "title": "SRE", "text": "Run Globex.",
+                           "closed": True})
+    assert "Indeed says this posting is closed" in got["said"]
+    assert "Indeed says it is not accepting" in _job(app, got["key"])[1]["note"]
+
+
+def test_an_open_page_marks_nothing(app):
+    key = _alert_job(app)
+    got = app.ext_posting({**CLOSED, "closed": False})
+    assert not got.get("closed") and "closed" not in got["said"] and not _job(app, key)[1]["closed"]

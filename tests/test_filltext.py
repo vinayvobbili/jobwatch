@@ -5,7 +5,7 @@ reader). Every page and company is made up."""
 import pytest
 
 from jobwatch import alerts, config, filltext
-from jobwatch.store import Store
+from jobwatch.store import Store, closed_state
 
 from .test_alerts import emailed, posting_of, umbrella_board
 
@@ -174,6 +174,53 @@ def test_only_new_shown_and_queued_jobs_without_text_are_looked_at(web, watchlis
     store.set_status([skipped], "skipped")
     assert filltext.fill_text(cfg, store) == []
     assert "has its posting text" in filltext.summary([])
+
+
+REAL_SHAPE = """Initech
+
+Staff Engineer, Security Operations
+
+United States · 1 month ago · 34 people clicked apply
+
+Promoted by hirer · Responses managed off LinkedIn
+
+$150K/yr - $190K/yr
+Remote
+Full-time
+
+ No longer accepting applications.
+
+Use AI to assess how you fit
+
+About the job
+
+For our client, Initech, we are looking for a Staff Engineer to own security operations tooling. You will build
+detections in Python, run the incident tooling, and work with the platform team on the hardest cases every week.
+
+Set alert for similar jobs
+"""
+
+
+def test_the_closed_line_of_a_real_banner_is_read():
+    """The banner's line comes after the pay chips with the icon's text around it; a trailing dot or a stray space
+    doesn't hide it, and Indeed's own wording counts too."""
+    assert filltext.posting_from_page("linkedin", REAL_SHAPE).closed
+    expired = INDEED_PAGE.replace("Job details\n", "Job details\nThis job has expired on Indeed\n")
+    assert filltext.posting_from_page("indeed", expired).closed
+    assert not filltext.posting_from_page("indeed", INDEED_PAGE).closed
+    # the same words inside the description are not the banner
+    inside = REAL_SHAPE.replace(" No longer accepting applications.", "").replace(
+        "About the job\n\n", "About the job\n\nNo longer accepting applications\n\n")
+    assert not filltext.posting_from_page("linkedin", inside).closed
+
+
+def test_saving_a_closed_page_marks_the_job_closed(watchlist):
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    key = emailed(store, "Initech", "Platform Engineer")
+    filltext.save_page_posting(store, key, filltext.posting_from_page("linkedin", LINKEDIN_PAGE))
+    rec = store.find(key)[1]
+    assert closed_state(rec) == "closed" and "LinkedIn says it is not accepting applications" in rec["note"]
 
 
 def test_saving_a_page_the_browser_read(watchlist):

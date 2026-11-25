@@ -37,8 +37,11 @@ _LINKEDIN_END = re.compile(r"^(?:[….]{1,3}\s*more|Benefits found in job post|S
                            r"About the company|More jobs)\s*$", re.M)
 _INDEED_START = re.compile(r"^Full job description\s*$", re.M)
 _INDEED_END = re.compile(r"^(?:Report job|Hiring Lab|Career advice)\s*$", re.M)
-_LINKEDIN_CLOSED = re.compile(r"^(?:Not currently accepting applications|No longer accepting applications)\s*$",
-                              re.M | re.I)
+# The banner line saying the posting is closed (LinkedIn's red line under the title, Indeed's "expired" notice), on a
+# line of its own: a stray space, icon text or a closing dot around it doesn't hide it. chrome-extension/
+# read-posting.js has the same pattern.
+_CLOSED = re.compile(r"^[^\w\n]*(?:Not currently accepting applications|No longer accepting applications|"
+                     r"This job (?:has expired(?: on Indeed)?|is no longer available))[^\w\n]*$", re.M | re.I)
 _WALL = [
     (re.compile(r"verify you are (?:a )?human|are you a robot|captcha|security check|just a moment|"
                 r"additional verification required", re.I), "it shows a captcha or a security check"),
@@ -81,8 +84,7 @@ def posting_from_page(site: str, page_text: str) -> PagePosting:
         e = end.search(rest)
         text = (rest[:e.start()] if e else rest).strip()
         if len(text) >= MIN_TEXT:
-            closed = site == "linkedin" and bool(_LINKEDIN_CLOSED.search(page_text[:s.start()]))
-            return PagePosting(site, text, closed)
+            return PagePosting(site, text, bool(_CLOSED.search(page_text[:s.start()])))
     for pattern, why in _WALL:
         if pattern.search(page_text[:3000]):
             raise PageError(f"{SITES[site]} didn't show the posting: {why}")
@@ -173,7 +175,19 @@ def save_page_posting(store: Store, key: str, read: PagePosting):
                   f"{SITES[read.site]} page in the browser", jobs=[key])
     store.add_note(key, f"Posting text read from the {SITES[read.site]} page, in the person's own browser")
     if read.closed:
-        store.add_note(key, f"{SITES[read.site]} says it is not accepting applications any more")
+        mark_closed(store, key, SITES[read.site])
+
+
+def mark_closed(store: Store, key: str, site: str) -> bool:
+    """The site's own page, read in the person's browser, says the posting is closed: mark the job closed (that is
+    positive evidence, so the mark counts as confirmed and the card shows it) with a note saying who said so, once.
+    Returns whether the job wasn't marked closed before."""
+    fresh = store.set_closed(key, True)
+    store.confirm_closed([key])
+    note = f"{site} says it is not accepting applications any more"
+    if not (store.find(key)[1].get("note") or "").count(note):
+        store.add_note(key, note)
+    return fresh
 
 
 def summary(outcomes: list[Outcome], dry_run: bool = False) -> str:

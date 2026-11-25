@@ -12,6 +12,10 @@
 - Today opens on Posted within 7d (it was Any). A choice you make there, Any included, is kept in this browser, Clear
   filters goes back to 7d, and `display.today_defaults.posted` (or Settings) sets the default (0 is Any). The header
   says how many postings the chip hides, and an empty Today offers Widen to 14 days or Show any age.
+- Fix: the extension's Read posting now marks a job closed (the card's closed badge, a note, and the on-page banner in
+  amber) when the LinkedIn or Indeed page says the posting is closed. It was dropped when jobwatch already had the
+  posting's text, when the job was added by that read, and when the job was skipped; the banner line is also found with
+  a stray space, icon text or a closing dot around it.
 - Fix: `suggest`, `find` and the MCP `find_board` no longer abort with "'idna' codec can't encode characters: label
   too long" when a company name makes a host label over 63 characters; that guess now counts as no board found.
 - MCP: `mark_job` with status `applied` asks for proof of submission through elicitation (confirmation page seen,

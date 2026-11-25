@@ -34,7 +34,7 @@ sites show a posting only to a signed-in browser. When you press **Read posting*
 opens that job's page in a new tab with `#jobwatch-read` added to its address. The extension reads a LinkedIn or Indeed page
 only when its address ends that way, which only that button adds (on every other page of those sites the script does nothing).
 On that page it reads the job's description (its text, without the rest of the page), the job's title and company as the
-page shows them, and whether LinkedIn says it is no longer accepting applications. It gives them, with the job's number from the
+page shows them, and whether the site says the posting is closed (LinkedIn's "no longer accepting applications", Indeed's "expired"). It gives them, with the job's number from the
 address, to your own jobwatch, shows a small banner on the page, and closes the tab. Nothing else on the page is read, nothing
 is kept by the extension, and it never clicks anything. If the page asks you to sign in or shows a captcha, the banner says so and
 nothing is sent.

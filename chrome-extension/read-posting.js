@@ -20,12 +20,15 @@
   const WAIT_MS = 20000; // for the page to draw the description
   const POLL_MS = 500;
   const CLOSE_MS = 2500; // the banner is on screen this long before the tab closes
+  const CLOSE_CLOSED_MS = 6000; // ... and this long when the posting is closed
 
   const LINKEDIN_START = /^About the job\s*$/m;
   const LINKEDIN_END = /^(?:[….]{1,3}\s*more|Benefits found in job post|Set alert for similar jobs|Show more|About the company|More jobs)\s*$/m;
   const INDEED_START = /^Full job description\s*$/m;
   const INDEED_END = /^(?:Report job|Hiring Lab|Career advice)\s*$/m;
-  const CLOSED = /^(?:Not currently accepting applications|No longer accepting applications)\s*$/im;
+  // The banner line saying the posting is closed (LinkedIn's red line under the title, Indeed's expired notice), on a line
+  // of its own; a stray space, icon text or a closing dot around it doesn't hide it. Same as jobwatch/filltext.py's _CLOSED.
+  const CLOSED = /^[^\w\n]*(?:Not currently accepting applications|No longer accepting applications|This job (?:has expired(?: on Indeed)?|is no longer available))[^\w\n]*$/im;
   const WALLS = [
     [/verify you are (?:a )?human|are you a robot|captcha|security check|just a moment|additional verification required/i, 'it shows a captcha or a security check'],
     [/\b(?:sign in|log in|join now|authwall)\b/i, 'it asks to sign in'],
@@ -62,7 +65,7 @@
       const rest = pageText.slice(s.index + s[0].length);
       const e = end.exec(rest);
       const text = (e ? rest.slice(0, e.index) : rest).trim();
-      if (text.length >= MIN_TEXT) return { text, closed: site === 'linkedin' && CLOSED.test(pageText.slice(0, s.index)) };
+      if (text.length >= MIN_TEXT) return { text, closed: CLOSED.test(pageText.slice(0, s.index)) };
     }
     for (const [pattern, why] of WALLS) {
       if (pattern.test(pageText.slice(0, 3000))) return { error: `the page doesn't show the posting: ${why}` };
@@ -81,7 +84,8 @@
     if (!id) return { error: "couldn't tell which job this is from its address" };
     // Indeed keeps the description in one element; LinkedIn's class names change, so its text is cut by its headings.
     const own = site === 'indeed' ? textOf(doc.querySelector('#jobDescriptionText')) : '';
-    const read = own.length >= MIN_TEXT ? { text: own, closed: false } : postingFromText(site, String((doc.body && doc.body.innerText) || ''));
+    const page = String((doc.body && doc.body.innerText) || '');
+    const read = own.length >= MIN_TEXT ? { text: own, closed: CLOSED.test(page.replace(own, '')) } : postingFromText(site, page);
     if (read.error) return { error: read.error };
     const title = textOf(doc.querySelector('h1')).split('\n')[0];
     const company = textOf(doc.querySelector(site === 'indeed'
@@ -130,8 +134,9 @@
       return banner(`couldn't reach the extension: ${e.message}`, false);
     }
     if (!r || !r.ok) return banner((r && r.error) || 'jobwatch did not answer', false);
-    banner(r.said || 'posting saved', true);
-    setTimeout(() => window.close(), CLOSE_MS);
+    // A closed posting is said in amber and stays on screen longer: it is the thing the person most needs to see.
+    banner(r.said || 'posting saved', !(r.closed || read.closed));
+    setTimeout(() => window.close(), r.closed || read.closed ? CLOSE_CLOSED_MS : CLOSE_MS);
   }
   run();
 })(typeof globalThis !== 'undefined' ? globalThis : this);

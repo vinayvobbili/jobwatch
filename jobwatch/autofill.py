@@ -14,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import answers, chat, linkedin, sources, stories, tailor
+from . import answers, chat, filltext, linkedin, sources, stories, tailor
 from .config import Config
 from .models import Job
 from .resume import resume_text
@@ -362,14 +362,16 @@ def _listing(store: Store, pid: str, links: list[str], company: str, title: str,
     where it was found) or Indeed key (its link), else the one kept at the company's link, else the same company
     and title (a text-less one first)."""
     rows = store.jobs()
+    # a job's own id finds it even once it is marked closed (a page that says so is read again), never a second copy
+    every = store.jobs(include_closed=True) if pid or jk else rows
     if pid:
         seen = re.compile(rf"linkedin\.com/jobs/view/\S*{pid}\b")
-        for job, rec in rows:
+        for job, rec in every:
             if linkedin.job_id(job.url) == pid or seen.search(rec.get("note") or ""):
                 return job, rec
     if jk:
         seen = re.compile(rf"indeed\.com/\S*[?&]jk={jk}\b")
-        for job, rec in rows:
+        for job, rec in every:
             if seen.search(job.url or "") or seen.search(rec.get("note") or ""):
                 return job, rec
     for link in links:
@@ -403,7 +405,18 @@ def posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
     its key, status and notes), or added when jobwatch has none. The text is read from the company's posting when
     page_url (the company's page the person is on) is on a supported board (as for a link added by hand), else it is
     the `text` that page showed. `linkedin` (the job's id or address) finds the job; the LinkedIn page itself is
-    never read. `said` tells what happened; `where` is the page's tab the job is on."""
+    never read. `said` tells what happened; `where` is the page's tab the job is on. `closed`: the page said the
+    posting is closed, which marks the job closed whatever its status or text (`closed` in the answer, and `said`)."""
+    got = _posting(cfg, store, body, get)
+    if body.get("closed"):
+        site = filltext.SITES["indeed" if not body.get("linkedin") and body.get("indeed") else "linkedin"]
+        filltext.mark_closed(store, got["key"], site)
+        got["closed"] = True
+        got["said"] += f"; {site} says this posting is closed"
+    return got
+
+
+def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
     given = str(body.get("linkedin") or "").strip()
     pid = linkedin.job_id(given) or (given if given.isdigit() else "")
     company, title = str(body.get("company") or "").strip(), str(body.get("title") or "").strip()
@@ -434,8 +447,6 @@ def posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
         store.set_description(job.key, read.description if read else text, read)
         if not read:
             store.add_note(job.key, "Posting text sent from the page you had open, by the browser extension")
-            if body.get("closed"):
-                store.add_note(job.key, "The site says it is not accepting applications any more")
         return _posted(store, store.find(job.key)[0], _said(read or job), False)
     for link in links:
         try:
