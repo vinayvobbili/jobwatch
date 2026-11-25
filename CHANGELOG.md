@@ -39,6 +39,9 @@
   in the job's note (with its pay estimate), and a job not found on a board has no link and a note saying to apply on
   the company's own site. The extension's button doesn't offer Ladders yet.
 - Fix: a job with no link no longer reads as a repeat of the one before it when a list or alert is taken in.
+- Today's **No pay clue** choice now starts on Hide: with a Top pay chip on ($175K+, say), jobs no source has a pay
+  figure for stay out instead of listing after the ones with a figure. Show is one click away and, like Hide, is kept
+  in the browser. A choice you already made (the page keeps only clicks, never its default) stays as it was.
 - Fix: Read posting no longer fails with "unknown message readInBackground" when the extension is older than the page
   (the Web Store build lags, or an unpacked copy was not reloaded). The extension tells the page what it can do; with an
   older one the posting opens in a tab in front as before, the card still fills in when you come back (Today keeps its

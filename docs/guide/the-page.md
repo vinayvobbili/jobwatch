@@ -52,7 +52,9 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
   a posting with no date counts as 14 days old. `display.age_decay: {grace_days: 7, per_day: 0.5, cutoff_days:
   120}` sets these (`per_day: 0` turns it off; they're in Settings under Today & display too), and
   `jobwatch digest` and the MCP `get_digest` use the same order. A line says how many you've applied to today against your
-  pace ("Applied today: 1 of 3"). **Queue** the ones worth applying to, **Skip** the rest. While the page is
+  pace ("Applied today: 1 of 3"). With a **Top pay** chip on ($175K+ and up), a job no source has any pay figure for
+  is hidden: **No pay clue** is on Hide until you choose Show (kept in this browser; Show lists those jobs after the
+  ones with a figure). A job with only an estimated range is compared with the chip as before. **Queue** the ones worth applying to, **Skip** the rest. While the page is
   running it checks the boards by itself every 6 hours (`fetch_every` in the watchlist), and Today says when
   they were last checked. A job that disappears from its board drops off Today at the next check. **Companies
   to watch**, at the side, lists

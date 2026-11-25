@@ -170,13 +170,15 @@ def test_settings_keep_the_age_decay_and_the_posted_default(page, watchlist):
     assert page.errors == []
 
 
-@pytest.mark.parametrize("hint", ["No pay clue", "No score yet"])
-def test_the_show_hide_choices_for_unknowns_are_remembered(page, hint):
-    sync_api.expect(chip(page, hint, "Show")).to_have_class("on")
-    chip(page, hint, "Hide").click()
+@pytest.mark.parametrize(("hint", "default", "chosen"),
+                         [("No pay clue", "Hide", "Show"), ("No score yet", "Show", "Hide")])
+def test_the_show_hide_choices_for_unknowns_are_remembered(page, hint, default, chosen):
+    """Jobs with no fit score yet show until Hide is chosen; jobs with no pay clue are hidden until Show is chosen."""
+    sync_api.expect(chip(page, hint, default)).to_have_class("on")
+    chip(page, hint, chosen).click()
     page.reload()
     page.wait_for_load_state("networkidle")
-    sync_api.expect(chip(page, hint, "Hide")).to_have_class("on")
-    other = "No score yet" if hint == "No pay clue" else "No pay clue"
-    sync_api.expect(chip(page, other, "Show")).to_have_class("on")  # each has its own memory
+    sync_api.expect(chip(page, hint, chosen)).to_have_class("on")
+    other, other_default = ("No score yet", "Show") if hint == "No pay clue" else ("No pay clue", "Hide")
+    sync_api.expect(chip(page, other, other_default)).to_have_class("on")  # each has its own memory
     assert page.errors == []

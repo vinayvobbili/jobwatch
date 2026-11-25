@@ -4125,7 +4125,7 @@ function paceLine(el, p) {
 // where, fit, pay: the quick narrowing (see quickNarrow); "any" and 0 mean off.
 const todayView = { q: "", sort: remembered("today.sort", "fit"), company: "", kws: new Set(), where: "any", fit: 0, pay: 0, posted: 0, page: 1, all: false,
   noScore: remembered("today.noscore", "show") === "hide" ? "hide" : "show",  // jobs with no fit score yet, while a fit chip is on
-  noClue: remembered("today.noclue", "show") === "hide" ? "hide" : "show",  // jobs with no pay clue, while a pay chip is on
+  noClue: remembered("today.noclue", "hide") === "show" ? "show" : "hide",  // jobs with no pay clue, while a pay chip is on: Hide until chosen
   rolesOff: rolesOffKept() };
 // Today's Roles checkboxes: the kinds of work unticked, kept in this browser (a view, not a filter in the watchlist).
 function rolesOffKept() {
@@ -4173,7 +4173,8 @@ function worthChip(job) {
 // the best known pay. A job with no location or no score yet isn't hidden by that part, the same as the saved
 // filters treat them.
 // The pay chip compares its threshold with the job's best pay clue (payTop): a clue under it hides the job, one at or
-// over it keeps it. A job with no clue at all shows unless "No pay clue" is on Hide.
+// over it keeps it. A job with no clue at all is hidden by default (so a $175K+ chip lists only jobs known to pay that),
+// and shows when "No pay clue" is on Show, a choice kept in this browser.
 const payShown = (j, v) => { const t = payTop(j); return !v.pay || (t == null ? v.noClue !== "hide" : t >= v.pay); };
 // With a pay chip on, jobs with a pay clue come before the ones without, each part in the order it was in.
 const cluesFirst = (jobs, v) => !v.pay ? jobs : [...jobs.filter(j => payTop(j) != null), ...jobs.filter(j => payTop(j) == null)];
@@ -4313,7 +4314,7 @@ async function renderToday() {
     segmented([[0, "Any"], [175000, "$175K+"], [200000, "$200K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,
       k => { v.pay = k; drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px",
-      title: "Jobs no source has any pay figure for: they follow the ones with a figure while a pay chip is on" }, "No pay clue"),
+      title: "Jobs no source has any pay figure for: hidden while a pay chip is on (Hide, the default), or shown after the ones with a figure (Show)" }, "No pay clue"),
     segmented([["show", "Show"], ["hide", "Hide"]], v.noClue, k => { v.noClue = k; remember("today.noclue", k); drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "Jobs with no posting date still show" }, "Posted within"),
     segmented(POSTED.some(([n]) => n === v.posted) ? POSTED

@@ -170,6 +170,40 @@ console.log(JSON.stringify({{
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_no_pay_clue_is_hidden_under_a_pay_chip_unless_the_person_chose_show(tmp_path):
+    """With nothing saved in the browser, a $175K+ chip hides a job no source has a pay figure for; a saved "show"
+    (the person's own choice) still shows it, a saved "hide" hides it, and with no chip it never matters. Jobs with no
+    fit score still show by default."""
+    js = tmp_path / "noclue.js"
+    source = "\n".join([page_function("remembered"), page_function("rolesOffKept"), page_const("todayView"),
+                        page_const("payShown"), page_function("payTop"), page_function("paySources")])
+    js.write_text(f"""const h = (tag, attrs, ...kids) => ({{ tag, attrs: attrs || {{}}, kids: kids.flat(Infinity) }});
+const load = saved => {{  // the page's script run once against a browser holding `saved`
+  const store = new Map(Object.entries(saved).map(([k, v]) => ["jobwatch." + k, v]));
+  const localStorage = {{ getItem: k => store.get(k) ?? null }};
+  const script = {json.dumps(source)} + "; return {{ todayView, payShown }};";
+  return new Function("localStorage", "h", script)(localStorage, h);
+}};
+const blank = {{ key: "blank", salary_max: null, pay_sources: [] }};
+const posted = {{ key: "posted", salary_max: 210000 }};
+const outcome = saved => {{
+  const {{ todayView, payShown }} = load(saved);
+  const v = {{ ...todayView, pay: 175000 }};
+  return {{ noClue: v.noClue, noScore: v.noScore, blank: payShown(blank, v), posted: payShown(posted, v),
+    noChip: payShown(blank, {{ ...v, pay: 0 }}) }};
+}};
+console.log(JSON.stringify([outcome({{}}), outcome({{ "today.noclue": "show" }}),
+  outcome({{ "today.noclue": "hide" }})]));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    never_chose, chose_show, chose_hide = json.loads(r.stdout)
+    assert never_chose == {"noClue": "hide", "noScore": "show", "blank": False, "posted": True, "noChip": True}
+    assert chose_show == {"noClue": "show", "noScore": "show", "blank": True, "posted": True, "noChip": True}
+    assert chose_hide == {"noClue": "hide", "noScore": "show", "blank": False, "posted": True, "noChip": True}
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_companies_can_be_filtered_and_ticked_or_unticked_all_at_once(tmp_path):
     """Today's Companies list has a search box, and All / None act on what it shows: every name, or the matches."""
     js = tmp_path / "facets.js"
