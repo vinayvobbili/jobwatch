@@ -6,6 +6,8 @@ import pytest
 import yaml
 
 from jobwatch import config
+from jobwatch.store import Store
+from jobwatch.watch import fetch_all
 
 sync_api = pytest.importorskip("playwright.sync_api")
 
@@ -28,6 +30,18 @@ def watchlist(tmp_path):
         "companies": ["greenhouse:acme", "lever:globex"], "filters": FILTERS,
         "keywords": {"Python": 2, "LLM": 3}, "state": "state.db", "cache": "cache"}))
     return path
+
+
+@pytest.fixture
+def jobs(watchlist, web):
+    """The two boards read once, so Today has jobs: Acme's posted 3 days ago and Globex's 10 days ago. List it
+    before `page` in a test's arguments, so the page opens with them."""
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    try:
+        fetch_all(cfg, store)
+    finally:
+        store.close()
 
 
 @pytest.fixture(scope="module")
@@ -92,6 +106,67 @@ def test_today_opens_on_any_chips_unless_the_watchlist_sets_them(page, watchlist
     sync_api.expect(chip(page, "Top pay", "$175K+")).to_have_class("on")
     chip(page, "Top pay", "Any").click()  # still one click away
     sync_api.expect(chip(page, "Top pay", "Any")).to_have_class("on")
+    assert page.errors == []
+
+
+def reload(page):
+    page.reload()
+    page.wait_for_load_state("networkidle")
+
+
+def test_today_opens_on_posted_within_7d_and_a_choice_is_remembered(jobs, page):
+    sync_api.expect(chip(page, "Posted within", "7d")).to_have_class("on")
+    sync_api.expect(page.locator(".showing")).to_contain_text("posted over 7 days ago hidden")
+    sync_api.expect(page.get_by_role("button", name="Clear filters")).to_have_count(0)  # 7d is the default
+    chip(page, "Posted within", "Any").click()  # an explicit Any is a choice too
+    sync_api.expect(page.locator(".showing")).not_to_contain_text("hidden")
+    reload(page)
+    sync_api.expect(chip(page, "Posted within", "Any")).to_have_class("on")
+    page.get_by_role("button", name="Clear filters").click()  # back to the default, and the choice is forgotten
+    sync_api.expect(chip(page, "Posted within", "7d")).to_have_class("on")
+    reload(page)
+    sync_api.expect(chip(page, "Posted within", "7d")).to_have_class("on")
+    assert page.errors == []
+
+
+def test_the_watchlist_sets_the_posted_default_and_0_is_any(jobs, page, watchlist):
+    watchlist.write_text(watchlist.read_text() + "display:\n  today_defaults: {posted: 14}\n")
+    reload(page)
+    sync_api.expect(chip(page, "Posted within", "14d")).to_have_class("on")
+    watchlist.write_text(watchlist.read_text().replace("posted: 14", "posted: 0"))
+    page.evaluate("localStorage.clear()")
+    reload(page)
+    sync_api.expect(chip(page, "Posted within", "Any")).to_have_class("on")
+    assert page.errors == []
+
+
+def test_when_posted_within_hides_everything_the_empty_state_offers_to_widen_it(jobs, page, watchlist):
+    watchlist.write_text(watchlist.read_text() + "display:\n  today_defaults: {posted: 1}\n")
+    reload(page)
+    empty = page.locator(".empty")
+    sync_api.expect(empty).to_contain_text("Nothing posted in the last 1 day matches")
+    sync_api.expect(empty).to_contain_text("Widen it to 14 days or Any")
+    empty.get_by_role("button", name="Widen to 14 days").click()
+    sync_api.expect(chip(page, "Posted within", "14d")).to_have_class("on")
+    sync_api.expect(page.locator(".card.job").first).to_be_visible()
+    page.get_by_role("button", name="Clear filters").click()  # the default again: 1 day, nothing shown
+    sync_api.expect(page.locator(".empty").get_by_role("button", name="Show any age")).to_be_visible()
+    page.locator(".empty").get_by_role("button", name="Show any age").click()
+    sync_api.expect(chip(page, "Posted within", "Any")).to_have_class("on")
+    assert page.errors == []
+
+
+def test_settings_keep_the_age_decay_and_the_posted_default(page, watchlist):
+    page.goto(page.url.split("#")[0] + "#settings/today")
+    page.wait_for_load_state("networkidle")
+    typed = {"Today opens on posted within (days)": "14", "Best fit: points lost a day after that": "1.5"}
+    for label, value in typed.items():
+        page.locator(".field", has=page.locator("label", has_text=label)).locator("input").fill(value)
+    page.get_by_role("button", name="Save settings").first.click()
+    sync_api.expect(page.locator(".snav [role=status]")).to_have_text("Saved.", timeout=10000)
+    cfg = config.load(watchlist)
+    assert cfg.today_posted == 14 and (cfg.age_decay.per_day, cfg.age_decay.cutoff_days) == (1.5, 120)
+    assert "grace_days" not in yaml.safe_load(watchlist.read_text())["display"]["age_decay"]  # blank: its default
     assert page.errors == []
 
 

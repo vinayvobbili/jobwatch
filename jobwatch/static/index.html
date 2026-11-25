@@ -4093,9 +4093,20 @@ function spreadPicks(jobs, n) {
 }
 // The work wanted most (the watchlist's focus) leads whichever sort is picked, a title hitting more focus patterns
 // first ("Cybersecurity AI" above "AI"); each part keeps that sort's order (sort is stable).
-function focusFirst(jobs) {
-  return [...jobs].sort((a, b) => (+b.focus || 0) - (+a.focus || 0));
+// Under Best fit, a posting past display.age_decay.cutoff_days stays below every younger one, focus or not (the
+// server's order, which is where the age penalty is).
+function focusFirst(jobs, v) {
+  const aged = v && v.sort === "fit" ? j => +!!j.aged_out : () => 0;
+  return [...jobs].sort((a, b) => aged(a) - aged(b) || (+b.focus || 0) - (+a.focus || 0));
 }
+// Posted within: the chip Today opens on is the watchlist's (7 days unless set); a choice made here, Any included, is
+// kept in this browser and wins; Clear filters forgets it. A server from before the default sends none: Any.
+const POSTED = [[0, "Any"], [1, "24h"], [3, "3d"], [7, "7d"], [14, "14d"]];
+function postedStart(fallback) {
+  const kept = remembered("today.posted", "");
+  return kept !== "" && Number.isFinite(Number(kept)) ? Number(kept) : fallback;
+}
+const dayCount = n => `${n} day${n === 1 ? "" : "s"}`;
 // "Worth it": the Comps tab's weighted score (career, pay, fit, company health); cards show it while that order is on.
 let worthShown = false;
 const byWorth = (a, b) => (b.worth?.score ?? -1) - (a.worth?.score ?? -1);
@@ -4214,8 +4225,10 @@ async function renderToday() {
   todayJobs = d.jobs;
   if (!todayView.seeded) {  // the chips Today opens on (display.today_defaults), once; Any is a click away
     todayView.seeded = true;
-    Object.assign(todayView, { fit: (d.defaults || {}).fit || 0, pay: (d.defaults || {}).pay || 0 });
+    Object.assign(todayView, { fit: (d.defaults || {}).fit || 0, pay: (d.defaults || {}).pay || 0,
+      posted: postedStart((d.defaults || {}).posted || 0) });
   }
+  const postedDefault = (d.defaults || {}).posted || 0;
   const out = Object.values(d.rejected).reduce((a, b) => a + b, 0);
   const fresh = d.jobs.filter(j => j.status === "new").length, strong = d.jobs.filter(j => j.fit && j.fit.score >= 75).length;
   const picks = d.picks && d.jobs.length > d.picks ? d.picks : 0;  // Today's picks lead when there are more matches
@@ -4252,12 +4265,18 @@ async function renderToday() {
       title: "Jobs no source has any pay figure for: they follow the ones with a figure while a pay chip is on" }, "No pay clue"),
     segmented([["show", "Show"], ["hide", "Hide"]], v.noClue, k => { v.noClue = k; remember("today.noclue", k); drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "Jobs with no posting date still show" }, "Posted within"),
-    segmented([[0, "Any"], [1, "24h"], [3, "3d"], [7, "7d"], [14, "14d"]], v.posted,
-      k => { v.posted = k; drawToday(); }));
+    segmented(POSTED.some(([n]) => n === v.posted) ? POSTED
+      : [...POSTED, [v.posted, `${v.posted}d`]].sort((a, b) => a[0] - b[0]), v.posted, k => setPosted(k, false)));
+  const setPosted = (k, redrawChips = true) => {
+    v.posted = k; remember("today.posted", k);
+    if (redrawChips) drawNarrow();
+    drawToday();
+  };
   drawNarrow();
   const roles = rolesList(d.role_kinds || [], todayJobs, v, () => drawToday());
   const clear = () => {
-    Object.assign(v, { q: "", company: "", where: "any", fit: 0, pay: 0, posted: 0 });
+    Object.assign(v, { q: "", company: "", where: "any", fit: 0, pay: 0, posted: postedDefault });
+    remember("today.posted", "");  // forget the choice: back to the watchlist's default
     v.kws.clear(); search.value = ""; drawKws(); drawNarrow(); companies.redraw(); drawToday();
   };
 
@@ -4266,18 +4285,24 @@ async function renderToday() {
     companies.redraw();
     roles.redraw();
     const q = v.q.trim().toLowerCase();
-    let jobs = todayJobs.filter(j => (!q || `${j.title} ${j.company}`.toLowerCase().includes(q)) &&
-      (!v.company || j.company === v.company) && [...v.kws].every(k => j.keywords.includes(k)) && quickNarrow(j, v));
+    const through = (j, posted) => (!q || `${j.title} ${j.company}`.toLowerCase().includes(q)) &&
+      (!v.company || j.company === v.company) && [...v.kws].every(k => j.keywords.includes(k)) &&
+      quickNarrow(j, { ...v, posted });
+    let jobs = todayJobs.filter(j => through(j, v.posted));
+    // How many only Posted within hides: every other filter lets them through.
+    const older = v.posted ? todayJobs.filter(j => through(j, 0)).length - jobs.length : 0;
+    const olderNote = older ? ` (${older} posted over ${dayCount(v.posted)} ago hidden)` : "";
     if (v.sort === "new") jobs = [...jobs].sort((a, b) => (a.age_days ?? 1e4) - (b.age_days ?? 1e4));
     if (v.sort === "pay") jobs = [...jobs].sort((a, b) => (payTop(b) ?? -1) - (payTop(a) ?? -1));
     if (v.sort === "worth") jobs = [...jobs].sort(byWorth);
-    jobs = scoredFirst(cluesFirst(focusFirst(jobs), v), v);
+    jobs = scoredFirst(cluesFirst(focusFirst(jobs, v), v), v);
     worthShown = v.sort === "worth";
-    const narrowed = v.q || v.company || v.kws.size || v.where !== "any" || v.fit || v.pay || v.posted;
+    // Posted within at the watchlist's default isn't narrowing: the picks still lead (a changed one, Any too, is).
+    const narrowed = v.q || v.company || v.kws.size || v.where !== "any" || v.fit || v.pay || v.posted !== postedDefault;
     // Today's picks: the top few in this order. A search, company, keyword or quick narrowing looks through every match.
     const top = d.picks && jobs.length > d.picks;
     if (top && !narrowed && !v.all) {
-      fill(showing, `Today's ${d.picks} picks, ${SORTED[v.sort]}, of ${jobs.length} matching jobs`);
+      fill(showing, `Today's ${d.picks} picks, ${SORTED[v.sort]}, of ${jobs.length} matching jobs${olderNote}`);
       fill(list, spreadPicks(jobs, d.picks).map((j, i) => todayCard(j, d.can_score, i)));
       fill(pager, h("div", { class: "more-all" }, h("button", { class: "btn", onclick: () => { v.all = true; drawToday(); } },
         `Show all ${jobs.length} matching jobs`)));
@@ -4287,12 +4312,19 @@ async function renderToday() {
       v.noClue, v.noScore, [...v.rolesOff]]), drawToday);
     const back = top && !narrowed ? h("button", { class: "btn ghost", onclick: () => {
       v.all = false; drawToday(); scrollTo({ top: 0, behavior: REDUCED ? "auto" : "smooth" }); } }, `Back to today's ${d.picks} picks`) : null;
-    fill(showing, pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
-      : `Showing ${jobs.length} of ${todayJobs.length}`, narrowed ? h("button", { class: "btn ghost", onclick: clear }, "Clear filters") : back);
+    fill(showing, (pg.range ? `Showing ${pg.range}` + (narrowed ? ` (${todayJobs.length} in all)` : "")
+      : `Showing ${jobs.length} of ${todayJobs.length}`) + olderNote,
+      narrowed ? h("button", { class: "btn ghost", onclick: clear }, "Clear filters") : back);
+    // Posted within hides everything left: say so, with the way to widen it (14 days, or any age).
+    const widen = !jobs.length && older ? [
+      v.posted < 14 ? h("button", { class: "btn", onclick: () => setPosted(14) }, "Widen to 14 days") : null,
+      h("button", { class: "btn ghost", onclick: () => setPosted(0) }, "Show any age")] : null;
     fill(list, jobs.length ? pg.items.map((j, i) => todayCard(j, d.can_score, i))
-      : emptyState(todayJobs.length ? "No jobs match these filters. Loosen one and see what turns up."
+      : emptyState(!jobs.length && older
+        ? `Nothing posted in the last ${dayCount(v.posted)} matches your filters, and ${older} older posting${older === 1 ? " is" : "s are"} hidden by Posted within. Widen it to 14 days or Any to see ${older === 1 ? "it" : "them"}.`
+        : todayJobs.length ? "No jobs match these filters. Loosen one and see what turns up."
         : "Nothing to review right now. Press “Check for new jobs”, or widen the filters above: new roles open every day.",
-        v.q.trim() ? elsewhere(v.q) : null));
+        widen || (v.q.trim() ? elsewhere(v.q) : null)));
     fill(pager, pg.nav);
   };
 
@@ -6727,6 +6759,12 @@ function renderSettings() {
   const D = s.defaults, pace = s.pace || {};
   const picksN = numInput((s.display || {}).today, D.display.today), daily = numInput(pace.daily, D.pace.daily),
     most = numInput(pace.max, D.pace.max);
+  // Today's Posted within chip (display.today_defaults.posted) and how age lowers Best fit's order (display.age_decay).
+  const decayNow = (s.display || {}).age_decay || {};
+  const postedN = numInput(((s.display || {}).today_defaults || {}).posted, D.display.today_defaults.posted),
+    grace = numInput(decayNow.grace_days, D.display.age_decay.grace_days),
+    perDay = numInput(decayNow.per_day, D.display.age_decay.per_day, { step: 0.1 }),
+    cutoff = numInput(decayNow.cutoff_days, D.display.age_decay.cutoff_days);
 
   // Fit scores: where the model runs and what's tried when it can't (aiSetup), which model, and when it scores by
   // itself (on for the local model unless set).
@@ -6792,7 +6830,11 @@ function renderSettings() {
     const filters = mergeFilters(f, { ...filterValues(inp), exclude_departments: unlines(departments.value),
       flags: flagValues() });
     // theme and width save on their own
-    const display = merged(settings.display, { today: numberOf(picksN) });
+    const shown = settings.display || {};
+    const display = merged(settings.display, {
+      today: numberOf(picksN),
+      today_defaults: merged(shown.today_defaults, { posted: numberOf(postedN) }),
+      age_decay: merged(shown.age_decay, { grace_days: numberOf(grace), per_day: numberOf(perDay), cutoff_days: numberOf(cutoff) }) });
     saveMsg.textContent = "Saving…"; saveMsg.className = "small muted";
     try {
       await api("/api/settings", { companies: companies.map(c => ({ ...c, careers: c.careers || null })),
@@ -6851,6 +6893,13 @@ function renderSettings() {
     setCard("today", "Today's picks and your pace", null,
       h("div", { class: "fields" },
         field("Today shows the top", picksN, "In the order you sort by; 0 shows every match."),
+        field("Today opens on posted within (days)", postedN, "The Posted within chip Today starts on: 7 days unless " +
+          "you set it; 0 starts on Any. A choice you make there is kept in this browser."),
+        field("Best fit: days before older postings rank lower", grace, "A posting this new or newer isn't marked down."),
+        field("Best fit: points lost a day after that", perDay, "Taken off the posting's rank score, never its fit " +
+          "score or badge, so a month-old posting needs a clearly better fit than a fresh one. 0 turns this off."),
+        field("Best fit: days after which a posting sorts last", cutoff, "Older than this, a posting is listed below " +
+          "every younger one. 0: no cutoff."),
         field("Applications a day", daily, "Today and the queue count them; 0 turns this off."),
         field("At most", most, "Past this, a note says the rest can wait. Nothing is ever blocked."))),
     setCard("resume", "Your resume and fit scores", "optional",

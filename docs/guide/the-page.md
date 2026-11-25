@@ -42,7 +42,16 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
 - **Today:** new matching jobs, with pay, how long ago they were posted, keywords, and who you know there.
   It leads with **today's picks**: the top 10 in the order you sort by (best fit, newest or top pay), since
   a few good applications a day beat a long list. **Show all** opens every match, and the search and
-  company filter always look through all of them. A line says how many you've applied to today against your
+  company filter always look through all of them. Today opens on **Posted within 7d**, so a posting older than
+  a week stays out of the picks until you widen it (14d or Any; the header says how many it hides, and an empty
+  Today offers the widening); a choice you make there is kept in this browser, **Clear filters** goes back to 7d,
+  and `display.today_defaults.posted` in the watchlist changes the default. **Best fit** also marks a posting
+  down for its age: its fit score and badge don't change, but its place in the order does. Nothing is marked
+  down for the first 7 days, then 0.5 points a day come off, so a 30-day-old posting needs about 11 points
+  more fit than a fresh one to rank above it, and a posting over 120 days old lists below every younger one;
+  a posting with no date counts as 14 days old. `display.age_decay: {grace_days: 7, per_day: 0.5, cutoff_days:
+  120}` sets these (`per_day: 0` turns it off; they're in Settings under Today & display too), and
+  `jobwatch digest` and the MCP `get_digest` use the same order. A line says how many you've applied to today against your
   pace ("Applied today: 1 of 3"). **Queue** the ones worth applying to, **Skip** the rest. While the page is
   running it checks the boards by itself every 6 hours (`fetch_every` in the watchlist), and Today says when
   they were last checked. A job that disappears from its board drops off Today at the next check. **Companies

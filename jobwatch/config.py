@@ -544,6 +544,49 @@ def _pace(raw, path: Path) -> Pace:
     return Pace(daily, most)
 
 
+UNKNOWN_AGE_DAYS = 14  # a posting with no date ranks as if this old: never penalised past a month old's penalty
+
+
+@dataclass(frozen=True)
+class AgeDecay:
+    """display.age_decay in the watchlist: how a posting's age lowers where it ranks under Today's Best fit order
+    (and the digest's), never the fit score itself. No penalty for the first grace_days; after that per_day fit
+    points off the rank score for each day, so a month-old posting needs a clearly better fit than a fresh one; a
+    posting older than cutoff_days sorts below every younger one (0: no cutoff). per_day 0 turns the decay off.
+    A posting with no date ranks as UNKNOWN_AGE_DAYS old."""
+    grace_days: int = 7
+    per_day: float = 0.5
+    cutoff_days: int = 120
+
+    def penalty(self, age: int | None) -> float:
+        """Fit points a posting of this age (None: no date) loses from its rank score."""
+        age = min(UNKNOWN_AGE_DAYS, self.cutoff_days or UNKNOWN_AGE_DAYS) if age is None else age
+        return max(0, age - self.grace_days) * self.per_day
+
+    def aged_out(self, age: int | None) -> bool:
+        """Older than cutoff_days: sorts below every younger posting. A posting with no date never is."""
+        return bool(self.cutoff_days) and age is not None and age > self.cutoff_days
+
+
+AGE_DECAY = AgeDecay()  # the settings when display.age_decay is left out
+
+
+def _age_decay(raw, path: Path) -> AgeDecay:
+    if raw is None:
+        return AgeDecay()
+    if not isinstance(raw, dict) or set(raw) - set(AgeDecay.__dataclass_fields__):
+        raise ConfigError(f"{path}: display.age_decay is {{grace_days: 7, per_day: 0.5, cutoff_days: 120}}, "
+                          f"got {raw!r}")
+    per_day = raw.get("per_day", AgeDecay.per_day)
+    if isinstance(per_day, bool) or not isinstance(per_day, (int, float)) or per_day < 0:
+        raise ConfigError(f"{path}: display.age_decay.per_day must be a number, 0 or more (fit points lost a day; "
+                          f"0 turns the decay off), got {per_day!r}")
+    return AgeDecay(
+        _whole(raw.get("grace_days", AgeDecay.grace_days), "display.age_decay.grace_days", path, "0 starts at once"),
+        float(per_day),
+        _whole(raw.get("cutoff_days", AgeDecay.cutoff_days), "display.age_decay.cutoff_days", path, "0 has no cutoff"))
+
+
 @dataclass(frozen=True)
 class Calendar:
     """calendar in the watchlist: remind, the minutes before an interview or call that the calendar feed has a
@@ -833,6 +876,8 @@ class Config:
     today: int = 10            # display.today: Today and the digest lead with this many of the best (0: all)
     today_fit: int = 0         # display.today_defaults.fit: the fit-score chip Today loads on (0: Any)
     today_pay: int = 0         # display.today_defaults.pay: the top-pay chip Today loads on (0: Any)
+    today_posted: int = 7      # display.today_defaults.posted: the Posted within chip Today loads on, in days (0: Any)
+    age_decay: AgeDecay = field(default_factory=AgeDecay)  # display.age_decay: how age lowers Best fit's order
     company_view: str = "matches"  # display.company: which open roles a company's page lists (COMPANY_VIEWS)
     pace: Pace = field(default_factory=Pace)
     calendar: Calendar = field(default_factory=Calendar)
@@ -1314,8 +1359,10 @@ def load(explicit: str | Path | None = None) -> Config:
         raise ConfigError(f"{path}: display.width must be one of {', '.join(WIDTHS)}, got {width!r}")
     today = _whole(display.get("today", 10), "display.today", path, "0 shows every match")
     chips = display.get("today_defaults") or {}
-    if not isinstance(chips, dict) or set(chips) - {"fit", "pay"}:
-        raise ConfigError(f"{path}: display.today_defaults is {{fit: 80, pay: 250000}}, got {chips!r}")
+    if not isinstance(chips, dict) or set(chips) - {"fit", "pay", "posted"}:
+        raise ConfigError(f"{path}: display.today_defaults is {{fit: 80, pay: 250000, posted: 7}}, got {chips!r}")
+    today_posted = _whole(chips.get("posted", Config.today_posted), "display.today_defaults.posted", path,
+                          "0 starts on Any")
     today_fit = _whole(chips.get("fit", 0), "display.today_defaults.fit", path, "0 starts on Any")
     today_pay = _whole(chips.get("pay", 0), "display.today_defaults.pay", path, "0 starts on Any")
     company_view = str(display.get("company", "matches"))
@@ -1372,7 +1419,8 @@ def load(explicit: str | Path | None = None) -> Config:
         suggest=_suggestions(raw.get("suggestions"), path),
         slow_boards=_slow_boards(raw.get("slow_boards"), path), ui=_ui(raw.get("ui"), path),
         incoming=_incoming(raw.get("incoming"), path),
-        theme=theme, width=width, today=today, today_fit=today_fit, today_pay=today_pay, company_view=company_view,
+        theme=theme, width=width, today=today, today_fit=today_fit, today_pay=today_pay,
+        today_posted=today_posted, age_decay=_age_decay(display.get("age_decay"), path), company_view=company_view,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
         quiet=_quiet(raw.get("quiet"), path), follow_ups=_follow_ups(raw.get("follow_ups"), path),
         speech=_speech(raw.get("speech"), path),
@@ -1393,7 +1441,8 @@ def defaults() -> dict:
             "chat": {k: v for k, v in asdict(Chat()).items()
                      if k not in ("backend", "prompt", "keychain", "key_command")},
             "learning": {"timeline": "quarter", "jobs": Config.learn_jobs},
-            "display": {"theme": "system", "width": "standard", "today": Config.today, "company": "matches"},
+            "display": {"theme": "system", "width": "standard", "today": Config.today, "company": "matches",
+                        "today_defaults": {"posted": Config.today_posted}, "age_decay": asdict(AgeDecay())},
             "pace": asdict(Pace()),
             "calendar": asdict(Calendar()),
             "speech": asdict(Speech()),

@@ -97,7 +97,9 @@ display:                                  # the browser page
   theme: system                           # system, light or dark
   width: standard                         # standard, wide or full
   today: 10                               # Today's picks, and the digest's length; 0 shows every match
-  today_defaults: {fit: 80, pay: 250000}  # the Fit score and Top pay chips Today opens on; unset or 0 is Any
+  today_defaults: {fit: 80, pay: 250000, posted: 7}  # the Fit score, Top pay and Posted within (days) chips
+                                          # Today opens on; fit and pay unset or 0 are Any, posted unset is 7, 0 is Any
+  age_decay: {grace_days: 7, per_day: 0.5, cutoff_days: 120}  # how age lowers a job in Best fit's order (the page guide)
   company: matches                        # a company's page: the open roles your filters pass, or all
 pace:                                     # applications a day: counted on Today and the queue, never enforced
   daily: 3                                # 0 turns it off, for when job hunting is your full-time job

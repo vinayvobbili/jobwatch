@@ -1137,6 +1137,8 @@ class App:
             open_now = store.in_progress()
             out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {}),
                              "worth": worth[e.job.key], "waiting_on": store.waiting_on(e.job, open_now),
+                             # past display.age_decay.cutoff_days: Best fit lists it below every younger job
+                             "aged_out": cfg.age_decay.aged_out(e.job.age_days()),
                              **self._advice(cfg, e, history, pay)}
                             for e in d.entries],
                    "rejected": d.rejected,
@@ -1144,7 +1146,8 @@ class App:
                    "checked": self.refresher.status(cfg, store),
                    # Today leads with the top `picks` in the order picked (0: every match), and says the pace.
                    "picks": cfg.today, "pace": pace(cfg, store),
-                   "defaults": {"fit": cfg.today_fit, "pay": cfg.today_pay},  # the chips Today opens on
+                   # the chips Today opens on (Posted within: 7 days unless set)
+                   "defaults": {"fit": cfg.today_fit, "pay": cfg.today_pay, "posted": cfg.today_posted},
                    "role_kinds": rolekinds.labels()}  # Today's Roles checkboxes; each job's "roles" are its kinds
             # "New" shows once: the next visit lists these as seen.
             store.set_status([k for e in d.entries if e.record.get("status") == "new" for k in e.keys], "shown")

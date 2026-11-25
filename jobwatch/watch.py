@@ -9,6 +9,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 
 from . import (
     alerts,
@@ -24,7 +25,7 @@ from . import (
     sources,
     suggest,
 )
-from .config import UNKNOWN_SOURCE, Board, Config, fallback_entry
+from .config import AGE_DECAY, UNKNOWN_SOURCE, AgeDecay, Board, Config, fallback_entry
 from .contacts import Contacts, company_key
 from .filters import (
     KINDS,
@@ -944,9 +945,18 @@ def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict
     return {"code": code, "text": text}
 
 
-def _rank(e: Entry):
-    fit = e.fit["score"] if e.fit else -1
-    return (-e.focus, -fit, -e.relevance, e.job.age_days() if e.job.age_days() is not None else 10_000)
+def _rank(e: Entry, decay: AgeDecay = AGE_DECAY):
+    """The order of Today's Best fit (and the digest's): postings older than decay.cutoff_days last, then the
+    focus work first, then the fit score less the age penalty (see AgeDecay; a job with no score follows every
+    scored one), then keyword relevance, then the newer. The fit score itself is never changed."""
+    age = e.job.age_days()
+    fit = e.fit["score"] - decay.penalty(age) if e.fit else -1e9
+    return (decay.aged_out(age), -e.focus, -fit, -e.relevance, age if age is not None else 10_000)
+
+
+def _ranker(cfg: Config) -> Callable[[Entry], tuple]:
+    """_rank as a sort key under the watchlist's display.age_decay."""
+    return partial(_rank, decay=cfg.age_decay)
 
 
 PER_COMPANY = 2  # Today leads with at most this many jobs from one company
@@ -960,20 +970,21 @@ def _stale(e: Entry, now: datetime) -> bool:
         now - datetime.fromisoformat(seen) > timedelta(days=STALE_DAYS)
 
 
-def _spread(entries: list[Entry], now: datetime | None = None) -> list[Entry]:
+def _spread(entries: list[Entry], now: datetime | None = None, decay: AgeDecay = AGE_DECAY) -> list[Entry]:
     """Ranked entries reordered so one company's high scores don't fill the top: the newer jobs first, then the
     stale ones (see _stale), each company's first PER_COMPANY of them; then every company's others, in the same
-    order. Each part keeps the rank order."""
+    order. Each part keeps the rank order. Postings past decay.cutoff_days stay below every younger one."""
     now = now or datetime.now(UTC)
     stale = {id(e): _stale(e, now) for e in entries}
-    ordered = sorted(entries, key=lambda e: stale[id(e)])  # stable: the rank order within each
+    aged = {id(e): decay.aged_out(e.job.age_days(now)) for e in entries}
+    ordered = sorted(entries, key=lambda e: (aged[id(e)], stale[id(e)]))  # stable: the rank order within each
     count: dict[str, int] = {}
     over = {}
     for e in ordered:
         c = e.job.display_company.lower()
         count[c] = count.get(c, 0) + 1
         over[id(e)] = count[c] > PER_COMPANY
-    return sorted(ordered, key=lambda e: over[id(e)])
+    return sorted(ordered, key=lambda e: (aged[id(e)], over[id(e)]))
 
 
 def _fits(store: Store, rid: str) -> dict[str, dict]:
@@ -1145,7 +1156,7 @@ def scoring_line(cfg: Config, store: Store) -> list[Entry]:
         rel, hits = relevance(job, cfg.keywords)
         queued.append(Entry(job, rec, rel, hits, fit=brief(fits.get(job.key))))
     entries, _ = _matching(cfg, store, ("new", "shown"), redo_passes=True)
-    return [*queued, *_group(sorted(entries, key=_rank))]
+    return [*queued, *_group(sorted(entries, key=_ranker(cfg)))]
 
 
 def _scorable(e: Entry) -> bool:
@@ -1492,11 +1503,12 @@ def build_digest(cfg: Config, store: Store, include_seen: bool = False, score_to
             digest.note = "scoring skipped: set `resume:` in the config to a resume file"
         else:
             failed = failed_scores(cfg, store)
-            todo = [e for e in _group(sorted(entries, key=_rank)) if _scorable(e) and e.job.key not in failed][:top]
+            todo = [e for e in _group(sorted(entries, key=_ranker(cfg))) if _scorable(e)
+                    and e.job.key not in failed][:top]
             if todo:
                 digest.scored, digest.score_errors = score_entries(cfg, store, todo, progress)
-    entries.sort(key=_rank)
-    grouped = _spread(_group(entries))
+    entries.sort(key=_ranker(cfg))
+    grouped = _spread(_group(entries), decay=cfg.age_decay)
     digest.total = len(grouped)
     digest.entries = grouped[:limit] if limit else grouped
     return digest
