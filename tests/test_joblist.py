@@ -187,6 +187,70 @@ def test_an_indeed_job_is_never_read_from_indeed(setup, web):
     assert not [u for u in web.calls if "indeed.com" in u or "linkedin.com" in u]
 
 
+LADDERS = "https://www.theladders.com/job/{}_{}"
+
+
+def ladders(title, company, id, slug, **kw):
+    return rec(title, company, id=id, source="ladders", url=LADDERS.format(slug, id), **kw)
+
+
+def test_a_ladders_job_is_found_on_the_companys_board_and_ladders_is_only_a_note(setup, web):
+    cfg, store = setup
+    r = joblist.take(cfg, store, joblist.records([
+        ladders("Platform Engineer", "Hooli", "90000002", "platform-engineer-hooli-remote", pay="$150K — $190K")]))
+    s = r.seen[0]
+    assert s.outcome == "added" and s.key == "greenhouse:hooli:500"
+    job, record = store.find(s.key)
+    assert job.url == "https://job-boards.greenhouse.io/hooli/jobs/500"  # the company's own posting, not Ladders'
+    assert record["via"] == "ladders-list"
+    assert f"{LADDERS.format('platform-engineer-hooli-remote', '90000002')} (a reference only)" in record["note"]
+    assert "Apply on the company's own board posting" in record["note"]
+    assert "never through the aggregator" in record["note"]
+    assert not [u for u in web.calls if "theladders.com" in u]
+    assert "Ladders: seen 1 job(s)" in joblist.summary(r)
+
+
+def test_a_ladders_job_not_found_on_a_board_has_no_ladders_link_and_says_to_apply_on_the_companys_site(setup):
+    cfg, store = setup
+    got = joblist.records([ladders("Detection Engineer", "Vandelay Industries", "90000003", "detection-engineer-vandel",
+                                   pay="$130K — $180K", location="United States (Remote in United States)")])
+    r = joblist.take(cfg, store, got)
+    s = r.seen[0]
+    assert s.outcome == "unplaced" and s.why == "no board found under its name"
+    job, record = store.find(s.key)
+    assert job.url == "" and job.remote and record["via"] == "ladders-list"
+    assert job.salary_min is None  # Ladders' pay is its own estimate: in the note, not the job's pay
+    assert "Apply on the company's own site" in record["note"] and "never through the aggregator" in record["note"]
+    assert "Its pay estimate (not the employer's): $130K — $180K." in record["note"]
+    assert LADDERS.format("detection-engineer-vandel", "90000003") in record["note"]
+    assert s.key in {j.key for j, _ in store.textless_alert_jobs()}  # the backfill keeps looking on its board
+    # Read again: the same job by its company and title, not a second one
+    again = joblist.take(cfg, store, got)
+    assert [s.outcome for s in again.seen] == ["earlier"] and again.seen[0].key == s.key
+    assert joblist.history(cfg, "ladders")[0]["unplaced"] == 1
+
+
+def test_ladders_jobs_with_no_link_are_told_apart_by_company_and_title(setup):
+    cfg, store = setup
+    r = joblist.take(cfg, store, joblist.records([
+        rec("Detection Engineer", "Vandelay", id="90000003", source="ladders"),
+        rec("Security Engineer", "Globex", id="90000004", source="ladders"),
+        rec("Detection Engineer", "Vandelay", id="90000009", source="ladders")]))
+    assert [s.outcome for s in r.seen] == ["unplaced", "unplaced", "repeated"]
+    note = store.find(r.seen[0].key)[1]["note"]
+    assert "(a reference only)" in note and "theladders" not in note
+
+
+def test_a_ladders_record_keeps_only_a_ladders_job_page_without_its_query():
+    got = joblist.records([
+        {"source": "ladders", "id": "9", "title": "A", "company": "B", "url": LADDERS.format("a-b", "9") + "?ref=x"},
+        {"source": "ladders", "id": "8", "title": "A", "company": "B", "url": "https://evil.example/job/a_8"},
+        {"source": "indeed", "id": "7", "title": "A", "company": "B", "url": LADDERS.format("a-b", "7")}])
+    assert [r.link for r in got] == [LADDERS.format("a-b", "9"), "", ""]
+    assert got[0].url == LADDERS.format("a-b", "9") and got[1].url == "" and got[2].url.startswith("https://www.indeed")
+    assert got[0].to_dict()["url"] == got[0].link and "url" not in got[1].to_dict()
+
+
 def test_records_from_the_extractor():
     got = joblist.records(json.dumps({"records": [
         {"linkedin_id": "4100000001", "title": "Platform Engineer  (Verified job)", "company": " Initech "},

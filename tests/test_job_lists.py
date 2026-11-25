@@ -113,3 +113,46 @@ def test_indeed_cards_read_with_missing_fields_and_next_is_a_link(browser):
         assert page.evaluate("JWList.lastRun.nextUrl") == nxt
     finally:
         page.close()
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_ladders_cards_text_reads_as_a_record(tmp_path):
+    js = tmp_path / "case.js"
+    js.write_text(f"""const L = require({json.dumps(str(SCRIPT))});
+const link = "https://www.theladders.com/job/staff-platform-engineer-initech-virtual-travel_90000001";
+console.log(JSON.stringify([
+  L.parseLadders("Staff Platform Engineer\\nInitech\\n•\\n$150K — $190K *\\nRemote\\nRemote\\nReposted 3 days ago\\nLead the team.", "90000001", link),
+  L.parseLadders("Principal Engineer\\nUmbrella Corp\\n•\\nBoulder, CO (Boulder County)\\nHybrid\\n2 weeks ago", "90000003", ""),
+  L.parseLadders("Senior Engineer\\nGlobex\\n•\\n$130K — $180K *\\nCanada\\nRemote in Canada\\n1 week ago", "90000006", ""),
+  L.parseLadders("No Company", "90000005", ""),
+  L.ladderLink("/job/x-y_123?utm_source=a#b"), L.ladderLink("https://www.example.com/job/x_1"), L.ladderLink("/jobs/search"),
+]));""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    first, hybrid, canada, empty, clean, other, search = json.loads(r.stdout)
+    assert first == {"source": "ladders", "id": "90000001", "title": "Staff Platform Engineer", "company": "Initech",
+                     "location": "Remote", "pay": "$150K — $190K", "posted": "3 days ago",
+                     "url": "https://www.theladders.com/job/staff-platform-engineer-initech-virtual-travel_90000001"}
+    assert hybrid["location"] == "Boulder, CO (Hybrid)" and hybrid["pay"] == "" and hybrid["posted"] == "2 weeks ago"
+    assert canada["location"] == "Canada (Remote in Canada)" and canada["pay"] == "$130K — $180K"
+    assert empty is None
+    assert clean == "https://www.theladders.com/job/x-y_123" and other == "" and search == ""
+
+
+def test_ladders_the_cards_are_read_once_each_and_not_the_pane_or_its_similar_jobs(browser):
+    page = open_list(browser, "ladders_list.html")
+    try:
+        assert page.evaluate("JWList.sourceOf({})") == "linkedin"  # a file: no site's address; the caller says
+        got = page.evaluate("JWList.readAll({source: 'ladders'})")
+        assert [r["id"] for r in got] == ["90000001", "90000002", "90000003", "90000004"]
+        assert got[0] == {"source": "ladders", "id": "90000001", "title": "Staff Platform Engineer",
+                          "company": "Initech", "location": "Remote", "pay": "$150K — $190K", "posted": "3 days ago",
+                          "url": "https://www.theladders.com/job/staff-platform-engineer-initech-virtual-travel_90000001"}
+        assert got[1]["location"] == "United States (Remote in United States)" and got[1]["posted"] == "1 week ago"
+        assert got[2]["location"] == "Boulder, CO (Hybrid)" and got[2]["pay"] == ""
+        assert got[3] == {"source": "ladders", "id": "90000004", "title": "Data Analyst", "company": "Hooli",
+                          "location": "Remote", "pay": "", "posted": "Just now",
+                          "url": "https://www.theladders.com/job/data-analyst-hooli-remote_90000004"}
+        assert page.evaluate("JWList.lastRun") == {"pages": 1, "jobs": 4, "nextUrl": None}
+    finally:
+        page.close()

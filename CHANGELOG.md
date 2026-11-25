@@ -12,6 +12,12 @@
 - Today opens on Posted within 7d (it was Any). A choice you make there, Any included, is kept in this browser, Clear
   filters goes back to 7d, and `display.today_defaults.posted` (or Settings) sets the default (0 is Any). The header
   says how many postings the chip hides, and an empty Today offers Widen to 14 days or Show any age.
+- `import-list` (and the MCP `import_job_list`) takes Ladders lists ("Recommended Jobs", a search) as a third site,
+  read in your own browser by the same extractor. Ladders shows the companies' own jobs, and you apply on the
+  company's own site: the job's link is its board posting when found there, Ladders' page is kept only as a reference
+  in the job's note (with its pay estimate), and a job not found on a board has no link and a note saying to apply on
+  the company's own site. The extension's button doesn't offer Ladders yet.
+- Fix: a job with no link no longer reads as a repeat of the one before it when a list or alert is taken in.
 - Fix: the extension's Read posting now marks a job closed (the card's closed badge, a note, and the on-page banner in
   amber) when the LinkedIn or Indeed page says the posting is closed. It was dropped when jobwatch already had the
   posting's text, when the job was added by that read, and when the job was skipped; the banner line is also found with

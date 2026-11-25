@@ -450,6 +450,8 @@ class Alert:
     site: str = ""     # the link's site: linkedin, indeed, builtin, ats (a supported board) or other
     via: str = ""      # where it was found: linkedin-alert, builtin-alert, indeed-alert, <site>-alert
     remote: bool = False  # the alert's search was for remote jobs only, whatever each card says
+    reference: bool = False  # the link is an aggregator's page (Ladders): kept in a note, never as where to apply
+    aside: str = ""    # what else the aggregator said (its own pay estimate), kept in that note
 
     def __post_init__(self):
         self.company = linkedin.unrated(self.company)  # Indeed puts the star rating after the name
@@ -713,7 +715,7 @@ class Robots:
 
 job_posting_data = sources.job_posting_data
 
-UNREAD_SITES = ("linkedin.com", "indeed.com")  # never read, whatever their robots.txt says
+UNREAD_SITES = ("linkedin.com", "indeed.com", "theladders.com")  # never read, whatever their robots.txt says
 
 
 def _past(stamp) -> bool:
@@ -829,7 +831,8 @@ _REMOTE_TITLE = re.compile(r"\([^)]*\bremote\b[^)]*\)|[-–|,]\s*remote\s*$", re
 
 def email_job(a: Alert) -> Job:
     """A job from what the alert says, tracked like one added by hand."""
-    job = Job(source=MANUAL, company=_slug(a.company), id=_slug(a.title), title=a.title, url=a.url,
+    job = Job(source=MANUAL, company=_slug(a.company), id=_slug(a.title), title=a.title,
+              url="" if a.reference else a.url,
               company_name=a.company, locations=split_locations(a.location) if a.location else [])
     if a.remote or re.search(r"\bremote\b", a.location, re.I) or _REMOTE_TITLE.search(a.title):
         job.remote = True
@@ -874,7 +877,7 @@ class _Tracked:
 
 LABELS = {"linkedin-alert": "LinkedIn", "builtin-alert": "Built In", "indeed-alert": "Indeed",
           # a list of jobs the site showed the person (joblist.py)
-          "linkedin-list": "LinkedIn job list", "indeed-list": "Indeed job list"}
+          "linkedin-list": "LinkedIn job list", "indeed-list": "Indeed job list", "ladders-list": "Ladders job list"}
 
 
 class _Resolver:
@@ -1031,10 +1034,12 @@ class Taker:
                 f.result, f.reason = "skipped", reason
                 return f
         same = f"{linkedin._bare(a.company)}|{' '.join(sorted(linkedin._words(a.title)))}"
-        if twin := self.seen.get(a.url) or self.seen.get(same):  # a job in two alerts (LinkedIn's and Indeed's)
+        if twin := (a.url and self.seen.get(a.url)) or self.seen.get(same):  # a job in two alerts (LinkedIn, Indeed)
             f.job, f.how, f.result, f.reason = twin.job, twin.how, "duplicate", twin.reason
             return f
-        self.seen[a.url] = self.seen[same] = f
+        if a.url:  # a job with no link is told by its company and title alone
+            self.seen[a.url] = f
+        self.seen[same] = f
         known = tracked.match(a.company, a.title, a.url)
         if not known:
             f.reason = reject_reason(f.job, cfg.filters_for(f.job))
@@ -1090,12 +1095,25 @@ def _unredirect(f: Found, resolve) -> str | None:
     return None
 
 
+def reference_note(f: Found) -> str:
+    """The note on a job an aggregator (Ladders) listed: its page is only a reference, and where to apply is the
+    company's own site, never the aggregator's (its Apply4Me is a paid service that applies for the person)."""
+    a = f.alert
+    label = LABELS.get(a.via, a.via.removesuffix("-alert"))
+    where = "the company's own board posting (this job's link)" if f.how in ("board", "posting") else \
+        "the company's own site (its posting wasn't found on a board yet)"
+    return (f"Listed on a {label}" + (f": {a.url}" if a.url else "") + f" (a reference only). Apply on {where}, "
+            "never through the aggregator." + (f" {a.aside}" if a.aside else ""))
+
+
 def _record(store: Store, f: Found):
     store.keep(f.job)
     store.set_via(f.job.key, f.alert.via)
     if f.same and f.same.strong:
         store.set_duplicate(f.job.key, f.same.other.key)
-    if f.how in ("board", "posting") and f.alert.url and f.alert.url != f.job.url:
+    if f.alert.reference:
+        store.add_note(f.job.key, reference_note(f))
+    elif f.how in ("board", "posting") and f.alert.url and f.alert.url != f.job.url:
         label = LABELS.get(f.alert.via, f.alert.via.removesuffix("-alert"))
         what = "" if f.alert.via.endswith("-list") else " job alert"
         store.add_note(f.job.key, f"From a {label}{what}: {f.alert.url}")

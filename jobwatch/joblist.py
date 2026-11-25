@@ -1,12 +1,19 @@
 """Lists of jobs a job site showed the person, taken in to see how many jobwatch already had, and to track the rest:
-LinkedIn's ("Jobs based on your preferences", "Jobs that match your profile", a search's results) and Indeed's
-("Jobs for you", a search's results).
+LinkedIn's ("Jobs based on your preferences", "Jobs that match your profile", a search's results), Indeed's
+("Jobs for you", a search's results) and Ladders' ("Recommended Jobs", a search's results).
 
-jobwatch never fetches linkedin.com or indeed.com. The list comes from the person's own browser: the extension's
-"Read the jobs on this list" button, or an assistant that runs the extractor (job-lists.js, printed by
+jobwatch never fetches linkedin.com, indeed.com or theladders.com. The list comes from the person's own browser: the
+extension's "Read the jobs on this list" button, or an assistant that runs the extractor (job-lists.js, printed by
 `jobwatch import-list --script`) on the page in Chrome. Each record is
-{source, id, title, company, location, pay, posted}: source is the site (linkedin, indeed), id its own job id
-(LinkedIn's job id, Indeed's job key). A record with linkedin_id (the first extractor's) is a LinkedIn one.
+{source, id, title, company, location, pay, posted}: source is the site (linkedin, indeed, ladders), id its own job id
+(LinkedIn's job id, Indeed's job key, the number ending a Ladders job's path). A record with linkedin_id (the first
+extractor's) is a LinkedIn one.
+
+Ladders is an aggregator of the companies' own jobs, and a person applies on the company's own site, never through
+Ladders (its Apply4Me is a paid service that applies for them). Its record also has url, the job's page on Ladders:
+that is a reference only (a note on the job), never the job's link, and Ladders' pay (its own estimate) is in that
+note too. The job's link is the company's board posting when it's found there; a job not found has no link, and its
+note says to apply on the company's own site.
 
 Each job is taken in the way an alert email's is (see alerts.py), with via "<source>-list":
 
@@ -45,7 +52,10 @@ LOOKUP_WORKERS = 6  # companies whose boards are looked for at once
 LOOKUP_BUDGET = 240.0  # seconds the lookups may take in all: the extension waits on the import, so not open-ended
 # Each site's link to one of its jobs, by its id: the form alerts.clean_link gives, so a job from an alert matches
 LINKS = {"linkedin": "https://www.linkedin.com/jobs/view/{}/", "indeed": "https://www.indeed.com/viewjob?jk={}"}
-NAMES = {"linkedin": "LinkedIn", "indeed": "Indeed"}
+NAMES = {"linkedin": "LinkedIn", "indeed": "Indeed", "ladders": "Ladders"}
+# Aggregators: the job is the company's own, and its page on the site is only a reference (kept in a note, never the
+# job's link): the person applies on the company's own site, never through the aggregator
+REFERENCE = {"ladders": re.compile(r"https://www\.theladders\.com/job/[\w-]+_\d+")}
 _VERIFIED = re.compile(r"\s*(?:\((?:verified job|verified)\)|with verification)\s*$", re.I)
 # LinkedIn's screen-reader text that ends up in a card's text (job-lists.js cleanTitle has the same rules)
 _SELECTED_MID = re.compile(r"^(.+?)\s*:\s*selected\s*,\s*(.+)$", re.I)
@@ -89,14 +99,29 @@ class Record:
     posted: str = ""
     id: str = ""
     source: str = "linkedin"
+    link: str = ""  # an aggregator's page for the job (see REFERENCE)
+
+    @property
+    def reference(self) -> bool:
+        return self.source in REFERENCE
 
     @property
     def url(self) -> str:
+        if self.reference:
+            return self.link
         return LINKS[self.source].format(self.id) if self.id and self.source in LINKS else ""
 
     def to_dict(self) -> dict:
         return {"source": self.source, "id": self.id, "title": self.title, "company": self.company,
-                "location": self.location, "pay": self.pay, "posted": self.posted}
+                "location": self.location, "pay": self.pay, "posted": self.posted,
+                **({"url": self.link} if self.link else {})}
+
+
+def _reference_link(source: str, url) -> str:
+    """An aggregator's own page for a job, without its query: '' for anything but one of its job pages."""
+    pattern = REFERENCE.get(source)
+    m = pattern.match(str(url or "").strip()) if pattern else None
+    return m.group(0) if m else ""
 
 
 def records(data) -> list[Record]:
@@ -124,7 +149,8 @@ def records(data) -> list[Record]:
         r = Record(title=clean_title(raw.get("title")),
                    company=linkedin.unrated(" ".join(str(raw.get("company") or "").split())),
                    location=" ".join(str(raw.get("location") or "").split()), pay=str(raw.get("pay") or "").strip(),
-                   posted=str(raw.get("posted") or "").strip(), id=re.sub(r"[^\w-]", "", jid), source=source)
+                   posted=str(raw.get("posted") or "").strip(), id=re.sub(r"[^\w-]", "", jid), source=source,
+                   link=_reference_link(source, raw.get("url")))
         if not (r.title and r.company) or (r.id and (r.source, r.id) in ids):
             continue
         ids.add((r.source, r.id))
@@ -186,6 +212,10 @@ class Result:
 
 
 def _alert(r: Record) -> alerts.Alert:
+    if r.reference:  # the pay is the aggregator's own estimate: kept in the note, not as the job's pay
+        aside = f"Its pay estimate (not the employer's): {r.pay}." if r.pay else ""
+        return alerts.Alert(r.title, r.company, r.location, "", r.url, r.source if r.url else "", via(r.source),
+                            reference=True, aside=aside)
     return alerts.Alert(r.title, r.company, r.location, r.pay.replace("/yr", ""), r.url, r.source if r.url else "",
                         via(r.source))
 

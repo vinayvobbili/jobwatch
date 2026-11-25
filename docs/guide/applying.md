@@ -330,9 +330,10 @@ delete it in your Google account if you stop using jobwatch or think it got out.
 ## Job lists you're shown
 
 Alert emails carry a site's top few matches; its lists ("Jobs based on your preferences", "Jobs that match your
-profile" and searches on LinkedIn, "Jobs for you" and searches on Indeed) show many more. `jobwatch import-list`
-takes such a list, read in your own browser (jobwatch never fetches linkedin.com or indeed.com), and tells you how
-many of its jobs jobwatch already had: its coverage. The rest are tracked.
+profile" and searches on LinkedIn, "Jobs for you" and searches on Indeed, "Recommended Jobs" and searches on
+Ladders) show many more. `jobwatch import-list` takes such a list, read in your own browser (jobwatch never fetches
+linkedin.com, indeed.com or theladders.com), and tells you how many of its jobs jobwatch already had: its coverage.
+The rest are tracked.
 
 The list is read by the extractor, a script that runs on the page you have open:
 
@@ -341,7 +342,8 @@ The list is read by the extractor, a script that runs on the page you have open:
 - **An assistant driving Chrome:** `jobwatch import-list --script` prints the extractor. Run its text followed by
   `await JWList.readAll()` on the list's tab (every page of a LinkedIn list in one call; on Indeed, where each page
   loads anew, `await JWList.readPage()` a page at a time, going to the link `JWList.next()` gives), then pass the
-  records to the MCP tool `import_job_list`, or save them and run:
+  records to the MCP tool `import_job_list`, or save them and run (on Ladders, `readPage()` a page at a time like
+  Indeed; the extension's button doesn't offer Ladders yet):
 
 ```
 jobwatch import-list list.json --dry-run   # what would happen, nothing recorded
@@ -355,6 +357,13 @@ board, as an alert's job is, and tracked from there as new, whatever your filter
 not what's tracked. One that isn't found there (no board under the company's name, or not that title on it) is
 tracked from the list's text and listed as couldn't place; watch its company's board and `jobwatch alerts --backfill
 --again` fills it in. Every company seen counts toward [Companies to watch](#companies-to-watch).
+
+**Ladders** is a list of the companies' own jobs, and you apply on the company's own site, never through Ladders (not
+its Apply4Me, a paid service that applies for you). A Ladders record also has `url`, the job's page there. That link is
+only a reference: it goes in the job's note, never in its link. The job's link is the company's board posting when it's
+found there; a job not found is tracked with no link, and its note says to apply on the company's own site. Ladders'
+pay is its own estimate (starred on its cards), so it goes in the note too, not in the job's pay. Ladders' Apply
+Manually is a button with no link in the page, so the company's posting is looked for by the company's name.
 
 Coverage is per site: the share of the list's jobs jobwatch had found on its own (tracked, over everything seen). A
 job an earlier import added counts as one jobwatch missed, so a list imported twice shows the same coverage, and

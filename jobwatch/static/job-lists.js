@@ -4,6 +4,9 @@
  * site; this runs in the person's own browser, on the list they are looking at. Sites:
  *  - linkedin: "Jobs based on your preferences", "Jobs that match your profile", a search's results. id: the job id.
  *  - indeed: the "Jobs for you" feed on the home page, a search's results (/jobs?q=...). id: the job key (jk).
+ *  - ladders: theladders.com's "Recommended Jobs" (/recommended) and a search's results. id: the number ending the
+ *    job's path (/job/<slug>_<id>); url: that path on Ladders, which is only a reference: the jobs are the companies'
+ *    own, and the person applies on the company's own site, never through Ladders.
  *
  * Running this file defines JWList; nothing is read until one of its calls is made:
  *  - JWList.readPage(): the current page (its results scrolled to the end first: cards render as they scroll into
@@ -29,6 +32,10 @@
  * Indeed: each card is a div.job_seen_beacon (or the element around a [data-jk] link); the company is in
  * [data-testid="company-name"], the place in [data-testid="text-location"], the pay in a salary snippet. Any of
  * them can be missing.
+ * Ladders: each card has an h3 with the job's link; the card's text is the title, the company, a bullet, the pay
+ * (Ladders' own estimate, starred), the place, how it's worked (Remote, Hybrid, In-Person), the posted age and a
+ * snippet. The open job's pane and its "similar jobs" are not cards. The pane's "Apply Manually" is a button with no
+ * link in the page, so the company's own posting is looked for by the company's name, like the other sites'.
  */
 (function (root) {
   'use strict';
@@ -186,17 +193,83 @@
     };
   }
 
+  // --- Ladders --------------------------------------------------------------------------------------------------
+
+  const LADDERS_ID = /_(\d+)\/?$/;
+  const LADDERS_MODE = /^(?:remote|hybrid|in-?person|on-?site)\b/i;
+  const LADDERS_POSTED = /^(?:reposted\s+)?(?:\d+\+?\s+(?:minute|hour|day|week|month|year)s?\s+ago|just now|today)$/i;
+  const LADDERS_SKIP = '[class*="similar-jobs"], [class*="rightSection"]'; // the open job's pane, and its "similar jobs"
+
+  /** The job's own link on Ladders without its query ("/job/<slug>_<id>"), or '' for a link that isn't one. */
+  function ladderLink(href) {
+    try {
+      const u = new URL(href, 'https://www.theladders.com/');
+      return /(^|\.)theladders\.com$/i.test(u.hostname) && u.pathname.startsWith('/job/') && LADDERS_ID.test(u.pathname)
+        ? u.origin + u.pathname.replace(/\/$/, '') : '';
+    } catch {
+      return '';
+    }
+  }
+
+  /** One Ladders card's text as a record, or null with no title and company. The text runs: the title, the company,
+   * a bullet, the pay ("$150K — $190K *": Ladders' own estimate, the star), the place, how the job is worked ("Remote",
+   * "Remote in United States", "Hybrid", "In-Person"), how long ago it was posted ("Reposted 3 days ago"), then a
+   * snippet of the description. Any of the pay, place and mode can be missing. `link` is the job's page on Ladders
+   * (a reference: the company's own site is where to apply). */
+  function parseLadders(text, id, link) {
+    const lines = linesOf(text).filter((l) => !/^[•·]$/.test(l));
+    const title = cleanTitle(lines[0]);
+    const company = lines[1] || '';
+    if (!title || !company) return null;
+    const body = lines.slice(2, 9);
+    const at = body.findIndex((l) => LADDERS_POSTED.test(l)); // the snippet comes after the posted age
+    const fields = (at >= 0 ? body.slice(0, at) : body.slice(0, 3)).filter((l) => !PAY.test(l));
+    const payLine = body.slice(0, 4).find((l) => PAY.test(l));
+    const postedLine = at >= 0 ? body[at] : '';
+    // the place, then how it's worked; a card can have either alone
+    const [first = '', second = ''] = fields;
+    const modeOnly = LADDERS_MODE.test(first) && !LADDERS_MODE.test(second);
+    const place = (modeOnly ? '' : first).replace(/\s*\([^)]*\bcounty\)\s*$/i, ''); // "Boulder, CO (Boulder County)"
+    const modeLine = modeOnly ? first : LADDERS_MODE.test(second) ? second : '';
+    const location = place && modeLine && place.toLowerCase() !== modeLine.toLowerCase() ? `${place} (${modeLine})` : place || modeLine;
+    return {
+      source: 'ladders', id: String(id || ''), title, company, location,
+      pay: payLine ? payLine.match(PAY)[0].trim() : '',
+      posted: postedLine ? postedLine.match(POSTED)[1] : '',
+      url: link || '',
+    };
+  }
+
+  /** The cards of the list: each title link ("/job/<slug>_<id>") in an h3, not the open job's pane or its similar jobs. */
+  function laddersCards(doc) {
+    const best = new Map();
+    for (const a of doc.querySelectorAll('h3 a[href*="/job/"], a[class*="jobCardTitleLink"]')) {
+      if (a.closest(LADDERS_SKIP)) continue;
+      const link = ladderLink(a.getAttribute('href'));
+      const m = link.match(LADDERS_ID);
+      if (!m || best.has(m[1])) continue;
+      let card = a.closest('[class*="jobCardDescription"]') || a.closest('[class*="jobCard"]');
+      for (let up = a; !card && up.parentElement && up.parentElement !== doc.body;) {
+        up = up.parentElement;
+        if (linesOf(up.innerText).length >= 5) card = up;
+      }
+      if (card) best.set(m[1], Object.assign(card, { jwLink: link }));
+    }
+    return [...best];
+  }
+
   // --- The site's page ------------------------------------------------------------------------------------------
 
   const SITES = {
     linkedin: { cards: linkedinCards, parse: (el, id) => parseLinkedIn(el.innerText || '', id, linkedinTitle(el)), spa: true },
     indeed: { cards: indeedCards, parse: parseIndeed, spa: false },
+    ladders: { cards: laddersCards, parse: (el, id) => parseLadders(el.innerText || '', id, el.jwLink), spa: false },
   };
 
   function sourceOf(opts) {
     if (opts && opts.source) return opts.source;
     const host = (root.location && root.location.hostname) || '';
-    return /(^|\.)indeed\.[a-z.]+$/i.test(host) ? 'indeed' : 'linkedin';
+    return /(^|\.)indeed\.[a-z.]+$/i.test(host) ? 'indeed' : /(^|\.)theladders\.com$/i.test(host) ? 'ladders' : 'linkedin';
   }
 
   /** Every job card on the page as it is now, one record per id, in the order they're listed. */
@@ -309,7 +382,7 @@
     return [...byId.values()];
   }
 
-  const api = { parseLinkedIn, parseIndeed, readList, readPage, next, readAll, findNext, cleanTitle, sourceOf, PACING, DEFAULT_MAX_PAGES, lastRun: null };
+  const api = { parseLinkedIn, parseIndeed, parseLadders, ladderLink, readList, readPage, next, readAll, findNext, cleanTitle, sourceOf, PACING, DEFAULT_MAX_PAGES, lastRun: null };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JWList = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

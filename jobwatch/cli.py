@@ -1837,23 +1837,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_alerts)
 
-    p = sub.add_parser("import-list", help="take in a LinkedIn or Indeed job list you had open (\"Jobs based on your "
-                       "preferences\", \"Jobs for you\", a search): how many jobwatch already tracked (its coverage, "
-                       "per site), and the rest tracked from the company's own board. jobwatch never fetches "
-                       "linkedin.com or indeed.com",
-                       description="Take in the jobs on a LinkedIn or Indeed job list page, read in your own browser "
+    p = sub.add_parser("import-list", help="take in a LinkedIn, Indeed or Ladders job list you had open (\"Jobs based "
+                       "on your preferences\", \"Jobs for you\", \"Recommended Jobs\", a search): how many jobwatch "
+                       "already tracked (its coverage, per site), and the rest tracked from the company's own board. "
+                       "jobwatch never fetches linkedin.com, indeed.com or theladders.com",
+                       description="Take in the jobs on a LinkedIn, Indeed or Ladders job list page, read in your own "
+                       "browser "
                        "by the extractor (`--script` prints it; the extension's Read the jobs on this list button "
                        "runs it too): "
                        "JSON records {source, id, title, company, location, pay, posted}. Each job already tracked "
                        "(its link on the site, or its company and title) is counted; each new one is looked for on "
                        "the company's own board and tracked from there as new, whatever your filters say (they "
                        "decide what Today shows); one not found there is tracked from the list's text and listed as "
-                       "couldn't place. Each company counts toward `jobwatch suggest`. Every run is kept, for "
-                       "--history.")
+                       "couldn't place. A Ladders job's page there is only a reference, kept in a note: apply on the "
+                       "company's own site, never through Ladders. Each company counts toward `jobwatch suggest`. "
+                       "Every run is kept, for --history.")
     p.add_argument("file", nargs="?", metavar="FILE | -", help="the extractor's JSON, or - for stdin")
     p.add_argument("--script", action="store_true", help="print the extractor (JavaScript) to run on the list's page")
     p.add_argument("--history", action="store_true", help="each run's counts and coverage per site, and the trend")
-    p.add_argument("--source", metavar="SITE", help="with --history: only this site's runs (linkedin, indeed)")
+    p.add_argument("--source", metavar="SITE", help="with --history: only this site's runs (linkedin, indeed, ladders)")
     p.add_argument("--dry-run", action="store_true", help="show what would be tracked, and record nothing")
     p.add_argument("--no-follow", action="store_true", help="look for no boards: track each new job as listed")
     p.add_argument("--format", choices=["text", "json"], default="text")

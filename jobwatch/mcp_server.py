@@ -72,7 +72,8 @@ server = MCPServer(
         "import_job_alerts takes job-alert emails (LinkedIn, Built In, Indeed and others) that you fetched with a "
         "mail connector, as raw messages or HTML bodies, and tracks their jobs (matched to the company's own board "
         "where it can) as new jobs for get_digest; it never needs the person's mail password. import_job_list takes "
-        "the jobs on a LinkedIn or Indeed list page the person has open, read with the extractor in their browser, "
+        "the jobs on a LinkedIn, Indeed or Ladders list page the person has open, read with the extractor in their "
+        "browser, "
         "and says how many jobwatch already had (its coverage) and tracks the rest. "
         "read_status_emails reads emails about the person's applications (confirmations, rejections, interview "
         "invitations, assignments, offers, recruiter replies) and proposes each one's new status and a dated note: "
@@ -632,24 +633,28 @@ def import_job_alerts(
 @server.tool(annotations=_hints(web=True))
 def import_job_list(
     records: Annotated[list[dict], Field(description=(
-        "The jobs on a LinkedIn or Indeed job list page, as the extractor returns them: {source, id, title, "
-        "company, location, pay, posted} each. Run the extractor (`jobwatch import-list --script` prints it) on the "
-        "list's tab with the browser's JavaScript tool, its text followed by `await JWList.readAll()` (every page "
-        "of a LinkedIn list in one call; on Indeed, `await JWList.readPage()` a page at a time, going to the link "
-        "`JWList.next()` gives), and pass the records here."))],
+        "The jobs on a LinkedIn, Indeed or Ladders job list page, as the extractor returns them: {source, id, "
+        "title, company, location, pay, posted} each (a Ladders one also has url). Run the extractor (`jobwatch "
+        "import-list --script` prints it) on the list's tab with the browser's JavaScript tool, its text followed "
+        "by `await JWList.readAll()` (every page of a LinkedIn list in one call; on Indeed or Ladders, `await "
+        "JWList.readPage()` a page at a time, going to the link `JWList.next()` gives), and pass the records "
+        "here."))],
     dry_run: Annotated[bool, Field(description="Say what would be tracked, and record nothing.")] = False,
 ) -> dict:
-    """Take in a LinkedIn or Indeed job list the person had open ("Jobs based on your preferences", "Jobs that match
-    your profile", "Jobs for you", a search's results), read in their own browser; jobwatch never fetches
-    linkedin.com or indeed.com. Each job is matched to a tracked one (its link on the site, or its company and
-    title); each new one is looked for on the company's own board and tracked there as new, whatever the filters say
-    (they decide what get_digest shows); one not found there is tracked from the list's text and comes back as
-    unplaced, with why (no board found, or not on it): find its board with find_board and watch it, and the alerts
-    backfill fills it in. Each company counts toward list_suggested_boards. Returns counts (seen, tracked: jobwatch
-    had it, earlier: an earlier import added it, added, unplaced) and coverage (jobwatch's own share: tracked over
-    seen, 0-1; jobs an earlier import added count as missed), with a note when most of the list was imported
-    before ("Same list as before: nothing new"), overall and by_source, and each
-    job with its outcome and key. Every run is kept: `jobwatch import-list --history` shows the trend per site."""
+    """Take in a LinkedIn, Indeed or Ladders job list the person had open ("Jobs based on your preferences", "Jobs
+    that match your profile", "Jobs for you", Ladders' "Recommended Jobs", a search's results), read in their own
+    browser; jobwatch never fetches linkedin.com, indeed.com or theladders.com. A Ladders job's page is only a
+    reference, kept in a note: the person applies on the company's own site, never through Ladders (not its
+    Apply4Me), and the job's link is the company's board posting when it's found. Each job is matched to a tracked
+    one (its link on the site, or its company and title); each new one is looked for on the company's own board and
+    tracked there as new, whatever the filters say (they decide what get_digest shows); one not found there is
+    tracked from the list's text and comes back as unplaced, with why (no board found, or not on it): find its
+    board with find_board and watch it, and the alerts backfill fills it in. Each company counts toward
+    list_suggested_boards. Returns counts (seen, tracked: jobwatch had it, earlier: an earlier import added it,
+    added, unplaced) and coverage (jobwatch's own share: tracked over seen, 0-1; jobs an earlier import added count
+    as missed), with a note when most of the list was imported before ("Same list as before: nothing new"),
+    overall and by_source, and each job with its outcome and key. Every run is kept: `jobwatch import-list
+    --history` shows the trend per site."""
     cfg, store = _open()
     try:
         return joblist.take(cfg, store, joblist.records(records), dry_run=dry_run).to_dict()
