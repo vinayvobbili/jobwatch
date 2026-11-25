@@ -199,6 +199,9 @@ def _read(url: str, timeout: float, body: dict | None, accept: str, headers: dic
             raise SourceError(f"{url}: HTTP {e.code}") from None
         except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as e:
             raise SourceError(f"{url}: {e}") from None  # a dropped connection (RemoteDisconnected) is one too
+        except UnicodeError as e:  # a host the resolver can't encode (a label over 63 characters, an empty one)
+            why = e.reason if isinstance(e, UnicodeEncodeError) else e
+            raise SourceError(f"{url}: not a valid host ({why})") from None
     raise SourceError(f"{url}: no answer")  # not reached: the last attempt returns or raises
 
 

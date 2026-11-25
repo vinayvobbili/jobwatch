@@ -207,6 +207,37 @@ def test_a_rate_limited_board_is_asked_again(monkeypatch):
     assert waits == [5.0, 4]  # the server's Retry-After, then backing off
 
 
+def _resolving_urlopen(monkeypatch):
+    """urlopen that only resolves the host, as a real request does first: a label the idna codec can't encode raises
+    UnicodeError there, any other host is a plain 404."""
+    import socket
+    import urllib.error
+
+    def urlopen(req, timeout):
+        try:
+            socket.getaddrinfo(req.host.split(":")[0], 443)
+        except socket.gaierror:
+            pass
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(sources.urllib.request, "urlopen", urlopen)
+
+
+def test_a_host_with_a_label_too_long_is_no_such_site_not_a_crash(monkeypatch):
+    _resolving_urlopen(monkeypatch)
+    with pytest.raises(sources.SourceError, match="not a valid host"):
+        sources.get_text("https://" + "initech-" * 10 + "careers.test/robots.txt")
+    with pytest.raises(sources.SourceError, match="not a valid host"):
+        sources.get_json("https://.test/api")  # an empty label
+
+
+def test_a_lookup_of_a_very_long_company_name_finds_no_board_instead_of_crashing(monkeypatch):
+    # `find`, `suggest` and the MCP find_board all guess boards and sites from the name: one name that makes a host
+    # label over 63 characters ("Initech Initech ...") must end as "no board", not abort the command
+    _resolving_urlopen(monkeypatch)
+    assert sources.probe("Initech " * 12) == []
+
+
 def test_a_board_that_stays_rate_limited_fails(monkeypatch):
     def urlopen(req, timeout):
         raise _http_error(429, "999")
