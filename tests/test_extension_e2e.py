@@ -556,7 +556,9 @@ def test_draft_reply_says_when_the_server_fails_or_two_conversations_are_open(re
     page, panel = reply_panel(reply_stack, ext, panels, "?two")
     try:
         panel.click("#reply")
-        panel.wait_for_selector(".msg", timeout=20000)
+        # The progress line ("Reading the open conversation...") is a .msg too: wait for the words, not the class.
+        panel.wait_for_function("() => document.getElementById('view').textContent.includes('More than one conversation is open')",
+                                timeout=20000)
         assert "More than one conversation is open" in panel.inner_text("#view")
         assert reply_stack.server.replies == []  # nothing was sent while it was unclear which one
         page.click("#bubble [role=textbox]")  # the person picks one by clicking in its box
