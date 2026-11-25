@@ -33,6 +33,11 @@ claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- jobwatch-m
 claude mcp add jobwatch -s user -e JOBWATCH_CONFIG=~/jobwatch.yaml -- uvx --with 'mcp>=2.2' jobwatch mcp
 ```
 
+**Notes are history.** `mark_job`'s `add_note` adds a dated line and keeps what's there: it is how news is recorded.
+`note` replaces the whole note, so on a job that already has one it is refused (nothing changes) unless the person
+asked for it and `replace_note` is true; a note replaced that way is kept, and `jobwatch notes KEY --undo` brings it
+back.
+
 **Proof before "applied".** `mark_job` with status `applied` pauses and asks you, through MCP elicitation, "Did you
 see a confirmation page or email for this application?": confirmation page seen, confirmation email seen, or not
 yet, with an optional note. A confirmation records the job as applied with a dated note of the proof

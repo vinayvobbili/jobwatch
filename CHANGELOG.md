@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `mark --note` replaces the whole note, so it used to wipe an application's dated history without a word. It now
+  keeps the replaced note (in the database), says how long it was, and `jobwatch notes KEY --undo` brings it back;
+  `jobwatch notes KEY` lists the notes replaced. The MCP `mark_job` refuses `note` on a job that already has one
+  (use `add_note`) unless `replace_note` is true, and the CLI help says `--note` replaces.
+- `jobwatch notes KEY... --from-backup ARCHIVE` reads jobs' notes out of a backup (a file, or the day it was made)
+  without touching the database; `--restore` writes the archived note back in front of the note there now, so
+  nothing newer is lost (`--dry-run` shows it first).
 - Requires Python 3.11 or newer (3.10 reached end of life in October 2026).
 - `jobwatch company NAME --status STATUS` (repeatable) lists only the jobs in those statuses, every one of them (closed
   postings and the roles your filters leave out too, none cut), and `--keys` prints just their keys, one a line, for

@@ -24,6 +24,17 @@ jobwatch applications            # every application, follow-ups due first (alia
 jobwatch applications --due      # only the ones to act on today
 ```
 
+`--add-note` is how to record news. `--note` replaces the whole note, history included, so it says how much it
+replaced; the replaced note is kept, and `jobwatch notes KEY --undo` brings it back (`jobwatch notes KEY` lists the
+notes replaced). A note lost before that, or longer ago, can be read from a backup without touching the database, and
+written back in front of the note there now so nothing newer is lost:
+
+```
+jobwatch notes c1 c2 --from-backup 2026-11-24                    # the archived notes next to the ones now
+jobwatch notes c1 c2 --from-backup 2026-11-24 --restore --dry-run   # what would be written
+jobwatch notes c1 c2 --from-backup 2026-11-24 --restore
+```
+
 The day you applied is kept as an application moves through the stages. `--next ""` or `--follow-up ""`
 clears a field.
 

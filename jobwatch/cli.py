@@ -50,6 +50,7 @@ from . import (
     levels,
     logos,
     mock,
+    notes,
     offices,
     paysources,
     prep,
@@ -656,11 +657,15 @@ def cmd_mark(args, cfg, store):
     if args.note is not None and not args.note.strip():  # a "$(...)" that failed and printed nothing, most likely
         raise ValueError("--note is empty and would erase the note; leave it out to keep the note")
     keys = [store.find(k)[0].key for k in args.keys]
+    lost = {k: store.would_replace(k, args.note) for k in keys}  # the notes --note is about to replace
     if args.status:
         store.set_status(keys, args.status, args.note, on=getattr(args, "on", None))
     else:
         for k in keys:
             store.track(k, note=args.note, applied=getattr(args, "on", None))
+    for k, n in lost.items():
+        if n:
+            print(f"  {k}: replaced a {n:,}-character note; bring it back with `jobwatch notes {k} --undo`")
     if text := getattr(args, "text", None):
         text = sys.stdin.read() if str(text) == "-" else text.read_text()
         for k in keys:
@@ -892,8 +897,8 @@ def cmd_draft_reply(args, cfg, store):
     if args.format == "json":
         print(json.dumps(got, indent=2, ensure_ascii=False))
         return
-    notes = [f"Warning: {w}" for w in got["warnings"]] + [f"Check: {n}" for n in got["notes"]]
-    print("\n\n".join([got["reply"] or "(no draft)", *(["\n".join(notes)] if notes else [])]))
+    lines = [f"Warning: {w}" for w in got["warnings"]] + [f"Check: {n}" for n in got["notes"]]
+    print("\n\n".join([got["reply"] or "(no draft)", *(["\n".join(lines)] if lines else [])]))
 
 
 def cmd_profile(args):
@@ -1113,6 +1118,42 @@ def cmd_backup(args, cfg, store):
           + (f"; dropped {len(dropped)} older" if dropped else ""))
     if args.install:
         print(f"Backing up {backup.install(cfg.path, dest, args.keep, also)} to {dest}; log: {backup.log_path()}")
+
+
+def cmd_notes(args, cfg, store):
+    """`notes KEY...`: the note and the notes replaced; --undo brings back the last replaced one; --from-backup reads
+    the note out of an archive, and --restore writes it back in front of the one there now (--dry-run: show only)."""
+    if args.undo:
+        if args.from_backup or args.restore:
+            raise ValueError("--undo brings back a replaced note; --from-backup and --restore read a backup: not both")
+        for k in args.keys:
+            job, _ = store.find(k)
+            restored, was = store.undo_note(job.key)
+            print(f"{job.key}: brought back a {len(restored):,}-character note, replacing a {was:,}-character one "
+                  f"(`notes {job.key} --undo` again goes back)")
+        return
+    if args.restore and not args.from_backup:
+        raise ValueError("--restore needs --from-backup ARCHIVE (a backup file, or the day it was made)")
+    if args.from_backup:
+        archive = notes.archive_path(args.from_backup, args.dest.expanduser() if args.dest else None)
+        plans = notes.plan(store, archive, args.keys)
+        for p in plans:
+            print(f"{p.key}: archive {archive.name}: {len(p.archived):,} characters; now {len(p.current):,}; "
+                  f"{p.action}" + (f" (would become {len(p.merged):,})" if p.action == "restore" else ""))
+            if not args.restore or args.dry_run:
+                print(f"  archived: {p.archived or '(none)'}\n  now: {p.current or '(none)'}")
+        if args.restore and not args.dry_run:
+            for p in notes.restore(store, plans):
+                print(f"{p.key}: restored, {len(p.current):,} -> {len(p.merged):,} characters; "
+                      f"`jobwatch notes {p.key} --undo` reverses it")
+        elif args.restore:
+            print("Dry run: nothing changed.")
+        return
+    for k in args.keys:
+        job, rec = store.find(k)
+        print(f"{job.key}: {rec.get('note') or '(no note)'}")
+        for h in store.note_history(job.key):
+            print(f"  replaced {h['replaced_at'][:16]}, {len(h['note']):,} characters: {h['note']}")
 
 
 def cmd_notify_closed(args, cfg, store):
@@ -1644,8 +1685,10 @@ def cmd_list(args, cfg, store):
 
 
 def _tracking(p: argparse.ArgumentParser):
-    p.add_argument("--note", help="replaces the note")
-    p.add_argument("--add-note", metavar="TEXT", help="adds a dated line to the note, keeping what's there")
+    p.add_argument("--note", help="REPLACES the whole note, and the history in it with it (the one replaced is kept: "
+                   "`jobwatch notes KEY --undo`). To record news, use --add-note")
+    p.add_argument("--add-note", metavar="TEXT", help="adds a dated line to the note, keeping what's there (the "
+                   "normal way to record news)")
     p.add_argument("--on", metavar="DAY", help="the day you applied, if not today (YYYY-MM-DD)")
     p.add_argument("--next", metavar="STEP", help="what happens next, e.g. 'check in with the recruiter'")
     p.add_argument("--round", choices=[*ROUNDS, ""], metavar="ROUND", help="which interview the next step is "
@@ -2023,6 +2066,20 @@ def build_parser() -> argparse.ArgumentParser:
                    help="unpack the newest archive somewhere temporary, as a restore would, and open what's in it")
     p.add_argument("--install", action="store_true", help="back up now, and then daily through launchd (macOS)")
     p.set_defaults(func=cmd_backup)
+
+    p = sub.add_parser("notes", help="a job's note and the notes `mark --note` replaced; --undo brings the last one "
+                       "back, and --from-backup reads a note out of a backup (--restore writes it back)")
+    p.add_argument("keys", nargs="+", metavar="KEY", help="the jobs: key, posting id, or company when it names one")
+    p.add_argument("--undo", action="store_true", help="bring back the note the last replacement dropped (the note "
+                   "there now takes its place in the history, so undoing again goes back)")
+    p.add_argument("--from-backup", metavar="ARCHIVE", help="read these jobs' notes from a backup archive (a file, or "
+                   "the day it was made, YYYY-MM-DD, in --dest) without touching the database, and show them next "
+                   "to the notes now")
+    p.add_argument("--restore", action="store_true", help="with --from-backup: write the archived note back, "
+                   "followed by the note now, so nothing newer is lost (the one replaced goes to the history)")
+    p.add_argument("--dry-run", action="store_true", help="with --restore: show what would change, and change nothing")
+    p.add_argument("--dest", type=Path, help="with a day for --from-backup: the backup folder (default: as `backup`)")
+    p.set_defaults(func=cmd_notes)
 
     p = sub.add_parser("notify-closed", help="one macOS popup summing up the postings of your applications and queued "
                        "jobs that were taken down since the last one (the Closed postings strip on Applications "

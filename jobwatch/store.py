@@ -260,6 +260,13 @@ CREATE TABLE IF NOT EXISTS activity (
     notable INTEGER NOT NULL DEFAULT 0,
     job_keys TEXT NOT NULL DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS note_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    note TEXT NOT NULL,
+    replaced_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS note_history_key ON note_history (key);
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
 ACTIVITY_KEPT = 1000  # the things done in the background remembered, of each kind (see Store.log)
@@ -960,6 +967,7 @@ class Store:
                                      "nothing to wait for: queue it or skip it")
         with self.db:
             for key in keys:
+                self._keep_replaced(key, note)
                 self.db.execute("UPDATE jobs SET follow_up=CASE WHEN ? THEN ? WHEN status='snoozed' THEN NULL "
                                 "ELSE follow_up END, status=?, status_at=?, note=COALESCE(?, note), applied_at="
                                 "CASE WHEN ? THEN COALESCE(?, applied_at, ?) END WHERE key=?",
@@ -1021,6 +1029,8 @@ class Store:
             fields["applied_at"] = day(applied)
         if fields:
             with self.db:
+                if note is not None:
+                    self._keep_replaced(key, note)
                 self.db.execute(f"UPDATE jobs SET {', '.join(f'{k}=?' for k in fields)} WHERE key=?",
                                 (*fields.values(), key))
 
@@ -1066,6 +1076,37 @@ class Store:
         kept = self.package(job.key)
         if rec["status"] in STAGES or (kept.dir / POSTING).is_file():  # applied before, queued again for a reposting
             kept.keep_posting(job, again=True)
+
+    def would_replace(self, key: str, new: str | None) -> int:
+        """How many characters of the job's note setting it to `new` would drop: 0 when `new` is None (the note stays),
+        when there's no note, or when `new` keeps it (add_note writes the note followed by a line)."""
+        row = self.db.execute("SELECT note FROM jobs WHERE key=?", (key,)).fetchone()
+        old = (row["note"] or "").strip() if row else ""
+        return 0 if new is None or not old or new.strip().startswith(old) else len(old)
+
+    def _keep_replaced(self, key: str, new: str | None):
+        """Before a note is replaced (not added to), keep the one there in note_history, so `jobwatch notes KEY --undo`
+        brings it back: `mark --note` once wiped four applications' long histories at once."""
+        if self.would_replace(key, new):
+            old = self.db.execute("SELECT note FROM jobs WHERE key=?", (key,)).fetchone()["note"]
+            self.db.execute("INSERT INTO note_history (key, note, replaced_at) VALUES (?, ?, ?)", (key, old, _now()))
+
+    def note_history(self, key: str) -> list[dict]:
+        """The notes replaced on this job, newest first: id, note, replaced_at."""
+        return [dict(r) for r in self.db.execute(
+            "SELECT id, note, replaced_at FROM note_history WHERE key=? ORDER BY id DESC", (key,))]
+
+    def undo_note(self, key: str) -> tuple[str, int]:
+        """Bring back the note the last replacement dropped. The note there now goes into the history in its place, so
+        undoing again goes back. Returns the note restored and the length of the note it replaced."""
+        job, rec = self.find(key)
+        if not (history := self.note_history(job.key)):
+            raise ValueError(f"{job.key} has no replaced note to bring back")
+        last = history[0]
+        with self.db:
+            self.db.execute("DELETE FROM note_history WHERE id=?", (last["id"],))
+        self.track(job.key, note=last["note"])
+        return last["note"], len((rec.get("note") or "").strip())
 
     def add_note(self, key: str, text: str):
         """Add a dated line to the note, keeping what's there (the recruiter's name, what was said before). A line

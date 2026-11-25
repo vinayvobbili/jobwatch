@@ -487,10 +487,17 @@ def mark_job(
     status: Annotated[Status | None, Field(description=(
         "The new status; omit to keep it and only update the rest. applied only after the person has submitted "
         "the application themselves."))] = None,
-    note: Annotated[str | None, Field(description="Replaces the whole note. Prefer add_note for news.")] = None,
+    note: Annotated[str | None, Field(description=(
+        "Sets the note of a job that has none yet. Refused when the job already has a note (its dated history): use "
+        "add_note for news. To replace one, the person must ask for it, and replace_note must be true."))] = None,
     add_note: Annotated[str | None, Field(description=(
-        "A line to add to the note, dated today, keeping what's there (\"recruiter replied: onsite only\")."))]
+        "A line to add to the note, dated today, keeping what's there (\"recruiter replied: onsite only\"). The "
+        "normal way to record news."))]
     = None,
+    replace_note: Annotated[bool, Field(description=(
+        "Lets note replace a note that's there (the old one is kept; `jobwatch notes KEY --undo` brings it back). "
+        "Set it true only when the person asked to replace or rewrite the note. Never set it yourself to record "
+        "news: that is add_note."))] = False,
     next_step: Annotated[str | None, Field(description=(
         "What happens next (\"recruiter screen Tuesday\"). An empty string clears it."))] = None,
     round: Annotated[Round | None, Field(description=(
@@ -516,7 +523,9 @@ def mark_job(
     posting id, or its company's name when that names one job (the one queued or applied to there); when it
     names several, nothing changes and the error lists them. Use applied only after
     the person has submitted the application themselves. add_note adds a dated line to the note, keeping what's
-    there: prefer it for news ("recruiter replied: onsite only"); note replaces the whole note. next_step says
+    there: always use it for news ("recruiter replied: onsite only"). note is for a job with no note yet: it is
+    refused when the job has one (the note is the application's dated history), unless the person asked to replace
+    it and replace_note is true; the replaced note is kept and can be brought back. next_step says
     what happens next ("recruiter screen Tuesday"), with its date and time; round says which interview it is
     (see its description), so it counts as a meeting without depending on its words; follow_up is the day to
     act (YYYY-MM-DD or +N days); applied_on is the day applied, if not today. url sets the link of a job
@@ -539,6 +548,11 @@ def mark_job(
     said = ""
     try:
         job, rec = store.find(key)
+        lost = store.would_replace(job.key, note)
+        if lost and not replace_note:
+            raise ToolError(f"{job.key} has a {lost:,}-character note, and note would replace all of it. Nothing was "
+                            "changed. To record news, call mark_job again with add_note instead; set replace_note "
+                            "only if the person asked to replace the note.")
         if text is not None:
             store.set_description(job.key, text)
         if status:
@@ -554,7 +568,10 @@ def mark_job(
             store.add_note(job.key, proof_note)
         reminders.refresh(cfg, store, [job.key])
         same = dupes.check(store, job.key) if status == "queued" else None
-        return (f"{job.key}: {status or rec['status']}{said}" + (f". Check: {same.line}" if same else "") + warning)
+        kept = (f" Replaced a {lost:,}-character note; `jobwatch notes {job.key} --undo` brings it back." if lost
+                else "")
+        return (f"{job.key}: {status or rec['status']}{said}" + (f". Check: {same.line}" if same else "") + kept
+                + warning)
     finally:
         store.close()
 
