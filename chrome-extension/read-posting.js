@@ -56,6 +56,23 @@
     return /^[0-9a-f]{8,}$/i.test(jk) ? jk : '';
   }
 
+  /** The address to open for jobwatch's page's Read posting: a LinkedIn or Indeed job's address with the marker the
+   * reader looks for, or '' for anything else (the page can ask for nothing but a job page to be opened). */
+  function readUrl(url) {
+    if (!siteOf(url)) return '';
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}${u.search}${HASH}`;
+  }
+
+  /** Whether `origin` (the address of the page that asked) is the jobwatch the extension is paired with: a local
+   * address (localhost, *.localhost or 127.0.0.1, whatever the name the person types) on the paired port. */
+  function sameJobwatch(origin, serverUrl) {
+    let a, b;
+    try { a = new URL(origin); b = new URL(serverUrl); } catch { return false; }
+    const local = (h) => h === 'localhost' || h === '127.0.0.1' || h.endsWith('.localhost');
+    return a.protocol === 'http:' && local(a.hostname) && local(b.hostname) && (a.port || '80') === (b.port || '80');
+  }
+
   /** The description in a page's text: { text, closed }, or { error: 'why' } when the page has none (a sign-in wall, a
    * captcha, or not the posting). `closed`: LinkedIn says it is not taking applications any more. */
   function postingFromText(site, pageText) {
@@ -94,7 +111,7 @@
     return { site, id, title, company, text: read.text, closed: read.closed };
   }
 
-  const api = { siteOf, jobId, postingFromText, readPage, HASH };
+  const api = { siteOf, jobId, postingFromText, readPage, readUrl, sameJobwatch, HASH };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JWRead = api;
 
@@ -125,7 +142,11 @@
       await new Promise((r) => setTimeout(r, POLL_MS)); // the page draws the description after it loads
       read = readPage(document, location.href);
     }
-    if (read.error) return banner(`${read.error}. Sign in to the site in this tab if needed, then press Read posting again.`, false);
+    if (read.error) {
+      // a tab jobwatch's page opened behind the person's (see page-bridge.js) tells that page, which says so
+      chrome.runtime.sendMessage({ type: 'readFailed', error: `${read.error}.` }).catch(() => {});
+      return banner(`${read.error}. Sign in to the site in this tab if needed, then press Read posting again.`, false);
+    }
     try { history.replaceState(null, '', location.pathname + location.search); } catch { /* the page is going away */ }
     let r;
     try {

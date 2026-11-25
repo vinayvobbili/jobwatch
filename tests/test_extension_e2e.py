@@ -937,3 +937,70 @@ def test_demo_video_is_a_narrated_1280x800_mp4(tmp_path, pw):
     # The hook, the steps from the extensions page to Submit, the trust, start and end cards: about two minutes.
     assert demo_video.TITLE_SECONDS + 20 < slidecast.probe_duration(out, ffmpeg=ffmpeg) < 150
     assert (tmp_path / "demo_poster.jpg").is_file()
+
+
+# --- Read posting from jobwatch's own page: a tab behind this one, only that card changes ----------------------
+
+LINKEDIN_TABS = "async () => (await chrome.tabs.query({url: '*://www.linkedin.com/*'})).map((t) => ({id: t.id, active: t.active}))"
+
+
+def read_from_jobwatch(stack, query: str):
+    """jobwatch's (demo) Today page, scrolled down to its card, and the card's Read posting pressed for a demo posting."""
+    from urllib.parse import quote
+
+    posting = stack.url("www.linkedin.com", f"/jobs/view/4000000001/{query}")
+    page = stack.context.new_page()
+    page.goto(f"{stack.api_url}/demo/today?posting={quote(posting, safe='')}")
+    page.evaluate("() => window.scrollTo(0, 1200)")
+    stack.server.postings.clear()
+    page.click("#read")
+    return page
+
+
+def test_read_posting_from_jobwatchs_page_opens_behind_and_changes_only_that_card(stack, ext):
+    page = read_from_jobwatch(stack, "")
+    try:
+        tabs = harness.wait_until(lambda: ext.evaluate(LINKEDIN_TABS), what="the posting's tab")
+        assert [t["active"] for t in tabs] == [False]  # behind the page, never in front of it
+        mine = ext.evaluate("async (u) => (await chrome.tabs.query({})).find((t) => t.url.startsWith(u)).active", stack.api_url)
+        assert mine is True
+        harness.wait_until(lambda: page.evaluate("() => window.answers.length"), what="the extension's answer")
+        assert page.evaluate("() => window.answers[0]") == {
+            "type": "jobwatch:read-posting-done", "key": "demo", "ok": True, "closed": True, "has_text": True,
+            "said": "Filled in from Greenhouse; scoring now"}
+        assert page.inner_text("#state") == "closed"  # the card changed ...
+        assert page.evaluate("() => window.scrollY") == 1200  # ... and the page stayed where it was
+        (sent,) = stack.server.postings
+        assert sent["linkedin"] == "4000000001" and sent["closed"] is True
+        assert sent["text"].startswith("For our client, Initech")
+        harness.wait_until(lambda: not ext.evaluate(LINKEDIN_TABS), timeout=15, what="the posting's tab to close itself")
+    finally:
+        page.close()
+
+
+def test_an_open_posting_read_from_jobwatchs_page_says_so(stack, ext):
+    page = read_from_jobwatch(stack, "?open=1")
+    try:
+        harness.wait_until(lambda: page.evaluate("() => window.answers.length"), what="the extension's answer")
+        assert page.inner_text("#state") == "read"
+        assert stack.server.postings[0]["closed"] is False
+        harness.wait_until(lambda: not ext.evaluate(LINKEDIN_TABS), timeout=15, what="the posting's tab to close itself")
+    finally:
+        page.close()
+
+
+def test_a_local_page_that_is_not_jobwatch_cannot_open_tabs_through_the_bridge(stack, ext):
+    """Any local page gets the bridge; the extension answers only the one on jobwatch's own address and port."""
+    page = stack.context.new_page()
+    try:
+        page.goto(stack.url("127.0.0.1", "/linkedin-jobs.html"))
+        page.evaluate("""(u) => { window.answers = [];
+          window.addEventListener('message', (e) => e.data && e.data.type === 'jobwatch:read-posting-done' && window.answers.push(e.data));
+          window.postMessage({type: 'jobwatch:read-posting', key: 'x', url: u}, location.origin); }""",
+                      stack.url("www.linkedin.com", "/jobs/view/4000000001/"))
+        harness.wait_until(lambda: page.evaluate("() => window.answers.length"), what="the refusal")
+        answer = page.evaluate("() => window.answers[0]")
+        assert answer["ok"] is False and "Only your own jobwatch page" in answer["error"]
+        assert ext.evaluate(LINKEDIN_TABS) == []
+    finally:
+        page.close()

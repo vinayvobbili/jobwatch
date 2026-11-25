@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Platform Engineer | Initech | LinkedIn (demo)</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 0; background: #f3f2ef; }
+  header { background: #fff; padding: 14px 24px; font-weight: 700; color: #0a66c2; border-bottom: 1px solid #ddd; }
+  main { max-width: 640px; margin: 16px auto; padding: 0 16px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .closed { color: #b24020; font-weight: 600; }
+</style>
+</head>
+<body>
+<header>in | Jobs</header>
+<main>
+  <!-- the shape of a real closed posting's text: the banner sits under the title, before "About the job" -->
+  <div>Initech</div>
+  <h1>Platform Engineer</h1>
+  <div>United States · 1 month ago · 34 people clicked apply</div>
+  <div>Promoted by hirer · Responses managed off LinkedIn</div>
+  <div>$150K/yr - $190K/yr</div>
+  <div>Remote</div>
+  <div>Full-time</div>
+  <div class="closed" id="closed">No longer accepting applications</div>
+  <div>Use AI to assess how you fit</div>
+  <h2>About the job</h2>
+  <p>For our client, Initech, we are looking for a Platform Engineer to own the services behind its reports. You will build
+  Rust and Python tools, run the on-call rotation for the data platform, and work with the support team on the hardest
+  customer cases every week.</p>
+  <p>Set alert for similar jobs</p>
+</main>
+<script>
+  // a posting that is still open has no banner: /jobs/view/<id>/?open=1
+  if (new URLSearchParams(location.search).has('open')) document.getElementById('closed').remove();
+</script>
+</body>
+</html>

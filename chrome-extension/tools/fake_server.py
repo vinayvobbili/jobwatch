@@ -63,6 +63,26 @@ DRAFTS = {
 }
 
 
+# A stand-in for jobwatch's Today page: a long list with a Read posting button on one card, speaking to the
+# extension the way jobwatch/static/index.html does (window messages through page-bridge.js), and drawing only that
+# card when it is read.
+TODAY_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>jobwatch (demo)</title></head><body>
+<div style="height:1500px">Cards above</div>
+<div id="job-demo"><span id="state">no text</span> <button id="read">Read posting</button></div>
+<div style="height:1500px">Cards below</div>
+<script>
+  window.answers = [];
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || !e.data || e.data.type !== 'jobwatch:read-posting-done') return;
+    window.answers.push(e.data);
+    const word = e.data.closed ? 'closed' : 'read';
+    document.getElementById('state').textContent = e.data.ok ? word : 'failed: ' + e.data.error;
+  });
+  const posting = new URLSearchParams(location.search).get('posting');
+  document.getElementById('read').onclick = () => window.postMessage(
+    { type: 'jobwatch:read-posting', key: 'demo', url: posting }, location.origin);
+</script></body></html>"""
+
 NOT_TRACKED = "jobwatch doesn't track this job yet: save the posting to jobwatch first"
 # What jobwatch's ats.check answers for the demo job (autofill.ats_check adds matched_by and can_tailor)
 ATS = {"key": "ashby:initech/4f1c", "company": "Initech", "title": "Platform Engineer", "file": "resume.pdf",
@@ -129,6 +149,9 @@ def _handler(state: State):
         def do_GET(self):
             url = urlparse(self.path)
             state.requests.append(("GET", url.path))
+            if url.path == "/demo/today":  # jobwatch's own page, standing in for its Today (no token: a browser asks)
+                self._send(200, TODAY_PAGE.encode(), "text/html; charset=utf-8")
+                return
             if not self._allowed():
                 return
             page = parse_qs(url.query).get("url", [""])[0]
@@ -201,7 +224,8 @@ def _handler(state: State):
                 state.postings.append(body)
                 self._json(200, {"key": "greenhouse:initech/4001", "company": body.get("company") or "Initech",
                                  "title": body.get("title") or "Platform Engineer", "added": False,
-                                 "has_text": True, "where": "queue", "said": "Filled in from Greenhouse; scoring now"})
+                                 "has_text": True, "where": "queue", "said": "Filled in from Greenhouse; scoring now",
+                                 **({"closed": True} if body.get("closed") else {})})
             elif self.path == "/ext/import-list":
                 state.imports.append(body)
                 records = body.get("records", [])

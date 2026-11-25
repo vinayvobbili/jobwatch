@@ -41,6 +41,7 @@ ROUTES = [
     (r"^/careers$", "greenhouse-embed.html"),
     (r"^/jobs/collections/[^/]+/?$", "linkedin-jobs.html"),
     (r"^/messaging/thread/[^/]+/?$", "linkedin-messages.html"),
+    (r"^/jobs/view/\d+/?$", "linkedin-job.html"),
 ]
 
 

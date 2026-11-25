@@ -18,6 +18,11 @@
   in the job's note (with its pay estimate), and a job not found on a board has no link and a note saying to apply on
   the company's own site. The extension's button doesn't offer Ladders yet.
 - Fix: a job with no link no longer reads as a repeat of the one before it when a list or alert is taken in.
+- Fix: Read posting on a card no longer reloads Today from the top or pulls you to the new tab. With the extension
+  (it adds a small script on your own localhost pages, which only your paired jobwatch may use), the posting opens in a
+  tab behind the one you are on, is read there, and only that card changes (its text, closed badge and state); the
+  scroll position and the card you were on stay put. Without the extension's new version the tab still opens in front,
+  but coming back redraws Today where you were.
 - Fix: the extension's Read posting now marks a job closed (the card's closed badge, a note, and the on-page banner in
   amber) when the LinkedIn or Indeed page says the posting is closed. It was dropped when jobwatch already had the
   posting's text, when the job was added by that read, and when the job was skipped; the banner line is also found with

@@ -78,6 +78,7 @@ chrome.windows.onRemoved.addListener((windowId) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.session.remove([pendingKey(tabId), ctxKey(tabId)]);
+  readTabEnded(tabId, 'The posting tab was closed before it was read.');
   const id = panelWindows.get(tabId);
   if (id) chrome.windows.remove(id).catch(() => {}); // its tab is gone, so is its panel
 });
@@ -94,6 +95,8 @@ async function handle(msg, tabId, sender) {
     case 'fillReply': return fillReply(tabId, msg.text, msg.fingerprint, msg.replace);
     case 'posting': return posting(tabId);
     case 'readPosting': return readPosting(msg, sender);
+    case 'readInBackground': return readInBackground(msg, sender);
+    case 'readFailed': return readFailed(msg, sender);
     case 'importList': return importList(tabId);
     case 'importState': return { running: [...listImports].map(([tabId, source]) => ({ tabId, source })) };
     case 'passiveSeen': return sender.tab ? passiveSeen(msg.records) : {};
@@ -511,8 +514,52 @@ async function readPosting(msg, sender) {
   const text = String(msg.text || '');
   if (text.length < 200) throw new Expected("This page doesn't show a job posting's text.");
   const body = { [site]: id, company: msg.company, title: msg.title, text, closed: !!msg.closed };
-  const r = await api('/ext/posting', { method: 'POST', body, settings });
+  let r;
+  try {
+    r = await api('/ext/posting', { method: 'POST', body, settings });
+  } catch (e) {
+    await readTabEnded(sender.tab.id, e.message);
+    throw e;
+  }
+  await readTabEnded(sender.tab.id, '', { ...r, closed: !!(r.closed || msg.closed) });
   return { ...r, link: `${settings.serverUrl}/#${r.where}` };
+}
+
+// --- Read posting from jobwatch's own page, in a tab behind the one the person is on -------------------------
+
+const readTabKey = (tabId) => `readTab:${tabId}`;
+
+/**
+ * jobwatch's page (through page-bridge.js) asks for a LinkedIn or Indeed posting to be read. The tab opens behind the
+ * one the person is on (never active, so their place on the page is kept), read-posting.js reads it as for any Read
+ * posting, and the answer goes back to the page that asked (readTabEnded), which updates just that card. Only the
+ * person's own jobwatch page may ask: the tab's address must be this computer's, on the port the extension is paired with.
+ */
+async function readInBackground(msg, sender) {
+  const settings = await pairedSettings();
+  if (!sender.tab || !JWRead.sameJobwatch(sender.origin || sender.url, settings.serverUrl)) {
+    throw new Expected("Only your own jobwatch page can ask for a posting to be read.");
+  }
+  const url = JWRead.readUrl(String(msg.url || ''));
+  if (!url) throw new Expected("That isn't a LinkedIn or Indeed job page.");
+  const tab = await chrome.tabs.create({ url, active: false, windowId: sender.tab.windowId, openerTabId: sender.tab.id });
+  await chrome.storage.session.set({ [readTabKey(tab.id)]: { from: sender.tab.id, key: String(msg.key || '') } });
+  return { tabId: tab.id };
+}
+
+/** The posting tab's own script could not read the page (a sign-in wall, a captcha): the tab stays for the person to deal with. */
+async function readFailed(msg, sender) {
+  if (sender.tab) await readTabEnded(sender.tab.id, String(msg.error || "The page couldn't be read"), null, true);
+  return {};
+}
+
+/** Tell the page that asked for a background read how it went, once; `result` when it worked, else `error`. */
+async function readTabEnded(tabId, error, result = null, keepTab = false) {
+  const stored = (await chrome.storage.session.get(readTabKey(tabId)))[readTabKey(tabId)];
+  if (!stored) return;
+  await chrome.storage.session.remove(readTabKey(tabId));
+  const answer = result ? { ...result, key: stored.key, ok: true } : { key: stored.key, ok: false, error: keepTab ? `${error} The tab is open behind this one.` : error };
+  chrome.tabs.sendMessage(stored.from, { type: 'readPostingDone', result: answer }).catch(() => {});
 }
 
 // --- a job site's list of jobs ----------------------------------------------------------------------

@@ -24,7 +24,7 @@ def run_js(tmp_path, body: str):
 @needs_node
 def test_every_script_parses():
     """A syntax error in a content script gives a panel that never opens, with no test failing elsewhere."""
-    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "look.js", "job-lists.js", "passive.js", "read-posting.js", "reply.js"):
+    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "look.js", "job-lists.js", "passive.js", "read-posting.js", "page-bridge.js", "reply.js"):
         r = subprocess.run(["node", "--check", str(EXT / name)], capture_output=True, text=True)
         assert r.returncode == 0, f"{name}: {r.stderr}"
 
@@ -38,9 +38,12 @@ def test_the_manifest_asks_for_little():
     # the only things that run unprompted, on the two job sites and nowhere else: passive mode's card note-taker (off
     # unless ticked) and read-posting.js, which reads only a page whose address jobwatch's Read posting button added
     # #jobwatch-read to
+    # and page-bridge.js on local addresses only (the ones the extension already has host access to): it passes jobwatch's
+    # own page's Read posting request to the service worker, which refuses any page but the paired jobwatch
     assert [(c["matches"], c["js"]) for c in manifest["content_scripts"]] == [
         (["https://www.linkedin.com/*", "https://*.indeed.com/*"],
-         ["logic.js", "job-lists.js", "passive.js", "read-posting.js"])]
+         ["logic.js", "job-lists.js", "passive.js", "read-posting.js"]),
+        (["http://localhost/*", "http://*.localhost/*", "http://127.0.0.1/*"], ["page-bridge.js"])]
     assert "default_popup" not in manifest["action"]  # the toolbar button opens the side panel instead
     for name in (manifest["background"]["service_worker"], manifest["side_panel"]["default_path"],
                  manifest["options_page"], *manifest["icons"].values()):

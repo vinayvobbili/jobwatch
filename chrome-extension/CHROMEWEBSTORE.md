@@ -357,6 +357,14 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
   of the data-use table (job descriptions on LinkedIn/Indeed), the privacy policy (updated in `PRIVACY.md`), and the
   "What's new" text. Built and tested against made-up pages only (`tests/test_read_posting.py`), not yet against a live
   sign-in with the unpacked extension.
+  Read posting also (same unreleased version) opens that tab behind the one the person is on, and tells jobwatch's page
+  when it is read so the page updates one card instead of reloading: a second, tiny content script `page-bridge.js`
+  on `http://localhost/*`, `http://*.localhost/*` and `http://127.0.0.1/*` (the hosts `host_permissions` already
+  covers, so no new install warning) passes the page's request (`readInBackground` in `background.js`, which refuses any
+  page not on the paired jobwatch's local address and port, and opens only LinkedIn or Indeed job addresses, with
+  `tabs.create({active: false})`) and the answer back. It reads nothing from the page. When submitting, add it to the
+  content-script justification below ("a content script on the user's own local jobwatch page, so the Read posting
+  button there can open the posting without taking the user away from the page").
 
 - 0.12.0 does nothing when the toolbar icon is clicked in an installed web app's window (LinkedIn's PWA): Chrome offers
   no side panel there and `background.js` swallowed the error. Fixed for the next version (not yet bumped or submitted):

@@ -2288,23 +2288,54 @@ function linkedinButton(job) {
 // This opens it in a new tab with #jobwatch-read in the address; the jobwatch browser extension (which reads nothing
 // there otherwise) copies the posting's text to jobwatch and closes the tab. Back here, the card fills in.
 const BROWSER_POSTING = /^https?:\/\/([\w-]+\.)?(linkedin\.com\/jobs\/view\/|indeed\.com\/(m\/)?(viewjob|rc\/clk))/i;
-function readButton(job) {
+// With the extension's page bridge (chrome-extension/page-bridge.js marks <html data-jobwatch-bridge>) the posting opens
+// in a tab behind this one, so the person keeps their place, and `done(answer)` updates just this card when it is read.
+// Without it the tab opens in front, and coming back redraws the page where it was.
+const readWaiting = new Map(); // job key -> what to do with the extension's answer
+window.addEventListener("message", e => {
+  if (e.source === window && e.data?.type === "jobwatch:read-posting-done") readWaiting.get(e.data.key)?.(e.data);
+});
+async function redrawInPlace() {
+  const y = window.scrollY;
+  await render();
+  window.scrollTo(0, y);
+}
+function readButton(job, done) {
   if (!BROWSER_POSTING.test(job.url || "")) return null;
   const site = /indeed/i.test(job.url) ? "Indeed" : "LinkedIn";
-  return h("button", { class: "btn primary", title: `Open the posting on ${site} in a new tab (you need to be signed in). ` +
-      "The jobwatch browser extension reads its text, gives it to jobwatch and closes the tab.",
-    onclick: () => {
-      window.open(job.url.split("#")[0] + "#jobwatch-read", "_blank", "noopener");
-      toast(`Opened on ${site}. The extension reads the posting and closes the tab: come back here.`);
-      window.addEventListener("focus", () => setTimeout(render, 1500), { once: true });
-    } }, "Read posting ↗");
+  const b = h("button", { class: "btn primary", title: `Open the posting on ${site} in a new tab (you need to be signed in). ` +
+      "The jobwatch browser extension reads its text, gives it to jobwatch and closes the tab." }, "Read posting ↗");
+  b.onclick = () => {
+    if (done && document.documentElement.dataset.jobwatchBridge === "1") {
+      b.disabled = true;
+      b.textContent = "Reading…";
+      readWaiting.set(job.key, r => {
+        readWaiting.delete(job.key);
+        b.disabled = false;
+        b.textContent = "Read posting ↗";
+        if (!r.ok) return toast(`Couldn't read the posting: ${r.error}`);
+        toast(r.said);
+        done(r);
+      });
+      window.postMessage({ type: "jobwatch:read-posting", key: job.key, url: job.url.split("#")[0] }, location.origin);
+      return;
+    }
+    window.open(job.url.split("#")[0] + "#jobwatch-read", "_blank", "noopener");
+    toast(`Opened on ${site}. The extension reads the posting and closes the tab: come back here.`);
+    window.addEventListener("focus", () => setTimeout(redrawInPlace, 1500), { once: true });
+  };
+  return b;
 }
 
 function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   if (job.fit && !job.fit.stale) return null;
   const redraw = j => document.getElementById("job-" + j.key).replaceWith(card(j));
   if (job.unscored?.code === "no_text")
-    return [readButton(job), postingButton(job, r => {
+    return [readButton(job, r => {  // read in the background: this card alone changes
+      if (r.has_text) job.unscored = { code: "queued", text: "Posting added: in line to score" };
+      if (r.closed) Object.assign(job, { closed_state: "closed", closed: new Date().toISOString() });
+      if (document.getElementById("job-" + job.key)) redraw(job);
+    }), postingButton(job, r => {
       if (r.has_text) job.unscored = { code: "queued", text: "Posting added: in line to score" };
       redraw(job);
     }), linkedinButton(job), unscoredNote(job)];

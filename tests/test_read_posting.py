@@ -61,6 +61,40 @@ console.log(JSON.stringify([R.readPage(page({json.dumps(REAL_SHAPE)}), {json.dum
 
 
 @needs_node
+def test_jobwatchs_page_may_ask_only_for_a_job_page_and_only_from_its_own_address(tmp_path):
+    """Read posting from jobwatch's page: the tab opened is a LinkedIn or Indeed job's, with the reader's marker, and the
+    asking page must be local and on the port the extension is paired with, whatever local name the person types."""
+    got = run_js(tmp_path, """const ask = (o, s) => R.sameJobwatch(o, s);
+console.log(JSON.stringify([
+  R.readUrl('https://www.linkedin.com/jobs/view/4000000001/?refId=x'), R.readUrl('https://www.indeed.com/viewjob?jk=9cf96221e712e37e'),
+  R.readUrl('https://www.linkedin.com/feed/'), R.readUrl('https://evil.example/jobs/view/4000000001/'), R.readUrl('nonsense'),
+  ask('http://jobwatch.localhost:8765', 'http://127.0.0.1:8765'), ask('http://127.0.0.1:8765', 'http://127.0.0.1:8765'),
+  ask('http://localhost:8765', 'http://jobwatch.localhost:8765'),
+  ask('http://jobwatch.localhost:9000', 'http://127.0.0.1:8765'), ask('https://jobwatch.localhost:8765', 'http://127.0.0.1:8765'),
+  ask('http://evil.example:8765', 'http://127.0.0.1:8765'), ask('http://localhost.evil.example:8765', 'http://127.0.0.1:8765'),
+  ask('', 'http://127.0.0.1:8765')]));""")
+    assert got == ["https://www.linkedin.com/jobs/view/4000000001/?refId=x#jobwatch-read",
+                   "https://www.indeed.com/viewjob?jk=9cf96221e712e37e#jobwatch-read", "", "", "",
+                   True, True, True, False, False, False, False, False]
+
+
+@needs_node
+def test_the_bridge_passes_on_only_the_fields_the_page_uses(tmp_path):
+    bridge = SCRIPT.parent / "page-bridge.js"
+    js = tmp_path / "bridge.js"
+    js.write_text(f"""const B = require({json.dumps(str(bridge))});
+console.log(JSON.stringify([B.doneMessage({{ key: 'k', ok: true, closed: true, has_text: true, said: 'done', token: 'secret', where: 'queue' }}),
+  B.doneMessage({{ key: 'k', ok: false, error: 'no' }}), B.doneMessage({{ key: 'k', error: 'x' }}), B.doneMessage(null)]));""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    done = "jobwatch:read-posting-done"
+    assert json.loads(r.stdout) == [
+        {"type": done, "key": "k", "ok": True, "closed": True, "has_text": True, "said": "done"},
+        {"type": done, "key": "k", "ok": False, "error": "no"}, {"type": done, "key": "k", "ok": False, "error": "x"},
+        {"type": done, "key": "", "ok": True}]
+
+
+@needs_node
 def test_a_page_with_no_posting_says_why_and_other_pages_are_refused(tmp_path):
     got = run_js(tmp_path, f"""const wall = {{ body: {{ innerText: {json.dumps(SIGN_IN)} }}, querySelector: () => null }};
 console.log(JSON.stringify([R.readPage(wall, {json.dumps(LI)}), R.readPage(wall, 'https://www.linkedin.com/feed/'),

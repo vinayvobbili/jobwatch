@@ -12,6 +12,11 @@
       "matches": ["https://www.linkedin.com/*", "https://*.indeed.com/*"],
       "js": ["logic.js", "job-lists.js", "passive.js", "read-posting.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost/*", "http://*.localhost/*", "http://127.0.0.1/*"],
+      "js": ["page-bridge.js"],
+      "run_at": "document_start"
     }
   ],
   "background": {

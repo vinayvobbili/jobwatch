@@ -37,7 +37,9 @@ On that page it reads the job's description (its text, without the rest of the p
 page shows them, and whether the site says the posting is closed (LinkedIn's "no longer accepting applications", Indeed's "expired"). It gives them, with the job's number from the
 address, to your own jobwatch, shows a small banner on the page, and closes the tab. Nothing else on the page is read, nothing
 is kept by the extension, and it never clicks anything. If the page asks you to sign in or shows a captcha, the banner says so and
-nothing is sent.
+nothing is sent. So that this tab opens behind the page you are on, a small script also runs on addresses of your own computer
+(localhost, 127.0.0.1): it passes jobwatch's Read posting request to the extension and the answer back, reads nothing else from
+that page, and the extension answers only your own jobwatch.
 
 **LinkedIn messages (Draft reply):** only when you press **Draft reply to this conversation** in the side panel, on a
 LinkedIn conversation you have open, it reads that one conversation as it is on the screen: the other person's name as the
