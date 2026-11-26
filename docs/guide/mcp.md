@@ -15,7 +15,8 @@
   interviewer is; it never fetches linkedin.com)
 - **What was sent:** `save_application_package`, `get_application_package`, `find_past_answers`,
   `get_interview_prep`, `save_story`, `draft_followup` (a follow-up or thank-you email draft for an
-  application; nothing is sent)
+  application; nothing is sent), `find_contact` (whom to contact about a job, from its posting, your notes and your
+  connections, with LinkedIn searches for you to open, and a drafted note; nothing is sent)
 
 (0.3.0 renamed them to verb_noun: `digest` is now `get_digest`, `job_details` is `get_job`, `apply_queue` is
 `list_queued_jobs`, `applications` is `list_applications`, `application_package` is `get_application_package`,

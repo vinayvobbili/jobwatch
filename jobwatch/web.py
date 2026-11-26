@@ -63,7 +63,9 @@ from . import (
     logos,
     logtail,
     mock,
+    morning,
     onboard,
+    outreach,
     paysources,
     prep,
     prepare,
@@ -399,6 +401,15 @@ class Refresher:
             t.join(timeout)
         self._thread = None
 
+    def after_scheduled(self, out: dict) -> threading.Thread | None:
+        """What follows a scheduled check that read a board: the morning digest (once a day, see morning.py), in a
+        thread of its own, since it waits for the scorer and the schedule goes on meanwhile."""
+        if not out["boards"]:
+            return None
+        t = threading.Thread(target=self.app.morning_digest, name="jobwatch-digest", daemon=True)
+        t.start()
+        return t
+
     def _run(self):
         while not self._stop.is_set():
             try:
@@ -406,6 +417,7 @@ class Refresher:
                     self.tried = datetime.now(UTC)
                     out = self.fetch(by="schedule")
                     self.error = "" if out["boards"] or not out["errors"] else "every board failed"
+                    self.after_scheduled(out)
             except Exception as e:  # never take the page down: say why, and try again later
                 self.error = f"{type(e).__name__}: {e}"
                 print(f"jobwatch: scheduled check for new jobs failed: {self.error}", file=sys.stderr)
@@ -587,6 +599,7 @@ class App:
         self.logos = LogoLookup(self)
         self.refresher = Refresher(self)
         self.background = background
+        self.port: int | None = None  # where the page listens, once serving (the digest's notification opens it)
 
     def score_in_background(self):
         if self.background:
@@ -1465,6 +1478,50 @@ class App:
                 return ics.calendar(store.applications(), remind=cfg.calendar.remind).encode()
         return self._with_store(run)
 
+    def digest_page(self, secret: str) -> bytes | None:
+        """The latest morning digest as a page (see morning.py) when `secret` is this install's, else None: the
+        notification's click opens it in a tab that can't send the page's token."""
+        def run(cfg, store):
+            if secrets.compare_digest(secret, store.secret("digest")):
+                return morning.page(store.morning_digest()).encode()
+        return self._with_store(run)
+
+    def morning_digest(self):
+        """The morning digest (see morning.py), once a day after the day's first scheduled check; never raises. The
+        background scorer is waited for, up to morning.SCORE_WAIT, so the fit scores are in the notification."""
+        try:
+            return self._with_store(lambda cfg, store: morning.run(
+                cfg, store, scheduled=True, port=self.port, wait=lambda: self.scorer.wait(morning.SCORE_WAIT)))
+        except Exception as e:  # a notification that can't show (no permission, not a Mac) is tried at the next check
+            print(f"jobwatch: the morning digest failed: {type(e).__name__}: {e}", file=sys.stderr)
+
+    def get_contact(self, q) -> dict:
+        """Whom to contact about a job: who its posting and your notes name, who you know there and LinkedIn searches
+        to open (see outreach.py). No model runs here; the note comes from post_contact."""
+        def run(cfg, store):
+            try:
+                return outreach.who(cfg, store, (q.get("key") or [""])[0])
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+        return self._with_store(run)
+
+    def post_contact(self, body) -> dict:
+        """The note to one person about a job (see outreach.draft): `index` picks from the people listed, `to` and
+        `role` name one you found yourself. Nothing is sent or saved."""
+        index = body.get("index")
+        if index is not None and not isinstance(index, int):
+            raise ApiError("index must be a whole number")
+
+        def run(cfg, store):
+            try:
+                return outreach.draft(cfg, store, body.get("key") or "", to=body.get("to") or "",
+                                      role=body.get("role") or "", index=index)
+            except KeyError as e:
+                raise ApiError(e.args[0], HTTPStatus.NOT_FOUND) from None
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+        return self._with_store(run)
+
     def post_add(self, body) -> dict:
         def run(cfg, store):
             status = body.get("status") or "applied"
@@ -2189,6 +2246,8 @@ ROUTES = {
     ("GET", "/api/activity"): App.get_activity,
     ("GET", "/api/activity-logs"): App.get_activity_logs,
     ("GET", "/api/digest"): App.get_digest,
+    ("GET", "/api/contact"): App.get_contact,
+    ("POST", "/api/contact"): App.post_contact,
     ("GET", "/api/hidden"): App.get_hidden,
     ("GET", "/api/queue"): App.get_queue,
     ("GET", "/api/counts"): App.get_counts,
@@ -2525,6 +2584,12 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 if feed is None:
                     return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return self._send(HTTPStatus.OK, feed, "text/calendar; charset=utf-8")
+            if method == "GET" and url.path.startswith("/digest/"):
+                # The morning notification's click opens this in a tab, which can't send the token header either.
+                digest = app.digest_page(url.path[len("/digest/"):])
+                if digest is None:
+                    return self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                return self._send(HTTPStatus.OK, digest, "text/html; charset=utf-8")
             if method == "GET" and url.path.startswith("/prep/"):
                 # A prep sheet opened in its own tab, or the stylesheet or video beside it: the secret in the
                 # address stands in for the token, which a tab can't send.
@@ -2700,7 +2765,7 @@ def serve(config_path: Path, port: int = 8765, open_browser: bool = True, token:
     app = App(config_path, background=True)
     server = _Server(("127.0.0.1", port), make_handler(app, token, port_ref))
     server.app = app
-    port_ref[0] = server.server_address[1]
+    port_ref[0] = app.port = server.server_address[1]
     url = f"http://{APP_HOST}:{port_ref[0]}/"
     print(f"jobwatch is running at {url}  (watchlist: {config_path}). Press Ctrl+C to stop.", file=sys.stderr)
     if open_browser:

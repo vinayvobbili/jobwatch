@@ -538,6 +538,30 @@ ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction:
 .followup .fu-head select { width: auto; }
 .followup input[type="text"], .followup textarea { width: 100%; margin-bottom: 6px; }
 .followup .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+/* Who to contact: the people a posting and your notes name, searches to open, and a note to one of them */
+.who { display: block; margin-top: 8px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line);
+  background: radial-gradient(120% 140% at 0% 0%, var(--accent-soft), transparent 60%), var(--card);
+  animation: rise .35s cubic-bezier(.2, .7, .2, 1) both; }
+.who[hidden] { display: none; }
+.who .who-person { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 0; border-top: 1px dashed var(--line); }
+.who .who-person:first-of-type { border-top: 0; }
+.who .who-name { font-weight: 650; }
+.who .who-role { font-size: 11.5px; font-weight: 700; padding: 1px 9px; border-radius: 999px; color: #fff; background: var(--grad); }
+.who .who-role.connection { background: linear-gradient(135deg, #12a37f, #3b9ae8); }
+.who .who-why { color: var(--muted); font-size: 12.5px; flex: 1 1 200px; }
+.who .who-person .btn { margin-left: auto; transition: transform .15s, box-shadow .2s; }
+.who .who-person .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px var(--accent-soft); }
+.who .who-search { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 8px 0 4px; }
+.who .who-search a { font-size: 12.5px; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--accent);
+  background: var(--chip); text-decoration: none; transition: transform .15s, background .2s; }
+.who .who-search a:hover { transform: translateY(-1px); background: var(--accent-soft); }
+.who .who-existing { color: var(--warn); font-size: 13px; margin-bottom: 4px; }
+.who .who-note { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.who input[type="text"], .who textarea { width: 100%; margin-bottom: 6px; }
+.who .who-count { font-size: 12px; color: var(--muted); text-align: right; margin: -2px 0 6px; }
+.who .who-count.over { color: var(--bad); font-weight: 700; }
+.who .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 6px; }
+.who .problems { flex-basis: 100%; color: var(--warn); white-space: pre-wrap; margin-top: 6px; }
 /* Prepare: chips that say how far the three steps got, above the panels each step fills */
 .prepare { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; }
 .prepare[hidden] { display: none; }
@@ -2226,8 +2250,73 @@ function verdictLine(job) {
 // Who you know there, one contact to a line (a few, then "+N more"), or the way to find an introduction.
 function peopleRow(job, most = 2) {
   const shown = job.contacts.slice(0, most), rest = job.contacts.length - shown.length;
+  const [whoButton, whoPanel] = job.key && job.title ? whoToContact(job) : [null, null];
   return [shown.map(p => contactBit(p, "div")),
-    h("div", { class: "pmore" }, rest > 0 ? `+${rest} more · ` : null, referralLink(job))];
+    h("div", { class: "pmore" }, rest > 0 ? `+${rest} more · ` : null, referralLink(job), whoButton ? " · " : null, whoButton),
+    whoPanel];
+}
+
+// "Who to contact": who the posting and your notes name for the job, the people you know there and LinkedIn searches to
+// open yourself, then a note to one of them (a LinkedIn note of 300 characters or less, and an email), written when
+// asked (see outreach.py). Nothing is sent or saved. Returns [button, panel].
+const WHO_LABEL = { manager: "Hiring manager", recruiter: "Recruiter", interviewer: "Interviewer", lead: "Team lead",
+  contact: "Contact", connection: "Someone you know there" };
+function whoToContact(job) {
+  const out = h("div", { class: "who", hidden: true });
+  const b = h("button", { class: "btn ghost who-btn", title: "Whom to contact about this job: who its posting and your notes " +
+    "name, people you know there and LinkedIn searches to open. A note to one of them is drafted only when you ask; " +
+    "nothing is sent." }, icon("users", 13), "Who to contact");
+  let found = null;
+  const show = async () => {
+    out.hidden = !out.hidden;
+    if (out.hidden || found) return;
+    fill(out, h("div", { class: "muted" }, "Looking…"));
+    try { found = await api(`/api/contact?key=${encodeURIComponent(job.key)}`); render(); }
+    catch (e) { fill(out, h("div", { class: "problems" }, e.message)); }
+  };
+  const write = async index => {
+    out.classList.add("spin");
+    try { render(await api("/api/contact", { key: job.key, index }), index); }
+    catch (e) { render(null, null, e.message); }
+    out.classList.remove("spin");
+  };
+  const note = (r, index) => {
+    const li = h("textarea", { class: "who-linkedin", rows: 4, "aria-label": "LinkedIn note" }); li.value = r.linkedin;
+    const count = h("div", { class: "who-count" });
+    const tally = () => { count.textContent = `${li.value.length}/300`; count.classList.toggle("over", li.value.length > 300); };
+    li.oninput = tally; tally();
+    const subject = h("input", { class: "who-subject", type: "text", "aria-label": "Subject" }); subject.value = r.subject;
+    const body = h("textarea", { class: "who-body", rows: 7, "aria-label": "Email body" }); body.value = r.body;
+    const copy = (text, what) => async () => {
+      try { await navigator.clipboard.writeText(text()); toast(`Copied the ${what}`); } catch { /* the text is on the page to select */ }
+    };
+    return h("div", { class: "who-note" },
+      h("div", { class: "small muted" }, r.person ? `To ${r.person.name}` + (r.written_by ? ` · written by ${r.written_by}` : "") : "No one chosen"),
+      li, count, h("div", { class: "row" }, h("button", { class: "btn", onclick: copy(() => li.value, "LinkedIn note") }, "Copy note")),
+      subject, body,
+      h("div", { class: "row" },
+        h("button", { class: "btn", onclick: copy(() => `Subject: ${subject.value}\n\n${body.value}`, "email") }, "Copy email"),
+        h("button", { class: "btn ghost", onclick: () => write(index) }, "Redraft"),
+        h("span", { class: "small muted" }, "A draft: read it and send it yourself.")),
+      r.warnings.length ? h("div", { class: "problems" }, r.warnings.join("\n")) : null);
+  };
+  const render = (r = null, index = null, error = "") => {
+    fill(out,
+      found.existing ? h("div", { class: "who-existing" }, found.existing) : null,
+      found.people.length ? found.people.map((p, n) => h("div", { class: "who-person" },
+        h("b", { class: "who-name" }, p.url ? link(p.url, p.name) : p.name),
+        h("span", { class: `who-role ${p.source === "connection" ? "connection" : ""}` }, WHO_LABEL[p.role] || "Contact"),
+        p.title ? h("span", { class: "small" }, p.title) : null,
+        h("span", { class: "who-why" }, p.why),
+        h("button", { class: "btn ghost", onclick: () => write(n) }, `Write a note to ${p.name.split(" ")[0]}`)))
+        : h("div", { class: "muted" }, "No one is named in the posting or your notes" +
+          (found.has_connections ? ", and you know no one there" : "") + ". Search for someone below."),
+      h("div", { class: "who-search" }, found.search.map(s => link(s.url, s.label))),
+      error ? h("div", { class: "problems" }, error) : null,
+      r ? note(r, index) : null);
+  };
+  b.onclick = show;
+  return [b, out];
 }
 
 // Every job card has this skeleton: the header (logo, title, company · place · age; the ring top right), the labeled

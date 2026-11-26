@@ -20,7 +20,22 @@
   on a stale card scores it again. `jobwatch score --rescore` now takes only marked scores and ones another model
   made (a score made under an older resume waits for the decision), and says how many predate the resume. The card's
   advice and bottom line read a stale score like any other and say so ("a strong fit (82/100, stale score)").
-
+- Who to contact. A job card's "Who to contact" button (also `jobwatch contact KEY` and the `find_contact` tool) lists the
+  people the posting names (hiring manager, recruiter, interviewers, team lead; read by a plain parser, no model), the
+  ones your notes name at the company and the people you know there (Connections.csv), with four LinkedIn people
+  searches for you to open (jobwatch never reads linkedin.com). A button beside each person drafts a note to them: a
+  LinkedIn note of 300 characters or less and a short email, ending with an ask (a referral to this role for someone you
+  know, a short chat or the right way to send a resume for a manager or recruiter). Claude writes it from an allowlist
+  (company, title, stage, day applied, the first name, what the person is to the job); with `reply.followup: local`, no
+  key or no Claude answer, the local model writes it from the resume's confirmed lines, else a fixed template. A
+  warning lists a stock opener, a figure the tracker doesn't hold or pay talk. It says first when you've already
+  applied to the job or its duplicate. Nothing is sent or saved.
+- A morning digest. After the day's first scheduled check, jobwatch shows a macOS notification naming the best new
+  matches (title, company, fit or pay) that pass your pay floor, places and filters and aren't applied, skipped or a
+  duplicate, and keeps the list as a page that clicking the notification opens (with terminal-notifier installed; else
+  the notice alone). Nothing new, nothing shown. `jobwatch digest --notify` does it by hand (`--dry-run` shows what it
+  would say, `-o FILE` writes the page); `morning: {notify: off, top: 3}` in the watchlist turns it off or sets how
+  many it names.
 - Today's Fit score minimum (60+, 70+, 80+) now hides the jobs with no score yet. The "No score yet" switch turns to
   Hide when you pick one, so 80+ no longer lists unscored cards, and the Showing line counts them out. Pick Show by
   hand and it stays until the fit changes; back on Any, the switch is what this browser had kept (a choice made under

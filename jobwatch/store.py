@@ -204,6 +204,12 @@ CREATE TABLE IF NOT EXISTS drafts (
     made_at TEXT NOT NULL,
     PRIMARY KEY (key, inputs)
 );
+CREATE TABLE IF NOT EXISTS morning_digests (
+    day TEXT PRIMARY KEY,
+    at TEXT NOT NULL,
+    items TEXT NOT NULL,
+    total INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS logos (
     company TEXT PRIMARY KEY,
     site TEXT NOT NULL,
@@ -1727,6 +1733,22 @@ class Store:
         """{company key: health} for every company with some (company_key spells the key)."""
         return {r["company"]: {k: r[k] for k in ("name", *HEALTH_FIELDS)}
                 for r in self.db.execute("SELECT * FROM company_health")}
+
+    # -- the morning digest (see morning.py): one row a local day, with the matches it listed (none: a quiet day)
+
+    def save_morning_digest(self, day: str, items: list[dict], total: int | None = None, at: datetime | None = None):
+        """The matches a digest listed, and how many there were in all (`total`, default the ones listed)."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO morning_digests (day, at, items, total) VALUES (?, ?, ?, ?)",
+                            (day, (at or datetime.now(UTC)).isoformat(), json.dumps(items),
+                             len(items) if total is None else total))
+
+    def morning_digest(self, day: str | None = None) -> dict | None:
+        """The digest of that local day, else the latest one: {day, at (a datetime), items, total}."""
+        row = self.db.execute("SELECT * FROM morning_digests WHERE day=?", (day,)).fetchone() if day else \
+            self.db.execute("SELECT * FROM morning_digests ORDER BY day DESC LIMIT 1").fetchone()
+        return {"day": row["day"], "at": datetime.fromisoformat(row["at"]), "items": json.loads(row["items"]),
+                "total": row["total"]} if row else None
 
     # -- referral feedback: whom to use and whom not to, per person (contacts.person_key: profile slug, else name)
 

@@ -50,8 +50,10 @@ from . import (
     levels,
     logos,
     mock,
+    morning,
     notes,
     offices,
+    outreach,
     paysources,
     prep,
     profile,
@@ -236,12 +238,31 @@ def cmd_fetch(args, cfg, store):
     print(report.fetch_summary(fetch_all(cfg, store, reread=tuple(args.reread), every_board=args.all)))
 
 
+def _morning(args, cfg, store) -> str:
+    """`digest --notify`: tell you the new matches in a macOS notification and save the digest page (see morning.py);
+    with -o, the page is also written to that file. Nothing is marked shown."""
+    try:
+        said = morning.run(cfg, store, dry_run=args.dry_run, by="cli")
+    except closed_notice.NoticeError as e:
+        raise SystemExit(str(e)) from None
+    if args.out and not args.dry_run:
+        args.out.write_text(morning.page(store.morning_digest()), encoding="utf-8")
+        print(f"Wrote {args.out}", file=sys.stderr)
+    return said
+
+
 def cmd_digest(args, cfg, store):
+    if args.notify:
+        print(_morning(args, cfg, store))
+        return
     _write(_digest(args, cfg, store), args.out)
 
 
 def cmd_run(args, cfg, store):
     print(report.fetch_summary(fetch_all(cfg, store)), file=sys.stderr)
+    if args.notify:
+        print(_morning(args, cfg, store))
+        return
     _write(_digest(args, cfg, store), args.out)
 
 
@@ -1545,6 +1566,21 @@ def cmd_followup(args, cfg, store):
     print(json.dumps(got, indent=2, ensure_ascii=False) if args.format == "json" else followup.render(got))
 
 
+def cmd_contact(args, cfg, store):
+    """Whom to contact about a job and a note to one of them, printed as a draft: nothing is sent or saved."""
+    try:
+        if args.no_draft:
+            got = outreach.who(cfg, store, args.key)
+        else:
+            got = outreach.draft(cfg, store, args.key, to=args.to or "", role=args.role or "",
+                                 index=None if args.pick is None else args.pick - 1)
+    except KeyError as e:
+        raise SystemExit(e.args[0]) from None
+    except ValueError as e:
+        raise SystemExit(str(e)) from None
+    print(json.dumps(got, indent=2, ensure_ascii=False) if args.format == "json" else outreach.render(got))
+
+
 def cmd_cover(args, cfg, store):
     """A cover letter draft for the job, kept as a numbered version; or the saved versions, or two of them side by
     side. Nothing is sent."""
@@ -1836,6 +1872,12 @@ def build_parser() -> argparse.ArgumentParser:
                        + ", ".join(f"{k} ({label})" for k, label in rolekinds.labels()) + "; repeatable")
         p.add_argument("--format", choices=["md", "json"], default="md")
         p.add_argument("-o", "--out", type=Path)
+        p.add_argument("--notify", action="store_true", help="instead of the list: a macOS notification naming the "
+                       "best matches first seen since the last digest (with fit or pay), and a digest page the "
+                       "notification opens; nothing new, nothing shown. -o writes the page to a file. The scheduled "
+                       "check does this by itself once a day unless `morning: {notify: off}` (see the guide)")
+        p.add_argument("--dry-run", action="store_true", help="with --notify: print what it would say; show nothing, "
+                       "save nothing")
         p.set_defaults(func=func)
 
     p = sub.add_parser("score", help="score Today's unscored jobs against your resume, most relevant first")
@@ -2318,6 +2360,25 @@ def build_parser() -> argparse.ArgumentParser:
                    "else a name in the next step or note after 'call with', 'interviewer:', 'met'...")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_followup)
+
+    p = sub.add_parser("contact", help="whom to contact about a job (named in its posting, in your notes, people you "
+                       "know there, LinkedIn searches to open) and a short note to one of them: a draft to send "
+                       "yourself", description="Lists the people the job's posting names (hiring manager, recruiter, "
+                       "interviewers, team lead), the ones your notes name at the company and the people you know "
+                       "there, with LinkedIn people searches for you to open (jobwatch never reads linkedin.com), "
+                       "then drafts a LinkedIn connection note (300 characters or less) and an email to the first "
+                       "one, or to --pick N or --to NAME, ending with a short ask (a referral to this role, for "
+                       "someone you know there). Claude writes it from an allowlist (company, title, stage, day "
+                       "applied, the first name and what the person is to the job); with reply.followup: local, or "
+                       "no key, the local model writes it with your resume's confirmed lines, else a fixed "
+                       "template. Sends and saves nothing; warnings list what to check.")
+    p.add_argument("key")
+    p.add_argument("--pick", type=int, metavar="N", help="write to the Nth person listed (default: the first)")
+    p.add_argument("--to", metavar="NAME", help="write to this person: one listed, or one you found yourself")
+    p.add_argument("--role", choices=outreach.KINDS, help="what --to is to the job, for the ask (default: contact)")
+    p.add_argument("--no-draft", action="store_true", help="only list the people and the searches")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_contact)
 
     p = sub.add_parser("cover", help="draft a cover letter for a job in a tone you pick, leaning on what you say, "
                        "kept as versions you can compare side by side",

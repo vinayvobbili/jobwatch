@@ -31,6 +31,7 @@ from . import (
     lca,
     learn,
     levels,
+    outreach,
     paysources,
     prep,
     profile,
@@ -92,7 +93,9 @@ server = MCPServer(
         "story_gaps: what a story from the person's own past would help with. Interview them about one, and "
         "save_story keeps what they confirm in their story file for drafted answers. draft_followup drafts the "
         "follow-up email for an application, or with thanks a thank-you after an interview: a draft for the person "
-        "to read and send, never sent. "
+        "to read and send, never sent. find_contact lists whom to contact about one job (people its posting names, "
+        "people in the user's notes, people they know there, and LinkedIn searches for them to open) and drafts a "
+        "short note to one of them: a LinkedIn connection note and an email, drafts only. "
         "list_skill_gaps lists what the matching jobs ask for that the resume doesn't show, with courses and "
         "certifications to close each gap. check_postings checks that queued jobs and open applications are still "
         "posted. The same opening can be tracked twice (an application added by hand, then the job again from an "
@@ -1136,6 +1139,43 @@ def draft_followup(
     cfg, store = _open()
     try:
         return followup.draft(cfg, store, key, thanks=thanks, interviewers=interviewers)
+    except (KeyError, ValueError) as e:
+        raise ToolError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(idempotent=True))
+def find_contact(
+    key: Key,
+    draft: Annotated[bool, Field(description=(
+        "True (the default) also drafts the note to one person; false only lists whom to contact and the searches."
+    ))] = True,
+    to: Annotated[str, Field(description=(
+        "A person's name to write to: someone from people, or one the user found themselves with a search link. "
+        "Left out, the first person listed (the posting's hiring manager, else its recruiter, then someone the user "
+        "knows there) is written to."))] = "",
+    role: Annotated[Literal["manager", "recruiter", "interviewer", "lead", "contact", "connection", ""], Field(
+        description="What the person is to the job, for the ask the note ends with; set for a name not in people."
+    )] = "",
+) -> dict:
+    """Whom to contact about one job, and a short personal note to them. people: who the posting names (hiring
+    manager, recruiter, interviewers, team lead), who the user's notes name at that company, and the people the user
+    knows there, each with name, role, title, source, why, evidence, email and url; search: LinkedIn people searches
+    (the company's heads of this work, its recruiters, the team, who could introduce the user) for the USER to open:
+    jobwatch never reads linkedin.com, and never invents a person; existing: what the user already did about this
+    job or its opening (check it first: don't ask for a referral to a job they applied to). With draft, also
+    linkedin (a connection note of 300 characters or less), subject and body, written for that person and job, with a
+    short ask (a referral to this role when it's someone the user knows there), by Claude from an allowlist (company,
+    job title, stage, day applied, the person's first name and what they are to the job) or the local model with the
+    resume's confirmed lines, else a fixed template; warnings say what to check (a figure the resume and posting
+    don't hold, a stock opener, pay, a note too long). It only drafts: nothing is sent or saved, and the user sends
+    it themselves. Offer it for a queued job before applying, or after applying."""
+    cfg, store = _open()
+    try:
+        if not draft:
+            return outreach.who(cfg, store, key)
+        return outreach.draft(cfg, store, key, to=to, role=role)
     except (KeyError, ValueError) as e:
         raise ToolError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
     finally:

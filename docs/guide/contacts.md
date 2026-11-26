@@ -52,6 +52,41 @@ jobwatch referrals --clear "Bo Chen"                # NAME is a full name or a l
 The MCP tool is `rate_contact` (who, verdict `use`, `skip` or `clear`, note). What you say is kept in the
 state file next to your jobs, keyed by profile link (or name when there is none).
 
+## Who to contact, and what to say
+
+A referral isn't the only way in: for one job, `jobwatch contact KEY` lists who to write to and drafts the note.
+The **Who to contact** button on a job's card does the same, with the note beside a Copy button. People come only
+from places that need no scraping and no login, and none is made up:
+
+- **The posting.** Many postings name the hiring manager, the recruiter, the interviewers or the team lead
+  ("Hiring Manager: Jane Okafor, Director of Security", "You will report to ..."). A fixed set of patterns reads
+  them, not a model: a name needs a cue word before it, and a title, a team or a technology is never a name.
+- **Your notes.** A recruiter's name you wrote in the notes or next step of any of your applications at the company.
+- **People you know there.** Your LinkedIn connections at the company, as above: ones you marked **Use**, then the
+  closest ties.
+- **Anyone else.** LinkedIn people searches that jobwatch builds and **you** open: the company's heads of this kind
+  of work, its recruiters, the people doing it, and who could introduce you. jobwatch never reads linkedin.com.
+
+The note is a draft for one person: a LinkedIn connection note of 300 characters or less and a short email, in the
+first person, ending with a short ask that fits them: a chat for a hiring manager, whether the role is open for a
+recruiter, and for someone you know there, whether they would refer you for **this role** (with room to say no). It
+leads with whether you already applied (or a copy of the job): check that first. It never mentions pay or adds a
+pronoun line, and only uses what your resume and the posting hold. Nothing is sent or saved.
+
+```
+jobwatch contact KEY                       # the people and searches, and a note to the first person listed
+jobwatch contact KEY --pick 2              # the note to the second person in the list
+jobwatch contact KEY --to "Rae Quinn" --role recruiter   # someone you found with a search
+jobwatch contact KEY --no-draft            # only the people and the searches
+```
+
+Like follow-up emails, the note is written by Claude from an allowlist only (the company, the job title, the stage
+and day applied, the person's first name and what they are to the job: no resume, posting or notes), or, with
+`reply: {followup: local}` or when Claude can't answer, by the local model, which also reads your resume's confirmed
+lines and the start of the posting. With no model at all a fixed template stands in. Warnings under the draft list
+what to check: a figure your resume and the posting don't hold, a stock opener, an exclamation mark, a word about
+pay, a missing greeting. The MCP tool is `find_contact`.
+
 A digest lists each job once, the top `display.today` (10) of them, and ends with how many more match;
 those stay new for the next digest. Use `digest --all` for every match, including jobs already shown,
 `--limit N` for another number, or `--peek` to look without marking them shown. Roles that disappear from a

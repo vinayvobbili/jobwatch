@@ -122,6 +122,31 @@ On the Applications page each open application has a **Draft follow-up** button 
 screening or interviewing stage) with the subject, an editable body, a Copy button and the same warnings. The MCP
 `draft_followup` tool gives the same draft to your agent.
 
+## The morning digest
+
+After the first scheduled check of the day (`fetch_every`, say 8am), a macOS notification names the best new
+matches: "jobwatch: 4 new matches" with up to three roles, each with its fit score (or pay when it isn't scored yet).
+Clicking it opens a digest page with the same list, a few more roles and a link to Today. The roles are the ones
+Today shows for your filters (title, place, pay floor, age, minimum fit), still new or shown, not a copy of a job
+you applied to, and first seen since the last digest. With nothing new there is no notification: a quiet morning
+stays quiet. The scheduled digest waits (up to ten minutes) for the background scorer, so fits are in.
+
+```
+jobwatch digest --notify              # tell you the new matches now, and save the digest page
+jobwatch digest --notify --dry-run    # print what it would say; show nothing, save nothing
+```
+
+```yaml
+morning:
+  notify: on     # off: no scheduled digest (the command still works)
+  top: 3         # matches the notification names (1 to 10)
+```
+
+It needs no account or password. A click opens the page when `terminal-notifier` is installed (`brew install
+terminal-notifier`); without it the notification shows the same text through macOS's own, which can't open anything.
+The page is at `http://jobwatch.localhost:8765/digest/<secret>` (the secret is kept in the state file, as the
+calendar feed's is) and shows the latest digest; the Activity tab records each one.
+
 ## Closed postings
 
 A posting you cared about that gets taken down used to show only a gray "posting closed" chip. Now jobwatch keeps a

@@ -656,6 +656,33 @@ def _quiet(raw, path: Path) -> Quiet:
                     for k in Quiet.__dataclass_fields__})
 
 
+@dataclass(frozen=True)
+class Morning:
+    """morning in the watchlist: the morning digest (see morning.py). notify: a macOS notification and a digest page
+    after the day's first scheduled check when there are new matches (default on; `off` for none); top: the matches
+    the notification names (the page lists up to MORNING_PAGE)."""
+    notify: bool = True
+    top: int = 3
+
+
+MORNING_PAGE = 10  # the matches the digest page lists
+
+
+def _morning(raw, path: Path) -> Morning:
+    if raw is None:
+        return Morning()
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path}: morning looks like {{notify: on, top: 3}}, got {raw!r}")
+    unknown = set(raw) - set(Morning.__dataclass_fields__)
+    if unknown:
+        raise ConfigError(f"{path}: unknown morning setting(s): {', '.join(sorted(unknown))}")
+    notify = raw.get("notify", Morning.notify)
+    if not isinstance(notify, bool):
+        raise ConfigError(f"{path}: morning.notify must be on or off, got {notify!r}")
+    return Morning(notify, _between(raw.get("top", Morning.top), "morning.top", path, 1, MORNING_PAGE,
+                                    "matches named in the notification"))
+
+
 FOLLOW_UPS = ("off", "reminders", "reminders-all")
 
 
@@ -881,6 +908,7 @@ class Config:
     company_view: str = "matches"  # display.company: which open roles a company's page lists (COMPANY_VIEWS)
     pace: Pace = field(default_factory=Pace)
     calendar: Calendar = field(default_factory=Calendar)
+    morning: Morning = field(default_factory=Morning)
     quiet: Quiet = field(default_factory=Quiet)
     follow_ups: str = "off"    # follow_ups: reminders puts each follow-up day in Apple Reminders (see reminders.py)
     speech: Speech = field(default_factory=Speech)
@@ -1104,8 +1132,8 @@ def locate(explicit: str | Path | None = None) -> Path:
 SETTINGS = ("companies", "filters", "keywords", "focus", "resume", "connections", "connections_skip", "employer",
             "stories", "resume_kit", "scoring",
             "chat", "prep", "reply",
-            "learning", "display", "pace", "calendar", "pay", "comps", "goals", "applicant", "alerts", "suggestions",
-            "slow_boards", "ui", "incoming", "speech", "fetch_every", "follow_ups")
+            "learning", "display", "pace", "calendar", "morning", "pay", "comps", "goals", "applicant", "alerts",
+            "suggestions", "slow_boards", "ui", "incoming", "speech", "fetch_every", "follow_ups")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -1428,6 +1456,7 @@ def load(explicit: str | Path | None = None) -> Config:
         theme=theme, width=width, today=today, today_fit=today_fit, today_pay=today_pay,
         today_posted=today_posted, age_decay=_age_decay(display.get("age_decay"), path), company_view=company_view,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
+        morning=_morning(raw.get("morning"), path),
         quiet=_quiet(raw.get("quiet"), path), follow_ups=_follow_ups(raw.get("follow_ups"), path),
         speech=_speech(raw.get("speech"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
@@ -1451,6 +1480,7 @@ def defaults() -> dict:
                         "today_defaults": {"posted": Config.today_posted}, "age_decay": asdict(AgeDecay())},
             "pace": asdict(Pace()),
             "calendar": asdict(Calendar()),
+            "morning": asdict(Morning()),
             "speech": asdict(Speech()),
             "incoming": {"sources": dict.fromkeys(INCOMING_SOURCES, True), "gmail_account": ""},
             "pay": {k: v for k, v in asdict(Pay()).items() if k not in ("years", "target", "target_max", "floor")},
@@ -1519,6 +1549,14 @@ filters:
 # to subscribe to. remind: minutes before an interview or call to be reminded (0: no reminder).
 # calendar:
 #   remind: 30
+
+# The morning digest: after the day's first scheduled check, a macOS notification names the best new matches
+# (the ones Today shows, not applied to or skipped) and opens a digest page. Nothing new, no notification.
+# notify: off turns it off; top: how many matches the notification names (1 to 10). `jobwatch digest --notify`.
+# morning:
+#   notify: on
+#   top: 3
+
 # An application with no news (a stage change or a note) for this many days has gone quiet: the Applications
 # page groups them, `jobwatch quiet` lists them with what to do next, and one that's quiet for `long` days
 # stops crowding the follow-ups due. Nothing is ever changed for you. 0 never counts that stage.
