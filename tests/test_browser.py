@@ -184,6 +184,60 @@ def test_the_show_hide_choices_for_unknowns_are_remembered(page, hint, default, 
     assert page.errors == []
 
 
+def test_a_fit_minimum_hides_jobs_with_no_score_until_show_is_picked_by_hand(jobs, page, watchlist):
+    """Fit 80+ turns "No score yet" to Hide, so the unscored job leaves with the Showing line counting it out. Show
+    brought back by hand lasts until the fit changes; Fit Any gives the switch back the value this browser kept."""
+    from jobwatch.score import resume_id
+
+    cv = watchlist.parent / "cv.md"
+    cv.write_text("# Jane Doe")
+    config.save(watchlist, {"resume": str(cv)})
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    store.save_score("greenhouse:acme:101", resume_id(cfg.resume), {
+        "score": 85.0, "must_haves_met": 3, "must_haves_total": 3, "gaps": [], "summary": "Strong.", "flags": []})
+    store.close()
+    scored = page.locator(".card.job", has=page.locator('[data-fit="greenhouse:acme:101"]'))
+    unscored = page.locator(".card.job", has_text="Machine Learning Engineer")  # Globex's, 10 days old, never scored
+    showing = page.locator(".showing")
+    reload(page)
+    chip(page, "Posted within", "14d").click()
+    sync_api.expect(unscored).to_have_count(1)
+    sync_api.expect(showing).to_contain_text("Showing 2 of 2")
+
+    chip(page, "Fit score", "80+").click()
+    sync_api.expect(chip(page, "No score yet", "Hide")).to_have_class("on")
+    sync_api.expect(scored).to_have_count(1)
+    sync_api.expect(unscored).to_have_count(0)
+    sync_api.expect(showing).to_contain_text("Showing 1 of 2")
+
+    chip(page, "No score yet", "Show").click()
+    sync_api.expect(unscored).to_have_count(1)
+    sync_api.expect(showing).to_contain_text("Showing 2 of 2")
+    chip(page, "Where", "Remote").click()  # another filter redraws the page: the choice stays
+    sync_api.expect(chip(page, "No score yet", "Show")).to_have_class("on")
+    sync_api.expect(unscored).to_have_count(1)
+    chip(page, "Where", "Any").click()
+
+    chip(page, "Fit score", "70+").click()  # the fit changed: Hide again
+    sync_api.expect(chip(page, "No score yet", "Hide")).to_have_class("on")
+    sync_api.expect(unscored).to_have_count(0)
+
+    chip(page, "Fit score", "Any").click()  # nothing was kept but the default
+    sync_api.expect(chip(page, "No score yet", "Show")).to_have_class("on")
+    sync_api.expect(unscored).to_have_count(1)
+
+    chip(page, "No score yet", "Hide").click()  # kept with no fit chip on ...
+    chip(page, "Fit score", "60+").click()
+    chip(page, "No score yet", "Show").click()  # ... and not overwritten by a Show picked under a fit chip
+    chip(page, "Fit score", "Any").click()
+    sync_api.expect(chip(page, "No score yet", "Hide")).to_have_class("on")
+    sync_api.expect(unscored).to_have_count(0)
+    reload(page)
+    sync_api.expect(chip(page, "No score yet", "Hide")).to_have_class("on")
+    assert page.errors == []
+
+
 def test_a_weak_fit_with_no_must_haves_shows_what_it_found_missing_on_the_card(jobs, page, watchlist):
     """Not a dash in the Gaps row next to a 46: a posting with only an "ideal candidate has" list has no must-haves,
     so the row lists the requirements judged missing, then the partly shown, each marked a nice to have."""

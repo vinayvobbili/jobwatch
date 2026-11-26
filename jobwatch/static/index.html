@@ -4207,10 +4207,18 @@ function paceLine(el, p) {
   return el;
 }
 
+// "No score yet" as this browser keeps it: what it was set to with no fit chip on. A fit chip being on never changes it.
+function keptNoScore() { return remembered("today.noscore", "show") === "hide" ? "hide" : "show"; }
+// Choosing a fit minimum hides the jobs with no score yet (they can't meet it); the switch shows Hide, and a Show picked
+// by hand sticks until the fit changes. Back to Any, the switch is what the browser kept.
+function setFit(v, k) {
+  v.fit = k;
+  v.noScore = k ? "hide" : keptNoScore();
+}
 // all: every matching job, paged, rather than today's picks (the top display.today in the order picked).
 // where, fit, pay: the quick narrowing (see quickNarrow); "any" and 0 mean off.
 const todayView = { q: "", sort: remembered("today.sort", "fit"), company: "", kws: new Set(), where: "any", fit: 0, pay: 0, posted: 0, page: 1, all: false,
-  noScore: remembered("today.noscore", "show") === "hide" ? "hide" : "show",  // jobs with no fit score yet, while a fit chip is on
+  noScore: keptNoScore(),  // jobs with no fit score yet, while a fit chip is on (Hide whenever one is chosen: setFit)
   noClue: remembered("today.noclue", "hide") === "show" ? "show" : "hide",  // jobs with no pay clue, while a pay chip is on: Hide until chosen
   rolesOff: rolesOffKept() };
 // Today's Roles checkboxes: the kinds of work unticked, kept in this browser (a view, not a filter in the watchlist).
@@ -4391,10 +4399,14 @@ async function renderToday() {
     h("div", { class: "hint" }, "Where"),
     segmented([["any", "Any"], ["remote", "Remote"], ["onsite", "On-site or hybrid"]], v.where, k => { v.where = k; drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px", title: "The lowest fit score a scored job may have" }, "Fit score"),
-    segmented([[0, "Any"], [60, "60+"], [70, "70+"], [80, "80+"]], v.fit, k => { v.fit = k; drawToday(); }),
+    segmented([[0, "Any"], [60, "60+"], [70, "70+"], [80, "80+"]], v.fit, k => { setFit(v, k); drawNarrow(); drawToday(); }),
     h("div", { class: "hint", style: "margin-top:8px",
-      title: "Jobs with no fit score yet (some can't be scored: no posting text): they follow the scored ones while a fit chip is on" }, "No score yet"),
-    segmented([["show", "Show"], ["hide", "Hide"]], v.noScore, k => { v.noScore = k; remember("today.noscore", k); drawToday(); }),
+      title: "Jobs with no fit score yet (some can't be scored: no posting text): hidden while a fit chip is on (Hide, until you pick Show), or shown after the scored ones" }, "No score yet"),
+    segmented([["show", "Show"], ["hide", "Hide"]], v.noScore, k => {
+      v.noScore = k;
+      if (!v.fit) remember("today.noscore", k);  // with a fit chip on, the choice lasts until the fit changes
+      drawToday();
+    }),
     h("div", { class: "hint", style: "margin-top:8px",
       title: "The top of the posted range, else the Levels.fyi figure, else the H-1B filings'" }, "Top pay"),
     segmented([[0, "Any"], [175000, "$175K+"], [200000, "$200K+"], [250000, "$250K+"], [300000, "$300K+"]], v.pay,
@@ -4413,7 +4425,8 @@ async function renderToday() {
   drawNarrow();
   const roles = rolesList(d.role_kinds || [], todayJobs, v, () => drawToday());
   const clear = () => {
-    Object.assign(v, { q: "", company: "", where: "any", fit: 0, pay: 0, posted: postedDefault });
+    Object.assign(v, { q: "", company: "", where: "any", pay: 0, posted: postedDefault });
+    setFit(v, 0);
     remember("today.posted", "");  // forget the choice: back to the watchlist's default
     v.kws.clear(); search.value = ""; drawKws(); drawNarrow(); companies.redraw(); drawToday();
   };

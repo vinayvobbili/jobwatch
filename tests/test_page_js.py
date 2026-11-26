@@ -175,8 +175,9 @@ def test_no_pay_clue_is_hidden_under_a_pay_chip_unless_the_person_chose_show(tmp
     (the person's own choice) still shows it, a saved "hide" hides it, and with no chip it never matters. Jobs with no
     fit score still show by default."""
     js = tmp_path / "noclue.js"
-    source = "\n".join([page_function("remembered"), page_function("rolesOffKept"), page_const("todayView"),
-                        page_const("payShown"), page_function("payTop"), page_function("paySources")])
+    source = "\n".join([page_function("remembered"), page_function("keptNoScore"), page_function("rolesOffKept"),
+                        page_const("todayView"), page_const("payShown"), page_function("payTop"),
+                        page_function("paySources")])
     js.write_text(f"""const h = (tag, attrs, ...kids) => ({{ tag, attrs: attrs || {{}}, kids: kids.flat(Infinity) }});
 const load = saved => {{  // the page's script run once against a browser holding `saved`
   const store = new Map(Object.entries(saved).map(([k, v]) => ["jobwatch." + k, v]));

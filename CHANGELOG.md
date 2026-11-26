@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Today's Fit score minimum (60+, 70+, 80+) now hides the jobs with no score yet. The "No score yet" switch turns to
+  Hide when you pick one, so 80+ no longer lists unscored cards, and the Showing line counts them out. Pick Show by
+  hand and it stays until the fit changes; back on Any, the switch is what this browser had kept (a choice made under
+  a fit minimum isn't kept).
 - Pay alone no longer says "Queue it". The posted pay (or Levels.fyi's ask) reaching `pay.target` counts as a reason
   to queue only when the job's fit score is 60 or more, or it has none yet; a poor match that pays well now reads
   "Skip it: not a close match". The bottom line could also say a plain "Queue it: the posted pay goes up to ..." for
