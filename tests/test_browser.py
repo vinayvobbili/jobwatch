@@ -361,6 +361,55 @@ def test_a_stale_score_shows_with_a_badge_and_the_resume_decision_is_made_on_the
     assert page.errors == []
 
 
+def test_scoring_shows_a_spinner_that_clears_on_a_score_or_a_failure(jobs, page, watchlist):
+    """Pressing Score turns the card's corner button into a disabled spinner until the server answers; a failure puts
+    the button back with the error, a score replaces it with the ring. A job being scored (the background scorer's, or a
+    posting just read) shows a ring spinner in the score's place with no small print."""
+    key = "greenhouse:acme:101"
+    card = page.locator(f'[id="job-{key}"]')
+    cv = watchlist.parent / "cv.md"
+    cv.write_text("# Jane Doe")
+    config.save(watchlist, {"resume": str(cv), "scoring": {"auto": False}})
+    held = []
+    page.route("**/api/score", lambda route: held.append(route))
+    reload(page)
+    chip(page, "Posted within", "14d").click()
+    corner = card.locator(".score-corner")
+    corner.click()
+    sync_api.expect(corner).to_be_disabled()
+    sync_api.expect(corner.locator(".spin")).to_have_count(1)
+    sync_api.expect(corner).to_have_attribute("title", re.compile("Compare this posting"))
+    held.pop().fulfill(status=502, json={"error": "agy is out of quota"})  # a failure: the button is back
+    sync_api.expect(corner).to_be_enabled()
+    sync_api.expect(corner.locator(".spin")).to_have_count(0)
+    sync_api.expect(page.locator(".toast", has_text="agy is out of quota")).to_be_visible()
+    assert page.errors == [f"502 {page.url.split('#')[0]}api/score"]  # the failure we sent, nothing else
+    page.errors.clear()
+    corner.click()
+    sync_api.expect(corner.locator(".spin")).to_have_count(1)
+    held.pop().fulfill(json={"score": 71.0, "must_haves_met": 3, "must_haves_total": 4, "gaps": [], "summary": "ok"})
+    sync_api.expect(card.locator(".ring span").first).to_have_text("71")  # the score is drawn; the spinner is gone
+    sync_api.expect(card.locator(".spin, .score-spin")).to_have_count(0)
+
+    def being_scored(route):  # the server says this job is being scored right now
+        got = route.fetch()
+        body = got.json()
+        for j in body["jobs"]:
+            if j["key"] == key:
+                j.update(fit=None, unscored={"code": "scoring", "text": "Posting read: scoring it now…"})
+        route.fulfill(response=got, json=body)
+
+    page.route("**/api/digest", being_scored)
+    reload(page)
+    chip(page, "Posted within", "14d").click()
+    spinner = card.locator(".fitbox.scoring-now")
+    sync_api.expect(spinner).to_have_attribute("aria-label", "Scoring…")
+    sync_api.expect(spinner.locator(".score-spin")).to_be_visible()
+    sync_api.expect(spinner).to_have_text("")  # no small print
+    sync_api.expect(card.get_by_text("scoring it now")).to_have_count(0)
+    assert page.errors == []
+
+
 def open_company(page, name):
     page.goto(page.url.split("#")[0] + "#company/" + name)
     reload(page)

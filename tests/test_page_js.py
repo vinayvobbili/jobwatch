@@ -891,9 +891,10 @@ def test_an_unscored_card_has_a_score_button_in_its_corner_that_runs_the_same_sc
     press disables both and shows Scoring…, a failure toasts the server's message and lets either retry, a score
     redraws the card."""
     js = tmp_path / "corner.js"
-    js.write_text(page_const("NO_SCORE_BUTTON") + page_function("unscoredNote") + page_function("scoreButton")
-                  + page_function("fetchAdvice") + page_function("noFitBox") + page_const("ACT")
-                  + page_const("actLabel") + page_function("actButton") + """
+    js.write_text(page_const("NO_SCORE_BUTTON") + page_const("SCORING_WORD") + page_const("scoringNow")
+                  + page_function("unscoredNote") + page_function("scoreButton") + page_function("fetchAdvice")
+                  + page_function("noFitBox") + page_const("ACT") + page_const("actLabel")
+                  + page_function("actButton") + """
 const words = kids => kids.map(k => typeof k === "string" ? k : k.kids ? words(k.kids) : "").join("");
 const node = (tag, attrs, kids) => ({ tag, cls: attrs?.class, kids, disabled: false, text: words(kids),
   replaceChildren(...k) { this.text = words(k); this.kids = k; } });
@@ -948,7 +949,8 @@ def test_each_card_action_has_its_own_icon_class_and_accessible_name(tmp_path):
     js = tmp_path / "actions.js"
     js.write_text(page_const("ACT") + page_const("actLabel") + page_function("actButton")
                   + page_function("detailsButton") + page_function("applyButton") + page_const("NO_SCORE_BUTTON")
-                  + page_function("unscoredNote") + page_function("scoreButton") + """
+                  + page_const("SCORING_WORD") + page_const("scoringNow") + page_function("unscoredNote")
+                  + page_function("scoreButton") + """
 const h = (tag, attrs, ...kids) =>
   ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
 const icon = name => ({ svg: name });
@@ -1015,6 +1017,35 @@ console.log(JSON.stringify({ whyCls: why.cls, whyIcon: why.kids[0].svg, whyText:
         "lineCls": "verdict score", "lineIcon": "gauge", "queued": "advice score"}
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     assert ".verdict.stretch, .verdict.score" in page and ".advice.score b" in page
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_job_being_scored_shows_a_spinner_in_the_ring_spot_and_no_small_print(tmp_path):
+    """While a posting just read (or the background scorer's job) is scored, the card shows a ring spinner where the
+    score goes: "Scoring…" is only its tooltip and name, no visible note; any other state is as it was."""
+    js = tmp_path / "scoringnow.js"
+    js.write_text(page_const("SCORING_WORD") + page_const("scoringNow") + page_function("unscoredNote")
+                  + page_function("noFitBox") + """
+const h = (tag, attrs, ...kids) =>
+  ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const say = el => ({ cls: el.attrs.class, title: el.attrs.title, name: el.attrs["aria-label"], role: el.attrs.role,
+  kids: el.kids.map(k => k.attrs?.class ?? k) });
+const scoring = { key: "k", unscored: { code: "scoring", text: "Posting read: scoring it now…" } };
+const waiting = { key: "k", unscored: { code: "queued", text: "In line to score · 1st of 3" } };
+console.log(JSON.stringify({ box: say(noFitBox(scoring)), cornerIgnored: say(noFitBox(scoring, { corner: true })),
+  note: unscoredNote(scoring), waitingNote: unscoredNote(waiting).kids, waiting: say(noFitBox(waiting)) }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    spinner = {"cls": "fitbox noscore scoring-now", "title": "Scoring…", "name": "Scoring…", "role": "status",
+               "kids": ["score-spin"]}
+    assert out["box"] == out["cornerIgnored"] == spinner  # no text node, only the spinner
+    assert out["note"] is None  # no small print under the buttons
+    assert out["waitingNote"] == ["In line to score · 1st of 3"]  # a job only waiting in line keeps its note
+    assert out["waiting"]["cls"] == "fitbox" and "score-spin" not in out["waiting"]["kids"]
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    assert ".score-spin" in page and "animation: score-dot 1.3s ease-in-out infinite !important" in page
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")

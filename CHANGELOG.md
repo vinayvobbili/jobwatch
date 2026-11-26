@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A job being scored now shows a spinner instead of small print. When Read posting has read a posting, or the
+  background scorer has the job, the card's score spot holds an animated ring in the card's colors (a pulsing dot when
+  your system asks for less motion) and the "Posting read: scoring it now…" line under the buttons is gone;
+  "Scoring…" is its tooltip and screen-reader name. The Score button already shows a spinner and stays off while it
+  runs. The spinner clears when the score arrives or the scoring fails (the error shows as before).
 - A stale score no longer hides its number. The amber "stale" badge was drawn over the ring and covered the score
   (85/100 read as the word "stale"). The ring now shows the number as usual with a small clock icon on its rim
   (amber for an older resume, rose for a score marked stale), and the tooltips are the same.

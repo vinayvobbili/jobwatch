@@ -214,6 +214,16 @@ button.btn:disabled { opacity: .55; cursor: default; }
 :root[data-theme="dark"] .btn.act.act-apply:hover:not(:disabled) { background: linear-gradient(135deg, #3ddc97, #5eead4); }
 .btn.act-score:disabled { animation: score-pulse 1.3s ease-in-out infinite; opacity: .8; transform: none; }
 @keyframes score-pulse { 50% { opacity: .5; } }
+/* Scoring now: a ring in the score's place, in the accent colors, turning (a pulsing dot when motion is reduced) */
+.score-spin { width: 52px; height: 52px; margin: 7px auto; border-radius: 50%; animation: spin .9s linear infinite;
+  background: conic-gradient(from 0deg, transparent 0 10%, var(--accent-2), var(--accent));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); }
+@keyframes score-dot { 50% { opacity: .3; transform: scale(.75); } }
+@media (prefers-reduced-motion: reduce) {
+  .score-spin { width: 16px; height: 16px; margin: 25px auto; -webkit-mask: none; mask: none; background: var(--accent);
+    animation: score-dot 1.3s ease-in-out infinite !important; }
+}
 .btn.act-score .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
   border-top-color: currentColor; animation: spin .8s linear infinite; }
 .spin .ico { animation: spin 1s linear infinite; }
@@ -2115,6 +2125,10 @@ function showAdvice(said) {
 // On a job card, `corner` is its Score button (scoreButton's): the button takes the place of the dash, with the
 // "not scored yet" note beneath it.
 function noFitBox(job, corner = null) {
+  // Being scored right now (Read posting just read it, or the background scorer has it): a ring spinner where the
+  // score goes, with no small print: "Scoring…" is only its tooltip and name. The score (or a failure) redraws the card.
+  if (scoringNow(job)) return h("div", { class: "fitbox noscore scoring-now", role: "status", title: SCORING_WORD,
+    "aria-label": SCORING_WORD }, h("div", { class: "score-spin", "aria-hidden": "true" }));
   const why = job.unscored?.code === "no_text" ? "no posting text" : "not scored yet";
   if (corner) return h("div", { class: "fitbox noscore", title: job.unscored?.text || "Not scored yet" },
     corner, h("small", {}, why));
@@ -2485,7 +2499,10 @@ function detailsButton(job) { return actButton("details", { onclick: () => openD
 // Why a job has no fit score yet (the server's `unscored`: in line, no posting text, failed...).
 // No Score button while it's being scored, or for a post listing several roles (never scored).
 const NO_SCORE_BUTTON = ["scoring", "many_roles"];
+const SCORING_WORD = "Scoring…";
+const scoringNow = job => job.unscored?.code === "scoring";
 function unscoredNote(job) {
+  if (scoringNow(job)) return null;  // the card's ring spot shows a spinner instead (noFitBox)
   return job.unscored ? h("span", { class: "muted small", title: job.unscored.text }, job.unscored.text) : null;
 }
 // A job with only a title (from an alert email) gets its posting here: a link jobwatch reads, or the text.
