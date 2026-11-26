@@ -3,7 +3,7 @@ models' scores before trusting them side by side, and the Anthropic API key from
 
 import subprocess
 import sys
-from datetime import UTC
+from datetime import UTC, datetime
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -937,3 +937,120 @@ def test_score_compare_runs_a_provider_and_saves_nothing(scored, monkeypatch, ca
     store.close()
     with pytest.raises(SystemExit, match="--backend nope"):
         cli.main(["-c", str(cfg.path), "score", "--compare", "2", "--backend", "nope"])
+
+
+# `jobwatch scorers`: which steps of the chain are paused, and pausing or resuming one by hand
+
+CHAIN = ["claude:claude-sonnet-5-5 until 2026-12-20", "agy:gemini-4-argon-medium", "local"]
+
+
+def _scoring_chain(watchlist):
+    return _set(watchlist, scoring={"backend": "agy", "model": "claude-sonnet-5-5-high", "fallback": CHAIN})
+
+
+def _scorers(cfg, store, **kw):
+    cli.cmd_scorers(SimpleNamespace(**{"pause": None, "resume": None, "until": None, "reason": "", **kw}), cfg, store)
+
+
+def _local(stamp):
+    return datetime.fromisoformat(stamp).astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def _down(store, scorer, reason, since, until):
+    """A pause row with the time it was set, which set_scorer_down takes from the clock."""
+    store.db.execute("INSERT INTO scorer_down (scorer, reason, since, until) VALUES (?, ?, ?, ?)",
+                     (scorer, reason, since, until))
+    store.db.commit()
+
+
+def test_scorers_lists_each_step_with_its_state_and_who_paused_it(watchlist, capsys):
+    cfg = _scoring_chain(watchlist)
+    store = Store(cfg.state)
+    _scorers(cfg, store)
+    assert capsys.readouterr().out.splitlines() == [
+        "1. claude:claude-sonnet-5-5    active",
+        "2. agy:claude-sonnet-5-5-high  active",
+        "3. agy:gemini-4-argon-medium   active",
+        "4. local                       active"]
+    _down(store, "agy:claude-sonnet-5-5-high", "out of quota", "2026-11-26T14:12:00+00:00", "2099-12-01T22:00:00+00:00")
+    _down(store, "agy:gemini-4-argon-medium", "held by hand: Tuesday's quota", "2026-11-26T15:00:00+00:00",
+          "2099-12-02T08:00:00+00:00")
+    _down(store, "local:", "held by hand", "2026-11-26T15:05:00+00:00", "2099-12-02T09:00:00+00:00")
+    _down(store, "agy:old-model", "out of quota", "2026-11-20T10:00:00+00:00", "2099-12-03T10:00:00+00:00")
+    _down(store, "claude:claude-sonnet-5-5", "out of credit", "2026-11-20T10:00:00+00:00", "2000-01-01T00:00:00+00:00")
+    _scorers(cfg, store)  # an expired pause is no pause; a paused step no longer in the chain is still said
+    assert capsys.readouterr().out.splitlines() == [
+        "1. claude:claude-sonnet-5-5    active",
+        f"2. agy:claude-sonnet-5-5-high  paused until {_local('2099-12-01T22:00:00+00:00')}: out of quota "
+        f"(set by a scoring run, since {_local('2026-11-26T14:12:00+00:00')})",
+        f"3. agy:gemini-4-argon-medium   paused until {_local('2099-12-02T08:00:00+00:00')}: Tuesday's quota "
+        f"(held by hand, since {_local('2026-11-26T15:00:00+00:00')})",
+        f"4. local                       paused until {_local('2099-12-02T09:00:00+00:00')} "
+        f"(held by hand, since {_local('2026-11-26T15:05:00+00:00')})",
+        f"-  agy:old-model (not in the chain)  paused until {_local('2099-12-03T10:00:00+00:00')}: out of quota "
+        f"(set by a scoring run, since {_local('2026-11-20T10:00:00+00:00')})"]
+    store.close()
+
+
+def test_scorers_pause_holds_a_step_by_hand_and_resume_clears_it(watchlist, capsys):
+    cfg = _scoring_chain(watchlist)
+    store = Store(cfg.state)
+    _scorers(cfg, store, pause="agy:claude-sonnet-5-5-high", until="2099-12-01 22:00", reason="weekly quota")
+    assert capsys.readouterr().out == "Paused agy:claude-sonnet-5-5-high until 2099-12-01 22:00 (held by hand).\n"
+    down = store.scorers_down()["agy:claude-sonnet-5-5-high"]
+    assert down["reason"] == "held by hand: weekly quota"
+    assert datetime.fromisoformat(down["until"]).astimezone().strftime("%Y-%m-%d %H:%M") == "2099-12-01 22:00"
+    _scorers(cfg, store, pause="local", until="2099-12-01 22:00")  # the step's name without its colon, no reason
+    assert store.scorers_down()["local:"]["reason"] == "held by hand"
+    capsys.readouterr()
+    _scorers(cfg, store)
+    assert "weekly quota (held by hand, since" in capsys.readouterr().out
+    _scorers(cfg, store, resume="agy:claude-sonnet-5-5-high")
+    assert capsys.readouterr().out == "Resumed agy:claude-sonnet-5-5-high.\n"
+    assert set(store.scorers_down()) == {"local:"}
+    _scorers(cfg, store, resume="agy:claude-sonnet-5-5-high")  # not paused: said, nothing to clear
+    assert capsys.readouterr().out == "agy:claude-sonnet-5-5-high isn't paused.\n"
+    store.close()
+
+
+@pytest.mark.parametrize("kw, message", [
+    ({"pause": "agy:nope", "until": "2099-12-01 22:00"}, "agy:nope isn't a step of the scoring chain"),
+    ({"resume": "gpt"}, "gpt isn't a step of the scoring chain"),
+    ({"pause": "local", "until": "2020-01-01 09:00"}, "2020-01-01 09:00 is already past"),
+    ({"pause": "local", "until": "next Tuesday"}, "--until is a local time as YYYY-MM-DD HH:MM"),
+    ({"pause": "local"}, "--pause needs --until"),
+    ({"until": "2099-12-01 22:00"}, "--until goes with --pause"),
+])
+def test_scorers_refuses_an_unknown_step_a_past_or_missing_time_and_changes_nothing(watchlist, kw, message):
+    cfg = _scoring_chain(watchlist)
+    store = Store(cfg.state)
+    with pytest.raises(SystemExit, match=message):
+        _scorers(cfg, store, **kw)
+    assert store.scorers_down() == {}
+    store.close()
+
+
+def test_a_step_paused_by_hand_is_skipped_without_a_call_until_it_is_resumed(scored, monkeypatch):
+    """Held by hand, agy's Sonnet is passed over like one out of quota: the local model scores, no call goes to agy."""
+    from dataclasses import replace
+    cfg, rid, _ = scored
+    cfg = replace(cfg, backend="agy", score_model="sonnet", score_fallback=("local",))
+    calls = []
+
+    def fake(jobs, resume, backend, cache, model="", **kw):
+        calls.append(backend)
+        return {j.key: {"score": 50.0, "must_haves_met": 1, "must_haves_total": 1, "scored_by": f"{backend}:m"}
+                for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    store = Store(cfg.state)
+    store.db.execute("DELETE FROM scores")
+    store.db.commit()
+    first, second = watch.unscored(cfg, store)[:2]
+    _scorers(cfg, store, pause="agy:sonnet", until="2099-12-01 22:00", reason="weekly quota")
+    watch.score_entries(cfg, store, [first], progress=lambda m: None)
+    assert calls == ["local"]  # no call to agy
+    assert "agy held by hand: weekly quota, paused until" in store.score(first.job.key, rid)["fallback"]
+    _scorers(cfg, store, resume="agy:sonnet")
+    watch.score_entries(cfg, store, [second], progress=lambda m: None)
+    assert calls == ["local", "agy"] and store.scorers_down() == {}
+    store.close()

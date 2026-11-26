@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `jobwatch scorers` lists each step of the scoring chain, active or paused until a time with why and whether a run
+  or you set it, from the state file alone (no page token, no model call). `jobwatch scorers --pause STEP --until
+  "YYYY-MM-DD HH:MM" [--reason TEXT]` holds a step by hand, for one you know is out of quota, so the chain skips it
+  with no call and no failed batch first; `--resume STEP` ends the pause.
+
 - A new resume no longer makes fit scores stale, hides them or asks for new ones. Every rebuilt resume used to give
   every job a new score key, so each card read "not scored yet", Today lost its scores and a re-score paid for the
   lot (two rebuilds one morning cost about $4). Now each job keeps its newest score whatever resume made it, shown

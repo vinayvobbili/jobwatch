@@ -164,6 +164,12 @@ and never printed or logged. A 429 or quota error, a 5xx, or a refused key pause
 5xx, otherwise until its reset or an hour) and the next entry scores; an empty or unreadable answer is a failed
 score, not a score. The postings and your resume go to that provider.
 
+`jobwatch scorers` lists each step of the chain, active or paused (until when, why, and whether a run or you set
+it), without a page or a model call. Hold a step you know is out, such as agy's Sonnet until its weekly reset, so
+no batch of jobs fails against it first: `jobwatch scorers --pause agy:claude-sonnet-5-5-high --until "2026-12-01
+22:00" --reason "weekly quota"` (your local time); the chain skips it like one a run found out of quota.
+`jobwatch scorers --resume STEP` ends the pause.
+
 To test one on jobs you have already scored, without saving anything:
 
 ```

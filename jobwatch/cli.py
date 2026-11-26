@@ -97,9 +97,11 @@ from .store import (
 )
 from .watch import (
     CHECKED,
+    HELD,
     MANY_ROLES,
     _step,
     build_digest,
+    chain_steps,
     check_daily,
     check_postings,
     compare_picks,
@@ -107,6 +109,7 @@ from .watch import (
     counts_as_main,
     fetch_all,
     hidden,
+    hold_step,
     load_contacts,
     pace,
     plural,
@@ -508,6 +511,59 @@ def cmd_credit(args, cfg, store):
 
 def cmd_unscored(args, cfg, store):
     """Today's jobs with no fit score, and why: in the background scorer's line (and where), no posting text to
+def cmd_scorers(args, cfg, store):
+    """`scorers`: each step of the scoring chain, active or paused (until when, why, and whether a run or a hand set
+    it), from the store alone: no call, no page. --pause STEP --until TIME holds a step by hand, as a run does when
+    its quota is out, and --resume STEP clears a pause."""
+    steps = chain_steps(cfg)
+    down = store.scorers_down()
+
+    def name(step):
+        return step.removesuffix(":")
+
+    def find(text):
+        found = next((s for s in (*steps, *down) if name(s) == text.removesuffix(":")), None)
+        if not found:
+            raise SystemExit(f"{text} isn't a step of the scoring chain: " + ", ".join(name(s) for s in steps))
+        return found
+
+    if args.until and not args.pause:
+        raise SystemExit("--until goes with --pause")
+    if args.pause:
+        if not args.until:
+            raise SystemExit("--pause needs --until, a local time as YYYY-MM-DD HH:MM")
+        try:
+            until = datetime.strptime(args.until, "%Y-%m-%d %H:%M")
+        except ValueError:
+            raise SystemExit(f"--until is a local time as YYYY-MM-DD HH:MM, not {args.until!r}") from None
+        step = find(args.pause)
+        if until <= datetime.now():
+            raise SystemExit(f"{args.until} is already past")
+        hold_step(store, step, until, args.reason)
+        print(f"Paused {name(step)} until {args.until} ({HELD}).")
+        return
+    if args.resume:
+        step = find(args.resume)
+        print(f"Resumed {name(step)}." if step in down else f"{name(step)} isn't paused.")
+        store.clear_scorer_down(step)
+        return
+    width = max(len(name(s)) for s in steps)
+    for i, step in enumerate(steps, 1):
+        print(f"{i}. {name(step):<{width}}  {_paused(down[step]) if step in down else 'active'}")
+    for step in sorted(down.keys() - set(steps)):
+        print(f"-  {name(step)} (not in the chain)  {_paused(down[step])}")
+
+
+def _paused(pause: dict) -> str:
+    """One scorers_down row as `paused until 2026-12-01 22:00: out of quota (set by a scoring run, since ...)`."""
+    def local(stamp):
+        return datetime.fromisoformat(stamp).astimezone().strftime("%Y-%m-%d %H:%M")
+    by_hand = pause["reason"].startswith(HELD)
+    why = pause["reason"].removeprefix(HELD).removeprefix(": ")
+    return (f"paused until {local(pause['until'])}" + (f": {why}" if why else "")
+            + f" ({HELD if by_hand else 'set by a scoring run'}, since {local(pause['since'])})")
+
+
     score, the same role scored before this posting came in, no resume. Failures and the job being scored
     right now are what the page itself knows: see Today there."""
     why = unscored_reasons(cfg, store)
@@ -1933,6 +1989,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")
     p.add_argument("--no-text", action="store_true", help="only the jobs waiting for their posting's text, each with "
+    p = sub.add_parser("scorers", help="each step of the scoring chain, active or paused (until when, why, who set "
+                       "it); --pause and --resume hold or free one by hand. Calls no model")
+    p.add_argument("--pause", default=None, metavar="STEP",
+                   help="hold this step (as listed, e.g. agy:claude-sonnet-5-5-high) until --until: the chain "
+                   "skips it with no call, as when its quota runs out")
+    p.add_argument("--until", default=None, metavar="'YYYY-MM-DD HH:MM'", help="with --pause: your local time")
+    p.add_argument("--reason", default="", metavar="TEXT", help="with --pause: what the list says about it")
+    p.add_argument("--resume", default=None, metavar="STEP", help="end this step's pause now")
+    p.set_defaults(func=cmd_scorers)
+
                    "its link: give them the text with `mark KEY --url LINK` or `mark KEY --text FILE`")
     p.set_defaults(func=cmd_unscored)
 

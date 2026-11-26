@@ -1303,6 +1303,25 @@ def scorer_id(backend: str, model: str) -> str:
     return f"{backend}:{model}"
 
 
+def chain_steps(cfg: Config) -> list[str]:
+    """The scoring chain's steps as scorer_id names, in the order a job meets them: a dated Claude entry, then
+    scoring.backend, then the rest of scoring.fallback (a step named twice is listed once)."""
+    dated = [e for e in cfg.score_fallback if credit.is_dated(e)]
+    ids = [scorer_id(*fallback_entry(e)) for e in dated]
+    ids.append(scorer_id(cfg.backend, cfg.score_model))
+    ids += [scorer_id(fallback_entry(e)[0], fallback_model(cfg, e)) for e in cfg.score_fallback
+            if not credit.is_dated(e)]
+    return list(dict.fromkeys(ids))
+
+
+HELD = "held by hand"  # the start of the reason of a pause set with `jobwatch scorers --pause`, not by a run
+
+
+def hold_step(store: Store, step: str, until: datetime, reason: str = ""):
+    """Pause a chain step by hand, as a run does when its quota is out: _step skips it, with no call, until then."""
+    store.set_scorer_down(step, f"{HELD}: {reason}" if reason else HELD, until)
+
+
 def _step(cfg: Config, store: Store, jobs: list[Job], backend: str, model: str, progress=None, batch: bool = False,
           on_usage: Callable[[dict], None] | None = None):
     """One step of the scoring chain: skipped, with no call, while it's paused (out of credit or quota: see
