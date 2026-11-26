@@ -1981,6 +1981,14 @@ function cardNote(key, text, bad) {
     el.append(h("div", { class: "small fit-note" + (bad ? " error" : ""), role: "status" }, text));
   });
 }
+// A card with no score yet (a posting just read, being scored) has no rings to swap: the page is drawn again, once
+// for a burst of events, where it is.
+let redrawTimer = 0;
+function redrawUnscored(keys) {
+  if (!keys.some(k => document.getElementById("job-" + k) && !document.querySelector(`[data-fit="${CSS.escape(k)}"]`))) return;
+  clearTimeout(redrawTimer);
+  redrawTimer = setTimeout(redrawInPlace, 300);
+}
 // /events: a rescore's new score (or why it failed) takes the place of the job's rings on the page
 function listenForEvents() {
   if (typeof EventSource === "undefined") return;
@@ -1988,6 +1996,7 @@ function listenForEvents() {
   es.addEventListener("score", e => {
     const d = JSON.parse(e.data);
     RESCORING.delete(d.key);
+    redrawUnscored(d.keys || [d.key]);
     for (const k of d.keys || [d.key])
       document.querySelectorAll(`[data-fit="${CSS.escape(k)}"]`).forEach(el => el.replaceWith(fitBox(d.fit, k)));
     toast(`New score: ${Math.round(d.fit.score)} by ${scorerLabel(d.fit.scored_by || "")}` + (d.note ? `. ${d.note}` : ""),
@@ -1997,9 +2006,11 @@ function listenForEvents() {
   es.addEventListener("score-failed", e => {
     const d = JSON.parse(e.data);
     RESCORING.delete(d.key);
+    const again = document.querySelector(`[data-fit="${CSS.escape(d.key)}"]`) !== null;  // else its first score
     document.querySelectorAll(`[data-fit="${CSS.escape(d.key)}"]`).forEach(el => el.classList.remove("rescoring"));
-    toast(`Scoring again failed: ${d.error}`);
-    cardNote(d.key, `Scoring again failed: ${d.error}`, true);  // stays on the card: a toast is easy to miss
+    toast(`Scoring${again ? " again" : ""} failed: ${d.error}`);
+    cardNote(d.key, `Scoring${again ? " again" : ""} failed: ${d.error}`, true);  // stays on the card: a toast is easy to miss
+    redrawUnscored([d.key]);  // an unscored card now says why, and offers Score
   });
 }
 // Under the ring: the model that made the score and where it ran ("Sonnet 5.5 · agy", "Qwen3.5-9B · local"). A score
@@ -2438,7 +2449,9 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   const redraw = j => document.getElementById("job-" + j.key).replaceWith(card(j));
   if (job.unscored?.code === "no_text")
     return [readButton(job, r => {  // read in the background: this card alone changes
-      if (r.has_text) job.unscored = { code: "queued", text: "Posting added: in line to score" };
+      // jobwatch scores a job as soon as its posting is read (whatever scoring.auto says): the card waits for the
+      // "score" event (listenForEvents), or "score-failed"
+      if (r.has_text) job.unscored = { code: "scoring", text: "Posting read: scoring it now…" };
       if (r.closed) Object.assign(job, { closed_state: "closed", closed: new Date().toISOString() });
       if (document.getElementById("job-" + job.key)) redraw(job);
     }), postingButton(job, r => {

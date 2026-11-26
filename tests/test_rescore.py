@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from jobwatch import ai, scorestats, watch
+from jobwatch.score import resume_family, resume_id
 from jobwatch.web import ApiError, App, serve
 
 from .conftest import TOKEN
@@ -186,3 +187,145 @@ def test_a_posting_text_with_no_requirements_is_read_again_and_scored(app, monke
     assert data["fit"]["score"] == 70
     assert "Requirements" not in texts[0] and "Requirements" in texts[1]
     assert "Requirements" in app._with_store(lambda cfg, store: store.find(KEY)[0]).description
+
+
+# -- Read posting scores its job at once
+
+PAGE = {"linkedin": "4000000003", "company": "Umbrella", "title": "Platform Engineer",
+        "page_url": "https://careers.umbrella.example/jobs/42", "text": "Requirements: Python, LLMs, RAG"}
+
+
+def _queued(app) -> str:
+    """A job from an alert, queued, with no posting text yet."""
+    return app.post_add({"company": "Umbrella, Inc.", "title": "Platform Engineer", "status": "queued"})["key"]
+
+
+@pytest.fixture
+def scored(app, monkeypatch):
+    """The keys each call of the stand-in scorer was given."""
+    asked, inner = [], watch.score_jobs
+    monkeypatch.setattr(watch, "score_jobs", lambda jobs, *a, **kw: asked.append([j.key for j in jobs]) or
+                        inner(jobs, *a, **kw))
+    return asked
+
+
+def test_reading_a_posting_scores_that_job_though_scoring_auto_is_off(app, scored):
+    key = _queued(app)
+    heard = app.events.subscribe()
+    got = app.ext_posting(PAGE)
+    assert got["key"] == key and got["has_text"] and got["saved"] and got["scoring"] is True
+    kind, data = heard.get(timeout=10)
+    assert (kind, data["key"], data["fit"]["score"]) == ("score", key, 70)
+    assert data["fit"]["scored_by"] == "agy:claude-sonnet-5-5-medium"  # scoring.backend, the first of the chain
+    assert scored == [[key]]  # that job alone, not the rest of the line
+    assert app.get_rescore({"key": [key]})["scored_by"] == "agy:claude-sonnet-5-5-medium"
+    assert key not in app.rescoring
+
+
+def test_a_job_being_scored_is_said_to_be_scoring_in_the_page(app):
+    key = _queued(app)
+    app.rescoring.add(key)  # what the thread started by the read holds
+    app._with_store(lambda cfg, store: store.set_description(key, "Requirements: Python"))
+    why = app._with_store(lambda cfg, store: app.scorer.reasons(cfg, store))[key]
+    assert (why["code"], why["text"]) == ("scoring", "Being scored now")
+
+
+def test_the_scoring_chain_is_used_when_the_first_scorer_fails(app, scored, monkeypatch):
+    inner = watch.score_jobs
+
+    def fake(jobs, resume, backend, cache_dir, model="", **kw):
+        if model == "claude-sonnet-5-5-medium":
+            return {}, {j.key: "model said no" for j in jobs}
+        return inner(jobs, resume, backend, cache_dir, model=model, **kw)
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    _queued(app)
+    heard = app.events.subscribe()
+    app.ext_posting(PAGE)
+    kind, data = heard.get(timeout=10)
+    assert kind == "score" and data["fit"]["scored_by"] == "agy:gemini-3.8-flash-medium"
+    assert data["fit"]["fallback"] == "model said no"
+
+
+def test_a_read_that_cant_be_scored_says_so_as_an_event_never_silently(app):
+    key = _queued(app)
+    app.fail.add(key)
+    heard = app.events.subscribe()
+    assert app.ext_posting(PAGE)["scoring"] is True
+    kind, data = heard.get(timeout=10)
+    assert kind == "score-failed" and data["key"] == key and "model said no" in data["error"]
+
+
+def test_a_scoring_that_raises_says_so_as_an_event(app, monkeypatch):
+    def broken(jobs, *a, **kw):
+        raise RuntimeError("the model server is down")
+    monkeypatch.setattr(watch, "score_jobs", broken)
+    key = _queued(app)
+    heard = app.events.subscribe()
+    app.ext_posting(PAGE)
+    kind, data = heard.get(timeout=10)
+    assert (kind, data["key"]) == ("score-failed", key) and "the model server is down" in data["error"]
+
+
+def test_a_job_with_a_current_score_and_its_text_is_not_scored_by_another_read(app, scored):
+    key = _queued(app)
+    heard = app.events.subscribe()
+    app.ext_posting(PAGE)
+    heard.get(timeout=10)
+    again = app.ext_posting(PAGE)
+    assert "already has" in again["said"] and not again["saved"] and again["scoring"] is False
+    assert scored == [[key]]  # once
+
+
+def test_a_job_with_its_text_but_no_score_is_scored_by_a_read(app, scored):
+    key = _queued(app)
+    app._with_store(lambda cfg, store: store.set_description(key, "Requirements: Python, LLMs"))
+    heard = app.events.subscribe()
+    got = app.ext_posting(PAGE)
+    assert "already has" in got["said"] and not got["saved"] and got["scoring"] is True
+    assert heard.get(timeout=10)[0] == "score" and scored == [[key]]
+
+
+def test_a_job_with_a_stale_score_is_scored_by_a_read(app, scored):
+    key = _queued(app)
+    app._with_store(lambda cfg, store: store.set_description(key, "Requirements: Python, LLMs"))
+    app._with_store(lambda cfg, store: store.save_score(  # made by another scorer: shown as stale
+        key, resume_family(resume_id(cfg.resume, cfg.prompts)) + ":scorer-00000000", FIT))
+    assert app.get_rescore({"key": [key]})["stale"] is True
+    heard = app.events.subscribe()
+    assert app.ext_posting(PAGE)["scoring"] is True
+    kind, data = heard.get(timeout=10)
+    assert kind == "score" and "stale" not in data["fit"] and scored == [[key]]
+
+
+def test_nothing_is_scored_without_a_resume(app, scored, watchlist):
+    raw = yaml.safe_load(watchlist.read_text())
+    watchlist.write_text(yaml.safe_dump({**raw, "resume": "missing.md"}))
+    _queued(app)
+    got = app.ext_posting(PAGE)
+    assert got["has_text"] and got["scoring"] is False
+    assert scored == []
+
+
+def test_a_job_being_scored_is_not_scored_twice_but_text_replaced_meanwhile_runs_once_more(app, scored):
+    key = _queued(app)
+    app._with_store(lambda cfg, store: store.set_description(key, "Requirements: Python, LLMs"))
+    app.rescoring.add(key)  # a run is going
+    assert app.score_posted_in_background(key, replaced=False) is False
+    assert app._rescore_again == set()
+    assert app.score_posted_in_background(key, replaced=True) is False
+    assert app._rescore_again == {key} and scored == []
+    heard = app.events.subscribe()
+    app._score_posted(key)  # that run, taking the second pass too
+    assert [heard.get(timeout=10)[0], heard.get(timeout=10)[0]] == ["score", "score"]
+    assert scored == [[key], [key]] and key not in app.rescoring and app._rescore_again == set()
+
+
+def test_the_pages_scorer_leaves_a_job_being_scored_alone(app, scored, watchlist):
+    raw = yaml.safe_load(watchlist.read_text())
+    watchlist.write_text(yaml.safe_dump({**raw, "scoring": {**raw["scoring"], "auto": True}}))
+    todo = app._with_store(lambda cfg, store: [e.job.key for e in watch.unscored(cfg, store, {})])
+    assert KEY in todo
+    app.rescoring.add(KEY)
+    while app.scorer._step():
+        pass
+    assert scored and all(KEY not in keys for keys in scored)

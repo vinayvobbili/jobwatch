@@ -162,7 +162,11 @@ class Scorer:
     def reasons(self, cfg, store) -> dict[str, dict]:
         """Why each queued and Today's unscored job has no score yet, with what this scorer knows (see
         unscored_reasons)."""
-        return unscored_reasons(cfg, store, self._failed, self.current_key, "" if self._thread else self.stopped)
+        out = unscored_reasons(cfg, store, self._failed, self.current_key, "" if self._thread else self.stopped)
+        for key in list(self.app.rescoring):  # one being scored when asked: a posting just read, say
+            if key in out:
+                out[key] = {"code": "scoring", "text": "Being scored now"}
+        return out
 
     def status(self) -> dict:
         return {"running": self._thread is not None, "done": self.done, "left": self.left,
@@ -224,7 +228,8 @@ class Scorer:
             return 0
         store = Store(cfg.state)
         try:
-            todo = unscored(cfg, store, self._failed)
+            todo = [e for e in unscored(cfg, store, self._failed)
+                    if e.job.key not in self.app.rescoring]  # being scored already: not paid for twice
             self.left = len(todo)
             if not todo:
                 return 0
@@ -571,7 +576,8 @@ class App:
         self.looking = threading.Lock()  # one look for suggested companies' boards at a time
         self.events = Events()
         self.lookups: list[threading.Thread] = []  # looks for a job on its company's own board (ext_posting)
-        self.rescoring: set[str] = set()  # jobs being scored again when asked (post_rescore), one run each
+        self.rescoring: set[str] = set()  # jobs being scored when asked (post_rescore, a posting just read), one each
+        self._rescore_again: set[str] = set()  # a posting's text replaced while its job was being scored: once more
         self._rescoring_lock = threading.Lock()
         self.scorer = Scorer(self)
         self.pay = PayLookup(self)
@@ -966,7 +972,72 @@ class App:
             self.find_on_board_in_background(got["key"])  # the answer doesn't wait for network reads
         if got["has_text"]:
             self.score_in_background()  # it has text to score now
+            # Reading a posting is asking for its score: this job is scored now, whatever scoring.auto says
+            got["scoring"] = self.score_posted_in_background(got["key"], replaced=got["saved"])
         return got
+
+    def score_posted_in_background(self, key: str, replaced: bool = True) -> bool:
+        """Score one job whose posting text was just read, in the background, with the scoring chain (scoring.backend,
+        then scoring.fallback, the dated Claude entry first, under its caps), whatever scoring.auto says: the person
+        who reads a posting wants its score. Only this job. `replaced`: its text was just saved or replaced, so
+        any score it has is of older text; else only a job with no current score is scored. Not when it can't be
+        scored (several roles, no resume, no text) or is being scored already (a text replaced meanwhile gets one
+        more run after it). The score or why it failed comes as an event, as for post_rescore. Whether it started."""
+        def check(cfg, store):
+            job, _ = store.find(key)
+            if not (scorable(job) and job.description.strip() and cfg.resume and cfg.resume.is_file()):
+                return False
+            fit = job_fit(cfg, store, key)
+            return replaced or fit is None or bool(fit.get("stale"))
+        try:
+            if not self._with_store(check):
+                return False
+        except (ApiError, KeyError):
+            return False
+        with self._rescoring_lock:
+            if key in self.rescoring:
+                if replaced:
+                    self._rescore_again.add(key)
+                return False
+            self.rescoring.add(key)
+        threading.Thread(target=self._score_posted, args=(key,), name="jobwatch-score-posted", daemon=True).start()
+        return True
+
+    def _score_posted(self, key: str):
+        """score_posted_in_background's run: the job through the whole scoring chain (the caps of the page's own
+        scorer don't apply: asked for by hand), then the event; once more if its text was replaced meanwhile."""
+        try:
+            while True:
+                try:
+                    def run(cfg, store):
+                        job, record = store.find(key)
+                        entry = next((e for e in scoring_line(cfg, store) if key in e.keys), None) or \
+                            Entry(job, record, 0.0, [])
+                        _, errors = score_entries(cfg, store, [entry], progress=lambda m: None, by="read posting")
+                        return entry, errors.get(key)
+                    entry, error = self._with_store(run)
+                    self._publish_score(key, entry, error)
+                except Exception as e:  # never lose it silently: the page is waiting to hear
+                    self._publish_score_failure(key, e)
+                with self._rescoring_lock:
+                    if key not in self._rescore_again:
+                        return
+                    self._rescore_again.discard(key)
+        finally:
+            with self._rescoring_lock:
+                self.rescoring.discard(key)
+                self._rescore_again.discard(key)
+
+    def _publish_score(self, key: str, entry: Entry, error: str | None, note: str = ""):
+        """The event for a job scored in the background: its new score, or why there is none."""
+        if error or not entry.fit:
+            self.events.publish("score-failed", {"key": key, "error": error or "scoring failed"})
+        else:
+            self.events.publish("score", {"key": key, "keys": entry.keys, "fit": entry.fit, "note": note})
+
+    def _publish_score_failure(self, key: str, e: Exception):
+        why = str(e) if isinstance(e, ApiError | ScoringUnavailable) else f"{type(e).__name__}: {e}"
+        self.events.publish("score-failed", {"key": key, "error": why})
 
     def find_on_board_in_background(self, key: str):
         """Look for the job on the company's own board behind the answer (see autofill.find_on_board), and score it
@@ -984,6 +1055,7 @@ class App:
             if said:
                 self.log("mail", f"Looked for {key}: {said}", jobs=[key])
                 self.score_in_background()
+                self.score_posted_in_background(key)  # the board's text replaced the page's: scored again
         t = threading.Thread(target=look, name="jobwatch-board-lookup", daemon=True)
         self.lookups = [x for x in self.lookups if x.is_alive()] + [t]  # kept so a test can wait for it
         t.start()
@@ -1812,13 +1884,9 @@ class App:
                     error = f"{rescore_label(backend, model)} failed: {paused_until(error)[0]}; nothing else to try"
                 return entry, error, note
             entry, error, note = self._with_store(run)
-            if error or not entry.fit:
-                self.events.publish("score-failed", {"key": key, "error": error or "scoring failed"})
-            else:
-                self.events.publish("score", {"key": key, "keys": entry.keys, "fit": entry.fit, "note": note})
+            self._publish_score(key, entry, error, note)
         except Exception as e:  # never lose a rescore silently: the page is waiting to hear
-            why = str(e) if isinstance(e, ApiError | ScoringUnavailable) else f"{type(e).__name__}: {e}"
-            self.events.publish("score-failed", {"key": key, "error": why})
+            self._publish_score_failure(key, e)
         finally:
             with self._rescoring_lock:
                 self.rescoring.discard(key)

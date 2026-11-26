@@ -3,10 +3,14 @@ bridge it asks the extension (here a stand-in that answers) and changes only tha
 every other card alone; without it, it opens the posting in a tab and, when the person comes back, redraws the page
 where it was. Every job and company is made up. Skipped where Playwright or its browser isn't installed."""
 
+import json
+
 import pytest
 
-from jobwatch import alerts, config
+from jobwatch import alerts, config, linkedin, watch
 from jobwatch.store import Store
+
+from .conftest import TOKEN, request
 
 sync_api = pytest.importorskip("playwright.sync_api")
 
@@ -202,6 +206,38 @@ def test_an_extension_that_says_unknown_message_falls_back_and_hints_once(browse
         sync_api.expect(page.locator("#toast")).to_contain_text("Opened on LinkedIn")
         assert "Update or reload" not in page.inner_text("#toast")
         assert len(page.evaluate("() => window.opened")) == 2
+        assert page.errors == []
+    finally:
+        page.close()
+
+
+def test_a_card_read_says_it_is_scoring_and_shows_the_score_when_it_arrives(browser, server, alert_jobs, watchlist,
+                                                                            monkeypatch):
+    """Read posting is asking for the score: the card says it is being scored (not "in line"), and the score the
+    server sends as an event takes its place, with no click on Score."""
+    def fake(jobs, resume, backend, cache_dir, model="", **kw):
+        return {j.key: {"score": 70, "must_haves_met": 2, "must_haves_total": 3, "gaps": [], "summary": "",
+                        "scored_by": f"{backend}:{model}"} for j in jobs}, {}
+    monkeypatch.setattr(watch, "score_jobs", fake)
+    page = open_today(browser, server, bridge=True, caps="new")
+    try:
+        card = page.locator("[id^=job-]").nth(2)
+        card.scroll_into_view_if_needed()
+        card_id = card.get_attribute("id")
+        card.locator("button", has_text="Read posting").click()
+        sync_api.expect(card).to_contain_text("scoring it now")
+        assert card.locator("[data-fit]").count() == 0
+        # what the extension does on the server meanwhile: save the text, which scores the job
+        store = Store(config.load(watchlist).state)
+        try:
+            pid = linkedin.job_id(store.find(card_id.removeprefix("job-"))[0].url)
+        finally:
+            store.close()
+        token = json.loads(request(server, "GET", "/api/extension", headers={"X-Jobwatch-Token": TOKEN})[1])["token"]
+        body = {"linkedin": pid, "company": "Initech", "title": "Platform Engineer", "text": "Requirements: Python"}
+        status, data = request(server, "POST", "/ext/posting", body, headers={"X-Jobwatch-Extension": token})
+        assert status == 200 and json.loads(data)["scoring"] is True
+        sync_api.expect(page.locator(f'[id="{card_id}"] [data-fit]')).to_be_visible(timeout=10000)
         assert page.errors == []
     finally:
         page.close()

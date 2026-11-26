@@ -6,6 +6,12 @@
   Hide when you pick one, so 80+ no longer lists unscored cards, and the Showing line counts them out. Pick Show by
   hand and it stays until the fit changes; back on Any, the switch is what this browser had kept (a choice made under
   a fit minimum isn't kept).
+- Read posting now scores its job at once. When the extension saves a posting's text (or the company's board replaces
+  it), that one job is scored in the background with the scoring chain (`scoring.backend`, then `scoring.fallback`,
+  the dated Claude entry first, under its caps), whatever `scoring.auto` says: it only controls the bulk scorer. The
+  card says "Posting read: scoring it now…" instead of "in line to score", and the score (or why it failed, as for
+  Rescore) replaces it with no click on Score. A job with its text but no current score (or a stale one) is scored
+  by a read too; one already being scored isn't scored twice, and the bulk scorer skips it.
 - Pay alone no longer says "Queue it". The posted pay (or Levels.fyi's ask) reaching `pay.target` counts as a reason
   to queue only when the job's fit score is 60 or more, or it has none yet; a poor match that pays well now reads
   "Skip it: not a close match". The bottom line could also say a plain "Queue it: the posted pay goes up to ..." for
