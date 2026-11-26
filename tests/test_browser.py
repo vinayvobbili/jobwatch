@@ -321,6 +321,14 @@ def test_a_stale_score_shows_with_a_badge_and_the_resume_decision_is_made_on_the
     sync_api.expect(old.locator(".ring span").first).to_have_text("85")  # the score, not "not scored yet"
     sync_api.expect(old.locator(".stale-badge")).to_have_attribute("title", "scored under an older resume")
     sync_api.expect(fresh.locator(".stale-badge")).to_have_count(0)
+    # The ring says only the score; the badge is a small clock on its rim with no word, clear of the number
+    sync_api.expect(old.locator(".ring")).to_have_text("85")
+    sync_api.expect(old.locator(".stale-badge")).to_have_text("")
+    sync_api.expect(old.locator(".stale-badge svg")).to_have_count(1)
+    number, badge = old.locator(".ring span").first.bounding_box(), old.locator(".stale-badge").bounding_box()
+    assert badge["width"] < 26 and badge["height"] < 26
+    assert not (badge["x"] <= number["x"] + number["width"] / 2 <= badge["x"] + badge["width"]
+                and badge["y"] <= number["y"] + number["height"] / 2 <= badge["y"] + badge["height"])
     sync_api.expect(strip).to_contain_text("1 score predates your resume")
 
     strip.get_by_role("button", name="Decide…").click()
@@ -350,4 +358,51 @@ def test_a_stale_score_shows_with_a_badge_and_the_resume_decision_is_made_on_the
     store = Store(cfg.state)
     assert store.db.execute("SELECT COUNT(*) FROM score_stale").fetchone()[0] == 2
     store.close()
+    assert page.errors == []
+
+
+def open_company(page, name):
+    page.goto(page.url.split("#")[0] + "#company/" + name)
+    reload(page)
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_a_company_page_folds_skipped_and_closed_jobs_into_one_closed_group(jobs, page, watchlist, scheme):
+    """Skipped jobs and closed postings leave the live cards for one dimmed "Closed (N)" group: collapsed by default,
+    a click opens it, and whether it's open is remembered by the browser. The tiles above still count them."""
+    store = Store(config.load(watchlist).state)
+    store.set_status(["greenhouse:acme:102"], "skipped")
+    store.set_status(["lever:globex:aaaa-1111"], "queued")
+    store.set_closed("lever:globex:aaaa-1111", True)
+    store.confirm_closed(["lever:globex:aaaa-1111"])
+    store.set_status(["lever:globex:bbbb-2222"], "skipped")
+    store.close()
+    page.emulate_media(color_scheme=scheme)
+    group, head = page.locator(".closed-group"), page.locator(".closed-head")
+    live, skipped = page.locator('[id="job-greenhouse:acme:101"]'), page.locator('[id="job-greenhouse:acme:102"]')
+
+    open_company(page, "Acme")  # one live card above, one skipped job folded away
+    sync_api.expect(live).to_be_visible()
+    sync_api.expect(head).to_have_text("Closed (1)")
+    sync_api.expect(head).to_have_attribute("aria-expanded", "false")
+    sync_api.expect(skipped).to_have_count(0)
+    sync_api.expect(page.locator(".hero .stat .lbl", has_text="skipped")).to_have_count(1)  # the tile stays
+    assert live.bounding_box()["y"] < head.bounding_box()["y"]  # the group sits below the live cards
+    head.click()
+    sync_api.expect(head).to_have_attribute("aria-expanded", "true")
+    sync_api.expect(skipped).to_be_visible()
+    sync_api.expect(page.locator(".closed-cards")).to_have_css("opacity", re.compile(r"^0\.6"))  # dimmed
+    reload(page)  # remembered
+    sync_api.expect(skipped).to_be_visible()
+    head.click()
+    sync_api.expect(skipped).to_have_count(0)
+    reload(page)
+    sync_api.expect(head).to_have_attribute("aria-expanded", "false")
+
+    open_company(page, "Globex")  # a skipped job and a queued one whose posting closed: both in the group
+    sync_api.expect(head).to_have_text("Closed (2)")
+    sync_api.expect(page.locator(".empty")).to_have_count(0)
+    head.click()
+    sync_api.expect(group.locator('[id="job-lever:globex:aaaa-1111"]')).to_be_visible()
+    sync_api.expect(group.locator('[id="job-lever:globex:bbbb-2222"]')).to_be_visible()
     assert page.errors == []

@@ -176,7 +176,9 @@ check calls the posting *unknown* and marks and notices nothing. Even a closed p
 second look at least six hours after the first, and the popup looks a third time just before it speaks, so a one-off
 blip never notifies. Until that second look a posting found closed once shows an amber **checking** badge (not the
 red **closed 21 Nov**), keeps its Apply and Queue buttons, and has no "The posting is closed." verdict; once confirmed
-a closed queued job also offers **Skip** (an inline question, then Undo for 8 seconds) beside Remove from queue. The
+a closed queued job also offers **Skip** (an inline question, then Undo for 8 seconds) beside Remove (its tooltip says "Remove from queue"). A
+company's page folds its skipped jobs and closed postings into one dimmed **Closed (N)** group under the live cards:
+click it to open, and the page remembers it. The
 Queue, Today, company pages, Details, `jobwatch list` and the MCP tools all read the same state. A board that lists
 only the roles matching your watchlist (Workday, a careers site's sitemap) never closes a job you follow by leaving
 it out of a listing: only that job's own page can. `jobwatch notify-closed --recheck` looks again at every job marked closed now and reopens the

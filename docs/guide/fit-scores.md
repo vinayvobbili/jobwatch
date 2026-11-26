@@ -20,7 +20,7 @@ again: after a fallback stood in, after you switch models, or after you edit you
 saying who made it, until you ask. The local backend takes a minute or two per job, so keep `top` small. On the
 page, a tag under each score names the model and where it ran: "Sonnet 5.5 · API", "Sonnet 5.5 · agy",
 "Gemini 3.8 Flash · agy", "Qwen3.5-9B · local". A score made under an older resume keeps showing, with a small
-amber "stale" badge on its ring ([more below](#a-new-resume-and-the-scores-you-already-have)).
+amber clock on its ring ([more below](#a-new-resume-and-the-scores-you-already-have)).
 
 To score a job again, hover its score and press the small ↻ button: a dialog lists the models it can be scored
 with (your scoring chain first, then agy's other models, Claude's and this Mac's), with what each costs. The
@@ -230,8 +230,8 @@ scorer before, `jobwatch score --redo-kept --batch-api` scores them again with t
 ## A new resume and the scores you already have
 
 A rebuilt resume doesn't change a score, hide one or ask for a new one. Every job keeps the score it has, and
-the page shows it with a small amber **stale** badge on the ring when it was made under an older resume (hover it:
-"scored under an older resume"). Stale scores count like any other: the Fit filters (60+, 70+, 80+) and Best fit
+the page shows it with a small amber clock on the ring's rim (never over the number) when it was made under an older
+resume (hover it: "scored under an older resume"). Stale scores count like any other: the Fit filters (60+, 70+, 80+) and Best fit
 order use them, the card's advice reads them, and "No score yet" is only for jobs that never had one. Nothing is
 scored again until you decide what the change means, once you have judged how much it matters:
 
@@ -243,7 +243,7 @@ scored again until you decide what the change means, once you have judged how mu
   `jobwatch scores --keep --reason "fixed a typo"`; `jobwatch scores --stale --min 60 --queued --reason "new
   summary"` (`--min` and `--queued` together pick either); `jobwatch scores --unmark` takes marks back;
   `jobwatch scores --log` lists the decisions.
-- A marked score shows a rose "stale" badge ("marked stale on 2026-11-26: new summary") until the job is scored
+- A marked score shows a rose clock ("marked stale on 2026-11-26: new summary") until the job is scored
   again, by the page's background scoring when `scoring.auto` is on, the Score button, `jobwatch score --rescore`
   (best first) or `--batch-api`. Each new score replaces it.
 - Keeping is per resume: the next rebuild flags the scores again. Putting an old resume back makes the scores made

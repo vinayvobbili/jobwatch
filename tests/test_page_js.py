@@ -980,11 +980,15 @@ console.log(JSON.stringify(out));
     assert out["apply2"]["cls"] == out["apply"]["cls"] and out["apply2"]["svg"] == "external"
     assert out["details2"]["cls"] == out["details"]["cls"] and out["score2"]["cls"].startswith("btn act act-score")
     assert out["queueNow"]["cls"] == out["queue"]["cls"] and out["queueNow"]["text"] == "Queue now"
+    # Remove reads as one word to save room; its name for a screen reader (and its tooltip) says what it removes from
+    assert out["remove"]["text"] == "Remove" and out["remove"]["name"] == "Remove from queue"
+    assert [a for a in icons if a != "remove" and out[a].get("name")] == []
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     for kind in icons:
         assert f".btn.act-{kind}" in page or f".btn.act.act-{kind}" in page, kind
     # No view builds its own copy: one Apply definition, and no hand-made button or link carrying one of these labels
     assert page.count('actButton("apply"') == 1 and page.count("function applyButton") == 1
+    # (a plain "Remove" is also a Settings button, so it isn't in the list)
     labels = "Apply|Details|Queue|Queue now|I applied|Snooze|Remove from queue|Prepare|Score|Score fit"
     assert re.findall(rf'h\("(?:button|a)",\s*\{{[^{{}}]*\}},\s*(?:icon\([^)]*\),\s*)?"(?:{labels})"', page) == []
 
@@ -1011,6 +1015,76 @@ console.log(JSON.stringify({ whyCls: why.cls, whyIcon: why.kids[0].svg, whyText:
         "lineCls": "verdict score", "lineIcon": "gauge", "queued": "advice score"}
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     assert ".verdict.stretch, .verdict.score" in page and ".advice.score b" in page
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_stale_score_is_a_small_clock_by_the_ring_with_the_reason_on_hover(tmp_path):
+    """The badge is an icon with no word (the word sat over the number), the amber one for an older resume and the
+    rose one for a score marked stale, each with its reason as the tooltip."""
+    js = tmp_path / "stale.js"
+    js.write_text(page_function("staleNote") + page_function("fitBox") + """
+const h = (tag, attrs, ...kids) =>
+  ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const icon = name => ({ svg: name });
+const RESCORING = new Set(), fitClass = () => "hi", fitChip = () => null, scorerTag = () => null, scorerLabel = x => x;
+const rescoreButton = () => null;
+const ring = f => fitBox({ score: 85, must_haves_met: 3, must_haves_total: 4, ...f }, "k").kids[0];
+const badge = f => ring(f).kids.find(k => k.attrs?.class?.startsWith("stale-badge"));
+const old = badge({ stale: true, stale_why: "older_resume" });
+const marked = badge({ stale: true, stale_why: "marked", stale_at: "2026-11-20T10:00:00Z",
+  stale_reason: "new summary" });
+console.log(JSON.stringify({ old: [old.tag, old.attrs.class, old.attrs.title, old.kids],
+  marked: [marked.attrs.class, marked.attrs.title],
+  fresh: badge({}) ?? null, number: ring({ stale: true }).kids[0].kids }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {
+        "old": ["i", "stale-badge", "scored under an older resume", [{"svg": "clock"}]],
+        "marked": ["stale-badge marked", "marked stale on 2026-11-20: new summary"],
+        "fresh": None, "number": [85]}
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_company_page_folds_skipped_jobs_and_closed_postings_but_not_applications_in_progress(tmp_path):
+    js = tmp_path / "closedgroup.js"
+    js.write_text(page_const("closedState") + page_const("inClosedGroup") + page_function("closedGroup") + """
+const h = (tag, attrs, ...kids) =>
+  ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const icon = name => ({ svg: name });
+const store = {};
+globalThis.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = v; } };
+const remembered = (key, fallback) => localStorage.getItem("jobwatch." + key) || fallback;
+const remember = (key, value) => localStorage.setItem("jobwatch." + key, value);
+const companyCard = j => ({ card: j.key });
+const job = (status, closed_state) => ({ key: `${status}-${closed_state || "open"}`, status, closed_state });
+const rule = Object.fromEntries([["skipped", ""], ["skipped", "closed"], ["new", "closed"], ["queued", "closed"],
+  ["queued", ""], ["new", ""], ["snoozed", "checking"], ["applied", "closed"], ["interviewing", "closed"],
+  ["rejected", "closed"]].map(([s, c]) => [`${s}/${c}`, inClosedGroup(job(s, c))]));
+let redraws = 0;
+const jobs = [job("skipped", ""), job("queued", "closed")];
+const shut = closedGroup(jobs, {}, () => redraws++), none = closedGroup([], {}, () => {});
+const head = g => g.kids[0];
+const out = { rule, none,
+  shut: [shut.attrs.class, head(shut).attrs["aria-expanded"], head(shut).kids[1].kids, shut.kids.length] };
+head(shut).attrs.onclick();  // opens it: kept in the browser, and the page draws again
+const open = closedGroup(jobs, {}, () => redraws++);
+out.open = [open.attrs.class, head(open).attrs["aria-expanded"], open.kids[1].kids.map(c => c.card),
+  store["jobwatch.company.closedOpen"], redraws];
+head(open).attrs.onclick();
+out.shutAgain = [store["jobwatch.company.closedOpen"], redraws, closedGroup(jobs, {}, () => {}).attrs.class];
+console.log(JSON.stringify(out));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["rule"] == {"skipped/": True, "skipped/closed": True, "new/closed": True, "queued/closed": True,
+                           "queued/": False, "new/": False, "snoozed/checking": False, "applied/closed": False,
+                           "interviewing/closed": False, "rejected/closed": True}
+    assert out["none"] is None
+    assert out["shut"] == ["closed-group", "false", ["Closed (2)"], 1]  # collapsed: only the heading
+    assert out["open"] == ["closed-group open", "true", ["skipped-open", "queued-closed"], "1", 1]
+    assert out["shutAgain"] == ["", 2, "closed-group"]
 
 
 def test_the_job_card_puts_the_corner_score_button_in_the_score_slot_and_drops_the_bottom_one():

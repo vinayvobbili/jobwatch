@@ -413,13 +413,21 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .ring span { width: 52px; height: 52px; border-radius: 50%; background: var(--panel-solid); display: grid;
   place-items: center; font-weight: 800; font-size: 18px; letter-spacing: -.03em; color: var(--rc); }
 .ring.hi { --rc: var(--good); } .ring.mid { --rc: var(--warn); } .ring.lo { --rc: var(--bad); }
-/* A stale score still reads at full strength: the ring dulls a little and a small amber badge sits on its rim */
+/* A stale score still reads at full strength: the ring dulls a little and a small amber clock sits on its lower
+   right rim, clear of the number (an <i>: the ring's own `span` rule would make a badge as big as the number's disc) */
 .fitbox.stale .ring { filter: saturate(.55); }
-.stale-badge { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); z-index: 1; cursor: help;
-  padding: 0 7px; border-radius: 999px; font-size: 9.5px; font-weight: 800; letter-spacing: .07em; line-height: 15px;
-  text-transform: uppercase; color: #fff; white-space: nowrap; background: linear-gradient(135deg, #d97706, #f59e0b);
-  box-shadow: 0 4px 10px -4px rgba(217, 119, 6, .85); }
-.stale-badge.marked { background: linear-gradient(135deg, #be185d, #f97316); }
+.stale-badge { position: absolute; right: -5px; bottom: -3px; z-index: 1; cursor: help; display: grid; place-items: center;
+  width: 20px; height: 20px; border-radius: 50%; font-style: normal; color: #fff;
+  background: linear-gradient(135deg, #d97706, #f59e0b); box-shadow: 0 0 0 2px var(--panel-solid), 0 4px 10px -4px rgba(217, 119, 6, .85); }
+.stale-badge.marked { background: linear-gradient(135deg, #be185d, #f97316); box-shadow: 0 0 0 2px var(--panel-solid), 0 4px 10px -4px rgba(190, 24, 93, .85); }
+.closed-group { margin-top: 22px; }
+.closed-head { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px 6px 10px; border-radius: 999px; cursor: pointer;
+  color: var(--muted); background: var(--chip); border: 1px dashed var(--line); font: inherit; font-weight: 650; font-size: 13.5px; }
+.closed-head svg { transition: transform .18s; }
+.closed-group.open .closed-head svg { transform: rotate(90deg); }
+.closed-head:hover { color: var(--text); }
+.closed-cards { margin-top: 12px; opacity: .6; transition: opacity .15s; }
+.closed-cards:hover, .closed-cards:focus-within { opacity: .92; }
 .fitbox small.reconciled { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .fitbox small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 5px; white-space: nowrap; }
 .scorer { display: inline-block; margin-top: 4px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px;
@@ -1950,7 +1958,8 @@ function fitBox(fit, key) {
                       (fit.scored_by ? `, scored by ${scorerLabel(fit.scored_by)}` : "") +
                       (fit.fallback ? ` as a fallback (${fit.fallback})` : "") },
     h("div", { class: `ring ${fitClass(s)}`, style: `--p:${s}` }, h("span", {}, s),
-      fit.stale ? h("span", { class: "stale-badge" + (fit.stale_why === "marked" ? " marked" : ""), title: staleNote(fit) }, "stale") : null,
+      fit.stale ? h("i", { class: "stale-badge" + (fit.stale_why === "marked" ? " marked" : ""), title: staleNote(fit),
+                           role: "img", "aria-label": staleNote(fit) }, icon("clock", 12)) : null,
       key ? rescoreButton(key) : null),
     fitChip(s),
     h("small", { class: fit.reconciled ? "reconciled" : null, "data-reconciled": fit.reconciled ? "1" : null,
@@ -2456,17 +2465,19 @@ async function mark(job, status, note, label, undoStatus) {
   }
 }
 
-// The recurring actions (Queue, Apply, Skip, Details, Score, Prepare, I applied, Snooze, Remove from queue) each keep one
+// The recurring actions (Queue, Apply, Skip, Details, Score, Prepare, I applied, Snooze, Remove) each keep one
 // icon and one color on every view, so a hand finds them without reading. Every one is built here: icon + label, the
 // classes `act act-<kind>` (the page's CSS gives each kind its look); its name for a screen reader is its label (the icon
-// is aria-hidden), or the `aria-label` a caller gives. An `href` makes it a link.
+// is aria-hidden), or the `aria-label` a caller gives. An `href` makes it a link. A third word is the name (and
+// tooltip) of a button whose label is shorter than what it does.
 const ACT = { queue: ["bookmark", "Queue"], apply: ["external", "Apply"], skip: ["x", "Skip"], details: ["info", "Details"],
   score: ["gauge", "Score"], prepare: ["sparkle", "Prepare"], applied: ["check", "I applied"], snooze: ["pause", "Snooze"],
-  remove: ["minus", "Remove from queue"] };
+  remove: ["minus", "Remove", "Remove from queue"] };
 const actLabel = (kind, label = ACT[kind][1]) => [icon(ACT[kind][0], 14), h("span", { class: "label" }, label)];
 function actButton(kind, attrs = {}, label = ACT[kind][1]) {
   const { class: more, ...rest } = attrs;
-  return h(attrs.href ? "a" : "button", { ...rest, class: `btn act act-${kind}` + (more ? ` ${more}` : "") },
+  const name = ACT[kind][2] && label === ACT[kind][1] ? { title: ACT[kind][2], "aria-label": ACT[kind][2] } : {};
+  return h(attrs.href ? "a" : "button", { ...name, ...rest, class: `btn act act-${kind}` + (more ? ` ${more}` : "") },
     actLabel(kind, label));
 }
 function detailsButton(job) { return actButton("details", { onclick: () => openDetails(job.key) }); }
@@ -7556,6 +7567,21 @@ function companyCard(j, i, c) {
   return jobCard(j, actions, i, companyFacts(j, today), stageChip(j, today));
 }
 
+// The jobs a company's page folds away: skipped ones, and postings found closed (their buttons stay on the cards). An
+// application in progress stays among the live cards whatever its posting does.
+const inClosedGroup = j => j.status === "skipped"
+  || (closedState(j) === "closed" && !["applied", "screening", "interviewing", "offer"].includes(j.status));
+// "Closed (N)" under the live cards: collapsed, dimmed, and a click opens it. Whether it is open is kept in this browser.
+function closedGroup(jobs, c, redraw) {
+  if (!jobs.length) return null;
+  const open = remembered("company.closedOpen", "") === "1";
+  return h("section", { class: "closed-group" + (open ? " open" : ""), "data-closed-group": jobs.length },
+    h("button", { class: "closed-head", "aria-expanded": String(open), title: open ? "Fold them away" : "Skipped jobs and closed postings",
+      onclick: () => { remember("company.closedOpen", open ? "" : "1"); redraw(); } },
+      icon("chevron", 14), h("span", {}, `Closed (${jobs.length})`)),
+    open ? h("div", { class: "cards grid-cards top-aligned closed-cards" }, jobs.map((j, i) => companyCard(j, i, c))) : null);
+}
+
 // Tiles across the top of a company's page: how many jobs at each status, jobs not acted on as one.
 function companyTiles(c) {
   const open = (c.counts.new || 0) + (c.counts.shown || 0);
@@ -7604,13 +7630,16 @@ async function renderCompany() {
     } catch (e) { b.disabled = false; toast(e.message); }
   };
   const tiles = h("div", {}), list = h("div", { class: "cards grid-cards top-aligned" }), showing = h("div", { class: "showing" }), pager = h("div", {});
+  const closedBox = h("div", {});
   drawCompanyTiles = () => fill(tiles, companyTiles(c));
   const draw = () => {
-    const pg = paged(c.jobs, v, c.company, draw);
+    const closed = c.jobs.filter(inClosedGroup), live = c.jobs.filter(j => !inClosedGroup(j));
+    const pg = paged(live, v, c.company, draw);
     fill(showing, pg.range ? `Showing ${pg.range}` : null);
-    fill(list, c.jobs.length ? pg.items.map((j, i) => companyCard(j, i, c))
-      : emptyState("Nothing to list here: every role is hidden by your filters or closed."));
+    fill(list, live.length ? pg.items.map((j, i) => companyCard(j, i, c))
+      : closed.length ? null : emptyState("Nothing to list here: every role is hidden by your filters or closed."));
     fill(pager, pg.nav);
+    fill(closedBox, closedGroup(closed, c, draw));
   };
   const more = [
     c.more_open ? h("div", { class: "small muted" }, `${c.more_open} more open role${c.more_open === 1 ? "" : "s"} you haven't acted on: see Today`) : null,
@@ -7633,7 +7662,7 @@ async function renderCompany() {
       more.length ? panel("Not listed", more) : null,
       c.also.length ? panel("Also matches", h("div", { class: "chips" },
         c.also.map(n => h("button", { class: "chip toggle", onclick: () => openCompany(n) }, n)))) : null,
-    ], [h("div", { class: "status-row" }, showing), list, pager]));
+    ], [h("div", { class: "status-row" }, showing), list, pager, closedBox]));
   drawCompanyTiles();
   draw();
   watchPay(c.jobs);

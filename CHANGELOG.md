@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- A stale score no longer hides its number. The amber "stale" badge was drawn over the ring and covered the score
+  (85/100 read as the word "stale"). The ring now shows the number as usual with a small clock icon on its rim
+  (amber for an older resume, rose for a score marked stale), and the tooltips are the same.
+- The Queue card's button reads "Remove" instead of "Remove from queue" (the tooltip and screen-reader name keep the
+  full words), which saves room beside I applied and Snooze.
+- A company's page folds its skipped jobs and closed postings into one dimmed "Closed (N)" group under the live
+  cards. It starts collapsed, a click opens it, and the browser remembers which. The tiles above still count them.
 - `jobwatch scorers` lists each step of the scoring chain, active or paused until a time with why and whether a run
   or you set it, from the state file alone (no page token, no model call). `jobwatch scorers --pause STEP --until
   "YYYY-MM-DD HH:MM" [--reason TEXT]` holds a step by hand, for one you know is out of quota, so the chain skips it
