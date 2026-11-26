@@ -19,8 +19,8 @@ Each job is scored once. jobwatch never scores a job again on its own, since eve
 again: after a fallback stood in, after you switch models, or after you edit your resume, the score stays,
 saying who made it, until you ask. The local backend takes a minute or two per job, so keep `top` small. On the
 page, a tag under each score names the model and where it ran: "Sonnet 5.5 · API", "Sonnet 5.5 · agy",
-"Gemini 3.8 Flash · agy", "Qwen3.5-9B · local". A score from an older scorer (your resume or the prompts
-changed since) is dimmed and says "old score".
+"Gemini 3.8 Flash · agy", "Qwen3.5-9B · local". A score made under an older resume keeps showing, with a small
+amber "stale" badge on its ring ([more below](#a-new-resume-and-the-scores-you-already-have)).
 
 To score a job again, hover its score and press the small ↻ button: a dialog lists the models it can be scored
 with (your scoring chain first, then agy's other models, Claude's and this Mac's), with what each costs. The
@@ -125,8 +125,8 @@ only: `jobwatch score` scores what you ask, and counts it. `scoring.per_company:
 scores from one company a day, so one big board can't fill the line; the company's other jobs say so
 ("hit today's cap"), wait for tomorrow, and score at once when you press Score (0, the default, sets no cap;
 Settings has it too). After switching backend or model, `jobwatch score
---rescore 50` scores Today's and queued jobs again, best first, where another model or an older scorer made the
-score and it's at least 50.
+--rescore 50` scores Today's and queued jobs again, best first, where another model made the score (or you marked
+it stale, below) and it's at least 50.
 
 A fallback entry can name its model, so one backend is tried on another model first. agy keeps a separate
 quota per model family, so when its Claude models run out its Gemini ones still answer:
@@ -216,12 +216,35 @@ tried), to see one charge arrive in the Anthropic Console before turning it on. 
 YYYY-MM-DD'` tests an entry that isn't in the watchlist. The key comes from `scoring.keychain` like any Claude call.
 
 A new shortlist-ai (a release, or its prompts or scoring code changed) is another scorer: new jobs are scored
-by it, and a job scored before shows its old score as "old score" until you score it again. When the change doesn't
-change what a score means (a prompt reordered for caching, say), `jobwatch score --keep-old` keeps the scores
-of the scorer in use just before as current instead (`--keep-old ID` names another), so only new jobs are
-scored by the new scorer. Scores from scorers replaced before that stay as old scores. If
-the change turns out to move scores after all (`--compare` shows it), `jobwatch score --redo-kept --batch-api`
-scores the kept ones again with the new scorer, at half price.
+by it, and the scores made before keep showing, unflagged: a new scorer never marks a score stale by itself
+(`jobwatch scores` counts how many another version made). If the change turns out to move scores after all
+(`--compare` shows it), mark them stale (below) or, for the ones `jobwatch score --keep-old` kept from the
+scorer before, `jobwatch score --redo-kept --batch-api` scores them again with the new scorer, at half price.
+
+## A new resume and the scores you already have
+
+A rebuilt resume doesn't change a score, hide one or ask for a new one. Every job keeps the score it has, and
+the page shows it with a small amber **stale** badge on the ring when it was made under an older resume (hover it:
+"scored under an older resume"). Stale scores count like any other: the Fit filters (60+, 70+, 80+) and Best fit
+order use them, the card's advice reads them, and "No score yet" is only for jobs that never had one. Nothing is
+scored again until you decide what the change means, once you have judged how much it matters:
+
+- Today says "12 scores predate your resume" (Settings → AI & fit scores → Scores and your resume has the same
+  note). **Decide…** opens a dialog: **Keep scores** makes the current resume the baseline (the badges go, nothing is
+  scored, nothing is paid); **Mark stale** puts the scores you pick (every score, those at your Fit minimum or 60+,
+  the queued jobs', or both of those) in line to be scored again, with a reason for the log.
+- The same from the shell: `jobwatch scores` says how many scores were made under which resume;
+  `jobwatch scores --keep --reason "fixed a typo"`; `jobwatch scores --stale --min 60 --queued --reason "new
+  summary"` (`--min` and `--queued` together pick either); `jobwatch scores --unmark` takes marks back;
+  `jobwatch scores --log` lists the decisions.
+- A marked score shows a rose "stale" badge ("marked stale on 2026-11-26: new summary") until the job is scored
+  again, by the page's background scoring when `scoring.auto` is on, the Score button, `jobwatch score --rescore`
+  (best first) or `--batch-api`. Each new score replaces it.
+- Keeping is per resume: the next rebuild flags the scores again. Putting an old resume back makes the scores made
+  under it current again.
+
+Which resume made each score is kept with it (the resume's name and a short fingerprint of its text), so nothing is
+lost either way: both decisions only change what the page flags and what is scored next.
 
 When the model gives no verdict for some of a job's requirements, each would count as not met (a good fit
 scoring 5/100), so that run counts as a failure, like an error, and is tried again later. `jobwatch score
@@ -262,6 +285,6 @@ Settings → **Fit score prompt** shows what the model is told: each of shortlis
 resume, turning a posting into requirements, judging each requirement, counting years), each in a box you can
 edit, with "Reset to default". Only the edited ones are saved, as `scoring.prompts` in the watchlist. The two
 request templates must keep their `{placeholders}`; saving says so if one is missing. An edited prompt
-changes scores from then on: new jobs are scored with it, scores made with other prompts show as old scores
-until you score them again, and putting the prompts back brings the old scores back. `jobwatch score --show-prompts` prints them.
+changes scores from then on: new jobs are scored with it, and scores made with other prompts show as stale,
+as for a new resume (decide as above), and putting the prompts back makes them current again. `jobwatch score --show-prompts` prints them.
 Editing needs a shortlist-ai that takes edited prompts; with an older one they show read-only.

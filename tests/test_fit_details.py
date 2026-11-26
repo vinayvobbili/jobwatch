@@ -55,7 +55,8 @@ def test_store_round_trip_and_bulk_read(tmp_path):
     store.save_score("k2", "cv:1", {"score": 50})  # saved before requirements were kept
     store.save_score("k3", "cv:2", {"score": 99})
     assert store.score("k1", "cv:1")["requirements"] == REQUIREMENTS
-    assert store.scores("cv:1") == {"k1": FIT, "k2": {"score": 50}}
+    assert store.scores("cv:1") == {"k1": FIT, "k2": {"score": 50}, "k3": {  # made under another resume: stale
+        "score": 99, "stale": True, "stale_why": "older_resume", "scored_under": "cv:2"}}
     store.close()
 
 

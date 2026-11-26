@@ -413,7 +413,13 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .ring span { width: 52px; height: 52px; border-radius: 50%; background: var(--panel-solid); display: grid;
   place-items: center; font-weight: 800; font-size: 18px; letter-spacing: -.03em; color: var(--rc); }
 .ring.hi { --rc: var(--good); } .ring.mid { --rc: var(--warn); } .ring.lo { --rc: var(--bad); }
-.fitbox.stale { opacity: .6; }
+/* A stale score still reads at full strength: the ring dulls a little and a small amber badge sits on its rim */
+.fitbox.stale .ring { filter: saturate(.55); }
+.stale-badge { position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); z-index: 1; cursor: help;
+  padding: 0 7px; border-radius: 999px; font-size: 9.5px; font-weight: 800; letter-spacing: .07em; line-height: 15px;
+  text-transform: uppercase; color: #fff; white-space: nowrap; background: linear-gradient(135deg, #d97706, #f59e0b);
+  box-shadow: 0 4px 10px -4px rgba(217, 119, 6, .85); }
+.stale-badge.marked { background: linear-gradient(135deg, #be185d, #f97316); }
 .fitbox small.reconciled { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .fitbox small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 5px; white-space: nowrap; }
 .scorer { display: inline-block; margin-top: 4px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px;
@@ -1103,6 +1109,13 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .scoring:empty { display: none; }
 .scoring { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13.5px; margin: 0 0 10px; min-height: 30px; }
 .scoring.spin .ico { animation: spin 2.4s linear infinite; }
+.stale-scores .stale-note { display: inline-flex; align-items: center; padding: 5px 12px; border-radius: 16px; font-size: 13.5px;
+  font-weight: 600; color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.stale-scores .btn { padding: 3px 12px; font-size: 13px; }
+.scores-decide { display: grid; gap: 10px; margin-top: 14px; }
+.scores-decide input[type=text] { width: 100%; }
+.scores-by { margin: 6px 0 0; padding-left: 18px; }
+.scores-log { margin-top: 14px; display: grid; gap: 2px; }
 .showing { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13.5px; margin: 0 0 10px; min-height: 30px; }
 .pace:empty { display: none; }
 .pace { display: flex; margin: 0 0 10px; }
@@ -1896,21 +1909,29 @@ function scorerLabel(by) {
   const [backend, ...rest] = by.split(":"), model = rest.join(":");
   return backend === "local" ? `${model.split("/").pop()} (local)` : model || backend;
 }
+// Why a score is stale, for a tooltip: it was made under an older resume (stale_why "older_resume": it stays as made
+// until you decide, see the scores note), or you marked it stale (it is scored again). Same words as scorestate.wording.
+function staleNote(fit) {
+  if (!fit || !fit.stale) return "";
+  if (fit.stale_why !== "marked") return "scored under an older resume";
+  return "marked stale" + (fit.stale_at ? ` on ${String(fit.stale_at).slice(0, 10)}` : "") + (fit.stale_reason ? `: ${fit.stale_reason}` : "");
+}
 // key: the job's, for its Rescore button and so a new score from /events can take this one's place
 function fitBox(fit, key) {
   if (!fit) return null;
   const s = Math.round(fit.score);
   return h("div", { class: "fitbox" + (fit.stale ? " stale" : "") + (key && RESCORING.has(key) ? " rescoring" : ""),
                     "data-fit": key || null,
-                    title: `Fit ${s}/100` + (fit.stale ? " (old score: `jobwatch score --rescore` makes it again)" : "") +
+                    title: `Fit ${s}/100` + (fit.stale ? ` (stale: ${staleNote(fit)})` : "") +
                       (fit.scored_by ? `, scored by ${scorerLabel(fit.scored_by)}` : "") +
                       (fit.fallback ? ` as a fallback (${fit.fallback})` : "") },
     h("div", { class: `ring ${fitClass(s)}`, style: `--p:${s}` }, h("span", {}, s),
+      fit.stale ? h("span", { class: "stale-badge" + (fit.stale_why === "marked" ? " marked" : ""), title: staleNote(fit) }, "stale") : null,
       key ? rescoreButton(key) : null),
     fitChip(s),
     h("small", { class: fit.reconciled ? "reconciled" : null, "data-reconciled": fit.reconciled ? "1" : null,
                  title: fit.reconciled ? `Reconciled with your profile: ${fit.reconciled.join("; ")}` : null },
-      fit.stale ? "old score" : `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`),
+      `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`),
     scorerTag(fit));
 }
 
@@ -1970,7 +1991,7 @@ async function openRescore(key) {
   fill(box,
     h("div", { class: "row", style: "align-items:center" }, h("h2", { style: "flex:1;margin:0" }, "Score again"),
       h("button", { class: "btn ghost", type: "button", "aria-label": "Close", onclick: close }, icon("x", 14))),
-    h("p", { class: "small muted" }, d.scored_by ? `Scored now by ${scorerLabel(d.scored_by)}${d.stale ? " (an older scorer)" : ""}. ` +
+    h("p", { class: "small muted" }, d.scored_by ? `Scored now by ${scorerLabel(d.scored_by)}${d.stale ? ` (stale: ${d.stale_note})` : ""}. ` +
       "Pick the model to score it again with; the new score replaces it." : "Pick the model to score it with."),
     list,
     h("div", { class: "row", style: "margin-top:14px;align-items:center" }, go, msg));
@@ -3933,6 +3954,98 @@ function watchScoring(first, el) {
   if (first.running) scoringTimer = setTimeout(poll, 15000);
 }
 
+// The resume against the scores (scorestate.py). A new resume leaves every score as it is, flagged stale, and nothing is
+// scored again: what the change means for them is decided here. Mark stale puts the scores picked in line to be scored
+// again (the background scorer, the Score button, `jobwatch score --rescore`); Keep scores makes the current resume
+// their baseline, scoring nothing.
+function scoresLine(s) {
+  if (!s.scored) return "No job has a fit score yet.";
+  return (s.older ? `${s.older} of ${s.scored} fit scores were made under an older resume` : `All ${s.scored} fit scores match the resume`) +
+    (s.marked ? `; ${s.marked} marked stale, waiting to be scored again` : "") + ".";
+}
+async function openScoreDecision(done = () => {}) {
+  const shade = h("div", { class: "overlay rescore-shade", style: "display:flex" });
+  const box = h("div", { class: "dialog rescore-dialog", role: "dialog", "aria-modal": "true",
+    "aria-label": "Scores and your resume" }, h("p", { class: "muted" }, "Loading…"));
+  const close = () => { shade.remove(); document.removeEventListener("keydown", esc); };
+  const esc = e => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  shade.onclick = e => { if (e.target === shade) close(); };
+  document.addEventListener("keydown", esc);
+  shade.append(box);
+  document.body.append(shade);
+  let s;
+  try { s = await api("/api/scores"); }
+  catch (e) { fill(box, h("p", { class: "small error" }, e.message)); return; }
+  const cut = s.min_fit || 60;
+  const scopes = [["all", `Every score (${s.scored})`], ["min", `Scoring ${cut}+`], ["queued", "Queued jobs"],
+    ["both", `Scoring ${cut}+, and queued jobs`]];
+  const which = h("select", { "aria-label": "Which scores" }, scopes.map(([v, t]) => h("option", { value: v }, t)));
+  which.value = "both";
+  const reason = h("input", { type: "text", maxlength: 200, placeholder: "What changed? (kept in the log)", "aria-label": "Reason" });
+  const msg = h("span", { class: "small muted", role: "status" });
+  const decide = async (path, body, said) => {
+    for (const b of box.querySelectorAll("button")) b.disabled = true;
+    msg.className = "small muted"; msg.textContent = "Saving…";
+    try {
+      const r = await api(path, { reason: reason.value, ...body });
+      close(); toast(said(r.count)); done(r);
+    } catch (e) {
+      for (const b of box.querySelectorAll("button")) b.disabled = false;
+      msg.className = "small error"; msg.textContent = e.message;
+    }
+  };
+  const mark = () => decide("/api/scores/stale", { min_score: ["min", "both"].includes(which.value) ? cut : null,
+    queued: ["queued", "both"].includes(which.value) },
+    n => `${n} score${n === 1 ? "" : "s"} marked stale: ${n === 1 ? "it is" : "they are"} scored again`);
+  const keep = () => decide("/api/scores/keep", {}, n => `${n} score${n === 1 ? "" : "s"} kept as made: nothing was scored`);
+  const take = () => decide("/api/scores/unmark", {}, n => `${n} mark${n === 1 ? "" : "s"} taken back: those scores stand`);
+  fill(box,
+    h("div", { class: "row", style: "align-items:center" }, h("h2", { style: "flex:1;margin:0" }, "Scores and your resume"),
+      h("button", { class: "btn ghost", type: "button", "aria-label": "Close", onclick: close }, icon("x", 14))),
+    h("p", { class: "small", "data-scores-line": "1" }, scoresLine(s)),
+    h("p", { class: "small muted" }, "A new resume doesn't change a score or ask for a new one: each job keeps the score it has, marked " +
+      "stale. You decide what the change means. Keep scores when it was small; Mark stale to have them scored again (that costs " +
+      "scoring, so pick the scores that matter)."),
+    s.by_resume && s.by_resume.length ? h("ul", { class: "small muted scores-by" }, s.by_resume.map(r =>
+      h("li", {}, `${r.jobs} made under ${r.resume} (newest ${r.last})`))) : null,
+    h("div", { class: "scores-decide" },
+      reason,
+      h("div", { class: "row", style: "align-items:center;gap:8px;flex-wrap:wrap" },
+        h("button", { class: "btn", type: "button", "data-keep": "1", disabled: !s.older,
+          title: "The scores stand as made: the current resume is their baseline", onclick: keep }, "Keep scores"),
+        h("span", { class: "muted small" }, "or"),
+        which,
+        h("button", { class: "btn primary", type: "button", "data-mark": "1", disabled: !s.scored,
+          title: "Put these scores in line to be scored again", onclick: mark }, icon("refresh", 13), "Mark stale"),
+        s.marked ? h("button", { class: "btn ghost", type: "button", onclick: take,
+          title: "Leave the marked scores as they are" }, `Take back ${s.marked} mark${s.marked === 1 ? "" : "s"}`) : null),
+      msg),
+    s.decisions && s.decisions.length ? h("div", { class: "small muted scores-log" }, h("b", {}, "Decisions"),
+      s.decisions.map(d => h("div", {}, `${d.at.slice(0, 10)}: ${d.action === "stale" ? "marked stale" : d.action === "keep" ? "kept" : "took back marks"}, ` +
+        `${d.jobs} (${d.scope})${d.reason ? ` · ${d.reason}` : ""}`))) : null);
+}
+// Today's line: some scores predate the resume (or are marked and waiting), with the way to decide.
+function watchScoreState(el) {
+  api("/api/scores").then(s => {
+    if (!el.isConnected || !(s.older || s.marked)) return;
+    fill(el, h("span", { class: "stale-note", title: scoresLine(s) },
+      s.older ? `${s.older} score${s.older === 1 ? " predates" : "s predate"} your resume` : `${s.marked} marked stale`,
+      s.older && s.marked ? ` · ${s.marked} marked` : ""),
+      h("button", { class: "btn ghost", type: "button", onclick: () => openScoreDecision(() => renderToday()) }, "Decide…"));
+  }, () => { /* the page may be restarting */ });
+}
+function scoresCard() {
+  const body = h("div", {}, h("p", { class: "small muted lead" }, "Loading…"));
+  const el = setCard("stale", "Scores and your resume", "decide what a resume change means for them", body);
+  const draw = () => api("/api/scores").then(s => fill(body,
+    h("p", { class: "small", "data-scores-line": "1" }, scoresLine(s)),
+    h("p", { class: "small muted" }, "A rebuilt resume asks for no new scores. Keep them as they are, or mark stale the ones worth scoring again."),
+    h("button", { class: "btn", type: "button", onclick: () => openScoreDecision(draw) }, "Decide…")),
+    e => fill(body, h("p", { class: "small error" }, e.message)));
+  draw();
+  return el;
+}
+
 // The daily backup runs where nobody's looking and a failure only reaches its log, so Today says when it has stopped.
 function backupLate(b) {
   return !b ? null : b.last ? `Last backup ${b.last}` : "No backup found";
@@ -4412,6 +4525,7 @@ async function renderToday() {
   const v = todayView;
   const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
   const scoring = h("div", { class: "scoring" }), checked = h("div", { class: "scoring checked" });
+  const staleScores = h("div", { class: "scoring stale-scores" });
   const search = h("input", { type: "search", placeholder: "Search titles and companies" });
   search.value = v.q;
   search.oninput = () => { v.q = search.value; drawToday(); };
@@ -4522,10 +4636,11 @@ async function renderToday() {
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
       toWatchPanel(),
-    ], [h("div", { class: "status-row" }, paceLine(h("div", { class: "pace" }), d.pace), checked, scoring, showing), list, pager]));
+    ], [h("div", { class: "status-row" }, paceLine(h("div", { class: "pace" }), d.pace), checked, scoring, staleScores, showing), list, pager]));
   drawToday();
   if (d.checked) watchChecked(d.checked, checked);
   if (d.scoring) watchScoring(d.scoring, scoring);
+  watchScoreState(staleScores);
   watchPay(todayJobs);
 }
 
@@ -5324,7 +5439,7 @@ function remember(key, value) {
 const SET_GROUPS = [
   { id: "search", label: "Your search", cards: ["goals", "companies", "filters", "keywords"] },
   { id: "today", label: "Today & display", cards: ["today", "display"] },
-  { id: "ai", label: "AI & fit scores", cards: ["resume", "providers", "usage", "prompts", "chat"] },
+  { id: "ai", label: "AI & fit scores", cards: ["resume", "stale", "providers", "usage", "prompts", "chat"] },
   { id: "people", label: "People & pay", cards: ["people", "pay"] },
   { id: "alerts", label: "Alerts & skills", cards: ["alerts", "incoming", "suggestions", "skills"] },
   { id: "apply", label: "Applying", cards: ["applicant", "tailor", "extension"] },
@@ -6552,7 +6667,7 @@ const COMP_ROWS = [  // [label, the value (text or an element; null for none), t
   ["You asked", o => o.comp.asked],
   ["Offered", o => o.comp.offered, "offered"],
   ["Glassdoor", o => o.comp.glassdoor],
-  ["Fit", o => o.fit ? `${Math.round(o.fit.score)}/100 · must-haves ${o.fit.met}/${o.fit.total}` + (o.fit.stale ? " (old score)" : "") : null, "fit"],
+  ["Fit", o => o.fit ? `${Math.round(o.fit.score)}/100 · must-haves ${o.fit.met}/${o.fit.total}` + (o.fit.stale ? " (stale)" : "") : null, "fit"],
   ["Gaps", o => fitGaps(o.fit).length ? h("div", { class: "gapline" }, fitGaps(o.fit).join(" · ")) : null],
   ["You know", o => o.contacts.length ? o.contacts.map(p => p.name + (p.position ? ` (${p.position})` : "")).join("; ") : null],
   ["Note", o => o.comp.note],
@@ -7100,6 +7215,7 @@ function renderSettings() {
         "actually talk to first (from how often you've messaged, recommended or endorsed each other). Only those " +
         "counts are kept, never your messages. Connections.csv on its own works too. Everything stays on this " +
         "computer.")),
+    scoresCard(),
     usageCard(),
     prompts,
     chatC,

@@ -165,10 +165,12 @@ def test_status_and_note(store):
         store.set_status(["lever:globex:a"], "hired")
 
 
-def test_scores_are_per_resume(store):
+def test_a_score_made_under_another_resume_is_still_the_score_but_stale(store):
     store.save_score("k", "cv.pdf:111", {"score": 70})
     assert store.score("k", "cv.pdf:111") == {"score": 70}
-    assert store.score("k", "cv.pdf:222") is None
+    assert store.score("k", "cv.pdf:222") == {"score": 70, "stale": True, "stale_why": "older_resume",
+                                              "scored_under": "cv.pdf:111"}
+    assert store.score("other", "cv.pdf:222") is None
 
 
 def test_stages_keep_the_day_applied(store):

@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- A new resume no longer makes fit scores stale, hides them or asks for new ones. Every rebuilt resume used to give
+  every job a new score key, so each card read "not scored yet", Today lost its scores and a re-score paid for the
+  lot (two rebuilds one morning cost about $4). Now each job keeps its newest score whatever resume made it, shown
+  with a small amber "stale" badge (hover: "scored under an older resume") when that resume is older. A stale score
+  filters, ranks and advises like any other; "No score yet" is only for jobs that never had one; nothing is scored
+  again on its own. A new shortlist-ai (its version, prompts or scoring code) no longer flags a score either.
+- Staleness is a decision you make, with the number in front of you. Today says "N scores predate your resume"
+  (Settings → AI & fit scores → Scores and your resume has it too) and **Decide…** offers **Keep scores** (the
+  current resume becomes the baseline; nothing is scored or paid) or **Mark stale** for every score, those at the
+  Fit minimum or 60+, the queued jobs', or both of those, with a reason. Marked scores show a rose badge ("marked
+  stale on 2026-11-26: new summary") and are scored again by the background scorer (when on), the Score button,
+  `jobwatch score --rescore` and `--batch-api`; each new score clears the mark. The shell has `jobwatch scores`
+  (which resume made how many), `--keep`, `--stale [--min N] [--queued] --reason WHY`, `--unmark` and `--log`;
+  every decision is logged. Existing scores migrate by themselves: the state file gains three small tables, no
+  score row changes, and every score made under an earlier resume (today's) shows as stale-badged. The Score button
+  on a stale card scores it again. `jobwatch score --rescore` now takes only marked scores and ones another model
+  made (a score made under an older resume waits for the decision), and says how many predate the resume.
+
 - Today's Fit score minimum (60+, 70+, 80+) now hides the jobs with no score yet. The "No score yet" switch turns to
   Hide when you pick one, so 80+ no longer lists unscored cards, and the Showing line counts them out. Pick Show by
   hand and it stays until the fit changes; back on Any, the switch is what this browser had kept (a choice made under

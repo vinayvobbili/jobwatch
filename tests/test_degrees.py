@@ -223,7 +223,6 @@ def test_the_store_reads_scores_reconciled_when_it_has_the_education(web, watchl
     got = store.score("lever:globex:aaaa-1111", rid)
     assert got["gaps"] == [] and got["must_haves_met"] == 2
     assert store.scores(rid)["lever:globex:aaaa-1111"]["must_haves_met"] == 2
-    assert store.stale_scores(rid) == {}
     store.close()
 
 

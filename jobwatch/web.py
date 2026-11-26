@@ -22,6 +22,7 @@ import sys
 import threading
 import time
 import webbrowser
+from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
@@ -75,6 +76,7 @@ from . import (
     reply,
     report,
     rolekinds,
+    scorestate,
     scorestats,
     sources,
     speech,
@@ -1635,7 +1637,7 @@ class App:
     def _advice_now(self, cfg, store, found: list[tuple], pay: dict[str, dict], wait_for_pay: bool = False
                     ) -> dict[str, dict]:
         """{key: {"advice", "verdict"}} for these (job, record) pairs as their cards should read now, from the fit the
-        cards show: the current score, else an older scorer's (stale). A job applied to or further is past advice
+        cards show: the job's newest score, flagged when it's stale (see scorestate). A job applied to or further is past advice
         (both null). wait_for_pay: leave out a job whose expected pay is still being looked up (asked again then)."""
         rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
         known, index, history = load_contacts(cfg), dupes.Index(store), advice.History(store, quiet=cfg.quiet)
@@ -1832,8 +1834,8 @@ class App:
             if not (cfg.resume and cfg.resume.is_file()):
                 raise ApiError("Add your resume in Settings to score fit.")
             rid = resume_id(cfg.resume, cfg.prompts)
-            if cached := store.score(job.key, rid):
-                return cached
+            if (cached := store.score(job.key, rid)) and not cached.get("stale"):
+                return cached  # a stale one is scored again: pressing Score on it is the decision
             results, errors = score_with_fallback(cfg, store, [job])
             if job.key not in results:
                 raise ApiError(errors.get(job.key, "scoring failed"), HTTPStatus.BAD_GATEWAY)
@@ -1855,6 +1857,7 @@ class App:
             job, _ = store.find((q.get("key") or [""])[0])
             fit = job_fit(cfg, store, job.key) or {}
             return {"key": job.key, "scored_by": fit.get("scored_by", ""), "stale": bool(fit.get("stale")),
+                    "stale_note": scorestate.wording(fit) if fit.get("stale") else "",
                     "running": job.key in self.rescoring, "choices": self._choices(cfg)}
         return self._with_store(run)
 
@@ -1917,6 +1920,43 @@ class App:
     def get_scoring(self, q) -> dict:
         """Background fit scoring: running, how many done and left, the job being scored, the last error."""
         return {**self.scorer.status(), "enabled": self.background}
+
+    def get_scores(self, q) -> dict:
+        """The resume against the scores (see scorestate.status), with the last few decisions: Settings' note and
+        Today's, which offers Mark stale / Keep scores when some scores predate the resume."""
+        return self._with_store(lambda cfg, store: {**scorestate.status(cfg, store),
+                                                    "decisions": scorestate.decisions(store.db, 5)})
+
+    def _decide_scores(self, decide: Callable) -> dict:
+        def run(cfg, store):
+            if not (cfg.resume and cfg.resume.is_file()):
+                raise ApiError("Add your resume in Settings to score fit.")
+            n = decide(cfg, store)
+            return {"count": n, **scorestate.status(cfg, store), "decisions": scorestate.decisions(store.db, 5)}
+        return self._with_store(run)
+
+    def post_scores_stale(self, body) -> dict:
+        """Decide that scores are stale: all of them, those at or above `min_score`, those of `queued` jobs (or
+        either), with a `reason` for the log. They're scored again by the background scorer (when it's on), the Score
+        button or `jobwatch score --rescore`."""
+        min_score = body.get("min_score")
+        if min_score is not None and not (isinstance(min_score, int | float) and not isinstance(min_score, bool)
+                                          and 0 <= min_score <= 100):
+            raise ApiError("min_score must be a fit score from 0 to 100")
+        reason = str(body.get("reason") or "").strip()[:200]
+        out = self._decide_scores(lambda cfg, store: scorestate.mark_stale(cfg, store, reason, min_score,
+                                                                           bool(body.get("queued"))))
+        self.score_in_background()
+        return out
+
+    def post_scores_keep(self, body) -> dict:
+        """Decide that the scores made under older resumes stand: the current resume is their baseline."""
+        reason = str(body.get("reason") or "").strip()[:200]
+        return self._decide_scores(lambda cfg, store: scorestate.keep(cfg, store, reason))
+
+    def post_scores_unmark(self, body) -> dict:
+        """Take back the marks still waiting: those jobs' scores stand as they are."""
+        return self._decide_scores(lambda cfg, store: scorestate.unmark(store))
 
     def get_scoring_usage(self, q) -> dict:
         """Settings' Fit scoring panel: the backend in effect, what each backend scored and the Claude cost (see
@@ -2175,6 +2215,10 @@ ROUTES = {
     ("POST", "/api/advice"): App.post_advice,
     ("GET", "/api/scoring"): App.get_scoring,
     ("GET", "/api/scoring/usage"): App.get_scoring_usage,
+    ("GET", "/api/scores"): App.get_scores,
+    ("POST", "/api/scores/stale"): App.post_scores_stale,
+    ("POST", "/api/scores/keep"): App.post_scores_keep,
+    ("POST", "/api/scores/unmark"): App.post_scores_unmark,
     ("GET", "/api/chat"): App.get_chat,
     ("GET", "/api/skills"): App.get_skills,
     ("GET", "/api/prep"): App.get_prep,

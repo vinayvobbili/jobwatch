@@ -65,6 +65,7 @@ from . import (
     report,
     rolekinds,
     scan,
+    scorestate,
     scorestats,
     sources,
     speech,
@@ -290,6 +291,9 @@ def cmd_score(args, cfg, store):
         if not todo:
             model = f" ({cfg.score_model})" if cfg.score_model else ""
             print(f"Every scored job on Today was scored by {cfg.backend}{model}.")
+            if older := scorestate.status(cfg, store)["older"]:
+                print(f"{plural(older, 'score')} predate the resume and stay as made until you decide: "
+                      "`jobwatch scores --stale` marks them to be scored again, `--keep` keeps them.")
             return
     elif args.incomplete or args.redo_kept:
         rid = resume_id(cfg.resume, cfg.prompts)
@@ -563,6 +567,59 @@ def cmd_scored(args, cfg, store):
               + (" (closed)" if rec.get("closed") else "") + f"\n       by {who}  {key}")
     print(f"\n{plural(len(rows), 'score')} since {since:%a %b %-d}: "
           + ", ".join(f"{n} by {who}" for who, n in sorted(by.items(), key=lambda kv: -kv[1])))
+
+
+def _scores_status(cfg, store):
+    s = scorestate.status(cfg, store)
+    print(f"{plural(s['scored'], 'job')} with a fit score; the resume is {s['resume']}.")
+    if s["older"]:
+        print(f"{s['older']} of the scores were made under an older resume (stale, shown as such): "
+              f"{s['older_open']} on Today or queued, {s['older_queued']} queued"
+              + (f", {s['older_min']} at {s['min_fit']}+" if s["min_fit"] else "") + ".")
+        for r in s["by_resume"]:
+            print(f"  {r['jobs']:>5}  {r['resume']}  (newest {r['last']})")
+        print("Decide what the change means: `jobwatch scores --stale [--min N] [--queued] --reason WHY` scores "
+              "them again, `jobwatch scores --keep` keeps them as they are.")
+    else:
+        print("Every score was made under the resume now (or kept as made).")
+    if s["marked"]:
+        print(f"{s['marked']} marked stale, waiting to be scored again (`jobwatch score --rescore`, the page's "
+              "scorer or the Score button; `jobwatch scores --unmark` takes it back).")
+    if s["other_scorer"]:
+        print(f"{s['other_scorer']} were made by another version of shortlist-ai: that alone never makes a score "
+              "stale.")
+    if s["last"]:
+        print(f"Last decision: {s['last']['action']} on {s['last']['at'][:10]}, {s['last']['jobs']} jobs"
+              + (f" ({s['last']['reason']})" if s["last"]["reason"] else "") + ".")
+
+
+def cmd_scores(args, cfg, store):
+    """Whether the fit scores still stand against the resume, and the decision about them. A new resume leaves
+    every score as it is, flagged stale on the page when made under an older one; nothing is scored again until
+    --stale (mark them: the page's scorer, the Score button and `score --rescore` pick them up) or --keep (the
+    current resume is their baseline)."""
+    if not (cfg.resume and cfg.resume.is_file()):
+        raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
+    if args.stale:
+        n = scorestate.mark_stale(cfg, store, args.reason, args.min, args.queued)
+        print(f"Marked {plural(n, 'score')} stale"
+              + (": `jobwatch score --rescore` scores them again (the page does when background scoring is on)."
+                 if n else "."))
+    elif args.keep:
+        n = scorestate.keep(cfg, store, args.reason)
+        print(f"Kept {plural(n, 'score')} as made: the current resume is their baseline. Nothing was scored.")
+    elif args.unmark:
+        n = scorestate.unmark(store)
+        print(f"Took back {plural(n, 'mark')}: those scores stand as they are.")
+    elif args.log:
+        rows = scorestate.decisions(store.db, args.limit)
+        for d in reversed(rows):
+            print(f"{d['at'][:16].replace('T', ' ')}  {d['action']:<6} {d['jobs']:>5} ({d['scope']})  {d['resume']}"
+                  + (f"  {d['reason']}" if d["reason"] else ""))
+        if not rows:
+            print("No decision made yet.")
+    else:
+        _scores_status(cfg, store)
 
 
 def cmd_activity(args, cfg, store):
@@ -1863,6 +1920,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--min", type=float, default=0, metavar="SCORE", help="only scores of at least SCORE")
     p.add_argument("--by", choices=BACKENDS, default=None, help="only scores this backend made")
     p.set_defaults(func=cmd_scored, read_only=True)
+
+    p = sub.add_parser("scores", help="whether the fit scores still stand against your resume: how many were made "
+                       "under an older one, and the decision to mark them stale (score again) or keep them")
+    what = p.add_mutually_exclusive_group()
+    what.add_argument("--stale", action="store_true",
+                      help="mark scores stale, so they are scored again (by the page's background scoring, the Score "
+                      "button or `score --rescore`); all of them, or with --min and --queued the ones picked")
+    what.add_argument("--keep", action="store_true",
+                      help="keep the scores as made: the current resume becomes their baseline, nothing is scored")
+    what.add_argument("--unmark", action="store_true", help="take back the marks still waiting to be scored again")
+    what.add_argument("--log", action="store_true", help="the decisions made so far")
+    p.add_argument("--min", type=float, default=None, metavar="SCORE",
+                   help="with --stale: only scores of at least SCORE (and the --queued ones, with --queued)")
+    p.add_argument("--queued", action="store_true", help="with --stale: the queued jobs' scores (and --min's)")
+    p.add_argument("--reason", default="", metavar="WHY", help="with --stale or --keep: why, for the log")
+    p.add_argument("--limit", type=int, default=20, metavar="N", help="with --log: the newest N (default: 20)")
+    p.set_defaults(func=cmd_scores)
 
     p = sub.add_parser("activity", help="what the page and the schedule did (board checks, mail read, scores, "
                        "failures), as the page's Activity lists it")

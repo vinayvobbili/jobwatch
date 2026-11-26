@@ -70,6 +70,5 @@ def test_scores_are_parsed_when_asked_for(store):
     assert isinstance(scores, Scores) and len(scores) == 1 and list(scores) == ["lever:globex:1"]
     assert scores["lever:globex:1"]["score"] == 80 and scores.get("lever:globex:2") is None
     store.save_score("lever:globex:2", "resume-a", {"score": 70})
-    other = Scores({"lever:globex:1": ('{"score": 10}', True)})
-    merged = store.scores("resume-a").over(other)
-    assert merged["lever:globex:1"] == {"score": 10, "stale": True} and merged["lever:globex:2"]["score"] == 70
+    assert store.scores("resume-b")["lever:globex:2"] == {"score": 70, "stale": True, "stale_why": "older_resume",
+                                                         "scored_under": "resume-a"}

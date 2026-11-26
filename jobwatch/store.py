@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from . import actjobs, linkedin, rounds
+from . import actjobs, linkedin, rounds, scorestate
 from .contacts import company_key
 from .degrees import reconcile
 from .models import Job
@@ -356,26 +356,28 @@ def _slug(text: str) -> str:
 
 class Scores(Mapping):
     """Fit scores by job key, kept as the stored JSON text and read when a key is asked for: a list of a hundred
-    thousand jobs asks for a few hundred, and parsed they'd take several times the text's size in memory."""
+    thousand jobs asks for a few hundred, and parsed they'd take several times the text's size in memory.
 
-    def __init__(self, raw: dict[str, tuple[str, bool]] | None = None, education: tuple = ()):
-        self._raw = raw or {}  # key -> (result JSON, stale)
+    Each job's newest score, whatever resume made it. One made under an older resume than `resume` (and not kept as
+    the baseline), or marked stale, reads as stale (see scorestate.flag); it is a score all the same."""
+
+    def __init__(self, raw: dict[str, tuple[str, str]] | None = None, education: tuple = (), resume: str = "",
+                 kept: dict[str, str] | None = None, marks: dict[str, tuple[str, str]] | None = None):
+        self._raw = raw or {}  # key -> (result JSON, the resume id it was made under)
         self._education = education  # degrees.reconcile's: met degree requirements leave the gaps
+        self._current = resume_family(resume) if resume else ""
+        self._kept, self._marks = kept or {}, marks or {}
 
     def __getitem__(self, key: str) -> dict:
-        text, stale = self._raw[key]
-        fit = reconcile(json.loads(text), self._education)
-        return {**fit, "stale": True} if stale else fit
+        text, rid = self._raw[key]
+        return scorestate.flag(reconcile(json.loads(text), self._education), rid, self._current, self._kept,
+                               self._marks.get(key))
 
     def __iter__(self):
         return iter(self._raw)
 
     def __len__(self) -> int:
         return len(self._raw)
-
-    def over(self, other: Mapping) -> Scores:
-        """These, with `other`'s (a Scores) in place of any with the same key."""
-        return Scores({**self._raw, **other._raw}, self._education)
 
 
 class KnownJobs(Mapping):
@@ -444,7 +446,7 @@ class Store:
         except sqlite3.OperationalError:  # another connection is switching it, or using it: a later open will
             pass
         older = not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='unwatched_jobs'").fetchone()
-        self.db.executescript(_SCHEMA)
+        self.db.executescript(_SCHEMA + scorestate.SCHEMA)
         have = {r["name"] for r in self.db.execute("PRAGMA table_info(jobs)")}
         with self.db:
             for column, backfill in _ADDED.items():
@@ -1221,26 +1223,27 @@ class Store:
         return candidate_home(job.url) or ((other := self.linked(job)) and candidate_home(other.url)) or None
 
     def score(self, key: str, resume: str) -> dict | None:
-        row = self.db.execute(f"SELECT result FROM scores WHERE key=? AND resume=? AND {_SCORED}",
-                              (key, resume)).fetchone()
-        return reconcile(json.loads(row["result"]), self.education) if row else None
+        """The job's newest fit score, whatever resume made it; stale (see scorestate.flag) when it was made under
+        an older resume than `resume` or marked. A new resume doesn't hide it: scoring it again is a decision (see
+        scorestate)."""
+        row = self.db.execute(f"SELECT resume, result FROM scores WHERE key=? AND {_SCORED} "
+                              "ORDER BY scored_at DESC LIMIT 1", (key,)).fetchone()
+        if not row:
+            return None
+        return scorestate.flag(reconcile(json.loads(row["result"]), self.education), row["resume"],
+                               resume_family(resume), scorestate.kept_map(self.db),
+                               scorestate.marks(self.db, [key]).get(key))
 
     def scores(self, resume: str) -> Scores:
-        """Every stored fit score for this resume, by job key: one query for a whole list of jobs."""
-        return Scores({r["key"]: (r["result"], False) for r in self.db.execute(
-            f"SELECT key, result FROM scores WHERE resume=? AND {_SCORED}", (resume,))}, self.education)
+        """Every job's newest fit score by job key, one query for a whole list of jobs (see score)."""
+        return Scores({r["key"]: (r["result"], r["resume"]) for r in self.newest_scores()}, self.education, resume,
+                      scorestate.kept_map(self.db), scorestate.marks(self.db))
 
-    def stale_scores(self, resume: str) -> Scores:
-        """Per job key, the newest fit score made for the same resume content and prompts as `resume` by another
-        scorer (see score.resume_family), marked "stale": true. For showing something until the job is scored
-        afresh; never in place of a current score."""
-        family = resume_family(resume)
-        out = {}
-        for r in self.db.execute(f"SELECT key, resume, result FROM scores WHERE resume!=? AND resume LIKE ? "
-                                 f"AND {_SCORED} ORDER BY scored_at", (resume, ":".join(family.split(":")[:2]) + "%")):
-            if resume_family(r["resume"]) == family:
-                out[r["key"]] = (r["result"], True)
-        return Scores(out, self.education)
+    def newest_scores(self) -> list[sqlite3.Row]:
+        """Per job with a score, its newest: key, resume (the id it was made under), result (JSON), score and
+        scored_at."""
+        return self.db.execute(f"SELECT key, resume, result, json_extract(result, '$.score') AS score, "
+                               f"MAX(scored_at) AS scored_at FROM scores WHERE {_SCORED} GROUP BY key").fetchall()
 
     def drop_incomplete_scores(self, resume: str) -> list[str]:
         """Remove this resume's current scores whose model left requirements unjudged (see score.unjudged), saved
@@ -1290,6 +1293,7 @@ class Store:
             self.db.execute("INSERT OR REPLACE INTO scores (key, resume, result, scored_at) VALUES (?, ?, ?, ?)",
                             (key, resume, json.dumps(result), _now()))
             self.db.execute("DELETE FROM score_failures WHERE key=? AND resume=?", (key, resume))
+            self.db.execute("DELETE FROM score_stale WHERE key=?", (key,))  # scored again: no longer marked
 
     def save_score_failure(self, key: str, resume: str, model: str, error: str):
         """A job that failed to score for this resume (and prompts) with this model, and why, so a restart doesn't

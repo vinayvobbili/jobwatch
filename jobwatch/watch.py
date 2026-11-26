@@ -46,6 +46,7 @@ from .filters import (
 from .localday import local_day
 from .models import Job
 from .score import ScoringUnavailable, brief, collecting_usage, paused_until, resume_id, score_jobs
+from .scorestate import marked
 from .store import ENDED, MANUAL, STAGES, Store
 from .text import local_salary, names_one_role
 
@@ -859,7 +860,7 @@ def set_link(store: Store, key: str, url: str, get=None) -> str:
 NO_RESUME = ("no_resume", "No resume to score against: add it in Settings (resume: in the watchlist)")
 NO_TEXT = filltext.NO_TEXT  # a job from LinkedIn or Indeed gets filltext.no_text_why's more specific line
 MANY_ROLES = ("many_roles", "Not scored: a post listing several roles; watch the company's board to score each one")
-STALE = ("stale", "An older scorer's score: press ↻ or run `jobwatch score --rescore` to score it again")
+STALE = ("stale", "Marked stale: press ↻ or run `jobwatch score --rescore` to score it again")
 
 
 def scorable(job: Job) -> bool:
@@ -883,8 +884,8 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
     background scorer's line: "3rd of 4"), stopped (background scoring stopped, and why), manual (background
     scoring is off), company_cap (its company is at scoring.per_company for today: press Score, or tomorrow),
     same_role (another posting of the same role was scored before this one came in),
-    many_roles (a post listing several roles, never scored: see scorable) and stale (an older scorer's score,
-    shown until it's scored again when asked: never in the line).
+    many_roles (a post listing several roles, never scored: see scorable). A job that has a score, stale or not,
+    has no reason: the score shows, flagged when it is stale (see scorestate).
     `failed` (job key -> error), `current` (the key being scored) and `stopped` come from the page's background
     scorer; without them, a job is described by where it stands in the scorer's line."""
     failed = {**failed_scores(cfg, store), **(failed or {})}
@@ -901,7 +902,7 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
                 continue
             why = head
             # its group's score was saved before this posting came in
-            if job is not e.job and e.fit and not e.fit.get("stale"):
+            if job is not e.job and e.fit and not marked(e.fit):
                 why = ("same_role", f"Same role as another posting here, which scored {e.fit['score']}: press "
                        "Score to score this one")
             if why:
@@ -911,8 +912,9 @@ def unscored_reasons(cfg: Config, store: Store, failed: dict[str, str] | None = 
 
 def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str], current: str, stopped: str,
                   line: list[str], capped: dict[str, str] | None = None) -> tuple[str, str] | None:
-    """Why a group's first posting (the one scored for all of them) has no fit score; None when it has one."""
-    if e.fit is not None and not e.fit.get("stale"):
+    """Why a group's first posting (the one scored for all of them) has no fit score to show or is to be scored
+    again; None when it has one that stands (a stale score made under an older resume stands: see scorestate)."""
+    if e.fit is not None and not marked(e.fit):
         return None
     if not scorable(e.job):
         return MANY_ROLES
@@ -930,7 +932,7 @@ def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str]
         return "stopped", f"Background scoring stopped: {stopped}"
     if capped and e.job.key in capped:
         return "company_cap", capped[e.job.key]
-    if e.job.key not in line:  # an older scorer's score (stale): kept until asked for again, never in the line
+    if e.job.key not in line:  # marked stale, but not in the line (it scored a moment ago, say)
         return STALE
     return "queued", f"In line to score · {_ordinal(line.index(e.job.key) + 1)} of {len(line)}"
 
@@ -993,13 +995,14 @@ def _spread(entries: list[Entry], now: datetime | None = None, decay: AgeDecay =
 
 
 def _fits(store: Store, rid: str) -> dict[str, dict]:
-    """The fit scores to list and filter jobs by: the current one, else the last one made by another scorer
-    (marked "stale") until the job is scored afresh, so a changed scorer doesn't make every job look unscored."""
-    return store.stale_scores(rid).over(store.scores(rid))
+    """The fit scores to list and filter jobs by: each job's newest, whatever resume made it, flagged "stale" when
+    it was made under an older resume or marked (see scorestate), so a rebuilt resume doesn't make every job
+    look unscored. A stale score counts as any other: it filters, ranks and advises."""
+    return store.scores(rid)
 
 
 def job_fit(cfg: Config, store: Store, key: str) -> dict | None:
-    """One job's fit score as the page shows it: the current one, else an older scorer's (marked "stale")."""
+    """One job's fit score as the page shows it: its newest, flagged "stale" when it is (see _fits)."""
     if not (cfg.resume and cfg.resume.is_file()):
         return None
     return _fits(store, resume_id(cfg.resume, cfg.prompts)).get(key)
@@ -1017,8 +1020,9 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
     """Jobs with these statuses that pass the filters, with stored fit scores for the current resume, and
     how many were filtered out (reason -> count). A job that's (maybe) the same opening as one acted on stays,
     flagged: its `duplicate` says which, and its first warning says so (see dupes.py). redo_passes: a score
-    the fallback or an older scorer made doesn't count against filters.min_fit (for the scorer, which scores
-    it again; without it, a stale score under min_fit would keep its job hidden for good)."""
+    the fallback made, or one marked stale, doesn't count against filters.min_fit (for the scorer, which scores
+    it again; without it, a marked score under min_fit would keep its job hidden for good). A stale score made
+    under an older resume counts as any other."""
     rejected: dict[str, int] = {}
     entries = []
     rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
@@ -1026,7 +1030,7 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
     index = jobpass.acted_index(store)
     # The filters have judged every job already (see jobpass.py, remembered until something is written). Only
     # the jobs that pass, and the ones whose verdict a second look can change, are read in full: a req posted
-    # again (below) and, with redo_passes, a min_fit rejection that a stale score caused.
+    # again (below) and, with redo_passes, a min_fit rejection that a marked score caused.
     verdicts = judged_pass(cfg, store).in_status(statuses)
     again = {v.key for v in verdicts if v.kind is None or v.why.startswith("posted")
              or (redo_passes and v.kind == "fit")}
@@ -1041,7 +1045,7 @@ def _matching(cfg: Config, store: Store, statuses: tuple[str, ...],
         job, record = rows[v.key]
         fit = fits.get(job.key)
         f = cfg.filters_for(job)
-        judged = None if redo_passes and fit and (fit.get("fallback") or fit.get("stale")) else fit
+        judged = None if redo_passes and fit and (fit.get("fallback") or marked(fit)) else fit
         reason, same = reject_reason(job, f, judged), None
         # A req applied to that ended and is now posted again (see dupes.Match.back) may keep its first posted
         # date: its age doesn't count against it.
@@ -1135,12 +1139,12 @@ def counts_as_main(cfg: Config, entry: str) -> bool:
 
 
 def rescore_line(cfg: Config, store: Store, at_least: float = 0) -> list[Entry]:
-    """Queued and Today's jobs whose score another model or an older scorer made (see made_elsewhere; stale),
-    scoring at least `at_least`, best first: `jobwatch score --rescore` scores them again with the backend in use.
-    Nothing else scores a job twice."""
+    """Queued and Today's jobs whose score another model made (see made_elsewhere) or that is marked stale (see
+    scorestate), scoring at least `at_least`, best first: `jobwatch score --rescore` scores them again with the
+    backend in use. Nothing else scores a job twice: a score made under an older resume waits for that decision."""
     if not (cfg.resume and cfg.resume.is_file()):
         return []
-    line = [e for e in scoring_line(cfg, store) if (made_elsewhere(cfg, e.fit) or (e.fit and e.fit.get("stale")))
+    line = [e for e in scoring_line(cfg, store) if (made_elsewhere(cfg, e.fit) or marked(e.fit))
             and e.fit["score"] >= at_least and scorable(e.job) and e.job.description.strip()]
     return sorted(line, key=lambda e: -e.fit["score"])
 
@@ -1165,10 +1169,11 @@ def scoring_line(cfg: Config, store: Store) -> list[Entry]:
 
 
 def _scorable(e: Entry) -> bool:
-    """Without any fit score, scorable, and with a posting's text to score (a job from an alert email may have
-    only its title). A score is never made again on its own: one from a fallback or an older scorer stays, saying
-    who made it, until `jobwatch score --rescore` (every score made again is paid for again)."""
-    return e.fit is None and scorable(e.job) and bool(e.job.description.strip())
+    """Without any fit score, or with one marked stale (see scorestate), scorable, and with a posting's text to
+    score (a job from an alert email may have only its title). A score is never made again on its own: one from
+    a fallback stays, saying who made it, until `jobwatch score --rescore`; one made under an older resume stays
+    until it is marked stale or kept (every score made again is paid for again)."""
+    return (e.fit is None or marked(e.fit)) and scorable(e.job) and bool(e.job.description.strip())
 
 
 DAILY_LIMIT = "daily limit"  # the start of a fallback score's reason when the backend was at scoring.daily

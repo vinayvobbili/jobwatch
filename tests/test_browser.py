@@ -2,6 +2,8 @@
 a script error, and pressing Save in Settings writes the watchlist back as it was. Skipped where Playwright or its
 browser isn't installed (`pip install -e ".[browser]"` then `playwright install chromium`)."""
 
+import re
+
 import pytest
 import yaml
 
@@ -291,4 +293,61 @@ def test_a_degree_gap_the_profile_meets_leaves_the_card_and_counts_as_met(jobs, 
     sync_api.expect(card.locator(".fitbox small.reconciled")).to_have_attribute(
         "title", "Reconciled with your profile: " + DEGREE + ": met by your MS in Computer Science "
                  "(the score was not made again)")
+    assert page.errors == []
+
+
+def test_a_stale_score_shows_with_a_badge_and_the_resume_decision_is_made_on_the_page(jobs, page, watchlist):
+    """A rebuilt resume hides no score and asks for none: the card keeps its ring, flagged stale with the reason on
+    hover, and Today says how many predate the resume. Keep scores clears the flags with nothing scored; Mark stale
+    flags the scores again as marked (to be scored again, with the reason and day on hover)."""
+    from jobwatch.score import resume_id
+
+    acme, globex = "greenhouse:acme:101", "lever:globex:aaaa-1111"
+    cv = watchlist.parent / "cv.md"
+    cv.write_text("# Jane Doe")
+    config.save(watchlist, {"resume": str(cv), "scoring": {"auto": False}})  # nothing may score on its own here
+    cfg = config.load(watchlist)
+    fit = {"score": 85.0, "must_haves_met": 3, "must_haves_total": 3, "gaps": [], "summary": "Strong.", "flags": []}
+    store = Store(cfg.state)
+    store.save_score(acme, "cv.md:000000000000:scorer-00000000", fit)  # made under an earlier resume
+    store.save_score(globex, resume_id(cfg.resume), {**fit, "score": 66.0})
+    store.close()
+    old = page.locator(f'.fitbox[data-fit="{acme}"]')
+    fresh = page.locator(f'.fitbox[data-fit="{globex}"]')
+    strip = page.locator(".stale-scores")
+    reload(page)
+    chip(page, "Posted within", "14d").click()
+    sync_api.expect(old).to_have_class("fitbox stale")
+    sync_api.expect(old.locator(".ring span").first).to_have_text("85")  # the score, not "not scored yet"
+    sync_api.expect(old.locator(".stale-badge")).to_have_attribute("title", "scored under an older resume")
+    sync_api.expect(fresh.locator(".stale-badge")).to_have_count(0)
+    sync_api.expect(strip).to_contain_text("1 score predates your resume")
+
+    strip.get_by_role("button", name="Decide…").click()
+    dialog = page.get_by_role("dialog", name="Scores and your resume")
+    sync_api.expect(dialog.locator("[data-scores-line]")).to_have_text(
+        "1 of 2 fit scores were made under an older resume.")
+    dialog.get_by_role("button", name="Keep scores").click()
+    sync_api.expect(old.locator(".stale-badge")).to_have_count(0)
+    sync_api.expect(strip).to_have_text("")
+    store = Store(cfg.state)
+    assert [r["action"] for r in store.db.execute("SELECT action FROM score_decisions")] == ["keep"]
+    store.close()
+
+    cv.write_text("# Jane Doe\nrebuilt")  # another resume
+    reload(page)
+    chip(page, "Posted within", "14d").click()
+    sync_api.expect(old.locator(".stale-badge")).to_have_attribute("title", "scored under an older resume")
+    sync_api.expect(strip).to_contain_text("2 scores predate your resume")
+    strip.get_by_role("button", name="Decide…").click()
+    dialog.get_by_placeholder("What changed? (kept in the log)").fill("new summary")
+    dialog.get_by_label("Which scores").select_option("all")
+    dialog.get_by_role("button", name="Mark stale").click()
+    sync_api.expect(old.locator(".stale-badge.marked")).to_have_attribute(
+        "title", re.compile(r"^marked stale on \d{4}-\d\d-\d\d: new summary$"))
+    sync_api.expect(old.locator(".ring span").first).to_have_text("85")  # still shown, and so is the other
+    sync_api.expect(fresh.locator(".stale-badge.marked")).to_have_count(1)
+    store = Store(cfg.state)
+    assert store.db.execute("SELECT COUNT(*) FROM score_stale").fetchone()[0] == 2
+    store.close()
     assert page.errors == []

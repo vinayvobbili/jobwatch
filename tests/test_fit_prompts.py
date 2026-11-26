@@ -205,14 +205,16 @@ def test_saving_an_edit_sets_old_scores_aside_and_putting_it_back_brings_them_ba
     text = resume_watchlist.read_text()
     assert "score_system: |-\n" in text  # written as a block: still readable by hand
     assert config.load(resume_watchlist).prompts == {"score_system": STRICT + "\nOne per line."}
-    assert app.get_job({"key": ["c1"]})["fit"] is None  # made with the other prompt
+    fit = app.get_job({"key": ["c1"]})["fit"]  # made with the other prompt: still there, stale, not scored again
+    assert fit["score"] == 70 and fit["stale"] and fit["stale_why"] == "older_resume"
     store = Store(cfg.state)
-    assert "ashby:initech:c1" in [e.job.key for e in watch.unscored(config.load(resume_watchlist), store)]
+    assert "ashby:initech:c1" not in [e.job.key for e in watch.unscored(config.load(resume_watchlist), store)]
     store.close()
 
     app.post_settings({"scoring": {"backend": "local"}})
     assert config.load(resume_watchlist).prompts == {}
-    assert app.get_job({"key": ["c1"]})["fit"]["score"] == 70
+    fit = app.get_job({"key": ["c1"]})["fit"]
+    assert fit["score"] == 70 and not fit.get("stale")  # putting the prompt back makes it current again
 
 
 def test_scores_are_made_and_stored_with_the_edited_prompts(resume_watchlist, shortlist):
@@ -226,7 +228,7 @@ def test_scores_are_made_and_stored_with_the_edited_prompts(resume_watchlist, sh
     assert calls == [("extract_job", {"prompts": {"score_system": STRICT}}),
                      ("match_jobs", {"prompts": {"score_system": STRICT}})]
     assert store.score(todo[0].job.key, resume_id(cfg.resume, cfg.prompts))["score"] == 70
-    assert store.score(todo[0].job.key, resume_id(cfg.resume)) is None
+    assert store.score(todo[0].job.key, resume_id(cfg.resume))["stale"]  # without the edit it is another score
     store.close()
 
 
