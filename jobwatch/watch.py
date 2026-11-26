@@ -43,6 +43,7 @@ from .filters import (
     staffing_firm,
     title_ok,
 )
+from .localday import local_day
 from .models import Job
 from .score import ScoringUnavailable, brief, collecting_usage, paused_until, resume_id, score_jobs
 from .store import ENDED, MANUAL, STAGES, Store
@@ -751,7 +752,7 @@ def check_postings(store: Store, statuses: tuple[str, ...] = CHECKED,
             out.append(Check(job, "reopened" if up else "closed", job.link_note if up else ""))
         else:
             out.append(Check(job, "open" if up else "closed",
-                             job.link_note if up else f"since {(rec['closed'] or '')[:10]}"))
+                             job.link_note if up else f"since {local_day(rec['closed'])}"))
             if not up and _seen_closed_before(rec["closed"]):  # the second look: one blip never notifies
                 store.confirm_closed([job.key])
         if out[-1].result == "closed" and (new := find_repost(store, job, rec["note"] or "", get, boards,

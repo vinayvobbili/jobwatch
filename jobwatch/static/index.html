@@ -1641,6 +1641,16 @@ function fmtDay(day, today) {
   return `${MONTHS[m - 1]} ${d}` + (today && today.slice(0, 4) !== String(y) ? `, ${y}` : "");
 }
 function dayDiff(day, today) { return Math.round((Date.parse(day) - Date.parse(today)) / 86400000); }
+// The day on this computer of one of the store's UTC stamps ("2026-11-26T03:13:00+00:00" is Nov 25 at 10 PM Eastern);
+// a plain day comes back as it is, and anything unreadable gives "". Cutting a stamp with slice(0, 10) gives the UTC day.
+function localDay(iso) {
+  const s = String(iso || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (!s || isNaN(d)) return "";
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 function relDay(day, today) {
   const n = dayDiff(day, today);
   return n === 0 ? "today" : n === 1 ? "tomorrow" : n === -1 ? "yesterday" : n > 0 ? `in ${n} days` : `${-n} days ago`;
@@ -2151,7 +2161,7 @@ function peopleRow(job, most = 2) {
 // once) or "" (open). The server sends closed_state; an older one sends only `closed`.
 const closedState = j => j.closed_state !== undefined ? j.closed_state || "" : j.closed ? "closed" : "";
 function closedBadge(job) {
-  const on = (job.closed || "").slice(0, 10), state = closedState(job);
+  const on = localDay(job.closed), state = closedState(job);
   return state === "closed" ? h("span", { class: "badge closed", title: "The posting was taken down: found closed on two looks." },
       `closed ${fmtDay(on)}`)
     : state === "checking" ? h("span", { class: "badge checking", title: "Found closed once. jobwatch looks again before calling it closed." },
@@ -2780,7 +2790,7 @@ function detailsFacts(j) {
       openDetails(j.key);
     } catch (e) { toast(e.message); sel.value = before; }
   };
-  const day = s => s ? fmtDay(s.slice(0, 10)) : null;
+  const day = s => s ? fmtDay(localDay(s)) : null;
   const tile = (lbl, val) => val ? h("div", { class: "d-fact" }, h("div", { class: "lbl" }, lbl), h("div", { class: "val" }, val)) : null;
   return h("div", { class: "d-facts" },
     h("div", { class: "d-fact stage", style: `--sc:var(--s-${j.status}, var(--accent))` }, h("div", { class: "lbl" }, "Stage"), sel),
@@ -3455,7 +3465,7 @@ function sentSection(j) {
     h("button", { class: "open", title: `Open ${f.name}`, onclick: () => openStored(j.key, f.name) },
       icon("file", 15), h("b", {}, f.name)),
     f.kind !== "other" ? h("span", { class: "tag " + f.kind }, f.kind) : null,
-    h("small", {}, `${fmtSize(f.size)} · ${fmtDay(f.added.slice(0, 10))}`),
+    h("small", {}, `${fmtSize(f.size)} · ${fmtDay(localDay(f.added))}`),
     h("button", { class: "x", title: "Remove (it's moved aside, not deleted)", "aria-label": `Remove ${f.name}`, onclick: async () => {
       try { pkg = await api("/api/package/remove", { key: j.key, name: f.name }); sentChanged = true; draw(); toast(`Removed ${f.name}`); }
       catch (e) { toast(e.message); }
@@ -5601,7 +5611,7 @@ function appCard(a, d, i = 0) {
   const stage = stageSelect(a.status, d.stages);
   stage.className = "stage";
   stage.onchange = () => changeStage(a, d, stage);
-  const closedOn = a.closed ? fmtDay(a.closed_day || a.closed.slice(0, 10), d.today) : "";
+  const closedOn = a.closed ? fmtDay(a.closed_day || localDay(a.closed), d.today) : "";
   const facts = [a.snoozed_until ? h("span", { class: "badge snooze", title: "Not counted as quiet until then" },
       `Snoozed until ${fmtDay(a.snoozed_until, d.today)}`) : null,
     a.closed_new ? h("button", { class: "badge closed-new", title: "The posting was taken down since you last looked. Click to clear this notice: the application stays tracked.",
@@ -7170,8 +7180,8 @@ function companyFacts(j, today) {
   const waiting = j.status === "snoozed" && (j.waiting_on || []).length;
   const lines = [
     j.applied_at ? `Applied ${fmtDay(j.applied_at, today)}` : null,
-    closedState(j) === "closed" ? `Posting closed ${fmtDay(j.closed, today)}`
-      : closedState(j) === "checking" ? `Posting may have closed ${fmtDay(j.closed, today)}: checking` : null,
+    closedState(j) === "closed" ? `Posting closed ${fmtDay(localDay(j.closed), today)}`
+      : closedState(j) === "checking" ? `Posting may have closed ${fmtDay(localDay(j.closed), today)}: checking` : null,
     waiting ? `Waiting on ${j.waiting_on.map(a => a.title).join(", ")}` + (j.follow_up ? `; back by ${fmtDay(j.follow_up, today)}` : "") : null,
     j.status !== "snoozed" && (j.next_step || j.follow_up) ? (j.due ? "Due: " : "Next: ") +
       [j.next_step, j.follow_up && `follow up ${fmtDay(j.follow_up, today)}`].filter(Boolean).join(" · ") : null,
@@ -7182,7 +7192,7 @@ function companyFacts(j, today) {
 // A job card as on Today and the Queue, with the buttons its status calls for. Marking one keeps it on the page,
 // now at its new status, with a way back; the counts above follow.
 function companyCard(j, i, c) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const redraw = () => document.getElementById("job-" + j.key)?.replaceWith(companyCard(j, i, c));
   const move = async (to, note) => {
     const r = await api("/api/mark", { keys: [j.key], status: to, note });

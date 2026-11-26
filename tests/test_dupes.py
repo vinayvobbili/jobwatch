@@ -11,6 +11,7 @@ import pytest
 
 from jobwatch import alerts, cli, config, dupes
 from jobwatch.dupes import Signature, company_key, same_opening, title_key
+from jobwatch.localday import local_day
 from jobwatch.models import Job
 from jobwatch.store import Store
 from jobwatch.watch import build_digest, fetch_all, queue, save_job
@@ -167,7 +168,7 @@ def test_an_alert_import_of_a_job_applied_to_is_flagged(store):
     assert m.line == (f"Already applied 2026-02-11: same opening as Data Platform Engineer - Payments (482913) "
                       f"({applied.key}; same req 482913). Don't apply or ask for a referral again")
     # and the other way around: the application knows about the queued one
-    assert dupes.check(store, applied.key).label == f"Already queued {store.find(again.key)[1]['status_at'][:10]}"
+    assert dupes.check(store, applied.key).label == f"Already queued {local_day(store.find(again.key)[1]['status_at'])}"
 
 
 def test_a_req_applied_to_and_closed_that_comes_back_shows_even_with_its_old_posted_date(watchlist):

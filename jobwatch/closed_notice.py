@@ -21,6 +21,7 @@ import sys
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+from . import localday
 from .service import ServiceError, _domain, _launchctl, _mac
 from .store import IN_PROGRESS, STATUSES, Store, closed_state
 
@@ -39,7 +40,7 @@ class NoticeError(ValueError):
 
 def local_day(stamp: str | None) -> str | None:
     """The calendar day on this computer of one of the store's UTC stamps."""
-    return datetime.fromisoformat(stamp).astimezone().date().isoformat() if stamp else None
+    return localday.local_day(stamp) or None
 
 
 def collect(store: Store, today: date | None = None) -> list[str]:

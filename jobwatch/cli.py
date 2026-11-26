@@ -76,6 +76,7 @@ from . import (
 )
 from .config import BACKENDS, ConfigError, credit_entry, duration, fallback_entry
 from .filters import KINDS, rejection, staffing_firm
+from .localday import local_day
 from .rounds import ROUNDS
 from .score import ScoringUnavailable, calls_at_once, check_prompts, prompt_info, resume_id, scorer_label
 from .store import (
@@ -587,10 +588,10 @@ def cmd_show(args, cfg, store):
         _write(job.to_text(), None if args.posting == "-" else Path(args.posting).expanduser())
         return
     status = rec["status"] + (f" ({rec['note']})" if rec.get("note") else "")
-    closed = f", closed {rec['closed'][:10]}" if rec["closed"] else ""
+    closed = f", closed {local_day(rec['closed'])}" if rec["closed"] else ""
     via = f" (via {rec['via']})" if rec.get("via") else ""
     text = job.to_text().replace(f"Pay: {job.pay()}\n", "", 1) if job.pay() else job.to_text()  # the Pay line below
-    print(f"{text}\n---\n{job.key}: {status}, first seen {rec['first_seen'][:10]}{via}{closed}")
+    print(f"{text}\n---\n{job.key}: {status}, first seen {local_day(rec['first_seen'])}{via}{closed}")
     print(f"Source: {report.found_on(job, rec.get('via'))}")
     if job.link_note:
         print(f"Link: {job.link_note}")
@@ -1038,7 +1039,8 @@ def cmd_offices(args, cfg, store):
         near = ", ".join(offices.wanted_places(cfg)) or "your places"
         print(f"{args.jobs}: {plural(len(there), 'job')} posted in {near}" + (":" if there else "."))
         for j, rec, here in there:
-            seen = (rec["first_seen"] or "")[:10] + (f", closed {rec['closed'][:10]}" if rec["closed"] else ", open")
+            gone = f", closed {local_day(rec['closed'])}" if rec["closed"] else ", open"
+            seen = local_day(rec["first_seen"]) + gone
             print(f"  {j.title}  ({'; '.join(here)})\n    {seen} · {rec['status']} · `{j.key}`")
         return
     if args.drop:
@@ -1678,7 +1680,7 @@ def cmd_list(args, cfg, store):
     for job, rec in rows:
         closed = {"closed": " [closed]", "checking": " [checking: closed once]"}.get(closed_state(rec), "")
         note = f"  ({rec['note']})" if rec.get("note") else ""
-        print(f"{rec['status']:8} {(rec['status_at'] or rec['first_seen'])[:10]}  {job.display_company}: "
+        print(f"{rec['status']:8} {local_day(rec['status_at'] or rec['first_seen'])}  {job.display_company}: "
               f"{job.title}{closed}{note}  `{job.key}`")
     if not rows:
         print("no jobs")

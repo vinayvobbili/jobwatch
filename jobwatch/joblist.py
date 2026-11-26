@@ -45,6 +45,7 @@ from importlib import resources
 from pathlib import Path
 
 from . import alerts, company, linkedin, sources, suggest
+from .localday import local_day
 from .store import MANUAL, Store, day
 
 HISTORY = "import-list.jsonl"
@@ -472,7 +473,7 @@ def unplaced(cfg, store: Store, source: str | None = None, since: str | None = N
                     else (_inferred_why(store, looked, job), "inferred"))
         out.append({"company": job.display_company, "title": job.title, "location": "; ".join(job.places),
                     "source": site, "key": job.key, "why": why, "why_source": how,
-                    "first_seen": (rec["first_seen"] or "")[:10], "status": rec["status"],
+                    "first_seen": local_day(rec["first_seen"]), "status": rec["status"],
                     "closed": bool(rec["closed"]), "url": job.url or None})
     return out
 

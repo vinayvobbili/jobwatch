@@ -4,6 +4,7 @@ all of them, newest application first."""
 
 from __future__ import annotations
 
+from .localday import local_day
 from .package import MANIFEST, Package
 from .store import Store
 
@@ -18,7 +19,7 @@ def _preview(answer: str) -> str:
 
 
 def _when(rec: dict) -> str:
-    return rec.get("applied_at") or (rec.get("status_at") or "")[:10] or (rec.get("first_seen") or "")[:10]
+    return rec.get("applied_at") or local_day(rec.get("status_at")) or local_day(rec.get("first_seen"))
 
 
 def find(store: Store, query: str = "", full: bool = False) -> list[dict]:

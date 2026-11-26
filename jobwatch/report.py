@@ -7,6 +7,7 @@ from datetime import date
 
 from . import lca, levels
 from .alerts import LABELS
+from .localday import local_day
 from .models import Job
 from .quiet import snoozed_until
 from .score import scorer_label
@@ -112,8 +113,9 @@ def _line(e: Entry) -> list[str]:
     if e.contacts:
         out.append(f"You know: {people(e.contacts)}")
     if state := closed_state(e.record):
-        out.append(f"**Closed** {e.record['closed'][:10]}: the posting is gone from the board." if state == "closed"
-                   else f"**Checking** {e.record['closed'][:10]}: the posting looks gone; one more look confirms it.")
+        on = local_day(e.record["closed"])
+        out.append(f"**Closed** {on}: the posting is gone from the board." if state == "closed"
+                   else f"**Checking** {on}: the posting looks gone; one more look confirms it.")
     if e.record.get("note"):
         out.append(f"Note: {e.record['note']}")
     out.append(f"Source: {found_on(j, e.record.get('via'))}")

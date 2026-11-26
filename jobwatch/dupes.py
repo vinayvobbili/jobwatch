@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from . import linkedin, sources
+from .localday import local_day
 from .models import Job
 from .store import ENDED, MANUAL, STAGES, Store
 
@@ -255,7 +256,7 @@ class Match:
     @property
     def day(self) -> str:
         """The day applied for an application, else the day it got its status."""
-        return (self.record.get("applied_at") if self.applied else None) or (self.record.get("status_at") or "")[:10]
+        return (self.record.get("applied_at") if self.applied else None) or local_day(self.record.get("status_at"))
 
     @property
     def strong(self) -> bool:
@@ -425,7 +426,7 @@ def pairs(store: Store, strong_only: bool = False) -> list[Pair]:
 def day_of(rec: dict) -> str:
     """The day that goes with a job's status: applied for an application, else when it got its status."""
     return (rec.get("applied_at") if rec["status"] in STAGES else None) or \
-        (rec.get("status_at") or rec.get("first_seen") or "")[:10]
+        local_day(rec.get("status_at") or rec.get("first_seen"))
 
 
 def pair_dict(p: Pair) -> dict:

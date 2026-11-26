@@ -2,7 +2,7 @@
 on the company's board (recorded going forward, worked out for older rows)."""
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -58,7 +58,7 @@ def test_each_unplaced_job_has_its_reason_recorded_by_the_import(imported):
     d = by["Data Analyst"]
     assert (d["company"], d["location"], d["source"], d["status"]) == ("Hooli", "London, UK", "linkedin", "new")
     assert d["key"] == "manual:hooli:data-analyst" and d["url"] == "https://www.linkedin.com/jobs/view/4100000004/"
-    assert d["first_seen"] == datetime.now(UTC).date().isoformat() and d["closed"] is False
+    assert d["first_seen"] == date.today().isoformat() and d["closed"] is False
 
 
 def test_newest_first_and_by_site_or_day(imported):

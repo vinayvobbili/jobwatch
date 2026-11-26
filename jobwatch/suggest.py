@@ -36,6 +36,7 @@ from urllib.parse import urlparse
 from . import config, dupes, linkedin, sources
 from .config import Board, Config
 from .filters import excluded_company, reject_reason, staffing_firm
+from .localday import local_day
 from .models import Job
 from .store import ENDED, MANUAL, STAGES, Store
 
@@ -227,7 +228,7 @@ def suggestions(cfg: Config, store: Store, limit: int | None = None, look: bool 
         if not (jobs or mine):
             continue
         out.append(Suggestion(row["company"], row["name"], row["entry"], row["found_by"], [j for j, _ in jobs],
-                              last_seen=(jobs or row["jobs"])[0][1][:10],
+                              last_seen=local_day((jobs or row["jobs"])[0][1]),
                               weight=sum(0.5 ** (_age(at, now) / half_life) for _, at in jobs), engaged=mine,
                               looked_at=row["looked_at"]))
     out.sort(key=lambda s: s.name.lower())

@@ -20,6 +20,7 @@ from . import contacts as people
 from . import dupes, jobpass, report, suggest
 from .config import Config
 from .filters import KINDS, focus_hits, rejection
+from .localday import local_day
 from .models import Job
 from .package import Package
 from .score import resume_id
@@ -132,7 +133,7 @@ def _order(rec: dict) -> int:
 
 
 def _day(value: str | None) -> str | None:
-    return value[:10] if value else None
+    return local_day(value) or None
 
 
 def _job(store: Store, job: Job, rec: dict, index: dupes.Index) -> dict:

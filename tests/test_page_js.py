@@ -257,7 +257,7 @@ def test_a_jobs_details_can_change_its_stage(tmp_path):
     rejected right there), saved through /api/track, and the page behind redraws when the details close."""
     js = tmp_path / "facts.js"
     js.write_text(page_const("STAGE_NAMES") + page_const("DETAIL_STAGES") + page_const("closedState")
-                  + page_function("detailsFacts") + """
+                  + page_function("localDay") + page_function("detailsFacts") + """
 const h = (tag, attrs, ...kids) => ({ tag, attrs, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
 const calls = [], fmtDay = d => "day " + d, stageWords = (c, to) => `${c} ${to}`, TONES = {};
 const api = async (path, body) => { calls.push([path, body]); return {}; };

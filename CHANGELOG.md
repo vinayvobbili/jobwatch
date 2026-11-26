@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Dates the page and the commands show for a posting closed, a job first seen or a status change are now your day,
+  not UTC's. The store keeps its stamps in UTC and the page cut them to ten characters, so after 7 PM Eastern a
+  posting found closed that evening read "closed" with tomorrow's date (and the company page showed "Nov NaN").
+  One helper does it in the page (`localDay`) and one in Python (`jobwatch.localday.local_day`); the stored data is
+  unchanged.
 - `mark --note` replaces the whole note, so it used to wipe an application's dated history without a word. It now
   keeps the replaced note (in the database), says how long it was, and `jobwatch notes KEY --undo` brings it back;
   `jobwatch notes KEY` lists the notes replaced. The MCP `mark_job` refuses `note` on a job that already has one
