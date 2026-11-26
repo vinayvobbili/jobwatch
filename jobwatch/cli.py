@@ -760,7 +760,19 @@ def cmd_dupes(args, cfg, store):
 
 
 def cmd_advice(args, cfg, store):
-    """How the queue-or-skip suggestions fall across Today's jobs, by rule: read-only."""
+    """How the queue-or-skip suggestions fall across Today's jobs, by rule; with keys, those jobs' card lines."""
+    if args.keys:
+        rows = []
+        for key in args.keys:
+            try:
+                rows.append(advice.explain(cfg, store, key))
+            except KeyError as e:
+                raise SystemExit(e.args[0]) from None
+        print(json.dumps(rows, indent=2) if args.format == "json" else "\n\n".join(
+            f"{r['title']} ({r['key']})\n  places:  {'; '.join(r['places']) or 'none listed'}\n"
+            f"  fit:     {r['fit'] if r['fit'] is not None else 'not scored'}\n  advice:  {r['advice'] or 'none'}\n"
+            f"  verdict: {r['verdict'] or 'none'}" for r in rows))
+        return
     s = advice.summary(cfg, store, build_digest(cfg, store, include_seen=True, score_top=0).entries)
     print(json.dumps(s, indent=2) if args.format == "json" else advice.summary_text(s))
 
@@ -2379,7 +2391,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_dupes, read_only=True)
 
     p = sub.add_parser("advice", help="how the page's Queue/Skip suggestions fall across Today's jobs: how many "
-                       "of each, and which rule said so how often. Read-only")
+                       "of each, and which rule said so how often; with job keys, those jobs' own suggestion and "
+                       "bottom line as their cards show them. Read-only")
+    p.add_argument("keys", nargs="*", help="jobs to explain (a key, or its posting id) instead of counting Today's")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_advice, read_only=True)
 

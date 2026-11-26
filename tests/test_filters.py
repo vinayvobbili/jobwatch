@@ -2,8 +2,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from jobwatch.filters import KINDS, Filters, reject_reason, rejection, relevance, remote_offered
+from jobwatch.filters import (
+    KINDS,
+    Filters,
+    office_shown,
+    onsite_elsewhere,
+    reject_reason,
+    rejection,
+    relevance,
+    remote_offered,
+)
 from jobwatch.models import Job
+from jobwatch.text import office_time
 
 
 def job(**kw) -> Job:
@@ -163,6 +173,46 @@ def test_remote_offered_in_the_text_passes_the_place_rules(text, offer):
     # Only when remote is one of your places, and not for a job abroad
     assert remote_offered(austin, Filters(locations=["Denver"])) is None
     assert remote_offered(job(description=text, locations=["London, UK"]), f) is None
+
+
+@pytest.mark.parametrize("text, said", [
+    ("Logistics: client sites and our office in Austin (Downtown) 2/week.", "office in Austin (Downtown) 2/week"),
+    ("This is a hybrid role.", "hybrid"),
+    ("On-site 3 days a week.", "On-site 3 days"),
+    ("We are in-office on Tuesdays.", "in-office"),
+    ("Python services, fully remote, no office.", None),
+    ("Our office has 2 floors and a cafe.", None),
+])
+def test_office_time_in_the_text(text, said):
+    assert office_time(text) == said
+
+
+@pytest.mark.parametrize("places, flag, text, said", [
+    (["Austin, TX", "Chicago, IL"], True, "Python.", "on-site in Austin, TX; Chicago, IL, not Denver or remote"),
+    (["Austin, TX"], True, "Python.", None),                                    # the flag over one office: remote there
+    (["Austin, TX"], True, "Our office, 2 days a week.", "on-site in Austin, TX, not Denver or remote"),
+    (["Austin, TX"], None, "Python.", "on-site in Austin, TX, not Denver or remote"),    # no flag, no remote word
+    (["Austin, TX", "Denver, CO"], True, "Python.", None),                      # one is theirs
+    (["Remote - Texas", "Austin, TX"], None, "Python.", None),                  # remote in words: place rules own it
+    (["Austin, TX"], None, "In-office 3 days a week unless designated remote.", None),
+    ([], True, "Python.", None),                                                # no place at all: nothing to say
+])
+def test_a_job_on_site_only_elsewhere_is_said_so(places, flag, text, said):
+    f = Filters(locations=HOME, home_state="CO")
+    assert onsite_elsewhere(job(locations=places, remote=flag, description=text), f) == said
+    assert onsite_elsewhere(job(locations=places, remote=flag, description=text), Filters()) is None
+
+
+def test_a_nearby_office_job_on_site_elsewhere_says_why_it_shows():
+    f = Filters(locations=HOME, home_state="CO", nearby_offices=["Initech"])
+    austin = job(company="initech", locations=["Austin, TX"], description="Hybrid.")
+    assert reject_reason(austin, f) is None  # it still passes the place rules
+    assert office_shown(austin, f) == ("Initech has an office near Denver; role is on-site Austin, TX: "
+                                       "ask if the Denver office is an option")
+    assert onsite_elsewhere(austin, f) is None  # no skip reason: it's the other note
+    assert office_shown(job(company="initech", locations=["Denver, CO"]), f) is None  # in your place
+    assert office_shown(job(locations=["Austin, TX"]), f) is None  # a company without an office near you
+    assert office_shown(austin, Filters(locations=HOME)) is None
 
 
 def test_a_place_that_is_only_the_country_passes_when_the_text_says_remote():

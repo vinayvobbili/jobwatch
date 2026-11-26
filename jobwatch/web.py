@@ -1626,22 +1626,45 @@ class App:
                 except KeyError:
                     continue
             pay = self._pay(cfg, store, [(j, None) for j, _ in found])
-            rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
-            known, index, history = load_contacts(cfg), dupes.Index(store), advice.History(store, quiet=cfg.quiet)
-            # The fit the cards show: the current score, else an older scorer's (stale). Only the current one made
-            # a job with a stale score read as unscored here, so its bottom line said "Queue it" on pay alone.
-            fits = _fits(store, rid) if rid else {}
-            said = {}
-            for job, rec in found:
-                if ((pay.get(job.key) or {}).get("expected_pay") or {}).get("pending"):
-                    continue
-                e = Entry(job, rec, 0, [], fit=brief(fits.get(job.key)),
-                          contacts=known.at(job.display_company, job.company) if known else [],
-                          duplicate=index.match(job, rec))
-                said[job.key] = self._advice(cfg, e, history, pay)
+            said = self._advice_now(cfg, store, found, pay, wait_for_pay=True)
             return {"enabled": True, "running": self.pay.running,
                     "pay": {k: v["expected_pay"] for k, v in pay.items()}, "advice": said,
                     "sources": {k: v["pay_sources"] for k, v in pay.items()}}
+        return self._with_store(run)
+
+    def _advice_now(self, cfg, store, found: list[tuple], pay: dict[str, dict], wait_for_pay: bool = False
+                    ) -> dict[str, dict]:
+        """{key: {"advice", "verdict"}} for these (job, record) pairs as their cards should read now, from the fit the
+        cards show: the current score, else an older scorer's (stale). A job applied to or further is past advice
+        (both null). wait_for_pay: leave out a job whose expected pay is still being looked up (asked again then)."""
+        rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
+        known, index, history = load_contacts(cfg), dupes.Index(store), advice.History(store, quiet=cfg.quiet)
+        fits = _fits(store, rid) if rid else {}
+        said = {}
+        for job, rec in found:
+            if wait_for_pay and ((pay.get(job.key) or {}).get("expected_pay") or {}).get("pending"):
+                continue
+            if rec.get("status") in STAGES:
+                said[job.key] = {"advice": None, "verdict": None}
+                continue
+            e = Entry(job, rec, 0, [], fit=brief(fits.get(job.key)),
+                      contacts=known.at(job.display_company, job.company) if known else [],
+                      duplicate=index.match(job, rec))
+            said[job.key] = self._advice(cfg, e, history, pay)
+        return said
+
+    def post_advice(self, body) -> dict:
+        """The suggestion and bottom line of these jobs (`keys`) as their cards should read now: the page asks when a
+        score comes in, since the card drawn before it was judged by pay alone ("Queue it") and the score (40, say)
+        swaps only the rings. Unknown keys are left out."""
+        def run(cfg, store):
+            found = []
+            for k in (body.get("keys") or [])[:50]:
+                try:
+                    found.append(store.find(k))
+                except KeyError:
+                    continue
+            return {"advice": self._advice_now(cfg, store, found, self._pay(cfg, store, [(j, None) for j, _ in found]))}
         return self._with_store(run)
 
     def get_prep(self, q) -> dict:
@@ -2149,6 +2172,7 @@ ROUTES = {
     ("POST", "/api/closed/act"): App.post_closed_act,
     ("POST", "/api/closed/undo"): App.post_closed_undo,
     ("POST", "/api/pay"): App.post_pay,
+    ("POST", "/api/advice"): App.post_advice,
     ("GET", "/api/scoring"): App.get_scoring,
     ("GET", "/api/scoring/usage"): App.get_scoring_usage,
     ("GET", "/api/chat"): App.get_chat,

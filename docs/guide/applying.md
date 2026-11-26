@@ -21,11 +21,16 @@ jobwatch list --status applied
 
 Each card on the page suggests queuing or skipping a job, and why, from a few fixed rules (no model call).
 Skip wins: the same opening already applied to, two or more applications at that company in the past
-week, pay under `pay.floor`, or fewer than half the must-haves met. Otherwise queue: posted pay (or Levels.fyi's
+week, pay under `pay.floor`, fewer than half the must-haves met, or a job that's on-site only outside your
+`filters.locations` ("on-site in Austin, Chicago, not Denver or remote": a board's remote flag over two or more other
+places, or over one when the posting asks for office time, doesn't make it remote). A job like that at a company in
+`filters.nearby_offices` still shows, as "ask first": "Initech has an office near Denver; role is on-site Austin, TX:
+ask if the Denver office is an option". Otherwise queue: posted pay (or Levels.fyi's
 ask) reaching `pay.target` (only when the fit score is 60 or more, or the job has none yet: pay alone doesn't make a
 poor match worth applying to), a fit score of 75 or more, or someone you know there. A rejection for one role
 there doesn't count against another. It's only a suggestion: nothing is hidden or marked for it.
-`jobwatch advice` counts how often each rule fires across Today's jobs.
+`jobwatch advice` counts how often each rule fires across Today's jobs; `jobwatch advice KEY` shows one job's
+suggestion and bottom line as its card has them now.
 
 Queued jobs leave the digest. The queue flags any posting that has since closed, and what to check before
 applying: pay below `min_salary`, a place your filters don't want (a job queued by hand never passed them),

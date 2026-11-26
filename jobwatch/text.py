@@ -320,6 +320,19 @@ def remote_offer(text: str) -> str | None:
     return None
 
 
+# A posting that asks for time in an office: "our office in Denver 2/week", "hybrid", "on-site 3 days a week".
+_OFFICE_TIME = re.compile(
+    r"\bhybrid\b|\bin[- ]office\b|\bon-?site\b[^.\n]{0,40}\b(?:days?\b|/\s*(?:wk|week)\b)"
+    r"|\boffice\b[^.\n]{0,60}\b(?:\d|two|three|four|five)\s*(?:x\b|days?\b|times\b|/\s*(?:wk|week)\b)", re.I)
+
+
+def office_time(text: str) -> str | None:
+    """The words in a posting saying the work includes time in an office ("our office in Denver (LoDo) 2/week",
+    "hybrid"); None when it says none."""
+    m = _OFFICE_TIME.search(text or "")
+    return " ".join(m.group(0).split()) if m else None
+
+
 def names_no_place(location: str) -> bool:
     """True for a bare "Remote" / "Remote-Friendly" with no country or city after it."""
     return not _REMOTE_WORDS.sub("", location).strip()

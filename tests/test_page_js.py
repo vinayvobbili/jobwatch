@@ -892,8 +892,8 @@ def test_an_unscored_card_has_a_score_button_in_its_corner_that_runs_the_same_sc
     redraws the card."""
     js = tmp_path / "corner.js"
     js.write_text(page_const("NO_SCORE_BUTTON") + page_function("unscoredNote") + page_function("scoreButton")
-                  + page_function("noFitBox") + page_const("ACT") + page_const("actLabel")
-                  + page_function("actButton") + """
+                  + page_function("fetchAdvice") + page_function("noFitBox") + page_const("ACT")
+                  + page_const("actLabel") + page_function("actButton") + """
 const words = kids => kids.map(k => typeof k === "string" ? k : k.kids ? words(k.kids) : "").join("");
 const node = (tag, attrs, kids) => ({ tag, cls: attrs?.class, kids, disabled: false, text: words(kids),
   replaceChildren(...k) { this.text = words(k); this.kids = k; } });
@@ -901,9 +901,9 @@ const h = (tag, attrs, ...kids) => node(tag, attrs, kids.flat(Infinity).filter(k
 const icon = name => ({ svg: name });
 let calls = [], failWith = null, drawn = [], toasts = [];
 const api = async (path, body) => {
-  calls.push([path, body.key]);
+  calls.push([path, body.key || body.keys[0]]);
   if (failWith) throw new Error(failWith);
-  return { score: 71 };
+  return path === "/api/advice" ? { advice: { k1: { verdict: { call: "skip" } } } } : { score: 71 };
 };
 const toast = m => toasts.push(m);
 const job = { key: "k1", unscored: null };
@@ -923,7 +923,7 @@ const out = { cornerLabel: corner.text, cornerCls: corner.cls, cornerIcon: corne
   out.failed = [corner.disabled, bottom.disabled, corner.text, bottom.text, toasts, drawn.length];
   failWith = null;
   await bottom.onclick();
-  out.retried = [calls, job.fit.score, drawn];
+  out.retried = [calls, job.fit.score, drawn, job.verdict];  // the card is drawn with the advice for the new score
   console.log(JSON.stringify(out));
 })();
 """, encoding="utf-8")
@@ -937,7 +937,8 @@ const out = { cornerLabel: corner.text, cornerCls: corner.cls, cornerIcon: corne
     assert out["plainDash"] == "–"  # the details dialog has no card to score from: it keeps the dash
     assert out["during"] == [True, True, "Scoring…", "Scoring…"]
     assert out["failed"] == [False, False, "Score", "Score", ["agy is out of quota"], 0]
-    assert out["retried"] == [[["/api/score", "k1"], ["/api/score", "k1"]], 71, ["k1"]]
+    assert out["retried"] == [[["/api/score", "k1"], ["/api/score", "k1"], ["/api/advice", "k1"]], 71, ["k1"],
+                              {"call": "skip"}]
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")

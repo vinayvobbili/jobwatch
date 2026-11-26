@@ -8,9 +8,11 @@ from datetime import date, timedelta
 
 from . import quiet as quiet_
 from .config import Config, Quiet
-from .dupes import companies
+from .dupes import Index, companies
+from .filters import office_shown, onsite_elsewhere
+from .score import brief
 from .store import STAGES, Store, closed_state
-from .watch import STRONG_FIT, Entry, plural
+from .watch import STRONG_FIT, Entry, job_fit, load_contacts, plural
 
 WEEK = timedelta(days=7)
 BUSY = 2    # applications at one company in a week: more starts to look like spraying
@@ -23,7 +25,7 @@ TALKING = ("screening", "interviewing", "offer")  # they're talking to you: past
 
 @dataclass
 class Advice:
-    action: str                                     # "queue" or "skip"
+    action: str                                     # "queue", "skip", or "ask" (queue it, but ask first)
     reasons: list[str]
     though: list[str] = field(default_factory=list)  # for a skip: what speaks for it anyway
     codes: list[str] = field(default_factory=list)   # the rule behind each reason (REASONS)
@@ -31,7 +33,7 @@ class Advice:
     @property
     def line(self) -> str:
         """ "Skip: you've applied to 2 roles at Globex this past week (though the posted pay goes up to $260K)" """
-        head = f"{self.action.capitalize()}: {'; '.join(self.reasons)}"
+        head = f"{'Ask first' if self.action == 'ask' else self.action.capitalize()}: {'; '.join(self.reasons)}"
         return head + (f" (though {self.though[0]})" if self.though else "")
 
     def to_dict(self) -> dict:
@@ -126,6 +128,10 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
     if fit and fit.get("must_haves_total") and fit.get("must_haves_met", 0) * 2 < fit["must_haves_total"]:
         skip.append(("must_haves", f"it meets {fit.get('must_haves_met', 0)} of {fit['must_haves_total']} "
                                    "must-haves"))
+    places = cfg.filters_for(job)
+    if there := onsite_elsewhere(job, places):
+        skip.append(("place", there))
+    shown = office_shown(job, places)  # passes the place rules through its company's nearby office: ask first
 
     target, high = cfg.pay.target, cfg.pay.target_max or cfg.pay.target
     vs = lambda n: f"{'above' if n > high else 'within'} your {_target(cfg)} target"  # noqa: E731
@@ -149,6 +155,8 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
 
     if skip:
         return Advice("skip", [r for _, r in skip], [r for _, r in go], [c for c, _ in skip])
+    if shown:
+        return Advice("ask", [shown], codes=["place_office"])
     if go:
         return Advice("queue", [r for _, r in go + extra], codes=[c for c, _ in go + extra])
     return None
@@ -185,6 +193,11 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
     if stage := history.talking(entry):  # a live process there: ask about this role in it, not cold
         return {"call": "hold", "text": f"Hold off: another role at {company} is at {stage} now; ask your recruiter "
                                         f"there about this one instead of applying cold, or {later}"}
+    if "place" in why and said.action == "skip":  # still the person's call (they may pick an office elsewhere)
+        return {"call": "stretch", "text": f"{go}, but it's a stretch: {why['place']}. Ask the recruiter about your "
+                                           "area or remote first."}
+    if "place_office" in why:  # allowed through by its company's nearby office: conditional, never a plain Queue it
+        return {"call": "stretch", "text": f"{go}, ask first: {why['place_office']}."}
     met, total = (fit.get("must_haves_met", 0), fit.get("must_haves_total", 0)) if fit else (0, 0)
     if total and met * 4 < total * 3:
         if score is not None and score >= STRONG_FIT:  # a caveat that agrees with the score, not a contradiction
@@ -207,12 +220,31 @@ REASONS = {
     "turned_down": f"{TURNED_DOWN} or more rejections from the company: apply somewhere new",
     "under_floor": "the posted pay, or Levels.fyi's median base when none is posted, is under pay.floor",
     "must_haves": "the fit score found fewer than half the must-haves",
+    "place": "the job is on-site only outside your places (filters.locations), whatever its remote flag says: "
+             "listed in two or more places, or asking for office time",
     "pay": f"the posted pay, or Levels.fyi's ask when none is posted, reaches pay.target (not when the fit score "
            f"is under {CLOSE}: pay alone doesn't make a poor match worth applying to)",
+    "place_office": "the job is on-site only outside your places but its company has a nearby office "
+                    "(filters.nearby_offices): it shows, with the ask to work from that office",
     "strong_fit": f"a fit score of {STRONG_FIT} or more",
     "contact": "someone you know works there",
     "fresh": f"posted in the last {FRESH} days (only alongside another reason to queue)",
 }
+
+
+def explain(cfg: Config, store: Store, key: str) -> dict:
+    """One job's suggestion as its card would show it now: {"key", "title", "places", "fit" (the score the card
+    shows, None when unscored), "advice" (the line), "verdict" (the bottom line)}, with no expected pay (that's looked
+    up in the background). KeyError for a key that names no job."""
+    job, record = store.find(key)
+    known = load_contacts(cfg)
+    e = Entry(job, record, 0, [], fit=brief(job_fit(cfg, store, job.key)), duplicate=Index(store).match(job, record),
+              contacts=known.at(job.display_company, job.company) if known else [])
+    history = History(store, quiet=cfg.quiet)
+    said = advise(cfg, e, history)
+    fit = e.fit.get("score") if e.fit else None
+    return {"key": job.key, "title": job.title, "places": job.places, "fit": None if fit is None else round(fit),
+            "advice": said.line if said else None, "verdict": (verdict(e, history, said) or {}).get("text")}
 
 
 def summary(cfg: Config, store: Store, entries: list[Entry]) -> dict:
@@ -224,12 +256,13 @@ def summary(cfg: Config, store: Store, entries: list[Entry]) -> dict:
         said = advise(cfg, e, history, None)
         by_action[said.action if said else "none"] += 1
         by_reason.update(said.codes if said else [])
-    return {"jobs": len(entries), "by_action": {a: by_action[a] for a in ("queue", "skip", "none")},
+    return {"jobs": len(entries), "by_action": {a: by_action[a] for a in ("queue", "ask", "skip", "none")},
             "by_reason": dict(by_reason.most_common())}
 
 
 def summary_text(s: dict) -> str:
     a = s["by_action"]
-    lines = [f"{plural(s['jobs'], 'job')}: queue {a['queue']}, skip {a['skip']}, no suggestion {a['none']}"]
+    ask = f", ask first {a['ask']}" if a.get("ask") else ""
+    lines = [f"{plural(s['jobs'], 'job')}: queue {a['queue']}{ask}, skip {a['skip']}, no suggestion {a['none']}"]
     lines += [f"  {n:>5}  {code}: {REASONS.get(code, '')}" for code, n in s["by_reason"].items()]
     return "\n".join(lines)

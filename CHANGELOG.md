@@ -6,6 +6,19 @@
   Hide when you pick one, so 80+ no longer lists unscored cards, and the Showing line counts them out. Pick Show by
   hand and it stays until the fit changes; back on Any, the switch is what this browser had kept (a choice made under
   a fit minimum isn't kept).
+- A card's suggestion and bottom line now follow its score. A card drawn before its job was scored said "Queue it: the
+  posted pay goes up to ..."; when the score (a 40, say) came in, only the rings changed, so a weak fit sat over a
+  green Queue. The page now asks `/api/advice` for the card's lines again whenever a score arrives (the Score button,
+  Read posting, Rescore).
+- A job that is on-site only outside your places gets a skip reason, not a Queue. A board's remote flag over two or more
+  other places (or over one, when the posting asks for office time) passed the place filter, and good pay made the
+  advice green. The suggestion now says "Skip: on-site in Austin; Chicago, not Denver or remote" (the first of
+  `filters.locations`), and the bottom line says to ask the recruiter about your area or remote first. Remote by
+  arrangement doesn't count. `jobwatch advice KEY` shows one job's suggestion and bottom line as its card has them.
+- A job that shows only because its company is in `filters.nearby_offices`, yet is on-site somewhere else, is no
+  plain Queue either. The card's Why line says why it shows ("Initech has an office near Denver; role is on-site
+  Austin, TX: ask if the Denver office is an option", in amber) and the bottom line reads "Queue it, ask first: ...".
+  It still passes the place rules; `jobwatch advice` counts these as "ask first".
 - Read posting now scores its job at once. When the extension saves a posting's text (or the company's board replaces
   it), that one job is scored in the background with the scoring chain (`scoring.backend`, then `scoring.fallback`,
   the dated Claude entry first, under its caps), whatever `scoring.auto` says: it only controls the bulk scorer. The

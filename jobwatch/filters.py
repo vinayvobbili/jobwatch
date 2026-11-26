@@ -13,6 +13,7 @@ from .text import (
     in_us,
     is_remote,
     names_a_region,
+    office_time,
     remote_in_listed_countries,
     remote_offer,
     remote_states_in_text,
@@ -234,6 +235,51 @@ def remote_offered(job: Job, f: Filters) -> str | None:
         return None
     here = f.remote_country.lower() == "any" or not job.locations or any(in_us(loc) for loc in job.locations)
     return remote_offer(job.description) if here else None
+
+
+def onsite_elsewhere(job: Job, f: Filters) -> str | None:
+    """Why a job is a place to go to somewhere that isn't the person's ("on-site in Austin; Chicago, not Denver or
+    remote"); None when it is in one of their places, says remote in words, or is a company's nearby office (see
+    office_shown).
+    place_rejection lets a job through on the board's remote flag alone, and queued or added jobs skip it: this
+    is the second look the advice takes. The flag over one place is taken as remote from there (often the office
+    of a remote job); over two or more places, or with a posting that asks for office time, it's not."""
+    if not (there := _elsewhere(job, f)) or _office_company(job, f):
+        return None  # a nearby office: office_shown says so, as a reason to ask
+    if remote_offer(job.description) and any(w.lower() == "remote" for w in f.locations):
+        return None  # remote by arrangement: the queue says to ask
+    places, home = there
+    return f"on-site in {places}, not {home}{' or remote' if len(f.locations) > len(_wanted(f)) else ''}"
+
+
+def office_shown(job: Job, f: Filters) -> str | None:
+    """For a job that passes the place rules only because its company is in nearby_offices, yet is on-site somewhere
+    else: a short note on why it shows ("Initech has an office near Denver; role is on-site Austin, TX: ask if the
+    Denver office is an option"). None for any other job."""
+    if not (name := _office_company(job, f)) or not (there := _elsewhere(job, f)):
+        return None
+    places, home = there
+    return f"{name} has an office near {home}; role is on-site {places}: ask if the {home} office is an option"
+
+
+def _wanted(f: Filters) -> list[str]:
+    return [w for w in f.locations if w.lower() != "remote"]
+
+
+def _elsewhere(job: Job, f: Filters) -> tuple[str, str] | None:
+    """(the job's places, as a short list; the person's first place) for a job to go to somewhere that isn't the
+    person's and says nothing of remote; None otherwise. The shared first look of onsite_elsewhere and office_shown."""
+    if not f.locations or not job.locations:
+        return None
+    wanted = _wanted(f)
+    if any(w.lower() in loc.lower() for w in wanted for loc in job.locations):
+        return None
+    if any(is_remote(loc) for loc in job.locations) or remote_title(job.title):
+        return None  # remote in words: place_rejection says where, and for whom
+    if job.remote and len(job.locations) < 2 and not office_time(job.description):
+        return None
+    places = "; ".join(job.locations[:3]) + (f" and {len(job.locations) - 3} more" if len(job.locations) > 3 else "")
+    return places, wanted[0] if wanted else "your area"
 
 
 def kept_open(job: Job) -> bool:

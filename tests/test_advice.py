@@ -8,6 +8,7 @@ import pytest
 from jobwatch import cli, config
 from jobwatch.advice import Advice, History, advise, verdict
 from jobwatch.models import Job
+from jobwatch.score import resume_id
 from jobwatch.store import Store
 from jobwatch.watch import Entry, save_job
 from jobwatch.web import App
@@ -255,3 +256,127 @@ def test_the_cli_counts_the_advice_by_rule(watchlist, web, capsys):
     cli.main(["-c", str(watchlist), "advice", "--format", "json"])
     s = json.loads(capsys.readouterr().out)
     assert s["jobs"] == sum(s["by_action"].values()) == 3 and s["by_reason"]["pay"] == s["by_action"]["queue"]
+
+
+HUBS = ["Austin, Texas", "Chicago, Illinois", "Portland, Oregon", "Atlanta, Georgia"]  # none is Denver
+OFFICE = "Logistics: on-site visits to clients and our office in Austin (Downtown) 2/week."
+BIG_PAY = "pay: {target: 225000-250000, floor: 180000}\n"
+
+
+def abroad(locations=HUBS, remote=True, description=OFFICE, company="Globex"):
+    """A job on the board's remote flag over places that aren't Denver, with pay at the top of the target."""
+    j = job(low=180000, high=250000, company=company)
+    j.locations, j.remote, j.description = list(locations), remote, description
+    return j
+
+
+def test_a_job_on_site_only_outside_your_places_never_says_queue_whatever_the_pay(watchlist):
+    """The board's remote flag over a list of other cities passed the place filter, and good pay made the advice
+    green: "Queue it" for a job with nothing in Denver."""
+    cfg = cfg_with(watchlist, BIG_PAY)
+    store = Store(cfg.state)
+    history = History(store)
+    for fit_ in (fit(85), None):  # scored well, or not scored yet
+        e = entry(abroad(), fit_)
+        said = advise(cfg, e, history)
+        assert (said.action, said.codes) == ("skip", ["place"])
+        assert said.reasons == ["on-site in Austin, Texas; Chicago, Illinois; Portland, Oregon and 1 more, "
+                                "not Denver or remote"]
+        assert said.line.endswith("(though the posted pay goes up to $250K, within your $225K–$250K target)")
+        call = verdict(e, history, said)  # still the person's call (they may pick an office elsewhere), never green
+        assert call["call"] == "stretch" and "not Denver or remote" in call["text"]
+    poor = entry(abroad(), fit(40))
+    assert verdict(poor, history, advise(cfg, poor, history)) == {
+        "call": "skip", "text": "Skip it: not a close match (40/100)."}
+    store.close()
+
+
+@pytest.mark.parametrize("job_", [
+    abroad(locations=["Denver, Colorado", "Austin, Texas"]),                   # one of the places is theirs
+    abroad(locations=["Remote - US"], remote=None),                            # remote in words: place rules own it
+    abroad(locations=["Austin, Texas"], description="Python services."),      # the flag over one office
+    abroad(description="In-office 3 days a week unless designated remote."),  # remote by arrangement
+])
+def test_jobs_in_your_places_or_remote_get_no_place_reason(watchlist, job_):
+    cfg = cfg_with(watchlist, BIG_PAY)
+    store = Store(cfg.state)
+    assert advise(cfg, entry(job_, fit(85)), History(store)).action == "queue"
+    store.close()
+
+
+def test_a_job_with_no_remote_flag_in_one_other_city_is_on_site_there(watchlist):
+    cfg = cfg_with(watchlist, BIG_PAY)
+    store = Store(cfg.state)
+    said = advise(cfg, entry(abroad(["Austin, Texas"], remote=None, description="Python."), fit(85)), History(store))
+    assert said.codes == ["place"] and said.reasons == ["on-site in Austin, Texas, not Denver or remote"]
+    store.close()
+
+
+def test_a_score_that_comes_in_changes_the_cards_advice_and_bottom_line(watchlist, web):
+    """A card drawn before its job was scored said "Queue it: the posted pay ..."; the score (40, from Read posting
+    or Score) then swapped the rings but left that line, so the card read Weak fit over a green Queue. The page asks
+    /api/advice for the card's lines again when a score comes in."""
+    (watchlist.parent / "cv.md").write_text("Python, LLMs, RAG")
+    cfg_with(watchlist, "pay: {target: 100000, floor: 90000}\nresume: cv.md\n")
+    app = App(watchlist)
+    app.post_fetch({})
+    paid = next(j for j in app.get_digest({})["jobs"] if j["salary_max"])
+    key = paid["key"]
+    assert paid["advice"]["action"] == "queue" and paid["verdict"]["call"] == "apply"  # unscored: pay is all there is
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    store.save_score(key, resume_id(cfg.resume, cfg.prompts), fit(40, 7, 10) | {"gaps": [], "summary": ""})
+    store.close()
+    now = app.post_advice({"keys": [key, "no:such:key"]})["advice"]
+    assert list(now) == [key]
+    assert now[key]["advice"] is None  # pay alone is no reason under a fit of 60
+    assert now[key]["verdict"] == {"call": "skip", "text": "Skip it: not a close match (40/100)."}
+    store = Store(cfg.state)
+    store.set_status([key], "applied")
+    store.close()
+    assert app.post_advice({"keys": [key]})["advice"][key] == {"advice": None, "verdict": None}  # past advice
+
+
+def test_the_cli_explains_one_jobs_card(watchlist, capsys):
+    cfg = cfg_with(watchlist, BIG_PAY)
+    store = Store(cfg.state)
+    j = abroad()
+    store.sync(j.source, j.company, [j])
+    key = j.key
+    store.close()
+    cli.main(["-c", str(watchlist), "advice", key])
+    out = capsys.readouterr().out
+    assert "fit:     not scored" in out and "advice:  Skip: on-site in Austin, Texas; Chicago, Illinois;" in out
+    assert "verdict: Queue it, but it's a stretch: on-site in" in out
+    cli.main(["-c", str(watchlist), "advice", key, "--format", "json"])
+    row = json.loads(capsys.readouterr().out)[0]
+    assert row["key"] == key and row["fit"] is None and row["places"][0] == "Austin, Texas (Remote)"
+    with pytest.raises(SystemExit):
+        cli.main(["-c", str(watchlist), "advice", "nope"])
+
+
+def test_a_nearby_office_job_on_site_elsewhere_says_why_it_shows_and_to_ask_first(watchlist):
+    """A job at a company with an office near you passes the place rules wherever it's posted. When it's on-site
+    somewhere else it isn't a plain green Queue: one line says why it shows, and the bottom line says to ask first."""
+    cfg = cfg_with(watchlist, BIG_PAY)
+    cfg.filters.nearby_offices = ["Initech"]
+    store = Store(cfg.state)
+    history = History(store)
+    hybrid = abroad(["Austin, Texas"], remote=None, description="Hybrid, 3 days a week.", company="Initech")
+    e = entry(hybrid, fit(85))
+    said = advise(cfg, e, history)
+    assert (said.action, said.codes) == ("ask", ["place_office"])
+    assert said.reasons == ["Initech has an office near Denver; role is on-site Austin, Texas: ask if the Denver "
+                            "office is an option"]
+    assert said.line.startswith("Ask first: Initech has an office near Denver;")
+    assert verdict(e, history, said) == {
+        "call": "stretch", "text": "Queue it, ask first: Initech has an office near Denver; role is on-site Austin, "
+                                   "Texas: ask if the Denver office is an option."}
+    poor = entry(hybrid, fit(40))  # a poor match is skipped for that, as before
+    assert verdict(poor, history, advise(cfg, poor, history))["text"] == "Skip it: not a close match (40/100)."
+    # in one of your places, or at a company without a nearby office elsewhere: nothing to ask
+    here = abroad(["Denver, Colorado"], remote=None, description="Python.", company="Initech")
+    assert advise(cfg, entry(here, fit(85)), history).action == "queue"
+    other = abroad(["Austin, Texas"], remote=None, description="Python.", company="Umbrella")
+    assert advise(cfg, entry(other, fit(85)), history).codes == ["place"]
+    store.close()

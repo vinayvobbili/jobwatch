@@ -453,6 +453,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .advice { font-size: 13px; margin-top: 6px; display: flex; gap: 6px; align-items: baseline; }
 .advice svg { flex: none; align-self: center; }
 .advice.queue b, .advice.queue svg { color: var(--good); } .advice.skip b, .advice.skip svg { color: var(--bad); }
+.advice.ask b, .advice.ask svg { color: #d97706; }
 .advice b { white-space: nowrap; }
 .know { color: var(--good); font-size: 13.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .know a { color: var(--muted); text-decoration: none; }
@@ -2002,6 +2003,7 @@ function listenForEvents() {
     toast(`New score: ${Math.round(d.fit.score)} by ${scorerLabel(d.fit.scored_by || "")}` + (d.note ? `. ${d.note}` : ""),
       null, d.note ? "" : "win");
     if (d.note) for (const k of d.keys || [d.key]) cardNote(k, d.note);
+    fetchAdvice(d.keys || [d.key]).then(showAdvice);
   });
   es.addEventListener("score-failed", e => {
     const d = JSON.parse(e.data);
@@ -2039,8 +2041,21 @@ function adviceLine(job) {
   const a = job.advice;
   if (!a || (job.status === "queued" && a.action === "queue")) return null;
   const why = a.reasons.join("; ") + (a.though.length ? ` (though ${a.though[0]})` : "");
-  return h("div", { class: `advice ${a.action}`, "data-advice": job.key }, icon(a.action === "queue" ? "check" : "x", 14),
+  return h("div", { class: `advice ${a.action}`, "data-advice": job.key }, icon({ queue: "check", ask: "alert" }[a.action] || "x", 14),
     h("span", { class: "atext", title: why }, why.charAt(0).toUpperCase() + why.slice(1)));
+}
+// A score that comes in changes the suggestion and the bottom line (a job judged on pay alone, then scored 40, is no
+// "Queue it"): ask for them again, as {key: {advice, verdict}} ({} when the page can't be reached: the next render
+// has them).
+async function fetchAdvice(keys) {
+  try { return (await api("/api/advice", { keys })).advice || {}; } catch { return {}; }
+}
+function showAdvice(said) {
+  for (const [key, a] of Object.entries(said)) {
+    const j = { key, ...a };
+    document.querySelectorAll(`[data-advice="${CSS.escape(key)}"]`).forEach(el => el.replaceWith(adviceLine(j) || noAdvice(j)));
+    document.querySelectorAll(`[data-verdict="${CSS.escape(key)}"]`).forEach(el => el.replaceWith(verdictLine(j)));
+  }
 }
 // In a job's details, where the ring would be: why there's no score yet (no posting text, still in line, ...).
 // On a job card, `corner` is its Score button (scoreButton's): the button takes the place of the dash, with the
@@ -2469,6 +2484,7 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
     for (const x of [b, corner]) { x.disabled = true; x.replaceChildren(...busy()); }
     try {
       job.fit = await api("/api/score", { key: job.key });
+      Object.assign(job, (await fetchAdvice([job.key]))[job.key] || {});  // the card is drawn again from `job`
       redraw(job);
     } catch (e) {
       for (const x of [b, corner]) x.disabled = false;
