@@ -41,6 +41,11 @@
   the notice alone). Nothing new, nothing shown. `jobwatch digest --notify` does it by hand (`--dry-run` shows what it
   would say, `-o FILE` writes the page); `morning: {notify: off, top: 3}` in the watchlist turns it off or sets how
   many it names.
+
+- A score made from a card's Score button, or by `jobwatch credit --test`, is now an Activity row like every other
+  score. It was saved with no row, so `jobwatch activity --since today --kind score` and the Activity tab said nothing
+  about those scores.
+
 - Today's Fit score minimum (60+, 70+, 80+) now hides the jobs with no score yet. The "No score yet" switch turns to
   Hide when you pick one, so 80+ no longer lists unscored cards, and the Showing line counts them out. Pick Show by
   hand and it stays until the fit changes; back on Any, the switch is what this browser had kept (a choice made under

@@ -504,6 +504,8 @@ def cmd_credit(args, cfg, store):
     fit = results[pick.job.key]
     for key in pick.keys:
         store.save_score(key, rid, fit)
+    store.log("score", f"Scored {fit['score']:.0f}/100 {pick.job.display_company}: {pick.job.title} "
+                       f"({fit['scored_by'].partition(':')[2]})", by="credit test", jobs=pick.keys)
     after = credit.status(cfg, store)[0]
     print(f"Scored {pick.job.key}: {fit['score']:.0f}/100 by {fit['scored_by']}")
     print(f"  this call ${after['spent_total'] - s['spent_total']:.4f}; ledger now ${after['spent_total']:.4f} in all")

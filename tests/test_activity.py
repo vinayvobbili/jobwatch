@@ -2,13 +2,15 @@
 newest first, kept in the store, and what it's doing now."""
 
 import functools
+from datetime import date, timedelta
 
+import pytest
 import yaml
 
 from jobwatch import alerts, config, watch
 from jobwatch import store as store_mod
 from jobwatch.store import Store
-from jobwatch.web import App
+from jobwatch.web import ApiError, App
 
 from .test_alerts import IMAP_WATCHLIST, FakeIMAP
 from .test_background_scoring import resume_watchlist, scored  # noqa: F401 (fixtures)
@@ -86,6 +88,34 @@ def test_scoring_says_which_jobs_and_their_scores(resume_watchlist, scored):  # 
     assert many["text"] == "Scored 1 job through the Batches API, 1 failed" and many["ok"]
     assert [d.split(" ")[0] for d in many["detail"]] == ["70/100", "Failed:"]
     store.close()
+
+
+def test_the_cards_score_button_is_in_the_log_and_found_by_since_and_kind(resume_watchlist, scored):  # noqa: F811
+    """A score made from a card (Score) is an Activity row like any other: it was saved with no row, so
+    `jobwatch activity --since today --kind score` and the Activity tab said nothing about the day's scores."""
+    app = App(resume_watchlist)
+    app.post_fetch({})
+    assert app.post_score({"key": "ashby:initech:c1"})["score"] == 70
+    assert app.post_score({"key": "ashby:initech:c1"})["score"] == 70  # from the cache: nothing new to say
+    rows = app.get_activity({"kind": ["score"]})["events"]
+    assert [(e["text"], e["by"], e["ok"]) for e in rows] == [("Scored 70/100 Initech: Staff Data Engineer "
+                                                             "(unknown model)", "page", True)]
+    assert [j["key"] for j in rows[0]["jobs"]] == ["ashby:initech:c1"]
+    store = Store(config.load(resume_watchlist).state)
+    assert len(store.activity(kind="score", since=store_mod.day_start(date.today()))) == 1
+    assert store.activity(kind="score", since=store_mod.day_start(date.today() + timedelta(days=1))) == []
+    store.close()
+
+
+def test_a_card_score_that_fails_is_a_failed_row(resume_watchlist, scored):  # noqa: F811
+    _, fail = scored
+    fail.add("ashby:initech:c1")
+    app = App(resume_watchlist)
+    app.post_fetch({})
+    with pytest.raises(ApiError, match="model said no"):
+        app.post_score({"key": "ashby:initech:c1"})
+    row = app.get_activity({"kind": ["score"]})["events"][0]
+    assert not row["ok"] and row["by"] == "page" and "model said no" in row["text"]
 
 
 def test_the_page_shows_the_log_and_whats_running(watchlist, web):

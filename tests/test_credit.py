@@ -280,6 +280,8 @@ def test_credit_test_scores_one_job_through_claude_alone_and_records_its_cost(tm
     assert "this call $0.0360" in capsys.readouterr().out
     assert store.credit_spent(datetime(2026, 11, 19).date())[1] == pytest.approx(18_000 * 2 / 1e6)
     assert store.score(short.key, score.resume_id(cfg.resume, cfg.prompts))["scored_by"] == "claude:claude-sonnet-5-5"
+    row = store.activity(kind="score")[0]  # a score is an Activity row, whoever made it
+    assert (row["text"], row["by"]) == ("Scored 70/100 Acme: Engineer (claude-sonnet-5-5)", "credit test")
 
 
 def test_credit_test_can_take_a_named_job_and_refuses_one_already_scored(tmp_path, store, calls, monkeypatch, capsys):

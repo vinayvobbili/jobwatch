@@ -113,7 +113,6 @@ from .watch import (
     save_job,
     scorable,
     score_entries,
-    score_with_fallback,
     scoring_line,
     set_link,
     unscored,
@@ -1887,7 +1886,7 @@ class App:
 
     def post_score(self, body) -> dict:
         def run(cfg, store):
-            job, _ = store.find(body.get("key") or "")
+            job, record = store.find(body.get("key") or "")
             if not scorable(job):
                 raise ApiError(MANY_ROLES[1] + ".")
             if not (cfg.resume and cfg.resume.is_file()):
@@ -1895,11 +1894,12 @@ class App:
             rid = resume_id(cfg.resume, cfg.prompts)
             if (cached := store.score(job.key, rid)) and not cached.get("stale"):
                 return cached  # a stale one is scored again: pressing Score on it is the decision
-            results, errors = score_with_fallback(cfg, store, [job])
-            if job.key not in results:
+            # through score_entries, so the score is an Activity row like every other (it saved none before)
+            done, errors = score_entries(cfg, store, [Entry(job, record, 0.0, [])], progress=lambda m: None,
+                                         by="page")
+            if not done:
                 raise ApiError(errors.get(job.key, "scoring failed"), HTTPStatus.BAD_GATEWAY)
-            store.save_score(job.key, rid, results[job.key])
-            return results[job.key]
+            return store.score(job.key, rid)
         return self._with_store(run)
 
     def _choices(self, cfg) -> list[dict]:
