@@ -213,8 +213,9 @@ def test_an_extension_that_says_unknown_message_falls_back_and_hints_once(browse
 
 def test_a_card_read_says_it_is_scoring_and_shows_the_score_when_it_arrives(browser, server, alert_jobs, watchlist,
                                                                             monkeypatch):
-    """Read posting is asking for the score: the card says it is being scored (not "in line"), and the score the
-    server sends as an event takes its place, with no click on Score."""
+    """Read posting is asking for the score: the card shows a spinner in the score's place (named "Scoring…" for a
+    screen reader and a tooltip, no small print, not "in line"), and the score the server sends as an event takes its
+    place, with no click on Score."""
     def fake(jobs, resume, backend, cache_dir, model="", **kw):
         return {j.key: {"score": 70, "must_haves_met": 2, "must_haves_total": 3, "gaps": [], "summary": "",
                         "scored_by": f"{backend}:{model}"} for j in jobs}, {}
@@ -225,7 +226,10 @@ def test_a_card_read_says_it_is_scoring_and_shows_the_score_when_it_arrives(brow
         card.scroll_into_view_if_needed()
         card_id = card.get_attribute("id")
         card.locator("button", has_text="Read posting").click()
-        sync_api.expect(card).to_contain_text("scoring it now")
+        spinner = card.locator(".fitbox.scoring-now")
+        sync_api.expect(spinner).to_have_attribute("aria-label", "Scoring…")
+        sync_api.expect(spinner.locator(".score-spin")).to_be_visible()
+        sync_api.expect(card).not_to_contain_text("scoring it now")  # no small print
         assert card.locator("[data-fit]").count() == 0
         # what the extension does on the server meanwhile: save the text, which scores the job
         store = Store(config.load(watchlist).state)
@@ -238,6 +242,7 @@ def test_a_card_read_says_it_is_scoring_and_shows_the_score_when_it_arrives(brow
         status, data = request(server, "POST", "/ext/posting", body, headers={"X-Jobwatch-Extension": token})
         assert status == 200 and json.loads(data)["scoring"] is True
         sync_api.expect(page.locator(f'[id="{card_id}"] [data-fit]')).to_be_visible(timeout=10000)
+        sync_api.expect(page.locator(f'[id="{card_id}"] .score-spin')).to_have_count(0)  # the score took its place
         assert page.errors == []
     finally:
         page.close()
