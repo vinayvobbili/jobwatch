@@ -511,8 +511,6 @@ def cmd_credit(args, cfg, store):
     print(f"  this call ${after['spent_total'] - s['spent_total']:.4f}; ledger now ${after['spent_total']:.4f} in all")
 
 
-def cmd_unscored(args, cfg, store):
-    """Today's jobs with no fit score, and why: in the background scorer's line (and where), no posting text to
 def cmd_scorers(args, cfg, store):
     """`scorers`: each step of the scoring chain, active or paused (until when, why, and whether a run or a hand set
     it), from the store alone: no call, no page. --pause STEP --until TIME holds a step by hand, as a run does when
@@ -566,6 +564,8 @@ def _paused(pause: dict) -> str:
             + f" ({HELD if by_hand else 'set by a scoring run'}, since {local(pause['since'])})")
 
 
+def cmd_unscored(args, cfg, store):
+    """Today's jobs with no fit score, and why: in the background scorer's line (and where), no posting text to
     score, the same role scored before this posting came in, no resume. Failures and the job being scored
     right now are what the page itself knows: see Today there."""
     why = unscored_reasons(cfg, store)
@@ -1989,8 +1989,6 @@ def build_parser() -> argparse.ArgumentParser:
                    "button too) instead of the shortest posting")
     p.set_defaults(func=cmd_credit)
 
-    p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")
-    p.add_argument("--no-text", action="store_true", help="only the jobs waiting for their posting's text, each with "
     p = sub.add_parser("scorers", help="each step of the scoring chain, active or paused (until when, why, who set "
                        "it); --pause and --resume hold or free one by hand. Calls no model")
     p.add_argument("--pause", default=None, metavar="STEP",
@@ -2001,6 +1999,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resume", default=None, metavar="STEP", help="end this step's pause now")
     p.set_defaults(func=cmd_scorers)
 
+    p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")
+    p.add_argument("--no-text", action="store_true", help="only the jobs waiting for their posting's text, each with "
                    "its link: give them the text with `mark KEY --url LINK` or `mark KEY --text FILE`")
     p.set_defaults(func=cmd_unscored)
 
