@@ -232,7 +232,7 @@ def test_a_fit_minimum_hides_jobs_with_no_score_until_show_is_picked_by_hand(job
     chip(page, "No score yet", "Show").click()  # ... and not overwritten by a Show picked under a fit chip
     chip(page, "Fit score", "Any").click()
     sync_api.expect(chip(page, "No score yet", "Hide")).to_have_class("on")
-    sync_api.expect(unscored).to_have_count(0)
+    sync_api.expect(unscored).to_have_count(1)  # with no fit chip on, the switch changes nothing
     reload(page)
     sync_api.expect(chip(page, "No score yet", "Hide")).to_have_class("on")
     assert page.errors == []
