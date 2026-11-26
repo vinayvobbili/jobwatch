@@ -206,9 +206,36 @@ def requirement_rows(result, spec) -> list[dict]:
     return rows
 
 
+SOFT_GAPS = 8  # the most soft_gaps lists: the card shows a couple of lines of them
+
+
+def soft_gaps(fit: dict | None) -> list[str]:
+    """What a fit score found missing or only partly shown when it lists no gaps of its own. fit.gaps are the
+    must-haves not met; a posting with only a "what an ideal candidate has" list has no must-haves, so a weak fit
+    would show an empty Gaps row. Then the requirements judged missing come first, the partly met after, each
+    saying whether it is a must-have or a nice to have. Empty when the fit has gaps, or its requirements are all
+    met, or it kept none (scores saved before requirements were kept)."""
+    if not fit or fit.get("gaps"):
+        return []
+    rows = fit.get("requirements") or []
+    out = []
+    for verdict, said in (("not_met", "missing"), ("partial", "partly")):
+        for r in rows:
+            if r.get("verdict") == verdict:
+                kind = "must-have" if r.get("kind") == "must_have" else "nice to have"
+                out.append(f"{r.get('requirement', '')} ({kind}, {said})")
+    return out[:SOFT_GAPS]
+
+
 def brief(fit: dict | None) -> dict | None:
-    """A fit score without its per-requirement detail, for lists of jobs (one job's view keeps it all)."""
-    return {k: v for k, v in fit.items() if k != "requirements"} if fit else fit
+    """A fit score without its per-requirement detail, for lists of jobs (one job's view keeps it all). With no
+    gaps of its own it carries soft_gaps (see above), so its card can say why the number is low."""
+    if not fit:
+        return fit
+    out = {k: v for k, v in fit.items() if k != "requirements"}
+    if extra := soft_gaps(fit):
+        out["soft_gaps"] = extra
+    return out
 
 
 def calls_at_once(backend: str, workers: int, provider: Provider | None = None) -> int:

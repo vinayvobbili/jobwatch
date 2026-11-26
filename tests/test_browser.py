@@ -184,6 +184,29 @@ def test_the_show_hide_choices_for_unknowns_are_remembered(page, hint, default, 
     assert page.errors == []
 
 
+def test_a_weak_fit_with_no_must_haves_shows_what_it_found_missing_on_the_card(jobs, page, watchlist):
+    """Not a dash in the Gaps row next to a 46: a posting with only an "ideal candidate has" list has no must-haves,
+    so the row lists the requirements judged missing, then the partly shown, each marked a nice to have."""
+    from jobwatch.score import resume_id
+
+    cv = watchlist.parent / "cv.md"
+    cv.write_text("# Jane Doe")
+    config.save(watchlist, {"resume": str(cv)})
+    cfg = config.load(watchlist)
+    ask = {"kind": "nice_to_have", "evidence": [], "evidence_verified": True, "reasoning": "why"}
+    store = Store(cfg.state)
+    store.save_score("greenhouse:acme:101", resume_id(cfg.resume), {
+        "score": 46.0, "must_haves_met": 0, "must_haves_total": 0, "gaps": [], "summary": "Weak.", "flags": [],
+        "requirements": [{**ask, "id": "a", "requirement": "Umbrella industry experience", "verdict": "partial"},
+                         {**ask, "id": "b", "requirement": "Two embedded deployments", "verdict": "not_met"}]})
+    store.close()
+    card = page.locator(".card.job", has=page.locator('[data-fit="greenhouse:acme:101"]'))
+    reload(page)
+    sync_api.expect(card.locator(".gaps")).to_have_text(
+        "Two embedded deployments (nice to have, missing) · Umbrella industry experience (nice to have, partly)")
+    assert page.errors == []
+
+
 DEGREE = "Bachelor of Science degree in Computer Science or a related technical/analytical discipline"
 DISTRIBUTED = "Strong distributed-systems background, including retries, idempotency, and recovery"
 

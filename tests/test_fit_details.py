@@ -41,8 +41,12 @@ def test_requirement_rows_keep_verified_quotes_and_the_requirement_text():
 
 
 def test_brief_drops_only_the_requirements():
-    assert brief(FIT) == {k: v for k, v in FIT.items() if k != "requirements"}
+    met = {**FIT, "requirements": REQUIREMENTS[:1]}  # nothing missing: nothing to say beyond the gaps
+    assert brief(met) == {k: v for k, v in met.items() if k != "requirements"}
     assert brief(None) is None
+    # With no gaps of its own and a requirement it judged missing, the soft gaps say so.
+    assert brief(FIT) == {**{k: v for k, v in FIT.items() if k != "requirements"},
+                          "soft_gaps": ["Experience with Go (nice to have, missing)"]}
 
 
 def test_store_round_trip_and_bulk_read(tmp_path):

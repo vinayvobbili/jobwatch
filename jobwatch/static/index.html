@@ -2026,10 +2026,16 @@ function noFitBox(job, corner = null) {
 }
 
 // `bare` is the gap sentence alone, for a job card's Gaps row (the row says what it is; click opens it past two lines).
+// A fit with no gaps of its own (a posting with only a "what an ideal candidate has" list has no must-haves) lists
+// what it judged missing or partly shown instead (fit.soft_gaps, from the server), so a weak score says why.
+function fitGaps(fit) {
+  return fit && fit.gaps && fit.gaps.length ? fit.gaps : (fit && fit.soft_gaps) || [];
+}
 function gapsLine(fit, bare = false) {
-  if (!fit || !fit.gaps || !fit.gaps.length) return null;
-  const el = h("div", { class: "gaps", title: bare ? fit.gaps.join(" · ") : "Click to see every gap" },
-    bare ? null : h("b", {}, "Gaps: "), fit.gaps.join(" · "));
+  const gaps = fitGaps(fit);
+  if (!gaps.length) return null;
+  const el = h("div", { class: "gaps", title: bare ? gaps.join(" · ") : "Click to see every gap" },
+    bare ? null : h("b", {}, "Gaps: "), gaps.join(" · "));
   el.onclick = () => el.classList.toggle("open");
   return el;
 }
@@ -6439,7 +6445,7 @@ const COMP_ROWS = [  // [label, the value (text or an element; null for none), t
   ["Offered", o => o.comp.offered, "offered"],
   ["Glassdoor", o => o.comp.glassdoor],
   ["Fit", o => o.fit ? `${Math.round(o.fit.score)}/100 · must-haves ${o.fit.met}/${o.fit.total}` + (o.fit.stale ? " (old score)" : "") : null, "fit"],
-  ["Gaps", o => o.fit?.gaps.length ? h("div", { class: "gapline" }, o.fit.gaps.join(" · ")) : null],
+  ["Gaps", o => fitGaps(o.fit).length ? h("div", { class: "gapline" }, fitGaps(o.fit).join(" · ")) : null],
   ["You know", o => o.contacts.length ? o.contacts.map(p => p.name + (p.position ? ` (${p.position})` : "")).join("; ") : null],
   ["Note", o => o.comp.note],
   ["Role", o => ({ product: "Builds the product", customer: "Customer-facing", internal: "Internal tools" })[o.comp.role] || null],

@@ -87,7 +87,7 @@ from .config import ConfigError
 from .filters import KINDS
 from .package import Package
 from .rounds import ROUNDS
-from .score import Provider, ScoringUnavailable, brief, paused_until, prompt_info, provider_key, resume_id
+from .score import Provider, ScoringUnavailable, brief, paused_until, prompt_info, provider_key, resume_id, soft_gaps
 from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, Store, closed_state
 from .watch import (
     MANY_ROLES,
@@ -1478,7 +1478,8 @@ class App:
                     "find_referral": contacts.linkedin_search(job.display_company),
                     "candidate_home": store.candidate_home(job),
                     "package": Package(store.packages, job.key).data(),
-                    "skills": learn.job_gaps(cfg, store, job), "fit": fit,
+                    "skills": learn.job_gaps(cfg, store, job),
+                    "fit": {**fit, "soft_gaps": extra} if fit and (extra := soft_gaps(fit)) else fit,
                     "can_score": resume and scorable(job) and bool(job.description.strip()),
                     # Only queued and Today's jobs are in the scorer's line: working it out for any other (an
                     # application) reads every job through the filters and tells nothing more.

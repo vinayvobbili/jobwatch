@@ -12,6 +12,9 @@
   posting found closed that evening read "closed" with tomorrow's date (and the company page showed "Nov NaN").
   One helper does it in the page (`localDay`) and one in Python (`jobwatch.localday.local_day`); the stored data is
   unchanged.
+- A weak fit with no must-haves no longer shows an empty Gaps row. A posting with only an "ideal candidate has" list
+  has no must-haves, so its fit had no gaps to list next to a low score. The card now lists the requirements the
+  score judged missing, then the partly shown, each marked a nice to have (or a must-have).
 - A degree requirement your education already meets no longer shows as a gap. A fit score can lose a degree's level
   on the way ("MS in Computer Science" read as a subject with no level), so "Bachelor's degree in Computer Science
   or a related discipline" came back partly met. Where a gap is a plain degree requirement and the `education:` in
