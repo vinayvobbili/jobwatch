@@ -14,7 +14,7 @@ from dataclasses import asdict
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import answers, chat, filltext, linkedin, sources, stories, tailor
+from . import alerts, answers, chat, filltext, linkedin, sources, stories, tailor
 from .config import Config
 from .models import Job
 from .resume import resume_text
@@ -356,29 +356,36 @@ def _indeed_key(given: str) -> str:
     return key if re.fullmatch(r"[0-9a-f]{8,}", key, re.I) else ""
 
 
+def _came_from(job: Job, rec: dict, site_id: str, indeed: bool = False) -> bool:
+    """Whether this job is the one with that LinkedIn id (or Indeed key): by its link, or by the note saying where it
+    was found."""
+    if indeed:
+        seen = re.compile(rf"indeed\.com/\S*[?&]jk={site_id}\b")
+        return bool(seen.search(job.url or "") or seen.search(rec.get("note") or ""))
+    seen = re.compile(rf"linkedin\.com/jobs/view/\S*{site_id}\b")
+    return linkedin.job_id(job.url) == site_id or bool(seen.search(rec.get("note") or ""))
+
+
 def _listing(store: Store, pid: str, links: list[str], company: str, title: str,
              jk: str = "") -> tuple[Job, dict] | None:
     """The job the posting on screen is: the one that came from that LinkedIn id (its link, or the note saying
     where it was found) or Indeed key (its link), else the one kept at the company's link, else the same company
     and title (a text-less one first)."""
-    rows = store.jobs()
+    # Each lookup is one query that narrows to the few rows that could match: reading every job (a hundred thousand,
+    # with their postings' text) for each request took seconds, and over 20 when the file was busy.
     # a job's own id finds it even once it is marked closed (a page that says so is read again), never a second copy
-    every = store.jobs(include_closed=True) if pid or jk else rows
-    if pid:
-        seen = re.compile(rf"linkedin\.com/jobs/view/\S*{pid}\b")
-        for job, rec in every:
-            if linkedin.job_id(job.url) == pid or seen.search(rec.get("note") or ""):
-                return job, rec
-    if jk:
-        seen = re.compile(rf"indeed\.com/\S*[?&]jk={jk}\b")
-        for job, rec in every:
-            if seen.search(job.url or "") or seen.search(rec.get("note") or ""):
+    for site_id, indeed in ((pid, False), (jk, True)):
+        for job, rec in store.mentioning(site_id):
+            if _came_from(job, rec, site_id, indeed):
                 return job, rec
     for link in links:
         if found := job_for(store, link):
             return found
-    like = [(j, r) for j, r in rows if company and title and linkedin.same_company(j.display_company, company)
-            and linkedin.same_title(j.title, title)]
+    like = []
+    if company and title:
+        like = sorted(((j, r) for j, r in store.open_at(linkedin.company_names(company)[-1])
+                       if linkedin.same_company(j.display_company, company) and linkedin.same_title(j.title, title)),
+                      key=lambda p: p[1]["first_seen"], reverse=True)
     return next(((j, r) for j, r in like if not j.description.strip() and j.source == MANUAL),
                 like[0] if like else None)
 
@@ -433,8 +440,8 @@ def _by_its_id(store: Store, body: dict, key: str) -> bool:
     """Whether the job the page was matched to is that page's own job (its LinkedIn id or Indeed key), not one only
     sharing its company and title: another posting's open page never reopens it."""
     pid, jk = _site_ids(body)
-    own = (pid or jk) and _listing(store, pid, [], "", "", jk)
-    return bool(own) and own[0].key == key
+    job, rec = store.find(key)  # the job itself: no search of every job for the id again
+    return bool(pid and _came_from(job, rec, pid)) or bool(jk and _came_from(job, rec, jk, True))
 
 
 def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
@@ -475,8 +482,29 @@ def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
         if job.description.strip():
             return _posted(store, job, _said(job), True)
     link = next((u for u in links if not sources.detect(u)), "") or (came or "").rpartition(": ")[2]
-    job, _ = save_job(store, link, company, title, text, note=came, boards=cfg.boards)
-    return _posted(store, job, _said(job), True)
+    # A job known only by its LinkedIn or Indeed id is kept with the text the page showed, at once; whether the same
+    # job is on the company's own board is looked for after the answer (find_on_board): that is network reads.
+    later = bool(came) and link == came.rpartition(": ")[2]
+    job, _ = save_job(store, link, company, title, text, note=came, boards=cfg.boards, find_board=not later)
+    return {**_posted(store, job, _said(job), True), **({"find_on_board": True} if later else {})}
+
+
+def find_on_board(cfg: Config, store: Store, key: str, get=None, page=None) -> str:
+    """Look for a job kept from its LinkedIn page's text on the company's own board, where the application goes, and
+    give the job that posting (its link, text, pay and places; the key, status and notes stay). Says what happened,
+    in a few words, '' when it isn't there. Network reads: never on a request someone is waiting for."""
+    job, rec = store.find(key)
+    if job.source != MANUAL or rec.get("closed"):
+        return ""
+    p = linkedin.Posting(id="", title=job.title, company=job.display_company, location=", ".join(job.locations),
+                         description=job.description)
+    found = linkedin.on_board(p, [(b.source, b.board, b.name) for b in cfg.boards], get, page)
+    if not found:
+        return ""
+    if sources.SOURCES[found.source].search:  # a searched board names only its tenant ("acme")
+        found.company_name = job.display_company
+    alerts.fill_from_board(store, job, found)
+    return f"found on the company's own board: {found.url}"
 
 
 def _posted(store: Store, job: Job, said: str, added: bool) -> dict:

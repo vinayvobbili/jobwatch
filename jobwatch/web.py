@@ -570,6 +570,7 @@ class App:
         self.lock = threading.Lock()  # one fetch or save at a time
         self.looking = threading.Lock()  # one look for suggested companies' boards at a time
         self.events = Events()
+        self.lookups: list[threading.Thread] = []  # looks for a job on its company's own board (ext_posting)
         self.rescoring: set[str] = set()  # jobs being scored again when asked (post_rescore), one run each
         self._rescoring_lock = threading.Lock()
         self.scorer = Scorer(self)
@@ -961,9 +962,31 @@ class App:
             except sources.SourceError as e:
                 raise ApiError(f"couldn't read that posting: {e}") from None
         got = self._with_store(run)
+        if got.pop("find_on_board", False):
+            self.find_on_board_in_background(got["key"])  # the answer doesn't wait for network reads
         if got["has_text"]:
             self.score_in_background()  # it has text to score now
         return got
+
+    def find_on_board_in_background(self, key: str):
+        """Look for the job on the company's own board behind the answer (see autofill.find_on_board), and score it
+        again when it is there: the board's text replaces the page's."""
+        if not self.background:
+            return
+
+        def look():
+            try:
+                said = self._with_store(lambda cfg, store: autofill.find_on_board(cfg, store, key))
+            except Exception as e:  # never take the page down: the job keeps the text the page showed
+                print(f"jobwatch ui: looking for {key} on its company's board: {type(e).__name__}: {e}",
+                      file=sys.stderr)
+                return
+            if said:
+                self.log("mail", f"Looked for {key}: {said}", jobs=[key])
+                self.score_in_background()
+        t = threading.Thread(target=look, name="jobwatch-board-lookup", daemon=True)
+        self.lookups = [x for x in self.lookups if x.is_alive()] + [t]  # kept so a test can wait for it
+        t.start()
 
     def ext_import_list(self, body) -> dict:
         """The jobs on a LinkedIn or Indeed list page the extension read (see joblist.py): counts and coverage per

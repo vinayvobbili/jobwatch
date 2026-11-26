@@ -866,6 +866,16 @@ class Store:
                                "ORDER BY first_seen DESC", [text] * len(fields)).fetchall()
         return [(Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}) for r in rows]
 
+    def mentioning(self, text: str) -> list[tuple[Job, dict]]:
+        """Jobs at any status, closed too, newest first, whose kept data (link included) or note holds this text
+        exactly: a posting id or key to be checked by the caller. A plain substring test over the stored rows, which
+        is much cheaper than search(): it reads no JSON fields and builds no Job but the few that match."""
+        if not text:
+            return []
+        rows = self.db.execute(f"{_ROW} WHERE instr(data, ?) OR instr(COALESCE(note, ''), ?) "
+                               "ORDER BY first_seen DESC", (text, text)).fetchall()
+        return [(Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}) for r in rows]
+
     def company_counts(self) -> list[dict]:
         """How many jobs each company has, by status and whether closed, without reading any posting: source,
         company (the board), name (what its jobs call it), status, closed (bool) and n."""

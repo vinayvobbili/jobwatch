@@ -2,10 +2,12 @@
 jobwatch has from an alert, or adds one."""
 
 import json
+import threading
+import time
 
 import pytest
 
-from jobwatch import config
+from jobwatch import autofill, config, linkedin, sources
 from jobwatch.store import Store, closed_state
 from jobwatch.web import App
 
@@ -212,3 +214,99 @@ def test_another_postings_open_page_or_no_closed_word_never_reopens(app):
     assert closed_state(_job(app, key)[1]) == "closed"
     said = app.ext_posting({k: v for k, v in CLOSED.items() if k != "closed"})
     assert said["key"] == key and not said.get("reopened") and closed_state(_job(app, key)[1]) == "closed"
+
+
+# -- the answer doesn't wait for slow work
+
+def test_a_job_found_by_its_id_reads_no_other_job(app, monkeypatch):
+    """The slowness behind 'jobwatch took too long to answer': every job (a hundred thousand, with their postings'
+    text) was read and parsed to find the one the page is for, twice for a page that isn't closed."""
+    key = _alert_job(app)
+
+    def never(*a, **k):
+        raise AssertionError("every job was read to find one")
+    monkeypatch.setattr(Store, "iter_jobs", never)
+    got = app.ext_posting({"linkedin": "4000000001", "company": "Globex", "title": "Machine Learning Engineer",
+                           "text": "Train models for Globex.", "closed": False})
+    assert got["key"] == key and got["has_text"] and not got["added"] and got["where"] == "queue"
+    assert app.ext_posting({"linkedin": "4000000001", "closed": True, "text": "x", "company": "Globex",
+                            "title": "Machine Learning Engineer"})["closed"]
+
+
+def test_a_job_told_by_its_company_and_title_is_found_without_reading_every_job(app, monkeypatch):
+    key = _alert_job(app)
+    monkeypatch.setattr(Store, "iter_jobs", lambda *a, **k: (_ for _ in ()).throw(AssertionError("read every job")))
+    got = app.ext_posting({"company": "Globex Inc.", "title": "Machine Learning Engineer", "text": "Models."})
+    assert got["key"] == key and not got["added"]
+
+
+@pytest.fixture
+def lookups(app, monkeypatch):
+    """The app with its background work on, scoring stubbed out, as `jobwatch ui` runs it."""
+    app.background = True
+    monkeypatch.setattr(app.scorer, "kick", lambda: None)
+    return app
+
+
+def test_a_slow_board_lookup_never_holds_the_answer(lookups, monkeypatch):
+    """A job jobwatch hasn't got is kept with the text the page showed at once; looking for it on the company's own
+    board (network reads) goes on behind the answer, and only then replaces the text."""
+    started, release = threading.Event(), threading.Event()
+    real = linkedin.on_board
+
+    def slow(p, watched=(), get=None, page=None):
+        started.set()
+        assert release.wait(10)
+        return real(p, watched, get, page)
+    monkeypatch.setattr(linkedin, "on_board", slow)
+
+    took = time.perf_counter()
+    got = lookups.ext_posting({"linkedin": "4000000009", "company": "Globex", "title": "Machine Learning Engineer",
+                               "text": "Text from the page."})
+    assert time.perf_counter() - took < 5
+    assert got["added"] and got["has_text"] and "find_on_board" not in got
+    job, rec = _job(lookups, got["key"])
+    assert job.description == "Text from the page." and "4000000009" in job.url and rec["status"] == "queued"
+
+    assert started.wait(10)  # the lookup is running, and the page's text is what the job has meanwhile
+    assert _job(lookups, got["key"])[0].description == "Text from the page."
+    release.set()
+    for t in lookups.lookups:
+        t.join(10)
+    job, rec = _job(lookups, got["key"])
+    assert job.key == got["key"] and job.url == LEVER_POSTING and "Train machine learning models" in job.description
+    assert rec["status"] == "queued" and "4000000009" in rec["note"]
+
+
+def test_a_lookup_that_fails_leaves_the_pages_text(lookups, monkeypatch):
+    def broken(*a, **k):
+        raise sources.SourceError("the board is down")
+    monkeypatch.setattr(linkedin, "on_board", broken)
+    got = lookups.ext_posting({"linkedin": "4000000010", "company": "Initech", "title": "Data Scientist",
+                               "text": "Models for Initech."})
+    for t in lookups.lookups:
+        t.join(10)
+    assert _job(lookups, got["key"])[0].description == "Models for Initech."
+
+
+def test_find_on_board_gives_the_job_the_companys_posting_and_keeps_its_key(app):
+    key = _alert_job(app, "Globex", "Machine Learning Engineer", LI.replace("1/", "7/"))
+    store = Store(config.load(app.path).state)
+    try:
+        store.set_description(key, "Text from the page.")
+        said = autofill.find_on_board(config.load(app.path), store, key)
+        job, rec = store.find(key)
+        assert said.startswith("found on the company's own board") and job.url == LEVER_POSTING
+        assert "Train machine learning models" in job.description and rec["status"] == "queued"
+    finally:
+        store.close()
+
+
+def test_find_on_board_says_nothing_when_the_company_has_no_such_posting(app):
+    key = _alert_job(app, "Globex", "Chief Gardener", LI.replace("1/", "8/"))
+    store = Store(config.load(app.path).state)
+    try:
+        assert autofill.find_on_board(config.load(app.path), store, key) == ""
+        assert store.find(key)[0].url == LI.replace("1/", "8/")
+    finally:
+        store.close()

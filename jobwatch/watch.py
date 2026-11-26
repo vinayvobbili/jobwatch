@@ -772,8 +772,10 @@ def watched_name(cfg: Config, link: str) -> str:
 
 def save_job(store: Store, link: str = "", company: str = "", title: str = "", text: str = "",
              status: str = "queued", note: str | None = None, applied: str | None = None, location: str = "",
-             get=None, page=None, boards: list[Board] = ()) -> tuple[Job, bool]:
+             get=None, page=None, boards: list[Board] = (), find_board: bool = True) -> tuple[Job, bool]:
     """Add a job found somewhere else: (the job, whether its posting was read from the link).
+    find_board=False keeps a LinkedIn job as given without looking for it on the company's own board (that is
+    network reads, so a caller that must answer quickly looks later: see autofill.find_on_board).
 
     A link to one job on a supported board (Greenhouse, Lever, Ashby, Workable, Workday, Rippling, Google,
     Amazon, Oracle, SmartRecruiters, Avature, iCIMS, Jobvite, or a careers site's job page with JobPosting markup)
@@ -787,14 +789,16 @@ def save_job(store: Store, link: str = "", company: str = "", title: str = "", t
     that's recorded on it; dupes.check says which, to warn. Status "new" adds it as a fresh find, as a board fetch
     would (in the digest, no day applied); a job already tracked keeps its status.
     A company whose board isn't in `boards` becomes a suggestion to watch (see suggest.py)."""
-    job, read = _save_job(store, link, company, title, text, status, note, applied, location, get, page, boards)
+    job, read = _save_job(store, link, company, title, text, status, note, applied, location, get, page, boards,
+                          find_board)
     dupes.record(store, [job])
     suggest.record(store, boards, job)
     return job, read
 
 
 def _save_job(store: Store, link: str, company: str, title: str, text: str, status: str, note: str | None,
-              applied: str | None, location: str, get, page, boards: list[Board]) -> tuple[Job, bool]:
+              applied: str | None, location: str, get, page, boards: list[Board],
+              find_board: bool = True) -> tuple[Job, bool]:
     link, job = link.strip(), None
     if pid := linkedin.job_id(link):
         if not (company.strip() and title.strip()):
@@ -802,7 +806,7 @@ def _save_job(store: Store, link: str, company: str, title: str, text: str, stat
                              "the job title too, and paste the posting's text to score it")
         p = linkedin.Posting(id=pid, title=title.strip(), company=company.strip(), location=location,
                              description=text.strip())
-        job = linkedin.on_board(p, [(b.source, b.board, b.name) for b in boards], get, page)
+        job = linkedin.on_board(p, [(b.source, b.board, b.name) for b in boards], get, page) if find_board else None
         why = f"Found on LinkedIn: {p.url}"
         if job is None:
             job = store.add(p.company, p.title, url=p.url, status=status, note=note, applied=applied,

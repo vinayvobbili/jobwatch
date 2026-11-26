@@ -214,6 +214,8 @@ def server(request, watchlist, web):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv.server_address[1]
     srv.app.refresher.stop(10)  # its first check (on the fake boards) ends before they go away
+    for t in srv.app.lookups:  # so does a look for a job on its company's board
+        t.join(10)
     srv.shutdown()
     srv.server_close()
 
