@@ -157,7 +157,15 @@
     if (!r || !r.ok) return banner((r && r.error) || 'jobwatch did not answer', false);
     // A closed posting is said in amber and stays on screen longer: it is the thing the person most needs to see.
     banner(r.said || 'posting saved', !(r.closed || read.closed));
-    setTimeout(() => window.close(), r.closed || read.closed ? CLOSE_CLOSED_MS : CLOSE_MS);
+    setTimeout(closeTab, r.closed || read.closed ? CLOSE_CLOSED_MS : CLOSE_MS);
+  }
+
+  /** The service worker closes the tab (chrome.tabs.remove): a page can close only a tab it opened itself with a short
+   * history, which LinkedIn's redirects defeat. window.close is the fallback when the worker doesn't answer ok. */
+  async function closeTab() {
+    let r;
+    try { r = await chrome.runtime.sendMessage({ type: 'closeReadTab' }); } catch { r = null; }
+    if (!r || !r.ok) window.close();
   }
   run();
 })(typeof globalThis !== 'undefined' ? globalThis : this);

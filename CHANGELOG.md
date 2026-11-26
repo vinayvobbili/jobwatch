@@ -70,6 +70,11 @@
   amber) when the LinkedIn or Indeed page says the posting is closed. It was dropped when jobwatch already had the
   posting's text, when the job was added by that read, and when the job was skipped; the banner line is also found with
   a stray space, icon text or a closing dot around it.
+- Fix: the tab Read posting opens now closes itself reliably once the posting is read. The page's own `window.close()`
+  is ignored by Chrome for a tab with LinkedIn's redirects in its history, so the extension's service worker closes it
+  (`chrome.tabs.remove`, no new permission), and only a LinkedIn or Indeed job tab whose posting it has just given to
+  jobwatch; a tab that showed a sign-in wall or a captcha stays open for you. The page's `window.close()` remains as
+  the fallback.
 - Fix: `suggest`, `find` and the MCP `find_board` no longer abort with "'idna' codec can't encode characters: label
   too long" when a company name makes a host label over 63 characters; that guess now counts as no board found.
 - MCP: `mark_job` with status `applied` asks for proof of submission through elicitation (confirmation page seen,

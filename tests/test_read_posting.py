@@ -153,3 +153,158 @@ setTimeout(() => {{ console.log(JSON.stringify({{ sent, banner: banner.textConte
     assert got["banner"] == "jobwatch: saved", got
     assert len(sent) == 1 and sent[0]["type"] == "readPosting" and sent[0]["id"] == "4000000001"
     assert sent[0]["text"].startswith("We are hiring a Platform Engineer") and sent[0]["closed"] is True
+
+
+# --- the tab closes itself once the posting is read: the service worker removes it (chrome.tabs.remove) -------------
+
+EXT = SCRIPT.parent
+
+
+def content_script_case(tmp_path, page_text: str, answers: dict):
+    """read-posting.js on a page jobwatch's button opened, its banner delay cut to a few ms, `answers` the service
+    worker's reply to each message type ("throw" makes the send fail). The messages it sent, and whether it closed itself."""
+    return run_js(tmp_path, f"""const sent = [];
+const answers = {json.dumps(answers)};
+globalThis.chrome = {{ runtime: {{ id: 'x', sendMessage: async (m) => {{
+  sent.push(m.type);
+  const a = answers[m.type];
+  if (a === 'throw') throw new Error('Extension context invalidated');
+  return a; }} }} }};
+globalThis.location = {{ href: {json.dumps(LI)}, hash: '#jobwatch-read', pathname: '/jobs/view/4000000001/', search: '' }};
+const banner = {{ style: {{}}, setAttribute() {{}} }};
+globalThis.document = {{ body: {{ innerText: {json.dumps(page_text)} }}, querySelector: () => null, getElementById: () => null,
+  createElement: () => banner, documentElement: {{ appendChild() {{}} }} }};
+globalThis.history = {{ replaceState() {{}} }};
+globalThis.window = {{ close() {{ sent.push('window.close'); }} }};
+const later = globalThis.setTimeout;
+globalThis.setTimeout = (f, ms) => later(f, ms >= 2000 ? 5 : ms);  // the banner's 2.5 s and 6 s
+delete require.cache[require.resolve({json.dumps(str(SCRIPT))})];  // run_js loaded it once already, with no page
+require({json.dumps(str(SCRIPT))});
+later(() => {{ console.log(JSON.stringify({{ sent }})); process.exit(0); }}, 300);""")["sent"]
+
+
+@needs_node
+def test_a_read_posting_asks_the_service_worker_to_close_its_tab(tmp_path):
+    sent = content_script_case(tmp_path, LINKEDIN_PAGE, {"readPosting": {"ok": True, "said": "saved"}, "closeReadTab": {"ok": True}})
+    assert sent == ["readPosting", "closeReadTab"]  # the worker closed it: the page did not need to
+
+
+@needs_node
+@pytest.mark.parametrize("reply", [{"ok": False, "error": "no"}, None, "throw"])
+def test_the_page_closes_itself_only_when_the_worker_does_not_answer_ok(tmp_path, reply):
+    sent = content_script_case(tmp_path, LINKEDIN_PAGE, {"readPosting": {"ok": True, "said": "saved"}, "closeReadTab": reply})
+    assert sent == ["readPosting", "closeReadTab", "window.close"]
+
+
+@needs_node
+def test_a_page_that_could_not_be_read_stays_open_for_the_person(tmp_path):
+    """A sign-in wall: the failure is reported (the page that asked says so), and nothing closes the tab."""
+    sent = content_script_case(tmp_path, SIGN_IN, {"readFailed": {"ok": True}})
+    assert sent == ["readFailed"]
+
+
+@needs_node
+def test_a_posting_jobwatch_refused_stays_open(tmp_path):
+    sent = content_script_case(tmp_path, LINKEDIN_PAGE, {"readPosting": {"ok": False, "error": "sign in first"}})
+    assert sent == ["readPosting"]
+
+
+JOB_TAB = {"id": 5, "url": "https://www.linkedin.com/jobs/view/4000000001/"}
+
+
+def background_case(tmp_path, body: str):
+    """background.js (the service worker) loaded in node with a fake chrome and fetch: `send(msg, tab)` delivers a message
+    as a content script in `tab` would, and answers its reply; `closed` lists the tabs chrome.tabs.remove was given."""
+    for name in ("background.js", "logic.js", "passive.js", "read-posting.js", "lib.js"):
+        shutil.copy(EXT / name, tmp_path / name)
+    (tmp_path / "package.json").write_text('{"type": "module"}', encoding="utf-8")
+    (tmp_path / "case.mjs").write_text(f"""const kept = {{}};
+const closed = [];
+let onMessage;
+let jobwatchAnswers = {{ ok: true, status: 200, body: {{ where: 'queue', closed: false }} }};
+const none = {{ addListener() {{}} }};
+const keys = (k) => (Array.isArray(k) ? k : [k]);
+globalThis.chrome = {{
+  runtime: {{ onMessage: {{ addListener: (f) => {{ onMessage = f; }} }} }},
+  action: {{ onClicked: none }}, sidePanel: {{ setOptions: async () => {{}} }}, windows: {{ onRemoved: none }},
+  tabs: {{ onRemoved: none, onCreated: none, onUpdated: none, remove: async (id) => {{ closed.push(id); }}, sendMessage: async () => {{}} }},
+  storage: {{
+    local: {{ get: async () => ({{ settings: {{ serverUrl: 'http://127.0.0.1:8765', token: 'secret' }} }}) }},
+    session: {{
+      get: async (k) => Object.fromEntries(keys(k).filter((x) => x in kept).map((x) => [x, kept[x]])),
+      set: async (o) => Object.assign(kept, o),
+      remove: async (k) => keys(k).forEach((x) => delete kept[x]),
+    }},
+  }},
+}};
+globalThis.fetch = async () => ({{ ok: jobwatchAnswers.ok, status: jobwatchAnswers.status, json: async () => jobwatchAnswers.body }});
+await import('./background.js');
+const send = (msg, tab) => new Promise((resolve) => onMessage(msg, {{ tab }}, resolve));
+const text = 'We are hiring a Platform Engineer. '.repeat(10);
+const read = (tab) => send({{ type: 'readPosting', text, title: 'Platform Engineer', company: 'Initech', closed: false }}, tab);
+{body}""", encoding="utf-8")
+    r = subprocess.run(["node", str(tmp_path / "case.mjs")], capture_output=True, text=True, timeout=30)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+@needs_node
+def test_the_worker_closes_the_tab_once_its_posting_was_read_and_only_once(tmp_path):
+    got = background_case(tmp_path, f"""const tab = {json.dumps(JOB_TAB)};
+const before = await send({{ type: 'closeReadTab' }}, tab);
+const readReply = await read(tab);
+const first = await send({{ type: 'closeReadTab' }}, tab);
+const again = await send({{ type: 'closeReadTab' }}, tab);
+console.log(JSON.stringify({{ before, readOk: readReply.ok, first, again, closed }}));""")
+    assert got["before"]["ok"] is False and "not read" in got["before"]["error"]  # nothing read yet: nothing closes
+    assert got["readOk"] is True and got["first"] == {"ok": True}
+    assert got["again"]["ok"] is False  # the permission is used up with the tab
+    assert got["closed"] == [5]
+
+
+@needs_node
+def test_the_worker_does_not_close_a_tab_whose_read_failed(tmp_path):
+    """jobwatch refusing the text (a bad token), the page being a sign-in wall or a captcha (readFailed), or the text being
+    too short: each leaves the tab open for the person."""
+    got = background_case(tmp_path, f"""const tab = {json.dumps(JOB_TAB)};
+jobwatchAnswers = {{ ok: false, status: 403, body: {{ error: 'no' }} }};
+const refused = await read(tab);
+const afterRefusal = await send({{ type: 'closeReadTab' }}, tab);
+const wall = await send({{ type: 'readFailed', error: 'it asks to sign in.' }}, tab);
+const afterWall = await send({{ type: 'closeReadTab' }}, tab);
+const short = await send({{ type: 'readPosting', text: 'too short' }}, tab);
+const afterShort = await send({{ type: 'closeReadTab' }}, tab);
+console.log(JSON.stringify({{ refused: refused.ok, wall: wall.ok, short: short.ok,
+  after: [afterRefusal.ok, afterWall.ok, afterShort.ok], closed }}));""")
+    assert got["refused"] is False and got["short"] is False and got["wall"] is True
+    assert got["after"] == [False, False, False] and got["closed"] == []
+
+
+@needs_node
+def test_the_worker_closes_only_the_tab_that_asks_and_that_was_read(tmp_path):
+    """Another tab, a tab id named in the message, a page with no tab and a tab that has since gone elsewhere are all refused."""
+    got = background_case(tmp_path, f"""const tab = {json.dumps(JOB_TAB)};
+const other = {{ id: 6, url: 'https://www.linkedin.com/jobs/view/4000000002/' }};
+const feed = {{ id: 5, url: 'https://www.linkedin.com/feed/' }};
+const indeed = {{ id: 8, url: 'https://www.indeed.com/viewjob?jk=9cf96221e712e37e' }};
+await read(tab);
+const results = [
+  await send({{ type: 'closeReadTab' }}, other),                  // a job tab nobody read
+  await send({{ type: 'closeReadTab', tabId: 5 }}, other),        // naming the read tab does not help
+  await send({{ type: 'closeReadTab', tabId: 5 }}, undefined),    // not from a tab at all
+  await send({{ type: 'closeReadTab' }}, feed),                   // the read tab, now not a job page
+  await send({{ type: 'closeReadTab' }}, {{ id: 9, url: 'https://example.com/jobs/view/4000000001/' }}),
+  await send({{ type: 'closeReadTab' }}, indeed),                 // an Indeed job tab nobody read
+];
+const own = await send({{ type: 'closeReadTab' }}, tab);
+console.log(JSON.stringify({{ refused: results.map((r) => r.ok), own: own.ok, closed }}));""")
+    assert got == {"refused": [False] * 6, "own": True, "closed": [5]}
+
+
+@needs_node
+def test_an_indeed_posting_that_was_read_is_closed_too(tmp_path):
+    got = background_case(tmp_path, """const tab = { id: 8, url: 'https://www.indeed.com/viewjob?jk=9cf96221e712e37e' };
+await read(tab);
+const r = await send({ type: 'closeReadTab' }, tab);
+console.log(JSON.stringify({ ok: r.ok, closed }));""")
+    assert got == {"ok": True, "closed": [8]}

@@ -17,6 +17,7 @@ const PENDING_MAX_MS = 30 * 60 * 1000;
 const TAILOR_TIMEOUT_MS = 6 * 60 * 1000; // resume-kit drafts, then renders the PDF: a minute or two, up to its own limits
 const pendingKey = (tabId) => `pending:${tabId}`;
 const ctxKey = (tabId) => `ctx:${tabId}`;
+const readDoneKey = (tabId) => `readDone:${tabId}`; // a tab whose posting was read and given to jobwatch: it may be closed
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = msg.tabId || (sender.tab && sender.tab.id);
@@ -77,7 +78,7 @@ chrome.windows.onRemoved.addListener((windowId) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  chrome.storage.session.remove([pendingKey(tabId), ctxKey(tabId)]);
+  chrome.storage.session.remove([pendingKey(tabId), ctxKey(tabId), readDoneKey(tabId)]);
   readTabEnded(tabId, 'The posting tab was closed before it was read.');
   const id = panelWindows.get(tabId);
   if (id) chrome.windows.remove(id).catch(() => {}); // its tab is gone, so is its panel
@@ -103,6 +104,7 @@ async function handle(msg, tabId, sender) {
     case 'readPosting': return readPosting(msg, sender);
     case 'readInBackground': return readInBackground(msg, sender);
     case 'readFailed': return readFailed(msg, sender);
+    case 'closeReadTab': return closeReadTab(sender);
     case 'importList': return importList(tabId);
     case 'importState': return { running: [...listImports].map(([tabId, source]) => ({ tabId, source })) };
     case 'passiveSeen': return sender.tab ? passiveSeen(msg.records) : {};
@@ -527,8 +529,27 @@ async function readPosting(msg, sender) {
     await readTabEnded(sender.tab.id, e.message);
     throw e;
   }
+  await chrome.storage.session.set({ [readDoneKey(sender.tab.id)]: true });
   await readTabEnded(sender.tab.id, '', { ...r, closed: !!(r.closed || msg.closed) });
   return { ...r, link: `${settings.serverUrl}/#${r.where}` };
+}
+
+/**
+ * read-posting.js asks for its own tab to be closed once its banner has been on screen. A page script can close only a
+ * tab it opened itself with a short history (window.close), which LinkedIn's redirects defeat, so the tab is closed from
+ * here. Only the asking tab, only while it is a LinkedIn or Indeed job page, and only after readPosting gave its
+ * description to jobwatch: a tab that could not be read (a sign-in wall, a captcha) stays for the person.
+ */
+async function closeReadTab(sender) {
+  const tab = sender.tab;
+  const url = tab && tab.url;
+  const site = JWRead.siteOf(url);
+  if (!site || !JWRead.jobId(site, url)) throw new Expected("This isn't a LinkedIn or Indeed job page.");
+  const key = readDoneKey(tab.id);
+  if (!(await chrome.storage.session.get(key))[key]) throw new Expected("This posting was not read by jobwatch.");
+  await chrome.storage.session.remove(key);
+  await chrome.tabs.remove(tab.id);
+  return {};
 }
 
 // --- Read posting from jobwatch's own page, in a tab behind the one the person is on -------------------------
