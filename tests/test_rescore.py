@@ -67,6 +67,19 @@ def test_the_choices_are_the_scoring_chain_first_then_the_other_models(app):
     assert (d["scored_by"], d["running"]) == ("", False)
 
 
+def test_the_local_model_stays_on_the_list_when_the_chain_leaves_it_out(app, watchlist):
+    raw = yaml.safe_load(watchlist.read_text())
+    chain = {**raw["scoring"], "fallback": ["agy:gemini-3.8-flash-medium"]}
+    watchlist.write_text(yaml.safe_dump({**raw, "scoring": chain}))
+    local = [c for c in app.get_rescore({"key": [KEY]})["choices"] if c["backend"] == "local"]
+    assert [(c["model"], c["role"], c["ready"]) for c in local] == [("mlx-community/Qwen", "", True)]
+    heard = app.events.subscribe()
+    assert app.post_rescore({"key": KEY, "backend": "local", "model": "mlx-community/Qwen"})["started"] is True
+    kind, data = heard.get(timeout=10)
+    assert (kind, data["fit"]["scored_by"]) == ("score", "local:mlx-community/Qwen")
+    assert app.calls == [("local", "mlx-community/Qwen")]
+
+
 def test_a_rescore_runs_in_the_background_and_its_score_comes_as_an_event(app):
     heard = app.events.subscribe()
     started = app.post_rescore({"key": KEY, "backend": "agy", "model": "gemini-4-argon-medium"})
