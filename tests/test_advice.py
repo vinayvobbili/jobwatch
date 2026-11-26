@@ -337,6 +337,23 @@ def test_a_score_that_comes_in_changes_the_cards_advice_and_bottom_line(watchlis
     assert app.post_advice({"keys": [key]})["advice"][key] == {"advice": None, "verdict": None}  # past advice
 
 
+def test_a_stale_score_advises_like_any_score_and_says_it_is_stale(watchlist):
+    """A score made under an older resume still decides the suggestion and the bottom line; the words add "stale"."""
+    cfg = cfg_with(watchlist)
+    store = Store(cfg.state)
+    stale = {**fit(82), "stale": True, "stale_why": "older_resume"}
+    said = advise(cfg, entry(job(low=190000, high=260000, days=1), stale), History(store))
+    assert said.action == "queue" and "a strong fit (82/100, stale score)" in said.reasons
+    e = entry(job(days=1), stale)  # no pay to lead with
+    assert verdict(e, History(store), advise(cfg, e, History(store)))["text"] == \
+        "Queue it: a strong fit (82/100, stale score)."
+    skip = "Skip it: not a close match ({})."
+    assert verdict(entry(job(), {**fit(45), "stale": True}), History(store), None)["text"] == \
+        skip.format("45/100, stale score")
+    assert verdict(entry(job(), fit(45)), History(store), None)["text"] == skip.format("45/100")
+    store.close()
+
+
 def test_the_cli_explains_one_jobs_card(watchlist, capsys):
     cfg = cfg_with(watchlist, BIG_PAY)
     store = Store(cfg.state)

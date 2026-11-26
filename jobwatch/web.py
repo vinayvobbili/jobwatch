@@ -982,15 +982,16 @@ class App:
         """Score one job whose posting text was just read, in the background, with the scoring chain (scoring.backend,
         then scoring.fallback, the dated Claude entry first, under its caps), whatever scoring.auto says: the person
         who reads a posting wants its score. Only this job. `replaced`: its text was just saved or replaced, so
-        any score it has is of older text; else only a job with no current score is scored. Not when it can't be
-        scored (several roles, no resume, no text) or is being scored already (a text replaced meanwhile gets one
-        more run after it). The score or why it failed comes as an event, as for post_rescore. Whether it started."""
+        any score it has is of older text; else only a job with no score, or one marked stale, is scored. Not when it
+        can't be scored (several roles, no resume, no text) or is being scored already (a text replaced meanwhile
+        gets one more run after it). The score or why it failed comes as an event, as for post_rescore. Whether it
+        started."""
         def check(cfg, store):
             job, _ = store.find(key)
             if not (scorable(job) and job.description.strip() and cfg.resume and cfg.resume.is_file()):
                 return False
             fit = job_fit(cfg, store, key)
-            return replaced or fit is None or bool(fit.get("stale"))
+            return replaced or fit is None or scorestate.marked(fit)  # one made under an older resume stands
         try:
             if not self._with_store(check):
                 return False
@@ -1637,8 +1638,9 @@ class App:
     def _advice_now(self, cfg, store, found: list[tuple], pay: dict[str, dict], wait_for_pay: bool = False
                     ) -> dict[str, dict]:
         """{key: {"advice", "verdict"}} for these (job, record) pairs as their cards should read now, from the fit the
-        cards show: the job's newest score, flagged when it's stale (see scorestate). A job applied to or further is past advice
-        (both null). wait_for_pay: leave out a job whose expected pay is still being looked up (asked again then)."""
+        cards show: the job's newest score, flagged when it's stale (see scorestate). A job applied to or further is
+        past advice (both null). wait_for_pay: leave out a job whose expected pay is still being looked up (asked
+        again then)."""
         rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
         known, index, history = load_contacts(cfg), dupes.Index(store), advice.History(store, quiet=cfg.quiet)
         fits = _fits(store, rid) if rid else {}

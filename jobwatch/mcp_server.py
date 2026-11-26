@@ -382,7 +382,7 @@ def get_job(key: Key) -> dict:
     watchlist gives one). With no fit score, unscored_reason
     says why ({code, text}: no_text means it needs its posting, a link via mark_job(url=) or the text pasted;
     queued means it's in the page's background scorer's line; many_roles, a post listing several roles, is never
-    scored; stale, an older scorer's score, is scored again only when asked). duplicate_of is the job already
+    scored). stale: made under an older resume, or marked to be scored again. duplicate_of is the job already
     applied to, queued or skipped that this one is (maybe) the same opening as: key, title, status, date, why, strong (a
     shared req or posting id; false: the same title only, so check it's a different opening), reposted, and
     text, the warning to heed; null when there's none. Check it before drafting a referral request or an

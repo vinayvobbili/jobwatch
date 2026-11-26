@@ -23,6 +23,12 @@ IN_PLAY = ("queued", "applied", "screening", "interviewing", "offer")
 TALKING = ("screening", "interviewing", "offer")  # they're talking to you: past rejections there aren't a no
 
 
+def _shown(fit: dict) -> str:
+    """A fit score as the advice says it: "82/100", with ", stale score" after it when the score is stale (made under
+    an older resume, or marked: see scorestate). A stale score counts as any other here; the words say so."""
+    return f"{round(fit['score'])}/100" + (", stale score" if fit.get("stale") else "")
+
+
 @dataclass
 class Advice:
     action: str                                     # "queue", "skip", or "ask" (queue it, but ask first)
@@ -144,7 +150,7 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
     elif pays and target and not top and expected.get("ask") and expected["ask"] >= target:
         go.append(("pay", f"Levels.fyi suggests asking ~{_k(expected['ask'])} base, {vs(expected['ask'])}"))
     if score is not None and score >= STRONG_FIT:
-        go.append(("strong_fit", f"a strong fit ({round(score)}/100)"))
+        go.append(("strong_fit", f"a strong fit ({_shown(fit)})"))
     if entry.contacts:
         who = entry.contacts[0]
         go.append(("contact", f"you know {who['name']} there: ask for a referral first"
@@ -180,7 +186,7 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
         return {"call": "skip", "text": f"Skip it: {why[hard[0]]}."}
     score = round(fit["score"]) if fit and fit.get("score") is not None else None
     if score is not None and score < CLOSE:
-        return {"call": "skip", "text": f"Skip it: not a close match ({score}/100)."}
+        return {"call": "skip", "text": f"Skip it: not a close match ({_shown(fit)})."}
     # The next step: queue it from Today, apply once it's queued.
     go = "Apply" if (entry.record or {}).get("status") == "queued" else "Queue it"
     # Holding off isn't skipping: the job stays, and this turns once one of the others there is settled.
@@ -201,15 +207,15 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
     met, total = (fit.get("must_haves_met", 0), fit.get("must_haves_total", 0)) if fit else (0, 0)
     if total and met * 4 < total * 3:
         if score is not None and score >= STRONG_FIT:  # a caveat that agrees with the score, not a contradiction
-            return {"call": "stretch", "text": f"{go}: a strong score ({score}/100), but only {met} of {total} "
+            return {"call": "stretch", "text": f"{go}: a strong score ({_shown(fit)}), but only {met} of {total} "
                                                "must-haves are met, so check the gaps first."}
         return {"call": "stretch", "text": f"{go}, but it's a stretch: it meets {met} of {total} must-haves."}
     if score is not None and score < STRONG_FIT:
-        return {"call": "stretch", "text": f"{go}, but it's a stretch: a fair fit ({score}/100)."}
+        return {"call": "stretch", "text": f"{go}, but it's a stretch: a fair fit ({_shown(fit)})."}
     if said and said.action == "queue":
         return {"call": "apply", "text": f"{go}: {said.reasons[0]}."}
     if score is not None:
-        return {"call": "apply", "text": f"{go}: a strong fit ({score}/100)."}
+        return {"call": "apply", "text": f"{go}: a strong fit ({_shown(fit)})."}
     return None
 
 

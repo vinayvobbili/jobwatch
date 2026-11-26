@@ -4,12 +4,12 @@ the new score reaches the page as a Server-Sent Event on /events."""
 import http.client
 import threading
 from dataclasses import replace
+from datetime import date
 
 import pytest
 import yaml
 
 from jobwatch import ai, scorestats, watch
-from jobwatch.score import resume_family, resume_id
 from jobwatch.web import ApiError, App, serve
 
 from .conftest import TOKEN
@@ -285,12 +285,17 @@ def test_a_job_with_its_text_but_no_score_is_scored_by_a_read(app, scored):
     assert heard.get(timeout=10)[0] == "score" and scored == [[key]]
 
 
-def test_a_job_with_a_stale_score_is_scored_by_a_read(app, scored):
+def test_a_job_with_a_stale_score_is_scored_by_a_read_only_once_it_is_marked_stale(app, scored):
     key = _queued(app)
     app._with_store(lambda cfg, store: store.set_description(key, "Requirements: Python, LLMs"))
-    app._with_store(lambda cfg, store: store.save_score(  # made by another scorer: shown as stale
-        key, resume_family(resume_id(cfg.resume, cfg.prompts)) + ":scorer-00000000", FIT))
-    assert app.get_rescore({"key": [key]})["stale"] is True
+    app._with_store(lambda cfg, store: store.save_score(  # made under an older resume: shown as stale, as it is
+        key, "cv.md:000000000000:scorer-00000000", FIT))
+    got = app.get_rescore({"key": [key]})
+    assert got["stale"] is True and got["stale_note"] == "scored under an older resume"
+    assert app.ext_posting(PAGE)["scoring"] is False and scored == []  # a new resume alone asks for nothing
+    app.post_scores_stale({"reason": "new summary"})  # the decision
+    assert app.get_rescore({"key": [key]})["stale_note"] == "marked stale on " + date.today().isoformat() \
+        + ": new summary"
     heard = app.events.subscribe()
     assert app.ext_posting(PAGE)["scoring"] is True
     kind, data = heard.get(timeout=10)

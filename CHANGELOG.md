@@ -18,7 +18,8 @@
   every decision is logged. Existing scores migrate by themselves: the state file gains three small tables, no
   score row changes, and every score made under an earlier resume (today's) shows as stale-badged. The Score button
   on a stale card scores it again. `jobwatch score --rescore` now takes only marked scores and ones another model
-  made (a score made under an older resume waits for the decision), and says how many predate the resume.
+  made (a score made under an older resume waits for the decision), and says how many predate the resume. The card's
+  advice and bottom line read a stale score like any other and say so ("a strong fit (82/100, stale score)").
 
 - Today's Fit score minimum (60+, 70+, 80+) now hides the jobs with no score yet. The "No score yet" switch turns to
   Hide when you pick one, so 80+ no longer lists unscored cards, and the Showing line counts them out. Pick Show by
