@@ -91,12 +91,17 @@ def company_key(name: str) -> str:
     return "".join(words)
 
 
+def company_names(source: str, board: str, name: str = "") -> set[str]:
+    """The names a company goes by, from a job's source, its board's company and the name its posting gives."""
+    names = {company_key(name or board)}
+    if source in _NAMED_BOARDS:
+        names.add(company_key(board.replace("-", " ")))
+    return {n for n in names if n}
+
+
 def companies(job: Job) -> set[str]:
     """The names a job's company goes by: its display name, and its board's name when that's the company's."""
-    names = {company_key(job.display_company)}
-    if job.source in _NAMED_BOARDS:
-        names.add(company_key(job.company.replace("-", " ")))
-    return {n for n in names if n}
+    return company_names(job.source, job.company, job.company_name)
 
 
 def title_key(title: str) -> tuple[str, frozenset[str]]:
@@ -318,12 +323,20 @@ def _order(rec: dict) -> int:
 
 class Index:
     """The jobs acted on (queued, applied or later, skipped; closed ones too), by company, to check others against.
-    Build it once for a batch of jobs."""
+    Build it once for a batch of jobs. `near`: (job, record) of one job to check: only the jobs at its company (and
+    the one it was pinned to) are read, which is all its match looks at, and the posting text of the rest isn't."""
 
-    def __init__(self, store: Store):
+    def __init__(self, store: Store, near: tuple[Job, dict] | None = None):
         self.by_company: dict[str, list[tuple[Signature, dict]]] = {}
         self.records: dict[str, tuple[Signature, dict]] = {}
-        for job, rec in store.jobs(ACTED, include_closed=True):
+        if near:
+            job, rec = near
+            wanted, pinned = companies(job), rec.get("duplicate_of")
+            rows = store.jobs_with_keys([k for k, source, board, name in store.company_names(ACTED, True)
+                                         if k == pinned or company_names(source, board, name) & wanted])
+        else:
+            rows = store.jobs(ACTED, include_closed=True)
+        for job, rec in rows:
             entry = (Signature.of(job, rec.get("note")), rec)
             self.records[job.key] = entry
             for name in entry[0].companies:
@@ -386,7 +399,7 @@ def record(store: Store, jobs: list[Job], index: Index | None = None) -> dict[st
 def check(store: Store, key: str, index: Index | None = None) -> Match | None:
     """The job acted on that a tracked job (by key) matches, if any (see Index.match)."""
     job, rec = store.find(key)
-    return (index or Index(store)).match(job, rec)
+    return (index or Index(store, near=(job, rec))).match(job, rec)
 
 
 @dataclass

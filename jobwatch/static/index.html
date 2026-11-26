@@ -217,6 +217,23 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .btn.act-score .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
   border-top-color: currentColor; animation: spin .8s linear infinite; }
 .spin .ico { animation: spin 1s linear infinite; }
+/* A button was pressed and the server hasn't answered (pending() in the script): the card dims and lifts a little under
+   a soft glow with a sheen running along its foot, its buttons are off, and the pressed one holds a spinner. */
+.card.pending { box-shadow: 0 16px 34px -18px color-mix(in srgb, var(--accent) 75%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.card.pending > :not(.jc-foot) { opacity: .62; transition: opacity .2s; }
+.card.pending::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent) 0 0 / 40% 100% no-repeat;
+  animation: pending-sheen 1.1s ease-in-out infinite; }
+@keyframes pending-sheen { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+.card.pending a.btn { pointer-events: none; }
+.card.pending .btn:not(.busy) { opacity: .5; cursor: default; }
+.btn.busy:disabled { opacity: 1; cursor: progress; animation: score-pulse 1.1s ease-in-out infinite; }
+.btn.busy .ico { display: none; }
+.busy-spin { width: 12px; height: 12px; border-radius: 50%; flex: none;
+  border: 2px solid color-mix(in srgb, currentColor 35%, transparent); border-top-color: currentColor;
+  animation: spin .8s linear infinite; }
 
 /* cards */
 .card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -1641,7 +1658,6 @@ function fmtDay(day, today) {
   const [y, m, d] = day.split("-").map(Number);
   return `${MONTHS[m - 1]} ${d}` + (today && today.slice(0, 4) !== String(y) ? `, ${y}` : "");
 }
-function dayDiff(day, today) { return Math.round((Date.parse(day) - Date.parse(today)) / 86400000); }
 // The day on this computer of one of the store's UTC stamps ("2026-11-26T03:13:00+00:00" is Nov 25 at 10 PM Eastern);
 // a plain day comes back as it is, and anything unreadable gives "". Cutting a stamp with slice(0, 10) gives the UTC day.
 function localDay(iso) {
@@ -1652,6 +1668,7 @@ function localDay(iso) {
   const p = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
+function dayDiff(day, today) { return Math.round((Date.parse(day) - Date.parse(today)) / 86400000); }
 function relDay(day, today) {
   const n = dayDiff(day, today);
   return n === 0 ? "today" : n === 1 ? "tomorrow" : n === -1 ? "yesterday" : n > 0 ? `in ${n} days` : `${-n} days ago`;
@@ -2225,9 +2242,56 @@ function dupeBadge(d) {
     d.strong ? d.label : "Possible duplicate");
 }
 
+// The server can take a moment to answer a button on a card (Queue checks for a duplicate, an application keeps its
+// posting), so the click shows at once: the card dims and pulses, its buttons are off (no second click) and the one
+// pressed turns into a spinner with a word for what's happening. pending() returns the function that undoes it all,
+// for when the request fails.
+let lastAct = null;  // the button being clicked: handlers don't get the event, but this sees it first
+document.addEventListener("click", e => {
+  lastAct = e.target.closest?.(".btn") || null;
+  setTimeout(() => { lastAct = null; });  // after the click's handlers have run (they read it before their first await)
+}, true);
+const BUSY = { queue: "Queuing…", apply: "Queuing…", skip: "Skipping…", snooze: "Snoozing…", applied: "Saving…",
+  remove: "Removing…" };
+const SLOW_MS = 30000;  // a request that takes this long is called failed, so the card isn't stuck dimmed for good
+function pending(card, btn = lastAct, text = "") {
+  const buttons = card ? [...card.querySelectorAll("button, a.btn")] : btn ? [btn] : [];
+  if (btn && !buttons.includes(btn)) btn = null;
+  const was = buttons.map(b => [b, b.disabled]);
+  card?.classList.add("pending");
+  card?.setAttribute("aria-busy", "true");
+  for (const b of buttons) {
+    if (b.tagName === "BUTTON") b.disabled = true; else { b.setAttribute("aria-disabled", "true"); b.tabIndex = -1; }
+  }
+  let spin, label, before;
+  if (btn) {
+    const kind = [...btn.classList].find(c => c.startsWith("act-"))?.slice(4);
+    label = btn.querySelector(".label") || btn;
+    before = label.textContent;
+    label.textContent = text || BUSY[kind] || "Working…";
+    spin = h("span", { class: "busy-spin", "aria-hidden": "true" });
+    btn.classList.add("busy");
+    btn.prepend(spin);
+  }
+  return () => {
+    card?.classList.remove("pending");
+    card?.removeAttribute("aria-busy");
+    for (const [b, off] of was) {
+      if (b.tagName === "BUTTON") b.disabled = off; else { b.removeAttribute("aria-disabled"); b.removeAttribute("tabindex"); }
+    }
+    if (btn) { spin.remove(); label.textContent = before; btn.classList.remove("busy"); }
+  };
+}
+// api() that gives up after SLOW_MS (the request itself can't be taken back; the message says to look again).
+const slowGuard = (call) => Promise.race([call, new Promise((_, no) => setTimeout(() => no(new Error(
+  "The server didn't answer in time. Reload to see whether it went through.")), SLOW_MS))]);
+
 async function mark(job, status, note, label, undoStatus) {
   const origin = document.activeElement;
-  const r = await api("/api/mark", { keys: job.keys || [job.key], status, note });
+  const done = pending(document.getElementById("job-" + job.key));
+  let r;
+  try { r = await slowGuard(api("/api/mark", { keys: job.keys || [job.key], status, note })); }
+  catch (e) { done(); toast(e.message); return; }
   if (r.warning) label = `${label}. ${r.warning}`;
   const card = document.getElementById("job-" + job.key);
   if (status === "applied") { confetti(origin); label = `🎉 Applied: ${job.title}. ${cheer()}`; drawPace(); }
@@ -5125,10 +5189,11 @@ function snoozedPanel() {
       h("div", { class: "hint" }, `Waiting on ${j.waiting_on.map(a => a.title).join(", ")}` +
         (j.back_by ? `; back by ${fmtDay(j.back_by)}` : "")),
       h("div", {}, actButton("queue", { onclick: async () => {
+        const done = pending(null);
         try {
-          await api("/api/mark", { keys: [j.key], status: "queued" });
+          await slowGuard(api("/api/mark", { keys: [j.key], status: "queued" }));
           render();
-        } catch (e) { toast(e.message); }
+        } catch (e) { done(); toast(e.message); }
       } }, "Queue now")))));
   }).catch(() => { /* a side panel, not the page */ });
   return el;
@@ -5142,12 +5207,13 @@ function skipClosedButton(job) {
     onclick: () => fill(box, h("span", { class: "small" }, "Skip this job? You can change the status back."),
       h("button", { class: "btn primary", onclick: go }, "Yes"), h("button", { class: "btn ghost", onclick: ask }, "Cancel")) }));
   const go = async () => {
+    const done = pending(document.getElementById("job-" + job.key), box.querySelector(".btn.primary"), "Skipping…");
     try {
-      const r = await api("/api/closed/act", { action: "skip", key: job.key });
+      const r = await slowGuard(api("/api/closed/act", { action: "skip", key: job.key }));
       await leave(document.getElementById("job-" + job.key), -1);
       toast(`Skipped: ${job.title}.`, async () => { await api("/api/closed/undo", { undo: r.undo }); render(); }, "onward", "Undo", 8000);
       render();
-    } catch (e) { toast(e.message); ask(); }
+    } catch (e) { done(); toast(e.message); ask(); }
   };
   ask();
   return box;
@@ -7217,12 +7283,13 @@ function companyCard(j, i, c) {
   };
   const act = async (status, label) => {
     const was = j.status, origin = document.activeElement;
+    const done = pending(document.getElementById("job-" + j.key));
     try {
-      const r = await move(status);
+      const r = await slowGuard(move(status));
       if (status === "applied") { confetti(origin); return render(); }  // other jobs here can be snoozed now
       redraw(); drawCompanyTiles();
       toast(r.warning ? `${label}. ${r.warning}` : label, async () => { await move(was); redraw(); drawCompanyTiles(); }, TONES[status]);
-    } catch (e) { toast(e.message); }
+    } catch (e) { done(); toast(e.message); }
   };
   const queueIt = (label = "Queue") => closedState(j) === "closed" ? null : actButton("queue", {
     onclick: () => act("queued", `📌 Queued: ${j.title}. ${pick(QUEUED)}`) }, label);

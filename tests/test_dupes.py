@@ -409,3 +409,25 @@ def test_the_page_shows_and_warns(twice, server):
     status, data = request(server, "GET", "/api/queue", headers=ok)
     (q,) = json.loads(data)
     assert q["duplicate_of"]["key"] == app and q["warnings"][0].startswith("Already applied")
+
+
+def test_a_check_reads_only_the_jobs_at_the_jobs_company(store):
+    """The check behind every Queue click matches the same as the whole index, but never reads a posting that
+    isn't at the job's company (the page waited seconds on a state with thousands of skipped jobs)."""
+    applied = store.add("Umbrella", "Data Platform Engineer - Payments (482913)", applied="2026-02-11")
+    for i in range(5):
+        store.add("Globex", f"Engineer {i}", status="skipped")
+    again = store.add("Umbrella", "Senior Data Platform Engineer - Payments", status="queued")
+    job, rec = store.find(again.key)
+    near = dupes.Index(store, near=(job, rec))
+    assert {sig.job.company for sigs in near.by_company.values() for sig, _ in sigs} == {"umbrella"}
+    assert near.match(job, rec).other.key == applied.key == dupes.Index(store).match(job, rec).other.key
+    assert dupes.check(store, again.key).other.key == applied.key
+
+
+def test_a_check_still_reads_the_job_a_job_was_pinned_to_at_another_name(store):
+    applied = store.add("Initech Systems", "Platform Engineer (771204)", applied="2026-03-02")
+    other = store.add("Globex", "Platform Engineer (771204)", status="queued")
+    store.set_duplicate(other.key, applied.key)
+    job, rec = store.find(other.key)
+    assert applied.key in dupes.Index(store, near=(job, rec)).records

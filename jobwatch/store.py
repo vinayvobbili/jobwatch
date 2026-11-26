@@ -853,6 +853,24 @@ class Store:
         for r in self.db.execute(sql + " ORDER BY first_seen DESC", args):
             yield Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"}
 
+    def company_names(self, statuses: tuple[str, ...], include_closed: bool = False) -> list[tuple[str, str, str, str]]:
+        """(key, source, board company, the company name its posting gives or "") of the jobs at these statuses,
+        in iter_jobs' order, reading no posting's text: a caller that wants only the jobs at one company reads
+        these, then jobs_with_keys for the few it keeps."""
+        sql = ("SELECT key, source, company, COALESCE(json_extract(data, '$.company_name'), '') FROM jobs WHERE status "
+               f"IN ({','.join('?' * len(statuses))})" + ("" if include_closed else " AND closed IS NULL") +
+               " ORDER BY first_seen DESC")
+        return [tuple(r) for r in self.db.execute(sql, statuses)]
+
+    def jobs_with_keys(self, keys: list[str]) -> list[tuple[Job, dict]]:
+        """(job, record) pairs for these full keys, in the order given (a key that names no job is left out)."""
+        found: dict[str, tuple[Job, dict]] = {}
+        for i in range(0, len(keys), 500):  # SQLite's limit on query variables
+            chunk = keys[i:i + 500]
+            for r in self.db.execute(f"{_ROW} WHERE key IN ({','.join('?' * len(chunk))})", chunk):
+                found[r["key"]] = (Job.from_dict(json.loads(r["data"])), {k: r[k] for k in r.keys() if k != "data"})
+        return [found[k] for k in keys if k in found]
+
     def search(self, text: str) -> list[tuple[Job, dict]]:
         """Jobs at any status, closed too, whose note, next step, via, title, company, key or link contains the
         text (any case), newest first: "which application did the recruiter call about?", or a req id from a
