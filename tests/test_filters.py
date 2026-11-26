@@ -280,6 +280,8 @@ def test_rejection_names_the_filter():
     cases = [
         (job(**ok), None, None),
         (job(**ok, title="Recruiter", company="initech"), None, ("company", "company 'Initech'")),  # before the rest
+        (job(**ok, source="manual", company="ladders", company_name="Ladders"), None,
+         ("client", "client not named")),
         (job(**ok, title="Recruiter"), None, ("title", "title")),
         (job(**ok, title="Engineering Manager"), None, ("excluded", "title matches 'manager'")),
         (job(**ok, department="Sales"), None, ("department", "department matches 'sales'")),

@@ -131,7 +131,7 @@ def test_min_jobs_drives_auto_watch_too(web, watchlist):
 
 
 AGENCY, COLLEGE = "a staffing or recruiting agency", "a college or university"
-UNWATCHABLE = {"Globex Staffing LLC": AGENCY, "TalentBridge": AGENCY, "Initech (agency)": AGENCY,
+UNWATCHABLE = {"Globex Staffing LLC": AGENCY, "TalentBridge": AGENCY, "Initech (agency)": AGENCY, "Ladders": AGENCY,
                "Boulder Valley College": COLLEGE, "University of Springfield": COLLEGE,
                "Umbrella": "on suggestions.never_watch"}
 
@@ -156,7 +156,7 @@ def test_auto_watch_leaves_agencies_colleges_and_never_watch_alone(web, watchlis
     assert [s.name for s in got] == ["Hooli"]
     cli.main(["-c", str(watchlist), "suggest", "--preview-auto", "--min-jobs", "1"])
     out = capsys.readouterr().out
-    assert "auto_watch with min_jobs 1: 0 companies worth watching" in out and "6 are left out" in out
+    assert "auto_watch with min_jobs 1: 0 companies worth watching" in out and "7 are left out" in out
     # Applied there: watched all the same
     save_job(store, company="Globex Staffing LLC", title="Data Engineer", status="applied", boards=cfg.boards)
     s = next(s for s in suggest.suggestions(cfg, store, limit=0) if s.name == "Globex Staffing LLC")

@@ -223,7 +223,7 @@ def suggestions(cfg: Config, store: Store, limit: int | None = None, look: bool 
     for row in store.unwatched():
         if on_list.has(row["name"], row["entry"] or ""):
             continue
-        jobs = [(j, at) for j, at in row["jobs"] if reject_reason(j, cfg.filters_for(j)) is None]
+        jobs = [(j, at) for j, at in row["jobs"] if reject_reason(j, cfg.filters_for(j), client=False) is None]
         mine = engaged.get(row["company"], [])
         if not (jobs or mine):
             continue
@@ -335,7 +335,7 @@ _AGENCY_NAME = re.compile(r"\b(?:staff\w*|recruit(?:ing|ment|ers?)|headhunt\w*|p
                           r"employment (?:agency|services)|\w*talent\w*|teksystems|insight global|"
                           r"robert half|randstad|adecco|kforce|apex systems|aerotek|kelly services|manpower\w*|hays|"
                           r"michael page|motion recruitment|jobot|"
-                          r"collabera|beacon hill|harnham|hired)\b|\(agency\)", re.I)
+                          r"collabera|beacon hill|harnham|hired|ladders)\b|\(agency\)", re.I)
 _COLLEGE_NAME = re.compile(r"\b(?:universit(?:y|ies)|colleges?|community college|school district|public schools|"
                            r"academy|polytechnic|institute of technology)\b", re.I)
 _AGENCY_INDUSTRY = re.compile(r"\bstaffing (?:and|&) recruiting\b|\bstaffing agency\b", re.I)

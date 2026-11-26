@@ -7,6 +7,15 @@
   your system asks for less motion) and the "Posting read: scoring it now…" line under the buttons is gone;
   "Scoring…" is its tooltip and screen-reader name. The Score button already shows a spinner and stays off while it
   runs. The spinner clears when the score arrives or the scoring fails (the error shows as before).
+- Rows from a source that doesn't name its client (Ladders, or a name ending in Staffing or Recruiting, on a job from
+  an alert, a list or a link) are hidden from Today as "client not named", unless the posting names its client
+  ("Client: Globex") or you name it (`jobwatch resolve --name KEY COMPANY`). They stay on the company page and in
+  search. `jobwatch resolve` matches each such row to a named company's copy of the same opening (same title, pay
+  range within 1% and remote setting, across companies, which `dupes` doesn't do) and prints the pairs
+  (`--explain` says how the nearest same-title jobs differ for rows with no twin); `--apply` marks the
+  unnamed copy skipped with a note naming its twin (the twin, queued and applied jobs are never touched). The staffing
+  warning now also fires on "For our client, we are seeking ..." and "For our client, a leader in the X space", and
+  `auto_watch` leaves Ladders alone like any agency.
 - A stale score no longer hides its number. The amber "stale" badge was drawn over the ring and covered the score
   (85/100 read as the word "stale"). The ring now shows the number as usual with a small clock icon on its rim
   (amber for an older resume, rose for a score marked stale), and the tooltips are the same.

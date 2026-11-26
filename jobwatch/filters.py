@@ -172,7 +172,7 @@ def search_terms(f: Filters) -> list[str]:
 
 
 # Which filter a job failed, in the order they're checked: what rejection() names first.
-KINDS = ("company", "title", "excluded", "department", "place", "pay", "age", "fit")
+KINDS = ("company", "client", "title", "excluded", "department", "place", "pay", "age", "fit")
 
 
 def excluded_company(job: Job, names: list[str]) -> str | None:
@@ -291,14 +291,18 @@ def kept_open(job: Job) -> bool:
     return bool(src) and not src.many_companies
 
 
-def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] | None:
-    """(which filter, why) for a job that fails the filters, or None if it passes. The filter is one of KINDS:
+def rejection(job: Job, f: Filters, fit: dict | None = None, client: bool = True) -> tuple[str, str] | None:
+    """(which filter, why) for a job that fails the filters, or None if it passes. client=False leaves out the
+    "client not named" rule (suggest.py counts an agency's rows to say why its board isn't watched).
+    The filter is one of KINDS:
     ("company", "company 'Initech'"), ("title", "title"), ("excluded", "title matches 'manager'"),
     ("excluded", "text matches 'red team'"), ("place", "location"), ("place", "remote only in CA, NV"),
     ("pay", "pay $120K–$160K"), ("age", "posted 45 days ago"),
     ("fit", "fit 55/100"). `fit` is the job's stored fit score; a job without one passes min_fit."""
     if name := excluded_company(job, f.exclude_companies):
         return "company", f"company {name!r}"
+    if client and unnamed_client(job):
+        return "client", CLIENT_NOT_NAMED
     if f.titles and not _any_text(f.titles, job.title):
         return "title", "title"
     if p := _any_text(f.exclude_titles, job.title):
@@ -322,9 +326,9 @@ def rejection(job: Job, f: Filters, fit: dict | None = None) -> tuple[str, str] 
     return None
 
 
-def reject_reason(job: Job, f: Filters, fit: dict | None = None) -> str | None:
-    """Why the job fails the filters, or None if it passes."""
-    r = rejection(job, f, fit)
+def reject_reason(job: Job, f: Filters, fit: dict | None = None, client: bool = True) -> str | None:
+    """Why the job fails the filters, or None if it passes. client=False leaves out the "client not named" rule."""
+    r = rejection(job, f, fit, client)
     return r[1] if r else None
 
 
@@ -342,11 +346,14 @@ STAFFING_WARNING = "staffing firm: ask the client's name, and full-time vs contr
 # What only an agency's posting says: it speaks for a client, or names the contract terms agencies sell.
 _AGENCY_PHRASE = re.compile(
     r"on behalf of (?:our|its|their) client|our client(?: is (?:seeking|looking|hiring)|,? an?\b)|"
+    r"\bfor our client,? we are (?:seeking|looking|hiring)|"
+    r"\bfor our client(?: in [\w ]{1,30})?,\s*an? (?:\w+ ){0,3}leader in the [^.\n]{1,60}\bspace\b|"
     r"\bc2c\b|corp(?:oration)?[- ]to[- ]corp(?:oration)?|\bw-?2 (?:contract|only|or c2c)|contract[- ]to[- ]hire|"
     r"(?:we are|is) an? (?:\w+ ){0,2}(?:staffing|recruiting) (?:firm|agency|company)|"
     r"\b(?:staffing|talent) solutions\b|\brecruiting firm\b|\bstaffing (?:firm|agency)\b", re.I)
 # Names that are an agency's alone, and ones (Talent, Solutions...) that any company might have.
-_AGENCY_NAME = re.compile(r"\b(?:staffing|recruiting|recruitment)(?: (?:group|inc\.?|llc|solutions))?$", re.I)
+_AGENCY_NAME = re.compile(r"\b(?:staffing|recruiting|recruitment)(?: (?:group|inc\.?|llc|solutions))?$|"
+                          r"^(?:the )?ladders(?:,? (?:inc|llc)\.?)?$", re.I)  # Ladders doesn't name its clients
 _MAYBE_AGENCY_NAME = re.compile(r"\b(?:talent|consulting group|solutions)$", re.I)
 _CONTRACT_WORDS = re.compile(r"\bstaffing\b|\bcontract\b|\bclient\b", re.I)
 
@@ -363,6 +370,25 @@ def staffing_firm(job: Job) -> str | None:
             (_MAYBE_AGENCY_NAME.search(name) and _CONTRACT_WORDS.search(text)):
         return STAFFING_WARNING
     return None
+
+
+CLIENT_NOT_NAMED = "client not named"
+# A posting that names its client on a line of its own: "Client: Globex Corporation" ("Client: confidential" doesn't).
+_CLIENT_NAMED = re.compile(r"(?i:\bclient(?: name)?)\s*:\s*(?!(?i:confidential|undisclosed|unnamed|anonymous|n/?a|"
+                           r"tbd|not (?:named|disclosed))\b)[A-Z0-9]")
+
+
+def unnamed_client(job: Job) -> bool:
+    """True for a row from an agency whose client isn't named: its company is the agency's own name (Ladders, or a
+    name ending in Staffing or Recruiting) on a job from an alert, a list or a link, not one on the agency's own
+    board; and nothing names the client: not the company (rename it to the client's), not a "Client: Globex" line in
+    the posting. Today hides these (see rejection); the company page and search still list them."""
+    return not kept_open(job) and agency_name(job.display_company) and not _CLIENT_NAMED.search(job.description)
+
+
+def agency_name(name: str) -> bool:
+    """True for a name that is an agency's alone (see staffing_firm): Ladders, or ending in Staffing or Recruiting."""
+    return bool(_AGENCY_NAME.search(name.strip()))
 
 
 def relevance(job: Job, keywords: dict[str, float]) -> tuple[float, list[str]]:

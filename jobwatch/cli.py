@@ -65,6 +65,7 @@ from . import (
     reminders,
     reply,
     report,
+    resolve,
     rolekinds,
     scan,
     scorestate,
@@ -893,6 +894,23 @@ def cmd_add(args, cfg, store):
 def cmd_dupes(args, cfg, store):
     """Pairs of tracked jobs that are (maybe) the same opening, where you acted on one: read-only."""
     print(dupes.pairs_text(dupes.pairs(store, strong_only=args.strong)))
+
+
+def cmd_resolve(args, cfg, store):
+    """Rows whose client isn't named (Ladders), matched to a named twin: a dry run, or --apply to skip them."""
+    if args.name:
+        key, company = args.name
+        job = resolve.name_client(store, key, company)
+        print(f"{job.key}: client named {job.display_company}; Today lists it again.")
+        return
+    found = resolve.twins(store)
+    if args.apply:
+        resolve.apply(store, found)
+    print(resolve.text(found, args.apply))
+    if args.explain:
+        for job, lines in resolve.near_misses(store, found):
+            print(f"\nno match: {job.title}  {job.pay()}  `{job.key}`")
+            print("\n".join(f"  {line}" for line in lines))
 
 
 def cmd_advice(args, cfg, store):
@@ -2593,6 +2611,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--strong", action="store_true", help="only the same opening, not the same title alone")
     p.set_defaults(func=cmd_dupes, read_only=True)
 
+    p = sub.add_parser("resolve", help="rows whose client isn't named (a staffing or list source such as Ladders, "
+                       "hidden from Today as \"client not named\") matched to the named company's copy of the same "
+                       "opening: same title, pay range and remote setting. A dry run by default; --apply marks each "
+                       "unnamed copy skipped with a note naming its twin (the twin is never touched, nothing is "
+                       "deleted); --name KEY COMPANY names a row's client, so Today lists it again")
+    p.add_argument("--apply", action="store_true", help="skip the unnamed copies (without it: only print the pairs)")
+    p.add_argument("--dry-run", action="store_true", help="print the pairs and change nothing (the default)")
+    p.add_argument("--name", nargs=2, metavar=("KEY", "COMPANY"), help="name a row's client instead of matching")
+    p.add_argument("--explain", action="store_true", help="for each row with no twin, the same-title jobs at named "
+                   "companies and how each differs (pay, remote setting)")
+    p.set_defaults(func=cmd_resolve, read_only=True)
+
     p = sub.add_parser("advice", help="how the page's Queue/Skip suggestions fall across Today's jobs: how many "
                        "of each, and which rule said so how often; with job keys, those jobs' own suggestion and "
                        "bottom line as their cards show them. Read-only")
@@ -2686,7 +2716,9 @@ def main(argv: list[str] | None = None):
         if getattr(args, "needs_config", True) is False:
             return args.func(args)
         cfg = config.load(args.config)
-        read_only = getattr(args, "read_only", False)  # opened without changing the file at all
+        # opened without changing the file at all (but `resolve --apply` and `--name` write)
+        read_only = getattr(args, "read_only", False) and not getattr(args, "apply", False) \
+            and not getattr(args, "name", None)
         if read_only and not Path(cfg.state).expanduser().is_file():
             raise ValueError(f"no jobs tracked yet: {cfg.state} doesn't exist")
         store = Store(cfg.state, read_only=read_only, education=cfg.education)

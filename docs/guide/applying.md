@@ -77,6 +77,28 @@ jobwatch dupes                             # --strong: only the ones sharing an 
 
 Skip the one you don't need with `jobwatch mark skipped <key>`.
 
+### When the client isn't named
+
+A staffing or list source such as Ladders posts a client's job under its own name ("For our client, we are seeking
+..., a leader in the enterprise space"). Those rows, from an alert, a list or a link under the agency's name (Ladders,
+or a name ending in Staffing or Recruiting), are hidden from Today with the reason "client not named"; the company
+page and search still list them, and the card keeps its staffing-firm warning. Many are copies of a job you already
+have at the real company, so applying through the agency would hand it your first resume there.
+
+`dupes` only compares jobs inside one company. To match across companies:
+
+```
+jobwatch resolve                           # a dry run: each unnamed row beside its named twin
+jobwatch resolve --apply                   # skip each unnamed copy, with a note naming its twin
+jobwatch resolve --name KEY "Initech"      # you learned the client: name it, and Today lists the row again
+jobwatch resolve --explain                 # for each row with no twin, how the nearest same-title jobs differ
+```
+
+A twin has the same title (seniority included), the same pay range (each end within 1%, since one posting rounds to
+the thousand and another doesn't; a posting's own text counts when its board gives no pay) and the same remote
+setting, at a company that is open and named. Only rows Today could list are looked at; the twin and anything queued, applied or already
+skipped are never touched, and nothing is deleted. A posting with a "Client: Initech" line counts as named.
+
 ## Who is interviewing you
 
 Open someone's LinkedIn experience page (`linkedin.com/in/<name>/details/experience/`) in your own browser, copy

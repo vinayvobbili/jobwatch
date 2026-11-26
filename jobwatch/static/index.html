@@ -4303,6 +4303,8 @@ function some(list, most = 3) {
 // Why a job was hidden, as rejection() in filters.py names it, and which part of the bar changes that filter.
 const HIDDEN = {
   company: { label: "company", part: "companies", why: "From a company you leave out." },
+  client: { label: "client not named", part: null,
+    why: "From a staffing or list source (Ladders) that doesn't name its client. Name the client, or run jobwatch resolve to match each to the named company's copy. The company page and search still list them." },
   title: { label: "title", part: "titles", why: "Their titles contain none of your job titles." },
   excluded: { label: "excluded", part: "exclude",
     why: "Their titles or postings contain something you leave out." },
