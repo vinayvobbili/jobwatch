@@ -22,7 +22,8 @@ jobwatch list --status applied
 Each card on the page suggests queuing or skipping a job, and why, from a few fixed rules (no model call).
 Skip wins: the same opening already applied to, two or more applications at that company in the past
 week, pay under `pay.floor`, or fewer than half the must-haves met. Otherwise queue: posted pay (or Levels.fyi's
-ask) reaching `pay.target`, a fit score of 75 or more, or someone you know there. A rejection for one role
+ask) reaching `pay.target` (only when the fit score is 60 or more, or the job has none yet: pay alone doesn't make a
+poor match worth applying to), a fit score of 75 or more, or someone you know there. A rejection for one role
 there doesn't count against another. It's only a suggestion: nothing is hidden or marked for it.
 `jobwatch advice` counts how often each rule fires across Today's jobs.
 

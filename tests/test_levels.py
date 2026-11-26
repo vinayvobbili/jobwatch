@@ -9,6 +9,7 @@ import pytest
 from jobwatch import cli, config, levels, report, sources, watch
 from jobwatch.config import ConfigError, Pay
 from jobwatch.models import Job
+from jobwatch.score import resume_family, resume_id
 from jobwatch.store import Store
 from jobwatch.web import App
 
@@ -424,3 +425,29 @@ def test_the_page_looks_pay_up_in_the_background(levels_site, watchlist, capsys)
     before = len(_levels_calls(levels_site))
     assert quiet.post_pay({"keys": ["lever:globex:aaaa-1111"]})["pay"]["lever:globex:aaaa-1111"] == {"pending": True}
     assert len(_levels_calls(levels_site)) == before
+
+
+def test_the_pay_poll_judges_a_job_by_the_fit_the_card_shows(levels_site, watchlist, capsys):
+    """The card shows an older scorer's score (stale) until the job is scored afresh. The poll that fills in the
+    expected pay once looked only for the current one, saw no fit, and turned the card's bottom line to a plain
+    "Queue it: Levels.fyi suggests ..." on pay alone, whatever the score said."""
+    (watchlist.parent / "cv.md").write_text("Python, LLMs, RAG")
+    _fetch_and_queue(watchlist, capsys, pay="{levels: true, years: 20, target: 100000}")
+    watchlist.write_text(watchlist.read_text() + "resume: cv.md\n")
+    cfg = config.load(watchlist)
+    family = resume_family(resume_id(cfg.resume, cfg.prompts))
+    store = Store(cfg.state)
+    store.save_score("greenhouse:acme:101", family + ":scorer-00000000",
+                     {"score": 68, "must_haves_met": 10, "must_haves_total": 17, "gaps": [], "summary": ""})
+    store.save_score("ashby:initech:c1", family + ":scorer-00000000",
+                     {"score": 55, "must_haves_met": 4, "must_haves_total": 4, "gaps": [], "summary": ""})
+    store.close()
+    app = App(watchlist, background=True)
+    keys = ["greenhouse:acme:101", "ashby:initech:c1"]
+    app.post_pay({"keys": keys})
+    app.pay.wait(10)
+    said = app.post_pay({"keys": keys})["advice"]
+    assert said["greenhouse:acme:101"]["verdict"] == {
+        "call": "stretch", "text": "Apply, but it's a stretch: it meets 10 of 17 must-haves."}  # the job is queued
+    assert said["ashby:initech:c1"]["advice"] is None  # pay alone is no reason under a fit of 60
+    assert said["ashby:initech:c1"]["verdict"]["text"] == "Skip it: not a close match (55/100)."

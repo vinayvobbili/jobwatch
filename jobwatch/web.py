@@ -92,6 +92,7 @@ from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, 
 from .watch import (
     MANY_ROLES,
     Entry,
+    _fits,
     build_digest,
     chain_after,
     entries_for,
@@ -1531,11 +1532,14 @@ class App:
             pay = self._pay(cfg, store, [(j, None) for j, _ in found])
             rid = resume_id(cfg.resume, cfg.prompts) if cfg.resume and cfg.resume.is_file() else None
             known, index, history = load_contacts(cfg), dupes.Index(store), advice.History(store, quiet=cfg.quiet)
+            # The fit the cards show: the current score, else an older scorer's (stale). Only the current one made
+            # a job with a stale score read as unscored here, so its bottom line said "Queue it" on pay alone.
+            fits = _fits(store, rid) if rid else {}
             said = {}
             for job, rec in found:
                 if ((pay.get(job.key) or {}).get("expected_pay") or {}).get("pending"):
                     continue
-                e = Entry(job, rec, 0, [], fit=brief(store.score(job.key, rid)) if rid else None,
+                e = Entry(job, rec, 0, [], fit=brief(fits.get(job.key)),
                           contacts=known.at(job.display_company, job.company) if known else [],
                           duplicate=index.match(job, rec))
                 said[job.key] = self._advice(cfg, e, history, pay)

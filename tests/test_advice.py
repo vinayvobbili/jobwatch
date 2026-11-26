@@ -3,6 +3,8 @@
 import json
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
 from jobwatch import cli, config
 from jobwatch.advice import Advice, History, advise, verdict
 from jobwatch.models import Job
@@ -148,6 +150,44 @@ def test_the_bottom_line_says_apply_stretch_hold_or_skip(watchlist):
     store.set_status([settles.key], "rejected")
     assert call(entry(job(**paid), fit(90, 4, 4)))["call"] == "apply"
     assert call(entry(job(company="Initech", **paid), fit(90, 4, 4)))["call"] == "apply"
+    store.close()
+
+
+def test_pay_alone_is_no_reason_to_queue_a_poor_fit(watchlist):
+    """The posted pay (or Levels.fyi's ask) counts only with a fit score of 60 or more, or none yet."""
+    cfg = cfg_with(watchlist)
+    store = Store(cfg.state)
+    history = History(store)
+    rich = dict(low=300000, high=375000)
+    assert advise(cfg, entry(job(**rich), fit(59, 0, 0)), history) is None
+    assert advise(cfg, entry(job(**rich), fit(60, 0, 0)), history).codes == ["pay"]
+    assert advise(cfg, entry(job(**rich)), history).codes == ["pay"]  # no score yet: nothing else to go on
+    ask = {"base": 230000, "ask": 245000}
+    assert advise(cfg, entry(job(), fit(45)), history, ask) is None
+    assert advise(cfg, entry(job(), fit(65)), history, ask).codes == ["pay"]
+    # The other reasons stand, without the pay: someone you know there, or a strong fit.
+    said = advise(cfg, entry(job(**rich), fit(50), [{"name": "Pat Lee"}]), history)
+    assert said.codes == ["contact"]
+    assert advise(cfg, entry(job(**rich), fit(80)), history).codes == ["pay", "strong_fit"]
+    # The bottom line agrees: a poor fit is a skip however much the job pays.
+    e = entry(job(**rich), fit(59, 0, 0))
+    assert verdict(e, history, advise(cfg, e, history)) == {
+        "call": "skip", "text": "Skip it: not a close match (59/100)."}
+    store.close()
+
+
+@pytest.mark.parametrize("status", ["new", "queued"])
+@pytest.mark.parametrize("score", [60, 68, 71, 74])
+@pytest.mark.parametrize("met, total", [(0, 0), (10, 17), (4, 4)])
+def test_a_fair_fit_never_gets_a_plain_queue_it_bottom_line(watchlist, score, met, total, status):
+    """Whatever carries the advice (pay, a contact), a fit under 75 reads as a stretch, never a plain go-ahead."""
+    cfg = cfg_with(watchlist)
+    store = Store(cfg.state)
+    history = History(store)
+    for e in (entry(job(low=300000, high=375000), fit(score, met, total), status=status),
+              entry(job(), fit(score, met, total), [{"name": "Pat Lee"}], status=status)):
+        said = verdict(e, history, advise(cfg, e, history))
+        assert said["call"] == "stretch" and "it's a stretch" in said["text"]
     store.close()
 
 

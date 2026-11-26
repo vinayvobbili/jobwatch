@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Pay alone no longer says "Queue it". The posted pay (or Levels.fyi's ask) reaching `pay.target` counts as a reason
+  to queue only when the job's fit score is 60 or more, or it has none yet; a poor match that pays well now reads
+  "Skip it: not a close match". The bottom line could also say a plain "Queue it: the posted pay goes up to ..." for
+  a fair fit (it should say "it's a stretch"): the poll that fills in the expected pay read only the current fit
+  score, so a job showing an older scorer's score (stale) looked unscored to it. It now reads the score the card shows.
 - Dates the page and the commands show for a posting closed, a job first seen or a status change are now your day,
   not UTC's. The store keeps its stamps in UTC and the page cut them to ten characters, so after 7 PM Eastern a
   posting found closed that evening read "closed" with tomorrow's date (and the company page showed "Nov NaN").

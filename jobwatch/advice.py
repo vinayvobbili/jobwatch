@@ -129,12 +129,16 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
 
     target, high = cfg.pay.target, cfg.pay.target_max or cfg.pay.target
     vs = lambda n: f"{'above' if n > high else 'within'} your {_target(cfg)} target"  # noqa: E731
-    if target and top and top >= target and not job.is_rate:  # an hourly contract wage isn't a salary that meets it
+    # Pay alone doesn't make a job worth applying to: with a fit score under CLOSE it isn't a reason (a job with no
+    # score yet has nothing else to go on, so there it still is).
+    score = fit.get("score") if fit else None
+    pays = score is None or score >= CLOSE
+    if pays and target and top and top >= target and not job.is_rate:  # an hourly contract wage isn't a salary
         go.append(("pay", f"the posted pay goes up to {_k(top)}, {vs(top)}"))
-    elif target and not top and expected.get("ask") and expected["ask"] >= target:
+    elif pays and target and not top and expected.get("ask") and expected["ask"] >= target:
         go.append(("pay", f"Levels.fyi suggests asking ~{_k(expected['ask'])} base, {vs(expected['ask'])}"))
-    if fit and fit.get("score", 0) >= STRONG_FIT:
-        go.append(("strong_fit", f"a strong fit ({round(fit['score'])}/100)"))
+    if score is not None and score >= STRONG_FIT:
+        go.append(("strong_fit", f"a strong fit ({round(score)}/100)"))
     if entry.contacts:
         who = entry.contacts[0]
         go.append(("contact", f"you know {who['name']} there: ask for a referral first"
@@ -203,7 +207,8 @@ REASONS = {
     "turned_down": f"{TURNED_DOWN} or more rejections from the company: apply somewhere new",
     "under_floor": "the posted pay, or Levels.fyi's median base when none is posted, is under pay.floor",
     "must_haves": "the fit score found fewer than half the must-haves",
-    "pay": "the posted pay, or Levels.fyi's ask when none is posted, reaches pay.target",
+    "pay": f"the posted pay, or Levels.fyi's ask when none is posted, reaches pay.target (not when the fit score "
+           f"is under {CLOSE}: pay alone doesn't make a poor match worth applying to)",
     "strong_fit": f"a fit score of {STRONG_FIT} or more",
     "contact": "someone you know works there",
     "fresh": f"posted in the last {FRESH} days (only alongside another reason to queue)",
