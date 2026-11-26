@@ -260,12 +260,12 @@ def test_the_cli_counts_the_advice_by_rule(watchlist, web, capsys):
 
 HUBS = ["Austin, Texas", "Chicago, Illinois", "Portland, Oregon", "Atlanta, Georgia"]  # none is Denver
 OFFICE = "Logistics: on-site visits to clients and our office in Austin (Downtown) 2/week."
-BIG_PAY = "pay: {target: 225000-250000, floor: 180000}\n"
+BIG_PAY = "pay: {target: 150000-170000, floor: 120000}\n"
 
 
 def abroad(locations=HUBS, remote=True, description=OFFICE, company="Globex"):
     """A job on the board's remote flag over places that aren't Denver, with pay at the top of the target."""
-    j = job(low=180000, high=250000, company=company)
+    j = job(low=130000, high=170000, company=company)
     j.locations, j.remote, j.description = list(locations), remote, description
     return j
 
@@ -282,7 +282,7 @@ def test_a_job_on_site_only_outside_your_places_never_says_queue_whatever_the_pa
         assert (said.action, said.codes) == ("skip", ["place"])
         assert said.reasons == ["on-site in Austin, Texas; Chicago, Illinois; Portland, Oregon and 1 more, "
                                 "not Denver or remote"]
-        assert said.line.endswith("(though the posted pay goes up to $250K, within your $225K–$250K target)")
+        assert said.line.endswith("(though the posted pay goes up to $170K, within your $150K–$170K target)")
         call = verdict(e, history, said)  # still the person's call (they may pick an office elsewhere), never green
         assert call["call"] == "stretch" and "not Denver or remote" in call["text"]
     poor = entry(abroad(), fit(40))
