@@ -12,7 +12,7 @@ from .dupes import Index, companies
 from .filters import office_shown, onsite_elsewhere
 from .score import brief
 from .store import STAGES, Store, closed_state
-from .watch import STRONG_FIT, Entry, job_fit, load_contacts, plural
+from .watch import STRONG_FIT, Entry, job_fit, load_contacts, plural, scorable
 
 WEEK = timedelta(days=7)
 BUSY = 2    # applications at one company in a week: more starts to look like spraying
@@ -31,16 +31,17 @@ def _shown(fit: dict) -> str:
 
 @dataclass
 class Advice:
-    action: str                                     # "queue", "skip", or "ask" (queue it, but ask first)
+    action: str                                     # "queue", "skip", "ask" (queue it, but ask first) or "score"
     reasons: list[str]
     though: list[str] = field(default_factory=list)  # for a skip: what speaks for it anyway
     codes: list[str] = field(default_factory=list)   # the rule behind each reason (REASONS)
+    how: str = ""                                    # for "score": the way to get the score ("press Score on the card")
 
     @property
     def line(self) -> str:
         """ "Skip: you've applied to 2 roles at Globex this past week (though the posted pay goes up to $260K)" """
-        head = f"{'Ask first' if self.action == 'ask' else self.action.capitalize()}: {'; '.join(self.reasons)}"
-        return head + (f" (though {self.though[0]})" if self.though else "")
+        label = {"ask": "Ask first", "score": "Score first"}.get(self.action, self.action.capitalize())
+        return f"{label}: {'; '.join(self.reasons)}" + (f" (though {self.though[0]})" if self.though else "")
 
     def to_dict(self) -> dict:
         return {"action": self.action, "reasons": self.reasons, "though": self.though, "codes": self.codes,
@@ -103,8 +104,18 @@ def _target(cfg: Config) -> str:
     return f"{_k(p.target)}–{_k(p.target_max)}" if p.target_max else _k(p.target)
 
 
+def _how_to_score(cfg: Config, job) -> str:
+    """The way to get this job's score, for the line that says to score it first: the card's Score button, or Read
+    posting when its text isn't there yet (that scores it at once). "" when nothing on the card can score it."""
+    if not (cfg.resume and cfg.resume.is_file()) or not scorable(job):
+        return ""
+    return "press Score on the card" if job.description.strip() else "Read posting scores it"
+
+
 def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = None) -> Advice | None:
-    """Queue or skip, and why; None when nothing stands out either way. Any reason to skip wins: applying twice,
+    """Queue, skip or score it first, and why; None when nothing stands out either way. A job never scored has only
+    its pay to go on, and pay alone says to score it first, not to queue it (a score made under an older resume
+    counts as a score). Any reason to skip wins: applying twice,
     too often at one company, under the pay floor, or missing most must-haves costs more than a good job
     gained. One rejection there isn't one: another role at that company is its own chance; TURNED_DOWN of them
     are, since the next application does more good at a company that hasn't said no yet. `expected`: the job's
@@ -141,14 +152,17 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
 
     target, high = cfg.pay.target, cfg.pay.target_max or cfg.pay.target
     vs = lambda n: f"{'above' if n > high else 'within'} your {_target(cfg)} target"  # noqa: E731
-    # Pay alone doesn't make a job worth applying to: with a fit score under CLOSE it isn't a reason (a job with no
-    # score yet has nothing else to go on, so there it still is).
+    # Pay alone doesn't make a job worth applying to: it's a reason only with a fit score of CLOSE or more. A job
+    # never scored has no score to judge it by: its pay is a note that says to score it first, not a reason to queue.
     score = fit.get("score") if fit else None
-    pays = score is None or score >= CLOSE
-    if pays and target and top and top >= target and not job.is_rate:  # an hourly contract wage isn't a salary
-        go.append(("pay", f"the posted pay goes up to {_k(top)}, {vs(top)}"))
-    elif pays and target and not top and expected.get("ask") and expected["ask"] >= target:
-        go.append(("pay", f"Levels.fyi suggests asking ~{_k(expected['ask'])} base, {vs(expected['ask'])}"))
+    pay = None
+    if target and top and top >= target and not job.is_rate:  # an hourly contract wage isn't a salary
+        pay = ("pay", f"the posted pay goes up to {_k(top)}, {vs(top)}")
+    elif target and not top and expected.get("ask") and expected["ask"] >= target:
+        pay = ("pay", f"Levels.fyi suggests asking ~{_k(expected['ask'])} base, {vs(expected['ask'])}")
+    unscored = [pay] if pay and score is None else []
+    if pay and score is not None and score >= CLOSE:
+        go.append(pay)
     if score is not None and score >= STRONG_FIT:
         go.append(("strong_fit", f"a strong fit ({_shown(fit)})"))
     if entry.contacts:
@@ -160,16 +174,19 @@ def advise(cfg: Config, entry: Entry, history: History, expected: dict | None = 
                                "so it's read early"))
 
     if skip:
-        return Advice("skip", [r for _, r in skip], [r for _, r in go], [c for c, _ in skip])
+        return Advice("skip", [r for _, r in skip], [r for _, r in unscored + go], [c for c, _ in skip])
     if shown:
         return Advice("ask", [shown], codes=["place_office"])
-    if go:
-        return Advice("queue", [r for _, r in go + extra], codes=[c for c, _ in go + extra])
+    if go:  # a contact: queue it, the pay fact after it
+        return Advice("queue", [r for _, r in go + unscored + extra], codes=[c for c, _ in go + unscored + extra])
+    if unscored:
+        return Advice("score", [r for _, r in unscored], codes=["pay"], how=_how_to_score(cfg, job))
     return None
 
 
 def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
-    """The card's bottom line, in plain words: {"call": apply | stretch | hold | skip, "text"}. Skip for a hard
+    """The card's bottom line, in plain words: {"call": apply | stretch | hold | skip | score, "text"} ("score": a job
+    never scored whose pay is all there is to go on: score it first, with the way to). Skip for a hard
     reason (applied already, turned down there TURNED_DOWN times, under the pay floor, most must-haves missing,
     not a close match); hold off when
     other roles at the company are already queued or in progress, or one is at screening or past it (ask the
@@ -204,6 +221,8 @@ def verdict(entry: Entry, history: History, said: Advice | None) -> dict | None:
                                            "area or remote first."}
     if "place_office" in why:  # allowed through by its company's nearby office: conditional, never a plain Queue it
         return {"call": "stretch", "text": f"{go}, ask first: {why['place_office']}."}
+    if said and said.action == "score":  # never scored, pay the only fact: the score comes first
+        return {"call": "score", "text": f"Score it first{f' ({said.how})' if said.how else ''}: {said.reasons[0]}."}
     met, total = (fit.get("must_haves_met", 0), fit.get("must_haves_total", 0)) if fit else (0, 0)
     if total and met * 4 < total * 3:
         if score is not None and score >= STRONG_FIT:  # a caveat that agrees with the score, not a contradiction
@@ -228,8 +247,9 @@ REASONS = {
     "must_haves": "the fit score found fewer than half the must-haves",
     "place": "the job is on-site only outside your places (filters.locations), whatever its remote flag says: "
              "listed in two or more places, or asking for office time",
-    "pay": f"the posted pay, or Levels.fyi's ask when none is posted, reaches pay.target (not when the fit score "
-           f"is under {CLOSE}: pay alone doesn't make a poor match worth applying to)",
+    "pay": f"the posted pay, or Levels.fyi's ask when none is posted, reaches pay.target. Pay alone doesn't make a "
+           f"job worth applying to: with a fit score under {CLOSE} it isn't a reason, and a job never scored is "
+           "told to score it first",
     "place_office": "the job is on-site only outside your places but its company has a nearby office "
                     "(filters.nearby_offices): it shows, with the ask to work from that office",
     "strong_fit": f"a fit score of {STRONG_FIT} or more",
@@ -262,13 +282,14 @@ def summary(cfg: Config, store: Store, entries: list[Entry]) -> dict:
         said = advise(cfg, e, history, None)
         by_action[said.action if said else "none"] += 1
         by_reason.update(said.codes if said else [])
-    return {"jobs": len(entries), "by_action": {a: by_action[a] for a in ("queue", "ask", "skip", "none")},
+    return {"jobs": len(entries), "by_action": {a: by_action[a] for a in ("queue", "ask", "score", "skip", "none")},
             "by_reason": dict(by_reason.most_common())}
 
 
 def summary_text(s: dict) -> str:
     a = s["by_action"]
     ask = f", ask first {a['ask']}" if a.get("ask") else ""
-    lines = [f"{plural(s['jobs'], 'job')}: queue {a['queue']}{ask}, skip {a['skip']}, no suggestion {a['none']}"]
+    score = f", score first {a['score']}" if a.get("score") else ""
+    lines = [f"{plural(s['jobs'], 'job')}: queue {a['queue']}{ask}{score}, skip {a['skip']}, no suggestion {a['none']}"]
     lines += [f"  {n:>5}  {code}: {REASONS.get(code, '')}" for code, n in s["by_reason"].items()]
     return "\n".join(lines)

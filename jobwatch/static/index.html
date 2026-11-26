@@ -303,7 +303,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .verdict .vic { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: #fff;
   background: var(--vc); }
 .verdict .vtext { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.verdict.apply { --vc: var(--good); } .verdict.stretch { --vc: #d97706; } .verdict.hold { --vc: #0284c7; }
+.verdict.apply { --vc: var(--good); } .verdict.stretch, .verdict.score { --vc: #d97706; } .verdict.hold { --vc: #0284c7; }
 .verdict.skip { --vc: var(--bad); }
 .kv { min-width: 0; }
 .kv > * { margin-top: 0; margin-bottom: 0; }
@@ -459,7 +459,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
 .advice { font-size: 13px; margin-top: 6px; display: flex; gap: 6px; align-items: baseline; }
 .advice svg { flex: none; align-self: center; }
 .advice.queue b, .advice.queue svg { color: var(--good); } .advice.skip b, .advice.skip svg { color: var(--bad); }
-.advice.ask b, .advice.ask svg { color: #d97706; }
+.advice.ask b, .advice.ask svg, .advice.score b, .advice.score svg { color: #d97706; }
 .advice b { white-space: nowrap; }
 .know { color: var(--good); font-size: 13.5px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .know a { color: var(--muted); text-decoration: none; }
@@ -2086,7 +2086,7 @@ function adviceLine(job) {
   const a = job.advice;
   if (!a || (job.status === "queued" && a.action === "queue")) return null;
   const why = a.reasons.join("; ") + (a.though.length ? ` (though ${a.though[0]})` : "");
-  return h("div", { class: `advice ${a.action}`, "data-advice": job.key }, icon({ queue: "check", ask: "alert" }[a.action] || "x", 14),
+  return h("div", { class: `advice ${a.action}`, "data-advice": job.key }, icon({ queue: "check", ask: "alert", score: "gauge" }[a.action] || "x", 14),
     h("span", { class: "atext", title: why }, why.charAt(0).toUpperCase() + why.slice(1)));
 }
 // A score that comes in changes the suggestion and the bottom line (a job judged on pay alone, then scored 40, is no
@@ -2239,8 +2239,9 @@ function cardRows(parts) {
 }
 // Where the advice goes once the pay is known (see the pay poll), a dash until then.
 const noAdvice = job => h("span", { class: "kv-none", "data-advice": job.key }, "—");
-// The card's bottom line, in plain words (advice.verdict): apply, apply as a stretch, hold off, or skip it.
-const VERDICT_ICON = { apply: "check", stretch: "zap", hold: "pause", skip: "x" };
+// The card's bottom line, in plain words (advice.verdict): apply, apply as a stretch, hold off, skip it, or score it
+// first (a job never scored, with only its pay to go on).
+const VERDICT_ICON = { apply: "check", stretch: "zap", hold: "pause", skip: "x", score: "gauge" };
 function verdictLine(job) {
   const v = job.verdict;
   if (!v || job.status === "snoozed") return h("span", { "data-verdict": job.key, hidden: true });  // already decided

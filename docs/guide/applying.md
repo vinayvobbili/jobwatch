@@ -26,8 +26,12 @@ week, pay under `pay.floor`, fewer than half the must-haves met, or a job that's
 places, or over one when the posting asks for office time, doesn't make it remote). A job like that at a company in
 `filters.nearby_offices` still shows, as "ask first": "Initech has an office near Denver; role is on-site Austin, TX:
 ask if the Denver office is an option". Otherwise queue: posted pay (or Levels.fyi's
-ask) reaching `pay.target` (only when the fit score is 60 or more, or the job has none yet: pay alone doesn't make a
-poor match worth applying to), a fit score of 75 or more, or someone you know there. A rejection for one role
+ask) reaching `pay.target` (only when the fit score is 60 or more: pay alone doesn't make a poor match worth applying
+to), a fit score of 75 or more, or someone you know there. A job that was never scored has only its pay to go on, and
+that never says "Queue it": the card's bottom line is an amber "Score it first (press Score on the card): the posted
+pay goes up to $195K, within your target" (or "Read posting scores it" when the posting text isn't there yet), and
+the Queue button stays. When the score comes in, the line is replaced by the real advice. A score made under an
+older resume still counts as a score. A rejection for one role
 there doesn't count against another. It's only a suggestion: nothing is hidden or marked for it.
 `jobwatch advice` counts how often each rule fires across Today's jobs; `jobwatch advice KEY` shows one job's
 suggestion and bottom line as its card has them now.

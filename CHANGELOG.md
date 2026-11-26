@@ -7,6 +7,12 @@
   "YYYY-MM-DD HH:MM" [--reason TEXT]` holds a step by hand, for one you know is out of quota, so the chain skips it
   with no call and no failed batch first; `--resume STEP` ends the pause.
 
+- A job that was never scored no longer gets a green "Queue it" on its pay. With only the pay to go on, the card's
+  bottom line is an amber "Score it first (press Score on the card): the posted pay goes up to $195K, within your
+  target" ("Read posting scores it" when the posting text isn't there yet), the Why row says "Score first: ...", and
+  Queue stays available. A score coming in replaces it with the real advice; a stale score counts as a score. Skip
+  reasons (under the pay floor, applied before, turned down, on-site elsewhere) and a contact you know there are
+  unchanged. `jobwatch advice` counts these as "score first".
 - A new resume no longer makes fit scores stale, hides them or asks for new ones. Every rebuilt resume used to give
   every job a new score key, so each card read "not scored yet", Today lost its scores and a re-score paid for the
   lot (two rebuilds one morning cost about $4). Now each job keeps its newest score whatever resume made it, shown

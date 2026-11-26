@@ -66,7 +66,7 @@ def test_two_applications_there_this_week_say_skip_whatever_the_pay(watchlist):
                           ["the posted pay goes up to $260K, above your $170K–$240K target", "a strong fit (80/100)"],
                           ["busy"])
     assert said.line.endswith("this past week (though the posted pay goes up to $260K, above your $170K–$240K target)")
-    assert advise(cfg, entry(job(company="Initech", high=260000)), History(store)).action == "queue"
+    assert advise(cfg, entry(job(company="Initech", high=260000), fit(70)), History(store)).action == "queue"
     store.close()
 
 
@@ -162,7 +162,6 @@ def test_pay_alone_is_no_reason_to_queue_a_poor_fit(watchlist):
     rich = dict(low=300000, high=375000)
     assert advise(cfg, entry(job(**rich), fit(59, 0, 0)), history) is None
     assert advise(cfg, entry(job(**rich), fit(60, 0, 0)), history).codes == ["pay"]
-    assert advise(cfg, entry(job(**rich)), history).codes == ["pay"]  # no score yet: nothing else to go on
     ask = {"base": 230000, "ask": 245000}
     assert advise(cfg, entry(job(), fit(45)), history, ask) is None
     assert advise(cfg, entry(job(), fit(65)), history, ask).codes == ["pay"]
@@ -174,6 +173,52 @@ def test_pay_alone_is_no_reason_to_queue_a_poor_fit(watchlist):
     e = entry(job(**rich), fit(59, 0, 0))
     assert verdict(e, history, advise(cfg, e, history)) == {
         "call": "skip", "text": "Skip it: not a close match (59/100)."}
+    store.close()
+
+
+PAY_FACT = "the posted pay goes up to $260K, above your $170K–$240K target"
+
+
+def test_pay_alone_says_score_it_first_to_a_job_with_no_score_yet(watchlist):
+    """With no score there is nothing but the pay to go on, and that isn't a green Queue it: the card says to score
+    it first (the Score button, or Read posting when the text isn't there yet) and still shows the pay fact."""
+    (watchlist.parent / "cv.md").write_text("Python, LLMs, RAG")
+    cfg = cfg_with(watchlist, PAY + "resume: cv.md\n")
+    store = Store(cfg.state)
+    history = History(store)
+    rich = dict(low=190000, high=260000)
+    posted = job(**rich)
+    posted.description = "Build Python services."
+    said = advise(cfg, entry(posted), history)
+    assert (said.action, said.codes, said.reasons) == ("score", ["pay"], [PAY_FACT])
+    assert said.line == f"Score first: {PAY_FACT}"
+    assert verdict(entry(posted), history, said) == {
+        "call": "score", "text": f"Score it first (press Score on the card): {PAY_FACT}."}
+    unread = job(**rich)  # no posting text yet: reading the posting scores it
+    assert verdict(entry(unread), history, advise(cfg, entry(unread), history))["text"] == \
+        f"Score it first (Read posting scores it): {PAY_FACT}."
+    ask = advise(cfg, entry(job(), None), history, {"base": 230000, "ask": 245000})  # Levels.fyi's ask, no posted pay
+    assert (ask.action, ask.codes) == ("score", ["pay"]) and ask.reasons[0].startswith("Levels.fyi suggests")
+    assert advise(cfg, entry(job(), fit(None, 0, 0)), history, {"ask": 245000}).action == "score"  # a row with no score
+    # A reason that needs no score still decides: the pay is only "though" on a skip, a trailing note on a contact.
+    skip = advise(cfg, entry(job(low=100000, high=150000), None), history)
+    assert skip.action == "skip" and skip.codes == ["under_floor"] and skip.though == []
+    said = advise(cfg, entry(posted, None, [{"name": "Pat Lee"}]), history)
+    assert (said.action, said.codes) == ("queue", ["contact", "pay"])
+    assert verdict(entry(posted, None, [{"name": "Pat Lee"}]), history, said)["text"].startswith("Queue it: you know")
+    # With a score (stale too) the real advice takes over: a poor fit skips, a fair one is a stretch.
+    for scored, call in ((fit(45), "skip"), ({**fit(68), "stale": True}, "stretch"), (fit(88, 4, 4), "apply")):
+        e = entry(posted, scored)
+        assert verdict(e, history, advise(cfg, e, history))["call"] == call
+    store.close()
+
+
+def test_a_job_that_cannot_be_scored_says_score_it_first_without_a_pointer(watchlist):
+    cfg = cfg_with(watchlist)  # no resume: there is no Score button to point at
+    store = Store(cfg.state)
+    e = entry(job(low=190000, high=260000))
+    history = History(store)
+    assert verdict(e, history, advise(cfg, e, history))["text"] == f"Score it first: {PAY_FACT}."
     store.close()
 
 
@@ -196,7 +241,7 @@ def test_a_rejection_there_is_no_reason_to_skip_another_role(watchlist):
     cfg = cfg_with(watchlist)
     store = Store(cfg.state)
     save_job(store, company="Globex", title="Platform Engineer", status="rejected")
-    assert advise(cfg, entry(job(high=260000)), History(store)).action == "queue"
+    assert advise(cfg, entry(job(high=260000), fit(70)), History(store)).action == "queue"
     store.close()
 
 
@@ -239,7 +284,8 @@ def test_today_and_the_queue_carry_the_advice(watchlist, web):
     jobs = app.get_digest({})["jobs"]
     assert jobs and all("advice" in j and "verdict" in j for j in jobs)
     paid = [j for j in jobs if j["salary_max"]]
-    assert paid and all(j["advice"]["action"] == "queue" for j in paid)
+    assert paid and all(j["advice"]["action"] == "score" for j in paid)  # no score yet: pay alone says score it first
+    assert all(j["verdict"]["call"] == "score" for j in paid)
     store = Store(cfg.state)
     store.set_status([jobs[0]["key"]], "queued")
     store.close()
@@ -252,10 +298,11 @@ def test_the_cli_counts_the_advice_by_rule(watchlist, web, capsys):
     capsys.readouterr()
     cli.main(["-c", str(watchlist), "advice"])
     out = capsys.readouterr().out
-    assert out.startswith("3 jobs: queue 3, skip 0, no suggestion 0\n") and "  3  pay: the posted pay" in out
+    assert out.startswith("3 jobs: queue 0, score first 3, skip 0, no suggestion 0\n")
+    assert "  3  pay: the posted pay" in out
     cli.main(["-c", str(watchlist), "advice", "--format", "json"])
     s = json.loads(capsys.readouterr().out)
-    assert s["jobs"] == sum(s["by_action"].values()) == 3 and s["by_reason"]["pay"] == s["by_action"]["queue"]
+    assert s["jobs"] == sum(s["by_action"].values()) == 3 and s["by_reason"]["pay"] == s["by_action"]["score"]
 
 
 HUBS = ["Austin, Texas", "Chicago, Illinois", "Portland, Oregon", "Atlanta, Georgia"]  # none is Denver
@@ -313,16 +360,17 @@ def test_a_job_with_no_remote_flag_in_one_other_city_is_on_site_there(watchlist)
 
 
 def test_a_score_that_comes_in_changes_the_cards_advice_and_bottom_line(watchlist, web):
-    """A card drawn before its job was scored said "Queue it: the posted pay ..."; the score (40, from Read posting
-    or Score) then swapped the rings but left that line, so the card read Weak fit over a green Queue. The page asks
-    /api/advice for the card's lines again when a score comes in."""
+    """A card drawn before its job was scored said "Score it first: the posted pay ..."; the score (40, from Read
+    posting or Score) then swapped the rings but left that line, so the card read Weak fit over a "Score it first".
+    The page asks /api/advice for the card's lines again when a score comes in."""
     (watchlist.parent / "cv.md").write_text("Python, LLMs, RAG")
     cfg_with(watchlist, "pay: {target: 100000, floor: 90000}\nresume: cv.md\n")
     app = App(watchlist)
     app.post_fetch({})
     paid = next(j for j in app.get_digest({})["jobs"] if j["salary_max"])
     key = paid["key"]
-    assert paid["advice"]["action"] == "queue" and paid["verdict"]["call"] == "apply"  # unscored: pay is all there is
+    assert paid["advice"]["action"] == "score" and paid["verdict"]["call"] == "score"  # unscored: pay is all there is
+    assert paid["verdict"]["text"].startswith("Score it first (")  # the resume is set: it points at the way to score
     cfg = config.load(watchlist)
     store = Store(cfg.state)
     store.save_score(key, resume_id(cfg.resume, cfg.prompts), fit(40, 7, 10) | {"gaps": [], "summary": ""})

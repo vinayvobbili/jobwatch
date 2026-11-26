@@ -989,6 +989,30 @@ console.log(JSON.stringify(out));
     assert re.findall(rf'h\("(?:button|a)",\s*\{{[^{{}}]*\}},\s*(?:icon\([^)]*\),\s*)?"(?:{labels})"', page) == []
 
 
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_score_it_first_card_draws_in_amber_with_the_gauge(tmp_path):
+    """advice "score" / verdict "score" (a job never scored, with only its pay): the Why row and the bottom line
+    each get a class of their own and the gauge icon; a queued job still shows the Why row."""
+    js = tmp_path / "scorefirst.js"
+    js.write_text(page_function("adviceLine") + page_const("VERDICT_ICON") + page_function("verdictLine") + """
+const h = (tag, attrs, ...kids) => ({ tag, cls: attrs?.class, title: attrs?.title, kids: kids.flat(Infinity) });
+const icon = name => ({ svg: name });
+const advice = { action: "score", reasons: ["the posted pay goes up to $195K"], though: [], codes: ["pay"] };
+const verdict = { call: "score", text: "Score it first (press Score on the card): the posted pay goes up to $195K." };
+const why = adviceLine({ key: "k1", status: "new", advice }), line = verdictLine({ key: "k1", verdict });
+console.log(JSON.stringify({ whyCls: why.cls, whyIcon: why.kids[0].svg, whyText: why.kids[1].kids[0],
+  lineCls: line.cls, lineIcon: line.kids[0].kids[0].svg,
+  queued: adviceLine({ key: "k1", status: "queued", advice })?.cls }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {
+        "whyCls": "advice score", "whyIcon": "gauge", "whyText": "The posted pay goes up to $195K",
+        "lineCls": "verdict score", "lineIcon": "gauge", "queued": "advice score"}
+    page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
+    assert ".verdict.stretch, .verdict.score" in page and ".advice.score b" in page
+
+
 def test_the_job_card_puts_the_corner_score_button_in_the_score_slot_and_drops_the_bottom_one():
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     card = page_function("jobCard")
