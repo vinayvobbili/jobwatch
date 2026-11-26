@@ -294,6 +294,7 @@
   // --- a job posting the person has open -------------------------------------------------
 
   const LINKEDIN_HOST = /(^|\.)linkedin\.com$/;
+  const LADDERS_HOST = /(^|\.)theladders\.com$/;
 
   function urlOf(url) {
     try {
@@ -328,14 +329,28 @@
 
   /** The job site whose list of jobs this address shows, for "Read the jobs on this list" (job-lists.js reads it): 'linkedin'
    * on LinkedIn's jobs pages (a search, "Jobs based on your preferences"), 'indeed' on Indeed's home page ("Jobs for
-   * you") and its searches, else ''. */
+   * you") and its searches, 'ladders' on theladders.com's "Recommended Jobs" and its searches (a job's own page,
+   * /job/<slug>_<id>, is not a list), else ''. */
   function listMode(url) {
     const u = urlOf(url);
     if (!u) return '';
     const host = u.hostname.toLowerCase();
     if (LINKEDIN_HOST.test(host)) return /^\/jobs(\/|$)/.test(u.pathname) && !/^\/jobs\/view\//.test(u.pathname) ? 'linkedin' : '';
     if (/(^|\.)indeed\.com$/.test(host)) return /^\/(?:$|jobs\/?$|q-|m\/jobs)/.test(u.pathname) ? 'indeed' : '';
+    if (LADDERS_HOST.test(host)) return /^\/(?:recommended|jobs)(?:[-/]|$)/.test(u.pathname) ? 'ladders' : '';
     return '';
+  }
+
+  // The sites whose lists are read, as the panel names them; Ladders' jobs are the companies' own, and an older
+  // jobwatch (no `list-ladders` feature in /ext/ping) would put a Ladders job's pay estimate in the job's pay
+  const LIST_SITES = { linkedin: 'LinkedIn', indeed: 'Indeed', ladders: 'Ladders' };
+  const LIST_FEATURE = { ladders: 'list-ladders' };
+
+  /** Whether a jobwatch that offers `features` (its /ext/ping) can take this site's list: every site takes `import-list`;
+   * Ladders also needs `list-ladders`, the jobwatch that knows Ladders' page is only a reference. */
+  function listSupported(source, features) {
+    const have = features || [];
+    return have.includes('import-list') && (!LIST_FEATURE[source] || have.includes(LIST_FEATURE[source]));
   }
 
   // List imports run one per tab, any number of tabs at once; each progress message carries its tab's id.
@@ -479,7 +494,7 @@
 
   /**
    * What the side panel leads with for a tab: { kind, heading, detail, primary, matches }.
-   * `kind`: 'form' (an application form), 'thread' (a LinkedIn conversation), 'list' (LinkedIn or Indeed jobs), 'posting'
+   * `kind`: 'form' (an application form), 'thread' (a LinkedIn conversation), 'list' (LinkedIn, Indeed or Ladders jobs; `list` says which), 'posting'
    * (a job posting), 'bubble' (another LinkedIn page, where a conversation may be open in the message bubble), else 'idle'. `primary` is the id of the one action to lead with ('' when idle), `matches` the ids of the
    * actions that suit the page (the others are shown dimmed, not hidden). Only the address says which; the title is read for
    * a name, and a company is read from the address when it has one.
@@ -495,8 +510,9 @@
     }
     const list = listMode(url);
     if (list) {
-      return { kind: 'list', heading: 'Job list', detail: list === 'linkedin' ? 'LinkedIn' : 'Indeed', primary: 'import-list',
-        matches: ['import-list', 'passive-import', ...reply, ...(postingMode(url) === 'linkedin' ? ['posting'] : [])] };
+      // passive mode (jobs noted while browsing) runs only on LinkedIn and Indeed, where the content script is
+      return { kind: 'list', list, heading: 'Job list', detail: LIST_SITES[list], primary: 'import-list',
+        matches: ['import-list', ...(list === 'ladders' ? [] : ['passive-import']), ...reply, ...(postingMode(url) === 'linkedin' ? ['posting'] : [])] };
     }
     if (postingMode(url) === 'linkedin') {
       return { kind: 'posting', heading: 'Job posting', detail: oneLine(String(title || '').replace(/^\(\d+\+?\)\s*/, '').replace(/\s*\|\s*LinkedIn.*$/i, '')),
@@ -548,7 +564,7 @@
 
   const JW = { panelHome, panelBounds, elapsedLabel, coverField, pageContext, titleJob, threadName, themeChoice, replyMode, pickRead, pickFill, formatThread, fingerprint, formReplaced, DETAIL_FIELDS, KEYS, YESNO, EEO, IDENTITY, ASK_FIRST, SHOW_MIN, HIGH, normalize, tokens, similarity, classify, classifyField,
     valueFor, optionIndex, matchPastAnswer, buildPlan, isResume, looksSubmitted, isSubmitLabel, oneLine,
-    linkedinJobId, postingMode, listMode, importOnTab, progressIsMine, IMPORT_RUNNING, IMPORT_HIDDEN, isOffsiteApply, isEasyApply, sameCompany, tidyText };
+    linkedinJobId, postingMode, listMode, listSupported, LIST_SITES, importOnTab, progressIsMine, IMPORT_RUNNING, IMPORT_HIDDEN, isOffsiteApply, isEasyApply, sameCompany, tidyText };
   if (typeof module !== 'undefined' && module.exports) module.exports = JW;
   root.JW = JW;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

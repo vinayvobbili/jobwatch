@@ -1,9 +1,12 @@
 # Chrome Web Store Listing: jobwatch: Application Filler
 
-> Last Updated: 2026-11-21
+> Last Updated: 2026-11-25
 
 Live: https://chromewebstore.google.com/detail/jobwatch-application-fill/abackmpdpfflgiaccgfkababjplgolfi
-(item ID `abackmpdpfflgiaccgfkababjplgolfi`)
+(item ID `abackmpdpfflgiaccgfkababjplgolfi`; the listing shows 0.12.0, updated 2026-11-18)
+
+**Next upload: 0.13.0** (`dist/jobwatch-extension-0.13.0.zip`, built by `python chrome-extension/tools/package.py`).
+Its paste blocks are in "Paste blocks for 0.13.0" below.
 
 Everything the [Developer Dashboard](https://chrome.google.com/webstore/devconsole) asks for, in the order it asks.
 This file is for the developer and is not packaged (`tools/package.py` leaves out `.md` files). Build the upload and
@@ -41,21 +44,22 @@ How it works
 • Read the form and submit it yourself. The extension never clicks Submit, Next or any button that sends the form.
 • When you press the form's own Submit, jobwatch keeps the answers as they stood (your edits included) in that job's application package, and the panel says so. That alone never marks the job applied: only a confirmation page does. Your answers are kept for the next form and for interview prep.
 • On a LinkedIn job, press Open the company's posting and the extension presses LinkedIn's Apply button for you, so the company's own page opens. jobwatch reads the posting there. On a company page it can't read, press Save this posting to jobwatch.
-• On a LinkedIn or Indeed list of jobs, press Read the jobs on this list to send the list's job cards to your jobwatch. While you browse those two sites, the job cards you see are also noted on your computer, and nothing leaves it until you press Import. A checkbox in the side panel turns this off.
+• On a LinkedIn, Indeed or Ladders list of jobs, press Read the jobs on this list to send the list's job cards to your jobwatch. While you browse LinkedIn and Indeed, the job cards you see are also noted on your computer (not on Ladders), and nothing leaves it until you press Import. A checkbox in the side panel turns this off.
+• When your jobwatch holds a LinkedIn or Indeed job with no posting text, its Read posting button opens that job in a tab behind the one you are on. The extension reads the job's description there, gives it to your jobwatch and closes the tab. It reads only a page your own jobwatch opened.
 • On a LinkedIn conversation with a recruiter, press Draft reply to this conversation. The extension reads that one open conversation and gives it to your jobwatch, which writes a draft with the model on your computer. The panel shows the draft, warnings and what to check, and says where it was written. Put in the message box types it into LinkedIn's box. The extension never presses Send: you read it and send it yourself.
 • On a job's page, press ATS check to see which of the posting's keywords the resume jobwatch keeps for that job doesn't show (checked by jobwatch on your computer, with no model, and nothing is changed). Press Cover letter to have jobwatch draft one with the model on your computer and keep it with the job. The panel shows the letter to edit and copy. Fill the cover letter box puts it in the form's own cover letter box only if that box is empty (Replace is a second, separate press) and never presses Submit.
 
 Works with
 • Greenhouse, Lever and Ashby application forms, including a Greenhouse form embedded in a company's own page.
 • Other single-page application forms, on a best-effort basis.
-• LinkedIn and Indeed lists of jobs.
+• LinkedIn, Indeed and Ladders lists of jobs.
 • Fields another tool (Chrome autofill, a password manager) already filled are left alone.
 
 Privacy
 • On application forms it reads only the tab where you click the icon, and only when you press Fill this application.
 • Page content and your answers go only to the jobwatch on your own computer (127.0.0.1). The authors run no server and receive nothing.
 • A draft is written by the model you chose in jobwatch's settings: one on your own computer, or a cloud API you set up with your own key.
-• On LinkedIn and Indeed it reads only the job cards of a list (job number, title, company, place, pay, how long ago it was posted), and on a LinkedIn job page only the address. It presses LinkedIn's Apply button only when you ask, and never Easy Apply or Submit.
+• On LinkedIn, Indeed and Ladders it reads only the job cards of a list (job number, title, company, place, pay, how long ago it was posted, and on Ladders the job's page address), and on a LinkedIn job page only the address. It reads Ladders only on the tab where you click the icon. It presses LinkedIn's Apply button only when you ask, and never Easy Apply or Submit.
 • Only when you press Draft reply, it reads the one LinkedIn conversation that is open (the messages already on screen, no scrolling, no other conversation) and gives it to your jobwatch. It never presses Send. If you set jobwatch to use a cloud model for replies, jobwatch (not the extension) sends the conversation to it, and the panel says so.
 • When you press Fill this application, ATS check or Cover letter, the extension sends your jobwatch the page's address and the company and job title the page shows, so it can tell which job you mean. It reads nothing else for them; the page's fields are looked at for a cover letter box only to offer to fill it, and nothing from them is kept or sent.
 • No analytics, tracking or advertising.
@@ -66,9 +70,9 @@ Support: https://github.com/vinayvobbili/jobwatch/issues
 
 Productivity › Workflow & Planning
 
-**Single Purpose** (the dashboard wording is in "Paste blocks for 0.12.0" below)
+**Single Purpose** (the dashboard wording is in "Paste blocks for 0.13.0" below)
 
-Connect the user's browser to their own local jobwatch app for job applications: fill application forms with the user's details and earlier answers after they review each field, and send the jobs on a LinkedIn or Indeed list they have open to that app.
+Connect the user's browser to their own local jobwatch app for job applications: fill application forms with the user's details and earlier answers after they review each field, and send the jobs on a LinkedIn, Indeed or Ladders list they have open to that app.
 
 **Primary Language**
 
@@ -115,25 +119,38 @@ card with Pages to read, Note jobs while I browse and the seen-while-browsing ba
 were regenerated for 0.12.0. All data is made up (Jordan Rivera, Initech,
 Dana Whitfield).
 
-## Paste blocks for 0.12.0
+## Paste blocks for 0.13.0
 
 One block per dashboard field (Privacy practices tab; the Package tab has no What's new field). Checked against `manifest.json`,
-`passive.js`, `job-lists.js`, `reply.js`, `background.js` and `sidepanel.js` on 2026-11-17. Changes from the live 0.10.0:
-Single purpose (adds Draft reply), Justification: scripting (adds the two Draft reply scripts), the host permission box
-(Draft reply wording), the content script justification (Draft reply paragraph) and the data types (adds Personal
-communications). Every other block is unchanged. No permission in `manifest.json` changed since 0.10.0.
+`passive.js`, `read-posting.js`, `page-bridge.js`, `job-lists.js`, `reply.js`, `background.js` and `sidepanel.js` on 2026-11-25.
+What is submitted is exactly `dist/jobwatch-extension-0.13.0.zip`. Changes from the live 0.12.0:
+- Single purpose: adds Ladders lists, and ATS check / Cover letter (in the code since 0.12.0's release, never submitted).
+- Justification: activeTab: adds the Ladders list (the one place the list reader runs on activeTab alone).
+- Justification: scripting: adds the Ladders list reader, and the one in-page function that fills an empty cover letter box.
+- Justification: tabs: adds the Ladders list tab moved to its next page, the tab Read posting opens behind the current one, and the panel's popup window.
+- The host permission box, the content-script justification and the permissions table: Read posting (`read-posting.js`
+  on LinkedIn and Indeed) and the local-page bridge (`page-bridge.js`, new content scripts since 0.12.0), and the Ladders sentence.
+- Data types: unchanged (the same four ticks); the Website content row gains Ladders' job cards and, on LinkedIn and
+  Indeed, a job's description (Read posting).
+Every other block is unchanged. **`manifest.json` permissions and `host_permissions` are the same as 0.12.0. Ladders
+is not a new host permission** (no `theladders.com` anywhere in the manifest; a test guards that). The only manifest
+changes since the live 0.12.0 are the version, `read-posting.js` added to the LinkedIn/Indeed content-script entry
+(same two hosts), and a second content-script entry, `page-bridge.js`, on `http://localhost/*`, `http://*.localhost/*`
+and `http://127.0.0.1/*`: the first and third are already in `host_permissions`; `*.localhost` (jobwatch's own
+`<app>.localhost` address) is a content-script match only. Expect the review to look at the content scripts, and
+possibly an in-depth review, as with 0.10.0 and 0.12.0.
 
 ### Single purpose
 
-Help with job applications by connecting the browser to the user's own jobwatch app, which runs on their computer. The extension fills job application forms from the user's saved details and earlier answers after the user reviews each field, and sends the job listings from a LinkedIn or Indeed list the user has open to that same local app. When the user asks, it also drafts a reply to a recruiter's LinkedIn conversation the user has open: it reads that conversation, the local app writes the draft, and the user chooses whether it is typed into the message box (the user sends it).
+Help with job applications by connecting the browser to the user's own jobwatch app, which runs on their computer. The extension fills job application forms from the user's saved details and earlier answers after the user reviews each field, and sends the job listings from a LinkedIn, Indeed or Ladders list the user has open to that same local app. When the user asks, it also drafts a reply to a recruiter's LinkedIn conversation the user has open (it reads that conversation, the local app writes the draft, and the user chooses whether it is typed into the message box; the user sends it), and checks the resume against a job's posting and drafts a cover letter with the local app, which the user may put in the form's cover letter box.
 
 ### Justification: activeTab
 
-Reads the application form's questions and fills the ticked fields, only on the tab where the user clicked the extension's icon and pressed Fill this application.
+Reads the application form's questions and fills the ticked fields, only on the tab where the user clicked the extension's icon and pressed Fill this application. It is also the only access to a Ladders list (theladders.com): Read the jobs on this list reads that list only on the tab where the user clicked the icon, and only after the user presses the button.
 
 ### Justification: scripting
 
-Injects the script that finds a form's fields and writes the ticked values into the tab, only after the user presses Fill this application. Also injects the job-list reader into the user's LinkedIn or Indeed tab when the user presses Read the jobs on this list, and the script that presses LinkedIn's Apply button when the user presses Open the company's posting. When the user presses Draft reply to this conversation, it injects the script that reads the open LinkedIn conversation, and, when the user presses Put in the message box, the script that types the draft into that conversation's message box (it clicks nothing and never presses Send). All scripts ship inside the package; no remote code is loaded.
+Injects the script that finds a form's fields and writes the ticked values into the tab, only after the user presses Fill this application. Also injects the job-list reader into the user's LinkedIn, Indeed or Ladders tab when the user presses Read the jobs on this list, and the script that presses LinkedIn's Apply button when the user presses Open the company's posting. When the user presses Draft reply to this conversation, it injects the script that reads the open LinkedIn conversation, and, when the user presses Put in the message box, the script that types the draft into that conversation's message box (it clicks nothing and never presses Send). When the user presses Fill the cover letter box, it injects one function that writes the letter into an empty cover letter box (it never touches a file field and never presses Submit). All scripts ship inside the package; no remote code is loaded.
 
 ### Justification: storage
 
@@ -145,15 +162,17 @@ Shows the review (each field, where its value came from, and the Fill selected b
 
 ### Justification: tabs
 
-Reads the address and title of tabs so the panel offers the right buttons for the site the user is on; the one new tab that LinkedIn's Apply button opens (within two minutes of the press), whose address goes to the user's local jobwatch; and a form's tab after a scan, to notice that the page now looks like a submission confirmation so jobwatch can record the application. During a list import the user started, it also moves that same list tab to the list's next page.
+Reads the address and title of tabs so the panel offers the right buttons for the site the user is on; the one new tab that LinkedIn's Apply button opens (within two minutes of the press), whose address goes to the user's local jobwatch; and a form's tab after a scan, to notice that the page now looks like a submission confirmation so jobwatch can record the application. During a list import the user started (LinkedIn, Indeed or Ladders), it also moves that same list tab to the list's next page. When the user's own jobwatch asks to read a posting (its Read posting button), it opens that LinkedIn or Indeed job in a tab behind the current one, waits for it to load and closes it; and for a window where Chrome has no side panel (an installed web app) it opens the same panel in a small popup window beside it.
 
 ### Host permission justification (the dashboard field; 1,000 characters at most)
 
 The dashboard has one box for every match pattern, content-script sites included, capped at 1,000 characters. Paste this; the two longer blocks below are the full wording for a reviewer who asks.
 
-Local app (http://127.0.0.1/*, http://localhost/*): the only network destination is the jobwatch app the user runs on their own computer. It supplies the user's details, earlier answers and resume, and receives imported job cards and applications. Nothing goes to the developer or any third party; the developer runs no server.
+Local app (http://127.0.0.1/*, http://localhost/*; a small script also runs on these and *.localhost, for jobwatch's own page): the only network destination is the jobwatch app on the user's own computer. It supplies the user's details, answers and resume and receives job cards and applications. Nothing goes to the developer or a third party.
 
-LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*): the content script does nothing unless the page is a list of jobs, or a job page the user's own jobwatch opened with #jobwatch-read in the address (Read posting: it reads that job's description). On a list it reads only the job cards already drawn (job number, title, company, place, pay, posted date), never profiles or account data. Messages are read only when the user presses Draft reply, and only the one open conversation. Passive mode is off by default; if ticked, cards browsed stay in local storage until Import. Read the jobs on this list runs only when pressed: it pages that list tab (4 pages by default, at most 10) and sends the cards to the local jobwatch only.
+LinkedIn and Indeed (https://www.linkedin.com/*, https://*.indeed.com/*): the script acts only on a list of jobs, or a job page jobwatch opened with #jobwatch-read (Read posting reads its description). On a list it reads only the cards already drawn (number, title, company, place, pay, date), never profiles or account data. Messages: only on Draft reply, the one open conversation. Passive mode is off by default. Read the jobs on this list runs only when pressed and sends the cards to the local jobwatch only.
+
+Ladders (theladders.com): no host access; its list is read through activeTab, on the tab where the user clicked the icon.
 
 ### Justification: host permissions (http://127.0.0.1/* and http://localhost/*)
 
@@ -167,7 +186,11 @@ Draft reply (only when the user presses the button in the side panel; a script i
 
 Passive mode (off by default; the user opts in with a checkbox in the side panel): once the user ticks it, as the user browses a list, the script notes those cards, with no scrolling, clicking or page-opening by the extension, and keeps them in the extension's local Chrome storage on the user's computer (up to 1000 jobs). Nothing is sent anywhere until the user presses Import in the side panel; then the jobs go only to the user's own local jobwatch and are deleted from the extension. With the checkbox off (the default), the script reads and stores nothing.
 
-Read the jobs on this list: only when the user presses this button, the extension scrolls the list the user has open and moves it to the list's next page, up to the number of pages the user sets (4 by default, at most 10), reads the same job cards, and sends them to the user's local jobwatch. It reads only pages of that list in the user's own tab and never opens other pages or crawls. Nothing goes to the developer or any third party.
+Read the jobs on this list (LinkedIn, Indeed and, new in 0.13.0, Ladders): only when the user presses this button, the extension scrolls the list the user has open and moves it to the list's next page, up to the number of pages the user sets (4 by default, at most 10), reads the same job cards, and sends them to the user's local jobwatch. It reads only pages of that list in the user's own tab and never opens other pages or crawls.
+
+Ladders (theladders.com, new in 0.13.0): no content script and no host permission. When the user presses Read the jobs on this list on a Ladders list ("Recommended Jobs", a search), the extension injects the same job-list reader (activeTab: the tab where the user clicked the icon) and reads the same fields from the cards: the job's number, title, company, place, pay (Ladders' own estimate), how long ago it was posted and the address of the job's page on Ladders. The jobs go only to the user's local jobwatch, which keeps Ladders' page only as a reference note. Passive mode does not run on Ladders.
+
+Content script on the user's own jobwatch page (http://localhost/*, http://*.localhost/*, http://127.0.0.1/*; `page-bridge.js`, new since 0.12.0): so that the Read posting button on the user's jobwatch page can open a posting in a background tab instead of taking the user away from the page. It passes the page's request (a LinkedIn or Indeed job address) to the extension's service worker and the answer back, and reads nothing else from the page. The service worker acts only for the address and port the extension is paired with, and refuses any other local page. It also tells the page what the extension can do (a `ping`, answered with a fixed list), so the page works with an older extension too. Nothing goes to the developer or any third party.
 
 ### Data use: data types to tick
 
@@ -175,7 +198,7 @@ Tick: Personally identifiable information, Health information, Personal communic
 
 Leave unticked: Financial and payment information, Authentication information, Location, Web history, User activity.
 
-Why, if a reviewer asks: PII and Health come from the user's own jobwatch and are written into the form they are filling (Health: the voluntary self-identification answers, only when the user ticks that row). Website content is the form's questions and the job cards of a LinkedIn or Indeed list. Personal communications is the text of the one LinkedIn conversation the user asks for a reply to, read only when they press Draft reply. All of it goes only to the user's own jobwatch on the same computer; none to the developer or a third party. The pairing token is the user's own credential for their own jobwatch, stored locally.
+Why, if a reviewer asks: PII and Health come from the user's own jobwatch and are written into the form they are filling (Health: the voluntary self-identification answers, only when the user ticks that row). Website content is the form's questions, the job cards of a LinkedIn, Indeed or Ladders list, and (Read posting) the description of a LinkedIn or Indeed job page the user's own jobwatch opened. Personal communications is the text of the one LinkedIn conversation the user asks for a reply to, read only when they press Draft reply. All of it goes only to the user's own jobwatch on the same computer; none to the developer or a third party. The pairing token is the user's own credential for their own jobwatch, stored locally.
 
 ### Data use: certifications to tick
 
@@ -183,7 +206,19 @@ Why, if a reviewer asks: PII and Health come from the user's own jobwatch and ar
 - [x] I do not use or transfer user data for purposes that are unrelated to my item's single purpose.
 - [x] I do not use or transfer user data to determine creditworthiness or for lending purposes.
 
-### What's new (0.12.0)
+### What's new (0.13.0)
+
+The dashboard has no "What's new" field (checked 2026-11-17); this text is for the GitHub release notes and, if you want it, the listing description, not a paste block. It covers the live 0.12.0 and what has changed in the extension since (Read posting, ATS check and Cover letter, the popup panel, Draft reply fixes, Ladders). Only what a user of the extension sees:
+
+New: Read the jobs on this list now works on Ladders ("Recommended Jobs" and searches on theladders.com), a page at a time like Indeed, up to the number of pages you set. It reads the same job cards (number, title, company, place, pay, how long ago it was posted, and the job's page address on Ladders, which your jobwatch keeps only as a reference: you apply on the company's own site). The extension reads Ladders only on the tab where you click its icon and only when you press the button, and "Note jobs while I browse" is not offered there. It needs the newest jobwatch (`pip install -U jobwatch`); with an older one the panel says so instead of offering the button.
+
+New: Read posting. When jobwatch holds a LinkedIn or Indeed job with no posting text, its Read posting button opens the job in a tab behind the one you are on, the extension reads the job's description there and passes it to your jobwatch, and the tab closes. Only that job's card changes on jobwatch's page; your place stays. With an older extension the tab opens in front, and jobwatch says to update. It reads only a page your own jobwatch opened (its address ends in #jobwatch-read).
+
+New: ATS check and Cover letter on a job's page: which of the posting's keywords your resume doesn't show, and a cover letter drafted by your own jobwatch's local model, which you can put in an empty cover letter box (never Submit).
+
+Also: in an installed web app's window (where Chrome has no side panel) the same panel opens in a small window beside it; Draft reply finds a conversation open in LinkedIn's message bubble and in InMail threads. No new permission and no new host permission is requested (the two content scripts added since 0.12.0 run on the sites and local addresses the extension already covers, see the content-script justification).
+
+### What's new (0.12.0, live), submitted with 0.11.0
 
 The dashboard has no "What's new" field (checked 2026-11-17); this text is for the GitHub release notes and the listing description, not a paste block. It covers 0.11.0 too, which was never submitted:
 
@@ -195,7 +230,7 @@ Fixes: reading a LinkedIn or Indeed list takes the visible job title (no more "S
 
 No new permission is requested.
 
-### What's new (next version, draft)
+### What's new, ATS check and Cover letter in full (shipped in 0.13.0; the longer wording)
 
 New: ATS check and Cover letter, on a job's page. ATS check shows which of the posting's keywords the resume your jobwatch keeps for that job doesn't show, so you can see what a screener would miss; it is a keyword check on your own computer and changes nothing. Cover letter has your jobwatch draft a letter with the model on your computer, keeps it with the job, and shows it in the side panel to edit and copy. "Fill the cover letter box" puts it in the form's cover letter box when that box is empty (replacing text is a second press) and never presses Submit. For these two buttons the extension sends your own jobwatch, at the address you entered, the page's address and the company and job title it shows. No new permission is requested; the privacy policy is updated.
 
@@ -205,19 +240,21 @@ New: import the jobs from a LinkedIn or Indeed list into your own jobwatch. Pres
 
 ## Permissions Justification (working notes)
 
-Each entry matches what the code does (checked against `background.js`, `sidepanel.js`, `options.js`, `passive.js`
-on 2026-11-12).
+Each entry matches what the code does (checked against `background.js`, `sidepanel.js`, `options.js`, `passive.js`,
+`read-posting.js` and `page-bridge.js` on 2026-11-25; the permissions list is the same as 0.12.0's).
 
 | Permission | Type | Justification |
 |------------|------|---------------|
-| `activeTab` | permissions | Reads the application form's questions, and fills the ticked fields, only on the tab where the user clicked the extension's icon. |
-| `scripting` | permissions | Injects the script that finds the form's fields and writes the ticked values into that tab, only after the user clicks the icon and presses Fill this application. Also injects the list reader into a LinkedIn or Indeed tab when the user presses Read the jobs on this list, the script that presses LinkedIn's Apply button when the user presses Open the company's posting, and (Draft reply) the script that reads the one open LinkedIn conversation when the user presses Draft reply, and types the draft into its message box when the user presses Put in the message box. It clicks nothing there and never presses Send. |
+| `activeTab` | permissions | Reads the application form's questions, and fills the ticked fields, only on the tab where the user clicked the extension's icon. Also the only access to a Ladders list (0.13.0): Read the jobs on this list reads it on that tab, after the button is pressed. |
+| `scripting` | permissions | Injects the script that finds the form's fields and writes the ticked values into that tab, only after the user clicks the icon and presses Fill this application. Also injects the list reader into a LinkedIn, Indeed or Ladders tab when the user presses Read the jobs on this list, the one function that fills an empty cover letter box when the user presses Fill the cover letter box, the script that presses LinkedIn's Apply button when the user presses Open the company's posting, and (Draft reply) the script that reads the one open LinkedIn conversation when the user presses Draft reply, and types the draft into its message box when the user presses Put in the message box. It clicks nothing there and never presses Send. |
 | `storage` | permissions | Saves the jobwatch address and pairing token the user enters on the options page, the list-import page count and the passive-mode checkbox, the job cards passive mode noted until the user imports them, and (in session memory) an answer the user just submitted until jobwatch has recorded it. |
 | `sidePanel` | permissions | Shows the review (each field, where its value came from, and the Fill selected button) in Chrome's side panel beside the form, so it never covers the page. |
-| `tabs` | permissions | Reads the address (and title) of tabs: the active tab, to choose the side panel's button and to know which site the user is on; the one new tab that LinkedIn's Apply button opens (within two minutes), whose address is given to the user's local jobwatch; and a form's tab after a scan, to notice that the page now looks like a submission confirmation so jobwatch can record the application. For a list import it also moves the user's own list tab to its next page. |
+| `tabs` | permissions | Reads the address (and title) of tabs: the active tab, to choose the side panel's button and to know which site the user is on; the one new tab that LinkedIn's Apply button opens (within two minutes), whose address is given to the user's local jobwatch; and a form's tab after a scan, to notice that the page now looks like a submission confirmation so jobwatch can record the application. For a list import (LinkedIn, Indeed or Ladders) it also moves the user's own list tab to its next page; for Read posting it opens the job in a background tab for the user's own jobwatch and closes it, and for a window with no side panel it opens the panel in a popup window. |
 | `http://127.0.0.1/*` | host_permissions | The extension's only network access: the jobwatch app the user runs on their own computer (default `http://127.0.0.1:8765`) supplies the user's details, earlier answers and resume, drafts answers, receives imported job cards and records the application. |
 | `http://localhost/*` | host_permissions | Same, for a user whose jobwatch address is written as `localhost` instead of `127.0.0.1`. |
-| Content script on `https://www.linkedin.com/*` and `https://*.indeed.com/*` | content_scripts matches (a host access, not in `host_permissions`) | Passive mode, off by default and opt-in with a side-panel checkbox: once the user ticks it, when the address is a list of jobs, a small script notes the job cards the page has already drawn (job number, title, company, place, pay, age) and keeps them in the extension's storage on this computer until the user presses Import. With the checkbox off (the default) it reads and stores nothing. It also lets the Read the jobs on this list button reach those two sites' lists. |
+| Content script on `https://www.linkedin.com/*` and `https://*.indeed.com/*` | content_scripts matches (a host access, not in `host_permissions`) | Passive mode, off by default and opt-in with a side-panel checkbox: once the user ticks it, when the address is a list of jobs, a small script notes the job cards the page has already drawn (job number, title, company, place, pay, age) and keeps them in the extension's storage on this computer until the user presses Import. With the checkbox off (the default) it reads and stores nothing. It also lets the Read the jobs on this list button reach those two sites' lists, and (`read-posting.js`, 0.13.0) reads a job page's description only when its address ends in `#jobwatch-read`, which only the user's own jobwatch adds. |
+| Content script on `http://localhost/*`, `http://*.localhost/*` and `http://127.0.0.1/*` | content_scripts matches (the first and last are already in `host_permissions`; `*.localhost` is a match only) | `page-bridge.js`, 0.13.0: lets the Read posting button on the user's own jobwatch page open the posting in a background tab and tells that page when it is read, and what the extension can do (a `ping`). It reads nothing from the page but that request; the service worker refuses any local page that is not the paired jobwatch's address and port. |
+| Ladders (`https://www.theladders.com/*`) | none (activeTab only) | **Not in the manifest.** Read the jobs on this list reads a Ladders list only on the tab where the user clicked the icon (activeTab), by injecting the same list reader (`scripting`). No content script, no host permission, no passive mode there. |
 
 No other host permissions are requested. On an application form the extension reads only the active tab after the
 user clicks its icon.
@@ -256,7 +293,7 @@ Tick **Personally identifiable information**, **Health information**, **Personal
 | Location | No | | The city and state in the user's details are an address for the form, not the device's location. | |
 | Web history | No | | Only the active tab's address, and the address of the one tab LinkedIn's Apply button opens, are used, only to give to the user's own jobwatch; nothing is kept as a history. | |
 | User activity | No | | No clicks, keystrokes or mouse movement are recorded. After a scan it only notices that the form was submitted (the form's submit event, or a click on its Submit button), so it can send the answers as they stood to jobwatch. | |
-| Website content | Yes | No (only to the user's own jobwatch) | Reads the form's questions, answer options, current values, the page address, and the company and job title shown on the page; on LinkedIn and Indeed lists, the job cards; with Save this posting to jobwatch, the job text a company's page shows. Sent to the local jobwatch to find earlier answers, draft an answer, import jobs, keep the answers when the user presses Submit, and record the application. With ATS check and Cover letter (next version) the page's company and job title go to the local jobwatch to tell which job it is. | No |
+| Website content | Yes | No (only to the user's own jobwatch) | Reads the form's questions, answer options, current values, the page address, and the company and job title shown on the page; on LinkedIn and Indeed lists, the job cards; with Save this posting to jobwatch, the job text a company's page shows. Sent to the local jobwatch to find earlier answers, draft an answer, import jobs, keep the answers when the user presses Submit, and record the application. With ATS check and Cover letter the page's company and job title go to the local jobwatch to tell which job it is. | No |
 
 ### Data Use Certification
 
@@ -306,14 +343,17 @@ The extension fills job application forms from the jobwatch app, which runs on t
 3. In jobwatch, open Settings > Applying and fill in a few applicant details (any made-up name, email and phone). Then open Settings > Browser extension and copy the token.
 4. In the extension's options (right-click its icon > Options), paste the token and press Test. It says "Connected to jobwatch".
 5. Open any Greenhouse, Lever or Ashby job's application page, for example a job from https://job-boards.greenhouse.io, click the jobwatch icon (the side panel opens) and press "Fill this application". Each field shows what would be filled; tick rows and press "Fill selected". The extension never submits the form; please don't submit it.
-6. ATS check and Cover letter (optional, next version): in jobwatch, queue a job (or press Save this posting to jobwatch on its page), set a resume in Settings, then open the job's page and press "ATS check" (a keyword check on the computer, no model) or "Cover letter" (needs a local model set up in jobwatch). "Fill the cover letter box" fills an empty cover letter box on a form, only when pressed, and never submits. The extension sends jobwatch only the page's address, company and job title for these two.
+6. ATS check and Cover letter (optional): in jobwatch, queue a job (or press Save this posting to jobwatch on its page), set a resume in Settings, then open the job's page and press "ATS check" (a keyword check on the computer, no model) or "Cover letter" (needs a local model set up in jobwatch). "Fill the cover letter box" fills an empty cover letter box on a form, only when pressed, and never submits. The extension sends jobwatch only the page's address, company and job title for these two.
 7. Draft reply (optional): it needs a LinkedIn account and an open message conversation, and a local model set up in jobwatch, so a reviewer can skip it. Nothing is read from LinkedIn unless Draft reply is pressed on an open conversation.
+
+8. Job lists and Read posting (optional): they need an account on LinkedIn, Indeed or Ladders, so a reviewer can skip them. On a list of jobs (for example theladders.com/recommended after signing in), click the icon and press "Read the jobs on this list": the panel shows the job cards read and what jobwatch made of them. Nothing is read from the list until that press. "Read posting" is a button on a job's card in jobwatch itself (it needs a job that came from a LinkedIn or Indeed alert), and opens that job behind the current tab.
 
 ## Version History
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.12.0 | 2026-11-17 (submitted) | Covers 0.11.0 (below), which was never submitted. Upload: `dist/jobwatch-extension-0.12.0.zip` (65,245 bytes, 19 files). Side panel redesign: a lead card chosen from the tab's address and title (`pageContext` in `logic.js`) with the page's one action, every action as a dimmable tile in Apply / Messages / Jobs groups, a paired-status chip in the header, and a System / Light / Dark theme kept in `chrome.storage.local` and set on the options page (`look.js`). Same buttons, same messages to the service worker, no new permission (the `tabs` permission already gave the tab title; it is used only to read a company, role or conversation name for the card, and is never sent anywhere). Draft reply: reads the one open LinkedIn conversation when the user presses the button, shows jobwatch's draft with warnings and "check this" notes and whether it was written on this computer, and types it into the message box (never presses Send). Adds Personal communications to the data-use ticks and the privacy policy's LinkedIn messages paragraph. Also in 0.12.0: the side panel shows a spinner with elapsed seconds while a draft or import runs, and the project's fonts; Draft reply finds the open thread on the current LinkedIn page, says when your message is last and offers a follow-up; list-import fixes (the board lookups have a time budget, the extension keeps its worker alive and says what to do when jobwatch doesn't answer). No new permission. Built and tested against a demo page only (`demo/linkedin-messages.html`), not yet against the real LinkedIn. | In review |
+| 0.13.0 | 2026-11-25 (prepared) | Upload: `dist/jobwatch-extension-0.13.0.zip` (built with `python chrome-extension/tools/package.py`; 81,098 bytes, 21 files, nothing else is in it). Ladders lists for Read the jobs on this list (`job-lists.js` already read Ladders; the panel, `listMode` in `logic.js` and the service worker now offer it, reached through activeTab: **no new permission and no new host**, no `theladders.com` in the manifest; the panel offers it only to a jobwatch that lists `list-ladders` in `/ext/ping`). Also in this version, never submitted before: Read posting (`read-posting.js` on the LinkedIn/Indeed content-script entry, `page-bridge.js` on the local addresses, a background tab, the capability `ping`, and a fallback for an older extension), ATS check and Cover letter, the panel as a popup window for installed web apps, Draft reply (frames, shadow roots, InMail, message bubble). Permissions and `host_permissions` are the same as 0.12.0; the content scripts changed (see "Paste blocks for 0.13.0"). The privacy practices answers (data types, certifications) are unchanged; the privacy policy (`PRIVACY.md`) now names Ladders. | Ready to submit (not submitted) |
+| 0.12.0 | 2026-11-17 (submitted), live 2026-11-18 | Covers 0.11.0 (below), which was never submitted. Upload: `dist/jobwatch-extension-0.12.0.zip` (65,245 bytes, 19 files). Side panel redesign: a lead card chosen from the tab's address and title (`pageContext` in `logic.js`) with the page's one action, every action as a dimmable tile in Apply / Messages / Jobs groups, a paired-status chip in the header, and a System / Light / Dark theme kept in `chrome.storage.local` and set on the options page (`look.js`). Same buttons, same messages to the service worker, no new permission (the `tabs` permission already gave the tab title; it is used only to read a company, role or conversation name for the card, and is never sent anywhere). Draft reply: reads the one open LinkedIn conversation when the user presses the button, shows jobwatch's draft with warnings and "check this" notes and whether it was written on this computer, and types it into the message box (never presses Send). Adds Personal communications to the data-use ticks and the privacy policy's LinkedIn messages paragraph. Also in 0.12.0: the side panel shows a spinner with elapsed seconds while a draft or import runs, and the project's fonts; Draft reply finds the open thread on the current LinkedIn page, says when your message is last and offers a follow-up; list-import fixes (the board lookups have a time budget, the extension keeps its worker alive and says what to do when jobwatch doesn't answer). No new permission. Built and tested against a demo page only (`demo/linkedin-messages.html`), not yet against the real LinkedIn. | Published (listing shows 0.12.0, updated 2026-11-18) |
 | 0.11.0 | | Never submitted; folded into 0.12.0. List import reads the card's visible title, and drops LinkedIn's screen-reader text ("Selected, ...", the title said twice) from titles; the import summary shows jobwatch's own coverage and says when a list was imported before. Setup text (side panel, options page, README) says to run `jobwatch`, which now opens the app. | not submitted |
 | 0.10.0 | | Passive mode and list import for LinkedIn and Indeed job lists (adds the LinkedIn/Indeed content script), one side panel per tab, list imports run in parallel (one per tab). LinkedIn/Indeed list import, passive mode off by default, one side panel per tab, parallel list imports. New promo video: https://youtu.be/cILjM1IF4ZQ. Upload: `dist/jobwatch-extension-0.10.0.zip`. Paste blocks and screenshots 5 and 6 ready; submitted for review 2026-11-14. | Published (live, nothing pending as of 2026-11-17) |
 | 0.9.0 | 2026-11-10 | First submission: fills Greenhouse, Lever and Ashby forms from details and earlier answers, drafts, resume attach, records the application, LinkedIn Apply handoff. | Published |
@@ -323,11 +363,16 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
 ## Review Notes
 
 - 0.10.0 submitted for review 2026-11-14; live.
-- 0.12.0 submitted for review 2026-11-17 (auto-publish when approved; the host-permission banner warned of an in-depth review).
+- 0.12.0 submitted for review 2026-11-17 (auto-publish when approved; the host-permission banner warned of an in-depth review); live 2026-11-18.
+- 0.13.0 prepared 2026-11-25, not yet submitted. Notes to the reviewer, if the dashboard has a field for them (the test
+  instructions above are the field for this): the extension's permissions and host permissions are unchanged; since 0.12.0
+  it adds two content-script entries (`read-posting.js` on LinkedIn/Indeed, acting only on a page jobwatch opened with
+  `#jobwatch-read`; `page-bridge.js` on local addresses, passing one request to the service worker, which refuses any
+  page but the paired jobwatch) and reads Ladders lists on the tab where the user clicked the icon (activeTab).
 
 ### Known Issues / Limitations
 
-- Next version (not yet bumped or submitted; `manifest.json` stays 0.12.0 until it is): ATS check and Cover letter. Two
+- 0.13.0 (prepared, not submitted): ATS check and Cover letter. Two
   new tiles in the Apply group (`ats`, `cover`), shown only when jobwatch's `/ext/ping` lists those features. Pressing
   one sends the local jobwatch the page's address plus the company and title the page shows (`pageInfo` in
   `background.js`, read with the existing `page.js` on the page the user is on; LinkedIn and Indeed pages are not read),
@@ -347,7 +392,7 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
   (`demo/cover.html`, `demo/cover-file.html`, `tests/test_extension_e2e.py`), not yet against a real application form
   with the unpacked extension.
 
-- Next version (not yet bumped or submitted): Read posting. jobwatch's Queue/Today card button opens a LinkedIn or Indeed job
+- 0.13.0 (prepared, not submitted): Read posting. jobwatch's Queue/Today card button opens a LinkedIn or Indeed job
   in a new tab with `#jobwatch-read` in its address; the new content script `read-posting.js` (added to the existing
   LinkedIn/Indeed content-script entry in `manifest.json`, so no new permission or host) reads that page's description only
   then, sends it to the local jobwatch through the service worker (`readPosting` in `background.js`, `POST /ext/posting`
@@ -372,21 +417,21 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
   No new permission, host or message beyond `ping`; nothing sensitive is in its answer.
 
 - 0.12.0 does nothing when the toolbar icon is clicked in an installed web app's window (LinkedIn's PWA): Chrome offers
-  no side panel there and `background.js` swallowed the error. Fixed for the next version (not yet bumped or submitted):
+  no side panel there and `background.js` swallowed the error. Fixed in 0.13.0:
   the click now opens the same panel (`sidepanel.html?tab=<id>`) as a 420 px popup window beside the app window, one per
   tab, focused instead of duplicated, closed with its tab; ordinary windows keep the side panel. `panelHome` and
   `panelBounds` in `logic.js` decide; no new permission. Checked in a real PWA window (LinkedIn's) on 2026-11-19 after
   reloading the unpacked extension: the click opens the popup panel.
 - 0.12.0's Draft reply answered "No conversation is open (0 editable boxes, 0 messages)" with a LinkedIn message bubble
   plainly open: LinkedIn now draws the bubble inside an open shadow root (`#interop-outlet`), which the page queries in
-  `reply.js` stopped at. Fixed for the next version (not yet bumped or submitted): `reply.js` walks open shadow roots
+  `reply.js` stopped at. Fixed in 0.13.0: `reply.js` walks open shadow roots
   (`deepAll`, `closestDeep`, `holds`, `activeDeep`) to find the box, read the messages and fill the reply; the demo page
   has a `?shadow` shape and the e2e test covers it. Checked against the live feed page's `#interop-outlet` on 2026-11-20.
 
 - 0.12.0's Draft reply answered "No conversation is open (0 editable boxes, 0 messages)" on an InMail thread in
   Messaging (2026-11-23). A fresh Messaging tab read fine with the 0.12.0 selectors (an InMail thread and an ordinary
-  chat), so the failing read had looked at a document with no box at all. Hardened for the next version (not yet bumped
-  or submitted; `manifest.json` stays 0.12.0): `draftReply` and `fillReply` in `background.js` now inject `reply.js`
+  chat), so the failing read had looked at a document with no box at all. Hardened in 0.13.0:
+  `draftReply` and `fillReply` in `background.js` now inject `reply.js`
   into every frame of the tab (`allFrames`, the same access `activeTab` already grants; `pickRead` and `pickFill` in
   `logic.js` take the frame that holds the conversation), look once more after 1.5 s when nothing shows yet, and
   `reply.js` falls back to structure when LinkedIn's class names are gone (a paragraph in a list item or log region
@@ -396,10 +441,18 @@ Fill in the 0.10.0 date from the dashboard. The 0.9.0 date is the listing's "Upd
   `chrome://extensions` (the reload button on jobwatch's card), then reloads the LinkedIn tab.
 
 - 0.12.0 told a LinkedIn page that is not Messaging (the feed, a profile) "IDLE / Nothing to do on this page" even
-  though Draft reply works from a conversation open in the message bubble. Fixed for the next version (not yet bumped
-  or submitted): `pageContext` gives those pages a "LinkedIn" lead card (kind `bubble`) that says "Have a recruiter's
+  though Draft reply works from a conversation open in the message bubble. Fixed in 0.13.0:
+  `pageContext` gives those pages a "LinkedIn" lead card (kind `bubble`) that says "Have a recruiter's
   message open in the bubble? Draft reply reads it." with the Draft reply tile lit. Panel text only; no new permission.
 
+- 0.13.0, Ladders lists (`job-lists.js` reads Ladders; `listMode` in `logic.js` says when a tab is one; `importList` in
+  `background.js` injects the reader and moves the tab to the next page like Indeed's): reached through `activeTab`
+  only. Chrome keeps activeTab's grant across a same-site page load, so the next page can be read; if it is not, the
+  panel says "Chrome stopped the reading on page N: click the jobwatch icon there and import again" and imports what
+  was read. `/ext/ping`'s new feature `list-ladders` gates the button, so an older jobwatch (which would put Ladders'
+  pay estimate in a job's pay) offers none. Built and tested against a made-up page only (`demo/ladders-jobs.html`,
+  `tests/test_extension_e2e.py`); **not yet checked on a real signed-in Ladders list with the unpacked extension**:
+  do that before submitting (click the icon on theladders.com/recommended, press Read the jobs on this list).
 - The 0.10.0 content script on LinkedIn and Indeed is a new host access (adds a "broad host access" review and
   possible in-depth review). The paste blocks above are the 0.10.0 answers; the 0.9.0 claim "reads nothing from
   LinkedIn" is gone.

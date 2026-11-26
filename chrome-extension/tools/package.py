@@ -4,8 +4,9 @@
 
 Packs only what the browser loads (no demo forms, tools, tests or docs; THIRD_PARTY_NOTICES stays, as the
 licenses it carries ask), with manifest.json at the zip root as the store requires. Refuses to build when
-the manifest version and the jobwatch package version disagree, so the extension and the server it talks
-to are released together.
+the manifest version is behind the jobwatch package's, so the extension and the server it talks to are
+released together. The manifest may be ahead: the store's review takes days, so the extension is submitted
+at the next release's version before that release is cut (scripts/release.py leaves such a manifest be).
 """
 
 from __future__ import annotations
@@ -31,6 +32,10 @@ def package_version() -> str:
     return match.group(1)
 
 
+def version_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
 def extension_files(root: Path = EXTENSION_DIR):
     """Files the browser needs, as paths relative to the extension directory."""
     for path in sorted(root.rglob("*")):
@@ -48,6 +53,7 @@ def check_manifest(root: Path = EXTENSION_DIR) -> dict:
         manifest["side_panel"]["default_path"],
         manifest["options_page"],
         *manifest["icons"].values(),
+        *(js for script in manifest.get("content_scripts", []) for js in script["js"]),
     ]
     missing = [f for f in referenced if not (root / f).is_file()]
     if missing:
@@ -59,9 +65,9 @@ def check_manifest(root: Path = EXTENSION_DIR) -> dict:
 
 def build(out_dir: Path, root: Path = EXTENSION_DIR, expected_version: str | None = None) -> Path:
     manifest = check_manifest(root)
-    if expected_version and manifest["version"] != expected_version:
+    if expected_version and version_tuple(manifest["version"]) < version_tuple(expected_version):
         raise SystemExit(
-            f"manifest version {manifest['version']} != jobwatch {expected_version}; bump them together"
+            f"manifest version {manifest['version']} is behind jobwatch {expected_version}; bump them together"
         )
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / f"jobwatch-extension-{manifest['version']}.zip"

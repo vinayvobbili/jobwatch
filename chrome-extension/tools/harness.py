@@ -28,7 +28,7 @@ EXTENSION_DIR = Path(__file__).resolve().parents[1]
 DEMO_DIR = EXTENSION_DIR / "demo"
 
 HOSTS = ("job-boards.greenhouse.io", "boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com",
-         "careers.initech.example", "www.linkedin.com")
+         "careers.initech.example", "www.linkedin.com", "www.theladders.com")
 TLS_HOSTS = ("jobs.ashbyhq.com",)
 ROUTES = [
     (r"^/initech/jobs/\d+$", "greenhouse.html"),
@@ -40,9 +40,22 @@ ROUTES = [
     (r"^/[^/]+/[^/]+/application$", "ashby.html"),
     (r"^/careers$", "greenhouse-embed.html"),
     (r"^/jobs/collections/[^/]+/?$", "linkedin-jobs.html"),
+    (r"^/recommended/?$", "ladders-jobs.html"),  # www.theladders.com: page 1 of a list, its Next link goes to page 2
+    (r"^/jobs/search-jobs/?$", "ladders-jobs-2.html"),
     (r"^/messaging/thread/[^/]+/?$", "linkedin-messages.html"),
     (r"^/jobs/view/\d+/?$", "linkedin-job.html"),
 ]
+
+
+# Appended to the loaded copy's job-lists.js by `fast_lists`: every pause of PACING (mutated in place, which the
+# readers look up on each call) down to a few milliseconds
+FAST_PACING = """
+;(function () {
+  const quick = globalThis.JWList.PACING;
+  for (const k of Object.keys(quick)) quick[k] = Array.isArray(quick[k]) ? [5, 10] : 20;
+  quick.stepFrac = [0.6, 0.9];
+})();
+"""
 
 
 class BrowserUnavailable(RuntimeError):
@@ -112,16 +125,21 @@ def demo_site() -> Iterator[tuple[int, int]]:
 
 @contextmanager
 def browser_with_extension(playwright, headless: bool = True, map_hosts: bool = True, expose_panel: bool = False,
-                           **context_options) -> Iterator[tuple]:
+                           fast_lists: bool = False, **context_options) -> Iterator[tuple]:
     """Chromium with the extension loaded. Yields (context, extension_id).
 
     activeTab is granted by a person clicking the toolbar button, which automation can't do, so the loaded
     copy gets host access instead. Nothing else about it differs from what ships. `map_hosts` sends the
-    boards' addresses to the demo site; live_check.py turns it off to reach the real boards.
+    boards' addresses to the demo site; live_check.py turns it off to reach the real boards. `fast_lists` shortens
+    the pauses of Read the jobs on this list in the loaded copy (job-lists.js's PACING: seconds a page, as a person
+    skims) so a test of reading a list takes a moment; the shipped file is untouched.
     """
     with tempfile.TemporaryDirectory() as tmp:
         ext = Path(tmp) / "jobwatch-extension"
         shutil.copytree(EXTENSION_DIR, ext, ignore=shutil.ignore_patterns("demo", "tools", "__pycache__"))
+        if fast_lists:
+            with (ext / "job-lists.js").open("a", encoding="utf-8") as f:
+                f.write(FAST_PACING)
         manifest = json.loads((ext / "manifest.json").read_text())
         manifest["host_permissions"] = ["<all_urls>"]
         if map_hosts:  # the demo list page is plain http: let the list scripts run on it too

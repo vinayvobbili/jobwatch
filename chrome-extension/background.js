@@ -598,17 +598,21 @@ function loaded(tabId) {
 }
 
 /**
- * "Read the jobs on this list": reads the jobs on the LinkedIn or Indeed list in this tab (job-lists.js), page after page up to
- * LIST_MAX_PAGES, and sends them to jobwatch, which counts the ones it had and tracks the rest. Only the cards' title,
- * company, place, pay and age go, with each job's id on the site; the person pressed the button. LinkedIn swaps its
- * pages in place; Indeed loads each one, and the next is read once it has loaded (if Chrome stops the reading there,
- * what was read so far is sent).
+ * "Read the jobs on this list": reads the jobs on the LinkedIn, Indeed or Ladders list in this tab (job-lists.js), page after
+ * page up to the pages setting, and sends them to jobwatch, which counts the ones it had and tracks the rest. Only the
+ * cards' title, company, place, pay and age go, with each job's id on the site (and, on Ladders, the job's page there,
+ * which jobwatch keeps only as a reference); the person pressed the button. LinkedIn swaps its pages in place; Indeed
+ * and Ladders load each one, and the next is read once it has loaded (if Chrome stops the reading there, what was
+ * read so far is sent). Ladders has no content script: the tab is reached with activeTab (the grant of the icon click
+ * that opened this panel, which a same-site page load keeps), like any other site's form.
  */
 async function importList(tabId) {
   const settings = await pairedSettings();
   const maxPages = await listPages();
   const source = JW.listMode(await tabUrl(tabId));
-  if (!source) throw new Expected('Open a job list on LinkedIn (Jobs, a search) or Indeed (Jobs for you, a search), then try again.');
+  if (!source) throw new Expected('Open a job list on LinkedIn (Jobs, a search), Indeed (Jobs for you, a search) or Ladders (Recommended Jobs, a search), then try again.');
+  const asked = await status(); // an older jobwatch is told before the pages are read, not after
+  if (asked.reachable && !JW.listSupported(source, asked.features)) throw new Expected(JOB_OLD(`${JW.LIST_SITES[source]} lists`));
   if (listImports.has(tabId)) throw new Expected(JW.IMPORT_RUNNING);
   listImports.set(tabId, source);
   try {

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Recommended Jobs | Ladders (demo)</title>
+<style>
+  body { font: 15px/1.4 system-ui, sans-serif; margin: 0; background: #f4f6f9; }
+  header { background: #fff; padding: 14px 24px; font-weight: 700; color: #1b3a6b; border-bottom: 1px solid #ddd; }
+  main { display: flex; gap: 16px; max-width: 880px; margin: 16px auto; padding: 0 16px; }
+  .left { flex: 1; }
+  .right { width: 260px; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px 14px; font-size: 13px; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  .job-card_jobCardContainer { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+  .job-card_jobCardTitleLink { font-weight: 600; color: #1b3a6b; text-decoration: none; }
+  h3 { margin: 0; font-size: 15px; }
+  .job-card_jobCardDescription div { color: #555; font-size: 13px; }
+  nav { margin: 12px 0 24px; }
+  nav a { padding: 6px 12px; border: 1px solid #1b3a6b; border-radius: 6px; color: #1b3a6b; text-decoration: none; }
+</style>
+</head>
+<body>
+<!-- A made-up Ladders list in the shape job-lists.js reads (the same cards as tests/fixtures/lists/ladders_list.html):
+     an h3 title link to /job/<slug>_<id>, the company, a bullet, the pay (a starred estimate), the place, how it is
+     worked, the posted age; the open job's pane on the right, with a "similar job" that is not a card. Page 2 is
+     ladders-jobs-2.html. Every name, place and number is invented. -->
+<header>Ladders | Jobs</header>
+<main>
+  <div class="left split-container-section_leftSection">
+    <h1>Recommended Jobs</h1>
+    <div class="job-card_jobCardContainer">
+      <div class="job-card_jobCardDescription">
+        <div class="job-card_jobCardTitle"><h3><a class="job-card_jobCardTitleLink" href="/job/staff-platform-engineer-initech-virtual-travel_90000001?ref=rec">Staff Platform Engineer</a></h3></div>
+        <div>Initech</div>
+        <div>•</div>
+        <div>$150K — $190K *</div>
+        <div>Remote</div>
+        <div>Remote</div>
+        <div>3 days ago</div>
+        <div>Lead the platform team.</div>
+      </div>
+    </div>
+    <div class="job-card_jobCardContainer">
+      <div class="job-card_jobCardDescription">
+        <div class="job-card_jobCardTitle"><h3><a class="job-card_jobCardTitleLink" href="/job/senior-security-engineer-globex-virtual-travel_90000002">Senior Security Engineer</a></h3></div>
+        <div>Globex</div>
+        <div>•</div>
+        <div>$130K — $180K *</div>
+        <div>United States</div>
+        <div>Remote in United States</div>
+        <div>Reposted 1 week ago</div>
+        <div>Secure things.</div>
+      </div>
+    </div>
+    <div class="job-card_jobCardContainer">
+      <div class="job-card_jobCardDescription">
+        <div class="job-card_jobCardTitle"><h3><a class="job-card_jobCardTitleLink" href="/job/principal-engineer-umbrella-corp-boulder-co_90000003">Principal Engineer</a></h3></div>
+        <div>Umbrella Corp</div>
+        <div>•</div>
+        <div>Boulder, CO (Boulder County)</div>
+        <div>Hybrid</div>
+        <div>2 weeks ago</div>
+      </div>
+    </div>
+    <nav><a href="/jobs/search-jobs?page=2" aria-label="Next">Next</a></nav>
+  </div>
+  <div class="right split-container-section_rightSection">
+    <h2>Staff Platform Engineer</h2>
+    <div>Initech</div>
+    <button class="external-apply-button_externalApplyLink">Apply Manually</button>
+    <div class="similar-jobs_similarJobDetails">
+      <a href="/job/principal-cyber-engineer-vandelay-reston-va_90000099">Principal Cyber Engineer</a>
+      <div>Vandelay</div><div>•</div><div>$150K — $190K *</div><div>Reston, VA</div><div>In-Person</div><div>2 days ago</div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

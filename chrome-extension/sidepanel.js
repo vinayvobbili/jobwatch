@@ -151,7 +151,8 @@
       ['Messages', 'msg-g', [
         features.includes('reply') ? tile({ id: 'reply', label: 'Draft reply', title: 'Draft reply to this conversation', onclick: draftReply, lit: lit('reply') }) : null]],
       ['Jobs', 'jobs-g', features.includes('import-list') ? [
-        tile({ id: 'import-list', label: 'Read job list', title: 'Read the jobs on this list', onclick: importList, lit: lit('import-list'), disabled: importing }),
+        tile({ id: 'import-list', label: 'Read job list', title: 'Read the jobs on this list', onclick: importList, lit: lit('import-list'),
+          disabled: importing || (ctx.kind === 'list' && !JW.listSupported(ctx.list, features)) }),
         tile({ id: 'passive-import', label: 'Seen while browsing', title: `Read the ${seen} job${seen === 1 ? '' : 's'} seen while browsing`, onclick: importSeen,
           lit: lit('passive-import') || seen > 0, count: seen, disabled: !seen })] : []],
     ];
@@ -162,7 +163,7 @@
   }
   // Import-list settings: how many pages the button reads, and passive mode (jobs seen while browsing, imported
   // on request). Both are kept in chrome.storage.local; passive.js and background.js read them from there.
-  const listOptions = () => {
+  const listOptions = (site) => {
     const pages = h('input', { id: 'list-pages', type: 'number', min: '1', max: '10', step: '1', value: '4', title: 'Pages read from a list (1-10)' });
     const on = h('input', { id: 'passive-on', type: 'checkbox', checked: false });
     const refresh = async () => {
@@ -179,7 +180,7 @@
     refresh();
     return h('div', { class: 'list-options' },
       h('label', {}, 'Pages to read ', pages),
-      h('label', { title: 'Keeps the jobs shown on LinkedIn and Indeed lists while you browse, on this computer, until you press Import.' },
+      site === 'ladders' ? null : h('label', { title: 'Keeps the jobs shown on LinkedIn and Indeed lists while you browse, on this computer, until you press Import.' },
         on, ' Note jobs while I browse'));
   };
 
@@ -203,7 +204,8 @@
   /** The card at the top: what this page is and the one thing to do about it. `importing`: a list import is already running here. */
   function leadCard(ctx, tab, importing) {
     const action = LEAD[ctx.primary];
-    const offered = action && (ctx.primary === 'scan' || features.includes(ctx.primary === 'reply' ? 'reply' : ctx.primary === 'posting' ? 'posting' : 'import-list'));
+    const oldList = ctx.kind === 'list' && features.includes('import-list') && !JW.listSupported(ctx.list, features); // a jobwatch that doesn't know this site
+    const offered = action && !oldList && (ctx.primary === 'scan' || features.includes(ctx.primary === 'reply' ? 'reply' : ctx.primary === 'posting' ? 'posting' : 'import-list'));
     const label = ctx.primary === 'posting'
       ? POSTING[tab && JW.postingMode(tab.url) === 'linkedin' ? 'linkedin' : 'site'] : action && action[0];
     const kicker = h('div', { class: 'kicker' }, icon(KICKER[ctx.kind]).firstChild, { form: 'Application', thread: 'Message', list: 'Jobs', posting: 'Posting', bubble: 'Message', idle: 'Idle' }[ctx.kind]);
@@ -211,8 +213,9 @@
       h('h2', { textContent: ctx.heading }),
       ctx.detail ? h('div', { class: 'detail', textContent: ctx.detail }) : null,
       WHY[ctx.kind] ? h('div', { class: 'why', textContent: WHY[ctx.kind] }) : null,
+      oldList ? h('div', { id: 'list-old', class: 'why', textContent: `This jobwatch is too old to read ${JW.LIST_SITES[ctx.list]} lists. Update jobwatch (pip install -U jobwatch), then reopen this panel.` }) : null,
       offered ? h('button', { id: 'lead-go', class: 'go', textContent: label, onclick: action[1], disabled: ctx.primary === 'import-list' && importing }) : null,
-      ctx.kind === 'list' && features.includes('import-list') ? listOptions() : null,
+      ctx.kind === 'list' && features.includes('import-list') && !oldList ? listOptions(ctx.list) : null,
       importing ? h('div', { id: 'import-busy', class: 'busy', textContent: JW.IMPORT_RUNNING }) : null);
   }
 
@@ -559,7 +562,7 @@
     posted(r);
   }
 
-  const SITE = { linkedin: 'LinkedIn', indeed: 'Indeed' };
+  const SITE = JW.LIST_SITES;
   const pct = (x) => (x == null ? '-' : `${Math.round(x * 100)}%`);
 
   /** What Read the jobs on this list did: per site, how many jobwatch had (its coverage), what it added, what it couldn't place. */
@@ -588,7 +591,7 @@
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       tabId = tab && tab.id;
     }
-    if (!tabId) return failed('No tab to read. Open a job list on LinkedIn or Indeed and try again.');
+    if (!tabId) return failed('No tab to read. Open a job list on LinkedIn, Indeed or Ladders and try again.');
     busy = true;
     const readId = tabId;
     importing = readId;

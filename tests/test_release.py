@@ -77,6 +77,25 @@ def test_a_browser_extension_moves_with_the_release(release, tmp_path):
         release.bump(manifest.read_text(), manifest, "1.2.3", "1.3.0", "acme-tool")
 
 
+def test_an_extension_submitted_ahead_of_its_release_is_left_at_that_version(release, tmp_path, capsys):
+    """The store's review takes days, so the extension carries the next release's version before the release is cut;
+    the release bumps everything else and doesn't fail on the manifest that already says it."""
+    root = make_project(tmp_path, server=False)
+    (root / "chrome-extension").mkdir()
+    manifest = root / "chrome-extension" / "manifest.json"
+    manifest.write_text('{"manifest_version": 3, "name": "Acme", "version": "1.3.0"}')
+    assert release.extension_ahead(root, manifest, "1.3.0") and not release.extension_ahead(root, manifest, "1.4.0")
+    assert not release.extension_ahead(root, root / "pyproject.toml", "1.2.3")
+    assert release.main(["1.3.0", "--dry-run", "--root", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "chrome-extension/manifest.json already says 1.3.0" in out
+    assert "1.2.3 -> 1.3.0: pyproject.toml, acme_tool/__init__.py\n" in out
+    # a manifest behind the release is bumped as before
+    manifest.write_text('{"manifest_version": 3, "name": "Acme", "version": "1.2.3"}')
+    assert release.main(["1.3.0", "--dry-run", "--root", str(root)]) == 0
+    assert "chrome-extension/manifest.json" in capsys.readouterr().out.split("->")[1]
+
+
 def test_status_shows_what_a_release_would_send(release, tmp_path, monkeypatch):
     root = make_project(tmp_path, server=False)
     replies = {("describe", "--tags", "--abbrev=0"): "v1.2.3", ("log", "-1", "--format=%cs", "v1.2.3"): "2026-01-02",

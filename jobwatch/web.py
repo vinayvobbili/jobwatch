@@ -126,7 +126,7 @@ IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background 
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 # What the extension may offer beyond filling forms, named in /ext/ping: an extension paired with an older jobwatch
 # hides a button whose call that jobwatch doesn't have, instead of failing when it's pressed.
-EXT_FEATURES = ("posting", "import-list", "reply", "ats", "cover")
+EXT_FEATURES = ("posting", "import-list", "reply", "ats", "cover", "list-ladders")
 
 
 class ApiError(Exception):

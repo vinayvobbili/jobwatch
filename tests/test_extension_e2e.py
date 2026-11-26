@@ -48,7 +48,7 @@ def pw():
 def stack(pw):
     with contextlib.ExitStack() as scope:
         try:
-            demo = scope.enter_context(harness.demo_stack(pw))
+            demo = scope.enter_context(harness.demo_stack(pw, fast_lists=True))  # list reads pause for ms, not seconds
         except harness.BrowserUnavailable as exc:
             pytest.skip(str(exc))
         yield demo
@@ -887,6 +887,62 @@ def test_the_panel_leads_with_the_page_and_dims_the_tiles_that_do_not_suit_it(st
         panel.click("#lead-go")  # the lead card's button does what the Fill tile does
         panel.wait_for_selector(".row", timeout=20000)
     finally:
+        page.close()
+
+
+LADDERS_LIST = "/recommended"  # demo/ladders-jobs.html (page 1, a Next link) then ladders-jobs-2.html: made-up jobs
+
+
+def test_a_ladders_list_is_read_page_by_page_and_sent_with_its_pages_as_references(stack, ext, panels):
+    """Read the jobs on this list on Ladders: the panel leads with the list, offers no passive mode (no content script
+    there), reads each page, follows the Next link, leaves out the open job's pane and its similar jobs, and sends
+    each job with its Ladders page (a reference) and the pay as Ladders shows it (an estimate, for jobwatch's note)."""
+    url = stack.url("www.theladders.com", LADDERS_LIST)
+    page = open_form(stack, ext, url)
+    try:
+        panel = harness.side_panel(stack, url)
+        panels.append(panel)
+        panel.wait_for_selector("#lead.list")
+        assert panel.inner_text("#lead h2") == "Job list" and panel.inner_text("#lead .detail") == "Ladders"
+        assert panel.locator("#list-pages").count() == 1 and panel.locator("#passive-on").count() == 0
+        assert "dim" not in panel.get_attribute("#import-list", "class") and "dim" in panel.get_attribute("#passive-import", "class")
+        panel.click("#lead-go")
+        panel.wait_for_selector(".row .badge", timeout=60000)
+        records = stack.server.imports[-1]["records"]
+        assert [r["id"] for r in records] == ["90000001", "90000002", "90000003", "90000004", "90000006"]
+        assert {r["source"] for r in records} == {"ladders"}
+        first = records[0]
+        assert (first["title"], first["company"], first["location"], first["pay"]) == (
+            "Staff Platform Engineer", "Initech", "Remote", "$150K — $190K")
+        assert first["url"] == "https://www.theladders.com/job/staff-platform-engineer-initech-virtual-travel_90000001"
+        assert records[2]["location"] == "Boulder, CO (Hybrid)" and records[2]["pay"] == ""
+        assert records[4]["company"] == "Soylent" and records[4]["location"] == "Denver, CO (In-Person)"  # page 2
+        assert "Ladders: 5 jobs" in panel.inner_text("body")
+    finally:
+        stack.server.imports.clear()
+        stack.server.imported.clear()
+        page.close()
+
+
+def test_a_jobwatch_that_does_not_know_ladders_reads_no_ladders_list(stack, ext, panels):
+    """An older jobwatch would put Ladders' pay estimate in the job's pay: its panel offers no button on Ladders, and
+    still reads the other sites."""
+    url = stack.url("www.theladders.com", LADDERS_LIST)
+    page = open_form(stack, ext, url)
+    stack.server.features = ["posting", "reply", "import-list", "ats", "cover"]  # jobwatch 0.12: no list-ladders
+    try:
+        panel = harness.side_panel(stack, url)
+        panels.append(panel)
+        panel.wait_for_selector("#lead.list")
+        assert "too old to read Ladders lists" in panel.inner_text("#list-old")
+        assert panel.locator("#lead-go").count() == 0 and panel.is_disabled("#import-list")
+        page.goto(stack.url("www.linkedin.com", "/jobs/collections/recommended"))
+        panel = harness.side_panel(stack, stack.url("www.linkedin.com", "/jobs/collections/recommended"))
+        panels.append(panel)
+        panel.wait_for_selector("#lead.list")
+        assert panel.locator("#lead-go").count() == 1 and panel.locator("#list-old").count() == 0
+    finally:
+        stack.server.features = list(FEATURES)
         page.close()
 
 

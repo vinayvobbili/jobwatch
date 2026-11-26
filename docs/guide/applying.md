@@ -337,13 +337,14 @@ The rest are tracked.
 
 The list is read by the extractor, a script that runs on the page you have open:
 
-- **The browser extension:** on the list's tab, open the side panel and press **Read the jobs on this list**. It scrolls each
-  page to its end, reads the cards, goes on to the next page (up to ten), and shows what jobwatch made of them.
+- **The browser extension:** on the list's tab (LinkedIn, Indeed or Ladders), click the extension's icon to open the side
+  panel and press **Read the jobs on this list**. It scrolls each page to its end, reads the cards, goes on to the next page
+  (up to ten), and shows what jobwatch made of them. On Ladders, the extension reads only the tab you clicked its icon on
+  (it has no script of its own there), and "Note jobs while I browse" isn't offered.
 - **An assistant driving Chrome:** `jobwatch import-list --script` prints the extractor. Run its text followed by
-  `await JWList.readAll()` on the list's tab (every page of a LinkedIn list in one call; on Indeed, where each page
-  loads anew, `await JWList.readPage()` a page at a time, going to the link `JWList.next()` gives), then pass the
-  records to the MCP tool `import_job_list`, or save them and run (on Ladders, `readPage()` a page at a time like
-  Indeed; the extension's button doesn't offer Ladders yet):
+  `await JWList.readAll()` on the list's tab (every page of a LinkedIn list in one call; on Indeed and Ladders, where each
+  page loads anew, `await JWList.readPage()` a page at a time, going to the link `JWList.next()` gives), then pass the
+  records to the MCP tool `import_job_list`, or save them and run:
 
 ```
 jobwatch import-list list.json --dry-run   # what would happen, nothing recorded

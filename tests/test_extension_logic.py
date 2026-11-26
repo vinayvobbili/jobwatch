@@ -44,6 +44,8 @@ def test_the_manifest_asks_for_little():
         (["https://www.linkedin.com/*", "https://*.indeed.com/*"],
          ["logic.js", "job-lists.js", "passive.js", "read-posting.js"]),
         (["http://localhost/*", "http://*.localhost/*", "http://127.0.0.1/*"], ["page-bridge.js"])]
+    # Ladders lists are read with activeTab (the icon click on that tab), like any other site: no host of its own
+    assert "theladders" not in json.dumps(manifest)
     assert "default_popup" not in manifest["action"]  # the toolbar button opens the side panel instead
     for name in (manifest["background"]["service_worker"], manifest["side_panel"]["default_path"],
                  manifest["options_page"], *manifest["icons"].values()):
@@ -229,11 +231,27 @@ def test_the_job_lists_import_this_list_reads(tmp_path):
         "https://www.indeed.com/jobs?q=engineer&l=Boulder%2C+CO": "indeed",
         "https://www.indeed.com/q-engineer-jobs.html": "indeed",
         "https://www.indeed.com/viewjob?jk=a1b2c3d4e5f60001": "",
+        "https://www.theladders.com/recommended": "ladders",
+        "https://www.theladders.com/recommended?page=2": "ladders",
+        "https://www.theladders.com/jobs/search-jobs?title=engineer&location=Boulder%2C%20CO": "ladders",
+        "https://theladders.com/jobs/engineer-jobs": "ladders",
+        "https://www.theladders.com/job/staff-platform-engineer-initech-virtual-travel_90000001": "",
+        "https://www.theladders.com/": "",
+        "https://www.theladders.com/career-advice/resume": "",
+        "https://www.notheladders.com/recommended": "",
         "https://jobs.lever.co/globex/aaaa-1111": "",
         "": "",
     }
     got = run_js(tmp_path, f"const urls = {json.dumps(list(urls))};\nconsole.log(JSON.stringify(urls.map(u => JW.listMode(u))));")
     assert got == list(urls.values())
+
+
+@needs_node
+def test_a_ladders_list_needs_a_jobwatch_that_keeps_its_pages_as_references(tmp_path):
+    cases = [("linkedin", ["import-list"]), ("indeed", ["import-list"]), ("ladders", ["import-list"]),
+             ("ladders", ["import-list", "list-ladders"]), ("ladders", ["list-ladders"]), ("linkedin", []), ("ladders", None)]
+    got = run_js(tmp_path, f"console.log(JSON.stringify({json.dumps(cases)}.map(([s, f]) => JW.listSupported(s, f))));")
+    assert got == [True, True, False, True, False, False, False]
 
 
 @needs_node
@@ -437,6 +455,7 @@ CONTEXT_CASES = [
     ("https://www.linkedin.com/messaging/thread/2-abc/", "Messaging | LinkedIn", "thread", "Conversation", "LinkedIn Messaging", "reply"),
     ("https://www.linkedin.com/jobs/collections/recommended", "Jobs | LinkedIn", "list", "Job list", "LinkedIn", "import-list"),
     ("https://www.indeed.com/jobs?q=platform", "", "list", "Job list", "Indeed", "import-list"),
+    ("https://www.theladders.com/recommended", "Recommended Jobs | Ladders", "list", "Job list", "Ladders", "import-list"),
     ("https://www.linkedin.com/jobs/view/3912345678/", "Platform Engineer | Initech | LinkedIn", "posting", "Job posting", "Platform Engineer | Initech", "posting"),
     ("https://jobs.lever.co/initech/0a1b2c3d", "", "posting", "Job posting", "Initech", "posting"),
     ("https://careers.globex.example/jobs/senior-engineer", "", "posting", "Job posting", "", "posting"),
@@ -459,10 +478,12 @@ def test_the_panel_leads_with_what_the_page_is(tmp_path, url, title, kind, headi
 @needs_node
 def test_the_tiles_that_suit_a_page_are_the_ones_left_lit(tmp_path):
     got = run_js(tmp_path, """console.log(JSON.stringify([
-      'https://www.linkedin.com/jobs/search/?currentJobId=3912345678', 'https://www.linkedin.com/feed/', 'https://www.example.com/'
+      'https://www.linkedin.com/jobs/search/?currentJobId=3912345678', 'https://www.linkedin.com/feed/', 'https://www.example.com/',
+      'https://www.theladders.com/jobs/search-jobs?title=sre'
     ].map(u => JW.pageContext(u, '').matches)));""")
-    # a list with a job open also offers the company's posting; any LinkedIn page can have a conversation in a bubble
-    assert got == [["import-list", "passive-import", "reply", "posting"], ["reply"], []]
+    # a list with a job open also offers the company's posting; any LinkedIn page can have a conversation in a bubble;
+    # passive mode runs only where the content script does (LinkedIn, Indeed), so a Ladders list doesn't light it
+    assert got == [["import-list", "passive-import", "reply", "posting"], ["reply"], [], ["import-list"]]
 
 
 @needs_node

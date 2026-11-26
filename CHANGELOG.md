@@ -37,7 +37,17 @@
   read in your own browser by the same extractor. Ladders shows the companies' own jobs, and you apply on the
   company's own site: the job's link is its board posting when found there, Ladders' page is kept only as a reference
   in the job's note (with its pay estimate), and a job not found on a board has no link and a note saying to apply on
-  the company's own site. The extension's button doesn't offer Ladders yet.
+  the company's own site.
+- The browser extension's **Read the jobs on this list** now reads Ladders lists too ("Recommended Jobs", a search): a
+  page at a time, like Indeed, following the list's Next link, up to the pages you set. It needs no new permission or
+  site access: it reaches the Ladders tab only where you clicked the extension's icon, and "Note jobs while I browse"
+  isn't offered there. `/ext/ping` lists a new feature, `list-ladders`; an extension paired with a jobwatch without it
+  offers no button on Ladders (and says to update), so a Ladders pay estimate never lands in a job's pay. The extension
+  is 0.13.0 for the Chrome Web Store ahead of this release: it also carries the unreleased Read posting fixes, ATS
+  check and Cover letter, and the panel in a popup window for installed web apps.
+- `chrome-extension/tools/package.py` (the Web Store zip) now only refuses an extension that is behind the package, and
+  checks the manifest's content scripts are in the zip; `scripts/release.py` leaves a manifest already at the release's
+  version, since the store's review takes days and the extension is submitted before the release is cut.
 - Fix: a job with no link no longer reads as a repeat of the one before it when a list or alert is taken in.
 - Today's **No pay clue** choice now starts on Hide: with a Top pay chip on ($175K+, say), jobs no source has a pay
   figure for stay out instead of listing after the ones with a figure. Show is one click away and, like Hide, is kept

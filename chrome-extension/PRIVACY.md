@@ -12,6 +12,13 @@ Next button (or opens its next page), at a human pace with random pauses of a fe
 you set in the panel (4 by default, at most 10), and sends those cards to your own jobwatch. Nothing else on those
 pages is read, and nothing is sent anywhere else.
 
+**Ladders job lists:** the same button works on a list on theladders.com ("Recommended Jobs", a search), and reads the same
+fields: the job's number, title, company, place, pay (Ladders' own estimate), how long ago it was posted, and the address
+of the job's page on Ladders, which jobwatch keeps only as a reference. Unlike LinkedIn and Indeed, the extension has no
+script that runs on Ladders and no access to it of its own: it reaches the list only on the tab where you clicked the jobwatch
+icon, and only after you press the button. Passive mode does not run on Ladders. Nothing else on the page is read, and
+nothing is sent anywhere else.
+
 **Passive mode (off by default; you turn it on with a checkbox in the side panel):** on LinkedIn and Indeed, a small script
 runs in the pages you browse there. When the address is a list of jobs, it notes the job cards the page has already
 drawn, with no scrolling, clicking or opening of anything by the extension: the same fields as above (the job's number

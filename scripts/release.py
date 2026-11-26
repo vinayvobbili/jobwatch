@@ -114,6 +114,13 @@ def bump(text: str, path: Path, old: str, new: str, name: str = "") -> str:
     return out
 
 
+def extension_ahead(root: Path, path: Path, version: str) -> bool:
+    """Whether `path` is the browser extension's manifest, already at `version`: the store review takes days, so the
+    extension is submitted at the next release's version before the release is cut, and the release leaves it be."""
+    ext = [root / f for f in EXTENSION_FILES]
+    return path in ext and f'"version": "{version}"' in path.read_text()
+
+
 def drift(files: list[Path], old: str) -> list[str]:
     """Files whose ``__version__`` says something other than the current release, which this release fixes."""
     out = []
@@ -258,13 +265,17 @@ def main(argv=None) -> int:
     if not as_is and tuple(map(int, args.version.split("."))) <= tuple(map(int, old.split("."))):
         raise SystemExit(f"release: {args.version} isn't newer than {old}")
     files = version_files(root, name)
-    bumped = {} if as_is else {f: bump(f.read_text(), f, old, args.version, name) for f in files}
+    ahead = [f for f in files if extension_ahead(root, f, args.version)]
+    bumped = {} if as_is else {f: bump(f.read_text(), f, old, args.version, name) for f in files if f not in ahead}
+    for f in ahead:
+        print(f"note: {f.relative_to(root)} already says {args.version} (submitted to the store ahead of this release)")
     for line in drift(files, old):
         print(f"note: {line}; this release sets it to {args.version}")
     if as_is:
         print(f"{name} {old}: not tagged yet, released as the files declare it (no bump)")
     else:
-        print(f"{name} {old} -> {args.version}: " + ", ".join(str(f.relative_to(root)) for f in files))
+        moved = [str(f.relative_to(root)) for f in files if f not in ahead]
+        print(f"{name} {old} -> {args.version}: " + ", ".join(moved))
     if args.dry_run:
         return 0
 

@@ -47,7 +47,9 @@ One flat object, as the watchlist's `applicant:` section keeps it. Every field i
 `{"ok": true, "version": "0.9.0", "features": ["posting", "import-list"]}`. Used by the options page to test pairing. `features`
 names what jobwatch offers beyond filling: the side panel shows **Save this posting to jobwatch** only when it has
 `posting` (`POST /ext/posting`), so an older jobwatch, which sends no `features`, gets no button that would fail. The
-other names: `import-list`, `reply`, `ats` (`POST /ext/ats`) and `cover` (`POST /ext/cover`).
+other names: `import-list`, `reply`, `ats` (`POST /ext/ats`), `cover` (`POST /ext/cover`) and `list-ladders` (a jobwatch
+that takes Ladders records in `POST /ext/import-list`: it keeps a Ladders job's page only as a reference note and its pay
+estimate out of the job's pay; without it the panel offers no Read the jobs on this list on a Ladders list).
 
 ### How a page is matched to a job
 
@@ -213,14 +215,18 @@ named is attached to the package. A page jobwatch doesn't know yet is added from
 
 ### `POST /ext/import-list`
 
-Sent when the person presses **Read the jobs on this list** on a LinkedIn or Indeed list of jobs (only shown when `/ext/ping`'s
-`features` has `import-list`). The extension reads the list's cards with `job-lists.js`, page after page (up to ten),
-and sends them all at once:
+Sent when the person presses **Read the jobs on this list** on a LinkedIn, Indeed or Ladders list of jobs (only shown when
+`/ext/ping`'s `features` has `import-list`, and for Ladders `list-ladders` too). The extension reads the list's cards with
+`job-lists.js`, page after page (up to ten), and sends them all at once:
 
 ```json
 {"records": [{"source": "linkedin", "id": "4100000001", "title": "Platform Engineer", "company": "Initech",
               "location": "Boulder, CO (Hybrid)", "pay": "$120K/yr - $180K/yr", "posted": "2 days ago"}]}
 ```
+
+A Ladders record (`source: "ladders"`, `id`: the number ending the job's path) also has `url`, the job's page on Ladders. It
+is a reference, kept in the job's note and never as where to apply (the jobs are the companies' own); the `pay` is Ladders'
+own estimate, so it goes in the note too, not in the job's pay.
 
 jobwatch counts the jobs it already tracks and looks for each new one on the company's own board (see
 `jobwatch import-list`); that can take a few minutes for a long list. → the counts overall and per site

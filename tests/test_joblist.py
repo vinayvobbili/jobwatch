@@ -281,7 +281,8 @@ def test_the_extension_imports_a_list_with_its_token(server, web):
     hooli_board(web, "Platform Engineer")
     token = json.loads(request(server, "GET", "/api/extension", headers={"X-Jobwatch-Token": TOKEN})[1])["token"]
     ok = {"X-Jobwatch-Extension": token}
-    assert "import-list" in json.loads(request(server, "GET", "/ext/ping", headers=ok)[1])["features"]
+    features = json.loads(request(server, "GET", "/ext/ping", headers=ok)[1])["features"]
+    assert "import-list" in features and "list-ladders" in features  # the Ladders button needs the second
     body = {"records": LIST[1:3]}
     assert request(server, "POST", "/ext/import-list", body)[0] == 403
     status, data = request(server, "POST", "/ext/import-list", body, headers=ok)

@@ -19,7 +19,8 @@ live_check = pytest.importorskip("live_check")  # imports the harness, which nee
 
 def test_the_store_zip_holds_only_what_the_browser_loads(tmp_path):
     target = package.build(tmp_path, expected_version=package.package_version())
-    assert target.name == f"jobwatch-extension-{package.package_version()}.zip"
+    manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))["version"]
+    assert target.name == f"jobwatch-extension-{manifest}.zip"  # the manifest's version: may be the next release's
     names = set(zipfile.ZipFile(target).namelist())
     assert {"manifest.json", "background.js", "logic.js", "page.js", "sidepanel.js", "sidepanel.html",
             "options.html", "job-lists.js", "look.js",
@@ -27,13 +28,56 @@ def test_the_store_zip_holds_only_what_the_browser_loads(tmp_path):
     assert not any(n.startswith(("demo/", "tools/")) or n.endswith(".md") for n in names)
 
 
-def test_the_zip_refuses_a_version_that_is_not_the_packages(tmp_path):
+def test_the_zip_holds_every_script_the_manifest_runs_and_the_panels_load(tmp_path):
+    manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+    names = set(zipfile.ZipFile(package.build(tmp_path)).namelist())
+    scripts = {js for script in manifest["content_scripts"] for js in script["js"]}
+    assert {"page-bridge.js", "read-posting.js", "passive.js", "job-lists.js", "logic.js"} <= scripts <= names
+    assert {"reply.js", "page.js", "lib.js"} <= names  # injected by the service worker, not named in the manifest
+
+
+def test_the_zip_refuses_a_manifest_missing_a_content_script(tmp_path):
+    root = tmp_path / "ext"
+    root.mkdir()
+    for name in ("background.js", "sidepanel.html", "options.html", "icons/icon128.png"):
+        (root / name).parent.mkdir(exist_ok=True)
+        (root / name).write_bytes(b"x")
+    (root / "manifest.json").write_text(json.dumps({
+        "version": "1.0.0", "background": {"service_worker": "background.js"},
+        "side_panel": {"default_path": "sidepanel.html"}, "options_page": "options.html",
+        "icons": {"128": "icons/icon128.png"},
+        "content_scripts": [{"matches": ["https://example.com/*"], "js": ["gone.js"]}]}))
+    with pytest.raises(SystemExit, match=r"gone\.js"):
+        package.check_manifest(root)
+
+
+def test_the_zip_refuses_a_manifest_that_is_behind_the_package(tmp_path):
     with pytest.raises(SystemExit, match="bump them together"):
         package.build(tmp_path, expected_version="9.9.9")
 
 
-def test_the_manifest_version_follows_the_package():
-    assert json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))["version"] == package.package_version()
+def test_the_zip_may_be_ahead_of_the_package_it_is_submitted_before_the_release(tmp_path):
+    """The store's review takes days: the extension carries the next release's version while the package is behind."""
+    manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))["version"]
+    assert package.build(tmp_path, expected_version="0.1.0").name == f"jobwatch-extension-{manifest}.zip"
+    assert package.version_tuple("0.9.0") < package.version_tuple("0.10.0")  # numbers, not text
+
+
+def test_the_manifest_version_is_not_behind_the_package():
+    manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))["version"]
+    assert package.version_tuple(manifest) >= package.version_tuple(package.package_version())
+
+
+def test_the_store_notes_are_for_the_version_in_the_manifest_and_fit_the_dashboards_host_box():
+    """CHROMEWEBSTORE.md is what gets pasted into the dashboard: it names the zip that is built, and the one box for
+    every host (a hard 1,000 characters) is not longer than that."""
+    version = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))["version"]
+    notes = (EXT / "CHROMEWEBSTORE.md").read_text(encoding="utf-8")
+    assert f"## Paste blocks for {version}" in notes and f"dist/jobwatch-extension-{version}.zip" in notes
+    section = notes.split("### Host permission justification", 1)[1].split("\n### ", 1)[0]
+    paste = "\n\n".join(section.split("\n\n")[2:]).strip()  # after the heading line and the one intro paragraph
+    assert paste.startswith("Local app (") and "Ladders" in paste
+    assert len(paste) <= 1000, f"the host permission box takes 1,000 characters, this is {len(paste)}"
 
 
 def test_the_live_check_prints_a_line_per_field():

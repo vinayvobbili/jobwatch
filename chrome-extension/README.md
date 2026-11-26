@@ -60,6 +60,17 @@ want, press **Fill selected**.
 Works on Greenhouse (job-boards.greenhouse.io, boards.greenhouse.io and the form embedded in a company's own page),
 Lever and Ashby, and tries its best on other single-page forms. Workday is not supported yet.
 
+## Job lists
+
+On a list of jobs, press **Read the jobs on this list**: LinkedIn (Jobs, a search), Indeed (Jobs for you, a search) or
+Ladders ("Recommended Jobs", a search). The extension scrolls each page, reads its cards, goes on to the next page (up to the
+pages you set, 4 by default) and sends them to your jobwatch, which counts the jobs it had and tracks the rest. On LinkedIn
+and Indeed a script runs in your browsing for **Note jobs while I browse** (off by default); Ladders has no script of its
+own, so the list is reached only on the tab where you clicked the icon (that tab's own grant), and passive mode is not offered
+there. Ladders' jobs are the companies' own: the job's page on Ladders is kept in jobwatch only as a reference note, its pay
+is Ladders' own estimate (kept in the note, not as the job's pay), and you apply on the company's own site. It needs a jobwatch
+that lists `list-ladders` in `/ext/ping`; an older one gets a note to update, not the button.
+
 ## Jobs from LinkedIn alerts
 
 A job that came from a LinkedIn alert has no posting text. On Today, **Open on LinkedIn** opens its LinkedIn page. There,
@@ -126,7 +137,7 @@ background.js       service worker; the only code that talks to jobwatch (API.md
                     icon is clicked; keeps pending submissions per tab
 logic.js            classification, matching, option picking, the review plan; no DOM, tested with node
 page.js             content script per frame: scan, fill, read company and title, watch for the person's submit
-job-lists.js        reads LinkedIn / Indeed job lists, paced like a person (PACING); a copy ships in jobwatch/static
+job-lists.js        reads LinkedIn / Indeed / Ladders job lists, paced like a person (PACING); a copy ships in jobwatch/static
 passive.js          content script on LinkedIn and Indeed: notes the job cards seen while browsing (passive mode)
 read-posting.js     content script on LinkedIn and Indeed: reads a job's description, only on a page opened with #jobwatch-read (Read posting)
 reply.js            injected by Draft reply only: reads the one open LinkedIn conversation, types the draft into its box (never presses Send)
