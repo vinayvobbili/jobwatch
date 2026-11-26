@@ -92,6 +92,24 @@ def test_saving_settings_writes_the_watchlist_back_as_it_was(page, watchlist):
     assert page.errors == []
 
 
+def test_settings_show_each_quota_pool_as_a_dot_and_a_paused_one_with_when_it_is_back(page, watchlist):
+    from datetime import UTC, datetime
+
+    from jobwatch import watch
+    store = Store(config.load(watchlist).state)
+    store.set_scorer_down(watch.pool_id("agy_gemini"), "out of quota", datetime(2099, 12, 1, 22, tzinfo=UTC))
+    store.close()
+    page.goto(page.url.split("#")[0] + "#settings/ai")
+    page.wait_for_load_state("networkidle")
+    flags = page.locator(".ai-chain .pool-flag")
+    sync_api.expect(flags.first).to_be_visible(timeout=10000)
+    assert flags.count() >= 4
+    sync_api.expect(page.locator(".ai-chain .pool-flag.off")).to_have_count(1)
+    off = page.locator(".ai-chain .pool-flag.off").inner_text()
+    assert off.startswith("agy_gemini") and "back" in off and "Dec" in off
+    assert page.errors == []
+
+
 def chip(page, hint, label):
     """The button of the chip group under `hint` (Fit score, Top pay) that says `label`."""
     group = page.locator(".hint", has_text=hint).first.locator("xpath=following-sibling::div[1]")

@@ -1058,6 +1058,10 @@ table.use th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
 .ai-chain .step-btn:hover:not(:disabled) { background: color-mix(in srgb, currentColor 22%, transparent); transform: scale(1.1); }
 .ai-chain .step-btn:disabled { opacity: .3; cursor: default; }
 .ai-chain .step.paused { border-style: dashed; opacity: .75; }
+.ai-chain .pool-flags { display: flex; flex-wrap: wrap; gap: 6px 14px; width: 100%; font-size: 12px; }
+.ai-chain .pool-flag .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px;
+  background: #22c55e; box-shadow: 0 0 6px #22c55e88; }
+.ai-chain .pool-flag.off .dot { background: #f59e0b; box-shadow: 0 0 6px #f59e0b88; }
 .ai-chain .step.main.paused { background: linear-gradient(135deg, #8a8ca3, #a5a3b8); }
 .ai-chain .pause-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700;
   padding: 1px 8px; border-radius: 999px; color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
@@ -5000,6 +5004,9 @@ function onboardCompanies(ctx) {
 // before can't. ← and → move a step (moving one to the front makes it the one that scores first), × takes it out,
 // and "Add a step" puts one at the end. values() gives scoring's backend, model and fallback.
 const AI_ORDER = ["claude", "agy", "local"];
+// when a paused step or pool is tried again: "Tue, Dec 1, 9:50 PM", or "when resumed" (the credit's total cap)
+const backAt = until => new Date(until).getUTCFullYear() >= 9999 ? "when resumed"
+  : new Date(until).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 function aiSetup(s) {
   const scoring = s.scoring || {};
   // a step is {b, m}: m "" is the backend's default model; agy_model (agy as a bare fallback) becomes its step's model
@@ -5060,8 +5067,8 @@ function aiSetup(s) {
       drop.disabled = steps.length === 1;
       drop.onclick = () => { steps.splice(i, 1); sync(); };
       // paused (out of credit or quota): kept in its place, dimmed, skipped until the time it's tried again
-      const p = info && info.paused && info.paused[`${st.b}:${st.m}`];
-      const back = p && new Date(p.until).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+      const p = info && info.paused && info.paused[`${st.b}:${st.m.split(" until ")[0]}`];
+      const back = p && backAt(p.until);
       return h("div", { class: "link step" + (i ? "" : " main") + (p ? " paused" : ""),
         title: p ? `Skipped: ${p.reason} since ${new Date(p.since).toLocaleString()}; tried again ${back}`
           : i ? "Tried when the one before can't score" : "Scores first" },
@@ -5078,7 +5085,13 @@ function aiSetup(s) {
       addable.map((c, k) => h("option", { value: String(k) },
         `${AI_LOOK[c.b].name}${c.m ? ` · ${shortModel(c.m)}` : def(c.b) ? ` · ${shortModel(def(c.b))}` : ""}`))) : null;
     if (add) add.onchange = () => { if (add.value !== "") { steps.push(addable[Number(add.value)]); drawChain(); } };
+    // each quota pool as a flag: green while it can score, amber while paused, with when it's back
+    const flags = ((info && info.pools) || []).map(p => h("span", {
+      class: "pool-flag" + (p.available ? "" : " off"),
+      title: p.available ? "Available" : `Paused: ${p.reason}; back ${backAt(p.until)}` },
+      h("i", { class: "dot" }), p.name, p.available ? null : ` · back ${backAt(p.until)}`));
     fill(chain, h("div", { class: "title" }, "Scores with the first; if it can't, tries the next"),
+      flags.length ? h("div", { class: "pool-flags" }, flags) : null,
       steps.map((st, i) => [i ? h("span", { class: "then" }, icon("arrow", 14)) : null, step(st, i)]),
       add,
       h("div", { class: "cap" }, "When one has no key, no credit or no quota left, the next one scores. ← → change the " +

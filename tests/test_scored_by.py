@@ -367,12 +367,32 @@ def test_past_the_daily_limit_the_fallback_scores_and_its_score_stays_until_aske
     store.close()
 
 
+NO_TIME = " (no reset time given, so tried again in an hour)"
+
+
 @pytest.mark.parametrize("error, reason, hours", [
-    ("Claude's API is out of credit (console Billing: buy credits or turn on auto-reload)", "out of credit", 1),
-    ("Error code: 400 - Your credit balance is too low to access the Anthropic API.", "out of credit", 1),
+    ("Claude's API is out of credit (console Billing: buy credits or turn on auto-reload)", "out of credit" + NO_TIME,
+     1),
+    ("Error code: 400 - Your credit balance is too low to access the Anthropic API.", "out of credit" + NO_TIME, 1),
+    ("BadRequestError: Error code: 400 - {'error': {'type': 'billing_error', 'message': 'Add a payment method'}}",
+     "out of credit" + NO_TIME, 1),
     ("agy's quota or rate limit (exit 1): error: Individual quota reached. Resets in 26h33m49s.", "out of quota",
      26 + 33 / 60 + 49 / 3600),
-    ("RESOURCE_EXHAUSTED (code 429): try later", "out of quota", 1),
+    # agy's words, as the Activity log and its weekly limit show them
+    ("BackendError: agy's quota or rate limit (exit 3): error: Third-party quota reached. Please switch to Gemini "
+     "models or upgrade your subscription to increase your limits. Resets in 4h53m6s.\nAGY_ERROR: {\"short_error\":"
+     "\"RESOURCE_EXHAUSTED (code 429): Third-party quota reached", "out of quota", 4 + 53 / 60 + 6 / 3600),
+    ("agy's quota or rate limit (exit 3): error: Third-party quota reached. Resets in 138h16m.", "out of quota",
+     138 + 16 / 60),
+    ("agy failed (exit 1): You have hit your weekly limit for Claude and GPT models; it refreshes in 5 days, 10 hours.",
+     "out of quota", 5 * 24 + 10),
+    ("agy failed (exit 1): You've reached your five-hour limit. Try again in 2 hours and 30 minutes.", "out of quota",
+     2.5),
+    ("RESOURCE_EXHAUSTED (code 429): try later", "out of quota" + NO_TIME, 1),
+    ('{"error": {"status": "RESOURCE_EXHAUSTED", "details": [{"retryDelay": "37s"}]}}', "out of quota", 37 / 3600),
+    # Claude's API: a 429 waits what Retry-After said (score.error_text adds it), else an hour
+    ("RateLimitError: Error code: 429 - {'type': 'rate_limit_error'} (retry after 30s)", "rate limited", 30 / 3600),
+    ("RateLimitError: Error code: 429 - {'type': 'rate_limit_error'}", "rate limited" + NO_TIME, 1),
     ("Claude's API refused the key: Error code: 401", "API key refused", 1),
 ])
 def test_what_pauses_a_step_and_for_how_long(error, reason, hours):
@@ -403,13 +423,13 @@ def test_a_step_out_of_quota_is_paused_skipped_without_a_call_and_back_once_it_s
     store.db.commit()
     first, second = watch.unscored(cfg, store)[:2]
     watch.score_entries(cfg, store, [first], progress=lambda m: None)
-    assert calls == ["agy", "local"] and set(store.scorers_down()) == {"agy:sonnet"}
-    assert store.scorers_down()["agy:sonnet"]["reason"] == "out of quota"
+    assert calls == ["agy", "local"] and set(store.scorers_down()) == {"pool:agy_claude_gpt"}
+    assert store.scorers_down()["pool:agy_claude_gpt"]["reason"] == "out of quota"
     watch.score_entries(cfg, store, [second], progress=lambda m: None)
     assert calls == ["agy", "local", "local"]  # paused: no call to agy
     assert "paused until" in store.score(second.job.key, rid)["fallback"]
     quota["out"] = False
-    store.clear_scorer_down("agy:sonnet")  # as when its time is up
+    store.clear_scorer_down("pool:agy_claude_gpt")  # as when its time is up
     third = watch.unscored(cfg, store)[0]
     watch.score_entries(cfg, store, [third], progress=lambda m: None)
     assert calls[-1] == "agy" and store.scorers_down() == {}
@@ -853,7 +873,7 @@ def test_a_provider_without_a_model_is_unavailable(shortlist, tmp_path, monkeypa
 
 
 @pytest.mark.parametrize("error, reason", [
-    ("BackendError: The acme API at https://api.example.com/v1 answered 429: Too many requests", "out of quota"),
+    ("BackendError: The acme API at https://api.example.com/v1 answered 429: Too many requests", "rate limited"),
     ("BackendError: The acme API at https://api.example.com/v1 answered 503: overloaded", "unavailable"),
     ("BackendError: The acme API at https://api.example.com/v1 refused the key (401): bad key", "API key refused"),
     ("BackendError: The acme API at https://api.example.com/v1 refused the model vendor/gone (404): Function 'f': "
@@ -910,7 +930,7 @@ def test_a_providers_429_moves_the_chain_to_the_next_fallback(scored, monkeypatc
     results, errors = watch.score_with_fallback(cfg, store, jobs)
     assert calls == [("claude", "", None), ("acme", "m1", provider), ("local", "", None)] and not errors
     assert {r["scored_by"] for r in results.values()} == {"local:m"}
-    assert store.scorers_down()["acme:m1"]["reason"] == "out of quota"
+    assert store.scorers_down()["pool:acme"]["reason"] == "rate limited" + NO_TIME  # a provider is its own pool
     watch.score_with_fallback(cfg, store, jobs)  # paused: no second call to acme
     assert [c[0] for c in calls].count("acme") == 1
     store.close()
@@ -949,7 +969,12 @@ def _scoring_chain(watchlist):
 
 
 def _scorers(cfg, store, **kw):
-    cli.cmd_scorers(SimpleNamespace(**{"pause": None, "resume": None, "until": None, "reason": "", **kw}), cfg, store)
+    cli.cmd_scorers(SimpleNamespace(**{"pause": None, "resume": None, "until": None, "reason": "", "pool": None,
+                                       **kw}), cfg, store)
+
+
+POOLS_UP = ["Quota pools:", "  claude_api      available: yes", "  agy_claude_gpt  available: yes",
+            "  agy_gemini      available: yes", "  local           available: yes", "Steps:"]
 
 
 def _local(stamp):
@@ -968,6 +993,7 @@ def test_scorers_lists_each_step_with_its_state_and_who_paused_it(watchlist, cap
     store = Store(cfg.state)
     _scorers(cfg, store)
     assert capsys.readouterr().out.splitlines() == [
+        *POOLS_UP,
         "1. claude:claude-sonnet-5-5    active",
         "2. agy:claude-sonnet-5-5-high  active",
         "3. agy:gemini-4-argon-medium   active",
@@ -980,6 +1006,7 @@ def test_scorers_lists_each_step_with_its_state_and_who_paused_it(watchlist, cap
     _down(store, "claude:claude-sonnet-5-5", "out of credit", "2026-11-20T10:00:00+00:00", "2000-01-01T00:00:00+00:00")
     _scorers(cfg, store)  # an expired pause is no pause; a paused step no longer in the chain is still said
     assert capsys.readouterr().out.splitlines() == [
+        *POOLS_UP,
         "1. claude:claude-sonnet-5-5    active",
         f"2. agy:claude-sonnet-5-5-high  paused until {_local('2099-12-01T22:00:00+00:00')}: out of quota "
         f"(set by a scoring run, since {_local('2026-11-26T14:12:00+00:00')})",

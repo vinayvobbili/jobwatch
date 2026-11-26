@@ -179,7 +179,7 @@ def test_an_account_error_skips_the_entry_and_fails_no_job(tmp_path, store, call
     calls.log.clear()
     watch.score_with_fallback(cfg, store, job)  # paused: no second call, no retry storm
     assert [b for b, _, _ in calls.log] == ["agy"]
-    assert "claude:claude-sonnet-5-5" in store.scorers_down()
+    assert "pool:claude_api" in store.scorers_down()
 
 
 @pytest.mark.parametrize("error", [
@@ -196,7 +196,7 @@ def test_an_error_per_job_from_the_account_is_no_job_failure_and_stops_the_run(t
     results, errors = watch.score_with_fallback(cfg, store, _jobs(12))
     assert len(results) == 12 and not errors
     assert [len(k) for b, _, k in calls.log if b == "claude"] == [5]  # the first chunk found out: no more calls
-    assert "claude:claude-sonnet-5-5" in store.scorers_down()
+    assert "pool:claude_api" in store.scorers_down()
 
 
 def test_a_job_claude_fails_on_for_its_own_reason_goes_on_to_the_next_scorer(tmp_path, store, calls, monkeypatch):

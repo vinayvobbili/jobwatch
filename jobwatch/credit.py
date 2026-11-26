@@ -9,7 +9,8 @@ A dated entry scores first, ahead of scoring.backend (the credit ends, the free 
 Eastern time (the credit's own clock): on the day itself and after, it is skipped, so the chain is the free
 scorers again. While it runs, a ledger (Store.add_credit_spend) adds up what its calls cost at list price, from the
 tokens the API reports, and it stops at a daily cap (scoring.credit.daily_usd, $3) for the day and a total cap
-(scoring.credit.total_usd, $90) for good. A failure of the account (no credit, a key refused, a rate limit) skips
+(scoring.credit.total_usd, $90) for good; either cap pauses the step in the store (cap_pause), as an exhausted quota
+does, so Settings and `jobwatch scorers` say so. A failure of the account (no credit, a key refused, a rate limit) skips
 it without marking any job failed: the next scorer takes the job.
 """
 
@@ -18,6 +19,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta, timezone
 
 from .config import Config, entry_until, fallback_entry, split_until
+from .score import UNTIL_RESUMED
 from .scorestats import PRICES, cost_usd
 from .store import Store
 
@@ -53,6 +55,24 @@ def skip_reason(cfg: Config, store: Store, entry: str, now: datetime | None = No
         return (f"credit daily cap ${cfg.score_credit_daily:.2f} reached (${day_usd:.2f} today): skipped until "
                 "tomorrow")
     return ""
+
+
+CAPS = ("daily cap", "total cap")  # how the reason of a pause cap_pause sets starts
+
+
+def cap_pause(cfg: Config, store: Store, entry: str, now: datetime | None = None) -> tuple[str, datetime] | None:
+    """The pause a reached cap puts on the entry's chain step (Store.set_scorer_down), so Settings and `jobwatch
+    scorers` show it paused and no run calls it: the daily cap until the next midnight Eastern, the total cap until
+    a human resumes it (UNTIL_RESUMED). None when no cap is reached."""
+    day_usd, total_usd = store.credit_spent(today_eastern(now))
+    if total_usd >= cfg.score_credit_total:
+        return (f"total cap ${cfg.score_credit_total:.2f} reached (${total_usd:.2f} spent): until resumed "
+                f"(jobwatch scorers --resume {entry.split(' until ')[0]})", UNTIL_RESUMED)
+    if day_usd >= cfg.score_credit_daily:
+        midnight = datetime.combine(today_eastern(now) + timedelta(days=1), datetime.min.time(), EASTERN)
+        return (f"daily cap ${cfg.score_credit_daily:.2f} reached (${day_usd:.2f} today): back at midnight Eastern",
+                midnight)
+    return None
 
 
 def _until(entry: str) -> date:

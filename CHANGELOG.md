@@ -19,6 +19,19 @@
 - `jobwatch resolve --apply --only KEY [KEY ...]` applies just the pairs whose keys you name (the keys the dry run
   prints, either the unnamed copy's or its twin's); the other pairs stay as they are. A key that names no pair is an
   error and nothing is applied.
+- A scorer out of quota or credit is paused on its own, on every path that scores (a card's Score button, the
+  page's background scorer, Read posting, the ↻ rescore, `jobwatch score`, `jobwatch credit --test`). The pause is on
+  the whole quota pool: `claude_api` (Claude's API), `agy_claude_gpt` (every agy Claude and GPT model),
+  `agy_gemini` (every agy Gemini model), `local`, or a provider's own, so a second step on the same quota is skipped
+  with no call. It lasts until the time the error names (agy's "Resets in 138h16m", "it refreshes in 5 days, 10
+  hours", a 429's Retry-After, Google's retryDelay), or an hour when it names none (the reason says so); then one
+  call tries again, and a step that scores clears its pool's pause. A run that scores some jobs and then hits the
+  limit pauses it too, and a run stops calling once one job finds the step out. The Claude credit's daily cap pauses
+  `claude_api` until midnight Eastern and its total cap until you resume it. Pauses live in the state file with an
+  absolute UTC time, so they outlive a restart and end on the clock; a row with an unreadable time counts as none.
+  `jobwatch scorers` opens with each pool as a flag (available: yes, or no and back at when, and why), and
+  `--pause`/`--resume` take `--pool NAME` for a whole pool. Settings' AI & fit scores card shows the pools as green
+  or amber dots with the time each is back, and a paused step's tag gives the date as well as the time.
 - A stale score no longer hides its number. The amber "stale" badge was drawn over the ring and covered the score
   (85/100 read as the word "stale"). The ring now shows the number as usual with a small clock icon on its rim
   (amber for an older resume, rose for a score marked stale), and the tooltips are the same.

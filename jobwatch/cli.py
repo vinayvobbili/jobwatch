@@ -82,7 +82,16 @@ from .config import BACKENDS, ConfigError, credit_entry, duration, fallback_entr
 from .filters import KINDS, rejection, staffing_firm
 from .localday import local_day
 from .rounds import ROUNDS
-from .score import ScoringUnavailable, calls_at_once, check_prompts, prompt_info, resume_id, scorer_label
+from .score import (
+    UNTIL_RESUMED,
+    ScoringUnavailable,
+    calls_at_once,
+    check_prompts,
+    paused_until,
+    prompt_info,
+    resume_id,
+    scorer_label,
+)
 from .store import (
     COMP_FIELDS,
     COMPANY_KINDS,
@@ -100,6 +109,7 @@ from .watch import (
     CHECKED,
     HELD,
     MANY_ROLES,
+    POOL,
     _step,
     build_digest,
     chain_steps,
@@ -110,10 +120,14 @@ from .watch import (
     counts_as_main,
     fetch_all,
     hidden,
+    hold_credit,
     hold_step,
     load_contacts,
     pace,
+    paused_steps,
     plural,
+    pool_id,
+    pools,
     queue,
     rescore_line,
     save_job,
@@ -474,6 +488,7 @@ def cmd_credit(args, cfg, store):
     if not args.test:
         return
     if s["skipped"]:
+        hold_credit(cfg, store, entry)  # a cap reached pauses the step, as a scoring run would
         raise SystemExit(f"Not testing: {s['skipped']}")
     if not (cfg.resume and cfg.resume.is_file()):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
@@ -500,6 +515,8 @@ def cmd_credit(args, cfg, store):
         raise SystemExit(f"Claude couldn't score: {e}") from None
     if errors:
         key, err = next(iter(errors.items()))
+        if paused_until(err):  # the account refused it (_step paused the step): a caller looping over jobs stops
+            raise SystemExit(f"Claude couldn't score: {err[:300]}")
         raise SystemExit(f"Claude failed on {key}: {err[:300]}")
     rid = resume_id(cfg.resume, cfg.prompts)
     fit = results[pick.job.key]
@@ -513,55 +530,84 @@ def cmd_credit(args, cfg, store):
 
 
 def cmd_scorers(args, cfg, store):
-    """`scorers`: each step of the scoring chain, active or paused (until when, why, and whether a run or a hand set
-    it), from the store alone: no call, no page. --pause STEP --until TIME holds a step by hand, as a run does when
-    its quota is out, and --resume STEP clears a pause."""
+    """`scorers`: each quota pool as a flag (claude_api, agy_claude_gpt, agy_gemini, local: available yes, or no and
+    back at when, and why), then each step of the scoring chain, active or paused (by its own pause or its pool's:
+    until when, why, and whether a run or a hand set it), from the store alone: no call, no page. --pause STEP
+    --until TIME holds a step by hand, as a run does when its quota is out, and --resume STEP clears a pause; with
+    --pool NAME in place of STEP they hold or free a whole pool."""
     steps = chain_steps(cfg)
     down = store.scorers_down()
+    flags = pools(cfg, store)
 
     def name(step):
         return step.removesuffix(":")
 
     def find(text):
-        found = next((s for s in (*steps, *down) if name(s) == text.removesuffix(":")), None)
+        found = next((s for s in (*steps, *down) if not s.startswith(POOL) and name(s) == text.removesuffix(":")),
+                     None)
         if not found:
             raise SystemExit(f"{text} isn't a step of the scoring chain: " + ", ".join(name(s) for s in steps))
-        return found
+        return found, name(found)
 
-    if args.until and not args.pause:
+    def target(step, verb):
+        if args.pool and step:
+            raise SystemExit(f"--{verb} takes a STEP or --pool NAME, not both")
+        if args.pool:
+            if args.pool not in {p["name"] for p in flags}:
+                raise SystemExit(f"{args.pool} isn't a quota pool: " + ", ".join(p["name"] for p in flags))
+            return pool_id(args.pool), f"the {args.pool} pool"
+        if not step:
+            raise SystemExit(f"--{verb} needs a STEP (as listed) or --pool NAME")
+        return find(step)
+
+    if args.until and args.pause is None:
         raise SystemExit("--until goes with --pause")
-    if args.pause:
+    if args.pool and args.pause is None and args.resume is None:
+        raise SystemExit("--pool goes with --pause or --resume")
+    if args.pause is not None:
         if not args.until:
             raise SystemExit("--pause needs --until, a local time as YYYY-MM-DD HH:MM")
         try:
             until = datetime.strptime(args.until, "%Y-%m-%d %H:%M")
         except ValueError:
             raise SystemExit(f"--until is a local time as YYYY-MM-DD HH:MM, not {args.until!r}") from None
-        step = find(args.pause)
+        held, label = target(args.pause, "pause")
         if until <= datetime.now():
             raise SystemExit(f"{args.until} is already past")
-        hold_step(store, step, until, args.reason)
-        print(f"Paused {name(step)} until {args.until} ({HELD}).")
+        hold_step(store, held, until, args.reason)
+        print(f"Paused {label} until {args.until} ({HELD}).")
         return
-    if args.resume:
-        step = find(args.resume)
-        print(f"Resumed {name(step)}." if step in down else f"{name(step)} isn't paused.")
-        store.clear_scorer_down(step)
+    if args.resume is not None:
+        held, label = target(args.resume, "resume")
+        print(f"Resumed {label}." if held in down else f"{label} isn't paused.")
+        store.clear_scorer_down(held)
         return
+    print("Quota pools:")
+    pool_width = max(len(p["name"]) for p in flags)
+    for p in flags:
+        print(f"  {p['name']:<{pool_width}}  " +
+              ("available: yes" if p["available"] else "available: no, " + _paused(down[pool_id(p["name"])],
+                                                                                   "back at")))
+    print("Steps:")
+    paused = paused_steps(cfg, store)
     width = max(len(name(s)) for s in steps)
     for i, step in enumerate(steps, 1):
-        print(f"{i}. {name(step):<{width}}  {_paused(down[step]) if step in down else 'active'}")
-    for step in sorted(down.keys() - set(steps)):
-        print(f"-  {name(step)} (not in the chain)  {_paused(down[step])}")
+        p = paused.get(step)
+        print(f"{i}. {name(step):<{width}}  "
+              + ((_paused(p) + (f" [{p['pool']} pool]" if p.get("pool") else "")) if p else "active"))
+    for step in sorted(paused.keys() - set(steps)):
+        print(f"-  {name(step)} (not in the chain)  {_paused(paused[step])}")
 
 
-def _paused(pause: dict) -> str:
+def _paused(pause: dict, lead: str = "paused until") -> str:
     """One scorers_down row as `paused until 2026-12-01 22:00: out of quota (set by a scoring run, since ...)`."""
     def local(stamp):
         return datetime.fromisoformat(stamp).astimezone().strftime("%Y-%m-%d %H:%M")
     by_hand = pause["reason"].startswith(HELD)
     why = pause["reason"].removeprefix(HELD).removeprefix(": ")
-    return (f"paused until {local(pause['until'])}" + (f": {why}" if why else "")
+    end = ("paused until resumed" if lead == "paused until" else "back when resumed") \
+        if datetime.fromisoformat(pause["until"]) >= UNTIL_RESUMED else f"{lead} {local(pause['until'])}"
+    return (end + (f": {why}" if why else "")
             + f" ({HELD if by_hand else 'set by a scoring run'}, since {local(pause['since'])})")
 
 
@@ -2009,14 +2055,18 @@ def build_parser() -> argparse.ArgumentParser:
                    "button too) instead of the shortest posting")
     p.set_defaults(func=cmd_credit)
 
-    p = sub.add_parser("scorers", help="each step of the scoring chain, active or paused (until when, why, who set "
-                       "it); --pause and --resume hold or free one by hand. Calls no model")
-    p.add_argument("--pause", default=None, metavar="STEP",
-                   help="hold this step (as listed, e.g. agy:claude-sonnet-5-5-high) until --until: the chain "
-                   "skips it with no call, as when its quota runs out")
+    p = sub.add_parser("scorers", help="each quota pool as an on/off flag (claude_api, agy_claude_gpt, agy_gemini, "
+                       "local) and each step of the scoring chain, active or paused (until when, why, who set it); "
+                       "--pause and --resume hold or free a step or a pool by hand. Calls no model")
+    p.add_argument("--pause", nargs="?", const="", default=None, metavar="STEP",
+                   help="hold this step (as listed, e.g. agy:claude-sonnet-5-5-high), or with --pool a whole pool, "
+                   "until --until: the chain skips it with no call, as when its quota runs out")
     p.add_argument("--until", default=None, metavar="'YYYY-MM-DD HH:MM'", help="with --pause: your local time")
     p.add_argument("--reason", default="", metavar="TEXT", help="with --pause: what the list says about it")
-    p.add_argument("--resume", default=None, metavar="STEP", help="end this step's pause now")
+    p.add_argument("--resume", nargs="?", const="", default=None, metavar="STEP",
+                   help="end this step's pause now (or with --pool, the pool's)")
+    p.add_argument("--pool", default=None, metavar="NAME",
+                   help="with --pause or --resume: act on this quota pool (as listed) instead of one step")
     p.set_defaults(func=cmd_scorers)
 
     p = sub.add_parser("unscored", help="Today's jobs with no fit score yet, and why (in line, no posting text...)")

@@ -45,7 +45,7 @@ from .filters import (
 )
 from .localday import local_day
 from .models import Job
-from .score import ScoringUnavailable, brief, collecting_usage, paused_until, resume_id, score_jobs
+from .score import UNTIL_RESUMED, ScoringUnavailable, brief, collecting_usage, paused_until, resume_id, score_jobs
 from .scorestate import marked
 from .store import ENDED, MANUAL, STAGES, Store
 from .text import local_salary, names_one_role
@@ -1272,11 +1272,15 @@ def _credit_step(cfg: Config, store: Store, jobs: list[Job], entry: str, results
     backend, model = fallback_entry(entry)
     results, errors = dict(results), dict(errors)
     todo = [j for j in jobs if j.key not in results]
-    for start in range(0, len(todo), credit.CHUNK):
+    for start in range(0, len(todo) + credit.CHUNK if todo else 0, credit.CHUNK):
         if why := credit.skip_reason(cfg, store, entry, now):
+            hold_credit(cfg, store, entry, now)
             _credit_said(store, entry, why)
             break
+        hold_credit(cfg, store, entry, now)  # a cap raised in the watchlist frees the step it paused
         chunk = todo[start:start + credit.CHUNK]
+        if not chunk:  # the last chunk's check, so a cap that run reached pauses the step now, not next run
+            break
         try:
             more, more_errors = _step(cfg, store, chunk, backend, model, progress=progress,
                                       on_usage=lambda u: credit.record(store, u, now))
@@ -1286,15 +1290,22 @@ def _credit_step(cfg: Config, store: Store, jobs: list[Job], entry: str, results
         results.update(more)
         # an error of the account is no job's failure: the pause is set (see _step) and the chain goes on
         errors.update({k: f"{entry}: {v}" for k, v in more_errors.items() if not paused_until(v)})
-        if any(paused_until(v) for v in more_errors.values()):
+        if any(paused_until(v) for v in more_errors.values()):  # _step paused it
             _credit_said(store, entry, "refused by the account (credit, key or rate limit): the next scorer "
                          "takes the jobs")
-            for v in more_errors.values():
-                if found := paused_until(v):
-                    store.set_scorer_down(scorer_id(backend, model), *found)
-                    break
             break
     return results, errors
+
+
+def hold_credit(cfg: Config, store: Store, entry: str, now: datetime | None = None):
+    """Pause a dated entry's step while a cap is reached (credit.cap_pause: the daily cap to midnight Eastern, the
+    total cap until resumed), and free one a cap paused once none is (a new day, a cap raised in the watchlist).
+    A pause for another reason (the account refused it) is left as it is."""
+    pid = pool_id(pool_of(scorer_id(*fallback_entry(entry))))  # the credit is Claude's API: the claude_api pool
+    if found := credit.cap_pause(cfg, store, entry, now):
+        store.set_scorer_down(pid, *found)
+    elif store.scorers_down().get(pid, {}).get("reason", "").startswith(credit.CAPS):
+        store.clear_scorer_down(pid)
 
 
 def scorer_id(backend: str, model: str) -> str:
@@ -1318,19 +1329,21 @@ HELD = "held by hand"  # the start of the reason of a pause set with `jobwatch s
 
 
 def hold_step(store: Store, step: str, until: datetime, reason: str = ""):
-    """Pause a chain step by hand, as a run does when its quota is out: _step skips it, with no call, until then."""
+    """Pause a chain step by hand (or a whole pool, as pool_id(name)), as a run does when its quota is out: _step
+    skips it, with no call, until then."""
     store.set_scorer_down(step, f"{HELD}: {reason}" if reason else HELD, until)
 
 
 def _step(cfg: Config, store: Store, jobs: list[Job], backend: str, model: str, progress=None, batch: bool = False,
           on_usage: Callable[[dict], None] | None = None):
     """One step of the scoring chain: skipped, with no call, while it's paused (out of credit or quota: see
-    score.paused_until), else tried; a run where it couldn't score any job for such a reason pauses it, and one
-    that scores any job ends a pause. ScoringUnavailable when it can't score at all."""
+    score.paused_until), else tried; a run where any job failed for such a reason pauses it (one that scored some
+    jobs and then hit the limit too: the time the error names, the latest if several do), and one that scores
+    with no such failure ends a pause. ScoringUnavailable when it can't score at all."""
     sid = scorer_id(backend, model)
-    if pause := store.scorers_down().get(sid):
-        until = datetime.fromisoformat(pause["until"]).astimezone().strftime("%a %-I:%M %p")
-        raise ScoringUnavailable(f"{backend} {pause['reason']}, paused until {until}")
+    if pause := step_pause(store.scorers_down(), sid):
+        pool = f" ({pause['pool']})" if pause.get("pool") else ""
+        raise ScoringUnavailable(f"{backend} {pause['reason']}{pool}, paused until {pause_end(pause['until'])}")
     try:
         results, errors = _score_jobs(store, jobs, cfg.resume, backend, cfg.cache, workers=cfg.score_workers,
                                       progress=progress, prompts=cfg.prompts, model=model, keychain=cfg.api_keychain,
@@ -1338,14 +1351,80 @@ def _step(cfg: Config, store: Store, jobs: list[Job], backend: str, model: str, 
                                       **_provider_kwarg(cfg, backend))
     except ScoringUnavailable as e:
         if found := paused_until(str(e)):
-            store.set_scorer_down(sid, *found)
+            _pause(store, sid, *found)
         raise
-    if results:
+    if found := [p for err in errors.values() if (p := paused_until(err))]:
+        _pause(store, sid, *max(found, key=lambda p: p[1]))
+    elif results:  # it scored: its pool is up (a pause set too long heals here)
         store.clear_scorer_down(sid)
-    elif errors and (found := [p for err in errors.values() if (p := paused_until(err))]) and \
-            len(found) == len(errors):
-        store.set_scorer_down(sid, *found[0])
+        store.clear_scorer_down(pool_id(pool_of(sid)))
     return results, errors
+
+
+# Quota pools: steps that draw on one account's quota or credit, so one out of it means all of them are. agy's Claude
+# and GPT models share one quota and its Gemini models another (each with a weekly and a five-hour limit).
+POOLS = ("claude_api", "agy_claude_gpt", "agy_gemini", "local")
+POOL = "pool:"  # a pool's pause is a scorers_down row named pool:<name>, beside the steps' own
+STEP_ONLY = ("model not served",)  # a refusal of one model, not of its account: only that step is paused
+
+
+def pool_of(step: str) -> str:
+    """The quota pool a chain step (scorer_id) draws on: claude_api for Claude's API, agy_gemini for an agy Gemini
+    model, agy_claude_gpt for agy's others (its default, Sonnet, included), local, or a scoring.providers API's own
+    name."""
+    backend, _, model = step.partition(":")
+    if backend == "claude":
+        return "claude_api"
+    if backend == "agy":
+        return "agy_gemini" if model.lower().startswith("gemini") else "agy_claude_gpt"
+    return backend
+
+
+def pool_id(pool: str) -> str:
+    return f"{POOL}{pool}"
+
+
+def _pause(store: Store, step: str, reason: str, until: datetime):
+    """A run's pause: on the step's whole pool (every step that draws on that quota is skipped), or on the step alone
+    for a refusal of its model."""
+    store.set_scorer_down(step if reason in STEP_ONLY else pool_id(pool_of(step)), reason, until)
+
+
+def step_pause(down: dict[str, dict], step: str) -> dict | None:
+    """A step's pause now, from Store.scorers_down: its own (held by hand, a model refused) or its pool's, whichever
+    ends later; a pool's carries "pool". None when the step is up."""
+    found = [p for p in (down.get(step), down.get(pool_id(pool_of(step))) and
+                         {**down[pool_id(pool_of(step))], "pool": pool_of(step)}) if p]
+    return max(found, key=lambda p: p["until"]) if found else None
+
+
+def paused_steps(cfg: Config, store: Store) -> dict[str, dict]:
+    """{step: pause} for the chain's steps paused now, by their own pause or their pool's (see step_pause), and
+    for any other step paused on its own: what Settings dims and `jobwatch scorers` lists."""
+    down = store.scorers_down()
+    steps = chain_steps(cfg) + [s for s in down if not s.startswith(POOL)]
+    return {s: p for s in dict.fromkeys(steps) if (p := step_pause(down, s))}
+
+
+def pools(cfg: Config, store: Store) -> list[dict]:
+    """Each quota pool as a flag: name, available (yes/no), and while it's paused until (ISO), reason, since and
+    by_hand. The four POOLS first, then a scoring.providers API in the chain (its own pool)."""
+    down = store.scorers_down()
+    names = dict.fromkeys([*POOLS, *(pool_of(s) for s in chain_steps(cfg))])
+    out = []
+    for name in names:
+        p = down.get(pool_id(name))
+        out.append({"name": name, "available": p is None,
+                    **({"until": p["until"], "reason": p["reason"].removeprefix(HELD).removeprefix(": "),
+                        "since": p["since"], "by_hand": p["reason"].startswith(HELD)} if p else {})})
+    return out
+
+
+def pause_end(until: str) -> str:
+    """When a paused step is tried again, as a line says it: "Tue Dec 1 9:50 PM", or "resumed" for a pause no
+    clock ends (the credit's total cap)."""
+    end = datetime.fromisoformat(until)
+    return "resumed" if end >= UNTIL_RESUMED else end.astimezone().strftime("%a %b %-d %-I:%M %p")
 
 
 def _provider_kwarg(cfg: Config, backend: str) -> dict:

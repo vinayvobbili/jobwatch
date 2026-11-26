@@ -106,7 +106,9 @@ from .watch import (
     job_fit,
     load_contacts,
     pace,
+    paused_steps,
     plural,
+    pools,
     queue,
     read_mail,
     rescore_label,
@@ -779,12 +781,17 @@ class App:
         st["local"]["recommend"] = localmodel.recommend(
             localmodel.configured_model(scoring, st["local"]["default_model"]))
         st["local"]["recommend"]["running"] = localmodel.running_model(chat.local_url())  # what the server serves now
-        # the chain's steps paused now (out of credit or quota), by "backend:model": Settings shows them so
+        return {**st, **self.pauses()}
+
+    def pauses(self) -> dict:
+        """Settings' view of the scoring chain's pauses: `paused`, the steps paused now (out of credit or quota, by
+        their own pause or their pool's), by "backend:model", and `pools`, each quota pool as a flag (available, or
+        until when and why: see watch.pools). Read from the state file at each call: nothing kept in memory."""
         try:
-            st["paused"] = self._with_store(lambda cfg, store: store.scorers_down())
+            return self._with_store(lambda cfg, store: {"paused": paused_steps(cfg, store),
+                                                        "pools": pools(cfg, store)})
         except ApiError:  # no watchlist yet
-            st["paused"] = {}
-        return st
+            return {"paused": {}, "pools": []}
 
     def post_ai_test(self, body) -> dict:
         """One small call to the chosen backend, to show it answers (the local model loads first)."""
@@ -1952,12 +1959,17 @@ class App:
                 entry = next((e for e in scoring_line(cfg, store) if key in e.keys), None) or \
                     Entry(job, record, 0.0, [])
                 one = replace(cfg, backend=backend, score_model=model, score_fallback=(), score_daily=0)
-                _, errors = score_entries(one, store, [entry], progress=lambda m: None, by="rescore")
-                error, note = errors.get(job.key), ""
-                if error and (found := paused_until(error)) and (chain := chain_after(cfg, backend, model)):
-                    # The account refused the step asked for (no credit, a key refused, a rate limit): the job
-                    # goes down the user's chain, and the page says what failed and which scorer made the score.
-                    note = f"{rescore_label(backend, model)} failed: {found[0]}"
+                try:
+                    _, errors = score_entries(one, store, [entry], progress=lambda m: None, by="rescore")
+                    error, note = errors.get(job.key), ""
+                    why = (paused_until(error) or ("",))[0] if error else ""
+                except ScoringUnavailable as e:  # paused (no call made), or it can't score here at all
+                    error, note, why = str(e), "", str(e)
+                if why and (chain := chain_after(cfg, backend, model)):
+                    # The account refused the step asked for (no credit, a key refused, a rate limit), or it is
+                    # paused: the job goes down the user's chain, and the page says what failed and which scorer
+                    # made the score.
+                    note = f"{rescore_label(backend, model)} failed: {why}"
                     again = replace(cfg, backend=backend, score_model=model, score_fallback=chain, score_daily=0)
                     _, errors = score_entries(again, store, [entry], progress=lambda m: None, by="rescore")
                     error = errors.get(job.key)
@@ -1965,8 +1977,8 @@ class App:
                         error = f"{note}; then {error}"
                     elif entry.fit and entry.fit.get("scored_by"):
                         note += f". Scored with {rescore_label(*entry.fit['scored_by'].partition(':')[::2])} instead"
-                elif error and paused_until(error):
-                    error = f"{rescore_label(backend, model)} failed: {paused_until(error)[0]}; nothing else to try"
+                elif why:
+                    error = f"{rescore_label(backend, model)} failed: {why}; nothing else to try"
                 return entry, error, note
             entry, error, note = self._with_store(run)
             self._publish_score(key, entry, error, note)

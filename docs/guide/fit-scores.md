@@ -170,6 +170,14 @@ no batch of jobs fails against it first: `jobwatch scorers --pause agy:claude-so
 22:00" --reason "weekly quota"` (your local time); the chain skips it like one a run found out of quota.
 `jobwatch scorers --resume STEP` ends the pause.
 
+A run pauses a whole quota pool, not one step, since the steps on one account run out together: `claude_api`
+(Claude's API, also paused by the credit's daily cap until midnight Eastern and by its total cap until you resume
+it), `agy_claude_gpt` (agy's Claude and GPT models), `agy_gemini` (agy's Gemini models), `local`, and a provider's
+own. `jobwatch scorers` lists them first as flags (available: yes, or no and back at when, and why), Settings shows
+them as green or amber dots, and `--pause --pool agy_gemini --until ...` or `--resume --pool agy_gemini` hold or
+free one by hand. A pause ends on the clock at the time the error named (an hour when it named none), even across a
+restart; a step that scores clears its pool's pause.
+
 To test one on jobs you have already scored, without saving anything:
 
 ```

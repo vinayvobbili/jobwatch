@@ -329,13 +329,20 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
         by_name[name] = job
         (postings / f"{name}.md").write_text(job.to_text(), encoding="utf-8")
 
+    out_of: list[str] = []  # the first error that says the step is out (quota, credit, a 429): no more calls this run
+
     def one(name: str):
         job = by_name[name]
+        if out_of:
+            return name, None, out_of[0]
         progress(f"requirements  {job.display_company}: {job.title}")
         try:
             return name, extract_job(postings / f"{name}.md", model, cache, **edits), None
         except Exception as e:
-            return name, None, f"{type(e).__name__}: {e}"
+            error = error_text(e)
+            if paused_until(error):
+                out_of.append(error)
+            return name, None, error
 
     def run() -> tuple[dict[str, dict], dict[str, str]]:
         specs, errors = {}, {}
@@ -345,6 +352,9 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
                     errors[by_name[name].key] = error
                 else:
                     specs[name] = spec
+        if out_of:  # matching what was read would only meet the same refusal, a call per job
+            errors.update({by_name[name].key: out_of[0] for name in specs})
+            specs = {}
         if not specs:
             return {}, errors
         matches = match_jobs(resume, specs, model, cache=cache, workers=workers, progress=progress, **edits)
@@ -372,39 +382,76 @@ def score_jobs(jobs: list[Job], resume: Path, backend: str, cache_dir: Path, wor
     except Exception as e:  # a batch is sent whole: the API refusing it fails the run, not one job
         if why := account_down(e):
             raise ScoringUnavailable(why) from e
-        if type(e).__name__ == "BackendError":  # the model failed on what every job needs (reading the resume)
-            raise ScoringUnavailable(f"{getattr(model, 'name', backend)} couldn't score: {e}") from e
+        # the model failed on what every job needs (reading the resume), or the API refused the run (a 429)
+        if type(e).__name__ == "BackendError" or paused_until(error_text(e)):
+            said = error_text(e).removeprefix(f"{type(e).__name__}: ")
+            raise ScoringUnavailable(f"{getattr(model, 'name', backend)} couldn't score: {said}") from e
         raise
     finally:
         tokens.note(len(out[0]) if out else 0)
 
 
-_QUOTA = re.compile(r"quota|rate.?limit|usage limit|resource_exhausted|too many requests|\b429\b", re.I)
-_RESETS = re.compile(r"resets? in\s+(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+)s)?", re.I)
+# Out of a quota (agy's weekly or five-hour one, Gemini's RESOURCE_EXHAUSTED), or only rate limited (a 429)
+_QUOTA = re.compile(r"quota|usage limit|resource_exhausted|hit (?:your|the) [\w -]{0,20}limit|"
+                    r"\b(?:weekly|daily|hourly|monthly|\d+[- ]?hour|five[- ]hour) limit", re.I)
+_RATE = re.compile(r"rate.?limit|too many requests|\b429\b", re.I)
+# The wait a quota or rate limit names: agy's "Resets in 138h16m" or "4h53m6s", "it refreshes in 5 days, 10 hours",
+# "try again in 30 seconds", the "retry after 20s" score_jobs adds from a Retry-After header, Google's retryDelay
+_UNIT = r"(?:days?|d|hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])"
+_WAIT = re.compile(r"(?:resets?|refresh(?:es)?|renews?|try again|retry|available again)\s+(?:in|after)\s*:?\s*"
+                   rf"((?:\d+(?:\.\d+)?\s*{_UNIT}[\s,]*(?:and\s+)?)+)", re.I)
+_RETRY_DELAY = re.compile(r"retryDelay\W+(\d+(?:\.\d+)?)s", re.I)
+_PART = re.compile(r"(\d+(?:\.\d+)?)\s*([dhms])", re.I)
+_SECONDS = {"d": 86400, "h": 3600, "m": 60, "s": 1}
 _NO_CREDIT = re.compile(r"insufficient[ _](credit|funds|balance)|billing[ _]error|payment required|\b402\b", re.I)
 _DOWN = re.compile(r"API at \S+ answered 5\d\d\b")  # a provider's own 5xx (shortlist-ai's OpenAIBackend words it so)
 PAUSE = timedelta(hours=1)  # how long a step out of credit (or with no reset time given) is skipped before a retry
 PAUSE_DOWN = timedelta(minutes=10)  # a provider answering 5xx: usually brief
+NO_TIME = "no reset time given, so tried again in an hour"
+UNTIL_RESUMED = datetime(9999, 1, 1, tzinfo=UTC)  # a pause no clock ends (the credit's total cap): `scorers --resume`
+
+
+def reset_wait(error: str) -> timedelta | None:
+    """How long the error says to wait before the quota or rate limit lifts, or None when it names no time."""
+    if m := _WAIT.search(error):
+        return timedelta(seconds=sum(float(n) * _SECONDS[u.lower()] for n, u in _PART.findall(m[1]))) or None
+    if m := _RETRY_DELAY.search(error):
+        return timedelta(seconds=float(m[1])) or None
+    return None
 
 
 def paused_until(error: str, now: datetime | None = None) -> tuple[str, datetime] | None:
     """Whether a scoring failure means the step can't score for a while, and until when: out of credit or its key
-    refused (an hour: credit can be bought any time), or out of quota (until the reset the error names, else an
-    hour). None for a failure of one job."""
+    refused (an hour: credit can be bought any time), or out of quota or rate limited (until the reset or retry time
+    the error names, else an hour, and the reason says so). None for a failure of one job."""
     now = now or datetime.now(UTC)
+    wait = reset_wait(error)
     if "credit balance is too low" in error or "out of credit" in error or _NO_CREDIT.search(error):
-        return "out of credit", now + PAUSE
+        return f"out of credit ({NO_TIME})", now + PAUSE
     if "refused the key" in error or "AuthenticationError" in error or "PermissionDeniedError" in error:
         return "API key refused", now + PAUSE
     if "refused the model" in error:  # a model the API no longer serves (a 404): no job will score with it
         return "model not served", now + PAUSE
-    if _QUOTA.search(error):
-        m = _RESETS.search(error)
-        wait = timedelta(hours=int(m[1] or 0), minutes=int(m[2] or 0), seconds=int(m[3] or 0)) if m else PAUSE
-        return "out of quota", now + (wait or PAUSE)
+    if _QUOTA.search(error) or _RATE.search(error):
+        why = "out of quota" if _QUOTA.search(error) else "rate limited"
+        return (why, now + wait) if wait else (f"{why} ({NO_TIME})", now + PAUSE)
     if _DOWN.search(error):
         return "unavailable (server error)", now + PAUSE_DOWN
     return None
+
+
+def error_text(e: Exception) -> str:
+    """An exception as a job's error: its type and message, with the wait a 429 asked for (shortlist-ai's
+    BackendError.retry_after, or the Retry-After header of an anthropic SDK error) as "retry after Ns", so
+    paused_until pauses the step that long."""
+    text = f"{type(e).__name__}: {e}"
+    wait = getattr(e, "retry_after", None)
+    if wait is None and (response := getattr(e, "response", None)) is not None:
+        wait = (getattr(response, "headers", None) or {}).get("retry-after")
+    try:
+        return f"{text} (retry after {float(wait):.0f}s)" if wait is not None else text
+    except (TypeError, ValueError):  # an HTTP date: the hour's pause will do
+        return text
 
 
 def account_down(e: Exception) -> str:

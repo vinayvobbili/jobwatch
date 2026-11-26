@@ -1337,12 +1337,23 @@ class Store:
         with self.db:
             self.db.execute("DELETE FROM scorer_down WHERE scorer=?", (scorer,))
 
-    def scorers_down(self) -> dict[str, dict]:
-        """{scorer: {reason, since, until}} for the steps paused now; ones whose time is up are left out (and are
-        tried again)."""
-        now = datetime.now(UTC).isoformat(timespec="seconds")
-        return {r["scorer"]: {"reason": r["reason"], "since": r["since"], "until": r["until"]}
-                for r in self.db.execute("SELECT * FROM scorer_down WHERE until > ?", (now,))}
+    def scorers_down(self, now: datetime | None = None) -> dict[str, dict]:
+        """{scorer: {reason, since, until}} for the steps (and pools: pool:<name>) paused now, read from the state
+        file at each call: a pause outlives a restart, and one whose time is up (the wall clock past its UTC `until`)
+        is left out, so it is tried again with nothing to clear. A row whose time can't be read counts as no pause:
+        the step is tried, and a refusal pauses it again properly."""
+        now = now or datetime.now(UTC)
+        down = {}
+        for r in self.db.execute("SELECT * FROM scorer_down"):
+            try:
+                until = datetime.fromisoformat(r["until"])
+                until = until if until.tzinfo else until.replace(tzinfo=UTC)
+                if until > now:
+                    down[r["scorer"]] = {"reason": r["reason"], "since": r["since"],
+                                         "until": until.astimezone(UTC).isoformat(timespec="seconds")}
+            except (TypeError, ValueError):
+                continue
+        return down
 
     def score_usage(self, backend: str, day: date | None = None) -> int:
         """Jobs scored with this backend on this local day (default today)."""

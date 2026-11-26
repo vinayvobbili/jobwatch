@@ -149,8 +149,8 @@ def test_a_rescore_the_api_refuses_for_credit_falls_down_the_chain_and_says_so(a
     app.post_rescore({"key": KEY, "backend": "claude", "model": "claude-sonnet-5-5"})
     kind, data = heard.get(timeout=10)
     assert kind == "score" and data["fit"]["scored_by"] == "agy:claude-sonnet-5-5-medium"
-    assert data["note"] == ("claude-sonnet-5-5 (API) failed: out of credit. "
-                            "Scored with claude-sonnet-5-5-medium (agy) instead")
+    assert data["note"] == ("claude-sonnet-5-5 (API) failed: out of credit (no reset time given, so tried again in "
+                            "an hour). Scored with claude-sonnet-5-5-medium (agy) instead")
     assert app.calls == [("claude", "claude-sonnet-5-5"), ("agy", "claude-sonnet-5-5-medium")]  # one try, then agy
 
 
@@ -161,7 +161,8 @@ def test_a_rescore_nothing_can_score_ends_with_a_message_naming_each_failure(app
     heard = app.events.subscribe()
     app.post_rescore({"key": KEY, "backend": "claude", "model": "claude-sonnet-5-5"})
     kind, data = heard.get(timeout=10)
-    assert kind == "score-failed" and data["error"].startswith("claude-sonnet-5-5 (API) failed: out of credit; then ")
+    assert kind == "score-failed"
+    assert data["error"].startswith("claude-sonnet-5-5 (API) failed: out of credit (no reset time")
     assert "model said no" in data["error"]
 
 
