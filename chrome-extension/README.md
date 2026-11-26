@@ -175,5 +175,8 @@ would be the next one.
 Store zip: `python chrome-extension/tools/package.py` writes `dist/jobwatch-extension-<version>.zip`. It refuses to
 build when the manifest version differs from the jobwatch package's.
 
+Dashboard fields: `python chrome-extension/tools/paste_block.py --list` names the paste blocks of `CHROMEWEBSTORE.md`, and
+`paste_block.py <name or prefix>` (for example `single`, `activeTab`, `test-instructions`) puts one on the clipboard.
+
 Parts of the React handling in `page.js` follow two open-source autofill extensions; see
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
