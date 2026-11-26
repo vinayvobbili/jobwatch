@@ -182,3 +182,36 @@ def test_the_show_hide_choices_for_unknowns_are_remembered(page, hint, default, 
     other, other_default = ("No score yet", "Show") if hint == "No pay clue" else ("No pay clue", "Hide")
     sync_api.expect(chip(page, other, other_default)).to_have_class("on")  # each has its own memory
     assert page.errors == []
+
+
+DEGREE = "Bachelor of Science degree in Computer Science or a related technical/analytical discipline"
+DISTRIBUTED = "Strong distributed-systems background, including retries, idempotency, and recovery"
+
+
+def test_a_degree_gap_the_profile_meets_leaves_the_card_and_counts_as_met(jobs, page, watchlist):
+    """A job card's Gaps row lists a degree requirement your profile's education meets only until the profile says
+    so: then the gap is gone, the must-haves count it, and the box says why on hover."""
+    from jobwatch.score import resume_id
+
+    cv = watchlist.parent / "cv.md"
+    cv.write_text("# Jane Doe")
+    config.save(watchlist, {"resume": str(cv)})
+    cfg = config.load(watchlist)
+    store = Store(cfg.state)
+    store.save_score("greenhouse:acme:101", resume_id(cfg.resume), {
+        "score": 81.0, "must_haves_met": 5, "must_haves_total": 10, "summary": "Good.", "flags": [],
+        "gaps": [f"{DEGREE} · {DISTRIBUTED}"]})
+    store.close()
+    card = page.locator(".card.job", has=page.locator('[data-fit="greenhouse:acme:101"]'))
+    reload(page)
+    sync_api.expect(card.locator(".gaps")).to_contain_text("Bachelor of Science degree")
+    sync_api.expect(card.locator(".fitbox small").first).to_have_text("must-haves 5/10")
+    (watchlist.parent / "profile.yaml").write_text(yaml.safe_dump({"education": [
+        {"school": "Initech State University", "degree": "MS in Computer Science"}]}))
+    reload(page)
+    sync_api.expect(card.locator(".gaps")).to_have_text(DISTRIBUTED)
+    sync_api.expect(card.locator(".fitbox small").first).to_have_text("must-haves 6/10")
+    sync_api.expect(card.locator(".fitbox small.reconciled")).to_have_attribute(
+        "title", "Reconciled with your profile: " + DEGREE + ": met by your MS in Computer Science "
+                 "(the score was not made again)")
+    assert page.errors == []

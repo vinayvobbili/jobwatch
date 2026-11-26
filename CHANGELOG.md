@@ -7,6 +7,14 @@
   posting found closed that evening read "closed" with tomorrow's date (and the company page showed "Nov NaN").
   One helper does it in the page (`localDay`) and one in Python (`jobwatch.localday.local_day`); the stored data is
   unchanged.
+- A degree requirement your education already meets no longer shows as a gap. A fit score can lose a degree's level
+  on the way ("MS in Computer Science" read as a subject with no level), so "Bachelor's degree in Computer Science
+  or a related discipline" came back partly met. Where a gap is a plain degree requirement and the `education:` in
+  your profile.yaml (next to the watchlist, else resume-kit's content folder) has a degree at that level or above in
+  that field (or a related one, when the posting says "or related"), the gap leaves the card, counts as met in the
+  must-haves, and the box and "Why this score" say it was reconciled with your profile. The score is not made
+  again. PhD requirements, fields your profile lacks and lines that also ask for years, a certification or a
+  clearance are left alone; with no education in the profile nothing changes.
 - `mark --note` replaces the whole note, so it used to wipe an application's dated history without a word. It now
   keeps the replaced note (in the database), says how long it was, and `jobwatch notes KEY --undo` brings it back;
   `jobwatch notes KEY` lists the notes replaced. The MCP `mark_job` refuses `note` on a job that already has one

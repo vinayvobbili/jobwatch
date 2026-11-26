@@ -175,7 +175,7 @@ def _config() -> config.Config:
 
 def _open():
     cfg = _config()
-    return cfg, Store(cfg.state)
+    return cfg, Store(cfg.state, education=cfg.education)
 
 
 def _pay(result, job) -> dict:

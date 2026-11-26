@@ -49,6 +49,8 @@ def fit_lines(fit: dict) -> list[str]:
     resume's words that back it. Scores saved before requirements were kept show only the first line."""
     out = [f"Fit {fit['score']:.0f}/100, must-haves {fit['must_haves_met']}/{fit['must_haves_total']}"
            + (f" (scored by {scorer_label(fit['scored_by'])})" if fit.get("scored_by") else "")]
+    out += [f"Reconciled with your profile (the score was not made again): {note}"
+            for note in fit.get("reconciled") or []]
     for r in fit.get("requirements") or []:
         kind = "must" if r["kind"] == "must_have" else "nice"
         quote = f'  "{_trim(r["evidence"][0], 90)}"' if r.get("evidence") else ""

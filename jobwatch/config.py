@@ -17,7 +17,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import LiteralScalarString
 from ruamel.yaml.util import load_yaml_guess_indent
 
-from . import GUIDE
+from . import GUIDE, degrees
 from .filters import Filters
 from .score import Provider, check_prompts
 from .sources import SOURCES
@@ -902,6 +902,12 @@ class Config:
     board_filters: dict[tuple[str, str], Filters] = field(default_factory=dict)
     # (title regexes, filters) per tracks: entry: a kind of job judged by other rules wherever it comes from
     tracks: list[tuple[list[str], Filters]] = field(default_factory=list)
+
+    @property
+    def education(self) -> tuple[degrees.Degree, ...]:
+        """The degrees in your profile (profile.yaml: see degrees.py), whose requirements a fit score's gaps
+        drop; none when there is no profile or it has no education."""
+        return degrees.load(degrees.profile_file(self.path))
 
     @property
     def backends(self) -> tuple[str, ...]:

@@ -599,7 +599,7 @@ class App:
 
     def _with_store(self, fn):
         cfg = self._cfg()
-        store = Store(cfg.state)
+        store = Store(cfg.state, education=cfg.education)
         try:
             return fn(cfg, store)
         finally:

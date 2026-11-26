@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import actjobs, linkedin, rounds
 from .contacts import company_key
+from .degrees import reconcile
 from .models import Job
 from .package import POSTING, Package
 from .score import resume_family, unjudged
@@ -357,12 +358,13 @@ class Scores(Mapping):
     """Fit scores by job key, kept as the stored JSON text and read when a key is asked for: a list of a hundred
     thousand jobs asks for a few hundred, and parsed they'd take several times the text's size in memory."""
 
-    def __init__(self, raw: dict[str, tuple[str, bool]] | None = None):
+    def __init__(self, raw: dict[str, tuple[str, bool]] | None = None, education: tuple = ()):
         self._raw = raw or {}  # key -> (result JSON, stale)
+        self._education = education  # degrees.reconcile's: met degree requirements leave the gaps
 
     def __getitem__(self, key: str) -> dict:
         text, stale = self._raw[key]
-        fit = json.loads(text)
+        fit = reconcile(json.loads(text), self._education)
         return {**fit, "stale": True} if stale else fit
 
     def __iter__(self):
@@ -373,7 +375,7 @@ class Scores(Mapping):
 
     def over(self, other: Mapping) -> Scores:
         """These, with `other`'s (a Scores) in place of any with the same key."""
-        return Scores({**self._raw, **other._raw})
+        return Scores({**self._raw, **other._raw}, self._education)
 
 
 class KnownJobs(Mapping):
@@ -412,11 +414,13 @@ class KnownJobs(Mapping):
 
 
 class Store:
-    def __init__(self, path: Path | str, read_only: bool = False):
+    def __init__(self, path: Path | str, read_only: bool = False, education: tuple = ()):
         """read_only opens an existing state file without changing it, not even to add a newer version's columns
-        (`jobwatch dupes` reads with it)."""
+        (`jobwatch dupes` reads with it). education: the profile's degrees (Config.education): a fit score read
+        back has the degree requirements they meet taken out of its gaps (degrees.reconcile)."""
         path = Path(path).expanduser()
         self.path = path
+        self.education = education
         self.packages = path.parent / "packages"  # what was sent with each application (see package.py)
         self._titles: dict[str, str | None] = {}  # titles() remembers what it resolved, until a job is written
         if read_only:
@@ -1191,12 +1195,12 @@ class Store:
     def score(self, key: str, resume: str) -> dict | None:
         row = self.db.execute(f"SELECT result FROM scores WHERE key=? AND resume=? AND {_SCORED}",
                               (key, resume)).fetchone()
-        return json.loads(row["result"]) if row else None
+        return reconcile(json.loads(row["result"]), self.education) if row else None
 
     def scores(self, resume: str) -> Scores:
         """Every stored fit score for this resume, by job key: one query for a whole list of jobs."""
         return Scores({r["key"]: (r["result"], False) for r in self.db.execute(
-            f"SELECT key, result FROM scores WHERE resume=? AND {_SCORED}", (resume,))})
+            f"SELECT key, result FROM scores WHERE resume=? AND {_SCORED}", (resume,))}, self.education)
 
     def stale_scores(self, resume: str) -> Scores:
         """Per job key, the newest fit score made for the same resume content and prompts as `resume` by another
@@ -1208,7 +1212,7 @@ class Store:
                                  f"AND {_SCORED} ORDER BY scored_at", (resume, ":".join(family.split(":")[:2]) + "%")):
             if resume_family(r["resume"]) == family:
                 out[r["key"]] = (r["result"], True)
-        return Scores(out)
+        return Scores(out, self.education)
 
     def drop_incomplete_scores(self, resume: str) -> list[str]:
         """Remove this resume's current scores whose model left requirements unjudged (see score.unjudged), saved

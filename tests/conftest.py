@@ -153,6 +153,13 @@ def no_real_state(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_real_profile(tmp_path, monkeypatch):
+    """The profile (degrees.profile_file) is next to the test's watchlist: never resume-kit's own folder in $HOME,
+    whose degrees would change which gaps a test sees."""
+    monkeypatch.setenv("RESUME_KIT_CONTENT", str(tmp_path / "no-resume-kit-content"))
+
+
+@pytest.fixture(autouse=True)
 def no_hook_git_env(monkeypatch):
     """Git runs a pre-push hook with GIT_DIR and friends set; in a worktree GIT_DIR is absolute, so `git` in a
     test's temporary folder would read this repository instead of finding none. Tests never inherit them."""

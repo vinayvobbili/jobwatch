@@ -2472,7 +2472,7 @@ def main(argv: list[str] | None = None):
         read_only = getattr(args, "read_only", False)  # opened without changing the file at all
         if read_only and not Path(cfg.state).expanduser().is_file():
             raise ValueError(f"no jobs tracked yet: {cfg.state} doesn't exist")
-        store = Store(cfg.state, read_only=read_only)
+        store = Store(cfg.state, read_only=read_only, education=cfg.education)
         try:
             args.func(args, cfg, store)
         finally:

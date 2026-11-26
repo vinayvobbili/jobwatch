@@ -397,6 +397,7 @@ button.btn:disabled { opacity: .55; cursor: default; }
   place-items: center; font-weight: 800; font-size: 18px; letter-spacing: -.03em; color: var(--rc); }
 .ring.hi { --rc: var(--good); } .ring.mid { --rc: var(--warn); } .ring.lo { --rc: var(--bad); }
 .fitbox.stale { opacity: .6; }
+.fitbox small.reconciled { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .fitbox small { display: block; color: var(--muted); font-size: 11.5px; margin-top: 5px; white-space: nowrap; }
 .scorer { display: inline-block; margin-top: 4px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px;
   white-space: nowrap; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -1889,7 +1890,9 @@ function fitBox(fit, key) {
     h("div", { class: `ring ${fitClass(s)}`, style: `--p:${s}` }, h("span", {}, s),
       key ? rescoreButton(key) : null),
     fitChip(s),
-    h("small", {}, fit.stale ? "old score" : `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`),
+    h("small", { class: fit.reconciled ? "reconciled" : null, "data-reconciled": fit.reconciled ? "1" : null,
+                 title: fit.reconciled ? `Reconciled with your profile: ${fit.reconciled.join("; ")}` : null },
+      fit.stale ? "old score" : `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`),
     scorerTag(fit));
 }
 
@@ -2036,9 +2039,12 @@ const VERDICT = { met: "met", partial: "partly", not_met: "missing" };
 function whyScore(fit) {
   if (!fit || !fit.requirements || !fit.requirements.length) return null;
   return h("details", { class: "whyfit" }, h("summary", {}, "Why this score"),
+    fit.reconciled ? h("p", { class: "muted small", "data-reconciled-note": "1" },
+      "Reconciled with your profile (the score itself was not made again): " + fit.reconciled.join("; ") + ".") : null,
     h("ul", {}, fit.requirements.map(r => h("li", {},
       h("span", { class: `v ${r.verdict}` }, VERDICT[r.verdict] || r.verdict),
       r.requirement, r.kind === "must_have" ? h("span", { class: "muted small" }, " · must-have") : null,
+      r.reconciled ? h("span", { class: "muted small" }, ` · ${r.reconciled}`) : null,
       (r.evidence || []).slice(0, 2).map(q => h("q", {}, q))))));
 }
 
