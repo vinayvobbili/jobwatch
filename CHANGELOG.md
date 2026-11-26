@@ -83,6 +83,9 @@
   (`chrome.tabs.remove`, no new permission), and only a LinkedIn or Indeed job tab whose posting it has just given to
   jobwatch; a tab that showed a sign-in wall or a captcha stays open for you. The page's `window.close()` remains as
   the fallback.
+- Fix: Read posting no longer fails with "jobwatch took too long to answer" when jobwatch needs more than 20 seconds
+  to fill a job in (it looks for the company's own board and scores the job first). The extension waits up to 90
+  seconds for that call, and if jobwatch still hasn't answered says to look in Today and press Read posting again.
 - Fix: `suggest`, `find` and the MCP `find_board` no longer abort with "'idna' codec can't encode characters: label
   too long" when a company name makes a host label over 63 characters; that guess now counts as no board found.
 - MCP: `mark_job` with status `applied` asks for proof of submission through elicitation (confirmation page seen,

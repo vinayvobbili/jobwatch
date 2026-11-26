@@ -15,7 +15,9 @@ const JWRead = globalThis.JWRead;
 const JWPassive = globalThis.JWPassive;
 const PENDING_MAX_MS = 30 * 60 * 1000;
 const TAILOR_TIMEOUT_MS = 6 * 60 * 1000; // resume-kit drafts, then renders the PDF: a minute or two, up to its own limits
-const pendingKey = (tabId) => `pending:${tabId}`;
+const POSTING_TIMEOUT_MS = 90 * 1000; // jobwatch looks for the job's company board and scores it before it answers
+const POSTING_SLOW = "It may still be filling the job in: open jobwatch's Today to see, then press Read posting again if it isn't.";
+const pendingKey =(tabId) => `pending:${tabId}`;
 const ctxKey = (tabId) => `ctx:${tabId}`;
 const readDoneKey = (tabId) => `readDone:${tabId}`; // a tab whose posting was read and given to jobwatch: it may be closed
 
@@ -524,7 +526,7 @@ async function readPosting(msg, sender) {
   const body = { [site]: id, company: msg.company, title: msg.title, text, closed: !!msg.closed };
   let r;
   try {
-    r = await api('/ext/posting', { method: 'POST', body, settings });
+    r = await api('/ext/posting', { method: 'POST', body, settings, timeout: POSTING_TIMEOUT_MS, slow: POSTING_SLOW });
   } catch (e) {
     await readTabEnded(sender.tab.id, e.message);
     throw e;

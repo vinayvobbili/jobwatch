@@ -237,7 +237,13 @@ globalThis.chrome = {{
     }},
   }},
 }};
-globalThis.fetch = async () => ({{ ok: jobwatchAnswers.ok, status: jobwatchAnswers.status, json: async () => jobwatchAnswers.body }});
+const timeouts = [];  // the delays of every setTimeout: api() sets one to give up on jobwatch
+const realSetTimeout = globalThis.setTimeout;
+globalThis.setTimeout = (f, ms, ...rest) => {{ timeouts.push(ms); return realSetTimeout(f, ms >= 60000 ? 30 : ms, ...rest); }};  // a minute and a half takes 30 ms
+globalThis.fetch = async (url, {{ signal }}) => {{
+  if (jobwatchAnswers.hang) return new Promise((_, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), {{ name: 'AbortError' }}))));
+  return {{ ok: jobwatchAnswers.ok, status: jobwatchAnswers.status, json: async () => jobwatchAnswers.body }};
+}};
 await import('./background.js');
 const send = (msg, tab) => new Promise((resolve) => onMessage(msg, {{ tab }}, resolve));
 const text = 'We are hiring a Platform Engineer. '.repeat(10);
@@ -263,7 +269,21 @@ console.log(JSON.stringify({{ before, readOk: readReply.ok, first, again, closed
 
 
 @needs_node
-def test_the_worker_does_not_close_a_tab_whose_read_failed(tmp_path):
+def test_a_slow_jobwatch_gets_a_minute_and_a_half_before_the_read_gives_up(tmp_path):
+    """jobwatch looks for the job's company board and scores it before it answers /ext/posting: more than api()'s default
+    20 s. It waits 90 s, and when jobwatch still hasn't answered says what to do, leaving the tab."""
+    got = background_case(tmp_path, f"""const tab = {json.dumps(JOB_TAB)};
+await read(tab);
+const slowEnough = timeouts.includes(90000) && !timeouts.includes(20000);
+const hungTab = {{ id: 6, url: 'https://www.linkedin.com/jobs/view/4000000002/' }};
+jobwatchAnswers = {{ hang: true }};
+const hung = await read(hungTab);
+const after = await send({{ type: 'closeReadTab' }}, hungTab);
+console.log(JSON.stringify({{ slowEnough, hung, after: after.ok, closed }}));""")
+    assert got["slowEnough"] is True
+    assert got["hung"]["ok"] is False and "took too long" in got["hung"]["error"] and "Today" in got["hung"]["error"]
+    assert got["after"] is False and got["closed"] == []  # the tab whose read timed out stays open
+
     """jobwatch refusing the text (a bad token), the page being a sign-in wall or a captcha (readFailed), or the text being
     too short: each leaves the tab open for the person."""
     got = background_case(tmp_path, f"""const tab = {json.dumps(JOB_TAB)};
