@@ -155,6 +155,46 @@ def test_apply_skips_the_unnamed_copy_and_leaves_everything_else(store):
     assert "marked skipped" in resolve.text(found, applied=True)
 
 
+def test_only_applies_the_named_pairs_and_an_unknown_key_errors(store):
+    twin_a = named(store, "Initech", title="Staff Security Engineer", id_="1")
+    copy_a = unnamed(store, title="Staff Security Engineer")
+    twin_b = named(store, "Globex", title="Principal Engineer", id_="2")
+    store.set_status([twin_b.key], "applied")
+    copy_b = unnamed(store, title="Principal Engineer")
+    twin_c = named(store, "Umbrella", title="Staff Software Engineer", id_="3")
+    copy_c = unnamed(store, title="Staff Software Engineer")
+    found = resolve.twins(store)
+    assert len(found) == 3
+    assert {t.unnamed.key for t in resolve.only(found, [copy_a.key, twin_b.key])} == {copy_a.key, copy_b.key}
+    with pytest.raises(ValueError, match="no pair has key nope"):
+        resolve.only(found, [copy_a.key, "nope"])
+    assert resolve.apply(store, resolve.only(found, [copy_a.key, twin_b.key])) == 2
+    status = lambda j: store.find(j.key)[1]["status"]  # noqa: E731
+    assert (status(copy_a), status(copy_b), status(copy_c)) == ("skipped", "skipped", "new")
+    assert (status(twin_a), status(twin_b), status(twin_c)) == ("new", "applied", "new")  # twins are untouched
+    assert [t.unnamed.key for t in resolve.twins(store)] == [copy_c.key]
+    assert "--apply --only KEY" in resolve.text(resolve.twins(store), applied=False)
+
+
+def test_the_command_applies_only_the_named_pairs(tmp_path, capsys):
+    path = tmp_path / "jobwatch.yaml"
+    path.write_text(f"companies: [greenhouse:acme]\nstate: {tmp_path / 'state.db'}\n")
+    s = Store(tmp_path / "state.db")
+    named(s), named(s, "Globex", title="Principal Engineer", id_="2")
+    one, two = unnamed(s), unnamed(s, title="Principal Engineer")
+    s.close()
+    with pytest.raises(SystemExit, match="no pair has key nope"):
+        cli.main(["-c", str(path), "resolve", "--apply", "--only", one.key, "nope"])
+    s =Store(tmp_path / "state.db")
+    assert s.find(one.key)[1]["status"] == "new"  # an unknown key applies nothing
+    s.close()
+    cli.main(["-c", str(path), "resolve", "--apply", "--only", two.key])
+    assert "1 unnamed-client row(s) match" in capsys.readouterr().out
+    s = Store(tmp_path / "state.db")
+    assert s.find(one.key)[1]["status"] == "new" and s.find(two.key)[1]["status"] == "skipped"
+    s.close()
+
+
 def test_naming_the_client_makes_the_row_listable_again(store):
     from jobwatch.filters import Filters, rejection
     copy = unnamed(store)

@@ -109,6 +109,16 @@ def _range(pay: tuple[int, int] | None) -> str:
     return f"${pay[0]:,}–${pay[1]:,}" if pay else "none stated"
 
 
+def only(found: list[Twin], keys: list[str]) -> list[Twin]:
+    """The pairs the keys name, in the order found. A key is either end of a pair: the unnamed copy's or its twin's
+    (the dry run prints both). A key that names no pair is an error, so a typo never applies less than you meant."""
+    chosen = [t for t in found if t.unnamed.key in keys or t.named.key in keys]
+    known = {k for t in found for k in (t.unnamed.key, t.named.key)}
+    if missing := [k for k in keys if k not in known]:
+        raise ValueError(f"no pair has key {', '.join(missing)}; the keys are the ones `jobwatch resolve` prints")
+    return chosen
+
+
 def apply(store: Store, found: list[Twin]) -> int:
     """Mark each unnamed copy skipped, with a note naming its twin after any note it has. Returns how many."""
     for t in found:
@@ -128,7 +138,8 @@ def text(found: list[Twin], applied: bool) -> str:
         out.append(f"  = {t.named.display_company} ({n}): {t.named.title}  {_range(pay_of(t.named))}  `{t.named.key}`")
     out.append(f"\n{len(found)} unnamed-client row(s) match a named twin. " + (
         "Each is marked skipped with a note naming its twin; the twins are untouched." if applied else
-        "Nothing was changed: --apply marks each unnamed copy skipped (the twin is never touched)."))
+        "Nothing was changed: --apply marks each unnamed copy skipped (the twin is never touched); "
+        "--apply --only KEY [KEY ...] does it for just the pairs whose keys (above) you name."))
     return "\n".join(out)
 
 

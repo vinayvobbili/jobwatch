@@ -904,6 +904,8 @@ def cmd_resolve(args, cfg, store):
         print(f"{job.key}: client named {job.display_company}; Today lists it again.")
         return
     found = resolve.twins(store)
+    if args.only:
+        found = resolve.only(found, args.only)
     if args.apply:
         resolve.apply(store, found)
     print(resolve.text(found, args.apply))
@@ -2617,6 +2619,9 @@ def build_parser() -> argparse.ArgumentParser:
                        "unnamed copy skipped with a note naming its twin (the twin is never touched, nothing is "
                        "deleted); --name KEY COMPANY names a row's client, so Today lists it again")
     p.add_argument("--apply", action="store_true", help="skip the unnamed copies (without it: only print the pairs)")
+    p.add_argument("--only", nargs="+", metavar="KEY", help="with --apply, only the pairs these keys name (either "
+                   "the unnamed copy's key or its twin's, as the dry run prints them); an unknown key is an error "
+                   "and nothing is applied. The other pairs stay as they are")
     p.add_argument("--dry-run", action="store_true", help="print the pairs and change nothing (the default)")
     p.add_argument("--name", nargs=2, metavar=("KEY", "COMPANY"), help="name a row's client instead of matching")
     p.add_argument("--explain", action="store_true", help="for each row with no twin, the same-title jobs at named "

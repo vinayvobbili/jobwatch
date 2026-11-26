@@ -90,6 +90,7 @@ have at the real company, so applying through the agency would hand it your firs
 ```
 jobwatch resolve                           # a dry run: each unnamed row beside its named twin
 jobwatch resolve --apply                   # skip each unnamed copy, with a note naming its twin
+jobwatch resolve --apply --only KEY ...   # skip just the pairs whose keys you name (either end's key, as printed)
 jobwatch resolve --name KEY "Initech"      # you learned the client: name it, and Today lists the row again
 jobwatch resolve --explain                 # for each row with no twin, how the nearest same-title jobs differ
 ```

@@ -16,6 +16,9 @@
   unnamed copy skipped with a note naming its twin (the twin, queued and applied jobs are never touched). The staffing
   warning now also fires on "For our client, we are seeking ..." and "For our client, a leader in the X space", and
   `auto_watch` leaves Ladders alone like any agency.
+- `jobwatch resolve --apply --only KEY [KEY ...]` applies just the pairs whose keys you name (the keys the dry run
+  prints, either the unnamed copy's or its twin's); the other pairs stay as they are. A key that names no pair is an
+  error and nothing is applied.
 - A stale score no longer hides its number. The amber "stale" badge was drawn over the ring and covered the score
   (85/100 read as the word "stale"). The ring now shows the number as usual with a small clock icon on its rim
   (amber for an older resume, rose for a score marked stale), and the tooltips are the same.
