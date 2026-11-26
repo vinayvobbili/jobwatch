@@ -1,6 +1,7 @@
 """The extension's packaging and icon tools (chrome-extension/tools)."""
 
 import json
+import re
 import struct
 import sys
 import zipfile
@@ -150,3 +151,11 @@ def test_the_committed_icons_are_the_ones_the_tool_draws():
         png = (EXT / "icons" / f"icon{size}.png").read_bytes()
         assert struct.unpack(">II", png[16:24]) == (size, size)
         assert png == make_icons.render_png(size)
+
+
+def test_the_e2e_tests_wait_with_functions_not_expression_strings():
+    # An extension page's CSP forbids eval, which Playwright uses to poll an expression string: it passes only when the
+    # first look already holds (the theme test failed on CI's Chromium for that). A "() => ..." function always works.
+    source = (EXT.parent / "tests" / "test_extension_e2e.py").read_text(encoding="utf-8")
+    calls = re.findall(r"wait_for_function\(\s*(.{0,8})", source)
+    assert calls and not [c for c in calls if not c.startswith(('"() =>', "f\"() =>"))], calls

@@ -956,9 +956,9 @@ def test_the_theme_chosen_in_settings_is_the_one_the_panel_wears(stack, ext, pan
         assert panel.evaluate("document.documentElement.getAttribute('data-theme')") is None  # System first
         options = stack.extension_page("options.html")
         options.select_option("#theme", "dark")
-        panel.wait_for_function("document.documentElement.getAttribute('data-theme') === 'dark'")
+        panel.wait_for_function("() => document.documentElement.getAttribute('data-theme') === 'dark'")
         options.select_option("#theme", "system")
-        panel.wait_for_function("document.documentElement.getAttribute('data-theme') === null")
+        panel.wait_for_function("() => document.documentElement.getAttribute('data-theme') === null")
         options.close()
     finally:
         page.close()
