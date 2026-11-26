@@ -124,12 +124,20 @@ def verify(store: Store, keys: list[str], get=None, page=None, watched=(), reope
     """Look at these jobs' postings again, now (watch.check_postings): the ones found open are reopened and lose
     their notices; the ones found closed again stay (and count as confirmed when the mark is old enough). A posting
     that can't be told either way (maintenance, an outage, a refusal) is 'unknown': left as it is, or with
-    `reopen_unknown` reopened too, since closed needs positive evidence. Returns the watch.Check of each."""
+    `reopen_unknown` reopened too, since closed needs positive evidence. A LinkedIn or Indeed job jobwatch can't read
+    keeps a confirmed mark: only the site's own page, read in the person's browser, made it, and that is positive
+    evidence no look from here can redo (its Check says closed). Returns the watch.Check of each."""
+    from .filltext import SITES, browser_site
     from .watch import check_postings  # watch imports this module for its own notes
     checks = check_postings(store, get=get, page=page, watched=watched, jobs=[store.find(k) for k in keys])
     if reopen_unknown:
         for c in checks:
-            if c.result == "unknown":
+            if c.result != "unknown":
+                continue
+            if (site := browser_site(c.job.url)) and closed_state(store.find(c.job.key)[1]) == "closed":
+                c.result, c.detail = "closed", (f"{SITES[site]}'s own page said so, read in your browser; Read "
+                                                "posting looks again")
+            else:
                 store.set_closed(c.job.key, False)
     collect(store)  # drops the notices of the reopened
     return checks

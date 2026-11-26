@@ -309,6 +309,22 @@ def test_recheck_reopens_whatever_is_not_positively_closed(cfg, store):
     assert [n["title"] for n in closed_notice.unseen(store)] == ["Really gone"]
 
 
+def test_recheck_keeps_what_linkedins_own_page_said(cfg, store):
+    """A LinkedIn job closed by its page's banner, read in the browser, is positive evidence jobwatch can't look at
+    again: the recheck keeps it. One marked once, with no such read behind it, is reopened like any unknown."""
+    from jobwatch import filltext
+    said = store.add("Initech", "Staff Engineer", url="https://www.linkedin.com/jobs/view/4000000011/",
+                     status="queued").key
+    filltext.mark_closed(store, said, "LinkedIn")
+    once = store.add("Umbrella", "Data Engineer", url="https://www.linkedin.com/jobs/view/4000000012/",
+                     status="queued").key
+    store.set_closed(once, True)
+    text = closed_notice.recheck(cfg, store, get=serving(POSTING), page=serving(POSTING))
+    assert "1 still closed" in text and "Initech: Staff Engineer" in text
+    assert "1 could not be told" in text and "Umbrella: Data Engineer" in text
+    assert store.find(said)[1]["closed"] and store.find(once)[1]["closed"] is None
+
+
 def test_recheck_is_a_command(cfg, store, capsys):
     from jobwatch.cli import main
     j = tracked(store)

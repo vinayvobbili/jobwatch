@@ -186,3 +186,29 @@ def test_an_open_page_marks_nothing(app):
     key = _alert_job(app)
     got = app.ext_posting({**CLOSED, "closed": False})
     assert not got.get("closed") and "closed" not in got["said"] and not _job(app, key)[1]["closed"]
+
+
+def test_the_jobs_own_page_open_again_reopens_it(app):
+    """Read posting on a job marked closed finds its page taking applications (no closed banner): the mark goes, with
+    a note, and the answer says so. A second open read changes nothing more."""
+    key = _alert_job(app)
+    app.ext_posting(CLOSED)
+    got = app.ext_posting({**CLOSED, "linkedin": LI, "closed": False})
+    assert got["key"] == key and got["reopened"] and "no longer marked closed" in got["said"]
+    rec = _job(app, key)[1]
+    assert not rec["closed"] and closed_state(rec) is None
+    assert "LinkedIn shows it taking applications again" in rec["note"]
+    again = app.ext_posting({**CLOSED, "closed": False})
+    assert not again.get("reopened") and _job(app, key)[1]["note"].count("taking applications again") == 1
+
+
+def test_another_postings_open_page_or_no_closed_word_never_reopens(app):
+    """Only the job's own page reopens it: an open posting with the same company and title under another id is
+    another opening (added on its own), and a save that says nothing about closed (the popup's) leaves the mark."""
+    key = _alert_job(app)
+    app.ext_posting(CLOSED)
+    other = app.ext_posting({**CLOSED, "linkedin": "4000000055", "closed": False})
+    assert other["key"] != key and not other.get("reopened")
+    assert closed_state(_job(app, key)[1]) == "closed"
+    said = app.ext_posting({k: v for k, v in CLOSED.items() if k != "closed"})
+    assert said["key"] == key and not said.get("reopened") and closed_state(_job(app, key)[1]) == "closed"

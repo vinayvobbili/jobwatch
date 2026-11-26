@@ -406,23 +406,42 @@ def posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
     page_url (the company's page the person is on) is on a supported board (as for a link added by hand), else it is
     the `text` that page showed. `linkedin` (the job's id or address) finds the job; the LinkedIn page itself is
     never read. `said` tells what happened; `where` is the page's tab the job is on. `closed`: the page said the
-    posting is closed, which marks the job closed whatever its status or text (`closed` in the answer, and `said`)."""
+    posting is closed, which marks the job closed whatever its status or text (`closed` in the answer, and `said`).
+    `closed` false (Read posting found no closed banner) on the job's own page, by its id, reopens a job marked
+    closed: the site shows it taking applications, which is as positive as the banner was."""
     got = _posting(cfg, store, body, get)
+    site = filltext.SITES["indeed" if not body.get("linkedin") and body.get("indeed") else "linkedin"]
     if body.get("closed"):
-        site = filltext.SITES["indeed" if not body.get("linkedin") and body.get("indeed") else "linkedin"]
         filltext.mark_closed(store, got["key"], site)
         got["closed"] = True
         got["said"] += f"; {site} says this posting is closed"
+    elif body.get("closed") is False and _by_its_id(store, body, got["key"]) and store.set_closed(got["key"], False):
+        store.add_note(got["key"], f"{site} shows it taking applications again: reopened")
+        got["reopened"] = True
+        got["said"] += f"; {site} shows this posting open, so it is no longer marked closed"
     return got
 
 
-def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
+def _site_ids(body: dict) -> tuple[str, str]:
+    """(LinkedIn's id, Indeed's key) of the job the extension names, each '' when not named."""
     given = str(body.get("linkedin") or "").strip()
-    pid = linkedin.job_id(given) or (given if given.isdigit() else "")
+    return (linkedin.job_id(given) or (given if given.isdigit() else ""),
+            _indeed_key(str(body.get("indeed") or "").strip()))
+
+
+def _by_its_id(store: Store, body: dict, key: str) -> bool:
+    """Whether the job the page was matched to is that page's own job (its LinkedIn id or Indeed key), not one only
+    sharing its company and title: another posting's open page never reopens it."""
+    pid, jk = _site_ids(body)
+    own = (pid or jk) and _listing(store, pid, [], "", "", jk)
+    return bool(own) and own[0].key == key
+
+
+def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
+    pid, jk = _site_ids(body)
     company, title = str(body.get("company") or "").strip(), str(body.get("title") or "").strip()
     text = str(body.get("text") or "").strip()[:MAX_TEXT]
     links = [u for u in [str(body.get("page_url") or "").strip()] if _own_site(u)]
-    jk = _indeed_key(str(body.get("indeed") or "").strip())
     if not (pid or jk or links or (company and title)):
         raise ValueError("send the posting's company and title, or its link")
     came = (f"Found on LinkedIn: https://www.linkedin.com/jobs/view/{pid}/" if pid
