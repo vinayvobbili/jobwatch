@@ -473,3 +473,28 @@ def test_a_company_page_folds_skipped_and_closed_jobs_into_one_closed_group(jobs
     sync_api.expect(group.locator('[id="job-lever:globex:aaaa-1111"]')).to_be_visible()
     sync_api.expect(group.locator('[id="job-lever:globex:bbbb-2222"]')).to_be_visible()
     assert page.errors == []
+
+
+@pytest.mark.parametrize("scheme", ["light", "dark"])
+def test_the_job_details_close_button_has_an_x_and_the_word_and_esc_closes_the_dialog_too(jobs, page, scheme):
+    """The Close button of the job details is the one shared look (.btn-close): an X and the word, a tooltip that names
+    Esc, a ring when it has the keyboard's focus; the button and Esc both close the dialog, in either theme."""
+    page.emulate_media(color_scheme=scheme)
+    chip(page, "Posted within", "14d").click()
+    overlay, close = page.locator("#overlay"), page.locator("#dialog .btn-close")
+    for how in ("click", "Escape"):
+        page.locator(".btn.act-details").first.click()
+        sync_api.expect(close).to_have_count(1)
+        sync_api.expect(close).to_have_text("Close")
+        sync_api.expect(close.locator("svg.ico")).to_have_count(1)
+        sync_api.expect(close).to_have_attribute("title", "Close (Esc)")
+        sync_api.expect(page.locator("#dialog .job-chat")).to_have_count(1)  # the card with the chat panel beside it
+        page.keyboard.press("Tab")  # the keyboard's focus, so :focus-visible applies
+        close.focus()
+        sync_api.expect(close).to_have_css("outline-style", "solid")
+        if how == "click":
+            close.click()
+        else:
+            page.keyboard.press("Escape")
+        sync_api.expect(overlay).to_be_hidden()
+    assert page.errors == []

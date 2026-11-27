@@ -184,6 +184,21 @@ button.primary:hover, a.btn.primary:hover { border-color: transparent; filter: b
 button.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 5px 10px; }
 button.ghost:hover { color: var(--text); background: var(--chip); border-color: transparent; }
 button.btn:disabled { opacity: .55; cursor: default; }
+/* A dialog's Close (closeButton): a quiet secondary button, a translucent chip with a hairline border, an X and the word
+   (a round X alone in the small dialogs). Hover lifts it and lights it in the accent; Esc closes the dialog too. */
+button.btn.btn-close { color: var(--chip-text); padding: 6px 13px 6px 10px; font-weight: 600; border-radius: 999px;
+  background: color-mix(in srgb, var(--chip) 72%, transparent); border-color: color-mix(in srgb, var(--accent) 16%, var(--line));
+  backdrop-filter: blur(6px); transition: transform .15s, box-shadow .15s, border-color .15s, background .15s, color .15s; }
+button.btn.btn-close .ico { transition: transform .2s; }
+button.btn.btn-close:hover { color: var(--accent); transform: translateY(-1px);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid)); border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--accent) 85%, transparent); }
+button.btn.btn-close:hover .ico { transform: rotate(90deg); }
+button.btn.btn-close:active { transform: translateY(0); box-shadow: none; }
+button.btn.btn-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.btn.btn-close.icon-only { width: 34px; height: 34px; padding: 0; justify-content: center; }
+@media (prefers-reduced-motion: reduce) { button.btn.btn-close, button.btn.btn-close .ico { transition: none; }
+  button.btn.btn-close:hover .ico { transform: none; } }
 /* The action buttons (actButton), one icon and one color each, the same on every view and card state: Queue purple
    and Apply green are filled; Skip rose, Snooze amber, I applied blue, Prepare magenta, Score cyan are tinted;
    Details slate and Remove from queue grey. Nothing else restyles them. */
@@ -1676,6 +1691,12 @@ function icon(name, size = 15) {
   const path = document.createElementNS(ns, "path"); path.setAttribute("d", ICONS[name]); svg.append(path);
   return svg;
 }
+// The Close button of every dialog: one look (.btn-close), an X and the word, or the X alone in a small dialog. Esc closes
+// the dialog as well (the keydown handler near closeDetails), which the tooltip says.
+function closeButton(onclick, iconOnly = false) {
+  return h("button", { class: "btn btn-close" + (iconOnly ? " icon-only" : ""), type: "button", title: "Close (Esc)",
+    ...(iconOnly ? { "aria-label": "Close" } : {}), onclick }, icon("x", iconOnly ? 15 : 13), iconOnly ? null : "Close");
+}
 
 // A company's logo from its own site once jobwatch has found it (see logos.py), else its initials on a color
 // picked from its name: the same company always looks the same.
@@ -2037,7 +2058,7 @@ async function openRescore(key) {
   };
   fill(box,
     h("div", { class: "row", style: "align-items:center" }, h("h2", { style: "flex:1;margin:0" }, "Score again"),
-      h("button", { class: "btn ghost", type: "button", "aria-label": "Close", onclick: close }, icon("x", 14))),
+      closeButton(close, true)),
     h("p", { class: "small muted" }, d.scored_by ? `Scored now by ${scorerLabel(d.scored_by)}${d.stale ? ` (stale: ${d.stale_note})` : ""}. ` +
       "Pick the model to score it again with; the new score replaces it." : "Pick the model to score it with."),
     list,
@@ -2977,7 +2998,7 @@ async function openDetails(key) {
     fill(dialog,
       h("div", {},
         h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, j.title), fitBox(j.fit, j.key) || noFitBox(j),
-          h("button", { class: "btn", onclick: closeDetails }, "Close")),
+          closeButton(closeDetails)),
         h("div", { class: "meta" }, [j.company, j.locations.join("; "), j.pay].filter(Boolean).join(" · ")),
         detailsFacts(j),
         j.meeting ? h("div", { class: "iv-banner" },
@@ -3126,7 +3147,7 @@ async function openPrep(key, draft = false, questions = false) {
           title: "The same questions read aloud: answer out loud, then get a report on what you said and how" },
           icon("mic", 14), " Voice interview"),
         copy, page, h("button", { class: "btn", onclick: () => print() }, "Print"),
-        h("button", { class: "btn", onclick: closeDetails }, "Close")),
+        closeButton(closeDetails)),
       h("h2", {}, `Prep: ${p.title}`),
       h("div", { class: "meta" }, [p.company, `Stage: ${p.status}`, p.applied_at && `applied ${p.applied_at}`,
         p.next_step && `next: ${p.next_step}`, p.follow_up && `follow up ${p.follow_up}`].filter(Boolean).join(" · ")),
@@ -3199,7 +3220,7 @@ async function openMock(key, voice = false) {
   const cut = t => { const f = [...t.matchAll(/^[\s#*_>]*tightened answer[\s*_:]*/gim)].pop(); return f ? t.slice(0, f.index) : t; };
   const top = (...more) => h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openPrep(key) }, "← Prep sheet"),
     h("span", { style: "flex:1" }), ...more);
-  const done = () => fill(dialog, h("div", { class: "prep" }, top(h("button", { class: "btn", onclick: closeDetails }, "Close")),
+  const done = () => fill(dialog, h("div", { class: "prep" }, top(closeButton(closeDetails)),
     h("h2", {}, "Mock interview done"),
     h("p", {}, `${answered} answered, ${kept} saved to the prep sheet.`),
     h("button", { class: "btn", onclick: () => openPrep(key) }, "Back to the prep sheet")));
@@ -3449,7 +3470,7 @@ async function voiceReport(key, m, answers) {
   let d = null, content = null, why = "", failed = "", saved = false;
   const out = h("div", {});
   const top = (...more) => h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openPrep(key) }, "← Prep sheet"),
-    h("span", { style: "flex:1" }), ...more, h("button", { class: "btn", onclick: closeDetails }, "Close"));
+    h("span", { style: "flex:1" }), ...more, closeButton(closeDetails));
   const list = items => h("ul", {}, items.map(t => h("li", {}, t)));
   function row(r, i) {
     const scale = Math.max(120, Math.ceil(r.seconds / 30) * 30), c = content && content.answers[i] || {};
@@ -3546,7 +3567,7 @@ async function openStoryFind(key, gap = null) {
   let s;
   try { s = await api("/api/storyfind?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
   const top = (...more) => h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openPrep(key) }, "← Prep sheet"),
-    h("span", { style: "flex:1" }), ...more, h("button", { class: "btn", onclick: closeDetails }, "Close"));
+    h("span", { style: "flex:1" }), ...more, closeButton(closeDetails));
   const where = s.where.local ? "private, runs on this computer" : `${s.where.label} (cloud): what you type goes to Anthropic`;
   if (!gap) {
     const own = h("input", { type: "text", placeholder: "Or in your own words: e.g. running a migration", "aria-label": "What the story should show" });
@@ -4123,7 +4144,7 @@ async function openScoreDecision(done = () => {}) {
   const take = () => decide("/api/scores/unmark", {}, n => `${n} mark${n === 1 ? "" : "s"} taken back: those scores stand`);
   fill(box,
     h("div", { class: "row", style: "align-items:center" }, h("h2", { style: "flex:1;margin:0" }, "Scores and your resume"),
-      h("button", { class: "btn ghost", type: "button", "aria-label": "Close", onclick: close }, icon("x", 14))),
+      closeButton(close, true)),
     h("p", { class: "small", "data-scores-line": "1" }, scoresLine(s)),
     h("p", { class: "small muted" }, "A new resume doesn't change a score or ask for a new one: each job keeps the score it has, marked " +
       "stale. You decide what the change means. Keep scores when it was small; Mark stale to have them scored again (that costs " +
@@ -4447,7 +4468,7 @@ async function openHidden(kind) {
           h("p", { class: "sub small" }, info.why)),
         info.part ? h("button", { class: "btn", onclick: () => { closeDetails(); openFilter(info.part); } },
           icon("pencil", 13), "Change this filter") : null,
-        h("button", { class: "icon-btn", "aria-label": "Close", onclick: closeDetails }, icon("x", 16))),
+        closeButton(closeDetails, true)),
       h("div", { class: "hidden-list", style: "margin-top:10px" }, d.jobs.map(j => h("div", { class: "list-item" },
         h("div", { style: "flex:1;min-width:0" }, link(j.url, j.title, "title"),
           h("div", { class: "meta" }, h("b", {}, j.company),
