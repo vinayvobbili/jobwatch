@@ -17,7 +17,7 @@ from dataclasses import replace
 from urllib.parse import urlparse
 
 from . import contacts as people
-from . import dupes, jobpass, report, suggest
+from . import dupes, jobpass, report, sources, suggest
 from .config import Config
 from .filters import KINDS, focus_hits, rejection
 from .localday import local_day
@@ -292,6 +292,93 @@ def mentions_text(found: list[dict], query: str) -> str:
     out = [f"{len(found)} job{'s' * (len(found) != 1)} mention{'s' * (len(found) == 1)} {query!r}:", ""]
     for j in found:
         out += _line({**j, "note": j["note_match"] or j["note"]})
+    return "\n".join(out)
+
+
+SNIPPET = 90  # characters of posting text kept on each side of a match
+
+
+def term_pattern(term: str) -> re.Pattern:
+    """A term as a whole word or phrase, never inside another word ("ITAR" is not in "military"). A term written
+    in capitals (an acronym: ITAR, EAR) also matches in that case only, so "ear" in running text is not "EAR"; any
+    other term matches in any case, and its plural too ("U.S. Person" finds "U.S. Persons"). Spaces match any run
+    of whitespace; the rest is taken literally."""
+    words = r"\s+".join(re.escape(w) for w in term.split())
+    if term.isupper():
+        return re.compile(rf"(?<!\w){words}(?!\w)")
+    return re.compile(rf"(?<!\w){words}(?:s)?(?!\w)", re.I)
+
+
+def posting_hits(store: Store, name: str, terms: list[str], include_closed: bool = False,
+                 only_open: bool = False, live=None) -> dict | None:
+    """The jobs of the company a name matches best (None when none matches) whose posting text holds any of the
+    terms as whole words (see term_pattern), each as view() lists a job, plus `matches`: every term found with a
+    bit of the text around its first occurrence. Reads the text jobwatch kept, which a live page can differ from;
+    `slim` jobs lost theirs (see prune.py) and are counted as `no_text`. A posting whose closing a second look
+    confirmed is left out unless include_closed; only_open leaves out every posting with a closed mark, one look
+    or two; `scanned` counts the jobs read. With `live` (a function job -> the text of its page now, "" when it
+    can't be read; see live_text) each job is read from its page instead of the kept text, falling back to the kept
+    text when the page won't read (counted as `unreadable`); `in_saved` names the terms the kept text has, to show
+    what a live page added. Nothing is saved."""
+    if not (terms := [t.strip() for t in terms if t.strip()]):
+        raise ValueError("give at least one term to look for")
+    if not (found := search(store, name, limit=1)):
+        return None
+    patterns = {t: term_pattern(t) for t in terms}
+    index, out, scanned, no_text, unreadable = jobpass.acted_index(store), [], 0, 0, []
+    for job, rec in _mine(store, found[0]["key"]):
+        state = closed_state(rec)
+        if (state == "closed" and not include_closed) or (state and only_open):
+            continue
+        scanned += 1
+        saved = _found(patterns, job.description)
+        no_text += not job.description.strip()
+        read, matches = "saved", saved
+        if live:
+            if page := live(job):
+                read, matches = "live", _found(patterns, page)
+            else:
+                read = "saved (live page unreadable)"
+                unreadable.append(job.key)
+        if matches:
+            out.append({**_job(store, job, rec, index), "company": job.display_company, "id": job.id,
+                        "matches": matches, "read": read, "in_saved": [m["term"] for m in saved]})
+    return {"company": found[0]["name"], "terms": terms, "scanned": scanned, "no_text": no_text,
+            "unreadable": unreadable, "live": bool(live), "jobs": out}  # unreadable: the keys
+
+
+def _found(patterns: dict[str, re.Pattern], text: str) -> list[dict]:
+    """Each term that is in the text, with a bit of the text around its first occurrence."""
+    body, found = " ".join(text.split()), []
+    for term, pattern in patterns.items():
+        if m := pattern.search(body):
+            found.append({"term": term, "snippet": body[max(0, m.start() - SNIPPET):m.end() + SNIPPET]})
+    return found
+
+
+def live_text(job: Job, get=None) -> str:
+    """The posting's text as its own page gives it now, or "" when that can't be read (the board no longer lists
+    it, the link is no board's, a network error). Nothing is saved."""
+    try:
+        posting = sources.posting(job.posting_url or job.url, get) if job.url else None
+    except sources.SourceError:
+        return ""
+    return posting.description if posting else ""
+
+
+def posting_hits_text(v: dict | None, name: str) -> str:
+    """`jobwatch grep`: the jobs to read."""
+    if not v:
+        return f"No tracked job is at a company matching {name!r}."
+    n, terms = len(v["jobs"]), ", ".join(v["terms"])
+    out = [f"# {v['company']}", f"{n} of {v['scanned']} job{'s' * (v['scanned'] != 1)} read name {terms}"
+           + (f" ({v['no_text']} had no posting text kept)." if v["no_text"] and not v["live"] else "."), ""]
+    if n := len(v["unreadable"]):
+        out[1] += f" {n} live page{'s' * (n != 1)} couldn't be read (--format json lists them)."
+    for j in v["jobs"]:
+        out += _line(j)
+        out += [f"    Read: {j['read']}; the kept text has: {', '.join(j['in_saved']) or 'none of them'}"]
+        out += [f"    Found {m['term']!r}: ...{m['snippet']}..." for m in j["matches"]]
     return "\n".join(out)
 
 

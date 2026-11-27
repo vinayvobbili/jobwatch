@@ -1097,6 +1097,14 @@ def cmd_search(args, cfg, store):
           company.mentions_text(found, text))
 
 
+def cmd_grep(args, cfg, store):
+    """A company's tracked jobs whose posting text holds any of the terms as whole words: read-only."""
+    v = company.posting_hits(store, " ".join(args.name), args.term, include_closed=args.closed,
+                             only_open=args.open, live=company.live_text if args.live else None)
+    print(json.dumps(v, indent=2, ensure_ascii=False) if args.format == "json" else
+          company.posting_hits_text(v, " ".join(args.name)))
+
+
 def cmd_answers(args, cfg, store):
     """Form answers saved in earlier applications' packages, for questions with the words given: read-only."""
     query = " ".join(args.query)
@@ -2704,6 +2712,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("text", nargs="+", help="what to look for, e.g. a recruiter's name or '$101/hr'")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_search, read_only=True)
+
+    p = sub.add_parser("grep", help="a company's tracked jobs whose saved posting text holds any of the terms as "
+                       "whole words (ITAR is not found in 'military'; a term in capitals matches in capitals only): "
+                       "which jobs there ask for U.S. persons? Read-only")
+    p.add_argument("name", nargs="+", help="the company's name, part of it, or its domain (acme.com)")
+    p.add_argument("-t", "--term", action="append", required=True, metavar="TERM",
+                   help="a word or phrase to look for (repeatable)")
+    p.add_argument("--closed", action="store_true", help="also the postings confirmed closed")
+    p.add_argument("--open", action="store_true", help="only the postings with no closed mark at all (not even a "
+                   "first look that found one gone)")
+    p.add_argument("--live", action="store_true", help="read each posting from its own page now instead of the "
+                   "kept text (one request a job: pair it with --open); nothing is saved")
+    p.add_argument("--format", choices=["text", "json"], default="text")
+    p.set_defaults(func=cmd_grep, read_only=True)
 
     p = sub.add_parser("answers", help="what you answered before on application forms, newest first: questions "
                        "containing every word of QUERY, or without one each question once. Read-only")

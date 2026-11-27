@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `jobwatch grep COMPANY -t TERM...` lists a company's tracked jobs whose saved posting text holds any of the terms
+  as whole words ("ITAR" is not found in "military"; a term in capitals matches in capitals only, so "EAR" is not
+  "ear"; "U.S. Person" also finds "U.S. Persons"). Closed postings are left out (`--closed` adds them, `--open` keeps
+  only those with no closed mark), jobs whose text was pruned are counted, and `--live` reads each posting from its
+  own page now instead, saying whether the kept text had the term too, so a requirement added after the first
+  look shows. Nothing is saved. `--format json` has the snippets and the pages that couldn't be read.
+
 - A job being scored now shows a spinner instead of small print. When Read posting has read a posting, or the
   background scorer has the job, the card's score spot holds an animated ring in the card's colors (a pulsing dot when
   your system asks for less motion) and the "Posting read: scoring it now…" line under the buttons is gone;

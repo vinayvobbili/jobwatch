@@ -375,3 +375,76 @@ def test_page_has_the_company_search(server):
     assert 'pagehead("Company", sub, jumpBox)' in page
     assert 'api("/api/companies?q="' in page and 'api("/api/company?q="' in page
     assert "elsewhere(v.q)" in page and "elsewhere(appView.q)" in page
+
+
+# -- the posting text search
+
+def test_a_term_is_a_whole_word_and_capitals_match_in_capitals_only():
+    itar, us, ear = (company.term_pattern(t) for t in ("ITAR", "U.S. Person", "EAR"))
+    assert itar.search("Work is subject to ITAR rules") and not itar.search("a military role")
+    assert us.search("All applicants must be u.s.   persons") and not us.search("U.S. Personnel")
+    assert ear.search("subject to the EAR.") and not ear.search("a good ear for music")
+
+
+def test_posting_hits_lists_the_jobs_whose_text_holds_a_term(store, tracked):
+    store.sync("lever", "globex", [
+        board_job("g3", "Export Engineer", description="All applicants must be U.S. Persons under ITAR."),
+        board_job("g4", "Army Liaison", description="Support our military customers."),
+        board_job("g5", "Closed Role", description="Subject to ITAR.")])
+    closed = "lever:globex:g5"
+    store.set_closed(closed, True)
+    assert {j["id"] for j in company.posting_hits(store, "globex", ["ITAR"])["jobs"]} == {"g3", "g5"}  # one look
+    store.confirm_closed([closed])
+    v = company.posting_hits(store, "globex", ["ITAR", "U.S. Person"])
+    assert [j["title"] for j in v["jobs"]] == ["Export Engineer"] and v["scanned"] == 4
+    assert company.posting_hits(store, "globex", ["ITAR"], include_closed=True)["scanned"] == 5
+    store.set_closed("lever:globex:g4", True)  # marked once only
+    only = company.posting_hits(store, "globex", ["ITAR"], only_open=True)
+    assert [j["id"] for j in only["jobs"]] == ["g3"] and only["scanned"] == 1  # the sync closed g1 and g2 once
+    assert [m["term"] for m in v["jobs"][0]["matches"]] == ["ITAR", "U.S. Person"]
+    assert "ITAR" in v["jobs"][0]["matches"][0]["snippet"] and v["jobs"][0]["first_seen"]
+    assert company.posting_hits(store, "nobody", ["ITAR"]) is None
+    with pytest.raises(ValueError, match="at least one term"):
+        company.posting_hits(store, "globex", [" "])
+
+
+def test_posting_hits_counts_a_job_with_no_kept_text(store, tracked):
+    store.sync("lever", "globex", [board_job("g3", "Export Engineer", description="Subject to ITAR.")])
+    v = company.posting_hits(store, "globex", ["ITAR"])
+    assert v["no_text"] == 2 and v["scanned"] == 3  # the two roles of the fixture have none
+
+
+def test_posting_hits_live_reads_the_page_and_says_what_the_kept_text_lacked(store, tracked):
+    store.sync("lever", "globex", [
+        board_job("g3", "Export Engineer", description="A plain role."),
+        board_job("g4", "Gone Role", description="Subject to ITAR.")])
+    pages = {"g3": "A plain role. All applicants must be U.S. Persons under ITAR."}
+    v = company.posting_hits(store, "globex", ["ITAR"], only_open=True,
+                             live=lambda job: pages.get(job.id, ""))
+    by_id = {j["id"]: j for j in v["jobs"]}
+    assert set(by_id) == {"g3", "g4"} and v["live"] and v["unreadable"] == ["lever:globex:g4"]
+    assert by_id["g3"]["read"] == "live" and by_id["g3"]["in_saved"] == []
+    assert by_id["g4"]["read"].startswith("saved") and by_id["g4"]["in_saved"] == ["ITAR"]
+    assert "Read: live; the kept text has: none of them" in company.posting_hits_text(v, "globex")
+
+
+def test_live_text_is_empty_when_the_page_cannot_be_read(monkeypatch):
+    job = board_job("g3", "Export Engineer")
+
+    def gone(url, get=None):
+        raise company.sources.SourceError("no longer lists the job")
+    monkeypatch.setattr(company.sources, "posting", gone)
+    assert company.live_text(job) == ""
+    monkeypatch.setattr(company.sources, "posting", lambda url, get=None: board_job("g3", "x", description="Hi"))
+    assert company.live_text(job) == "Hi"
+
+
+def test_grep_command(watchlist, store, tracked, capsys):
+    store.sync("lever", "globex", [board_job("g3", "Export Engineer", description="Subject to ITAR.")])
+    cli.main(["-c", str(watchlist), "grep", "Globex", "-t", "ITAR"])
+    out = capsys.readouterr().out
+    assert "1 of 3 jobs read name ITAR" in out and "Export Engineer" in out and "Found 'ITAR'" in out
+    cli.main(["-c", str(watchlist), "grep", "globex", "-t", "ITAR", "--format", "json"])
+    assert json.loads(capsys.readouterr().out)["jobs"][0]["id"] == "g3"
+    cli.main(["-c", str(watchlist), "grep", "nobody", "-t", "ITAR"])
+    assert "No tracked job is at a company matching 'nobody'" in capsys.readouterr().out
