@@ -90,7 +90,7 @@ from . import (
 from .config import ConfigError
 from .filters import KINDS
 from .package import Package
-from .rounds import ROUNDS
+from .rounds import ROUNDS, length_of
 from .score import Provider, ScoringUnavailable, brief, paused_until, prompt_info, provider_key, resume_id, soft_gaps
 from .store import COMP_FIELDS, ENDED, HEALTH_FIELDS, MANUAL, STAGES, STATUSES, Store, closed_state
 from .watch import (
@@ -1560,7 +1560,8 @@ class App:
             if status:
                 store.set_status([key], status)
             store.track(key, note=body.get("note"), next_step=body.get("next_step"),
-                        follow_up=body.get("follow_up"), applied=body.get("applied_at"), round=round_id)
+                        follow_up=body.get("follow_up"), applied=body.get("applied_at"), round=round_id,
+                        length=body.get("length"))
             if body.get("add_note"):
                 store.add_note(key, body["add_note"])
             reminders.refresh(cfg, store, [key])
@@ -1628,11 +1629,12 @@ class App:
                     **interviews.sheet_fields(cfg.prep.sheets, job, rec),
                     "sheets_base": self._sheets_base(store),
                     "meeting": None if rec.get("status") in ENDED else interviews.meeting_dict(
-                        rec.get("next_step"), round_id=rec.get("round")),
+                        rec.get("next_step"), round_id=rec.get("round"), length=length_of(rec)),
                     **self._pay(cfg, store, [(job, None)]).get(job.key, {}),
                     "closed_state": closed_state(rec),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen", "next_step",
-                                               "round", "follow_up", "applied_at")}}
+                                               "round", "follow_up", "applied_at")},
+                    "length": length_of(rec)}
         return self._with_store(run)
 
     def get_companies(self, q) -> list[dict]:

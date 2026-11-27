@@ -816,7 +816,7 @@ def _mark_company(args, cfg, store):
     status = args.what[0]
     r = company.mark_all(store, args.company, status, tuple(args.only_status or ()), args.include_active,
                          args.dry_run, note=args.note, add_note=args.add_note, on=args.on, next_step=args.next,
-                         follow_up=args.follow_up, round=args.round)
+                         follow_up=args.follow_up, round=args.round, length=args.length)
     print(company.mark_all_text(r))
     keys = [c["key"] for c in r["changed"]]
     if keys and not args.dry_run:
@@ -856,7 +856,7 @@ def cmd_mark(args, cfg, store):
             store.set_description(k, text)
     for k in keys:
         store.track(k, next_step=getattr(args, "next", None), follow_up=getattr(args, "follow_up", None),
-                    round=getattr(args, "round", None))
+                    round=getattr(args, "round", None), length=getattr(args, "length", None))
         if getattr(args, "url", None) is not None:
             print(f"  {k}: {set_link(store, k, args.url)}")
         if getattr(args, "add_note", None):
@@ -927,7 +927,7 @@ def cmd_add(args, cfg, store):
     text = "" if not args.text else sys.stdin.read() if str(args.text) == "-" else args.text.read_text()
     job, read = save_job(store, link, company, title, text, status=args.status, note=args.note, applied=args.on,
                          location=args.location or "", boards=cfg.boards)
-    store.track(job.key, next_step=args.next, follow_up=args.follow_up, round=args.round)
+    store.track(job.key, next_step=args.next, follow_up=args.follow_up, round=args.round, length=args.length)
     if args.add_note:
         store.add_note(job.key, args.add_note)
     reminders.refresh(cfg, store, [job.key])
@@ -1933,6 +1933,8 @@ def _tracking(p: argparse.ArgumentParser):
     p.add_argument("--round", choices=[*ROUNDS, ""], metavar="ROUND", help="which interview the next step is "
                    f"({', '.join(ROUNDS)}): a meeting on the Interviews tab and calendar, whatever its words; "
                    "'' clears it")
+    p.add_argument("--length", metavar="TIME", help="how long the meeting lasts when its next step gives no end "
+                   "time, e.g. 15m, 45 min, 1h30m (else a length the step states, else an hour); '' clears it")
     p.add_argument("--follow-up", metavar="DAY", help="when to act on it: YYYY-MM-DD, tomorrow or +N days; "
                    "none clears it")
 

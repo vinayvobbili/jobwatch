@@ -508,6 +508,10 @@ def mark_job(
         "(onsite or loop), executive (VP, director, CXO), hr, informal (coffee, in-person talk, referral chat) "
         "or offer_call. Set it with a next step that has a date and time: it makes the step a meeting on the "
         "Interviews tab and in the calendar feed, whatever its words. An empty string clears it."))] = None,
+    length: Annotated[str | None, Field(description=(
+        "How long the meeting lasts, when the next step gives no end time (\"15m\", \"45 min\", \"1h\", \"1h30m\"). "
+        "Set it for a short call such as a 15-minute recruiter intro; without it the step's own words "
+        "(\"15-minute\", \"30 minutes\", \"1 hour\") are read, else an hour. An empty string clears it."))] = None,
     follow_up: Annotated[str | None, Day] = None,
     applied_on: Annotated[str | None, Field(description="The day applied (YYYY-MM-DD), if not today.")] = None,
     url: Annotated[str | None, Field(description=(
@@ -530,7 +534,8 @@ def mark_job(
     refused when the job has one (the note is the application's dated history), unless the person asked to replace
     it and replace_note is true; the replaced note is kept and can be brought back. next_step says
     what happens next ("recruiter screen Tuesday"), with its date and time; round says which interview it is
-    (see its description), so it counts as a meeting without depending on its words; follow_up is the day to
+    (see its description), so it counts as a meeting without depending on its words; length says how long it
+    lasts (a 15-minute intro call: "15m"), as the page and calendar show its end; follow_up is the day to
     act (YYYY-MM-DD or +N days); applied_on is the day applied, if not today. url sets the link of a job
     added by hand (its posting, or the company's careers site once the posting is gone); when the job has no
     posting text and the link is to one job on a supported board, the posting is read from it (text, pay,
@@ -562,7 +567,7 @@ def mark_job(
             store.set_status([job.key], status, note, on=applied_on)
         else:
             store.track(job.key, note=note, applied=applied_on)
-        store.track(job.key, next_step=next_step, follow_up=follow_up, round=round)
+        store.track(job.key, next_step=next_step, follow_up=follow_up, round=round, length=length)
         if url is not None:
             said = f" ({set_link(store, job.key, url)})"
         if add_note:
@@ -793,7 +798,7 @@ def list_applications(
     rejected or withdrawn; never change it on your own), advice, and contacts the person knows there."""
     cfg, store = _open()
     try:
-        fields = ("status", "applied_at", "status_at", "next_step", "round", "follow_up", "note", "closed")
+        fields = ("status", "applied_at", "status_at", "next_step", "round", "length", "follow_up", "note", "closed")
         rows = store.applications()
         found = quiet.find(rows, cfg.quiet, known=watch.load_contacts(cfg))
         return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, "pay": j.pay(),

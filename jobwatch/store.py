@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     next_step TEXT,
     follow_up TEXT,
     round TEXT,
+    length TEXT,
     via TEXT,
     duplicate_of TEXT
 );
@@ -306,7 +307,8 @@ def closed_state(rec: dict) -> str | None:
 
 # Columns added after the first release, and how to fill them in an older state file.
 _ADDED = {"applied_at": "UPDATE jobs SET applied_at=substr(status_at, 1, 10) WHERE status='applied'",
-          "next_step": None, "follow_up": None, "round": None, "via": None, "duplicate_of": None,  # round: rounds.py
+          "next_step": None, "follow_up": None, "round": None, "length": None, "via": None,  # round, length: rounds.py
+          "duplicate_of": None,
           "slim": None}  # '1': the posting's text was dropped to save space (prune.py), and a fetch keeps it dropped
 
 
@@ -1058,10 +1060,13 @@ class Store:
         return Package(self.packages, self.find(key)[0].key)
 
     def track(self, key: str, *, note: str | None = None, next_step: str | None = None,
-              follow_up: str | None = None, applied: str | None = None, round: str | None = None):
-        """Update an application's note, next step, follow-up day, day applied or interview round (an id in
-        rounds.ROUNDS). None leaves a field as it is; an empty string clears it."""
-        fields = {"note": note, "next_step": next_step, "round": None if round is None else rounds.check(round)}
+              follow_up: str | None = None, applied: str | None = None, round: str | None = None,
+              length: str | int | None = None):
+        """Update an application's note, next step, follow-up day, day applied, interview round (an id in
+        rounds.ROUNDS) or the meeting's length ("15m", whole minutes: rounds.check_length). None leaves a field as
+        it is; an empty string clears it."""
+        fields = {"note": note, "next_step": next_step, "round": None if round is None else rounds.check(round),
+                  "length": None if length is None else rounds.check_length(length)}
         fields = {k: v.strip() or None for k, v in fields.items() if v is not None}
         if follow_up is not None:
             fields["follow_up"] = day(follow_up)

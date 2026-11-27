@@ -17,7 +17,7 @@ from dataclasses import replace
 from urllib.parse import urlparse
 
 from . import contacts as people
-from . import dupes, jobpass, report, sources, suggest
+from . import dupes, jobpass, report, rounds, sources, suggest
 from .config import Config
 from .filters import KINDS, focus_hits, rejection
 from .localday import local_day
@@ -144,7 +144,7 @@ def _job(store: Store, job: Job, rec: dict, index: dupes.Index) -> dict:
             "first_seen": _day(rec.get("first_seen")),
             "posted": job.posted.date().isoformat() if job.posted else None, "applied_at": rec.get("applied_at"),
             "status_at": _day(rec.get("status_at")), "next_step": rec.get("next_step"),
-            "round": rec.get("round"), "follow_up": rec.get("follow_up"),
+            "round": rec.get("round"), "length": rounds.length_of(rec), "follow_up": rec.get("follow_up"),
             "due": report.due(rec), "note": rec.get("note"),
             "via": rec.get("via"), "package": pkg, "has_package": any(pkg.values()),
             "duplicate_of": same.to_dict() if same else None}
@@ -422,7 +422,8 @@ def _brief(job: Job, rec: dict) -> dict:
 
 def mark_all(store: Store, name: str, status: str, only: tuple[str, ...] = (), include_active: bool = False,
              dry_run: bool = False, note: str | None = None, add_note: str | None = None, on: str | None = None,
-             next_step: str | None = None, follow_up: str | None = None, round: str | None = None) -> dict:
+             next_step: str | None = None, follow_up: str | None = None, round: str | None = None,
+             length: str | None = None) -> dict:
     """Give every job at the company the name matches the status (`jobwatch mark STATUS --company NAME`): only
     those now in a status of `only` when given. A job you applied to (applied or any later stage) is left alone
     unless include_active: a status like skipped would drop its applied day. A job already in the status isn't
@@ -450,7 +451,7 @@ def mark_all(store: Store, name: str, status: str, only: tuple[str, ...] = (), i
     if keys and not dry_run:
         store.set_status(keys, status, note, on=on)
         for k in keys:
-            store.track(k, next_step=next_step, follow_up=follow_up, round=round)
+            store.track(k, next_step=next_step, follow_up=follow_up, round=round, length=length)
             if add_note:
                 store.add_note(k, add_note)
     return {"company": found[0]["name"], "status": status, "dry_run": dry_run,

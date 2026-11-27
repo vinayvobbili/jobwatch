@@ -67,7 +67,7 @@ def upcoming(rows: list[tuple[Job, dict]], today: date | None = None, ahead: int
         if rec.get("status") in ENDED:
             continue
         step, round_id = rec.get("next_step"), rec.get("round")
-        if found := ics.meetings(step, today, round_id):
+        if found := ics.meetings(step, today, round_id, rounds.length_of(rec)):
             timed += [Interview(job, rec, m, on) for m in found if today <= (on := _local_day(m)) <= last]
         elif rec.get("status") != "applied" and ics.names_meeting(step, round_id) and (follow := rec.get("follow_up")):
             if today <= (on := date.fromisoformat(follow)) <= last:
@@ -193,14 +193,17 @@ def to_dict(i: Interview, folder: Path | None) -> dict:
             "start": m.start.isoformat() if m else None, "end": m.end.isoformat() if m else None,
             "zoned": bool(m and m.zoned), "label": m.label if m else rounds.kind(rec.get("round")) or "Interview",
             "round": rec.get("round") or None, "round_label": rounds.label(rec.get("round")),
+            "length": rounds.length_of(rec),
             **sheet_fields(folder, j, rec),
             **{k: rec.get(k) for k in ("status", "next_step", "follow_up", "note")}}
 
 
-def meeting_dict(next_step: str | None, today: date | None = None, round_id: str | None = None) -> dict | None:
-    """A next step's interview time for the details view, or None: the next one that hasn't ended, else the last."""
+def meeting_dict(next_step: str | None, today: date | None = None, round_id: str | None = None,
+                 length: int | None = None) -> dict | None:
+    """A next step's interview time for the details view, or None: the next one that hasn't ended, else the last.
+    `length` is the application's own, in minutes (see ics.meeting)."""
     today = today or date.today()
-    found = ics.meetings(next_step, today, round_id)
+    found = ics.meetings(next_step, today, round_id, length)
     now = datetime.now(UTC)
     m = next((m for m in found if (m.end if m.zoned else m.end.astimezone()) >= now), found[-1] if found else None)
     return m and {"start": m.start.isoformat(), "end": m.end.isoformat(), "zoned": m.zoned, "label": m.label,

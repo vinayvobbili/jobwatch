@@ -3,9 +3,11 @@
 Each open application's follow-up day is an all-day event. When its next step names an interview or call with a
 date and a time ("Panel interview Tue 3/10 10:00 AM ET", "call Wed 3/11 2:15-3:00 PM ET", an ISO datetime), that
 is a timed event too; a step naming several, one clause each separated by ";" or a line break, gives one event
-each. Text that can't be read with confidence (no time, two dates in one clause, a weekday that doesn't fit the
-date) gives no timed event: the follow-up day is still there. jobwatch never gets access to a calendar: the
-calendar app reads the file. Nothing here uses the network.
+each. A meeting lasts until its end time ("2:15-3:00 PM"), else the length the application carries
+(`jobwatch mark --length 15m`), else one the step states ("15-minute intro call", "1 hour"), else DURATION. Text
+that can't be read with confidence (no time, two dates in one clause, a weekday that doesn't fit the date) gives
+no timed event: the follow-up day is still there. jobwatch never gets access to a calendar: the calendar app
+reads the file. Nothing here uses the network.
 """
 
 from __future__ import annotations
@@ -143,7 +145,14 @@ def _the_time(text: str) -> tuple[time, time | None] | None:
     return None
 
 
-def _iso_meeting(text: str, label: str, round_label: str | None) -> Meeting | None:
+def _long(text: str, length: int | None) -> timedelta:
+    """How long a meeting with no end time lasts: the length given for the application, else the one the text
+    states ("15-minute intro call"), else DURATION."""
+    minutes = length or rounds.stated_length(text)
+    return timedelta(minutes=minutes) if minutes else DURATION
+
+
+def _iso_meeting(text: str, label: str, round_label: str | None, length: int | None = None) -> Meeting | None:
     found = list(_ISO.finditer(text))
     if len(found) != 1:
         return None
@@ -161,7 +170,7 @@ def _iso_meeting(text: str, label: str, round_label: str | None) -> Meeting | No
         start = start.replace(tzinfo=tz)
     if start.tzinfo:
         start = start.astimezone(UTC)
-    return Meeting(start, start + DURATION, start.tzinfo is not None, label, round_label)
+    return Meeting(start, start + _long(text, length), start.tzinfo is not None, label, round_label)
 
 
 def names_meeting(next_step: str | None, round_id: str | None = None) -> bool:
@@ -170,10 +179,13 @@ def names_meeting(next_step: str | None, round_id: str | None = None) -> bool:
     return bool(rounds.kind(round_id) or _MEETING.search(next_step or ""))
 
 
-def meeting(next_step: str | None, today: date, round_id: str | None = None) -> Meeting | None:
+def meeting(next_step: str | None, today: date, round_id: str | None = None,
+            length: int | None = None) -> Meeting | None:
     """The interview or call a next step names, when it gives a date and a time confidently, else None.
     `today` fills in a missing year. See the module's docstring for what is understood. With a round
-    (rounds.py) the step is a meeting whatever its words, and the round gives its label."""
+    (rounds.py) the step is a meeting whatever its words, and the round gives its label. `length` is the
+    minutes the application says it lasts: used when the step gives no end time (a range), and ahead of a
+    length the step's words state."""
     text = " ".join((next_step or "").split())
     if kind := rounds.kind(round_id):
         label, round_label = kind, rounds.label(round_id)
@@ -183,7 +195,7 @@ def meeting(next_step: str | None, today: date, round_id: str | None = None) -> 
         label = "Call" if _CALL.search(text) and not re.search(r"\binterview\b", text, re.I) else "Interview"
         round_label = None
     if _ISO.search(text):
-        return _iso_meeting(text, label, round_label)
+        return _iso_meeting(text, label, round_label, length)
     day_, clock = _the_day(text, today), _the_time(text)
     if day_ is None or clock is None:
         return None
@@ -197,16 +209,18 @@ def meeting(next_step: str | None, today: date, round_id: str | None = None) -> 
             return None
         start = start.replace(tzinfo=tz).astimezone(UTC)
         end = end.replace(tzinfo=tz).astimezone(UTC) if end else None
-    return Meeting(start, end or start + DURATION, zoned, label, round_label)
+    return Meeting(start, end or start + _long(text, length), zoned, label, round_label)
 
 
-def meetings(next_step: str | None, today: date, round_id: str | None = None) -> list[Meeting]:
+def meetings(next_step: str | None, today: date, round_id: str | None = None,
+             length: int | None = None) -> list[Meeting]:
     """Every interview or call a next step names, in the order written. When the whole step reads as one meeting,
     that one; else each clause (split at ";" and line breaks) that reads as a meeting on its own, so
-    "Sync Fri 10/23 9:30 AM ET; final round Sun 10/25 5:00 PM ET" is two and a clause with no time is dropped."""
-    if m := meeting(next_step, today, round_id):
+    "Sync Fri 10/23 9:30 AM ET; final round Sun 10/25 5:00 PM ET" is two and a clause with no time is dropped.
+    `length` (minutes) is for every meeting that gives no end time; see meeting."""
+    if m := meeting(next_step, today, round_id, length):
         return [m]
-    return [m for clause in re.split(r"[;\r\n]+", next_step or "") if (m := meeting(clause, today, round_id))]
+    return [m for clause in re.split(r"[;\r\n]+", next_step or "") if (m := meeting(clause, today, round_id, length))]
 
 
 def _escape(text: str) -> str:
@@ -269,7 +283,7 @@ def calendar(rows: list[tuple[Job, dict]], today: date | None = None, now: datet
             lines += _event(_uid(job.key, "followup"), now, f"Follow up: {name}", about, job.url,
                             {"DTSTART;VALUE=DATE:": on.strftime("%Y%m%d"),
                              "DTEND;VALUE=DATE:": (on + timedelta(days=1)).strftime("%Y%m%d")})
-        for n, m in enumerate(meetings(step, today, rec.get("round")), 1):
+        for n, m in enumerate(meetings(step, today, rec.get("round"), rounds.length_of(rec)), 1):
             fmt = "%Y%m%dT%H%M%S" + ("Z" if m.zoned else "")
             kind = "meeting" if n == 1 else f"meeting-{n}"  # the first keeps the UID it always had
             lines += _event(_uid(job.key, kind), now, f"{m.round or m.label}: {name}", about, job.url,
