@@ -152,7 +152,7 @@ def sheet_questions(cfg: Config, store: Store, key: str) -> tuple[list[dict], st
     for name in interviews.job_sheets(cfg.prep.sheets, job, rec):
         try:
             path, _ = interviews.sheet_file(cfg.prep.sheets, name)
-            cards = drill.from_page(path.read_text(encoding="utf-8"))[1]
+            cards = drill.from_page(path.read_text(encoding="utf-8"), path.parent)[1]  # pictures sit next to the sheet
         except (OSError, ValueError):
             continue
         if cards:

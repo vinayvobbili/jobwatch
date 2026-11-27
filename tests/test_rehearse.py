@@ -30,6 +30,18 @@ def sheet(tmp_path):
     return path
 
 
+def test_a_picture_in_the_sheet_is_found_beside_it_from_any_working_folder(tmp_path, monkeypatch):
+    folder = tmp_path / "prep"
+    folder.mkdir()
+    (folder / "board.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    page = folder / "umbrella-sheet.html"
+    page.write_text(SHEET.replace("</table>", '<tr><td>Draw it.</td><td><img src="board.png"> "Boxes."</td></tr>'
+                                              "</table>"), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    out = rehearse.write(page)
+    assert out == folder / "umbrella-sheet-rehearse.html" and out.is_file()
+
+
 def test_cards_come_through_from_the_sheet(sheet):
     out = rehearse.write(sheet)
     data = _cards(out.read_text(encoding="utf-8"))

@@ -180,7 +180,7 @@ def write(sheet: Path, out: Path | None = None, ui: str = UI) -> Path:
     sheet = Path(sheet).expanduser()
     if not sheet.is_file():
         raise ValueError(f"no such prep sheet: {sheet}")
-    title, cards = drill.from_page(sheet.read_text(encoding="utf-8"))
+    title, cards = drill.from_page(sheet.read_text(encoding="utf-8"), sheet.parent)  # pictures sit next to the sheet
     if not cards:
         raise ValueError(f"no questions with answers in {sheet.name}: it needs a table with a Question and an "
                          "Answer column, or question headings (<h3 class=\"q\">) with a say block")
