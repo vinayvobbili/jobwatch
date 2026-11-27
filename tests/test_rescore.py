@@ -107,7 +107,8 @@ def test_a_failed_rescore_says_why_as_an_event(app):
     assert (kind, data) == ("score-failed", {"key": KEY, "error": "model said no"})
 
 
-def test_the_event_stream_needs_the_token_and_carries_what_is_published(watchlist, web):
+def test_the_event_stream_needs_the_token_and_carries_what_is_published(watchlist, web, popped):
+    watchlist.write_text(watchlist.read_text() + "fetch_every: off\n")   # no scheduled check (and morning digest)
     srv = serve(watchlist, port=0, open_browser=False, token=TOKEN)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     port = srv.server_address[1]

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
+import shlex
+import subprocess
 import threading
 from datetime import UTC, datetime, timedelta
 
@@ -168,6 +171,43 @@ def no_hook_git_env(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
+NOTIFIERS = {"osascript", "terminal-notifier"}   # what shows a macOS notification (also what drives Reminders)
+
+
+@pytest.fixture(autouse=True)
+def no_real_notifications(monkeypatch):
+    """A test never pops a real macOS notification (it did, from a scheduled check's morning digest). The guard sits
+    at the lowest level, `subprocess.Popen` (run, check_output and the rest go through it), so a new caller can't
+    leak: starting osascript or terminal-notifier raises, and the test fails at its end even when the caller
+    swallowed the error (a background thread does). A test that checks a notification fakes the sender (`popped`)
+    or `subprocess.run`, which never reaches Popen. Yields the attempts: a test that provokes one clears it."""
+    attempts: list[list[str]] = []
+    real = subprocess.Popen
+
+    class Guarded(real):
+        def __init__(self, args, *a, **kw):
+            argv = shlex.split(args) if isinstance(args, str) else [str(x) for x in args]
+            if argv and os.path.basename(argv[0]) in NOTIFIERS:
+                attempts.append(argv)
+                raise AssertionError(f"tests must not show a real notification or drive macOS ({argv[0]}): fake the "
+                                     "sender (the `popped` fixture) or subprocess.run")
+            super().__init__(args, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "Popen", Guarded)
+    yield attempts
+    assert not attempts, f"a test tried to start {attempts[0][0]} for real: fake the sender (the `popped` fixture)"
+
+
+@pytest.fixture
+def popped(monkeypatch):
+    """`morning.notify` faked, wherever it is called from: what it was asked to show."""
+    from jobwatch import morning
+
+    calls = []
+    monkeypatch.setattr(morning, "notify", lambda title, body, url="": calls.append((title, body, url)))
+    return calls
+
+
 @pytest.fixture(autouse=True)
 def no_real_claude_for_followups(monkeypatch):
     """Follow-up drafts ask Claude first: a test never reaches the real API or reads the real keychain."""
@@ -201,7 +241,7 @@ def watchlist(tmp_path):
 
 
 @pytest.fixture
-def server(request, watchlist, web):
+def server(request, watchlist, web, popped):
     """`jobwatch ui` on a free port, serving the test watchlist; yields the port. serve() starts the schedule, whose
     first check would run on the fake boards at a moment the test doesn't control (and make a test's own check
     find nothing new), so it's off unless the test is marked `scheduled`."""

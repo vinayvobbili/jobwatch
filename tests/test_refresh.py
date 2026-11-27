@@ -16,6 +16,8 @@ from jobwatch.web import App
 
 from .conftest import TOKEN, request
 
+pytestmark = pytest.mark.usefixtures("popped")   # a scheduled check that reads boards runs the morning digest
+
 FIT = {"score": 70, "must_haves_met": 2, "must_haves_total": 3, "gaps": [], "summary": ""}
 
 

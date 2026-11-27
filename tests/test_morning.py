@@ -261,14 +261,6 @@ def test_the_page_before_any_digest_says_so():
     assert "<h1>0 new matches</h1>" in html and "No new matches yet" in html
 
 
-@pytest.fixture
-def popped(monkeypatch):
-    """`morning.notify` faked, wherever it is called from: what it was asked to show."""
-    calls = []
-    monkeypatch.setattr(morning, "notify", lambda title, body, url="": calls.append((title, body, url)))
-    return calls
-
-
 def test_the_command_tells_you_the_new_matches_and_writes_the_page(tmp_path, popped, capsys):
     cfg = write(tmp_path)
     store = Store(cfg.state)
@@ -307,6 +299,41 @@ def test_a_scheduled_check_that_read_a_board_runs_the_digest_once_a_day(tmp_path
     assert [t for t, *_ in popped] == ["jobwatch: 1 new match"]
     app.refresher.after_scheduled({"boards": 3}).join(10)   # the afternoon's check: nothing more to say today
     assert len(popped) == 1
+
+
+def test_no_test_can_pop_a_real_notification(monkeypatch, no_real_notifications):
+    """The guard in conftest: with the real senders (as on a Mac), nothing is spawned and the attempt is recorded."""
+    monkeypatch.setattr(morning.sys, "platform", "darwin")
+    monkeypatch.setattr(morning.shutil, "which", lambda name: "/opt/homebrew/bin/terminal-notifier")
+    with pytest.raises(AssertionError, match="terminal-notifier"):
+        morning.notify("jobwatch: 1 new match", "SRE, Umbrella")
+    monkeypatch.setattr(morning.shutil, "which", lambda name: None)   # no terminal-notifier: osascript instead
+    with pytest.raises(AssertionError, match="osascript"):
+        morning.notify("jobwatch: 1 new match", "SRE, Umbrella")
+    with pytest.raises(AssertionError, match="osascript"):
+        closed_notice.popup("jobwatch: 1 posting closed", "Initech: SRE")
+    with pytest.raises(AssertionError, match="osascript"):
+        subprocess.check_output(["/usr/bin/osascript", "-e", "beep"])
+    assert [a[0].rsplit("/", 1)[-1] for a in no_real_notifications] == ["terminal-notifier", "osascript", "osascript",
+                                                                       "osascript"]
+    no_real_notifications.clear()   # provoked on purpose: the end-of-test check has nothing to fail on
+    assert subprocess.run(["true"], check=False).returncode == 0   # other programs still run
+
+
+def test_a_scheduled_digest_that_is_not_faked_is_caught_not_shown(tmp_path, monkeypatch, capsys,
+                                                                  no_real_notifications):
+    """What leaked: a scheduled check that read a board runs the digest, whose notification (morning.notify is on by
+    default) went to the real Mac."""
+    cfg = write(tmp_path)
+    store = Store(cfg.state)
+    land(store, [job("1")], at=datetime.now(UTC) - timedelta(hours=2))
+    store.close()
+    monkeypatch.setattr(morning.sys, "platform", "darwin")
+    monkeypatch.setattr(morning.shutil, "which", lambda name: None)
+    App(cfg.path, background=False).refresher.after_scheduled({"boards": 3}).join(10)
+    assert [a[0] for a in no_real_notifications] == ["osascript"]
+    assert "the morning digest failed: AssertionError" in capsys.readouterr().err
+    no_real_notifications.clear()
 
 
 def test_a_digest_that_cant_be_shown_never_takes_the_page_down(tmp_path, monkeypatch, capsys):
