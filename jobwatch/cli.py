@@ -115,6 +115,7 @@ from .watch import (
     chain_steps,
     check_daily,
     check_postings,
+    claude_scores_first,
     compare_picks,
     compare_scores,
     counts_as_main,
@@ -307,12 +308,15 @@ def cmd_score(args, cfg, store):
         cfg = replace(cfg, backend=backend, score_model=model,  # a fallback the same as this run's scorer is dropped
                       score_fallback=tuple(e for e in cfg.score_fallback
                                            if fallback_entry(e) not in ((backend, ""), (backend, model))))
-    # scoring.batch_api makes it the default, for the backend it was set for
-    args.batch_api = args.batch_api or (cfg.score_batch_api and cfg.backend == "claude")
-    if args.batch_api and cfg.backend != "claude":
-        raise ConfigError(f"--batch-api is for Claude (scoring.backend: claude, or --backend claude), "
-                          f"not {cfg.backend}")
+    # scoring.batch_api makes it the default while Claude scores first (scoring.backend, or a dated Claude entry ahead
+    # of it); a job that falls to another scorer is scored as usual
+    claude_first = claude_scores_first(cfg, store)
+    args.batch_api = args.batch_api or (cfg.score_batch_api and claude_first)
+    if args.batch_api and not claude_first:
+        raise ConfigError(f"--batch-api is for Claude (scoring.backend: claude, a dated claude entry in "
+                          f"scoring.fallback, or --backend claude), not {cfg.backend}")
     if args.compare:
+        args.batch_api = args.batch_api and cfg.backend == "claude"  # a comparison runs on one backend
         return _compare(args, cfg, store)
     if args.keep_old is not None:
         n, scorer = store.keep_old_scores(resume_id(cfg.resume, cfg.prompts), args.keep_old)

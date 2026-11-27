@@ -99,6 +99,7 @@ from .watch import (
     _fits,
     build_digest,
     chain_after,
+    claude_scores_first,
     entries_for,
     fallback_model,
     fetch_all,
@@ -238,8 +239,15 @@ class Scorer:
             self.left = len(todo)
             if not todo:
                 return 0
-            room = (max(cfg.score_daily - store.score_usage(cfg.backend), 0) if cfg.score_daily else len(todo))
-            batch = cfg.score_batch_api and room > 0
+            # scoring.batch_api: only while Claude scores first (scoring.backend, or a dated Claude entry ahead of
+            # it); a job that falls to another scorer is scored as usual. Only this thread batches: a score asked
+            # for in the page is one immediate call.
+            batch = cfg.score_batch_api and claude_scores_first(cfg, store)
+            if batch and cfg.backend == "claude":
+                room = max(cfg.score_daily - store.score_usage(cfg.backend), 0) if cfg.score_daily else len(todo)
+            else:
+                room = len(todo)  # a dated entry is capped in dollars (credit.py), a chunk at a time
+            batch = batch and room > 0
             group = todo[:room] if batch else todo[:1]
             e = group[0]
             self.current = (f"{len(group)} jobs through Claude's Batches API (half price)" if batch and len(group) > 1

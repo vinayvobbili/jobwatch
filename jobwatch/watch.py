@@ -1207,13 +1207,14 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
     before couldn't), each such result marked with why ("fallback"; its scored_by says which backend).
     ({key: result}, {key: error}). Without a fallback, ScoringUnavailable and the limit come back as they are.
     A dated Claude entry in scoring.fallback (see credit.py) goes first, and what it scores isn't marked a fallback.
-    batch: the backend (Claude) through the Message Batches API, at half price (see score_jobs).
+    batch: the Claude steps (a dated entry, or scoring.backend when it is Claude) through the Message Batches API, at
+    half price (see score_jobs); a job that falls to any other scorer is scored as usual.
     credit_only: only the dated entries (`jobwatch credit --test`): nothing else is tried for a job they leave."""
     dated = [e for e in cfg.score_fallback if credit.is_dated(e)]
     chain = [e for e in cfg.score_fallback if not credit.is_dated(e)]
     results, errors = {}, {}
     for entry in dated:  # an API credit that ends scores first (see credit.py); what it can't, the chain takes
-        results, errors = _credit_step(cfg, store, jobs, entry, results, errors, progress)
+        results, errors = _credit_step(cfg, store, jobs, entry, results, errors, progress, batch=batch)
     if credit_only:
         return results, errors
     todo = [j for j in jobs if j.key not in results]
@@ -1221,7 +1222,8 @@ def score_with_fallback(cfg: Config, store: Store, jobs: list[Job], progress: Ca
     first = todo[:room]
     if first:
         try:
-            more, more_errors = _step(cfg, store, first, cfg.backend, cfg.score_model, progress=progress, batch=batch)
+            more, more_errors = _step(cfg, store, first, cfg.backend, cfg.score_model, progress=progress,
+                                      batch=batch and cfg.backend == "claude")  # only Claude takes a batch
         except ScoringUnavailable as e:
             if not chain:
                 raise
@@ -1262,7 +1264,7 @@ def _credit_said(store: Store, entry: str, why: str):
 
 
 def _credit_step(cfg: Config, store: Store, jobs: list[Job], entry: str, results: dict, errors: dict, progress=None,
-                 now: datetime | None = None) -> tuple[dict, dict]:
+                 now: datetime | None = None, batch: bool = False) -> tuple[dict, dict]:
     """One dated Claude entry (see credit.py) over the jobs that have no score yet in `results`: a few at a time,
     each time after checking the end day and the spend caps. A step that is skipped, paused or refused by the account
     (no credit, a key refused, rate limited) just stops: the jobs go on to the next scorer, none marked failed, and
@@ -1282,7 +1284,7 @@ def _credit_step(cfg: Config, store: Store, jobs: list[Job], entry: str, results
         if not chunk:  # the last chunk's check, so a cap that run reached pauses the step now, not next run
             break
         try:
-            more, more_errors = _step(cfg, store, chunk, backend, model, progress=progress,
+            more, more_errors = _step(cfg, store, chunk, backend, model, progress=progress, batch=batch,
                                       on_usage=lambda u: credit.record(store, u, now))
         except ScoringUnavailable as e:
             _credit_said(store, entry, f"can't score now ({e}): the next scorer takes the jobs")
@@ -1306,6 +1308,18 @@ def hold_credit(cfg: Config, store: Store, entry: str, now: datetime | None = No
         store.set_scorer_down(pid, *found)
     elif store.scorers_down().get(pid, {}).get("reason", "").startswith(credit.CAPS):
         store.clear_scorer_down(pid)
+
+
+def claude_scores_first(cfg: Config, store: Store, now: datetime | None = None) -> bool:
+    """Whether Claude's API scores first right now, so scoring.batch_api applies: a dated Claude entry that may
+    score (its end day not come, no cap reached, not paused, as credit.skip_reason and the pool pauses say) goes
+    ahead of scoring.backend, else scoring.backend is Claude. A job that falls to another scorer is never batched."""
+    down = store.scorers_down()
+    for entry in cfg.score_fallback:
+        if credit.is_dated(entry) and not credit.skip_reason(cfg, store, entry, now) \
+                and not step_pause(down, scorer_id(*fallback_entry(entry))):
+            return True
+    return cfg.backend == "claude" and not step_pause(down, scorer_id(cfg.backend, cfg.score_model))
 
 
 def scorer_id(backend: str, model: str) -> str:

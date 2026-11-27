@@ -116,7 +116,7 @@ def test_batch_api_is_for_claude_and_a_yes_or_no(watchlist):
     assert config.load(watchlist).score_batch_api is False
     watchlist.write_text(yaml.safe_dump({**raw, "scoring": {"backend": "claude", "batch_api": True}}))
     assert config.load(watchlist).score_batch_api is True
-    for scoring, error in (({"backend": "local", "batch_api": True}, "needs scoring.backend: claude"),
+    for scoring, error in (({"backend": "local", "batch_api": True}, "needs Claude to score first"),
                            ({"backend": "claude", "batch_api": "yes"}, "true or false")):
         watchlist.write_text(yaml.safe_dump({**raw, "scoring": scoring}))
         with pytest.raises(config.ConfigError, match=error):

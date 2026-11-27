@@ -884,7 +884,7 @@ class Config:
     score_top: int = 0
     auto_score: bool = True    # the page scores new matches in the background (default: on for local only)
     score_batch: int = 10      # scoring.batch: jobs the page scores in a row before it rests (0: no rests)
-    score_batch_api: bool = False  # scoring.batch_api: the page scores with Claude through the Batches API (half price)
+    score_batch_api: bool = False  # scoring.batch_api: background scoring in half-price batches (Claude first)
     score_rest: int = 10       # scoring.rest: minutes it rests between batches
     unload_after: int = 5      # scoring.unload_after: read and ignored (the local model server unloads when idle)
     prompts: dict[str, str] = field(default_factory=dict)  # scoring.prompts: the edited fit-score prompts
@@ -1344,11 +1344,16 @@ def load(explicit: str | Path | None = None) -> Config:
     batch_api = scoring.get("batch_api", False)
     if not isinstance(batch_api, bool):
         raise ConfigError(f"{path}: scoring.batch_api must be true or false, got {batch_api!r}")
-    if batch_api and backend != "claude":
-        raise ConfigError(f"{path}: scoring.batch_api is for Claude's Batches API: it needs scoring.backend: claude, "
-                          f"not {backend}")
     fallback = scoring.get("fallback") or []
     fallback = [fallback] if isinstance(fallback, str) else fallback
+    # Claude scores first with scoring.backend: claude, or with a dated Claude entry in fallback (an API credit that
+    # ends), which runs ahead of scoring.backend. Whether that entry has ended is a matter for run time: a date
+    # past must not make the watchlist unreadable.
+    if batch_api and backend != "claude" and not any(
+            isinstance(b, str) and split_until(b)[1] and fallback_entry(b)[0] == "claude" for b in fallback):
+        raise ConfigError(f"{path}: scoring.batch_api is for Claude's Batches API: it needs Claude to score first, "
+                          f"with scoring.backend: claude or a dated claude entry in scoring.fallback "
+                          f"(claude:<model> until YYYY-MM-DD), not {backend}")
     others = ", ".join(b for b in known if b != backend)
     main_model = str(scoring.get("model") or "").strip()
 
