@@ -5036,20 +5036,28 @@ function aiSetup(s) {
       const [b, ...m] = e.split(":");
       return { b, m: m.join(":") || (b === "agy" ? scoring.agy_model || "" : "") };
     })];
+  // A dated step (claude:MODEL until DAY: an API credit that ends, see credit.py) scores first while it lasts, wherever
+  // the watchlist lists it (in fallback, after scoring.backend), so it's shown first and pinned there: the chain reads
+  // in the order a job meets it, as `jobwatch scorers` lists it. scoring.backend is the first step that isn't dated.
+  const dated = st => / until \d{4}-\d{2}-\d{2}$/.test(st.m);
+  steps.sort((x, y) => Number(dated(y)) - Number(dated(x)));
+  const pinned = () => steps.filter(dated).length;
+  const primary = () => steps.find(st => !dated(st)) || steps[0];
   // the first step's backend lives in a select that isn't shown, so Settings can read and watch it like any other input
   // an API from scoring.providers has no tile: it can be in the chain (set in the watchlist file), not added here
   const look = b => AI_LOOK[b] || { name: b };
-  const backend = choice([...AI_ORDER, ...(AI_ORDER.includes(steps[0].b) ? [] : [steps[0].b])]
-    .map(b => [b, look(b).name]), steps[0].b);
+  const backend = choice([...AI_ORDER, ...(AI_ORDER.includes(primary().b) ? [] : [primary().b])]
+    .map(b => [b, look(b).name]), primary().b);
   const sync = () => {
-    if (backend.value !== steps[0].b) { backend.value = steps[0].b; backend.dispatchEvent(new Event("change")); }
+    if (backend.value !== primary().b) { backend.value = primary().b; backend.dispatchEvent(new Event("change")); }
     else draw();
   };
   const same = (x, y) => x.b === y.b && (x.m || def(x.b)) === (y.m || def(y.b));
-  // a tile picked: its backend's first step goes to the front, or a new step on its default model
+  // a tile picked: its backend's first step goes to the front (behind a dated one), or a new step on its default model
   const pick = b => {
     const at = steps.findIndex(st => st.b === b);
-    steps.unshift(at >= 0 ? steps.splice(at, 1)[0] : { b, m: "" });
+    if (at >= 0 && dated(steps[at])) { toast(`${look(b).name} scores first while its credit lasts`); return; }
+    steps.splice(pinned(), 0, ...(at >= 0 ? steps.splice(at, 1) : [{ b, m: "" }]));
     sync();
   };
   const tiles = h("div", { class: "ai-tiles", role: "radiogroup", "aria-label": "Where fit scores run" });
@@ -5079,20 +5087,21 @@ function aiSetup(s) {
     const step = (st, i) => {
       const move = (to, label, glyph) => {
         const b = h("button", { type: "button", class: "step-btn", title: label, "aria-label": label }, glyph);
-        b.disabled = to < 0 || to >= steps.length;
+        b.disabled = dated(st) || to < pinned() || to >= steps.length;  // a dated step stays first
         b.onclick = () => { steps.splice(to, 0, steps.splice(i, 1)[0]); sync(); };
         return b;
       };
       const drop = h("button", { type: "button", class: "step-btn", title: "Take it out", "aria-label": "Take it out" },
         icon("x", 11));
-      drop.disabled = steps.length === 1;
+      drop.disabled = steps.length === 1 || (!dated(st) && steps.filter(x => !dated(x)).length === 1);  // one is scoring.backend
       drop.onclick = () => { steps.splice(i, 1); sync(); };
       // paused (out of credit or quota): kept in its place, dimmed, skipped until the time it's tried again
       const p = info && info.paused && info.paused[`${st.b}:${st.m.split(" until ")[0]}`];
       const back = p && backAt(p.until);
       return h("div", { class: "link step" + (i ? "" : " main") + (p ? " paused" : ""),
         title: p ? `Skipped: ${p.reason} since ${new Date(p.since).toLocaleString()}; tried again ${back}`
-          : i ? "Tried when the one before can't score" : "Scores first" },
+          : dated(st) ? `Scores first while its credit lasts (until ${st.m.slice(-10)}); then the next one`
+            : i ? "Tried when the one before can't score" : "Scores first" },
         h("span", { class: "n" }, String(i + 1)), look(st.b).name, modelMenu(st),
         !ready(st.b) ? h("span", { class: "n" }, "· not set up") : null,
         p ? h("span", { class: "pause-tag" }, icon("clock", 11), `${p.reason} · back ${back}`) : null,
@@ -5149,7 +5158,7 @@ function aiSetup(s) {
     h("span", { class: "bars", title: `${AI_LOOK[b][k]} of 3` }, [1, 2, 3].map(i => h("i", { class: i <= AI_LOOK[b][k] ? "f" : "" })))]));
 
   const tile = b => {
-    const st = info && info[b], chosen = backend.value === b;
+    const st = info && info[b], chosen = steps[0].b === b;  // the step a job meets first, a dated one included
     const state = !st ? h("span", { class: "state wait" }, "Checking…")
       : st.ready ? h("span", { class: "state ready" }, icon("check", 12), "Ready")
         : h("span", { class: "state setup" }, "Set up");
@@ -5160,7 +5169,7 @@ function aiSetup(s) {
       test.disabled = true; result.className = "muted";
       result.textContent = b === "local" ? "Loading the model (a minute or more the first time)…" : "Asking the model…";
       try {
-        const r = await api("/api/ai/test", { backend: b, model: (steps.find(st => st.b === b) || {}).m || "" });
+        const r = await api("/api/ai/test", { backend: b, model: ((steps.find(st => st.b === b) || {}).m || "").split(" until ")[0] });
         result.className = r.ok ? "done-ok" : "error";
         result.textContent = r.ok ? `Answered in ${r.seconds}s · ${r.model.split("/").pop()}` : r.error;
       } catch (e) { result.className = "error"; result.textContent = e.message; }
@@ -5199,9 +5208,9 @@ function aiSetup(s) {
     draw();
   };
   backend.addEventListener("change", () => {  // set elsewhere too (onboarding): the chain's front follows it
-    if (steps[0].b !== backend.value) {
-      const at = steps.findIndex(st => st.b === backend.value);
-      steps.unshift(at >= 0 ? steps.splice(at, 1)[0] : { b: backend.value, m: "" });
+    if (primary().b !== backend.value) {
+      const at = steps.findIndex(st => st.b === backend.value && !dated(st));
+      steps.splice(pinned(), 0, ...(at >= 0 ? steps.splice(at, 1) : [{ b: backend.value, m: "" }]));
     }
     draw();
   });
@@ -5215,9 +5224,12 @@ function aiSetup(s) {
   const drop = name => { for (let i = steps.length - 1; i > 0; i--) if (steps[i].b === name) steps.splice(i, 1); sync(); };
   return { el: h("div", {}, tiles, chain), select: backend, addStep, drop, refresh,
     inChain: name => steps.some(st => st.b === name),
-    values: () => ({ backend: steps[0].b, model: steps[0].m || null, agy_model: null,  // agy_model: in its step now
-      keychain: scoring.keychain || null,  // a key saved here names its item
-      fallback: steps.slice(1).map(st => st.m ? `${st.b}:${st.m}` : st.b) }) };
+    values: () => {  // backend and model: the first step that isn't dated; a dated one goes first in fallback, as it runs
+      const main = primary(), rest = steps.filter(st => st !== main);
+      return { backend: main.b, model: main.m || null, agy_model: null,  // agy_model: in its step now
+        keychain: scoring.keychain || null,  // a key saved here names its item
+        fallback: [...rest.filter(dated), ...rest.filter(st => !dated(st))].map(st => st.m ? `${st.b}:${st.m}` : st.b) };
+    } };
 }
 // Settings › Cloud providers: OpenAI-compatible APIs (scoring.providers) set up without touching the watchlist file.
 // Each provider gets its key (saved to the macOS keychain, never shown again), a model (listed by the API, or typed),
