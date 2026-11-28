@@ -9004,7 +9004,7 @@ function openPersonForm(o = {}) {
     formErr.hidden = true;
     if (!check() || dup) return;
     save.disabled = true;
-    save.textContent = "Saving…";
+    buttonBusy(save, "Saving…");  // the label goes back below on a failure; on success the dialog closes
     const body = { name: f.name.value, company: f.company.value, title: f.title.value, note: note.value, reach, url: f.url.value, email: f.email.value, phone: f.phone.value };
     try {
       const saved = editing ? await api("/api/referrals/person", { who: editing.key, ...body }) : await api("/api/referrals/add", body);
