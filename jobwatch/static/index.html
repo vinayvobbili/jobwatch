@@ -1752,6 +1752,136 @@ ol.vr-ops li::before { content: counter(op); position: absolute; left: 10px; top
 @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.95); } }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
   70%, 100% { box-shadow: 0 0 0 8px transparent; } }
+/* GLOSS. One layer over the page's own look, last so it wins: a top-edge highlight and a soft diagonal sheen on the
+   chrome and containers (buttons, chips, badges, tiles, cards, panels, rings, the open tab, Close, dialogs), a sheen
+   that sweeps across buttons and tiles once per hover, layered shadows with an indigo glow, and a coloured shiny
+   scrollbar. Table cells stay flat. Text on a filled surface keeps 4.5:1: the white lift is held to --gloss-lift where
+   the text sits and --gloss-shade deepens the fill (tests/test_page_gloss.py computes it). Motion off: static gloss only. */
+:root {
+  --gloss-edge: inset 0 1px 0 rgba(255, 255, 255, .25), inset 0 -1px 0 rgba(10, 10, 60, .16);  /* on a filled surface */
+  --gloss-edge-panel: inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 0 0 1px rgba(255, 255, 255, .35);  /* on a light one */
+  --gloss-lift: .06; --gloss-shade: rgba(14, 10, 66, .16);
+  --gloss-sheen: linear-gradient(180deg, rgba(255, 255, 255, .22) 0, rgba(255, 255, 255, var(--gloss-lift)) 30%,
+    rgba(255, 255, 255, 0) 46%, rgba(255, 255, 255, 0) 54%, rgba(10, 10, 60, .12) 100%);
+  --gloss-fill: var(--gloss-sheen), linear-gradient(var(--gloss-shade), var(--gloss-shade));
+  --gloss-sheen-panel: linear-gradient(135deg, rgba(255, 255, 255, .7) 0, rgba(255, 255, 255, 0) 240px),
+    linear-gradient(315deg, rgba(99, 102, 241, .07) 0, rgba(168, 85, 247, 0) 220px);
+  --gloss-sheen-chip: linear-gradient(180deg, rgba(255, 255, 255, .5), rgba(255, 255, 255, 0) 90%);
+  --gloss-sweep: linear-gradient(105deg, transparent 32%, rgba(255, 255, 255, .34) 50%, transparent 68%);
+  --gloss-ms: 700ms;
+  --gloss-glow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 80%, transparent);
+  --gloss-glow-hover: 0 10px 24px -10px color-mix(in srgb, var(--accent) 95%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  --shadow: var(--gloss-edge-panel), 0 1px 2px rgba(20, 26, 46, .05), 0 10px 28px -16px rgba(20, 26, 46, .2),
+    0 20px 44px -34px rgba(84, 87, 240, .4);
+  --shadow-hover: var(--gloss-edge-panel), 0 2px 4px rgba(20, 26, 46, .06), 0 22px 44px -20px rgba(70, 60, 190, .38),
+    0 0 0 1px rgba(84, 87, 240, .1);
+  /* scrollbar: track tint, thumb indigo > violet > teal, brighter on hover (Firefox gets the solid pair) */
+  --sb-track: linear-gradient(90deg, rgba(99, 102, 241, .06), rgba(168, 85, 247, .13) 50%, rgba(99, 102, 241, .06));
+  --sb-track-h: linear-gradient(180deg, rgba(99, 102, 241, .06), rgba(168, 85, 247, .13) 50%, rgba(99, 102, 241, .06));
+  --sb-thumb: linear-gradient(180deg, #6366f1 0%, #a855f7 52%, #14b8a6 100%);
+  --sb-thumb-h: linear-gradient(90deg, #6366f1 0%, #a855f7 52%, #14b8a6 100%);
+  --sb-thumb-hover: linear-gradient(180deg, #7c7ff8 0%, #c084fc 52%, #2dd4bf 100%);
+  --sb-thumb-hover-h: linear-gradient(90deg, #7c7ff8 0%, #c084fc 52%, #2dd4bf 100%);
+  --sb-sheen: linear-gradient(90deg, rgba(255, 255, 255, .42) 0, rgba(255, 255, 255, .1) 38%, rgba(255, 255, 255, 0) 56%);
+  --sb-sheen-h: linear-gradient(180deg, rgba(255, 255, 255, .42) 0, rgba(255, 255, 255, .1) 38%, rgba(255, 255, 255, 0) 56%);
+  --sb-edge: inset 0 0 0 1px rgba(255, 255, 255, .38), inset 0 1px 0 rgba(255, 255, 255, .55);
+  --sb-glow: inset 0 0 8px 1px rgba(255, 255, 255, .35), inset 0 0 0 1px rgba(255, 255, 255, .6);
+  --sb-solid-thumb: #8b5cf6; --sb-solid-track: rgba(99, 102, 241, .1);
+}
+:root[data-theme="dark"] {
+  --gloss-edge-panel: inset 0 1px 0 rgba(255, 255, 255, .1), inset 0 0 0 1px rgba(255, 255, 255, .03);
+  --gloss-sheen-panel: linear-gradient(135deg, rgba(255, 255, 255, .07) 0, rgba(255, 255, 255, 0) 240px),
+    linear-gradient(315deg, rgba(141, 143, 255, .09) 0, rgba(199, 125, 255, 0) 220px);
+  --gloss-sheen-chip: linear-gradient(180deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, 0) 90%);
+  --shadow: var(--gloss-edge-panel), 0 12px 32px -20px rgba(0, 0, 0, .9), 0 20px 48px -36px rgba(110, 100, 255, .55);
+  --shadow-hover: var(--gloss-edge-panel), 0 22px 48px -20px rgba(110, 100, 255, .55), 0 0 0 1px rgba(141, 143, 255, .16);
+  --sb-track: linear-gradient(90deg, rgba(141, 143, 255, .07), rgba(199, 125, 255, .12) 50%, rgba(141, 143, 255, .07));
+  --sb-track-h: linear-gradient(180deg, rgba(141, 143, 255, .07), rgba(199, 125, 255, .12) 50%, rgba(141, 143, 255, .07));
+  --sb-thumb: linear-gradient(180deg, #7478ff 0%, #b66cff 52%, #1fc9b5 100%);
+  --sb-thumb-h: linear-gradient(90deg, #7478ff 0%, #b66cff 52%, #1fc9b5 100%);
+  --sb-thumb-hover: linear-gradient(180deg, #9094ff 0%, #cc8bff 52%, #4de6d2 100%);
+  --sb-thumb-hover-h: linear-gradient(90deg, #9094ff 0%, #cc8bff 52%, #4de6d2 100%);
+  --sb-edge: inset 0 0 0 1px rgba(255, 255, 255, .26), inset 0 1px 0 rgba(255, 255, 255, .42);
+  --sb-solid-thumb: #9a7bff; --sb-solid-track: rgba(141, 143, 255, .12);
+}
+@media screen {
+  /* containers: the top-edge highlight comes with --shadow; the sheen is a layer over their own background */
+  .card, .fbar, .pipeline, .panel, .table-wrap, .fpop, .dialog { background-image: var(--gloss-sheen-panel); }
+  .stat:not(.lead) { background-image: var(--gloss-sheen-panel), linear-gradient(160deg,
+    color-mix(in srgb, var(--accent) 10%, var(--panel)), color-mix(in srgb, var(--accent-2) 5%, var(--panel)) 75%); }
+  .dialog { box-shadow: var(--gloss-edge-panel), 0 30px 80px -20px rgba(0, 0, 0, .5), 0 0 70px -28px var(--accent); }
+  .fpop { box-shadow: var(--gloss-edge-panel), 0 24px 60px -20px rgba(0, 0, 0, .45), 0 0 50px -26px var(--accent); }
+  header { box-shadow: var(--gloss-edge-panel), 0 12px 30px -26px var(--accent); }
+  nav { box-shadow: inset 0 1px 3px rgba(20, 26, 46, .1); }
+  nav button.on { background-image: var(--gloss-sheen-chip);
+    box-shadow: var(--gloss-edge-panel), 0 1px 3px rgba(20, 26, 46, .14), 0 4px 12px -6px var(--accent); }
+  /* chips, pills and small badges */
+  .chip:not(.gap), .hchip, .fitchip, .section .n, .prep-chip, .seg-ctl button.on { background-image: var(--gloss-sheen-chip);
+    box-shadow: var(--gloss-edge-panel); }
+  .fitchip { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3); }
+  .badge.new, .badge.round, .badge.snooze, .section.live .n, .stat.lead, .count:not(#duecount .count) {
+    background-image: var(--gloss-fill), var(--grad); }
+  .badge.snooze { background-image: var(--gloss-fill), linear-gradient(135deg, #0ea5e9, #6366f1); }
+  .badge.new, .badge.round, .badge.snooze, .count, .section.live .n { box-shadow: var(--gloss-edge); }
+  .badge.new { box-shadow: var(--gloss-edge), 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+  #duecount .count { background-image: var(--gloss-sheen-chip); box-shadow: var(--gloss-edge); }
+  .stat.lead { box-shadow: var(--gloss-edge), 0 16px 34px -18px color-mix(in srgb, var(--accent) 80%, transparent); }
+  /* score rings: a glow in the band's colour, a lit disc */
+  .ring { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 4px 14px -5px color-mix(in srgb, var(--rc, var(--accent)) 70%, transparent); }
+  .ring span { background-image: var(--gloss-sheen-panel); box-shadow: inset 0 1px 2px rgba(20, 26, 46, .1), var(--gloss-edge-panel); }
+  /* buttons: plain ones get the edge and a faint sheen, filled ones the full gloss and the accent glow */
+  button.btn, a.btn { box-shadow: var(--gloss-edge-panel), 0 1px 2px rgba(20, 26, 46, .06); background-image: var(--gloss-sheen-chip); }
+  button.btn.btn-close { background-image: var(--gloss-sheen-chip);
+    box-shadow: var(--gloss-edge-panel), 0 4px 10px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
+  button.btn.btn-close:hover { box-shadow: var(--gloss-edge-panel), 0 8px 18px -10px color-mix(in srgb, var(--accent) 85%, transparent); }
+  button.btn.btn-close:active { box-shadow: var(--gloss-edge-panel); }
+  button.btn.ghost, button.btn.act-remove, button.btn.act-details { background-image: none; box-shadow: none; }
+  .btn.act { background-image: var(--gloss-sheen-chip); box-shadow: var(--gloss-edge-panel); }
+  button.primary, a.btn.primary, .btn.act.act-queue { background-image: var(--gloss-fill), var(--grad); box-shadow: var(--gloss-edge), var(--gloss-glow); }
+  button.primary:hover, a.btn.primary:hover { box-shadow: var(--gloss-edge), var(--gloss-glow-hover); }
+  .btn.act.act-queue:hover:not(:disabled) { background: var(--grad); background-image: var(--gloss-fill), var(--grad);
+    box-shadow: var(--gloss-edge), var(--gloss-glow-hover); }
+  .btn.act.act-apply { background-image: linear-gradient(180deg, rgba(10, 10, 60, 0) 50%, rgba(10, 10, 60, .14)), linear-gradient(135deg, #0c9468, #14b8a6);
+    box-shadow: var(--gloss-edge), 0 6px 16px -8px rgba(12, 148, 104, .8); }
+  :root[data-theme="dark"] .btn.act.act-apply { background-image: linear-gradient(180deg, rgba(255, 255, 255, .0) 50%, rgba(4, 40, 28, .12)), linear-gradient(135deg, #3ddc97, #5eead4); }
+  /* the sweep: a bright band slides across on hover, once (it snaps back when the pointer leaves) */
+  :is(button.btn, a.btn, button.primary, .stat:not(.lead)) { position: relative; overflow: hidden; }
+  :is(button.btn, a.btn, button.primary, .stat:not(.lead))::after { content: ""; position: absolute; inset: 0; z-index: 1;
+    pointer-events: none; background: var(--gloss-sweep); transform: translateX(-130%); }
+  :is(button.btn:not(:disabled), a.btn, button.primary:not(:disabled), .stat:not(.lead)):hover::after {
+    transform: translateX(130%); transition: transform var(--gloss-ms) cubic-bezier(.3, .6, .3, 1); }
+  .card.pending a.btn::after, .btn.busy::after { display: none; }
+}
+@media screen and (prefers-reduced-motion: reduce) {
+  :is(button.btn, a.btn, button.primary, .stat:not(.lead))::after { display: none; transition: none; }
+}
+
+/* scrollbars: the page and every pane, dialog and table that scrolls (Chrome, Safari, Edge); Firefox gets the pair below */
+@media screen {
+  /* thick: 18px, with a 3px clear border so the thumb floats (12px of colour); 14px inside dialogs, tables and the sidebar
+     so they keep their content (10px of colour). Hover and active brighten and glow, they never widen it. */
+  html { scrollbar-gutter: stable; }  /* the page doesn't jump when a tab is long enough to scroll */
+  ::-webkit-scrollbar { width: 18px; height: 18px; }
+  .overlay::-webkit-scrollbar, .dialog *::-webkit-scrollbar, .table-wrap::-webkit-scrollbar,
+  .layout > aside::-webkit-scrollbar { width: 14px; height: 14px; }
+  ::-webkit-scrollbar-track { background: var(--sb-track); border-radius: 999px; }
+  ::-webkit-scrollbar-track:horizontal { background: var(--sb-track-h); }
+  ::-webkit-scrollbar-thumb { background: var(--sb-sheen), var(--sb-thumb); background-clip: padding-box;
+    border: 3px solid transparent; border-radius: 999px; box-shadow: var(--sb-edge); min-height: 40px; min-width: 40px; }
+  .overlay::-webkit-scrollbar-thumb, .dialog *::-webkit-scrollbar-thumb, .table-wrap::-webkit-scrollbar-thumb,
+  .layout > aside::-webkit-scrollbar-thumb { border-width: 2px; }
+  ::-webkit-scrollbar-thumb:horizontal { background: var(--sb-sheen-h), var(--sb-thumb-h); background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--sb-sheen), var(--sb-thumb-hover); background-clip: padding-box;
+    box-shadow: var(--sb-glow); }
+  ::-webkit-scrollbar-thumb:horizontal:hover { background: var(--sb-sheen-h), var(--sb-thumb-hover-h); background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:active { background: var(--sb-sheen), var(--sb-thumb-hover); background-clip: padding-box;
+    box-shadow: var(--sb-glow), 0 0 0 1px var(--accent); }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-button { display: none; }
+  .layout > aside { scrollbar-width: auto; overflow-x: hidden; }  /* thin would switch the rules above off */
+  @supports not selector(::-webkit-scrollbar) { * { scrollbar-width: auto; scrollbar-color: var(--sb-solid-thumb) var(--sb-solid-track); } }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 @media (max-width: 760px) {
   .bar { flex-wrap: wrap; padding: 10px 16px; } main { padding: 20px 16px 60px; }

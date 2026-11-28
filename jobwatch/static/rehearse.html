@@ -289,6 +289,27 @@ audio { width: 100%; max-width: 440px; margin-top: 14px; }
   .pdots { display: none; }
 }
 @media (max-width: 860px) { .compare { grid-template-columns: 1fr; } }
+/* GLOSS (the same layer as the app's page): a top-edge highlight on the filled buttons, badges and chosen segment, and a
+   coloured shiny scrollbar from the sheet's own teal, indigo and rose (they follow the theme with --accent and --accent-2) */
+@media screen {
+  :root { --gloss-edge: inset 0 1px 0 rgba(255, 255, 255, .25), inset 0 -1px 0 rgba(10, 10, 60, .16); }
+  .btn.go, .btn.s, .btn.o, .btn.x, .btn.mic { box-shadow: var(--gloss-edge), 0 10px 24px -12px color-mix(in srgb, var(--accent-2) 80%, transparent); }
+  .badge, .seg button.on { box-shadow: var(--gloss-edge), 0 6px 14px -6px color-mix(in srgb, var(--accent-2) 70%, transparent); }
+  html { scrollbar-gutter: stable; }
+  ::-webkit-scrollbar { width: 18px; height: 18px; }
+  ::-webkit-scrollbar-track { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, transparent),
+    color-mix(in srgb, var(--accent-2) 13%, transparent) 50%, color-mix(in srgb, var(--accent) 7%, transparent)); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(90deg, rgba(255, 255, 255, .42) 0, rgba(255, 255, 255, .1) 38%, rgba(255, 255, 255, 0) 56%),
+    linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 52%, #f472b6 100%); background-clip: padding-box;
+    border: 3px solid transparent; border-radius: 999px; min-height: 40px; min-width: 40px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .38), inset 0 1px 0 rgba(255, 255, 255, .55); }
+  ::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background: linear-gradient(90deg, rgba(255, 255, 255, .5) 0, rgba(255, 255, 255, .14) 38%, rgba(255, 255, 255, 0) 56%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 75%, #fff) 0%, color-mix(in srgb, var(--accent-2) 75%, #fff) 52%, #f9a8d4 100%);
+    background-clip: padding-box; box-shadow: inset 0 0 8px 1px rgba(255, 255, 255, .35), inset 0 0 0 1px rgba(255, 255, 255, .6); }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-button { display: none; }
+  @supports not selector(::-webkit-scrollbar) { * { scrollbar-width: auto; scrollbar-color: var(--accent-2) color-mix(in srgb, var(--accent-2) 12%, transparent); } }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .card:hover, .btn:hover, .btn.mic:hover, .stat:hover, .tile:hover, .pane:hover, .try:hover, .points li:hover { transform: none; }

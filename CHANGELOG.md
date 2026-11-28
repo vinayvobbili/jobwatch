@@ -35,6 +35,14 @@
   From an agent, a script, CI or a pipe they write the page and open nothing, so regenerating it no longer pops a
   browser tab. `--open` opens it anyway; `--no-open` still suppresses it at a terminal.
 
+- The page is glossier: buttons, chips, badges, stat tiles, cards, panels, score rings, the open tab, Close and
+  dialogs carry a top-edge highlight, a soft diagonal sheen and layered shadows with an indigo glow, in the light and
+  dark themes; a bright band sweeps across buttons and tiles once on hover (static gloss only when your system asks
+  for less motion). Table cells stay flat, and white text on a filled surface keeps 4.5:1. The scrollbar is thick
+  (18px, 14px inside dialogs, tables and the sidebar), coloured and shiny on the page and on every scrolling pane,
+  dialog and table (indigo to violet to teal, brighter with a glow on hover; Firefox gets the accent colour), and the
+  page keeps its gutter so nothing jumps when a tab grows long enough to scroll, and the prep sheets' page has it too.
+
 - `jobwatch grep COMPANY -t TERM...` lists a company's tracked jobs whose saved posting text holds any of the terms
   as whole words ("ITAR" is not found in "military"; a term in capitals matches in capitals only, so "EAR" is not
   "ear"; "U.S. Person" also finds "U.S. Persons"). Closed postings are left out (`--closed` adds them, `--open` keeps
