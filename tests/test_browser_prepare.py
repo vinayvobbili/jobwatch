@@ -213,10 +213,19 @@ def test_a_step_that_fails_is_marked_and_the_next_one_still_runs(page, queued, s
     assert step_panel(card, "cover").locator("textarea").input_value().startswith("Hello Initech team,")
 
 
-def test_the_company_page_card_has_the_same_one_button(page, queued):
-    page.goto(f"http://127.0.0.1:{queued}/#company/Initech")
+def company_card(page, port):
+    """Initech's card on its company page. The tab changes inside the same document, so the Queue's card of the same
+    id stays on screen until the company page replaces it: wait for the page's own head (its placeholders say
+    "Company") before looking at a card."""
+    page.goto(f"http://127.0.0.1:{port}/#company/Initech")
+    sync_api.expect(page.locator(".pagehead h1")).to_have_text("Initech", timeout=15000)
     card = page.locator(CARD)
     card.wait_for(timeout=15000)
+    return card
+
+
+def test_the_company_page_card_has_the_same_one_button(page, queued):
+    card = company_card(page, queued)
     assert card.get_by_role("button", name="Prepare", exact=True).count() == 1
     for gone in ("Tailor resume", "ATS check", "Cover letter"):
         assert card.get_by_role("button", name=gone, exact=True).count() == 0, gone
@@ -432,9 +441,7 @@ def test_a_check_made_before_the_posting_changed_is_marked_older_not_hidden(page
 
 def test_the_company_page_card_restores_its_chips_too(page, queued, watchlist):
     seed(watchlist)
-    page.goto(f"http://127.0.0.1:{queued}/#company/Initech")
-    card = page.locator(CARD)
-    card.wait_for(timeout=15000)
+    card = company_card(page, queued)
     sync_api.expect(card.get_by_role("button", name="Prepare again")).to_be_visible(timeout=15000)
-    assert chips(page)[0][1] == "Resume"
+    sync_api.expect(card.locator(".prep-chip").first).to_have_text("Resume")
     assert page.errors == []
