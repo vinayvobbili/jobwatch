@@ -158,12 +158,12 @@ def test_force_scores_one_closed_job_and_a_press_of_score_does_too(env, asked):
     assert store.scores_skipped() == {}  # a press is no skip
 
 
-def test_a_rescore_from_the_dialog_is_the_persons_choice_too(env, asked):
+def test_a_rescore_from_the_dialog_is_the_persons_choice_too(env, asked, monkeypatch):
     cfg, store = env
     close(store, INITECH)
     app = App(cfg.path)
-    pick = app._with_store(lambda c, s: app._choices(c)[0])
-    app.post_rescore({"key": INITECH, "backend": pick["backend"], "model": pick["model"]})
+    monkeypatch.setattr(App, "_choices", lambda self, cfg: [{"backend": "local", "model": "stub", "ready": True}])
+    app.post_rescore({"key": INITECH, "backend": "local", "model": "stub"})
     join("jobwatch-rescore")
     assert asked == [INITECH]
 
