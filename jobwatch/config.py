@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 import yaml
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
-from ruamel.yaml.scalarstring import LiteralScalarString
+from ruamel.yaml.scalarstring import DoubleQuotedScalarString, LiteralScalarString
 from ruamel.yaml.util import load_yaml_guess_indent
 
 from . import GUIDE, degrees
@@ -801,7 +801,7 @@ def _goals(raw, path: Path) -> Goals:
     text = {}
     for k in ("about", "horizon"):
         if not isinstance(raw.get(k, ""), str):
-            raise ConfigError(f"{path}: goals.{k} is text in your own words, got {raw[k]!r}")
+            raise ConfigError(f"{path}: goals.{k} is text in your own words, got {raw[k]!r}{quote_hint(raw[k])}")
         text[k] = raw.get(k, "").strip()
     return Goals(company_kinds=_preferences(raw.get("company_kinds", []), "company_kinds", GOAL_KINDS, path),
                  roles=_preferences(raw.get("roles", []), "roles", GOAL_ROLES, path),
@@ -839,16 +839,42 @@ class Applicant:
 
 
 APPLICANT_YES_NO = ("work_authorized", "needs_sponsorship", "relocate")
+# A bare NO, ON and the like are codes here, not booleans: the country Norway, the province Ontario.
+APPLICANT_CODES = {("country", False): "NO", ("state", True): "ON"}
+
+
+def quote_hint(value) -> str:
+    """What to add to a "wrong type" error when the value is a boolean: YAML 1.1 (PyYAML, and so this file's
+    reader) reads an unquoted yes, no, on, off, y or n as true or false, and the fix is quotes."""
+    if isinstance(value, bool):
+        return ' (YAML reads an unquoted yes, no, on or off as true or false: write it in quotes, like "No")'
+    return ""
+
+
+def applicant_text(key: str, value):
+    """An applicant field's value as text. YAML reads an unquoted No or Yes (or on, off) as false or true, so a
+    boolean stands for the word it was: yes or no for the yes/no questions, NO and ON for a country and a state
+    code, else Yes or No (the voluntary self-identification answers: hispanic: No). Anything else is returned
+    as it came."""
+    if not isinstance(value, bool):
+        return value
+    if (key, value) in APPLICANT_CODES:
+        return APPLICANT_CODES[key, value]
+    if key in APPLICANT_YES_NO:
+        return "yes" if value else "no"
+    return "Yes" if value else "No"
 
 
 def _applicant(raw, path: Path) -> Applicant:
     raw = _section(raw, "applicant", Applicant, path, "{first_name: Jordan, email: jordan@example.com}")
     out = {}
     for k, v in raw.items():
-        if isinstance(v, bool) and k in APPLICANT_YES_NO:  # YAML reads a bare yes or no as true or false
-            v = "yes" if v else "no"
-        if not isinstance(v, (str, int, float)) or isinstance(v, bool):
-            raise ConfigError(f"{path}: applicant.{k} is text, got {v!r}")
+        if v is None:  # a key left empty (`hispanic:`) is a field left blank
+            v = ""
+        v = applicant_text(k, v)
+        if not isinstance(v, (str, int, float)):
+            raise ConfigError(f"{path}: applicant.{k} is text, got {v!r}; write it as text, like "
+                              f"{k}: \"Jordan\" (a list or a mapping isn't one value)")
         out[k] = str(v).strip()
         if k in APPLICANT_YES_NO and out[k].lower() not in ("yes", "no", ""):
             raise ConfigError(f"{path}: applicant.{k} must be yes or no, got {v!r}")
@@ -983,6 +1009,9 @@ def _board(entry, path: Path, strict: bool = True) -> Board:
     if careers and not _LINK.fullmatch(careers):
         raise ConfigError(f"{path}: {entry['source']}:{entry['board']}: careers is a link to the company's own "
                           f"careers site (https://...), got {careers!r}")
+    for k in ("board", "name"):  # a company called On or No, a board slug: unquoted, YAML reads it as true or false
+        if isinstance(entry.get(k), bool):
+            raise ConfigError(f"{path}: companies entry {k} is text, got {entry[k]!r}{quote_hint(entry[k])}")
     own = entry.get("filters") or {}
     if not isinstance(own, dict):
         raise ConfigError(f"{path}: {entry['source']}:{entry['board']}: filters are settings like the watchlist's "
@@ -993,11 +1022,22 @@ def _board(entry, path: Path, strict: bool = True) -> Board:
     return Board(str(entry["source"]), str(entry["board"]), entry.get("name") or "", careers, dict(own))
 
 
+def _texts(raw, name: str, path: Path) -> list[str]:
+    """A list of text values (focus, employer...) as strings. A boolean in it is a word YAML misread (a company
+    called On, a pattern no): refused by name, with the fix, rather than turned into "True"."""
+    out = []
+    for x in raw or []:
+        if isinstance(x, bool):
+            raise ConfigError(f"{path}: {name} holds text, got {x!r}{quote_hint(x)}")
+        out.append(str(x))
+    return out
+
+
 def _focus(raw, path: Path) -> list[str]:
     """focus: title regexes for the work you want most ("security", "\\bai\\b"): a job whose title matches one
     leads Today and the scoring line, ahead of better scores outside it; one that matches more leads one that
     matches fewer."""
-    focus = [raw] if isinstance(raw, str) else [str(x) for x in raw or []]
+    focus = [raw] if isinstance(raw, str) else _texts(raw, "focus", path)
     for x in focus:
         try:
             re.compile(x)
@@ -1154,6 +1194,8 @@ def _command(value, path: Path) -> str:
 def _near(learning: dict, filters: Filters) -> str:
     """The city for nearby programs: as set, else the first place in the location filter that isn't remote."""
     if "near" in learning:
+        if isinstance(learning["near"], bool):
+            raise ConfigError(f"learning.near is a city, got {learning['near']!r}{quote_hint(learning['near'])}")
         return str(learning["near"] or "").strip()
     return next((loc.strip() for loc in filters.locations if loc.strip() and "remote" not in loc.lower()
                  and not re.search(r"[\\^$*+?()[\]{}|]", loc)), "")
@@ -1172,16 +1214,33 @@ def _round_trip(text: str):
     return rt
 
 
+def _misread(text) -> bool:
+    """Whether this text, written bare, reads back as something else: No, off and NO as false, 2 as a number,
+    null as nothing. ruamel (YAML 1.2) writes No bare, but the reader of this file (PyYAML, YAML 1.1) takes it
+    for false, so the settings page's own save would break the file it just wrote."""
+    if not isinstance(text, str) or "\n" in text or not text.strip():
+        return False
+    try:
+        return yaml.safe_load(text) != text
+    except yaml.YAMLError:
+        return False
+
+
 def _fresh(value):
-    """A new value as the round trip writes it: text of several lines (an edited prompt) as a block."""
+    """A new value as the round trip writes it: text of several lines (an edited prompt) as a block, text a bare
+    reader would misread (No, off, NO) in double quotes."""
     if isinstance(value, dict):
-        return {k: _fresh(v) for k, v in value.items()}
+        return {(DoubleQuotedScalarString(k) if _misread(k) else k): _fresh(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_fresh(v) for v in value]
+    if _misread(value):
+        return DoubleQuotedScalarString(value)
     return LiteralScalarString(value) if isinstance(value, str) and "\n" in value else value
 
 
 def _same_scalar(old, new) -> bool:
+    if _misread(new) and type(old) is str:  # kept bare, a misread word stays a trap: rewrite it quoted
+        return False
     return (old == new and isinstance(old, bool) == isinstance(new, bool)
             and isinstance(old, str) == isinstance(new, str))
 
@@ -1422,8 +1481,9 @@ def load(explicit: str | Path | None = None) -> Config:
                 own[(b.source, b.board)] = Filters.from_dict({**(raw.get("filters") or {}), **b.filters})
             except (TypeError, ValueError) as e:
                 raise ConfigError(f"{path}: {b.entry}: {e}") from None
-    employer = raw.get("employer") or []
-    employer = [employer] if isinstance(employer, str) else employer
+    employer = _texts([raw["employer"]] if isinstance(raw.get("employer"), (str, bool)) else raw.get("employer"),
+                      "employer", path)
+    connections_skip = _texts(raw.get("connections_skip"), "connections_skip", path)
     return Config(
         path=path, boards=boards, unknown=[b for b in listed if b.source not in SOURCES], filters=filters,
         board_filters=own, tracks=_tracks(raw.get("tracks"), raw.get("filters") or {}, path),
@@ -1431,8 +1491,8 @@ def load(explicit: str | Path | None = None) -> Config:
         focus=_focus(raw.get("focus"), path),
         resume=_path(raw["resume"], base) if raw.get("resume") else None,
         connections=_path(raw["connections"], base) if raw.get("connections") else None,
-        connections_skip=[str(s).strip() for s in raw.get("connections_skip") or [] if str(s).strip()],
-        employer=[s for e in employer if (s := str(e).strip())],
+        connections_skip=[s for e in connections_skip if (s := e.strip())],
+        employer=[s for e in employer if (s := e.strip())],
         stories=_path(raw["stories"], base) if raw.get("stories") else None,
         resume_kit=_command(raw.get("resume_kit"), path),
         backend=backend, score_providers=providers, score_model=str(scoring.get("model") or "").strip(),

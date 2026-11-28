@@ -24,6 +24,32 @@ from .text import (
     us_states,
 )
 
+_TEXT_LISTS =("exclude_companies", "locations", "nearby_offices", "known_offices")
+
+
+def _unbool(d: dict) -> dict:
+    """The filters with the words YAML misread put back. An unquoted NO (Norway) or ON (Ontario) in locations or
+    remote_country reads as false or true, so a boolean there is that code; a boolean in another text setting is
+    refused by name, with the fix (quotes), rather than turned into "True"."""
+    d = dict(d)
+    for key in _TEXT_LISTS:
+        items = d.get(key)
+        if not isinstance(items, list):
+            continue
+        for x in items:
+            if isinstance(x, bool) and key != "locations":
+                raise ValueError(f"filters.{key} holds text, got {x!r}{_QUOTE_HINT}")
+        d[key] = [("ON" if x else "NO") if isinstance(x, bool) else x for x in items]
+    if d.get("remote_country") is False:
+        d["remote_country"] = "NO"
+    for key in ("remote_country", "home_state"):
+        if isinstance(d.get(key), bool):
+            raise ValueError(f"filters.{key} is text, got {d[key]!r}{_QUOTE_HINT}")
+    return d
+
+
+_QUOTE_HINT = ' (YAML reads an unquoted yes, no, on or off as true or false: write it in quotes, like "no")'
+
 
 @dataclass
 class Filters:
@@ -69,6 +95,7 @@ class Filters:
         unknown = set(d) - set(cls.__dataclass_fields__)
         if unknown:
             raise ValueError(f"unknown filter setting(s): {', '.join(sorted(unknown))}")
+        d = _unbool(d)
         if not isinstance(d.get("flags") or {}, dict):
             raise ValueError("filters.flags maps a pattern to why it matters, e.g. {'TS/SCI': clearance}")
         if not isinstance(d.get("company_notes") or {}, dict):
@@ -79,7 +106,8 @@ class Filters:
                 try:
                     re.compile(p)
                 except (re.error, TypeError) as e:
-                    raise ValueError(f"filters.{key}: {p!r} isn't a valid pattern: {e}") from None
+                    hint = _QUOTE_HINT if isinstance(p, bool) else ""
+                    raise ValueError(f"filters.{key}: {p!r} isn't a valid pattern: {e}{hint}") from None
         return cls(**d)
 
     def __post_init__(self):

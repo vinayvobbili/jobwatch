@@ -714,6 +714,7 @@ class App:
         every = raw.get("fetch_every")
         scoring = raw.get("scoring") or {}
         talk = raw.get("chat") if isinstance(raw.get("chat"), dict) else {}
+        applicant = raw.get("applicant") if isinstance(raw.get("applicant"), dict) else {}
         return {"path": str(self.path), "exists": self.path.is_file(), "version": __version__,
                 "file_version": self._file_version(),
                 "companies": companies, "filters": raw.get("filters") or {}, "keywords": raw.get("keywords") or {},
@@ -723,7 +724,8 @@ class App:
                 "scoring": scoring, "chat": talk, "learning": raw.get("learning") or {},
                 "display": raw.get("display") or {}, "pace": raw.get("pace") or {}, "pay": raw.get("pay") or {},
                 "alerts": raw.get("alerts") or {}, "goals": raw.get("goals") or {},
-                "applicant": raw.get("applicant") or {},
+                # a bare No in the file is false to YAML: shown as the word it was, so a save writes text
+                "applicant": {k: config.applicant_text(k, v) for k, v in (applicant or {}).items()},
                 "suggestions": raw.get("suggestions") or {}, "incoming": raw.get("incoming") or {},
                 "comps": raw.get("comps") or {},
                 # where the history is kept: shown, changed only in the file (a new path starts an empty history)
