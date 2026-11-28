@@ -24,7 +24,7 @@ from .test_page_js import page_const, page_function
 node = pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 
 PIECES = [page_const(n) for n in ("REF_LIVE", "REF_TOP", "REF_CAP", "REF_FURTHEST", "REF_SORTS", "REF_TABS", "REF_TAB_NAMES", "byFit",
-                                  "refGood", "refLast", "refFirstTab", "refAccent", "refWhy", "MONTHS", "refHays", "refFolds", "refNoOpenings", "refHidden")] \
+                                  "refGood", "refLast", "refFirstTab", "refAccent", "refWhy", "MONTHS", "refHays", "refFolds", "refNoGoodFits", "refHidden")] \
     + [page_function(n) for n in ("foldChar", "foldText", "searchTokens", "personMatches", "markRanges", "marked", "plural",
                                   "refLabels", "refSummary", "refEntries", "refPeopleOrder", "refCompanies", "refVisible", "refCount",
                                   "refPeopleWords", "refListJobs")]
@@ -158,27 +158,28 @@ console.log(JSON.stringify({ order: ini.people.map(p => p.name), words: [refPeop
 
 
 @node
-def test_a_company_with_no_open_posting_is_hidden_on_request_unless_an_application_is_in_flight_and_the_count_says_so():
+def test_a_company_with_no_good_fit_is_hidden_on_request_unless_an_application_is_in_flight_or_you_chose_a_person_and_the_count_says_so():
     out = run(PEOPLE + """
-const closed = { fit: 80, closed: true };
-const qs = refCompanies({ min_fit: 70, details: { c1: closed, c2: closed, c3: closed, c4: { fit: 80 } }, people: [
-  person("a", "Ann", "Hooli", "", { jobs: [jk("c1", "SRE", "Hooli")] }),             // its one posting is closed: no openings
-  person("b", "Bob", "Stark", "", { jobs: [jk("c2", "SRE", "Stark", "applied")] }),  // applied, then the posting closed: stays
-  person("c", "Cat", "Wayne", "", { jobs: [jk("c3", "SRE", "Wayne", "queued")] }),   // queued, then closed: stays
-  person("d", "Dan", "Pied Piper", "", { jobs: [jk("c4", "SRE", "Pied Piper")] }),   // open
-  person("e", "Eve", "Gone", "")] });                                                // no job tracked at all: no openings
+const qs = refCompanies({ min_fit: 70, details: { c1: { fit: 40 }, c2: { fit: 40 }, c3: { fit: 40 }, c4: { fit: 80 }, c5: { fit: 40 }, c6: { fit: 70, closed: true } }, people: [
+  person("a", "Ann", "Hooli", "", { jobs: [jk("c1", "SRE", "Hooli")] }),             // a fit of 40 is under the minimum: no good fit
+  person("b", "Bob", "Stark", "", { jobs: [jk("c2", "SRE", "Stark", "applied")] }),  // applied: stays, whatever its score
+  person("c", "Cat", "Wayne", "", { jobs: [jk("c3", "SRE", "Wayne", "queued")] }),   // queued: stays
+  person("d", "Dan", "Pied Piper", "", { jobs: [jk("c4", "SRE", "Pied Piper")] }),   // a good fit
+  person("e", "Eve", "Gone", ""),                                                    // no job tracked at all: no good fit
+  person("f", "Fay", "Acme", "", { verdict: "use", jobs: [jk("c5", "SRE", "Acme")] }), // no good fit, but Fay is chosen to ask first: stays
+  person("g", "Gil", "Soylent", "", { jobs: [jk("c6", "SRE", "Soylent")] })] });     // exactly the minimum: a good fit
 const base = { q: "", sort: "name" };
-console.log(JSON.stringify({ quiet: qs.filter(refNoOpenings).map(c => c.name), all: names(refVisible(qs, base)),
-  hidden_on: names(refVisible(qs, { ...base, noOpen: true })), hidden: names(refHidden(qs, { ...base, noOpen: true })),
-  searched: names(refHidden(qs, { ...base, q: "hooli", noOpen: true })), other: names(refHidden(qs, { ...base, q: "wayne", noOpen: true })),
-  line: [refCount([], 5), refCount(refVisible(qs, base), 5, 2), refCount([], 1, 1)],
-  open: qs.map(c => c.sum.open) }));""")
+console.log(JSON.stringify({ quiet: qs.filter(refNoGoodFits).map(c => c.name), all: names(refVisible(qs, base)),
+  hidden_on: names(refVisible(qs, { ...base, noGood: true })), hidden: names(refHidden(qs, { ...base, noGood: true })),
+  searched: names(refHidden(qs, { ...base, q: "hooli", noGood: true })), other: names(refHidden(qs, { ...base, q: "wayne", noGood: true })),
+  line: [refCount([], 5), refCount(refVisible(qs, base), 7, 2), refCount([], 1, 1)],
+  good: qs.map(c => [c.name, c.sum.good]) }));""")
     assert sorted(out["quiet"]) == ["Gone", "Hooli"]
-    assert out["all"] == ["Gone", "Hooli", "Pied Piper", "Stark", "Wayne"]  # off: nothing is hidden
-    assert out["hidden_on"] == ["Pied Piper", "Stark", "Wayne"]  # on: the in-flight companies stay, closed postings or not
+    assert out["all"] == ["Acme", "Gone", "Hooli", "Pied Piper", "Soylent", "Stark", "Wayne"]  # off: nothing is hidden
+    assert out["hidden_on"] == ["Acme", "Pied Piper", "Soylent", "Stark", "Wayne"]  # on: in-flight and ask-first companies stay
     assert out["hidden"] == ["Gone", "Hooli"]
     assert out["searched"] == ["Hooli"] and out["other"] == []  # what a search matches that the filter hides; a kept company is not
-    assert out["line"] == ["0 of 5 companies · 0 people", "5 of 5 companies · 5 people (2 hidden: no openings)", "0 of 1 company · 0 people (1 hidden: no openings)"]
+    assert out["line"] == ["0 of 5 companies · 0 people", "7 of 7 companies · 7 people (2 hidden: no good fits)", "0 of 1 company · 0 people (1 hidden: no good fits)"]
 
 
 @node
@@ -429,7 +430,7 @@ def company_names(page):
 def test_a_card_is_a_company_with_its_good_fits_once_and_the_people_you_know_there(referrals_page):
     page = referrals_page
     initech = card(page, "Initech")
-    sync_api.expect(initech.locator(".ref-know")).to_have_text("5 people you know")  # Cy's "Initech Inc" is the same company
+    sync_api.expect(initech.locator(".ref-know")).to_have_text("5")  # Cy's "Initech Inc" is the same company; the chip is the icon and the count
     sync_api.expect(initech.locator(".ref-n")).to_have_text("6 good fits")  # 90 85 80 70, the applied 75 and the queued job
     sync_api.expect(initech.locator(".ref-job")).to_have_count(3)  # the best three, the rest "+ 3 more"
     assert [p.inner_text() for p in initech.locator(".ref-job .fitpill").all()] == ["90", "85", "80"]
@@ -445,7 +446,8 @@ def test_a_card_is_a_company_with_its_good_fits_once_and_the_people_you_know_the
     assert initech.locator(".ref-p .pp-sub").first.get_attribute("title") == "Staff Engineer"  # the whole title on hover
     globex = card(page, "Globex")
     sync_api.expect(globex.locator(".ref-job")).to_have_count(1)
-    sync_api.expect(globex.locator(".ref-know")).to_have_text("1 person you know")  # one reads as one
+    sync_api.expect(globex.locator(".ref-know")).to_have_text("1")
+    sync_api.expect(globex.locator(".ref-know")).to_have_attribute("aria-label", "1 person you know")  # one reads as one
     sync_api.expect(globex.locator(".ref-n")).to_have_text("1 good fit")
     sync_api.expect(globex.locator(".ref-of")).to_have_count(0)  # nothing else open there
     sync_api.expect(globex.get_by_role("button", name="See the good fit", exact=True)).to_be_visible()
@@ -722,6 +724,38 @@ def test_the_dialog_opens_on_good_fits_with_the_rest_a_tab_away_and_steps_betwee
     assert page.errors == []
 
 
+RIBBON_CLEAR = """(() => [...document.querySelectorAll('.card.ref')].map(c => {
+  const chip = c.querySelector('.ref-know').getBoundingClientRect(), name = c.querySelector('.ref-name').getBoundingClientRect();
+  const ribbon = c.querySelector('.ref-ribbon'), r = ribbon && ribbon.getBoundingClientRect(), card = c.getBoundingClientRect();
+  const apart = (a, b) => !b || a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom;
+  const row = c.querySelector('.ref-top').getBoundingClientRect();
+  return { chipRibbon: apart(chip, r), nameRibbon: apart(name, r), chipName: apart(chip, name), inCard: chip.right <= card.right && chip.right >= row.right - 24,
+    sameLine: Math.abs((chip.top + chip.bottom) / 2 - (name.top + name.bottom) / 2) < 3, oneRow: name.height < 30 && row.height < 80,
+    box: [chip.top, chip.bottom, name.top, name.bottom, r && r.bottom, row.height] };
+}))()"""
+
+
+def test_the_people_chip_is_the_icon_and_the_count_on_the_names_row_right_aligned_and_clear_of_the_stage_badge(page, watchlist):
+    people = "".join(f"{p},Lee,https://www.linkedin.com/in/example-{i},,{c},Engineer,01 Jan 2024\n" for i, (p, c) in enumerate(
+        [("Ada", "Amazon Web Services (AWS)"), ("Bea", "Amazon Web Services (AWS)"), ("Cal", "Hooli")]))
+    open_referrals(page, watchlist, connections=HEADER + people, globex=False,
+                   companies=(("Amazon Web Services (AWS)", [("Platform Engineer", 90, "applied")]), ("Hooli", [("Platform Engineer", 80, "new")])))
+    aws = card(page, "Amazon Web Services")
+    chip = aws.locator(".ref-know")
+    sync_api.expect(chip).to_have_text("2")
+    sync_api.expect(chip).to_have_attribute("aria-label", "2 people you know")
+    sync_api.expect(chip).to_have_attribute("title", "2 people you know at Amazon Web Services (AWS): open the list")
+    assert chip.locator("svg").count() == 1 and card(page, "Hooli").locator(".ref-know").inner_text() == "1"
+    assert aws.locator(".ref-sub, .ref-id").count() == 0  # no second row under the name
+    for width in (1400, 390, 320):
+        page.set_viewport_size({"width": width, "height": 800})
+        for got in page.evaluate(RIBBON_CLEAR):  # one row: the chip at the far right, the name cut short, the stage badge above both
+            assert all(v for k, v in got.items() if k != "box"), (width, got)
+    chip.click()
+    sync_api.expect(page.locator(".ref-dialog .ref-tab.on")).to_have_text("Overview")
+    assert page.errors == []
+
+
 def test_the_pill_opens_the_overview_and_the_see_button_the_good_fits(referrals_page):
     page = referrals_page
     dialog = page.locator(".ref-dialog")
@@ -885,7 +919,7 @@ def test_the_search_finds_a_person_by_name_company_or_title_keeps_the_card_and_s
     sync_api.expect(page.locator(".card.ref")).to_have_count(1)
     sync_api.expect(card(page, "Initech").locator(".ref-p")).to_have_count(1)
     sync_api.expect(row(page, "Ana Li")).to_be_visible()
-    sync_api.expect(card(page, "Initech").locator(".ref-know")).to_have_text("5 people you know")  # the company's own count stands
+    sync_api.expect(card(page, "Initech").locator(".ref-know")).to_have_text("5")  # the company's own count stands
     sync_api.expect(card(page, "Initech").get_by_role("button", name="See the 5 people", exact=True)).to_be_visible()  # no "+ more": the one shows
     sync_api.expect(total).to_have_text("1 of 3 companies · 1 person")
     box.fill("recruiter")
@@ -952,7 +986,7 @@ def test_with_connections_but_nobody_at_a_tracked_company_it_says_so_and_where_t
 
 def test_with_no_fit_minimum_the_default_is_used_and_said_with_where_to_change_it(page, watchlist):
     open_referrals(page, watchlist, min_fit=None)
-    hint = page.locator(".ref-nofit")
+    hint = page.locator(".ref-nomin")
     sync_api.expect(hint).to_contain_text("You have not set a Fit minimum")
     sync_api.expect(hint).to_contain_text("score of 60")
     sync_api.expect(hint.get_by_role("link", name="Settings → Your search")).to_have_attribute("href", "#settings/search")
@@ -963,7 +997,7 @@ def test_with_no_fit_minimum_the_default_is_used_and_said_with_where_to_change_i
 
 
 def test_with_a_fit_minimum_set_there_is_no_hint_and_the_tooltips_name_it(referrals_page):
-    sync_api.expect(referrals_page.locator(".ref-nofit")).to_have_count(0)
+    sync_api.expect(referrals_page.locator(".ref-nomin")).to_have_count(0)
     assert "your Fit minimum" in card(referrals_page, "Initech").locator(".ref-n").get_attribute("title")
 
 
@@ -1172,49 +1206,31 @@ def test_a_company_with_many_people_lists_them_a_hundred_at_a_time_in_its_dialog
     assert page.errors == []
 
 
-# -- Hide companies with no openings -----------------------------------------------------------------------------------
-
-def closed_postings(page, companies):
-    """Have /api/referrals say every posting at these companies is closed (the page is told by the server: the details'
-    `closed`), so a company with no open posting can be on the page, and reload the tab."""
-    def handler(route):
-        response = route.fetch()
-        data = response.json()
-        names = {n.lower() for n in companies}
-        for person in data["people"]:
-            if any(n in person["company"].lower() for n in names):
-                for job in person["jobs"]:
-                    data["details"][job["key"]]["closed"] = True
-        route.fulfill(response=response, json=data)
-    page.route("**/api/referrals", handler)
-    page.reload()
-    page.wait_for_load_state("networkidle")
-    sync_api.expect(page.locator(".card.ref").first).to_be_visible()
-
+# -- Hide companies with no good fits ----------------------------------------------------------------------------------
 
 @pytest.fixture
 def quiet_page(page, watchlist):
-    """Six companies: Initech (an applied job, its postings closed), Globex (a queued one, closed) and Umbrella, Hooli and
-    Stark (open jobs gone closed), and Wayne (open)."""
-    sparse = tuple((name, [("Platform Engineer", 85, "new")]) for name in ("Hooli", "Stark", "Wayne"))
-    open_referrals(page, watchlist, connections=CONNECTIONS + EXTRA, companies=(("Initech", INITECH), ("Umbrella", UMBRELLA), *sparse))
-    closed_postings(page, ["Initech", "Globex", "Umbrella", "Hooli", "Stark"])
+    """Six companies: Initech (good fits, one applied), Globex (a queued job), Wayne (a fit of 85) and Umbrella, Hooli and Stark
+    (fits of 30, under the minimum 70: "No good fit yet")."""
+    low = tuple((name, [("Platform Engineer", 30, "new")]) for name in ("Hooli", "Stark"))
+    open_referrals(page, watchlist, connections=CONNECTIONS + EXTRA,
+                   companies=(("Initech", INITECH), ("Umbrella", UMBRELLA), *low, ("Wayne", [("Platform Engineer", 85, "new")])))
     return page
 
 
-def test_a_prominent_chip_hides_companies_with_no_openings_but_never_one_with_an_application_in_flight(quiet_page):
+def test_a_prominent_chip_hides_companies_with_no_good_fits_but_never_one_with_an_application_in_flight(quiet_page):
     page = quiet_page
-    chip = page.get_by_role("button", name="Hide companies with no openings")
+    chip = page.get_by_role("button", name="Hide companies with no good fits")
     sync_api.expect(chip).to_have_attribute("aria-pressed", "false")  # off by default
     sync_api.expect(page.locator(".card.ref")).to_have_count(6)
     # many have none: the page offers to hide them in one line
-    sync_api.expect(page.locator(".ref-quiet")).to_contain_text("3 companies have no openings: hide them?")
+    sync_api.expect(page.locator(".ref-quiet")).to_contain_text("3 companies have no good fits: hide them?")
     chip.focus()
     page.keyboard.press("Space")  # keyboard operable
     sync_api.expect(chip).to_have_attribute("aria-pressed", "true")
-    # Initech (applied) and Globex (queued) stay although every posting there closed; Wayne is open
+    # Globex's one job is queued (unscored) and Initech has an applied job: they stay; Wayne has a good fit; the others read "No good fit yet"
     assert sorted(n.split()[0] for n in company_names(page)) == ["Globex", "Initech", "Wayne"]
-    sync_api.expect(page.locator(".ref-total")).to_have_text("3 of 6 companies · 7 people (3 hidden: no openings)")
+    sync_api.expect(page.locator(".ref-total")).to_have_text("3 of 6 companies · 7 people (3 hidden: no good fits)")
     sync_api.expect(page.locator(".ref-quiet")).to_have_count(0)
     assert chip.locator("svg").count() == 1  # the eye-off icon
     page.keyboard.press("Enter")
@@ -1227,39 +1243,47 @@ def test_the_choice_is_remembered_like_the_other_referrals_settings_and_the_hint
     page = quiet_page
     page.locator(".ref-quiet").get_by_role("button", name="Hide them").click()
     sync_api.expect(page.locator(".card.ref")).to_have_count(3)
-    assert page.evaluate("localStorage.getItem('jobwatch.referrals.noopen')") == "1"
+    assert page.evaluate("localStorage.getItem('jobwatch.referrals.nogood')") == "1"
     page.reload()
-    sync_api.expect(page.get_by_role("button", name="Hide companies with no openings")).to_have_attribute("aria-pressed", "true")
+    sync_api.expect(page.get_by_role("button", name="Hide companies with no good fits")).to_have_attribute("aria-pressed", "true")
     sync_api.expect(page.locator(".card.ref")).to_have_count(3)
-    page.get_by_role("button", name="Hide companies with no openings").click()
-    assert page.evaluate("localStorage.getItem('jobwatch.referrals.noopen')") == ""
+    page.get_by_role("button", name="Hide companies with no good fits").click()
+    assert page.evaluate("localStorage.getItem('jobwatch.referrals.nogood')") == ""
     sync_api.expect(page.locator(".card.ref")).to_have_count(6)
+
+
+def test_an_old_remembered_on_for_no_openings_carries_over_to_the_new_key(quiet_page):
+    page = quiet_page
+    page.evaluate("localStorage.setItem('jobwatch.referrals.noopen', '1')")
+    page.reload()
+    sync_api.expect(page.get_by_role("button", name="Hide companies with no good fits")).to_have_attribute("aria-pressed", "true")
+    sync_api.expect(page.locator(".card.ref")).to_have_count(3)
+    assert page.evaluate("[localStorage.getItem('jobwatch.referrals.nogood'), localStorage.getItem('jobwatch.referrals.noopen')]") == ["1", ""]
 
 
 def test_a_search_that_matches_a_hidden_company_says_so_and_one_click_shows_it(quiet_page):
     page = quiet_page
-    page.get_by_role("button", name="Hide companies with no openings").click()
+    page.get_by_role("button", name="Hide companies with no good fits").click()
     box = page.get_by_label("Search people by name, company or title")
     box.fill("hooli")
     sync_api.expect(page.locator(".card.ref")).to_have_count(0)
-    sync_api.expect(page.locator(".ref-hidden")).to_contain_text("1 match hidden by 'no openings'")
+    sync_api.expect(page.locator(".ref-hidden")).to_contain_text("1 match hidden by 'no good fits'")
     page.locator(".ref-hidden").get_by_role("button", name="Show it").click()
     sync_api.expect(page.locator(".card.ref")).to_have_count(1)
-    sync_api.expect(page.get_by_role("button", name="Hide companies with no openings")).to_have_attribute("aria-pressed", "false")
+    sync_api.expect(page.get_by_role("button", name="Hide companies with no good fits")).to_have_attribute("aria-pressed", "false")
     sync_api.expect(page.locator(".ref-hidden")).to_have_count(0)
     box.fill("wayne")  # a company the filter keeps is not hidden by it: no hint
-    page.get_by_role("button", name="Hide companies with no openings").click()
+    page.get_by_role("button", name="Hide companies with no good fits").click()
     sync_api.expect(page.locator(".card.ref")).to_have_count(1)
     sync_api.expect(page.locator(".ref-hidden")).to_have_count(0)
 
 
 def test_when_the_filter_hides_every_company_the_page_says_so_and_offers_them_back(page, watchlist):
     open_referrals(page, watchlist, connections=CONNECTIONS + EXTRA, globex=False,
-                   companies=tuple((n, [("Platform Engineer", 85, "new")]) for n in ("Hooli", "Stark", "Wayne")))
-    closed_postings(page, ["Hooli", "Stark", "Wayne"])
-    page.get_by_role("button", name="Hide companies with no openings").click()
-    sync_api.expect(page.locator(".ref-grid .empty")).to_contain_text("Every company here has no openings (3 hidden).")
-    sync_api.expect(page.locator(".ref-total")).to_have_text("0 of 3 companies · 0 people (3 hidden: no openings)")
+                   companies=tuple((n, [("Platform Engineer", 30, "new")]) for n in ("Hooli", "Stark", "Wayne")))
+    page.get_by_role("button", name="Hide companies with no good fits").click()
+    sync_api.expect(page.locator(".ref-grid .empty")).to_contain_text("Every company here has no good fits (3 hidden).")
+    sync_api.expect(page.locator(".ref-total")).to_have_text("0 of 3 companies · 0 people (3 hidden: no good fits)")
     page.locator(".ref-grid").get_by_role("button", name="Show them").click()
     sync_api.expect(page.locator(".card.ref")).to_have_count(3)
 
@@ -1268,11 +1292,10 @@ def test_the_filter_works_with_the_paging(page, watchlist):
     n = 60
     people = "".join(f"Pat{i:03d},Lee{i:03d},https://www.linkedin.com/in/example-{i},,Company {i:03d},Engineer,01 Jan 2024\n" for i in range(n))
     open_referrals(page, watchlist, connections=HEADER + people, globex=False,
-                   companies=tuple((f"Company {i:03d}", [("Platform Engineer", 70, "new")]) for i in range(n)))
-    closed_postings(page, [f"Company {i:03d}" for i in range(0, n, 2)])  # every other company has nothing open
+                   companies=tuple((f"Company {i:03d}", [("Platform Engineer", 30 if i % 2 == 0 else 70, "new")]) for i in range(n)))  # every other one has no good fit
     sync_api.expect(page.locator(".card.ref")).to_have_count(24)
-    page.get_by_role("button", name="Hide companies with no openings").click()
-    sync_api.expect(page.locator(".ref-total")).to_have_text("30 of 60 companies · 30 people (30 hidden: no openings)")
+    page.get_by_role("button", name="Hide companies with no good fits").click()
+    sync_api.expect(page.locator(".ref-total")).to_have_text("30 of 60 companies · 30 people (30 hidden: no good fits)")
     sync_api.expect(page.locator(".card.ref")).to_have_count(24)  # a page of the thirty that are left
     page.get_by_role("button", name=re.compile("Show 6 more companies")).click()
     sync_api.expect(page.locator(".card.ref")).to_have_count(30)

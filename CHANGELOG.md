@@ -31,6 +31,8 @@
   Display → "Count your stories toward must-haves" (`display.story_fit`, off at first) shows the fit with your
   stories beside the score ("68 · 74 with stories") and lets the fit minimum and Today's Fit chip compare it.
   Scores are never changed or made again. See [Your stories and the gaps](docs/guide/fit-scores.md#your-stories-and-the-gaps).
+- A Referrals card's people pill is a small chip with the people icon and the count, on the company name's row at the
+  right (the name is cut short, the stage badge stays clear), with the words in its label and tooltip.
 - The Referrals tab shows what suits you, one card per company, and explains itself to someone starting out.
   With no LinkedIn data it says what Referrals is (who could refer you to a job you track), how to get people
   here (LinkedIn's "Get a copy of your data", then the upload in Settings > People & pay, with links), and that your
@@ -57,11 +59,11 @@
   the closest first, then "+ 8 more people". A card is as tall as its content needs and the cards in a row match the
   tallest, so a row of small companies stays short: a company with no good fit is just its header strip and its people,
   with no empty block or sentence. Names and titles are cut with an ellipsis, the whole of them on hover.
-- A "Hide companies with no openings" chip (eye-off icon, remembered in the browser, off at first) hides the companies
-  whose postings are all closed or gone; one with an application in flight (queued, applied, screening, interviewing)
-  is never hidden. The count says "(3 hidden: no openings)", a search matching a hidden company offers "Show it", and
-  when over a quarter of the companies have none the tab offers to hide them. /api/referrals marks each job's posting
-  closed or not. The page's scrollbars are the themed thick ones throughout (a test checks no Referrals scroller
+- A "Hide companies with no good fits" chip (eye-off icon, remembered in the browser, off at first; an earlier "no
+  openings" choice carries over) hides the companies whose card reads "No good fit yet"; one with an application in
+  flight (queued, applied, screening, interviewing) or a person you set to Ask first is never hidden. The count says
+  "(3 hidden: no good fits)", a search matching a hidden company offers "Show it", and when over a quarter of the
+  companies have none the tab offers to hide them. /api/referrals marks each job's posting closed or not. The page's scrollbars are the themed thick ones throughout (a test checks no Referrals scroller
   overrides them).
 - The Company tab has a "Careers ↗" chip in its header: the company's job board or careers page in a new tab (the
   board you watch, else the company's own site its jobs link to, never LinkedIn's or another job site's, else the

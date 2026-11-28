@@ -97,12 +97,12 @@ word order, ignoring accents; the company's card stays with just the people who 
 Best fit first, Most good fits, Most people you know, Last messaged or A-Z; **Ask first** shows only the people you
 set to Ask first and **Working a job** only companies where you queued or applied. A **Not suggested (3)** chip
 appears when someone is set to Skip: it opens that section at the foot of the page and goes to it. A search finds
-skipped people too: the section opens by itself with them, each with the Skip pill. **Hide companies with no
-openings** (the eye-off chip, remembered in your browser, off at first) hides the companies none of whose postings is
-open any more; one you have an application in flight at (queued, applied, screening, interviewing) is never hidden,
-even when its posting closed. Nothing disappears silently: the count reads "3 of 6 companies · 7 people (3 hidden: no
-openings)", a search that matches a hidden company says "1 match hidden by 'no openings'" with a **Show it** button, and
-when more than a quarter of your companies have no openings the tab offers to hide them. A long list is not rendered at
+skipped people too: the section opens by itself with them, each with the Skip pill. **Hide companies with no good
+fits** (the eye-off chip, remembered in your browser, off at first) hides the companies whose card reads "No good fit
+yet" (the Fit minimum decides); one you have an application in flight at (queued, applied, screening, interviewing) or
+a person you set to Ask first at is never hidden. Nothing disappears silently: the count reads "3 of 6 companies · 7
+people (3 hidden: no good fits)", a search that matches a hidden company says "1 match hidden by 'no good fits'" with a
+**Show it** button, and when more than a quarter of your companies have no good fits the tab offers to hide them. A long list is not rendered at
 once: 24 cards at a time with a "Show 24 more companies" button (hundreds of companies stay quick, and a search always
 runs over all of them), and a dialog lists 100 rows at a time.
 

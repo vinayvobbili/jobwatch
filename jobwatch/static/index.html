@@ -556,7 +556,6 @@ body:has(.ref-grid) { background-color: var(--ref-page);
 .ref-ribbon { position: absolute; top: 0; right: 14px; z-index: 1; padding: 3px 10px 4px; border-radius: 0 0 10px 10px; color: #fff; font-size: 11.5px;
   font-weight: 800; letter-spacing: .03em; background: var(--rb, #0a7a56); box-shadow: 0 5px 10px -5px var(--rb, #0a7a56); }
 .card.ref.live-queued .ref-ribbon { --rb: #0a7a56; } .card.ref.live-working .ref-ribbon { --rb: #b45309; }
-.card.ref.live .ref-top { padding-right: 100px; }
 .ref-top { display: flex; gap: 12px; align-items: center; margin: 0 -16px 0 -18px; padding: 15px 16px 12px 18px;
   background: linear-gradient(100deg, hsl(var(--h) 80% 55% / var(--ref-band)), hsl(var(--h) 80% 55% / 0) 88%);
   border-bottom: 1px solid color-mix(in srgb, var(--edge) 28%, transparent); }
@@ -566,18 +565,17 @@ body:has(.ref-grid) { background-color: var(--ref-page);
 .ref-top .mono, .ref-dialog .rk-head .mono { display: grid; }  /* a phone hides the other lists' logos; here the logo is the card's face */
 .ref-top .mono { flex: none; width: 46px; height: 46px; border-radius: 14px; font-size: 16px; box-shadow: 0 6px 14px -8px hsl(var(--h) 80% 40%); }
 .ref-top { min-height: 66px; flex: none; box-sizing: border-box; padding-top: 11px; padding-bottom: 9px; overflow: hidden; }
+.card.ref.live .ref-top { padding-top: 16px; padding-bottom: 4px; }  /* the row sits below the stage ribbon, so the name and the people chip never touch it */
 .ref-logo { flex: none; display: grid; border: 0; padding: 0; background: none; border-radius: 14px; text-decoration: none; transition: transform .15s, box-shadow .15s; }
 a.ref-logo { cursor: pointer; } a.ref-logo:hover { transform: scale(1.06); box-shadow: 0 8px 18px -8px hsl(var(--h) 80% 40%); }
-.ref-id { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.ref-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 750; letter-spacing: -.01em;
+.ref-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 750; letter-spacing: -.01em;
   color: var(--text); text-decoration: none; cursor: pointer; }
 .ref-name:hover { text-decoration: underline; text-decoration-color: var(--ac); text-underline-offset: 3px; }
-.ref-sub { max-width: 100%; display: flex; align-items: center; gap: 6px; min-width: 0; }
 /* the Company tab's "Careers ↗" chip, beside the company's name */
 .co-careers { flex: none; white-space: nowrap; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 650; text-decoration: none; cursor: pointer; align-self: center;
   color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); background: transparent; transition: background .15s, color .15s; }
 .co-careers:hover, .co-careers:focus-visible { color: #fff; background: var(--grad); border-color: transparent; }
-.ref-know { display: inline-flex; align-items: center; gap: 5px; padding: 1px 10px 1px 8px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
+.ref-know { flex: none; margin-left: auto; line-height: 18px; display: inline-flex; align-items: center; gap: 4px; padding: 0 8px 0 6px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
   color: var(--chip-text); background: var(--chip); border: 1px solid color-mix(in srgb, hsl(var(--h) 60% 50%) 35%, transparent); }
 .ref-know:hover { border-color: var(--ac); color: var(--ac); }
 /* the people at the company: four rows of one height, then a soft line; each a grid of three lines: name and buttons, title,
@@ -692,7 +690,7 @@ a.ref-logo { cursor: pointer; } a.ref-logo:hover { transform: scale(1.06); box-s
 .empty.ref-first a { color: var(--accent); font-weight: 650; }
 .ref-nofit { margin: 0 0 12px; color: var(--muted); background: color-mix(in srgb, var(--accent) 7%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .ref-nofit a { color: var(--accent); font-weight: 650; }
-.ref-noopen { display: inline-flex; align-items: center; gap: 6px; }
+.ref-nogood { display: inline-flex; align-items: center; gap: 6px; }
 .ref-hint .ref-showmore { padding: 2px 12px; margin-left: 8px; font-size: 13px; }
 .ref-morehost { display: flex; justify-content: center; } .ref-morehost:not(:empty) { margin: 16px 0 6px; }
 .ref-showmore { padding: 7px 22px; font-size: 14px; color: var(--accent); }
@@ -8056,8 +8054,14 @@ const REF_ROWS = 100;
 // The furthest a company's jobs have got comes first.
 const REF_FURTHEST = ["offer", "interviewing", "screening", "applied", "queued"];
 const REF_SORTS = { fit: "Best fit first", count: "Most good fits", people: "Most people you know", recent: "Last messaged", name: "A-Z" };
+// "Hide companies with no good fits" is remembered as referrals.nogood; it was "Hide companies with no openings" (referrals.noopen):
+// an old "on" carries over to the new key, and the old one is cleared.
+function refNoGoodRemembered() {
+  if (remembered("referrals.noopen", "")) { remember("referrals.nogood", "1"); remember("referrals.noopen", ""); }
+  return remembered("referrals.nogood", "") === "1";
+}
 const refView = { q: remembered("referrals.q", ""), sort: remembered("referrals.sort", "fit"), ask: false, working: false, foldOpen: false,
-  noOpen: remembered("referrals.noopen", "") === "1", limit: REF_PAGE, leftLimit: REF_ROWS };
+  noGood: refNoGoodRemembered(), limit: REF_PAGE, leftLimit: REF_ROWS };
 if (!REF_SORTS[refView.sort]) refView.sort = "fit";
 const refButtons = new Map();  // company key + ":jobs" or ":people" -> that button now on the page, for focus to return to
 let refSearchBox = null;       // the page's search box while the tab is open (the "/" key focuses it)
@@ -8180,7 +8184,7 @@ function refVisible(companies, view) {
   const tokens = searchTokens(view.q), keep = [];
   for (const c of companies) {
     if (view.working && !c.sum.stage) continue;
-    if (view.noOpen && refNoOpenings(c)) continue;
+    if (view.noGood && refNoGoodFits(c)) continue;
     const shown = c.people.filter(p => (!view.ask || p.verdict === "use") && personMatches(p, tokens, c.name));
     if (shown.length) keep.push({ ...c, shown });
   }
@@ -8189,16 +8193,17 @@ function refVisible(companies, view) {
     recent: (a, b) => b.last.localeCompare(a.last) || fit(a, b), name: (a, b) => a.name.localeCompare(b.name) }[view.sort];
   return by ? keep.sort(by) : keep;
 }
-// A company with no openings: none of its tracked postings is open. One you have an application in flight at (queued, applied,
-// screening, interviewing, offer) never is, even when its posting closed.
-const refNoOpenings = c => c.sum.open === 0 && !c.sum.stage;
-// The companies the "Hide companies with no openings" filter alone is hiding now: those that pass the search and the other filters.
-const refHidden = (companies, view) => refVisible(companies, { ...view, noOpen: false }).filter(refNoOpenings);
+// A company with no good fits: the card would read "No good fit yet" (the same count as the card's pill and the Good fits tab,
+// so the Fit minimum decides). One you have an application in flight at (queued, applied, screening, interviewing, offer) never
+// is, nor one with a person you set to Ask first.
+const refNoGoodFits = c => c.sum.good === 0 && !c.sum.stage && !c.people.some(p => p.verdict === "use");
+// The companies the "Hide companies with no good fits" filter alone is hiding now: those that pass the search and the other filters.
+const refHidden = (companies, view) => refVisible(companies, { ...view, noGood: false }).filter(refNoGoodFits);
 // "12 of 31 companies · 73 people": the companies on show of all of them, and the people on those cards; with hidden companies
-// "(4 hidden: no openings)", so none goes without a word.
+// "(4 hidden: no good fits)", so none goes without a word.
 function refCount(shown, total, hidden = 0) {
   return `${shown.length} of ${total} ${total === 1 ? "company" : "companies"} · ${plural(shown.reduce((n, c) => n + c.shown.length, 0), "person", "people")}` +
-    (hidden ? ` (${hidden} hidden: no openings)` : "");
+    (hidden ? ` (${hidden} hidden: no good fits)` : "");
 }
 // A card's words about its people: "3 people you know", past the first four "+ 2 more people", else "See the 3 people".
 function refPeopleWords(c) {
@@ -8534,11 +8539,10 @@ function refCard(c, ctx, i) {
     stage ? h("span", { class: "ref-ribbon", title: `Your furthest job here: ${(REF_STAGES[stage] || STAGE_NAMES[stage] || stage).toLowerCase()}` }, REF_STAGES[stage] || STAGE_NAMES[stage] || stage) : null,
     h("div", { class: "ref-top" },
       h("a", { class: "ref-logo", ...toCompany, tabindex: "-1" }, monogram(c.name)),
-      h("div", { class: "ref-id" },
-        h("a", { class: "ref-name", ...toCompany }, marked(c.name, tokens)),
-        h("div", { class: "ref-sub" },
-          reg("overview", h("button", { class: "ref-know", type: "button", "aria-haspopup": "dialog",
-            title: `${c.name}: the overview, the good fits and the people you know` }, icon("users", 13), people.known))))),
+      h("a", { class: "ref-name", ...toCompany }, marked(c.name, tokens)),
+      // just the people icon and the count, at the right of the name's row; the words are the label and the tooltip
+      reg("overview", h("button", { class: "ref-know", type: "button", "aria-haspopup": "dialog", "aria-label": people.known,
+        title: `${people.known} at ${c.name}: open the list` }, icon("users", 12), h("span", { "aria-hidden": "true" }, String(c.people.length))))),
     jobs, list, foot);
 }
 // What a first-time person sees with no LinkedIn data yet: what Referrals is, how to get the data in, what happens next.
@@ -8596,21 +8600,21 @@ async function renderReferrals() {
     shown = refVisible(companies, refView);
     const ctx = { tokens, rate, navigable };
     // a long list shows REF_PAGE cards at a time (the cards are equal in height, so more is a button, not a long scroll to build)
-    const hidden = refView.noOpen ? refHidden(companies, refView) : [], quiet = companies.filter(refNoOpenings).length;
+    const hidden = refView.noGood ? refHidden(companies, refView) : [], quiet = companies.filter(refNoGoodFits).length;
     fill(grid, shown.length ? shown.slice(0, refView.limit).map((c, i) => refCard(c, ctx, i))
       : !companies.length ? refNoCompany()
-      : hidden.length && !refView.q.trim() ? emptyState(`Every company here has no openings (${hidden.length} hidden).`,
-        h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoOpen(false) }, "Show them"))
+      : hidden.length && !refView.q.trim() ? emptyState(`Every company here has no good fits (${hidden.length} hidden).`,
+        h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoGood(false) }, "Show them"))
       : emptyState(refView.q.trim() ? (left.some(p => personMatches(p, tokens)) ? `No company card matches '${refView.q.trim()}'; the people it finds are under Not suggested below.`
         : `No one matches '${refView.q.trim()}'`) : "No one matches these filters."));
     // what the filter is doing, in words: a search that matches a company it hides says so; many quiet companies offer to hide them
     fill(noteHost,
       refView.q.trim() && hidden.length ? h("div", { class: "ref-hint ref-nofit ref-hidden" },
-        `${plural(hidden.length, "match", "matches")} hidden by 'no openings'. `,
-        h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoOpen(false) }, hidden.length === 1 ? "Show it" : "Show them")) : null,
-      !refView.noOpen && quiet && quiet / companies.length > .25 ? h("div", { class: "ref-hint ref-nofit ref-quiet" },
-        `${plural(quiet, "company", "companies")} ${quiet === 1 ? "has" : "have"} no openings: hide them? `,
-        h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoOpen(true) }, "Hide them")) : null);
+        `${plural(hidden.length, "match", "matches")} hidden by 'no good fits'. `,
+        h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoGood(false) }, hidden.length === 1 ? "Show it" : "Show them")) : null,
+      !refView.noGood && quiet && quiet / companies.length > .25 ? h("div", { class: "ref-hint ref-nofit ref-quiet" },
+        `${plural(quiet, "company", "companies")} ${quiet === 1 ? "has" : "have"} no good fits: hide them? `,
+        h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoGood(true) }, "Hide them")) : null);
     fill(moreHost, shown.length > refView.limit ? h("button", { class: "btn ref-showmore", type: "button",
       onclick: () => { refView.limit += REF_PAGE; draw(); } }, `Show ${Math.min(REF_PAGE, shown.length - refView.limit)} more companies (${shown.length - refView.limit} not shown)`) : null);
     grid.classList.toggle("again", drawn);
@@ -8646,29 +8650,29 @@ async function renderReferrals() {
       onclick: () => { refView[key] = !refView[key]; b.classList.toggle("on", refView[key]); b.setAttribute("aria-pressed", String(refView[key])); restart(); draw(); } }, label);
     return b;
   };
-  // "Hide companies with no openings": remembered in this browser; a company you have an application in flight at is never hidden
-  const noOpenChip = h("button", { class: "chip toggle ref-noopen", type: "button", "aria-pressed": "false",
-    title: "Hide the companies none of whose postings is open. One you queued or applied to a job at stays, even when its posting closed." },
-    icon("eyeoff", 14), "Hide companies with no openings");
-  const setNoOpen = v => {
-    refView.noOpen = v; remember("referrals.noopen", v ? "1" : "");
-    noOpenChip.classList.toggle("on", v); noOpenChip.setAttribute("aria-pressed", String(v));
+  // "Hide companies with no good fits": remembered in this browser; a company with an application in flight or a person you set to Ask first is never hidden
+  const noGoodChip = h("button", { class: "chip toggle ref-nogood", type: "button", "aria-pressed": "false",
+    title: "Hide the companies whose card reads 'No good fit yet'. One you queued or applied to a job at, or with a person you set to Ask first, stays." },
+    icon("eyeoff", 14), "Hide companies with no good fits");
+  const setNoGood = v => {
+    refView.noGood = v; remember("referrals.nogood", v ? "1" : "");
+    noGoodChip.classList.toggle("on", v); noGoodChip.setAttribute("aria-pressed", String(v));
     restart(); draw();
   };
   // "Not suggested (N)": the way back to the people set to Skip (hidden when there are none): opens that section and goes to it
   const notSugChip = left.length ? h("button", { class: "chip toggle ref-notsug", type: "button", title: "People you chose Skip for: they wait here, and one click on a pill brings them back",
     onclick: () => { refView.foldOpen = true; draw(); const f = foldHost.querySelector("summary"); f?.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" }); f?.focus(); } },
     `Not suggested (${left.length})`) : null;
-  noOpenChip.onclick = () => setNoOpen(!refView.noOpen);
-  noOpenChip.classList.toggle("on", refView.noOpen); noOpenChip.setAttribute("aria-pressed", String(refView.noOpen));
+  noGoodChip.onclick = () => setNoGood(!refView.noGood);
+  noGoodChip.classList.toggle("on", refView.noGood); noGoodChip.setAttribute("aria-pressed", String(refView.noGood));
   draw();
   put(head, legend,
     companies.length || left.length ? h("div", { class: "ref-bar" },
       h("div", { class: "ref-search" }, icon("search", 15), input, h("kbd", { title: "Press / to search" }, "/"), clear),
       sort, toggle("ask", "Ask first", "Only the people you set to Ask first"),
-      toggle("working", "Working a job", "Only the companies where you queued or applied to a job"), noOpenChip, notSugChip, total) : null,
+      toggle("working", "Working a job", "Only the companies where you queued or applied to a job"), noGoodChip, notSugChip, total) : null,
     noteHost,
-    d.min_fit_set === false && companies.length ? h("div", { class: "ref-hint ref-nofit" },
+    d.min_fit_set === false && companies.length ? h("div", { class: "ref-hint ref-nofit ref-nomin" },
       `You have not set a Fit minimum, so a job counts as a good fit from a score of ${d.min_fit} (the default). Set your own in `,
       h("a", { href: "#settings/search" }, "Settings → Your search"), ".") : null,
     grid, moreHost, foldHost);
