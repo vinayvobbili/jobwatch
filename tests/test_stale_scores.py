@@ -274,6 +274,7 @@ def test_old_scores_can_be_kept_as_current(env):
     store.save_score(INITECH, "other.md:000000000000:scorer-11111111", fit(70))  # another resume: not kept
     assert store.keep_old_scores(rid) == (1, "11111111")
     assert store.score(ACME, rid)["score"] == 90 and store.score(ACME, rid)["kept_from"].endswith("scorer-11111111")
+    assert {r["key"]: r["resume"] for r in store.newest_scores()}[ACME] == rid  # the kept copy wins its source's tie
     assert store.score(GLOBEX, rid)["score"] == 70
     assert [e.job.key for e in watch.unscored(cfg, store) if e.job.key in (ACME, INITECH)] == []
     assert store.keep_old_scores(rid) == (0, "11111111")             # nothing more to keep

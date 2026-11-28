@@ -1443,9 +1443,9 @@ class Store:
     def score(self, key: str, resume: str) -> dict | None:
         """The job's newest fit score, whatever resume made it; stale (see scorestate.flag) when it was made under
         an older resume than `resume` or marked. A new resume doesn't hide it: scoring it again is a decision (see
-        scorestate)."""
+        scorestate). A kept score has its source's day: of the two, the one saved later (the kept one) is the newest."""
         row = self.db.execute(f"SELECT resume, result FROM scores WHERE key=? AND {_SCORED} "
-                              "ORDER BY scored_at DESC LIMIT 1", (key,)).fetchone()
+                              "ORDER BY scored_at DESC, rowid DESC LIMIT 1", (key,)).fetchone()
         if not row:
             return None
         fit = scorestate.flag(reconcile(json.loads(row["result"]), self.education), row["resume"],
@@ -1487,9 +1487,11 @@ class Store:
 
     def newest_scores(self) -> list[sqlite3.Row]:
         """Per job with a score, its newest: key, resume (the id it was made under), result (JSON), score and
-        scored_at."""
-        return self.db.execute(f"SELECT key, resume, result, json_extract(result, '$.score') AS score, "
-                               f"MAX(scored_at) AS scored_at FROM scores WHERE {_SCORED} GROUP BY key").fetchall()
+        scored_at. On a tie of day (a kept score, see score) the one saved later."""
+        return self.db.execute(
+            f"SELECT key, resume, result, json_extract(result, '$.score') AS score, scored_at FROM ("
+            f"SELECT *, ROW_NUMBER() OVER (PARTITION BY key ORDER BY scored_at DESC, rowid DESC) AS n "
+            f"FROM scores WHERE {_SCORED}) WHERE n=1").fetchall()
 
     def drop_incomplete_scores(self, resume: str) -> list[str]:
         """Remove this resume's current scores whose model left requirements unjudged (see score.unjudged), saved
