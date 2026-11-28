@@ -293,7 +293,8 @@ def test_no_busy_state_is_left_without_its_clock():
     """The lint for the next busy state someone adds: a spinner word set as plain text has no seconds."""
     word = (r'"(?:Saving|Loading|Thinking|Asking|Uploading|Looking|Starting|Reading|Scoring|Checking|Preparing|Drafting'
             r'|Transcribing)[^"]*…"')
-    ticking = ("buttonBusy", "busyNote", "loadingNote", "spinnerClock")
+    # send( is Add the posting's one call, which puts its word through buttonBusy
+    ticking = ("buttonBusy", "busyNote", "loadingNote", "spinnerClock", "send(")
     loose = [line.strip() for line in PAGE.splitlines()
              if re.search(rf"(?:textContent\s*=\s*|,\s*){word}", line) and not any(t in line for t in ticking)]
     assert loose == []

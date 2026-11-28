@@ -1194,8 +1194,6 @@ input[type=url]:focus { outline: none; border-color: var(--accent); box-shadow: 
   border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); background: color-mix(in srgb, var(--bad) 9%, transparent); }
 .post-msg[data-tone=ok] { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent);
   background: color-mix(in srgb, var(--good) 9%, transparent); }
-.post-spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -2px;
-  border: 2px solid color-mix(in srgb, currentColor 35%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; }
 .sent-chip { display: inline-flex; gap: 5px; align-items: center; font-size: 12.5px; color: var(--muted); border: 0;
   background: none; cursor: pointer; padding: 3px 8px; border-radius: 8px; font-family: inherit; }
 .sent-chip:hover { background: var(--chip); color: var(--text); }
@@ -2592,7 +2590,7 @@ const loadingNote = (text = "Loading…", opts = {}) => h("div", { class: "muted
 // own label back (replaceChildren) ends the ticker as well.
 function buttonBusy(btn, text, opts = {}) {
   const tick = h("span", {});
-  btn.replaceChildren(h("span", { class: "spin" }), text, " ", tick);
+  btn.replaceChildren(h("span", { class: "busy-spin", "aria-hidden": "true" }), text, " ", tick);
   return spinnerClock(tick, { say: text.replace(/[….]+$/, ""), owner: btn, ...opts });
 }
 // SPINNER-CLOCK-END
@@ -3784,18 +3782,18 @@ function postingControls(job, done) {
   // The one call every button of this form makes: spinner while it works, the answer shown, then the card changes.
   const send = async (body, button, idle, working) => {
     button.disabled = true;
-    const secs = h("span", { class: "post-secs" }, "0s"), began = Date.now();
-    button.replaceChildren(h("span", { class: "post-spin" }), working, " ", secs);  // the seconds say it is running, not stuck
-    const tick = setInterval(() => { secs.textContent = `${Math.round((Date.now() - began) / 1000)}s`; }, 500);
+    const stop = buttonBusy(button, working, { usual: "posting" });  // the seconds say it is running, not stuck
     say("");
     try {
-      const r = await api("/api/posting", { key: job.key, ...body }).finally(() => clearInterval(tick));
+      const r = await api("/api/posting", { key: job.key, ...body });
+      stop(!!r.has_text);  // a read that got text teaches the estimate for the next one
       const saved = r.has_text ? (r.scoring === false || r.not_scored ? "Saved" : "Saved: now scoring") : "Saved";
       button.replaceChildren(saved);
       say(`${saved}. ${r.said}`, "ok");
       toast(readToast(r));
       setTimeout(() => done(r, "form"), SAVED_SHOWN_MS);
     } catch (e) {
+      stop();
       const text = postingFailure(job, e.message);
       say(text, "error");
       toast(text);
