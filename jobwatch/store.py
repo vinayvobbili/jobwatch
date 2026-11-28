@@ -578,6 +578,24 @@ class Store:
     def close(self):
         self.db.close()
 
+    # Indexes that only make reads quicker. A posting's text sits in `data`, before status in each row, so without
+    # one a lookup by status reads every posting's text: ten seconds and more on a store with years of postings,
+    # for each of the queue, the snoozed list, the counts and the application list. Building one takes that same
+    # pass, once, so it isn't in _SCHEMA (every open runs that): the page makes it after its first answer
+    # (App.warm) and `jobwatch timing` shows what it saves.
+    INDEXES = (("jobs_status", "jobs (status, first_seen)"),)
+
+    def ensure_indexes(self) -> list[str]:
+        """Builds the INDEXES this store lacks (nothing, quickly, when it has them): the names it built."""
+        have = {r["name"] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+        built = []
+        for name, on in self.INDEXES:
+            if name not in have:
+                with self.db:
+                    self.db.execute(f"CREATE INDEX IF NOT EXISTS {name} ON {on}")
+                built.append(name)
+        return built
+
     def stamp(self) -> tuple:
         """What changes whenever anything is written to the state file, by this process or another one, and
         nothing else: a cheap stamp (three stat calls and a 24-byte read) to key remembered work on, so it's

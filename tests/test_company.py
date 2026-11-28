@@ -373,7 +373,7 @@ def test_page_has_the_company_search(server):
     assert 'id: "jump"' in page and 'e.key !== "/"' in page and "function openCompany(" in page
     assert 'class="jump"' not in page.split("<script")[0]  # not in the header
     assert 'pagehead("Company", sub, jumpBox)' in page
-    assert 'api("/api/companies?q="' in page and 'api("/api/company?q="' in page
+    assert 'api("/api/companies?q="' in page and '"/api/company?q="' in page
     assert "elsewhere(v.q)" in page and "elsewhere(appView.q)" in page
 
 

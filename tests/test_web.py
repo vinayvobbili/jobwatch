@@ -155,7 +155,7 @@ def test_page_has_a_skills_tab(server):
     page = request(server, "GET", "/")[1].decode()
     assert '<button data-tab="skills">Skills</button>' in page
     assert '"skills", "activity", "settings"]' in page and "skills: renderSkills" in page
-    assert 'api("/api/skills"' in page and 'go("skills")' in page
+    assert '"/api/skills"' in page and 'go("skills")' in page
 
 
 def test_page_has_an_activity_tab(server):

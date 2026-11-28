@@ -223,7 +223,7 @@ def test_page_has_an_interviews_tab(server):
     page = request(server, "GET", "/")[1].decode()
     assert '<button data-tab="interviews">Interviews<span id="ivcount"></span></button>' in page
     assert '"today", "interviews", "queue"' in page and "interviews: renderInterviews" in page
-    assert 'api("/api/interviews")' in page and "openDetails(iv.key)" in page
+    assert '"/api/interviews"' in page and "openDetails(iv.key)" in page
     assert "sheetChip(j, j.sheets_base)" in page and "sheetChip(iv, d.sheets_base)" in page
 
 

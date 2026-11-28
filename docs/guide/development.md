@@ -19,8 +19,22 @@ chat with a canned reply (it needs
 `pip install playwright && python -m playwright install chromium`).
 When a tab feels slow, `jobwatch timing` measures it: it makes each tab's API calls (what the page itself asks for)
 a few times and lists them slowest first, against a running page (`--url jobwatch.localhost:8765`) or, without one,
-against the watchlist's store in a server started for the purpose. Today marks the jobs it lists as seen, so point
-`-c` at a copy of the store when timing a real one (`--tab Queue`, `-n 5` and `--json` narrow or reshape it).
+against the watchlist's store in a server started for the purpose. Today marks the jobs it lists as seen, so add
+`--copy` when timing a real store: it works on a copy made in a temporary folder and leaves yours alone (`--tab Queue`,
+`-n 5` and `--json` narrow or reshape it). Under the calls it says what each tab waits on before its first data (the
+tab's heading and placeholders are on screen at 0 ms; see below), `--combined` adds the one-call forms Today and the
+Queue had before they were split, `--profile /api/queue` lists the functions one call spends its time in, and
+`--cold --copy` times a page opening on a freshly started server (page, API, Today's first data) and what building the
+store's indexes saves.
+
+Loading is progressive (see [the page](the-page.md#in-your-browser)): a tab draws its shell and fills each part as
+its call lands. Today and the Queue ask for `?part=list` (the jobs, quick) and `?part=extra` (pay, advice, worth it,
+why a job has no score, what it waits on: seconds, by job key) together, and the page merges the second into the cards;
+the call with no `part` is both, as before. A renderer in `static/index.html` takes a `loadCtx()`: `ctx.get` is cancelled
+when the user leaves the tab (a late answer draws nothing), `ctx.shell` draws the placeholders, and `ctx.swr` draws the
+last answer from memory at once, then the fresh one if it differs (a POST clears that memory). The page is served the
+moment the server listens; the work nobody waits for (the store's indexes, scoring, the first board check) starts after
+the first tab has been answered (`STARTUP_WAIT` in `web.py`).
 `scripts/demo/make-video` rebuilds the demo video from made-up data: see
 `scripts/demo/README.md`.
 

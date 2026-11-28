@@ -69,7 +69,35 @@ nav button.on::before { content: ""; position: absolute; left: 12px; right: 12px
 /* a tab still loading: a small ring on its button, and the page it's replacing dims */
 nav button.loading::after { content: ""; width: 9px; height: 9px; border: 2px solid currentColor;
   border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
-main[aria-busy="true"] { opacity: .5; pointer-events: none; transition: opacity .2s; }
+main[aria-busy="true"]:not([data-shell]) { opacity: .5; pointer-events: none; transition: opacity .2s; }
+/* progressive loading: a tab draws its head and these placeholders at once, then each part fills in as its data lands */
+.skel { position: relative; overflow: hidden; border-radius: 8px;
+  background: color-mix(in srgb, var(--muted) 16%, transparent); }
+.skel::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(100deg, transparent 15%, color-mix(in srgb, #fff 38%, transparent) 50%, transparent 85%);
+  animation: skel-sweep 1.5s ease-in-out infinite; }
+@keyframes skel-sweep { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .skel::after { animation: none; display: none; } }
+.skel-card { min-height: 210px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.skel-card .skel { height: 14px; }
+.skel-card .skel.t { height: 20px; width: 62%; } .skel-card .skel.m { width: 38%; }
+.skel-card .skel.w { width: 92%; } .skel-card .skel.s { width: 70%; } .skel-card .skel.b { height: 34px; width: 46%; margin-top: auto; }
+.skel-row { height: 58px; margin-bottom: 10px; }
+.stat.skel-stat { min-height: 84px; background: var(--panel); }
+.stat.skel-stat .skel { height: 26px; width: 44%; margin-bottom: 10px; } .stat.skel-stat .skel + .skel { height: 12px; width: 72%; margin: 0; }
+.panel .skel { height: 14px; margin: 10px 0; } .panel .skel.s { width: 64%; }
+.part-error { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+.part-error b { color: var(--warn); }
+/* the last data is on screen and a fresh copy is on its way (or couldn't be had) */
+#updating { position: fixed; left: 18px; bottom: 18px; z-index: 25; display: flex; align-items: center; gap: 8px;
+  padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--muted);
+  background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line);
+  box-shadow: var(--shadow-hover); backdrop-filter: blur(6px); animation: fade .2s; }
+#updating[hidden] { display: none; }
+#updating i { width: 10px; height: 10px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%;
+  animation: spin .8s linear infinite; }
+#updating.failed { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+@media (prefers-reduced-motion: reduce) { #updating i { animation: none; border-right-color: var(--accent); } }
 .count { font-size: 11.5px; font-weight: 700; min-width: 19px; height: 19px; padding: 0 6px; border-radius: 10px;
   display: inline-grid; place-items: center; color: #fff;
   background: var(--grad); }
@@ -2360,7 +2388,19 @@ ol.vr-ops li::before { content: counter(op); position: absolute; left: 10px; top
     <button id="fetchBtn" class="btn primary"></button>
   </div>
 </header>
-<main id="main"></main>
+<main id="main" data-shell="1"><!-- what shows until the script has drawn the tab: the page's shape, never blank space -->
+  <div class="pagehead"><div><h1>jobwatch</h1><p class="sub" id="startNote">Starting…</p></div></div>
+  <div class="hero"><div class="stat skel-stat"><div class="skel"></div><div class="skel"></div></div>
+    <div class="stat skel-stat"><div class="skel"></div><div class="skel"></div></div>
+    <div class="stat skel-stat"><div class="skel"></div><div class="skel"></div></div>
+    <div class="stat skel-stat"><div class="skel"></div><div class="skel"></div></div></div>
+  <div class="cards grid-cards">
+    <div class="card skel-card"><div class="skel t"></div><div class="skel m"></div><div class="skel w"></div><div class="skel s"></div><div class="skel b"></div></div>
+    <div class="card skel-card"><div class="skel t"></div><div class="skel m"></div><div class="skel w"></div><div class="skel s"></div><div class="skel b"></div></div>
+    <div class="card skel-card"><div class="skel t"></div><div class="skel m"></div><div class="skel w"></div><div class="skel s"></div><div class="skel b"></div></div>
+  </div>
+</main>
+<div id="updating" hidden role="status" aria-live="polite"></div>
 <div class="overlay" id="overlay"><div class="dialog" id="dialog"></div></div>
 <div class="toast" id="toast"><span id="toastText"></span><button id="toastUndo">Undo</button></div>
 
@@ -2563,8 +2603,8 @@ function staleToken() {
 // The watchlist file as /api/settings last gave it. Every save of settings sends it back, so a save from a page
 // that read before the file changed is refused instead of writing its old values over the change.
 let settingsFile = null;
-async function api(path, body, raw) {
-  const opts = { method: body === undefined && !raw ? "GET" : "POST", headers: { "X-Jobwatch-Token": TOKEN } };
+async function api(path, body, raw, signal) {
+  const opts = { method: body === undefined && !raw ? "GET" : "POST", headers: { "X-Jobwatch-Token": TOKEN }, signal };
   const saving = path === "/api/settings" && body !== undefined && !raw;
   if (raw) { opts.body = raw; }
   else if (body !== undefined) {
@@ -2579,8 +2619,108 @@ async function api(path, body, raw) {
     try { settings = await api("/api/settings"); } catch { /* the next read will */ }
   }
   if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (opts.method === "POST" && !QUIET_POSTS.test(path)) memo.clear();  // an action changed something: no stale copy of any tab
   return data;
 }
+
+// -- progressive loading: a tab draws its shell (head, tiles, placeholders) at once and fills each part as its
+// data lands; a revisited tab shows its last data at once and refreshes behind it; a tab left behind can't draw.
+const memo = new Map();   // path -> { data, json }: the last answer of each tab's calls
+const QUIET_POSTS = /^\/api\/(pay|advice|find|chat|contact)\b/;  // lookups that change nothing a tab shows
+let tabCtl = null;
+const abortError = () => new DOMException("this tab was left", "AbortError");
+const isAbort = e => !!e && e.name === "AbortError";
+// Called when a tab opens: whatever the tab before it still waits on is dropped.
+function abortTab() {
+  tabCtl?.abort();
+  tabCtl = new AbortController();
+  main.removeAttribute("data-shell");
+  refreshing = 0; refreshFailed = false;
+  showUpdating();
+}
+// The "Updating…" pill: shown while any part drawn from its last data is being fetched again, and, when one of those
+// couldn't be, "Couldn't refresh this tab" with Retry, until the next try.
+let refreshing = 0, refreshFailed = false;
+function showUpdating() {
+  const el = document.getElementById("updating");
+  const failed = refreshFailed && !refreshing;
+  el.hidden = !refreshing && !failed;
+  el.classList.toggle("failed", failed);
+  fill(el, failed ? ["Couldn't refresh this tab", h("button", { class: "btn ghost", onclick: () => render() }, "Retry")]
+    : refreshing ? [h("i"), "Updating…"] : null);
+}
+// What a tab's renderer uses to load: `get` (cancelled when the tab is left), `shell` (draw the head and placeholders now),
+// `swr` (draw the last data at once if there is any, then the fresh copy when it differs) and `live`.
+function loadCtx() {
+  const ctl = tabCtl || (tabCtl = new AbortController());
+  const ctx = {
+    live: () => !ctl.signal.aborted,
+    has: path => memo.has(path),
+    get: path => api(path, undefined, undefined, ctl.signal),
+    // Draws the page now, its parts still placeholders, and returns `place`: call it before filling a part (it does
+    // nothing the second time). A refresh of the tab already open keeps what's drawn until its data lands (no flash
+    // of placeholders): there `place` is what draws it, at the first part.
+    shell(...kids) {
+      let done = false;
+      const place = () => { if (!done && ctx.live()) { done = true; put(...kids); } };
+      if (!main.classList.contains("quiet")) { place(); main.dataset.shell = "1"; }
+      return place;
+    },
+    // Runs `draw(data)` for the last answer (if any), then for the fresh one unless it's the same. A failed refresh
+    // leaves what's shown and offers Retry; with nothing shown it throws, for the caller to say so inline.
+    async swr(path, draw) {
+      const hit = memo.get(path);
+      // (a tab refreshing itself, as Activity does, stays quiet: the pill is for opening a tab on its last data)
+      const counted = !!hit && !main.classList.contains("quiet");
+      if (hit) draw(hit.data);
+      if (counted) { refreshing++; showUpdating(); }
+      const done = failed => {  // (a tab left meanwhile reset the count)
+        if (!counted || !ctx.live()) return;
+        refreshing--; refreshFailed ||= failed; showUpdating();
+      };
+      let data;
+      try { data = await ctx.get(path); }
+      catch (e) {
+        if (isAbort(e) || !hit) throw e;
+        done(true);
+        return hit.data;
+      }
+      if (!ctx.live()) throw abortError();
+      const json = JSON.stringify(data);
+      memo.set(path, { data, json });
+      if (memo.size > 24) memo.delete(memo.keys().next().value);
+      done(false);
+      if (!hit || hit.json !== json) draw(data);
+      return data;
+    },
+  };
+  return ctx;
+}
+// A part that couldn't load, inline where it goes, with a way to try again; the rest of the page stays.
+function partError(err, retry, what = "this part") {
+  return h("div", { class: "card part-error", role: "alert" }, h("b", {}, `Couldn't load ${what}.`),
+    h("span", { class: "small muted" }, err.message || String(err)), h("button", { class: "btn", onclick: retry }, "Retry"));
+}
+// A tab with one data call: its head and placeholders at once, the page when the data lands (the last data first on a
+// revisit), and where it can't come an inline Retry in place of the placeholders, the head still there.
+async function dataTab(ctx, path, { head, skeleton, what, draw }) {
+  const host = h("div", {}, skeleton);
+  const place = ctx.shell(head, host);
+  try { await ctx.swr(path, d => { place(); draw(d); }); }
+  catch (e) {
+    if (isAbort(e)) throw e;
+    place();
+    fill(host, partError(e, () => render(), what));
+  }
+}
+// Placeholders the size of the real thing.
+const skelCard = () => h("div", { class: "card skel-card", "aria-hidden": "true" },
+  ["t", "m", "w", "s", "b"].map(c => h("div", { class: "skel " + c })));
+const skelCards = (n = 6) => h("div", { class: "cards grid-cards top-aligned", "aria-hidden": "true" }, Array.from({ length: n }, skelCard));
+const skelHero = (n = 4) => h("div", { class: "hero", "aria-hidden": "true" }, Array.from({ length: n },
+  () => h("div", { class: "stat skel-stat" }, h("div", { class: "skel" }, ), h("div", { class: "skel" }))));
+const skelRows = (n = 5) => h("div", { "aria-hidden": "true" }, Array.from({ length: n }, () => h("div", { class: "skel skel-row" })));
+const skelPanel = () => h("div", { class: "panel", "aria-hidden": "true" }, h("div", { class: "skel" }), h("div", { class: "skel s" }), h("div", { class: "skel" }));
 
 let toastTimer;
 // tone: "win" for good news, "onward" for a no or a skip, nothing for the rest (see .toast[data-tone]).
@@ -3606,7 +3746,7 @@ function readButton(job, done) {
 
 function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   if (job.fit && !job.fit.stale) return null;
-  const redraw = j => document.getElementById("job-" + j.key).replaceWith(card(j));
+  const redraw = j => document.getElementById("job-" + j.key)?.replaceWith(card(j));  // (gone if its tab was left)
   if (job.unscored?.code === "no_text")
     return [postingControls(job, (r, how) => {  // read in the background: this card alone changes
       // jobwatch scores a job as soon as its posting is read (whatever scoring.auto says): the card waits for the
@@ -6006,11 +6146,41 @@ async function showCompany(name) {
   } catch (e) { toast(`Couldn't show ${name}: ${e.message}`); await render(); }
 }
 
+// Today opens on its head, its filters and placeholders, and fills in as three calls come back, none waiting for another:
+// the matching jobs themselves (the quick one), what takes longer to work out for each (pay, advice, worth it, why it
+// has no score) and what the filters hide (a hint, not the page). A part that can't come says so where it goes.
 async function renderToday() {
   if (!settings.companies.length) return renderWelcome();
-  // What the filters hide is a hint, not the page: Today still opens if it can't be counted.
-  const [d, hidden] = await Promise.all([api("/api/digest"), api("/api/hidden").catch(() => null)]);
-  todayJobs = d.jobs;
+  const ctx = loadCtx();
+  const listPath = "/api/digest?part=list", extraPath = "/api/digest?part=extra";
+  let built = null, extra = null, hidden = null;  // built: what the page drawn from the list answers to (see drawTodayPage)
+  const head = () => heroHead("Today", "Your best-fit roles, ", "ranked and ready", todayLine(greeting(new Date().getHours()), settings.companies.length));
+  const barHost = h("div", {}, filterBar(null));
+  const listHost = h("div", {}, h("div", { class: "status-row" }), skelCards(6)), extraNote = h("div");
+  const place = ctx.shell(head(), barHost, layout([skelHero(5), skelPanel(), skelPanel(), skelPanel()], [extraNote, listHost]));
+  const onList = d => { place(); built = drawTodayPage(d, { extra, hidden, bar: barHost, note: extraNote }); };
+  const loadExtra = () => {
+    fill(extraNote, null);
+    return ctx.swr(extraPath, x => { extra = x.jobs; built?.setExtra(extra); }).catch(e => {  // ({jobs: {key: its extra}})
+      if (!isAbort(e)) fill(extraNote, partError(e, loadExtra, "each job's pay and advice"));
+    });
+  };
+  await Promise.all([
+    ctx.swr(listPath, onList).catch(e => {
+      if (isAbort(e)) throw e;
+      place();
+      fill(listHost, partError(e, () => render(), "today's jobs"));
+    }),
+    loadExtra(),
+    // What the filters hide: a hint, so Today opens without it if it can't be counted.
+    ctx.swr("/api/hidden", x => { hidden = x; built?.setHidden(x); }).catch(e => { if (isAbort(e)) throw e; }),
+  ]);
+}
+
+function drawTodayPage(d, state) {
+  let hidden = state.hidden, extraObj = state.extra;  // extraObj: the rest of each job's data, once it has come
+  const merge = j => extraObj && extraObj[j.key] ? { ...j, ...extraObj[j.key] } : j;
+  todayJobs = d.jobs.map(merge);
   if (!todayView.seeded) {  // the chips Today opens on (display.today_defaults), once; Any is a click away
     todayView.seeded = true;
     Object.assign(todayView, { fit: (d.defaults || {}).fit || 0, pay: (d.defaults || {}).pay || 0,
@@ -6020,7 +6190,7 @@ async function renderToday() {
   const out = Object.values(d.rejected).reduce((a, b) => a + b, 0);
   const fresh = d.jobs.filter(j => j.status === "new").length, strong = d.jobs.filter(j => j.fit && j.fit.score >= 75).length;
   const picks = d.picks && d.jobs.length > d.picks ? d.picks : 0;  // Today's picks lead when there are more matches
-  const byCompany = companyCounts(d.jobs, todayView), byKw = {};
+  const byCompany = companyCounts(todayJobs, todayView), byKw = {};
   for (const j of d.jobs) for (const k of j.keywords) byKw[k] = (byKw[k] || 0) + 1;
   const v = todayView;
   const list = h("div", { class: "cards grid-cards" }), showing = h("div", { class: "showing" }), pager = h("div", {});
@@ -6078,6 +6248,14 @@ async function renderToday() {
     companyCounts(todayJobs, v, byCompany);
     companies.redraw();
     roles.redraw();
+    // Top pay and Worth it need what the second call brings (pay, worth): until it's here the list is placeholders
+    // rather than a short, wrong one. Nothing else waits for it.
+    if (!extraObj && (v.pay || v.sort === "pay" || v.sort === "worth")) {
+      fill(showing, h("span", { class: "muted" }, v.sort === "worth" ? "Working out what each is worth…" : "Looking up pay…"));
+      fill(list, skelCards(6).children);
+      fill(pager, null);
+      return;
+    }
     const q = v.q.trim().toLowerCase();
     const through = (j, posted) => (!q || `${j.title} ${j.company}`.toLowerCase().includes(q)) &&
       (!v.company || j.company === v.company) && [...v.kws].every(k => j.keywords.includes(k)) &&
@@ -6122,9 +6300,10 @@ async function renderToday() {
     fill(pager, pg.nav);
   };
 
+  fill(state.bar, filterBar(hidden));
   put(
     heroHead("Today", "Your best-fit roles, ", "ranked and ready", todayLine(greeting(new Date().getHours()), settings.companies.length)),
-    filterBar(hidden),
+    state.bar,
     layout([
       hero([picks ? [picks, "picks for today", "lead wide"] : null, [d.jobs.length, picks ? "matching" : "matching jobs", picks ? "" : "lead"],
         [fresh, "new since last look"], [strong, "strong fits (75+)", strong ? "good" : ""], [out, "hidden by filters"]].filter(Boolean)),
@@ -6136,12 +6315,18 @@ async function renderToday() {
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
       toWatchPanel(),
-    ], [h("div", { class: "status-row" }, paceLine(h("div", { class: "pace" }), d.pace), autoReadChip(), checked, scoring, staleScores, showing), list, pager]));
+    ], [state.note, h("div", { class: "status-row" }, paceLine(h("div", { class: "pace" }), d.pace), autoReadChip(), checked, scoring, staleScores, showing), list, pager]));
   drawToday();
   if (d.checked) watchChecked(d.checked, checked);
   if (d.scoring) watchScoring(d.scoring, scoring);
   watchScoreState(staleScores);
   watchPay(todayJobs);
+  return {
+    // the second call's answer: each job gets its pay, advice and the rest, in the cards where they stand
+    setExtra(x) { extraObj = x; todayJobs = todayJobs.map(merge); drawToday(); watchPay(todayJobs); },
+    // what the filters hide: the filter line and the Companies list know it now
+    setHidden(x) { hidden = x; fill(state.bar, filterBar(hidden)); companies.redraw(); },
+  };
 }
 
 // Companies whose jobs come in from alerts (or Add a job, or HN posts) while their board isn't watched: watch one, or
@@ -6878,11 +7063,17 @@ function onboardRest(ctx) {
 const queueView = { page: 1, sort: remembered("queue.sort", "queued") };
 let queueJobs = [], drawQueue = () => {};
 
+// The Queue draws its head, the steps and placeholders at once. The list (what's queued) and what takes longer to work
+// out (pay, advice, what's kept for each job) are two calls made together: the cards appear with the list and their pay,
+// advice and chips fill in when the second arrives. The pace line and snoozed jobs fill in on their own.
 async function renderQueue() {
-  const [jobs, p] = await Promise.all([api("/api/queue"), api("/api/pace").then(r => r.pace).catch(() => null)]);
-  queueJobs = jobs;
-  const pace = paceLine(h("div", { class: "pace" }), p);
+  const ctx = loadCtx();
+  const listPath = "/api/queue?part=list", extraPath = "/api/queue?part=extra";
+  const heroHost = h("div", { style: "display:contents" }, skelHero(1)), sortHost = h("div", { style: "display:contents" });
+  const listHost = h("div", {}, skelCards(3)), extraNote = h("div");
+  const paceEl = paceLine(h("div", { class: "pace" }), null);
   const list = h("div", { class: "cards grid-cards top-aligned" }), showing = h("div", { class: "showing" }), pager = h("div", {});
+  let rows = null, extra = null;  // the list, and the rest of each card once it has come
   drawQueue = () => {
     worthShown = queueView.sort === "worth";
     const ordered = worthShown ? [...queueJobs].sort(byWorth) : queueJobs;
@@ -6893,24 +7084,48 @@ async function renderQueue() {
   };
   const step = (n, title, text) => h("div", { class: "step" }, h("span", { class: "n" }, n), h("div", {}, h("b", {}, title), h("div", {}, text)));
   const addArea = h("div", {});
-  put(
+  const place = ctx.shell(
     pagehead("Apply queue", "Jobs you picked to apply to, " + (queueView.sort === "worth" ? "most worth it first." : "oldest first."),
       h("button", { class: "btn primary", onclick: () => fill(addArea, addForm(null)) }, icon("plus", 14), "Add a job")),
     addArea,
     layout([
-      hero([[jobs.length, jobs.length === 1 ? "job queued" : "jobs queued", "lead"]]),
-      jobs.length > 1 ? panel(null, segmented([["queued", "Oldest first"], ["worth", "Worth it"]], queueView.sort,
-        k => { queueView.sort = k; remember("queue.sort", k); drawQueue(); })) : null,
+      heroHost, sortHost,
       panel("For each job",
         step(1, "Ask for a referral", "Anyone you know there? A referral gets read first."),
         step(2, "Tailor your resume", "Match it to the posting, from things you've really done."),
         step(3, "Apply on their site", "Answer honestly and press Submit yourself."),
         step(4, "Press “I applied”", "It moves to Applications, where you track what comes next.")),
       snoozedPanel(),
-    ], [h("div", { class: "status-row" }, pace, jobs.length ? showing : null), jobs.length ? [list, pager]
-      : emptyState("The queue is empty. Queue jobs from Today: your next yes could be in there.")]));
-  drawQueue();
-  watchPay(queueJobs);
+    ], [h("div", { class: "status-row" }, paceEl, showing), extraNote, listHost]));
+  const merge = () => rows.map(j => extra && extra[j.key] ? { ...j, ...extra[j.key] } : j);
+  const paint = (heads) => {  // the head only when the list itself changed: its tile counts up
+    place();
+    queueJobs = merge();
+    if (heads) {
+      const n = queueJobs.length;
+      fill(heroHost, hero([[n, n === 1 ? "job queued" : "jobs queued", "lead"]]));
+      fill(sortHost, n > 1 ? panel(null, segmented([["queued", "Oldest first"], ["worth", "Worth it"]], queueView.sort,
+        k => { queueView.sort = k; remember("queue.sort", k); drawQueue(); })) : null);
+      fill(listHost, n ? [list, pager] : emptyState("The queue is empty. Queue jobs from Today: your next yes could be in there."));
+    }
+    drawQueue();
+    watchPay(queueJobs);
+  };
+  const loadExtra = () => {
+    fill(extraNote, null);
+    return ctx.swr(extraPath, d => { extra = d; if (rows) paint(false); }).catch(e => {
+      if (!isAbort(e)) fill(extraNote, partError(e, loadExtra, "each job's pay and advice"));
+    });
+  };
+  drawPace();  // the pace line, on its own
+  await Promise.all([
+    ctx.swr(listPath, d => { rows = d; paint(true); }).catch(e => {
+      if (isAbort(e)) throw e;
+      place();
+      fill(listHost, partError(e, () => render(), "the queue"));
+    }),
+    loadExtra(),
+  ]);
 }
 
 // The jobs set aside until an application at their company ends: which one, the day they come back at the latest,
@@ -7080,7 +7295,11 @@ function todayIso() { const t = new Date(); return new Date(t - t.getTimezoneOff
 function meetingTime(m) { return m.start ? `${clock(m.start)}–${clock(m.end)}` : "time not set"; }
 
 async function renderInterviews() {
-  const d = await api("/api/interviews");
+  await dataTab(loadCtx(), "/api/interviews", { what: "your interviews", skeleton: skelCards(3),
+    head: pagehead("Interviews", "Today's calls and the next two weeks."), draw: drawInterviews });
+}
+
+function drawInterviews(d) {
   const timed = d.interviews.filter(i => i.scheduled);
   const today = timed.filter(i => i.day === d.today), later = timed.filter(i => i.day !== d.today);
   const unset = d.interviews.filter(i => !i.scheduled);
@@ -7136,9 +7355,16 @@ function sheetChip(item, base) {
 }
 
 async function renderApplied() {
-  const d = await api("/api/applications");
+  const ctx = loadCtx();
+  await dataTab(ctx, "/api/applications", {
+    what: "your applications", skeleton: [skelHero(4), skelRows(6)],
+    head: pagehead("Applications", "What needs you and what is live come first. Snoozed and closed ones are folded away below.",
+      h("button", { class: "btn primary", disabled: true }, icon("plus", 14), "Add an application")),
+    draw: drawApplied });
+}
+
+function drawApplied(d) {
   const all = d.applications;
-  const feed = (await api("/api/calendar")).path;  // follow-ups and interviews, for a calendar app on this computer
   const counts = {};
   for (const a of all) counts[a.status] = (counts[a.status] || 0) + 1;
   const isEnded = a => isEndedStatus(a.status);
@@ -7228,7 +7454,9 @@ async function renderApplied() {
 
   put(
     pagehead("Applications", "What needs you and what is live come first. Snoozed and closed ones are folded away below.",
-      h("button", { class: "btn ghost", onclick: () => { location.href = `webcal://${location.host}${feed}`; },
+      // the feed's address is asked for when it's wanted: follow-ups and interviews, for a calendar app on this computer
+      h("button", { class: "btn ghost", onclick: async () => {
+          try { location.href = `webcal://${location.host}${(await api("/api/calendar")).path}`; } catch (e) { toast(e.message); } },
         title: "Subscribe your calendar app to your follow-up days and interviews. jobwatch gives your calendar app nothing but this link, which only works on this computer." },
         icon("calendar", 14), "Add to calendar"),
       h("button", { class: "btn primary", onclick: () => fill(addArea, addForm(d)) }, icon("plus", 14), "Add an application")),
@@ -8914,10 +9142,16 @@ function refNoCompany() {
     h("p", { class: "small muted" }, "Add the companies you are interested in and check for new jobs: ",
       h("a", { href: "#settings/search" }, "Settings → Your search"), ". Their cards appear here as soon as a tracked job is at a company where you know someone."));
 }
+const REF_HEAD = () => pagehead("Referrals", "People you know (your LinkedIn connections, and anyone you add by hand) at the companies you're tracking: a referral gets read before " +
+  "an application does. Set each person to Ask first or Skip with the pill beside their name.");
+
 async function renderReferrals() {
-  const d = await api("/api/referrals");
-  const head = pagehead("Referrals", "People you know (your LinkedIn connections, and anyone you add by hand) at the companies you're tracking: a referral gets read before " +
-    "an application does. Set each person to Ask first or Skip with the pill beside their name.");
+  await dataTab(loadCtx(), "/api/referrals", { what: "the people you know", head: REF_HEAD(), draw: drawReferrals,
+    skeleton: [h("div", { class: "skel skel-row", "aria-hidden": "true" }), skelCards(6)] });
+}
+
+function drawReferrals(d) {
+  const head = REF_HEAD();
   // "Add a person": someone who isn't a LinkedIn connection (a friend, an ex-colleague); the first button of the toolbar, with or without LinkedIn data
   const addBtn = h("button", { class: "btn primary ref-add", type: "button", "aria-haspopup": "dialog",
     title: "Add someone you know who isn't a LinkedIn connection: a friend, an ex-colleague, someone you met", onclick: () => openAddPerson() }, icon("plus", 14), "Add a person");
@@ -9443,10 +9677,23 @@ async function renderComps() {
   const picked = compView.picked;
   const query = picked ? picked.map(p => `${p.kind === "job" ? "key" : "company"}=${encodeURIComponent(p.id)}`).join("&")
     : "stages=" + (compView.applied ? "screening,interviewing,offer,applied" : "screening,interviewing,offer");
-  let d;
-  try { d = await api("/api/comps?" + query); }
-  catch (e) { if (!picked) throw e; pickSave(null); toast("Something picked is gone: back to the live ones"); return renderComps(); }
+  const ctx = loadCtx();
+  const head = pagehead("Comps", "Opportunities and companies side by side. Pay as posted comes from the job; what recruiters told you " +
+    "and what you know of a company you add with Pay details and Company health (or `jobwatch comp` and `jobwatch health`).");
+  const host = h("div", {}, skelRows(2), skelRows(5));
+  const place = ctx.shell(head, host);
+  try { await ctx.swr("/api/comps?" + query, d => { place(); drawComps(d); }); }
+  catch (e) {
+    if (isAbort(e)) throw e;
+    if (picked) { pickSave(null); toast("Something picked is gone: back to the live ones"); return renderComps(); }
+    place();
+    fill(host, partError(e, () => render(), "the comparison"));
+  }
+}
+
+function drawComps(d) {
   const rows = d.opportunities, editing = rows.find(o => o.key === compView.editing);
+  const picked = compView.picked;
   compView.ranks = new Map(d.suggestion.ranking.map((r, n) => [r.key, { n, r }]));
   const include = checkLine(compView.applied, "Include applications still at applied");
   include.box.onchange = () => { compView.applied = include.box.checked; remember("comps.applied", compView.applied ? "1" : ""); render(); };
@@ -9477,7 +9724,12 @@ const TIMELINES = [["week", "Week"], ["month", "Month"], ["quarter", "Quarter"],
 
 async function renderSkills() {
   const q = skillsView.timeline ? "?timeline=" + skillsView.timeline : "";
-  const d = await api("/api/skills" + q);
+  await dataTab(loadCtx(), "/api/skills" + q, { what: "your skills", draw: drawSkills,
+    head: pagehead("Skills to build", "What your matching jobs ask for that your resume doesn't show, and where to learn it."),
+    skeleton: layout([skelHero(2), skelPanel()], skelCards(4)) });
+}
+
+function drawSkills(d) {
   skillsView.timeline = d.timeline;
   const gaps = d.skills.filter(s => !s.on_resume), shown = skillsView.covered ? d.skills : gaps;
   const jobChip = j => h("button", { class: "chip", style: "border:0;cursor:pointer", title: "Open this job",
@@ -9578,15 +9830,33 @@ function activityTick() {
 async function renderActivity() {
   // a notice not seen yet (a strong fit, say) opens the list it's in, not the one picked last time; the pick stays
   if (notices.list) { activityView.kind = notices.list; notices.list = null; }
-  // other programs' logs the watchlist names (ui.activity_logs) get a chip each, beside jobwatch's own lists
-  const logs = (await api("/api/activity-logs")).logs;
-  const kinds = [...ACT_KINDS, ...logs.map(l => ["log:" + l.name, l.name])];
-  if (!kinds.some(([k]) => k === activityView.kind)) activityView.kind = ACT_KINDS[0][0];
-  const log = logs.find(l => "log:" + l.name === activityView.kind);
-  const d = await api("/api/activity?kind=" + (log ? ACT_KINDS[0][0] : activityView.kind));
   // what's worth a look and new since you last looked stands out; looking marks it seen (see watchNotices)
   // (what was new when the tab opened stays marked while it refreshes itself)
   if (!main.classList.contains("quiet")) activityView.seen = remembered("activity.seen", "0");
+  // the list's own calls (the logs the watchlist names, and the events of the list shown) are made together, and the
+  // page is drawn once both are here (a log's lines come with its list of logs)
+  const ctx = loadCtx();
+  const host = h("div", {}, layout([skelPanel(), skelPanel()], skelRows(8)));
+  const place = ctx.shell(pagehead("Activity", "What jobwatch has been doing: checking the boards, reading your job-alert emails, scoring jobs and looking up pay. It updates by itself."), host);
+  const evPath = "/api/activity?kind=" + (activityView.kind.startsWith("log:") ? ACT_KINDS[0][0] : activityView.kind);
+  let logsData = null, events = null;
+  const maybe = () => { if (logsData && events) { place(); drawActivity(logsData.logs, events); } };
+  try {
+    await Promise.all([ctx.swr("/api/activity-logs", x => { logsData = x; maybe(); }),
+      ctx.swr(evPath, x => { events = x; maybe(); })]);
+  } catch (e) {
+    if (isAbort(e)) throw e;
+    place();
+    fill(host, partError(e, () => render(), "the activity list"));
+  }
+  activityTick();
+}
+
+function drawActivity(logs, d) {
+  // other programs' logs the watchlist names (ui.activity_logs) get a chip each, beside jobwatch's own lists
+  const kinds = [...ACT_KINDS, ...logs.map(l => ["log:" + l.name, l.name])];
+  if (!kinds.some(([k]) => k === activityView.kind)) activityView.kind = ACT_KINDS[0][0];
+  const log = logs.find(l => "log:" + l.name === activityView.kind);
   const seen = activityView.seen, newest = d.events.find(e => e.notable)?.at;
   if (newest && newest > remembered("activity.seen", "0")) remember("activity.seen", newest);
   const s = d.now.score;
@@ -9646,7 +9916,6 @@ async function renderActivity() {
   put(pagehead("Activity", "What jobwatch has been doing: checking the boards, reading your job-alert emails, scoring jobs and looking up pay. It updates by itself."),
     layout(side, h("div", {}, rows.length ? rows
       : emptyState("Nothing yet. What jobwatch does shows up here as it happens."))));
-  activityTick();
 }
 
 const STAR_URL = "https://github.com/vinayvobbili/jobwatch", TIP_URL = "https://ko-fi.com/vinayvobbili";
@@ -10196,10 +10465,22 @@ async function renderCompany() {
     return putCompany(pagehead("Company", sub, jumpBox),
       emptyState("Type a company's name in the search box above to see its jobs here."));
   }
-  if (jumpNext) putCompany(pagehead("Company", sub, jumpBox));  // the box first, while the jobs load
-  let c;
-  try { c = await api("/api/company?q=" + encodeURIComponent(v.q) + (v.every ? "&all=1" : "")); }
-  catch (e) { return putCompany(pagehead("Company", sub, jumpBox), emptyState(e.message)); }
+  const ctx = loadCtx(), path = "/api/company?q=" + encodeURIComponent(v.q) + (v.every ? "&all=1" : "");
+  // the head, the box and placeholders at once while the jobs load (a refresh of the open page keeps what's drawn)
+  const head = pagehead("Company", `Looking up ${v.q}…`, jumpBox);
+  if (!ctx.has(path) && !main.classList.contains("quiet")) {
+    putCompany(head, layout([skelHero(2), skelPanel()], [skelRows(1), skelCards(4)]));
+    main.dataset.shell = "1";
+  }
+  try { await ctx.swr(path, drawCompany); }
+  catch (e) {
+    if (isAbort(e)) throw e;
+    putCompany(head, partError(e, () => render(), "this company"));
+  }
+}
+
+function drawCompany(c) {
+  const v = companyView;
   const w = c.watch;
   const watch = async b => {
     b.disabled = true;
@@ -10253,6 +10534,7 @@ let lastTab = null;
 async function render() {
   main.classList.toggle("quiet", tab === lastTab);  // entrance animations only when a tab opens
   lastTab = tab;
+  abortTab();  // the tab before this one stops waiting: a late answer of its can't draw over this one
   for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("on", b.dataset.tab === tab);
   document.getElementById("fetchBtn").style.display = settings.companies.length ? "" : "none";
   const home = tab === "today" && settings.exists && settings.companies.length > 0;
@@ -10264,7 +10546,10 @@ async function render() {
     else await loading(document.querySelector(`#tabs button[data-tab="${tab}"]`),
       { today: renderToday, interviews: renderInterviews, queue: renderQueue, applied: renderApplied, company: renderCompany, comps: renderComps, referrals: renderReferrals, skills: renderSkills,
         activity: renderActivity }[tab]);
-  } catch (e) { showError(main, e); }
+  } catch (e) {
+    if (isAbort(e)) return;  // this tab was left while it loaded
+    main.replaceChildren(partError(e, () => render(), "this page"));
+  }
   refreshQueueCount();
 }
 
@@ -10324,8 +10609,19 @@ document.getElementById("fetchBtn").onclick = async () => {
 };
 
 (async () => {
-  try { settings = await api("/api/settings"); }
-  catch (e) { return showError(main, e); }
+  // The page is served the moment the server listens; the API may need a few seconds more after a restart. The shell
+  // in the HTML says so, with the seconds, and the page tries again until the server answers.
+  const note = document.getElementById("startNote"), began = Date.now();
+  const tick = setInterval(() => { if (note.isConnected) note.textContent = `Starting… ${Math.round((Date.now() - began) / 1000)}s`; }, 1000);
+  for (;;) {
+    try { settings = await api("/api/settings"); break; }
+    catch (e) {
+      if (e instanceof TypeError || /^HTTP 50[234]/.test(e.message)) { await new Promise(r => setTimeout(r, 1000)); continue; }  // not up yet
+      clearInterval(tick);
+      return main.replaceChildren(partError(e, () => location.reload(), "jobwatch"));
+    }
+  }
+  clearInterval(tick);
   applyDisplay(settings.display);
   const start = pageOfHash(location.hash, TABS);
   tab = start?.tab || "today";

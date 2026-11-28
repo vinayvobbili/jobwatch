@@ -42,6 +42,24 @@
   card, Score again, and the new `jobwatch score KEY --force` still score one on purpose; a job found open again scores
   as any other. `jobwatch scores --closed` (and `score --cost`, and a line in Settings > Scoring) shows how many scores
   this spared. See [Closed postings are not scored](docs/guide/fit-scores.md#closed-postings-are-not-scored).
+- Tabs show something at once instead of a blank page. Each tab draws its heading, filters and shimmering placeholders
+  the size of the real cards and tiles (still under reduced motion), then fills each part as its data arrives. Today
+  and the Queue ask for the jobs (`?part=list`) and for what takes longer (`?part=extra`: pay, advice, worth it, why a
+  job has no score, what it waits on) at the same time, so the cards appear first and those parts fill into them; the
+  call with no `part` still gives both, and the two together are exactly that. Today's filter line, the pace line,
+  the snoozed jobs, "What the filters hide" and Applications' calendar link no longer hold anything up. Opening a tab
+  you've seen shows its last data immediately, with a small "Updating…" pill while a fresh copy loads (nothing is
+  redrawn when it hasn't changed, and an action clears what was kept). A part that can't load shows where it goes with
+  Retry, the rest stays, and no tab is ever a blank pane. A late answer for a tab you already left draws nothing.
+  Opening the page shows "Starting… 12s" with the seconds until the program answers, and tries again by itself.
+- Faster after a restart: the store's indexes (`jobs (status, first_seen)`: a posting's text sits before the status in
+  a row, so each lookup by status read every posting) and the work nobody waits for (scoring what came in while the
+  page was down, syncing Reminders, the first board check) now start after the page's first tab has been answered
+  (or after 20 s with no page), not while it is loading.
+- `jobwatch timing` says what each tab waits on before its first data (the heading and placeholders are on screen at 0 ms),
+  and takes `--copy` (time a copy of your store, leaving it alone), `--combined` (also the one-call forms Today and the
+  Queue had), `--profile /api/queue` (the functions a call spends its time in) and `--cold` (a page opening on a
+  freshly started server: page, API, Today's first data, then what building the indexes saves).
 
 - A company's logo on a card now goes to its Company tab, as the name beside it does: on Today, Queue, Applications
   (cards and table), Interviews and the Company tab's job cards the logo is a button ("See everything at Initech"; click,

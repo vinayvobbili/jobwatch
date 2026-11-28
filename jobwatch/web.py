@@ -30,6 +30,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
+from typing import ClassVar
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import yaml
@@ -129,6 +130,15 @@ from .watch import (
 )
 
 MAX_UPLOAD = 20 * 1024 * 1024
+
+# Starting up: the page is served at once and the work nobody is waiting for (the store's indexes, scoring what came in
+# while the page was down, syncing Reminders, the first board check) waits for the page's first tab to be answered, so
+# the first seconds go to what's on screen. With no page asking within STARTUP_WAIT seconds it starts anyway, and a tab
+# that never answers holds it for STARTUP_DATA_WAIT at most. TAB_CALLS: the calls that fill a tab.
+STARTUP_WAIT = 20.0
+STARTUP_DATA_WAIT = 60.0
+TAB_CALLS = ("/api/digest", "/api/queue", "/api/applications", "/api/interviews", "/api/company", "/api/comps",
+             "/api/referrals", "/api/skills", "/api/activity")
 PREP_SAVE_MAX = 2 * 1024 * 1024  # the edits to one prep sheet
 EVENT_PING = 15  # seconds between keep-alive comments on /events
 GZIP_MIN = 1024  # a smaller reply isn't worth compressing
@@ -144,6 +154,15 @@ class ApiError(Exception):
     def __init__(self, message: str, status: int = HTTPStatus.BAD_REQUEST):
         super().__init__(message)
         self.status = status
+
+
+def _part(q) -> str:
+    """The `part` of a call the page makes in two: "list" (the quick answer), "extra" (what takes longer, by job
+    key) or "" (both together, as before)."""
+    part = (q.get("part") or [""])[0]
+    if part not in ("", "list", "extra"):
+        raise ApiError("part must be list or extra")
+    return part
 
 
 class Scorer:
@@ -613,10 +632,34 @@ class App:
         self.refresher = Refresher(self)
         self.background = background
         self.port: int | None = None  # where the page listens, once serving (the digest's notification opens it)
+        self._digest_kept: tuple | None = None  # (token, when, digest) of the last Today list, for its extra call
+        self.first_call = threading.Event()  # set by the first API answer sent, and first_data by the first tab's
+        self.first_data = threading.Event()  # (see TAB_CALLS): the startup work waits for them
 
     def score_in_background(self):
         if self.background:
             self.scorer.kick()
+
+    def warm(self) -> list[str]:
+        """What makes later reads quick, made after the page's first answers: the store's indexes (see
+        Store.ensure_indexes). The names built; never raises."""
+        try:
+            return self._with_store(lambda cfg, store: store.ensure_indexes())
+        except Exception as e:  # a convenience: the page works without it
+            print(f"jobwatch: building the store's indexes stopped: {type(e).__name__}: {e}", file=sys.stderr)
+            return []
+
+    def start_background(self):
+        """The work nobody is waiting for, once the page has had its first answers (see STARTUP_WAIT): the indexes,
+        scoring what came in while the page was down, syncing Reminders with the follow-up days, and the schedule
+        (which checks the boards at once when the last check is older than fetch_every)."""
+        if STARTUP_WAIT > 0 and self.first_call.wait(STARTUP_WAIT):
+            self.first_data.wait(STARTUP_DATA_WAIT)
+        if self.path.is_file():
+            threading.Thread(target=self.warm, name="jobwatch-indexes", daemon=True).start()
+            self.score_in_background()
+            threading.Thread(target=self.sync_reminders, daemon=True).start()
+        self.refresher.start()
 
     def sync_reminders(self):
         """Make Reminders match the follow-up days (when follow_ups: reminders); never raises."""
@@ -1348,20 +1391,43 @@ class App:
         """When the boards were last checked, and whether a check is running: see Refresher.status."""
         return self._with_store(self.refresher.status)
 
+    # What a Today card has once the slow parts are worked out (see get_digest's `part`); before, these, empty.
+    DIGEST_LATE: ClassVar[dict] = {"unscored": None, "worth": None, "waiting_on": [], "advice": None, "verdict": None}
+
     def get_digest(self, q) -> dict:
+        """Today. Called as the page does, in two: `part=list` is the jobs and the rest of the page's data at once
+        (with a `token`), `part=extra` what takes longer for each job (why it has no score, pay, worth it, what it
+        waits on, advice), by job key, which the page merges in as it lands; with no part, both together."""
+        part = _part(q)
+
         def run(cfg, store):
-            d = build_digest(cfg, store, include_seen=True, score_top=0)
-            why = self.scorer.reasons(cfg, store)
-            pay = self._pay(cfg, store, [(e.job, None) for e in d.entries], most=cfg.pay.today)
-            history = advice.History(store, quiet=cfg.quiet)
-            worth = comps.worth(cfg, store, [(e.job, e.fit) for e in d.entries])
-            open_now = store.in_progress()
-            out = {"jobs": [{**self._entry(e), "unscored": why.get(e.job.key), **pay.get(e.job.key, {}),
-                             "worth": worth[e.job.key], "waiting_on": store.waiting_on(e.job, open_now),
+            kept = self._digest_kept
+            d = kept[2] if part == "extra" and kept and kept[0] == (q.get("token") or [""])[0] and \
+                time.monotonic() - kept[1] < 120 else None
+            fresh = d is None
+            if fresh:
+                d = build_digest(cfg, store, include_seen=True, score_top=0)
+            late = {}
+            if part != "list":
+                why = self.scorer.reasons(cfg, store)
+                pay = self._pay(cfg, store, [(e.job, None) for e in d.entries], most=cfg.pay.today)
+                history = advice.History(store, quiet=cfg.quiet)
+                worth = comps.worth(cfg, store, [(e.job, e.fit) for e in d.entries])
+                open_now = store.in_progress()
+                late = {e.job.key: {"unscored": why.get(e.job.key), **pay.get(e.job.key, {}),
+                                    "worth": worth[e.job.key], "waiting_on": store.waiting_on(e.job, open_now),
+                                    **self._advice(cfg, e, history, pay)} for e in d.entries}
+                if part == "extra":
+                    return {"jobs": late}
+            token = secrets.token_urlsafe(8)
+            if part == "list":
+                self._digest_kept = (token, time.monotonic(), d)  # the extra call that follows reads the same one
+            out = {"jobs": [{**self._entry(e),
                              # past display.age_decay.cutoff_days: Best fit lists it below every younger job
                              "aged_out": cfg.age_decay.aged_out(e.job.age_days()),
-                             **self._advice(cfg, e, history, pay)}
+                             **(late.get(e.job.key) or self.DIGEST_LATE)}
                             for e in d.entries],
+                   **({"token": token} if part == "list" else {}),
                    "rejected": d.rejected,
                    "can_score": bool(cfg.resume and cfg.resume.is_file()), "scoring": self.get_scoring({}),
                    "checked": self.refresher.status(cfg, store),
@@ -1388,34 +1454,50 @@ class App:
         """Applications sent today against the watchlist's pace (see watch.pace); null when it's off."""
         return {"pace": self._with_store(pace)}
 
-    def _cards(self, cfg, store, entries, most: int = 1000, line: bool = True) -> list[dict]:
+    # What a job card shows once the slow parts have been worked out (pay, advice, worth it, what's kept for the job,
+    # why it has no score, what it waits on). A card drawn before they come has these, empty.
+    LATE: ClassVar[dict] = {"worth": None, "resume": None, "prepare": {}, "unscored": None, "waiting_on": [],
+                            "advice": None, "verdict": None}
+
+    def _cards(self, cfg, store, entries, most: int = 1000, line: bool = True, part: str = "") -> list[dict] | dict:
         """What a job card shows beyond _entry, for the Queue and a company's page: pay (looking up the first `most`
         in the background), advice, the resume, why it has no score, and the applications it could wait for. `line`:
-        say where a job stands in the scorer's line, which reads every job through the filters (seconds)."""
+        say where a job stands in the scorer's line, which reads every job through the filters (seconds).
+        `part`: "list" gives the cards without the slow parts (LATE, empty), at once; "extra" gives only those, as
+        {job key: the fields the cards lack}; the two merged are what the call with no part gives."""
         resume = bool(cfg.resume and cfg.resume.is_file())
+        can_tailor = tailor.ready(cfg.resume_kit)
+        quick = {e.job.key: {**self._entry(e), "can_tailor": can_tailor,
+                             "tailor_setup": None if can_tailor else tailor.SETUP,
+                             # A job added by hand can be scored once it has the posting's text.
+                             "can_score": resume and scorable(e.job) and bool(e.job.description.strip())}
+                 for e in entries}
+        if part == "list":
+            return [{**quick[e.job.key], **self.LATE} for e in entries]
         why = self.scorer.reasons(cfg, store) if line else {}
         pay = self._pay(cfg, store, [(e.job, e.pay) for e in entries], most=most)
         history = advice.History(store, quiet=cfg.quiet)
         worth = comps.worth(cfg, store, [(e.job, e.fit) for e in entries])
-        can_tailor = tailor.ready(cfg.resume_kit)
         open_now = store.in_progress()
         kept = {e.job.key: self._resume_name(store, e.job) for e in entries}
         # A job applied to is past advice.
-        return [{**self._entry(e), "worth": worth[e.job.key],
-                 "can_tailor": can_tailor, "tailor_setup": None if can_tailor else tailor.SETUP,
-                 "resume": kept[e.job.key],
-                 # What Prepare saved (resume, last ATS check, newest letter): the card's chips after a reload.
-                 "prepare": prepare.state(cfg, store, e.job, kept[e.job.key]),
-                 # A job added by hand can be scored once it has the posting's text.
-                 "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
-                 "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why, e.record),
-                 "waiting_on": store.waiting_on(e.job, open_now),
-                 **pay.get(e.job.key, {}),
-                 **({"advice": None, "verdict": None} if e.record.get("status") in STAGES
-                    else self._advice(cfg, e, history, pay))} for e in entries]
+        late = {e.job.key: {"worth": worth[e.job.key], "resume": kept[e.job.key],
+                            # What Prepare saved (resume, last ATS check, newest letter): the chips after a reload.
+                            "prepare": prepare.state(cfg, store, e.job, kept[e.job.key]),
+                            "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why, e.record),
+                            "waiting_on": store.waiting_on(e.job, open_now),
+                            **pay.get(e.job.key, {}),
+                            **({"advice": None, "verdict": None} if e.record.get("status") in STAGES
+                               else self._advice(cfg, e, history, pay))} for e in entries}
+        if part == "extra":
+            return late
+        return [{**quick[e.job.key], **late[e.job.key]} for e in entries]
 
-    def get_queue(self, q) -> list[dict]:
-        return self._with_store(lambda cfg, store: self._cards(cfg, store, queue(cfg, store)))
+    def get_queue(self, q) -> list[dict] | dict:
+        """The queue, each job with what a card shows. `part=list`: the cards without pay, advice and the other slow
+        parts; `part=extra`: those parts alone, by job key (see _cards)."""
+        part = _part(q)
+        return self._with_store(lambda cfg, store: self._cards(cfg, store, queue(cfg, store), part=part))
 
     def get_counts(self, q) -> dict:
         """The numbers on the tab bar, cheaply: how many jobs are queued (what /api/queue lists), how many
@@ -2887,6 +2969,9 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                 else:
                     data = route(app, q)
                 self._json(HTTPStatus.OK, data)
+                app.first_call.set()
+                if url.path in TAB_CALLS:
+                    app.first_data.set()
             except ApiError as e:
                 self._json(e.status, {"error": str(e)})
             except KeyError as e:
@@ -2979,8 +3064,8 @@ def serve(config_path: Path, port: int = 8765, open_browser: bool = True, token:
     print(f"jobwatch is running at {url}  (watchlist: {config_path}). Press Ctrl+C to stop.", file=sys.stderr)
     if open_browser:
         threading.Timer(0.3, webbrowser.open, (url,)).start()
-    if config_path.is_file():
-        app.score_in_background()  # catch up on jobs fetched while the page was down
-        threading.Thread(target=app.sync_reminders, daemon=True).start()  # follow-ups still match Reminders
-    app.refresher.start()  # checks at once if the last check is older than fetch_every
+    if STARTUP_WAIT > 0:  # the page first: this work follows its first answers
+        threading.Thread(target=app.start_background, name="jobwatch-startup", daemon=True).start()
+    else:
+        app.start_background()
     return server

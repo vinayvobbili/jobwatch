@@ -72,4 +72,4 @@ def test_no_setting_means_no_logs(watchlist):
 
 def test_the_page_shows_a_chip_and_badge_per_log(server):
     page = request(server, "GET", "/")[1].decode()
-    assert 'api("/api/activity-logs")' in page and "src-badge" in page and "No log yet" in page
+    assert '"/api/activity-logs"' in page and "src-badge" in page and "No log yet" in page

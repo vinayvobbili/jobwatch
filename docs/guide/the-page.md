@@ -70,6 +70,13 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
   it: once you reach your 3 for the day it says so, and at 5 that the rest can wait until tomorrow. It's
   advice; nothing is ever blocked.
 - Long lists come in pages (12, 24, 48 or 96 at a time, kept per browser).
+- A tab never makes you stare at a blank page. It draws its heading, its filters and grey placeholders the size of
+  the cards at once (a soft shimmer, still if your system asks for reduced motion), and fills each part in as its
+  data arrives: on Today and the Queue the jobs come first, and the pay, advice, "worth it" and why-no-score parts
+  fill into the cards after them. Open a tab you've seen and its last data is on screen at once, with a small
+  "Updating…" pill while the fresh copy loads. A part that can't load says so where it belongs, with Retry, and
+  the rest of the page stays. The page itself is there the moment you open it, saying "Starting…" with the
+  seconds until the program answers, which on a big history can take a few seconds after a restart.
 - **Applications:** every job you applied to and where it stands (applied, screening, interviewing, offer,
   rejected, withdrawn, closed by company), with the next step and a follow-up day. Those due come first. Filter by status with
   the chips over the list (or click the pipeline bar), and switch between **Cards** and a sortable **Table**.

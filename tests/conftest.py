@@ -156,6 +156,14 @@ def no_real_state(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def startup_at_once(monkeypatch):
+    """serve() holds the startup work (scoring, the first board check) until a page has had its first answers; a test
+    that serves has no page waiting, so it starts as serve() returns, as the tests that stop the schedule expect.
+    A test of the wait itself sets web.STARTUP_WAIT."""
+    monkeypatch.setattr("jobwatch.web.STARTUP_WAIT", 0)
+
+
+@pytest.fixture(autouse=True)
 def no_real_profile(tmp_path, monkeypatch):
     """The profile (degrees.profile_file) is next to the test's watchlist: never resume-kit's own folder in $HOME,
     whose degrees would change which gaps a test sees."""

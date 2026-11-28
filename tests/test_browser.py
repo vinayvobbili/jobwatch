@@ -409,15 +409,19 @@ def test_scoring_shows_a_spinner_that_clears_on_a_score_or_a_failure(jobs, page,
     sync_api.expect(card.locator(".ring span").first).to_have_text("71")  # the score is drawn; the spinner is gone
     sync_api.expect(card.locator(".spin, .score-spin")).to_have_count(0)
 
-    def being_scored(route):  # the server says this job is being scored right now
+    def being_scored(route):  # the server says this job is being scored now (the list: no score; the extra: why)
         got = route.fetch()
         body = got.json()
-        for j in body["jobs"]:
-            if j["key"] == key:
-                j.update(fit=None, unscored={"code": "scoring", "text": "Posting read: scoring it now…"})
+        if "part=extra" in route.request.url:
+            body["jobs"][key] = {**body["jobs"].get(key, {}),
+                                 "unscored": {"code": "scoring", "text": "Posting read: scoring it now…"}}
+        else:
+            for j in body["jobs"]:
+                if j["key"] == key:
+                    j.update(fit=None)
         route.fulfill(response=got, json=body)
 
-    page.route("**/api/digest", being_scored)
+    page.route(re.compile(r"/api/digest\?part="), being_scored)
     reload(page)
     chip(page, "Posted within", "14d").click()
     spinner = card.locator(".fitbox.scoring-now")

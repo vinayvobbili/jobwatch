@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
@@ -1979,6 +1980,11 @@ def cmd_check(args, cfg, store):
     print(", ".join(f"{n} {r}" for r, n in counts.items() if n) or "nothing to check", file=sys.stderr)
 
 
+def wait_for_interrupt():
+    """Block until Ctrl+C (a server running in its own thread is all there is to wait for)."""
+    threading.Event().wait()
+
+
 def cmd_ui(args):
     from .web import serve
 
@@ -1986,6 +1992,28 @@ def cmd_ui(args):
     if log:  # what the Windows service passes: pythonw has no console, so its output goes to a file
         log.parent.mkdir(parents=True, exist_ok=True)
         sys.stdout = sys.stderr = open(log, "a", buffering=1, encoding="utf-8", errors="replace")
+    scratch = None
+    if args.copy:  # the page over a copy of the store, with none of the background work (see timing.serve_here)
+        from . import timing
+
+        cfg_path = config.locate(args.config)
+        scratch = tempfile.TemporaryDirectory(prefix="jobwatch-copy-")
+        copied = timing.copy_store(config.load(cfg_path).state, Path(scratch.name) / "state.db")
+        server, _ = timing.serve_here(cfg_path, copied, port=args.port)
+        url = f"http://{APP_HOST}:{server.server_address[1]}/"
+        print(f"jobwatch is showing a copy of your store at {url}  (nothing you do here changes your data). "
+              "Press Ctrl+C to stop.", file=sys.stderr)
+        if not args.no_browser:
+            webbrowser.open(url)
+        try:
+            wait_for_interrupt()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.shutdown()
+            server.server_close()
+            scratch.cleanup()
+        return
     server = serve(config.locate(args.config), port=args.port, open_browser=not args.no_browser)
     try:
         server.serve_forever()
@@ -2000,7 +2028,10 @@ def cmd_timing(args):
 
     from . import timing
 
-    server = None
+    server = scratch = copied = None
+    if args.cold and (args.url or not args.copy):
+        raise ValueError("--cold starts a server of its own and builds indexes in the store: use it with --copy, "
+                         "not --url")
     if args.url:
         u = urlparse(args.url if "//" in args.url else f"//{args.url}")
         host, port = u.hostname or "127.0.0.1", u.port or 8765
@@ -2009,17 +2040,32 @@ def cmd_timing(args):
         cfg_path = config.locate(args.config)
         if not cfg_path.is_file():
             raise ValueError(f"no watchlist at {cfg_path}")
-        server, token = timing.serve_here(cfg_path)
+        if args.copy:
+            scratch = tempfile.TemporaryDirectory(prefix="jobwatch-timing-")
+            copied = timing.copy_store(config.load(cfg_path).state, Path(scratch.name) / "state.db")
+        if args.cold:
+            try:
+                steps = timing.cold_start(cfg_path, copied)
+            finally:
+                scratch.cleanup()
+            rounded = {k: round(v) for k, v in steps.items()}
+            print(json.dumps(rounded, indent=2) if args.json else timing.render_cold(steps))
+            return
+        server, token = timing.serve_here(cfg_path, copied)
         host, port = "127.0.0.1", server.server_address[1]
     try:
         client = timing.Client(host, port, token, gzip=not args.no_gzip)
         company = args.company or ("" if args.tab and "company" not in {t.lower() for t in args.tab}
                                    else timing.pick_company(client))
-        rows = timing.measure(client.get, timing.calls(args.tab, company), args.runs)
+        rows = timing.measure(client.get, timing.calls(args.tab, company, args.combined), args.runs)
+        for path in args.profile if server else ():
+            print(f"-- where {path} spends its time\n{timing.profile(server.app, path)}", file=sys.stderr)
     finally:
         if server:
             server.shutdown()
             server.server_close()
+        if scratch:
+            scratch.cleanup()
     print(timing.to_json(rows) if args.json else timing.render(rows))
 
 
@@ -2894,17 +2940,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
     p.add_argument("--log", type=Path, help=argparse.SUPPRESS)
+    p.add_argument("--copy", action="store_true", help="try the page on a temporary copy of your store, with no "
+                   "background work (no scoring, no board checks, nothing written to your data): for looking at a "
+                   "change to the page")
     p.set_defaults(func=cmd_ui, needs_config=False)
 
     p = sub.add_parser("timing", help="time what each tab of the page takes to load, slowest first: the page's own "
                        "API calls, N times each, against a running page (--url) or the watchlist's store in a server "
-                       "started here (use -c with a copy of the store: Today marks its jobs seen)")
+                       "started here (with --copy, over a copy of the store: Today marks its jobs seen), and what "
+                       "each tab waits on before its first data")
     p.add_argument("--url", help="a running page, such as jobwatch.localhost:8765 (its token is read from the page)")
     p.add_argument("-n", "--runs", type=int, default=3, help="times each call is made (default 3; the first is cold)")
     p.add_argument("--tab", action="append", help="only this tab (repeat for more): Page, Today, Queue, Counts, "
                    "Applications, Interviews, Company, Comps, Referrals, Skills, Activity, Settings")
     p.add_argument("--company", help="the company the Company tab opens (default: the first with an application)")
     p.add_argument("--no-gzip", action="store_true", help="don't ask for compressed replies")
+    p.add_argument("--copy", action="store_true", help="run over a copy of the store made in a temporary folder "
+                   "(read from the real one without changing it), so Today's seen marks stay out of the real store")
+    p.add_argument("--combined", action="store_true", help="also time the one-call forms Today and the Queue had "
+                   "before the page asked for them in two, to compare")
+    p.add_argument("--cold", action="store_true", help="instead: the first seconds of a page opening on a freshly "
+                   "started server (page, API, Today's first data), then building the store's indexes and what "
+                   "they save; needs --copy")
+    p.add_argument("--profile", action="append", default=[], metavar="PATH", help="also list the functions one "
+                   "call (such as /api/queue) spends its time in; repeat it for more (not with --url)")
     p.add_argument("--json", action="store_true", help="print JSON instead of the table")
     p.set_defaults(func=cmd_timing, needs_config=False)
 
