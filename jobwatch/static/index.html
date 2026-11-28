@@ -2790,14 +2790,18 @@ function abortTab() {
 }
 // The "Updating…" pill: shown while any part drawn from its last data is being fetched again, and, when one of those
 // couldn't be, "Couldn't refresh this tab" with Retry, until the next try.
-let refreshing = 0, refreshFailed = false;
+// While it shows, its seconds count on the shared spinner clock (one ticker, kept across redraws, stopped at zero).
+let refreshing = 0, refreshFailed = false, updatingStop = null;
+const updatingTick = h("span", {});
 function showUpdating() {
   const el = document.getElementById("updating");
   const failed = refreshFailed && !refreshing;
   el.hidden = !refreshing && !failed;
   el.classList.toggle("failed", failed);
   fill(el, failed ? ["Couldn't refresh this tab", h("button", { class: "btn ghost", onclick: () => render() }, "Retry")]
-    : refreshing ? [h("i"), "Updating…"] : null);
+    : refreshing ? [h("i"), "Updating… ", updatingTick] : null);
+  if (refreshing && !updatingStop) updatingStop = spinnerClock(updatingTick, { say: "Updating" });
+  if (!refreshing && updatingStop) { updatingStop(); updatingStop = null; }
 }
 // What a tab's renderer uses to load: `get` (cancelled when the tab is left), `shell` (draw the head and placeholders now),
 // `swr` (draw the last data at once if there is any, then the fresh copy when it differs) and `live`.
@@ -10801,17 +10805,18 @@ document.getElementById("fetchBtn").onclick = async () => {
 (async () => {
   // The page is served the moment the server listens; the API may need a few seconds more after a restart. The shell
   // in the HTML says so, with the seconds, and the page tries again until the server answers.
-  const note = document.getElementById("startNote"), began = Date.now();
-  const tick = setInterval(() => { if (note.isConnected) note.textContent = `Starting… ${Math.round((Date.now() - began) / 1000)}s`; }, 1000);
+  const note = document.getElementById("startNote"), tick = h("span", {});
+  note.replaceChildren("Starting… ", tick);
+  const stopStarting = spinnerClock(tick, { say: "Starting" });  // the shared spinner clock
   for (;;) {
     try { settings = await api("/api/settings"); break; }
     catch (e) {
       if (e instanceof TypeError || /^HTTP 50[234]/.test(e.message)) { await new Promise(r => setTimeout(r, 1000)); continue; }  // not up yet
-      clearInterval(tick);
+      stopStarting();
       return main.replaceChildren(partError(e, () => location.reload(), "jobwatch"));
     }
   }
-  clearInterval(tick);
+  stopStarting();
   applyDisplay(settings.display);
   const start = pageOfHash(location.hash, TABS);
   tab = start?.tab || "today";
