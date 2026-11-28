@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A company's logo on a card now goes to its Company tab, as the name beside it does: on Today, Queue, Applications
+  (cards and table), Interviews and the Company tab's job cards the logo is a button ("See everything at Initech"; click,
+  Enter or Space; it lifts and rings on hover and never opens the card's Details). Dialog heads, the Comps columns and
+  Referrals (whose logo already goes there) keep a plain logo.
 - The Referrals tab shows what suits you, one card per company, and explains itself to someone starting out.
   With no LinkedIn data it says what Referrals is (who could refer you to a job you track), how to get people
   here (LinkedIn's "Get a copy of your data", then the upload in Settings > People & pay, with links), and that your

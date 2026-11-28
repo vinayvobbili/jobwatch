@@ -383,6 +383,13 @@ button.btn.btn-close.icon-only { width: 36px; height: 36px; padding: 0; justify-
 .mono img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 18%;
   box-sizing: border-box; background: #fff; opacity: 0; }
 .mono.logo img { opacity: 1; }
+/* a logo that is a button to the Company tab (monogram(name, true)): it lifts and rings in the company's hue */
+button.mono-link { border: 0; padding: 0; font-family: inherit; cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease; }
+button.mono-link:hover, button.mono-link:focus-visible { transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 0 0 2px hsl(var(--h) 75% 55% / .55), 0 8px 16px -8px hsl(var(--h) 80% 40% / .6); }
+button.mono-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.mono-link:active { transform: translateY(0) scale(.98); }
 .meta { color: var(--muted); font-size: 13.5px; margin: 3px 0 8px; display: flex; flex-wrap: wrap; gap: 4px 8px;
   align-items: center; }
 .meta b { color: var(--text); font-weight: 600; }
@@ -2379,12 +2386,17 @@ function closeButton(onclick, iconOnly = false) {
 
 // A company's logo from its own site once jobwatch has found it (see logos.py), else its initials on a color
 // picked from its name: the same company always looks the same.
-function monogram(name) {
+// With toCompany set the logo is a button to the Company tab, as the company's name is a link there: use it only on
+// a card whose name is not already a link or inside one (a dialog's head, the Company tab's own, Referrals' cards).
+function monogram(name, toCompany = false) {
   const words = (name || "?").replace(/[^A-Za-z0-9 ]+/g, " ").trim().split(/\s+/).filter(Boolean);
   const letters = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || "?").slice(0, 2)).toUpperCase();
   let hash = 7;
   for (const c of (name || "").toLowerCase()) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
-  const el = h("div", { class: "mono", style: `--h:${hash % 360}`, "aria-hidden": "true" }, letters);
+  const el = toCompany && name
+    ? h("button", { class: "mono mono-link", type: "button", style: `--h:${hash % 360}`, title: `See everything at ${name}`,
+        "aria-label": `See everything at ${name}`, onclick: e => { e.stopPropagation(); openCompany(name); } }, letters)
+    : h("div", { class: "mono", style: `--h:${hash % 360}`, "aria-hidden": "true" }, letters);
   if (name) {
     const img = h("img", { src: `/logo/${TOKEN}/${encodeURIComponent(name)}`, alt: "", loading: "lazy", decoding: "async",
       onload: () => el.classList.add("logo"), onerror: () => img.remove() });
@@ -3091,7 +3103,7 @@ function jobCard(job, actions, i = 0, above = null, stage = null) {
   };
   return h("div", { class: `card job fit-${job.fit ? fitClass(job.fit.score) : "none"}`, id: "job-" + job.key,
     style: `--i:${Math.min(i, 12)}` },
-    monogram(job.company),
+    monogram(job.company, true),
     h("div", { class: "jc-id" },
       h("div", { class: "jc-title" },
         stage,
@@ -6768,7 +6780,7 @@ function interviewCard(iv, d, i = 0) {
   card.onclick = e => { if (!e.target.closest("button, a")) openDetails(iv.key); };
   card.onkeydown = e => { if (e.key === "Enter" && e.target === card) openDetails(iv.key); };
   const when = iv.day === d.today ? (live ? "now" : done ? "done" : "today") : `${fmtDay(iv.day, d.today)} · ${relDay(iv.day, d.today)}`;
-  fill(card, monogram(iv.company),
+  fill(card, monogram(iv.company, true),
     h("div", {},
       h("div", { class: "app-head" },
         h("div", {},
@@ -6944,7 +6956,7 @@ function appRow(a, d) {
   stage.className = "stage";
   stage.onchange = () => changeStage(a, d, stage);
   const view = () => fill(tr,
-    h("td", { class: "co" }, h("div", { class: "co-cell" }, monogram(a.company), h("b", {}, a.company))),
+    h("td", { class: "co" }, h("div", { class: "co-cell" }, monogram(a.company, true), h("b", {}, a.company))),
     h("td", { class: "role" }, a.url ? link(a.url, a.title) : a.title, a.pay ? h("div", { class: payClass("pay", a.pay) + " small" }, a.pay) : null),
     h("td", {}, stage),
     h("td", { class: "nowrap" }, a.applied_at ? [fmtDay(a.applied_at, d.today), h("div", { class: "muted small" }, relDay(a.applied_at, d.today))] : ""),
@@ -7098,7 +7110,7 @@ function appCard(a, d, i = 0) {
     closedState(a) === "closed" ? `posting closed ${closedOn}` : closedState(a) === "checking" ? h("span", { class: "badge checking",
       title: "Found closed once. jobwatch looks again before calling it closed." }, "checking") : null].filter(Boolean);
   const view = () => { const [draftBtn, draftBox] = isEndedStatus(a.status) ? [null, null] : followupButton(a); fill(card,
-    monogram(a.company),
+    monogram(a.company, true),
     h("div", {},
       h("div", { class: "app-head" },
         h("div", {},
