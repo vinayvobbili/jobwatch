@@ -275,6 +275,22 @@ CREATE TABLE IF NOT EXISTS note_history (
     replaced_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS note_history_key ON note_history (key);
+CREATE TABLE IF NOT EXISTS interview_rounds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT '',
+    state TEXT NOT NULL DEFAULT 'scheduled',
+    day TEXT,
+    time TEXT NOT NULL DEFAULT '',
+    length INTEGER,
+    who TEXT NOT NULL DEFAULT '',
+    mode TEXT NOT NULL DEFAULT '',
+    outcome TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'you',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS interview_rounds_key ON interview_rounds (key);
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
 ACTIVITY_KEPT = 1000  # the things done in the background remembered, of each kind (see Store.log)
@@ -1073,11 +1089,16 @@ class Store:
         if applied is not None:
             fields["applied_at"] = day(applied)
         if fields:
+            moves = bool({"next_step", "round", "length"} & fields.keys())
+            if moves:
+                self.sync_rounds(key)  # what the step says now is kept as a round before it changes
             with self.db:
                 if note is not None:
                     self._keep_replaced(key, note)
                 self.db.execute(f"UPDATE jobs SET {', '.join(f'{k}=?' for k in fields)} WHERE key=?",
                                 (*fields.values(), key))
+            if moves:
+                self.sync_rounds(key)
 
     def set_url(self, key: str, url: str):
         """Give an application added by hand its link: the posting, or the company's careers site once the posting
@@ -1162,6 +1183,124 @@ class Store:
         _, rec = self.find(key)
         line = text if re.match(r"\d{4}-\d{2}-\d{2}\b", text) else f"{date.today().isoformat()}: {text}"
         self.track(key, note=f"{rec['note']} {line}" if rec.get("note") else line)
+
+    # -- interview rounds (timeline.py): structured records, one row for each round of an application
+
+    def rounds_for(self, keys: list[str] | None = None) -> dict[str, list[dict]]:
+        """The stored rounds by job key (all jobs when `keys` is None), oldest first: id, kind, state, day, time,
+        length, who, mode, outcome, note, source."""
+        out: dict[str, list[dict]] = {}
+        where, args = ("", ()) if keys is None else (f" WHERE key IN ({','.join('?' * len(keys))})", tuple(keys))
+        for r in self.db.execute(f"SELECT * FROM interview_rounds{where} ORDER BY day IS NULL, day, time, id", args):
+            out.setdefault(r["key"], []).append({k: r[k] for k in r.keys() if k not in ("key", "created_at")})
+        return out
+
+    def get_round(self, key: str, round_id: int) -> dict:
+        row = self.db.execute("SELECT * FROM interview_rounds WHERE id=? AND key=?", (round_id, key)).fetchone()
+        if not row:
+            raise ValueError(f"{key} has no round {round_id}")
+        return dict(row)
+
+    @staticmethod
+    def _round_fields(fields: dict) -> dict:
+        """The round fields as stored, checked: kind (rounds.ROUNDS or ""), state, day, time (HH:MM), length (minutes),
+        who, mode, outcome, note. Only the ones given."""
+        from . import timeline  # a function-level import: timeline reads ics, which reads this module
+        out = {}
+        for name, value in fields.items():
+            if value is None:
+                continue
+            if name == "kind":
+                out[name] = rounds.check(value)
+            elif name == "state":
+                if value not in timeline.STATES:
+                    raise ValueError(f"state must be one of {', '.join(timeline.STATES)}")
+                out[name] = value
+            elif name == "day":
+                out[name] = day(value)
+            elif name == "time":
+                out[name] = timeline.clock(value)
+            elif name == "length":
+                out[name] = int(rounds.check_length(value) or 0) or None
+            elif name in ("who", "mode", "outcome", "note"):
+                out[name] = " ".join(str(value).split())
+            else:
+                raise ValueError(f"unknown round field {name!r}")
+        return out
+
+    def add_round(self, key: str, source: str = "you", **fields) -> int:
+        """Record a round of an application (kind, state, day, time, length, who, mode, outcome, note). A round
+        added as done needs a day; one with a state left out is scheduled, or done when its day is past."""
+        clean = self._round_fields(fields)
+        if "state" not in clean:
+            clean["state"] = "done" if clean.get("day") and clean["day"] < date.today().isoformat() else "scheduled"
+        if clean["state"] == "done" and not clean.get("day"):
+            raise ValueError("a round that is done needs the day it was held")
+        cols = {"kind": "", "day": None, "time": "", "length": None, "who": "", "mode": "", "outcome": "",
+                "note": "", **clean}
+        with self.db:
+            cur = self.db.execute(
+                f"INSERT INTO interview_rounds (key, source, created_at, {', '.join(cols)}) "
+                f"VALUES (?, ?, ?, {', '.join('?' * len(cols))})", (key, source, _now(), *cols.values()))
+        return cur.lastrowid
+
+    def edit_round(self, key: str, round_id: int, **fields) -> dict:
+        """Change a round's fields; a round proposed from the notes (source inferred) becomes the person's own,
+        and so does one from the next step once its day or time is changed. Returns the round."""
+        old, clean = self.get_round(key, round_id), self._round_fields(fields)
+        if clean.get("state") == "done" and not (clean.get("day") or old["day"]):
+            raise ValueError("a round that is done needs the day it was held")
+        if not clean:
+            return old
+        own = old["source"] == "inferred" or (old["source"] == "next_step" and bool(
+            {"day", "time"} & {k for k, v in clean.items() if v != old[k]}))
+        with self.db:
+            self.db.execute(f"UPDATE interview_rounds SET {', '.join(f'{k}=?' for k in clean)}"
+                            f"{', source=?' if own else ''} WHERE id=?",
+                            (*clean.values(), *(("you",) if own else ()), round_id))
+        return self.get_round(key, round_id)
+
+    def finish_round(self, key: str, round_id: int, outcome: str = "", note: str | None = None) -> dict:
+        """Mark a round done (it happened), with how it went."""
+        old = self.get_round(key, round_id)
+        return self.edit_round(key, round_id, state="done", outcome=outcome or None, note=note,
+                               day=None if old["day"] else date.today().isoformat())
+
+    def delete_round(self, key: str, round_id: int):
+        self.get_round(key, round_id)
+        with self.db:
+            self.db.execute("DELETE FROM interview_rounds WHERE id=?", (round_id,))
+
+    def sync_rounds(self, key: str):
+        """Keep the meetings the application's next step names as scheduled rounds (source next_step). A scheduled
+        round of the step that the step no longer names became done when its time has passed (the step was
+        replaced by what came after), else it was moved or dropped and goes. Running it again changes nothing."""
+        from . import timeline
+        row = self.db.execute(f"{_ROW} WHERE key=?", (key,)).fetchone()
+        if not row:
+            return
+        rec = {k: row[k] for k in row.keys() if k != "data"}
+        live, now = timeline.live_meetings(rec), datetime.now()
+        mine = [r for r in self.rounds_for([key]).get(key, []) if r["source"] == "next_step"]
+        with self.db:
+            for r in mine:
+                if r["state"] == "scheduled" and not any(timeline._same(r, m) for m in live):
+                    if timeline.held(r, now):
+                        self.db.execute("UPDATE interview_rounds SET state='done' WHERE id=?", (r["id"],))
+                    else:
+                        self.db.execute("DELETE FROM interview_rounds WHERE id=?", (r["id"],))
+            for m in live:
+                if m["day"] is None:
+                    continue  # no day to keep: shown from the step while it stands, kept once it has one
+                have = next((r for r in self.rounds_for([key]).get(key, []) if timeline._same(r, m)), None)
+                if not have:
+                    self.db.execute(
+                        "INSERT INTO interview_rounds (key, kind, state, day, time, length, who, mode, source, "
+                        "created_at) VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, 'next_step', ?)",
+                        (key, m["kind"], m["day"], m["time"], m["length"], m["who"], m["mode"], _now()))
+                elif have["state"] == "scheduled" and have["source"] == "next_step":
+                    self.db.execute("UPDATE interview_rounds SET kind=?, length=? WHERE id=?",
+                                    (m["kind"] or have["kind"], m["length"], have["id"]))
 
     def snooze(self, key: str, days: int = 7) -> str:
         """Push an open application's follow-up day `days` out from today, leaving its stage alone, and note it

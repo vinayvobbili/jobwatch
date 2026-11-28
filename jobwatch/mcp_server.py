@@ -44,6 +44,7 @@ from . import (
     storyfind,
     suggest,
     tailor,
+    timeline,
     variants,
     watch,
 )
@@ -82,7 +83,9 @@ server = MCPServer(
         "read_status_emails reads emails about the person's applications (confirmations, rejections, interview "
         "invitations, assignments, offers, recruiter replies) and proposes each one's new status and a dated note: "
         "present the proposals and call mark_job only for the ones the person confirms. "
-        "list_applications shows where each stands; get_comps puts the live ones side by side (pay, fit, stage), "
+        "list_applications shows where each stands; get_rounds gives an application's interview rounds (the done "
+        "ones with who, how long and how it went, the next one, and that later rounds aren't scheduled) and "
+        "set_round adds, edits, finishes or deletes one; get_comps puts the live ones side by side (pay, fit, stage), "
         "and set_comp keeps what a recruiter said about pay (base, bonus, equity, what was asked and offered), "
         "set_company_health the company's funding, layoffs and rating that you looked up. tailor_resume builds a "
         "resume for one job with resume-kit and keeps it as that job's resume. After the person submits, "
@@ -535,7 +538,9 @@ def mark_job(
     it and replace_note is true; the replaced note is kept and can be brought back. next_step says
     what happens next ("recruiter screen Tuesday"), with its date and time; round says which interview it is
     (see its description), so it counts as a meeting without depending on its words; length says how long it
-    lasts (a 15-minute intro call: "15m"), as the page and calendar show its end; follow_up is the day to
+    lasts (a 15-minute intro call: "15m"), as the page and calendar show its end; a next step with a date and
+    time is also kept as a round of the application (get_rounds, set_round), done once its time has passed and
+    the step is replaced; follow_up is the day to
     act (YYYY-MM-DD or +N days); applied_on is the day applied, if not today. url sets the link of a job
     added by hand (its posting, or the company's careers site once the posting is gone); when the job has no
     posting text and the link is to one job on a supported board, the posting is read from it (text, pay,
@@ -795,15 +800,20 @@ def list_applications(
     quiet is set on an application with no stage change or note for weeks (the watchlist's quiet: days per
     stage): days, since, posting_open, long (quiet so long that it sorts below the fresher ones), move (nudge:
     a short check-in to the recruiter or a contact, or close: likely closed, ask the person whether to mark it
-    rejected or withdrawn; never change it on your own), advice, and contacts the person knows there."""
+    rejected or withdrawn; never change it on your own), advice, and contacts the person knows there. rounds is
+    null for an application with no interview rounds, else chip ("Round 3 of ? · next: Panel Mon Nov 30"), done,
+    held, number, typical, dots (each round's state) and next (kind, label, day, time, length); get_rounds has
+    the whole timeline."""
     cfg, store = _open()
     try:
         fields = ("status", "applied_at", "status_at", "next_step", "round", "length", "follow_up", "note", "closed")
         rows = store.applications()
         found = quiet.find(rows, cfg.quiet, known=watch.load_contacts(cfg))
+        on_rounds = timeline.summaries(store, rows)
         return [{"key": j.key, "company": j.display_company, "title": j.title, "url": j.url, "pay": j.pay(),
                  "candidate_home": store.candidate_home(j), "due": report.due(rec), "quiet": found.get(j.key),
-                 "closed_state": closed_state(rec), **{k: rec.get(k) for k in fields}}
+                 "closed_state": closed_state(rec), "rounds": on_rounds.get(j.key),
+                 **{k: rec.get(k) for k in fields}}
                 for j, rec in quiet.order(rows, found) if report.due(rec) or not due_only]
     finally:
         store.close()
@@ -1105,6 +1115,68 @@ def get_application_package(key: Key) -> dict:
     _, store = _open()
     try:
         return store.package(key).data()
+    finally:
+        store.close()
+
+
+@server.tool(annotations=READ)
+def get_rounds(key: Key) -> dict:
+    """An application's interview rounds as a timeline: items in order, each with id, number, state (done; held:
+    its time passed and no outcome is recorded yet; next; scheduled: a later one), kind and label, day, time,
+    length (minutes), who (the people met), mode (Teams, Zoom, Phone, Onsite), outcome, note and source (next_step:
+    from its next step; you: added by hand; inferred: proposed from the notes and written only on request). Also
+    done and held counts, number (which round the next one is), next (its number), typical (how many rounds the
+    posting says there are, a hint, not confirmed), chip (the one-line summary) and proposed (done rounds the
+    dated notes suggest, not yet written: offer them, don't add them unasked). Later rounds that aren't scheduled
+    are never listed. A round is written automatically when mark_job sets a next step with a round; use set_round
+    to add one that happened, correct one, record how one went, or delete one."""
+    _, store = _open()
+    try:
+        job, rec = store.find(key)
+        return timeline.payload(store, job, rec)
+    except KeyError as e:
+        raise ToolError(str(e.args[0])) from None
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(destructive=True))
+def set_round(
+    key: Key,
+    action: Annotated[Literal["add", "edit", "done", "delete"], Field(description=(
+        "add: record a round (give kind and day; a day that has passed makes it done, a later one scheduled); "
+        "edit: change fields of round_id; done: mark round_id done with its outcome and note; delete: remove "
+        "round_id."))],
+    round_id: Annotated[int | None, Field(description=(
+        "The round's id, from get_rounds. Needed for edit, done and delete."))] = None,
+    kind: Annotated[Round | None, Field(description=(
+        "Which interview: recruiter_screen, hiring_manager, technical, system_design, panel, executive, hr, "
+        "informal or offer_call; an empty string for an interview or call that says no more."))] = None,
+    day: Annotated[str | None, Field(description=(
+        "The day it is or was held: YYYY-MM-DD, today, yesterday, tomorrow, or +N and -N days."))] = None,
+    time: Annotated[str | None, Field(description="When it starts: 14:30 or 2:30 PM.")] = None,
+    length: Annotated[str | None, Field(description="How long it lasts: 45m, 1h, 1h30m.")] = None,
+    who: Annotated[str | None, Field(description=(
+        "The people met or to meet, by first name or full name (\"Dana Lee, Sam Ortiz\"), only what the person "
+        "told you."))] = None,
+    mode: Annotated[str | None, Field(description="Where: Teams, Zoom, Phone, Onsite...")] = None,
+    outcome: Annotated[str | None, Field(description="How it went, in a few words (\"Went well\").")] = None,
+    note: Annotated[str | None, Field(description="What to remember about it, one line.")] = None,
+) -> dict:
+    """Add, edit, finish or delete one interview round of an application (see get_rounds for the rounds and
+    their ids). Use it to record a round that happened or is booked when the person says so, or how one went.
+    A round from the next step can't be moved here: change it with mark_job's next_step; its kind and length
+    can be edited. Only write what the person told you; never invent a round, a person or an outcome. Returns the
+    rounds as get_rounds does."""
+    _, store = _open()
+    try:
+        fields = {"kind": kind, "day": day, "time": time, "length": length, "who": who, "mode": mode,
+                  "outcome": outcome, "note": note}
+        timeline.change(store, key, action, round_id, **{k: v for k, v in fields.items() if v is not None})
+        job, rec = store.find(key)
+        return timeline.payload(store, job, rec)
+    except (ValueError, KeyError) as e:
+        raise ToolError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
     finally:
         store.close()
 

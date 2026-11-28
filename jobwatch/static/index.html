@@ -1183,6 +1183,101 @@ button.btn.prepare-go:disabled { opacity: .8; }  /* its look is act-prepare's, w
   padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 .sheet-chip:hover .start { background: var(--grad); color: var(--accent-text); }
 @media (prefers-reduced-motion: reduce) { .sheet-chip { animation: none; transition: none; } }
+/* interview rounds: a vertical timeline, a connector line, done nodes filled, the next one pulsing, later ones dashed */
+.rounds { margin: 14px 0; }
+.rounds .rhead { flex-wrap: wrap; gap: 8px; }
+.rtl { list-style: none; margin: 10px 0 0; padding: 0; }
+.rnode { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding-bottom: 14px;
+  animation: rise .45s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(var(--n, 0) * 60ms); }
+.rnode::before { content: ""; position: absolute; left: 16px; top: 34px; bottom: -2px; width: 2px; border-radius: 2px;
+  background: linear-gradient(var(--rc), color-mix(in srgb, var(--rc) 20%, var(--line))); }
+.rnode:last-child { padding-bottom: 0; }
+.rnode:last-child::before { display: none; }
+.rnode:has(+ .rnode.later)::before { background: repeating-linear-gradient(var(--rc) 0 4px, transparent 4px 8px); }
+.rdot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; position: relative; z-index: 1;
+  border: 2px solid var(--rc); color: var(--rc); background: var(--panel-solid); }
+.rnode.done .rdot { color: #fff; background: var(--rc); box-shadow: 0 6px 14px -6px var(--rc); }
+.rnode.upnext .rdot { background: color-mix(in srgb, var(--rc) 16%, var(--panel-solid)); animation: rpulse 2.2s ease-out infinite; }
+.rnode.held .rdot { border-color: var(--warn); color: var(--warn); }
+.rnode.scheduled .rdot, .rnode.later .rdot { border-style: dashed; }
+.rnode.later { opacity: .85; }
+.rnode.later .rdot { background: transparent; }
+@keyframes rpulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--rc) 55%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 12px transparent; } }
+.rbody { min-width: 0; padding-top: 3px; display: grid; gap: 3px; align-content: start; }
+.rnode.upnext .rbody { padding: 10px 14px; border: 1px solid color-mix(in srgb, var(--rc) 55%, transparent); border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--rc) 14%, var(--panel-solid)), var(--panel));
+  box-shadow: 0 10px 26px -18px var(--rc); }
+.rnode.held .rbody { padding: 8px 12px; border: 1px dashed var(--warn); border-radius: 12px;
+  background: color-mix(in srgb, var(--warn) 9%, var(--panel-solid)); }
+.rtop { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.rnum { font-size: 11.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.rkind { display: inline-flex; align-items: center; gap: 5px; color: var(--rc); font-size: 15px; }
+.rnode.later .rkind { color: var(--muted); font-weight: 650; }
+.rstate { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 1px 8px; border-radius: 999px;
+  color: var(--rc); background: color-mix(in srgb, var(--rc) 14%, transparent); }
+.rnode.held .rstate { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+.rtag { font-size: 11px; font-weight: 650; color: var(--muted); padding: 1px 8px; border-radius: 999px; border: 1px dashed var(--line); }
+.rwhen { font-variant-numeric: tabular-nums; font-weight: 650; }
+.rnode.done .rwhen { font-weight: 550; color: var(--muted); }
+.rmeta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
+.rwho, .rmode { display: inline-flex; align-items: center; gap: 5px; padding: 1px 9px; border-radius: 999px; background: var(--chip);
+  color: var(--chip-text); }
+.rnote { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 13.5px; }
+.rout { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: var(--good); }
+.rtext { display: flex; gap: 7px; align-items: baseline; font-size: 13.5px; color: var(--text); }
+.rhint { font-size: 12.5px; color: var(--muted); }
+.racts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.btn.small { padding: 3px 10px; font-size: 12.5px; }
+.rchip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; margin-top: 4px; padding: 2px 11px 2px 9px;
+  border-radius: 999px; font-size: 12.5px; font-weight: 650; color: var(--accent); background: var(--accent-soft); }
+.rchip.none { color: var(--muted); background: var(--chip); }
+.rdots { display: inline-flex; gap: 4px; align-items: center; }
+.rd { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.rd.upnext { box-shadow: 0 0 0 3px var(--accent-soft); animation: rdpulse 1.8s ease-in-out infinite; }
+.rd.held { background: var(--warn); }
+.rd.scheduled { background: transparent; border: 1.5px solid var(--accent); }
+.rd.later { background: transparent; border: 1.5px dashed var(--muted); }
+@keyframes rdpulse { 50% { box-shadow: 0 0 0 5px transparent; } }
+.rempty { display: flex; gap: 12px; align-items: center; margin-top: 8px; padding: 14px 16px; border: 1px dashed var(--line);
+  border-radius: 14px; background: linear-gradient(135deg, var(--accent-soft), transparent 70%); color: var(--accent); }
+.rempty .muted { font-size: 13.5px; }
+.rstrip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0; padding: 9px 14px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); color: var(--text); }
+.rstrip > span { flex: 1 1 260px; }
+.rstrip .ico:first-child { color: var(--accent); }
+.rform { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 12px; margin: 10px 0; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.rform .wide, .rform .rhelp { grid-column: 1 / -1; }
+label.rf { margin: 0; display: grid; gap: 3px; font-weight: 400; }
+label.rf > span { font-size: 11.5px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.rform .row.actions { margin: 0; }
+.rline { display: grid; gap: 4px; margin-top: 4px; }
+.rline .rbox:empty { display: none; }
+.rline .rbox { padding: 4px 4px 4px 2px; }
+.rline .rtoggle { justify-self: start; }
+.dialog.rounds-dialog { max-width: 980px; padding: 28px 32px; }
+:root[data-width="wide"] .dialog.rounds-dialog { max-width: 1240px; }
+:root[data-width="full"] .dialog.rounds-dialog { max-width: 1560px; }
+.rbig { flex: none; width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, var(--rc), color-mix(in srgb, var(--rc) 55%, #a24af0)); box-shadow: 0 12px 26px -12px var(--rc); }
+.rbigout { display: inline-flex; gap: 6px; align-items: center; margin: 6px 0; font-size: 17px; font-weight: 750; color: var(--good); }
+.rnote-full { white-space: pre-wrap; font-size: 15px; line-height: 1.65; margin: 8px 0 12px; padding: 12px 14px;
+  border-left: 3px solid var(--accent); border-radius: 4px 12px 12px 4px; background: var(--panel); }
+.rfound { display: grid; gap: 10px; max-height: 55vh; overflow-y: auto; margin: 10px 0; }
+.rfgroup { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; margin: 0; padding: 10px 14px;
+  border: 1px solid var(--line); border-radius: 12px; font-weight: 400; cursor: pointer; }
+.rfgroup input { margin-top: 4px; }
+.rfgroup ul { margin: 4px 0 0; padding-left: 18px; }
+.btn.danger { color: var(--bad); border-color: var(--bad); }
+@media (max-width: 560px) {
+  .rnode { grid-template-columns: 28px minmax(0, 1fr); gap: 8px; }
+  .rdot { width: 28px; height: 28px; }
+  .rnode::before { left: 13px; top: 30px; }
+  .rnode.upnext .rbody { padding: 8px 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .rnode, .rnode.upnext .rdot, .rd.upnext { animation: none; } }
+.rhead .rchip { text-transform: none; letter-spacing: 0; margin-top: 0; }
 .iv-banner { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 10px; padding: 8px 12px;
   margin: 8px 0; display: grid; gap: 4px; }
 /* the job details' top strip: the stage (pick another right there) and the days that matter, as small tiles */
@@ -3546,6 +3641,307 @@ function todayCard(job, canScore, i) {
   ], i);
 }
 
+// -- interview rounds: one application's rounds as a timeline (timeline.py). The server says each round's state: done,
+// held (its time passed and no outcome yet), next, or scheduled (later ones). Nothing here makes a round up: what
+// isn't scheduled is one dashed "Later rounds" node. Shown in the Details dialog and on the Company tab, as a chip
+// and a strip of dots on the lists.
+Object.assign(ICONS, {
+  phone: "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z",
+  user: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  code: "M16 18l6-6-6-6M8 6l-6 6 6 6",
+  layers: "M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
+  star: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+  heart: "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z",
+  coffee: "M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8zM6 1v3M10 1v3M14 1v3",
+  gift: "M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z",
+  chat: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
+  trash: "M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6",
+  expand: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
+});
+// The icon and colour of each kind of round.
+const ROUND_LOOK = {
+  recruiter_screen: ["phone", "#06b6d4"], hiring_manager: ["user", "#8b5cf6"], technical: ["code", "#f59e0b"],
+  system_design: ["layers", "#ec4899"], panel: ["users", "#5a5cf2"], executive: ["star", "#f43f5e"],
+  hr: ["heart", "#10b981"], informal: ["coffee", "#14b8a6"], offer_call: ["gift", "#22c55e"], "": ["chat", "#64748b"] };
+const roundLook = kind => ROUND_LOOK[kind] || ROUND_LOOK[""];
+const ROUND_MODES = ["Teams", "Zoom", "Google Meet", "Phone", "Onsite", "Video"];
+const ROUND_OUTCOMES = ["Went well", "Mixed", "Went badly", "Moved forward", "Not moving forward"];
+const ROUND_NEEDS_STEP = "This round comes from the next step: change the next step to move it";
+function hhmm12(t) {
+  if (!t) return "";
+  const [hh, mm] = t.split(":").map(Number);
+  return `${hh % 12 || 12}${mm ? ":" + String(mm).padStart(2, "0") : ""} ${hh < 12 ? "AM" : "PM"}`;
+}
+// "12 PM–1 PM" from a start and a length in minutes, just the start with no length, "" with no time.
+function roundTimes(r) {
+  if (!r.time) return "";
+  if (!r.length) return hhmm12(r.time);
+  const [hh, mm] = r.time.split(":").map(Number), end = hh * 60 + mm + r.length, p = n => String(n).padStart(2, "0");
+  return `${hhmm12(r.time)}–${hhmm12(`${p(Math.floor(end / 60) % 24)}:${p(end % 60)}`)}`;
+}
+function roundDayName(day, today) {
+  return new Date(day + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" }) + " " + fmtDay(day, today);
+}
+// "Mon Nov 30 · 12 PM–1 PM · in 3 days": when a round is or was, `rel` adding how far off.
+function roundWhen(r, today, rel = true) {
+  if (!r.day) return "Date not set yet";
+  return [roundDayName(r.day, today), roundTimes(r), rel ? relDay(r.day, today) : ""].filter(Boolean).join(" · ");
+}
+const roundClass = state => state === "next" ? "upnext" : state;  // .next is the Applications row's next-step line
+const roundWord = r => r.state === "done" ? "Done" : r.state === "held" ? "Held" : r.state === "next" ? "Next" : "Later";
+// The strip of dots: one for each round by its state, then the dashed one for what isn't scheduled.
+function roundDots(states) {
+  return h("span", { class: "rdots", "aria-hidden": "true" }, states.map(s => h("i", { class: "rd " + roundClass(s) })), h("i", { class: "rd later" }));
+}
+// The one-line summary on the lists: "Round 3 of ? · next: Panel Mon Nov 30" and the dots. Null with no rounds.
+function roundsChip(rs) {
+  if (!rs || !rs.chip) return null;
+  return h("span", { class: "rchip", title: `Interview rounds: ${rs.chip}. Later rounds aren't scheduled yet.` },
+    roundDots(rs.dots || (rs.items || []).map(i => i.state)), h("span", {}, rs.chip));
+}
+
+// A dialog on top of the Details dialog (or the page): the app's dialog stack. One Esc closes the top one only.
+const roundShades = [];
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape" || !roundShades.length) return;
+  e.stopImmediatePropagation(); e.preventDefault();
+  roundShades[roundShades.length - 1].close();
+}, true);
+function roundShade(label, extra = "") {
+  const shade = h("div", { class: "overlay rescore-shade rounds-shade", style: "display:flex" });
+  const box = h("div", { class: "dialog rounds-dialog " + extra, role: "dialog", "aria-modal": "true", "aria-label": label });
+  const was = document.activeElement;
+  const entry = { close: () => { roundShades.splice(roundShades.indexOf(entry), 1); shade.remove(); was?.focus?.(); } };
+  shade.onclick = e => { if (e.target === shade) entry.close(); };
+  shade.append(box);
+  document.body.append(shade);
+  roundShades.push(entry);
+  return { box, close: entry.close };
+}
+
+// The form to add a round or change one: kind (with what each kind is), date, time, how long, who, where, outcome and
+// a note. Enter saves, Esc cancels. A round the next step names can't be moved here: its day and time stay as the step says.
+function roundForm(rs, r, { label, submit, cancel }) {
+  const kind = h("select", { "aria-label": "Kind of round" }, rs.kinds.map(k => h("option", { value: k.id, title: k.help }, k.label)));
+  kind.value = r.kind || "";
+  const help = h("div", { class: "rhelp muted small" });
+  const showHelp = () => { help.textContent = (rs.kinds.find(k => k.id === kind.value) || {}).help || ""; };
+  kind.onchange = showHelp; showHelp();
+  const locked = r.source === "next_step" && r.state !== "done";
+  const day = h("input", { type: "date", "aria-label": "Date", title: locked ? ROUND_NEEDS_STEP : "The day it is or was", disabled: locked }),
+    time = h("input", { type: "time", "aria-label": "Time", title: locked ? ROUND_NEEDS_STEP : "When it starts", disabled: locked }),
+    length = h("input", { type: "text", placeholder: "45m", "aria-label": "How long", title: "How long it lasts: 30m, 1h" }),
+    who = h("input", { type: "text", placeholder: "Dana Lee, Sam Ortiz", "aria-label": "Who you met or will meet" }),
+    mode = h("select", { "aria-label": "Where" }, ["", ...ROUND_MODES, ...(r.mode && !ROUND_MODES.includes(r.mode) ? [r.mode] : [])]
+      .map(m => h("option", { value: m }, m || "Where: not set"))),
+    outcome = h("input", { type: "text", placeholder: "How did it go?", "aria-label": "How it went", list: "round-outcomes" }),
+    note = h("textarea", { rows: 2, placeholder: "What to remember about it", "aria-label": "Note" });
+  day.value = r.day || ""; time.value = r.time || ""; length.value = r.length ? `${r.length}m` : "";
+  who.value = r.who || ""; mode.value = r.mode || ""; outcome.value = r.outcome || ""; note.value = r.note || "";
+  const f = (text, el, cls = "") => h("label", { class: "rf " + cls }, h("span", {}, text), el);
+  const form = h("form", { class: "rform", novalidate: true },
+    f("Kind", kind), help, f("Date", day), f("Time", time), f("Length", length), f("With", who, "wide"), f("Where", mode),
+    f("How it went", outcome, "wide"), f("Note", note, "wide"),
+    h("datalist", { id: "round-outcomes" }, ROUND_OUTCOMES.map(o => h("option", { value: o }))),
+    h("div", { class: "row actions wide" }, h("button", { class: "btn primary", type: "submit" }, label),
+      h("button", { class: "btn", type: "button", onclick: cancel }, "Cancel"), h("span", { class: "muted small" }, "Enter saves, Esc cancels")));
+  form.onsubmit = e => { e.preventDefault(); submit({ kind: kind.value, day: day.value, time: time.value, length: length.value,
+    who: who.value, mode: mode.value, outcome: outcome.value, note: note.value }); };
+  form.onkeydown = e => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); cancel(); } };
+  form.focusFirst = () => kind.focus();
+  return form;
+}
+
+// One round of the timeline: its dot, kind, when, who and where, how it went (done), or what to do (next).
+function roundNode(r, rs, ctx) {
+  const [ic, color] = roundLook(r.kind), today = ctx.today, j = ctx.j;
+  const open = mode => ctx.open(r, mode);
+  const pieces = [r.who ? h("span", { class: "rwho" }, icon("users", 12), `with ${r.who}`) : null,
+    r.mode ? h("span", { class: "rmode" }, r.mode) : null,
+    r.length && !r.time ? h("span", { class: "rmode" }, `${r.length} min`) : null].filter(Boolean);
+  const sheet = r.state === "next" && j.sheets && j.sheets.length && j.sheets_base
+    ? h("a", { class: "btn small", href: j.sheets_base + encodeURIComponent(j.sheets[0]), target: "_blank", rel: "noopener",
+      title: `Your prep sheet, ${j.sheets[0]}, in a new tab` }, icon("file", 12), "Prep sheet") : null;
+  const li = h("li", { class: `rnode ${roundClass(r.state)}`, style: `--rc:${color};--n:${Math.min(r.number, 10)}`,
+    "aria-current": r.state === "next" ? "step" : null, "data-round": r.id ?? "", "data-state": r.state },
+    h("span", { class: "rdot", title: `${roundWord(r)}: ${r.label}` }, r.state === "done" ? icon("check", 15) : icon(ic, 14)),
+    h("div", { class: "rbody" },
+      h("div", { class: "rtop" }, h("span", { class: "rnum" }, `Round ${r.number}`),
+        h("b", { class: "rkind", title: (rs.kinds.find(k => k.id === r.kind) || {}).help || "" }, icon(ic, 13), r.label),
+        h("span", { class: "rstate" }, roundWord(r)),
+        r.inferred ? h("span", { class: "rtag", title: "Proposed from the dated lines of your notes, and added when you said so. Edit it to make it yours." },
+          "inferred from your notes") : null),
+      h("div", { class: "rwhen" }, roundWhen(r, today, r.state !== "done")),
+      pieces.length ? h("div", { class: "rmeta" }, pieces) : null,
+      r.state === "done" && (r.outcome || r.note) ? h("div", { class: "rnote" },
+        r.outcome ? h("span", { class: "rout" }, icon("check", 11), r.outcome) : null, r.note ? h("span", {}, r.note) : null) : null,
+      r.state === "next" && r.text ? h("div", { class: "rtext" }, icon("arrow", 12), h("span", {}, r.text)) : null,
+      r.state === "held" ? h("div", { class: "rtext" }, icon("clock", 12), "That time has passed. Record how it went.") : null,
+      h("div", { class: "racts" },
+        r.state === "held" || r.state === "next" ? h("button", { class: "btn small" + (r.state === "held" ? " primary" : ""), type: "button",
+          onclick: () => open("done") }, icon("check", 12), r.state === "held" ? "How did it go?" : "Mark done") : null,
+        sheet,
+        h("button", { class: "btn ghost small", type: "button", onclick: () => open(), title: "The whole round: notes, people, links",
+          "aria-label": `Open round ${r.number}, ${r.label}` }, icon("expand", 12), "Open"))));
+  return li;
+}
+// The rounds in order, then the dashed node for what isn't scheduled yet. A posting that names its process is a quiet hint.
+function roundsList(rs, ctx) {
+  const later = h("li", { class: "rnode later", style: "--rc:var(--muted)" },
+    h("span", { class: "rdot" }, icon("plus", 13)),
+    h("div", { class: "rbody" }, h("div", { class: "rtop" }, h("b", { class: "rkind" }, "Later rounds: not scheduled yet")),
+      rs.typical ? h("div", { class: "rhint", title: "Read from the posting's words. jobwatch doesn't know which rounds you'll get." },
+        `Typical, not confirmed: the posting says about ${rs.typical} rounds.`) : null));
+  return h("ol", { class: "rtl", "aria-label": "Interview rounds, in order" }, rs.items.map(r => roundNode(r, rs, ctx)), later);
+}
+function roundsEmpty() {
+  return h("div", { class: "rempty" }, icon("calendar", 26), h("div", {}, h("b", {}, "No rounds yet"),
+    h("div", { class: "muted" }, "Add the first round when you have an interview, or set a next step.")));
+}
+const roundsDismissed = () => { try { return JSON.parse(remembered("rounds.found.dismissed", "{}")); } catch { return {}; } };
+function dismissRoundsFound(id, n) { remember("rounds.found.dismissed", JSON.stringify({ ...roundsDismissed(), [id]: n })); }
+
+// What the dated lines of the notes suggest, to read before anything is added: ticked rounds are written when you say so.
+function openFoundRounds(groups, done) {
+  const { box, close } = roundShade("Rounds found in your notes");
+  const total = groups.reduce((n, g) => n + g.rounds.length, 0), ticked = new Set(groups.map(g => g.key));
+  const add = h("button", { class: "btn primary", type: "button" });
+  const sync = () => { add.disabled = !ticked.size; add.replaceChildren(`Add rounds to ${ticked.size} application${ticked.size === 1 ? "" : "s"}`); };
+  add.onclick = async () => {
+    add.disabled = true;
+    try {
+      const r = await api("/api/rounds/found", { keys: [...ticked] });
+      close(); toast(`Added ${r.added} round${r.added === 1 ? "" : "s"} to your timelines. Edit or delete any of them there.`);
+      done(r);
+    } catch (e) { add.disabled = false; toast(e.message); }
+  };
+  fill(box, h("div", { class: "row", style: "align-items:flex-start" }, h("h2", { style: "flex:1" }, "Rounds found in your notes"), closeButton(close)),
+    h("p", { class: "muted" }, `${total} done round${total === 1 ? "" : "s"} that your notes say were held. They are guesses from your words: read them, untick any application you don't want, and nothing is added until you press the button. Each one is marked "inferred" and can be edited.`),
+    h("div", { class: "rfound" }, groups.map(g => h("label", { class: "rfgroup" },
+      h("input", { type: "checkbox", checked: true, onchange: e => { e.target.checked ? ticked.add(g.key) : ticked.delete(g.key); sync(); } }),
+      h("div", {}, h("b", {}, `${g.company}: ${g.title}`),
+        h("ul", {}, g.rounds.map(r => h("li", {}, h("b", {}, r.label), ` · ${roundWhen(r, todayIso(), false)}`,
+          r.who ? ` · with ${r.who}` : "", r.note ? h("div", { class: "muted small" }, `“${r.note}”`) : null))))))),
+    h("div", { class: "row actions" }, add, h("button", { class: "btn", type: "button", onclick: close }, "Not now")));
+  sync();
+}
+// On Applications: one dismissible line when the notes of any application say rounds were held.
+function roundsFoundStrip(d) {
+  const f = d.rounds_found;
+  if (!f || !f.rounds || roundsDismissed().all >= f.rounds) return null;
+  const strip = h("div", { class: "rstrip", role: "status" }, icon("sparkle", 16),
+    h("span", {}, h("b", {}, `Found ${f.rounds} round${f.rounds === 1 ? "" : "s"} in your notes`),
+      ` across ${f.applications} application${f.applications === 1 ? "" : "s"}. Review them to fill in your timelines; nothing is added on its own.`),
+    h("button", { class: "btn small primary", type: "button", onclick: async () => {
+      try { openFoundRounds((await api("/api/rounds/found")).applications.map(a => ({ ...a, key: a.key })), () => render()); }
+      catch (e) { toast(e.message); } } }, "Review"),
+    h("button", { class: "btn ghost small", type: "button", onclick: () => { dismissRoundsFound("all", f.rounds); strip.remove(); } }, "Not now"));
+  return strip;
+}
+
+// A round in full, in a large dialog: when, how long, where, who, the next step's words, how it went and the note, with
+// edit, mark done and delete. Closing it (the button or Esc) leaves the Details dialog under it as it was.
+function openRoundDialog(r0, rs, ctx, mode) {
+  const { box, close } = roundShade("Interview round");
+  let r = r0;
+  const [, color] = roundLook(r.kind), j = ctx.j;
+  const reload = rsNew => { rs = rsNew; r = rsNew.items.find(x => x.id === r.id); if (!r) return close(); show(); };
+  const run = async body => { try { reload(await ctx.act({ ...body, id: r.id })); } catch { /* ctx.act told the person */ } };
+  const show = (form) => {
+    const [ic] = roundLook(r.kind), tile = (lbl, val) => val ? h("div", { class: "d-fact" }, h("div", { class: "lbl" }, lbl), h("div", { class: "val" }, val)) : null;
+    const head = h("div", { class: "row", style: "align-items:flex-start;gap:14px" },
+      h("span", { class: "rbig", style: `--rc:${color}` }, icon(r.state === "done" ? "check" : ic, 24)),
+      h("div", { style: "flex:1" }, h("h2", { style: "margin:0" }, `Round ${r.number} · ${r.label}`),
+        h("div", { class: "muted" }, `${roundWord(r)} · ${(rs.kinds.find(k => k.id === r.kind) || {}).help || ""}`)),
+      closeButton(close));
+    if (form) return fill(box, head, form);
+    const del = h("button", { class: "btn ghost", type: "button", title: "Delete this round" }, icon("trash", 13), "Delete");
+    del.onclick = () => {
+      if (!del.dataset.sure) { del.dataset.sure = "1"; del.replaceChildren("Really delete?"); del.classList.add("danger"); return; }
+      run({ action: "delete" });
+    };
+    fill(box, head,
+      h("div", { class: "d-facts" }, tile("When", r.day ? roundDayName(r.day, ctx.today) + (r.state === "done" ? "" : ` · ${relDay(r.day, ctx.today)}`) : "Date not set yet"),
+        tile("Time", roundTimes(r) || null), tile("Length", r.length ? `${r.length} min` : null), tile("Where", r.mode || null), tile("With", r.who || null)),
+      r.text ? h("div", { class: "iv-banner" }, h("b", {}, "The next step says"), r.text) : null,
+      r.outcome ? h("div", { class: "rbigout" }, icon("check", 14), r.outcome) : null,
+      r.note ? h("div", { class: "rnote-full" }, r.note) : null,
+      !r.outcome && !r.note && r.state === "done" ? h("p", { class: "muted" }, "No outcome or note yet. Edit the round to add how it went.") : null,
+      h("div", { class: "row" },
+        r.state === "next" ? sheetChip(j, j.sheets_base) : null,
+        j.url ? link(j.url, "Open the posting ↗") : null,
+        h("span", { class: "muted small" }, r.source === "inferred" ? "Proposed from your notes (inferred). Edit it to make it yours."
+          : r.source === "next_step" ? "Kept from your next step." : "Added by you.")),
+      h("div", { class: "row actions" },
+        r.state !== "done" ? h("button", { class: "btn primary", type: "button", onclick: () => form2("done") }, icon("check", 13), "Mark done") : null,
+        h("button", { class: "btn", type: "button", onclick: () => form2("edit") }, icon("pencil", 13), "Edit"), del));
+  };
+  const form2 = how => {
+    const f = roundForm(rs, how === "done" ? { ...r, day: r.day || ctx.today } : r, {
+      label: how === "done" ? "Mark done" : "Save",
+      submit: v => run({ action: how, fields: v }), cancel: () => show() });
+    show(f); f.focusFirst();
+  };
+  show();
+  if (mode === "done") form2("done");
+}
+
+// The Details dialog's section (and the Company tab's): a primary Add round button, the timeline or its empty state,
+// and the offer to add what the notes say. `onChange(rs)` tells the caller (a list's chip, the page behind) it changed.
+function roundsSection(j, onChange = () => {}) {
+  const box = h("section", { class: "rounds", "aria-label": "Interview rounds" });
+  const ctx = { j, today: todayIso() };
+  let adding = false;
+  ctx.act = async body => {
+    try {
+      const rs = await api("/api/rounds", { key: j.key, ...body });
+      j.rounds = rs; detailsDirty = true; onChange(rs); draw();
+      return rs;
+    } catch (e) { toast(e.message); throw e; }
+  };
+  ctx.open = (r, mode) => openRoundDialog(r, j.rounds, ctx, mode);
+  const draw = () => {
+    const rs = j.rounds, n = rs.items.length;
+    const addBtn = h("button", { class: "btn primary small radd", type: "button", "aria-expanded": String(adding),
+      title: "Record an interview you have, had or are waiting to schedule", onclick: () => { adding = !adding; draw(); } }, icon("plus", 13), "Add round");
+    const form = adding ? roundForm(rs, { state: "scheduled" }, { label: "Add round", cancel: () => { adding = false; draw(); },
+      submit: async v => { try { await ctx.act({ action: "add", fields: v }); adding = false; draw(); toast("Round added."); } catch { /* told */ } } }) : null;
+    const proposed = rs.proposed || [], hide = roundsDismissed()[j.key] >= proposed.length;
+    const offer = proposed.length && !hide ? h("div", { class: "rstrip" }, icon("sparkle", 16),
+      h("span", {}, h("b", {}, `Found ${proposed.length} round${proposed.length === 1 ? "" : "s"} in your notes`), ". Look them over before adding."),
+      h("button", { class: "btn small", type: "button", onclick: () => openFoundRounds([{ key: j.key, company: j.company, title: j.title,
+        rounds: proposed.map(p => ({ ...p, label: p.label || (rs.kinds.find(k => k.id === p.kind) || {}).label || "Interview" })) }],
+        async () => { try { j.rounds = (await api("/api/job?key=" + encodeURIComponent(j.key))).rounds; detailsDirty = true; onChange(j.rounds); draw(); } catch (e) { toast(e.message); } }) }, "Review"),
+      h("button", { class: "btn ghost small", type: "button", onclick: () => { dismissRoundsFound(j.key, proposed.length); draw(); } }, "Not now")) : null;
+    fill(box, h("div", { class: "d-head rhead" }, icon("users", 14), "Interview rounds",
+      n ? h("span", { class: "rchip" }, roundDots(rs.items.map(i => i.state)), h("span", {}, rs.chip)) : null,
+      h("span", { style: "flex:1" }), addBtn), offer, form, n ? roundsList(rs, ctx) : roundsEmpty());
+    if (form) form.focusFirst();
+  };
+  draw();
+  return box;
+}
+// On the Company tab: the chip and dots for an application, and a button that opens its whole timeline right there.
+function roundsLine(j) {
+  if (!j.rounds && !APPLIED.includes(j.status)) return null;
+  const chipBox = h("span", {}), body = h("div", { class: "rbox" });
+  const drawChip = () => fill(chipBox, roundsChip(j.rounds) || h("span", { class: "rchip none" }, "No rounds yet"));
+  let open = false;
+  const btn = h("button", { class: "btn ghost small rtoggle", type: "button", "aria-expanded": "false" });
+  const label = () => btn.replaceChildren(icon("chevron", 12), open ? "Hide timeline" : j.rounds ? "Timeline" : "Add a round");
+  btn.onclick = async () => {
+    open = !open; btn.setAttribute("aria-expanded", String(open)); label();
+    if (!open) return body.replaceChildren();
+    try {
+      const full = await api("/api/job?key=" + encodeURIComponent(j.key));
+      body.replaceChildren(roundsSection(full, rs => {
+        j.rounds = rs.items.length ? { chip: rs.chip, dots: rs.items.map(i => i.state) } : null; drawChip(); }));
+    } catch (e) { toast(e.message); open = false; label(); }
+  };
+  drawChip(); label();
+  return h("div", { class: "rline" }, chipBox, btn, body);
+}
+
 async function openDetails(key) {
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
@@ -3564,6 +3960,7 @@ async function openDetails(key) {
           h("b", {}, `${j.meeting.round_label || j.meeting.label} · ${fmtDay(j.meeting.day)} · ${meetingTime(j.meeting)} · ${relDay(j.meeting.day, todayIso())}`),
           j.next_step) : j.next_step || j.follow_up ? nextLine(j, todayIso()) : null,
         sheetChip(j, j.sheets_base),
+        APPLIED.includes(j.status) || j.rounds?.items.length ? roundsSection(j) : null,
         j.note ? [h("div", { class: "d-head" }, icon("calendar", 14), "History"),
           h("div", { class: "note-full", title: "The whole note, newest first" }, noteTimeline(j.note))] : null,
         linkNote(j),
@@ -6474,7 +6871,7 @@ async function renderApplied() {
             onclick: () => pick(s) }))),
         h("div", { style: "margin-top:10px" }, stages)) : null,
       panel(null, search),
-    ], [closedStrip(d), addArea, all.length ? liveFilter : null, all.length ? filters : null, showing, body, pager]));
+    ], [roundsFoundStrip(d), closedStrip(d), addArea, all.length ? liveFilter : null, all.length ? filters : null, showing, body, pager]));
   drawLive();
   drawFilters();
   draw();
@@ -6516,7 +6913,7 @@ function appRow(a, d) {
     h("td", { class: "role" }, a.url ? link(a.url, a.title) : a.title, a.pay ? h("div", { class: payClass("pay", a.pay) + " small" }, a.pay) : null),
     h("td", {}, stage),
     h("td", { class: "nowrap" }, a.applied_at ? [fmtDay(a.applied_at, d.today), h("div", { class: "muted small" }, relDay(a.applied_at, d.today))] : ""),
-    h("td", { class: "next-cell" }, nextLine(a, d.today) || h("span", { class: "muted" }, "—"),
+    h("td", { class: "next-cell" }, nextLine(a, d.today) || h("span", { class: "muted" }, "—"), roundsChip(a.rounds),
       a.quiet ? h("div", { class: "muted small" }, `quiet ${a.quiet.days} days`) : null),
     h("td", { class: "col-sent" }, sentChip(a)),
     h("td", { class: "acts nowrap" }, d.reminders ? bellButton(a) : null,
@@ -6673,7 +7070,7 @@ function appCard(a, d, i = 0) {
           a.url ? link(a.url, a.title, "title") : h("span", { class: "title", style: "font-weight:700;font-size:17px" }, a.title),
           h("div", { class: "meta" }, h("b", {}, a.company), facts.map(f => [h("span", { class: "sep" }, "·"), f]))),
         stage),
-      nextLine(a, d.today), a.note ? h("div", { class: "note", title: "Details shows the whole note" }, a.note) : null,
+      nextLine(a, d.today), roundsChip(a.rounds), a.note ? h("div", { class: "note", title: "Details shows the whole note" }, a.note) : null,
       a.quiet ? quietBar(a, d) : null,
       h("div", { class: "app-foot" },
         h("span", { class: "when" }, a.applied_at ? `Applied ${fmtDay(a.applied_at, d.today)} · ${relDay(a.applied_at, d.today)}` : ""),
@@ -8982,6 +9379,7 @@ function companyFacts(j, today) {
     j.status !== "snoozed" && (j.next_step || j.follow_up) ? (j.due ? "Due: " : "Next: ") +
       [j.next_step, j.follow_up && `follow up ${fmtDay(j.follow_up, today)}`].filter(Boolean).join(" · ") : null,
     j.status === "queued" && j.note ? `Note: ${j.note}` : null,  // other statuses have the card's Note row
+    roundsLine(j),
   ].filter(Boolean);
   return lines.length ? h("div", { class: "facts" }, lines.map(l => h("div", {}, l))) : null;
 }

@@ -86,6 +86,7 @@ from . import (
     storyfind,
     suggest,
     tailor,
+    timeline,
 )
 from .config import ConfigError
 from .filters import KINDS
@@ -1369,7 +1370,9 @@ class App:
             closed_notice.collect(store)  # postings that closed since the page last asked
             notices = closed_notice.unseen(store)
             new = {n["key"] for n in notices}
-            return {"stages": STAGES, "today": date.today().isoformat(), "reminders": reminders.enabled(cfg),
+            on_rounds = timeline.summaries(store, rows)
+            return {"rounds_found": timeline.found_counts(store, rows), "stages": STAGES,
+                    "today": date.today().isoformat(), "reminders": reminders.enabled(cfg),
                     "closed_notices": [{k: n[k] for k in ("key", "company", "title", "status", "day", "application",
                                                           "action")} for n in notices],
                     "applications": [
@@ -1377,7 +1380,7 @@ class App:
                  "manual": j.source == MANUAL, "due": report.due(rec), "quiet": found.get(j.key),
                  "closed_day": closed_notice.local_day(rec.get("closed")), "closed_new": j.key in new,
                  "closed_state": closed_state(rec),
-                 "snoozed_until": quiet.snoozed_until(rec),
+                 "snoozed_until": quiet.snoozed_until(rec), "rounds": on_rounds.get(j.key),
                  "package": Package(store.packages, j.key).summary(),
                  **{k: rec.get(k) for k in ("status", "status_at", "applied_at", "next_step", "round", "follow_up",
                                             "note", "closed")}}
@@ -1578,6 +1581,41 @@ class App:
             return {"key": key}
         return self._with_store(run)
 
+    def post_rounds(self, body) -> dict:
+        """Change one application's interview rounds: `action` add, edit, done or delete, the round's `id` (not for
+        add) and `fields` (kind, state, day, time, length, who, mode, outcome, note). Returns the rounds as the
+        Details dialog shows them (see timeline.payload)."""
+        fields = body.get("fields") or {}
+        if not isinstance(fields, dict):
+            raise ApiError("fields must be an object")
+
+        def run(cfg, store):
+            try:
+                timeline.change(store, body.get("key") or "", body.get("action") or "", body.get("id"), **fields)
+            except (ValueError, KeyError, TypeError) as e:
+                raise ApiError(str(e.args[0] if isinstance(e, KeyError) else e)) from None
+            job, rec = store.find(body.get("key") or "")
+            return timeline.payload(store, job, rec)
+        return self._with_store(run)
+
+    def get_rounds_found(self, q) -> dict:
+        """The done rounds the History lines of the applications could add, by application (see
+        timeline.proposals): offered, never written until post_rounds_found says which."""
+        def run(cfg, store):
+            return {"applications": [
+                {"key": key, "title": store.find(key)[0].title, "company": store.find(key)[0].display_company,
+                 "status": rec["status"], "rounds": [{**p, "label": timeline.label(p["kind"])} for p in props]}
+                for key, rec, props in timeline.proposals(store) if props]}
+        return self._with_store(run)
+
+    def post_rounds_found(self, body) -> dict:
+        """Write the proposed rounds for the applications in `keys` (source inferred), after the person ticked them."""
+        keys = body.get("keys")
+        if not (isinstance(keys, list) and keys and all(isinstance(k, str) for k in keys)):
+            raise ApiError("send the keys of the applications to add rounds to")
+        return self._with_store(lambda cfg, store: {
+            "added": timeline.apply(store, timeline.proposals(store, keys))})
+
     def post_remind(self, body) -> dict:
         """A one-off reminder from an application's bell: title, due (YYYY-MM-DDTHH:MM, this computer's time) and an
         optional note; the posting's link is added to the note. Not a follow-up day, so a sync leaves it alone."""
@@ -1642,6 +1680,7 @@ class App:
                     "meeting": None if rec.get("status") in ENDED else interviews.meeting_dict(
                         rec.get("next_step"), round_id=rec.get("round"), length=length_of(rec)),
                     **self._pay(cfg, store, [(job, None)]).get(job.key, {}),
+                    "rounds": timeline.payload(store, job, rec),
                     "closed_state": closed_state(rec),
                     **{k: rec.get(k) for k in ("status", "status_at", "note", "closed", "first_seen", "next_step",
                                                "round", "follow_up", "applied_at")},
@@ -1662,12 +1701,15 @@ class App:
             store.wake_snoozed()
             if not (v := company.view(cfg, store, text, every)):
                 raise ApiError(f"no tracked job is at a company matching {text!r}", HTTPStatus.NOT_FOUND)
-            entries = entries_for(cfg, store, [store.find(j["key"]) for j in v["jobs"]])
+            found = [store.find(j["key"]) for j in v["jobs"]]
+            entries = entries_for(cfg, store, found)
             for e in entries:
                 if e.record.get("status") not in IN_LINE:
                     e.warnings = e.warnings[:1] if e.duplicate else []
             cards = self._cards(cfg, store, entries, most=cfg.pay.today, line=False)
-            return {**v, "jobs": [{**card, **j} for card, j in zip(cards, v["jobs"], strict=True)]}
+            on_rounds = timeline.summaries(store, found)
+            return {**v, "jobs": [{**card, **j, "rounds": on_rounds.get(j["key"])}
+                                  for card, j in zip(cards, v["jobs"], strict=True)]}
         return self._with_store(run)
 
     def post_posting(self, body) -> dict:
@@ -2288,6 +2330,9 @@ ROUTES = {
     ("GET", "/api/interviews"): App.get_interviews,
     ("POST", "/api/add"): App.post_add,
     ("POST", "/api/track"): App.post_track,
+    ("POST", "/api/rounds"): App.post_rounds,
+    ("GET", "/api/rounds/found"): App.get_rounds_found,
+    ("POST", "/api/rounds/found"): App.post_rounds_found,
     ("POST", "/api/snooze"): App.post_snooze,
     ("POST", "/api/remind"): App.post_remind,
     ("POST", "/api/score"): App.post_score,

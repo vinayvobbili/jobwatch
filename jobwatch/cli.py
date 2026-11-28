@@ -76,6 +76,7 @@ from . import (
     storyfind,
     suggest,
     tailor,
+    timeline,
     variants,
 )
 from .config import BACKENDS, ConfigError, credit_entry, duration, fallback_entry
@@ -1396,6 +1397,44 @@ def cmd_notes(args, cfg, store):
             print(f"  replaced {h['replaced_at'][:16]}, {len(h['note']):,} characters: {h['note']}")
 
 
+def cmd_rounds(args, cfg, store):
+    """`rounds KEY`: an application's interview rounds, the done ones and the next; --add, --edit, --done and
+    --delete change them; --backfill proposes done rounds from the History (a dry run until --apply --only KEY...)."""
+    if args.backfill:
+        if args.keys:
+            raise ValueError("--backfill takes --only KEY..., not keys")
+        if args.apply and not args.only:
+            raise ValueError("--apply writes only for the keys named: --apply --only KEY...")
+        found = timeline.proposals(store, args.only)
+        if args.apply and not args.dry_run:
+            timeline.apply(store, found)
+        print(timeline.backfill_text(found, args.apply and not args.dry_run))
+        return
+    if len(args.keys) != 1:
+        raise ValueError("give the one application: jobwatch rounds KEY")
+    job, rec = store.find(args.keys[0])
+    fields = {"day": args.date, "time": args.time, "length": args.length, "who": args.who, "mode": args.mode,
+              "outcome": args.outcome, "note": args.note}
+    fields = {k: v for k, v in fields.items() if v is not None}
+    if args.done == "" and args.add is None:
+        raise ValueError("--done ID marks a round done; --done alone goes with --add (a round that already happened)")
+    if args.kind is not None:
+        fields["kind"] = args.kind
+    if args.add is not None:
+        if args.done == "":
+            fields["state"] = "done"
+        print(f"added round #{timeline.change(store, job.key, 'add', kind=args.add, **fields)['id']}")
+    elif args.done or args.edit is not None:
+        timeline.change(store, job.key, "done" if args.done else "edit", int(args.done or args.edit), **fields)
+        print(f"round #{args.done or args.edit}: {'done' if args.done else 'changed'}")
+    elif args.delete is not None:
+        timeline.change(store, job.key, "delete", args.delete)
+        print(f"deleted round #{args.delete}")
+    store.sync_rounds(job.key)
+    print(timeline.text(f"{job.display_company}: {job.title}  ({rec['status']})",
+                        timeline.for_job(store, *store.find(job.key))))
+
+
 def cmd_notify_closed(args, cfg, store):
     if args.uninstall:
         print("Stopped the daily popup." if closed_notice.uninstall() else "The daily popup wasn't installed.")
@@ -2378,6 +2417,39 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="with --restore: show what would change, and change nothing")
     p.add_argument("--dest", type=Path, help="with a day for --from-backup: the backup folder (default: as `backup`)")
     p.set_defaults(func=cmd_notes)
+
+    p = sub.add_parser("rounds", help="an application's interview rounds: the done ones, the next one and what isn't "
+                       "scheduled yet; add, edit, finish or delete one; --backfill proposes done rounds from the "
+                       "History lines in your notes",
+                       description="Rounds are written when `mark --next` (with --round) sets or moves the next step: "
+                       "once its time has passed and the step is replaced, the round is done. Add one that "
+                       "happened or is booked with --add. --backfill reads the dated History lines of every "
+                       "application for rounds that were held and only proposes them (a dry run); --apply "
+                       "--only KEY... writes the ones for those applications, marked as inferred.")
+    kinds = [*ROUNDS, "other"]
+    p.add_argument("keys", nargs="*", metavar="KEY",
+                   help="the application: key, posting id, or company when it names one")
+    p.add_argument("--add", choices=kinds, metavar="KIND", help=f"add a round ({', '.join(kinds)}; other: an "
+                   "interview or call that says no more); with --date today or earlier it is done")
+    p.add_argument("--edit", type=int, metavar="ID", help="change round ID with --kind, --date, --time and the rest")
+    p.add_argument("--done", nargs="?", const="", metavar="ID", help="mark round ID done, with --outcome; "
+                   "without an ID, with --add: the round already happened")
+    p.add_argument("--delete", type=int, metavar="ID", help="delete round ID")
+    p.add_argument("--kind", choices=kinds, metavar="KIND", help="with --edit: the round's kind")
+    p.add_argument("--date", metavar="DAY", help="the day: YYYY-MM-DD, today, tomorrow, yesterday, +N or -N days")
+    p.add_argument("--time", metavar="TIME", help="when it starts: 14:30 or 2:30 PM")
+    p.add_argument("--length", metavar="TIME", help="how long, e.g. 45m, 1h")
+    p.add_argument("--with", dest="who", metavar="PEOPLE", help="who you met or will meet")
+    p.add_argument("--mode", metavar="WHERE", help="Teams, Zoom, Phone, Onsite...")
+    p.add_argument("--outcome", metavar="TEXT", help="how it went, in a few words")
+    p.add_argument("--note", metavar="TEXT", help="what you want to remember about it")
+    p.add_argument("--backfill", action="store_true", help="propose done rounds from the dated History lines of "
+                   "every application (or those in --only): a dry run unless --apply")
+    p.add_argument("--only", nargs="+", metavar="KEY", help="with --backfill: just these applications")
+    p.add_argument("--apply", action="store_true", help="with --backfill and --only: write the proposals")
+    p.add_argument("--dry-run", action="store_true", help="with --backfill: write nothing (the default without "
+                   "--apply)")
+    p.set_defaults(func=cmd_rounds)
 
     p = sub.add_parser("notify-closed", help="one macOS popup summing up the postings of your applications and queued "
                        "jobs that were taken down since the last one (the Closed postings strip on Applications "

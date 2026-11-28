@@ -296,6 +296,62 @@ carrying no marker. Link the playlist and the practice page from the sheet itsel
 serves the folder at an address with a secret in it, like the calendar feed, only to this computer, and
 sandboxed: a sheet can't run scripts.
 
+## Interview rounds
+
+Every application can show the rounds of its interview process as a timeline: open **Details** and look for
+**Interview rounds**, or open an application on the **Company** tab and press **Timeline**. A new application has none,
+and the section says so: add the first round when you have an interview, or set a next step.
+
+The timeline reads from the top, oldest first:
+
+- **Done** rounds have a filled check, the day, the kind of round (a colour and an icon for each), who you met, how it
+  went, and a note.
+- The **next** round is the highlighted one: the day, the time and how long, how far off it is ("in 3 days"), who, where
+  (Teams, Zoom, phone), the words of your next step, and a link to your prep sheet.
+- A round whose time has passed but has no outcome yet says so and asks "How did it go?".
+- The last, dashed node is always "Later rounds: not scheduled yet". jobwatch never makes up rounds you haven't
+  been given. When a posting says how many rounds it has ("a four-round interview process"), that shows as a quiet hint,
+  "typical, not confirmed".
+
+On the Applications and Company tabs each application gets a one-line chip such as
+`Round 3 of ? · next: Panel Mon Nov 30` and a strip of dots, one for each round.
+
+**Add round** opens a short form: the kind (hover a kind to read what it is), the date and time, how long, who, where,
+how it went, and a note. Enter saves and Esc cancels. **Open** on a round shows all of it in a large dialog, where you can
+edit it, mark it done with how it went, or delete it. Esc closes that dialog first and then the Details dialog under it.
+Kinds are the same ones `--round` takes: recruiter screen, hiring manager, tech interview, system design, panel or
+onsite loop, VP or exec round, HR round, informal chat and offer call; "other" is an interview that says no more.
+
+You rarely have to type a round. When you set a next step with a date and a time (`jobwatch mark KEY --next "Panel with
+Dana Lee Mon 11/30 12:00 PM ET" --round panel`), it is kept as a scheduled round, and once its time has passed and the
+next step is replaced, the round becomes done. A round that comes from the next step is moved by changing the step;
+its kind and length can be edited in the dialog.
+
+```
+jobwatch rounds KEY                                          # list the rounds
+jobwatch rounds KEY --add panel --date +4 --time 2pm --length 1h --with "Dana Lee" --mode Zoom
+jobwatch rounds KEY --add recruiter_screen --date 2026-11-10 --done --outcome "Went well"
+jobwatch rounds KEY --done 2 --outcome "Went well"           # round 2 happened
+jobwatch rounds KEY --edit 2 --kind technical --note "Live coding"
+jobwatch rounds KEY --delete 2
+```
+
+### Rounds from your notes
+
+If you already kept notes, jobwatch can propose the rounds they describe. It reads the dated History lines for a round
+that was held ("2026-11-12: Recruiter screen with Dana Lee done, went well") and skips lines about setting one up. It
+only proposes: the Applications tab shows a dismissible "Found N rounds in your notes" line, **Review** lists them,
+and nothing is written until you press **Add**. Each added round is tagged "inferred from your notes" until you edit it.
+From a terminal:
+
+```
+jobwatch rounds --backfill                          # what it would add, for every application; writes nothing
+jobwatch rounds --backfill --apply --only KEY...    # write them for these applications only
+```
+
+The `get_rounds` and `set_round` [MCP tools](mcp.md) read and change the same rounds, and `list_applications` carries
+each application's chip.
+
 ## Looking up a company
 
 Today only shows new roles on the boards you watch, so a company you added by hand, or one you're already

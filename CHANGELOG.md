@@ -63,6 +63,22 @@
   Every dialog's Close chip is lighter, with an accent edge and X and a glow on hover and focus, in both themes
   (a test checks its contrast).
 
+- Interview rounds, as a timeline. Each application can show its rounds in the Details dialog and on the Company tab:
+  the done rounds (day, kind with its own colour and icon, who you met, how it went), the next round highlighted
+  (day, time, length, how far off, who, where, your prep sheet), a dashed "Later rounds: not scheduled yet" node
+  (jobwatch never invents a round; a posting that names its process shows only a "typical, not confirmed" hint), a
+  one-line chip such as "Round 3 of ? · next: Panel Mon Nov 30" and a strip of dots on the Applications and Company
+  tabs. A new application starts with an empty state that says how to begin, and **Add round** is a short form with
+  kind (each explained on hover), date, time, who and where; Enter saves, Esc cancels. **Open** shows a round in a
+  large dialog on top of the Details dialog (Esc closes the top one only) where you can edit it, mark it done with how
+  it went, or delete it. Rounds are stored as records now: `mark --next ... --round ...` keeps the meeting as a
+  scheduled round, and it becomes done when its time has passed and the step is replaced. `jobwatch rounds KEY` lists
+  them and `--add`, `--edit`, `--done` and `--delete` change them. For notes you already have, `jobwatch rounds
+  --backfill` proposes the done rounds the dated History lines describe (a dry run; `--apply --only KEY...` writes
+  them, tagged "inferred from your notes"), and the Applications tab offers the same as a dismissible "Found N
+  rounds in your notes" line: nothing is added until you press Add. New MCP tools `get_rounds` and `set_round`, and
+  `list_applications` carries each application's `rounds` summary.
+
 - The pay chips no longer say "pay unknown" when a source has a figure. The job's Details dialog now gets the
   posting's top pay, and the Posted chip carries it, so a posting that states its range only in its text (a Workday
   "Pay Range" block) is a pay clue wherever the chips show; a recruiter's figures count too. The Ask chip shows what

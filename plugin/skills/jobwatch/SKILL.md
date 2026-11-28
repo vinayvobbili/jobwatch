@@ -94,6 +94,9 @@ exactly what was sent.
   only drafts: check `existing` first (never ask for a referral to a job already applied to), ask for a referral
   to the role, and leave sending to the user. It never invents a person.
 - `get_company`: everything tracked at one company, closed postings too.
+- `get_rounds`: an application's interview rounds as a timeline (done, next, and that later rounds aren't scheduled
+  yet; `proposed` lists rounds its notes suggest: offer them, never add them unasked). `set_round` adds, edits, marks
+  done or deletes one, only from what the user told you: never invent a round, a person or an outcome.
 - `get_comps`: the live opportunities (or any jobs and companies you name) side by side, with a rule-based
   suggestion; explain its reasons and say what is missing. `set_comp` keeps what a recruiter said about pay
   (base, bonus, equity, asked, offered) as the user tells you, and the job's `role` (`product` builds the company's
