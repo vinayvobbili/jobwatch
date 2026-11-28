@@ -395,19 +395,20 @@ def test_scoring_shows_a_spinner_that_clears_on_a_score_or_a_failure(jobs, page,
     corner = card.locator(".score-corner")
     corner.click()
     sync_api.expect(corner).to_be_disabled()
-    sync_api.expect(corner.locator(".spin")).to_have_count(1)
+    sync_api.expect(corner.locator(".busy-spin")).to_have_count(1)
+    sync_api.expect(corner).to_have_text(re.compile(r"^Scoring… \d+s$"))  # the word and the seconds
     sync_api.expect(corner).to_have_attribute("title", re.compile("Compare this posting"))
     held.pop().fulfill(status=502, json={"error": "agy is out of quota"})  # a failure: the button is back
     sync_api.expect(corner).to_be_enabled()
-    sync_api.expect(corner.locator(".spin")).to_have_count(0)
+    sync_api.expect(corner.locator(".busy-spin")).to_have_count(0)
     sync_api.expect(page.locator(".toast", has_text="agy is out of quota")).to_be_visible()
     assert page.errors == [f"502 {page.url.split('#')[0]}api/score"]  # the failure we sent, nothing else
     page.errors.clear()
     corner.click()
-    sync_api.expect(corner.locator(".spin")).to_have_count(1)
+    sync_api.expect(corner.locator(".busy-spin")).to_have_count(1)
     held.pop().fulfill(json={"score": 71.0, "must_haves_met": 3, "must_haves_total": 4, "gaps": [], "summary": "ok"})
     sync_api.expect(card.locator(".ring span").first).to_have_text("71")  # the score is drawn; the spinner is gone
-    sync_api.expect(card.locator(".spin, .score-spin")).to_have_count(0)
+    sync_api.expect(card.locator(".busy-spin, .score-spin")).to_have_count(0)
 
     def being_scored(route):  # the server says this job is being scored now (the list: no score; the extra: why)
         got = route.fetch()
