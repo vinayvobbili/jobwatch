@@ -1620,7 +1620,8 @@ class App:
             fit = store.score(job.key, resume_id(cfg.resume, cfg.prompts)) if resume else None
             return {"key": job.key, "title": job.title, "company": job.display_company, "url": job.url,
                     "link_note": job.link_note or None,
-                    "pay": job.pay(), "locations": job.places, "text": job.to_text(),
+                    "pay": job.pay(), "salary_max": job.salary_max, "pay_per": job.pay_per or None,
+                    "locations": job.places, "text": job.to_text(),
                     "contacts": known.at(job.display_company, job.company) if known else [],
                     "find_referral": contacts.linkedin_search(job.display_company),
                     "candidate_home": store.candidate_home(job),

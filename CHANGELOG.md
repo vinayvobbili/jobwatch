@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The pay chips no longer say "pay unknown" when a source has a figure. The job's Details dialog now gets the
+  posting's top pay, and the Posted chip carries it, so a posting that states its range only in its text (a Workday
+  "Pay Range" block) is a pay clue wherever the chips show; a recruiter's figures count too. The Ask chip shows what
+  you asked a recruiter for (`jobwatch comp KEY --asked 240K`) instead of Levels.fyi's suggested ask. The chips are
+  read when a card or the dialog opens: after `jobwatch comp`, reopen the job to see the new Recruiter and Ask chips.
+
 - `jobwatch grep COMPANY -t TERM...` lists a company's tracked jobs whose saved posting text holds any of the terms
   as whole words ("ITAR" is not found in "military"; a term in capitals matches in capitals only, so "EAR" is not
   "ear"; "U.S. Person" also finds "U.S. Persons"). Closed postings are left out (`--closed` adds them, `--open` keeps

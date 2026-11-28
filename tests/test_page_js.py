@@ -170,6 +170,38 @@ console.log(JSON.stringify({{
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_pay_unknown_shows_only_when_no_source_has_a_figure(tmp_path):
+    """A posting whose Posted chip has a figure (the job's own salary_max missing, as in the Details payload) or a
+    recruiter's figure is not "pay unknown"; market-only H-1B filings and all-blank sources still are."""
+    posted = {"key": "posted", "value": "$120K–$240K", "amount": 240_000}
+    blank = [{"key": k, "value": None, "blank": "none"} for k in ("levels", "lca", "glassdoor")]
+    jobs = {
+        "posted": [posted, *blank],
+        "recruiter": [{"key": "posted", "value": None, "amount": None},
+                      {"key": "recruiter", "value": "base 210K"}, *blank],
+        "market": [{"key": "lca", "value": "$250K median", "amount": 250_000, "market": True}],
+        "blank": blank,
+    }
+    js = tmp_path / "unknown.js"
+    js.write_text(page_function("payTop") + "\n" + page_function("paySources") + f"""
+const h = (tag, attrs, ...kids) =>
+  ({{ tag, attrs: attrs || {{}}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) }});
+const jobs = {json.dumps(jobs)};
+console.log(JSON.stringify(Object.fromEntries(Object.entries(jobs).map(([k, items]) => [k, {{
+  top: payTop({{ key: k, salary_max: null, pay_sources: items }}),
+  unknown: paySources({{ key: k, salary_max: null, pay_sources: items }}).kids.some(c => c.kids[0] === "pay unknown"),
+}}]))));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    assert got["posted"] == {"top": 240_000, "unknown": False}
+    assert got["recruiter"] == {"top": None, "unknown": False}
+    assert got["market"] == {"top": None, "unknown": True}
+    assert got["blank"] == {"top": None, "unknown": True}
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
 def test_no_pay_clue_is_hidden_under_a_pay_chip_unless_the_person_chose_show(tmp_path):
     """With nothing saved in the browser, a $175K+ chip hides a job no source has a pay figure for; a saved "show"
     (the person's own choice) still shows it, a saved "hide" hides it, and with no chip it never matters. Jobs with no

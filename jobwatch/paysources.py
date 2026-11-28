@@ -15,7 +15,7 @@ from .models import Job
 LATER = "later"  # a Levels.fyi result not asked for yet: this list only looks up some of its jobs
 ORDER = (("posted", "Posted"), ("levels", "Levels"), ("lca", "LCA"), ("recruiter", "Recruiter"),
          ("glassdoor", "Glassdoor"), ("ask", "Ask"))
-# What a recruiter said, in the order shown (asked is the person's own number, not a source)
+# What a recruiter said, in the order shown (asked is the person's own number: it shows as the Ask chip)
 RECRUITER = (("base", "base"), ("bonus", "bonus"), ("equity", "equity"), ("signon", "sign-on"), ("offered", "offered"))
 
 
@@ -72,7 +72,9 @@ def _glassdoor(comp: dict | None) -> dict:
     return _src("glassdoor", reason="none entered; jobwatch never fetches Glassdoor (jobwatch comp KEY --glassdoor)")
 
 
-def _ask(result, on: bool) -> dict:
+def _ask(comp: dict | None, result, on: bool) -> dict:
+    if comp and comp.get("asked"):  # what the person told a recruiter they want beats the Levels.fyi suggestion
+        return _src("ask", comp["asked"], detail=f"You asked for {comp['asked']} (kept with jobwatch comp --asked)")
     if isinstance(result, levels.Estimate) and result.ask:
         return _src("ask", _k(result.ask), amount=result.ask,
                     detail=f"{_k(result.ask)} base: the Levels.fyi median plus room to meet in the middle")
@@ -89,12 +91,13 @@ def sources(job: Job, *, comp: dict | None = None, result=None, levels_on: bool 
             est: lca.Estimate | None = None, lca_cached: bool = False) -> list[dict]:
     """The six sources for a job, in order. `result` is levels.py's answer (an Estimate, PENDING, REFUSED, LATER or
     None), `est` lca.py's, `comp` what store.comp kept."""
-    posted = (_src("posted", job.pay(), rate=True, short=job.pay().split(", about ")[0],
+    top = job.salary_max or job.salary_min  # the page reads the posted top from here
+    posted = (_src("posted", job.pay(), rate=True, short=job.pay().split(", about ")[0], amount=top,
                    detail=f"{job.pay()}: a rate worked out as a year's pay, not a salary")
-              if job.is_rate else _src("posted", job.pay(), reason="the posting lists no pay"))
+              if job.is_rate else _src("posted", job.pay(), reason="the posting lists no pay", amount=top))
     return [posted,
             _levels(job, result, levels_on), _lca(est, lca_cached), _recruiter(comp), _glassdoor(comp),
-            _ask(result, levels_on)]
+            _ask(comp, result, levels_on)]
 
 
 def gather(cfg, store, job: Job, result, est: lca.Estimate | None) -> list[dict]:

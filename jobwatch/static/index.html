@@ -2218,14 +2218,16 @@ function paySources(job) {
     // A guess for a posting with no pay (estimate.py): always marked Est., with its basis on hover.
     job.est_pay ? h("span", { class: "psrc psrc-est", title: `${job.est_pay.detail} An estimate, not a posted figure.`,
       "data-est": job.key }, h("b", {}, "Est."), job.est_pay.label.replace(/^Est\. /, "")) : null,
-    payTop(job) == null && !job.est_pay ? h("span", { class: "psrc psrc-unknown",
+    payTop(job) == null && !items.some(s => s.value && !s.market) && !job.est_pay ? h("span", { class: "psrc psrc-unknown",
       title: "No source has a pay figure for this job yet" }, "pay unknown") : null]);
 }
-// The best pay clue a job carries, as a top figure to compare with Today's pay chip: the posted top, else the Levels
-// figure, else the H-1B (LCA) one (other employers' filings are no clue to this job's pay). null: no clue at all.
+// The best pay clue a job carries, as a top figure to compare with Today's pay chip: the posted top (the job's own, or
+// the Posted chip's), else the Levels figure, else the H-1B (LCA) one (other employers' filings are no clue to this
+// job's pay). null: no clue at all.
 function payTop(job) {
   if (job.salary_max != null) return job.salary_max;
   const by = Object.fromEntries((job.pay_sources || []).map(s => [s.key, s]));
+  if (by.posted && by.posted.amount != null) return by.posted.amount;
   for (const k of ["levels", "lca"]) if (by[k] && by[k].amount != null && !by[k].market) return by[k].amount;
   return null;
 }

@@ -5,6 +5,7 @@ import pytest
 from jobwatch import cli, config, lca, levels, paysources
 from jobwatch.models import Job
 from jobwatch.store import Store
+from jobwatch.web import App
 
 EST = levels.Estimate(company="Initech", family="Software Engineer", level="L5", total=300_000, base=170_000,
                       ask=180_000, where="US-wide", url="https://example.com/levels", why=[])
@@ -119,3 +120,31 @@ def test_show_prints_the_pay_sources_on_one_line(web, watchlist, capsys):
     assert "Recruiter base 165-195K" in line and "Glassdoor 170-210K" in line
     assert "Levels off (turn on with pay.levels: true in the watchlist) · LCA" in line
     assert "Recruiter base 165-195K" in line and line.endswith("Ask off (needs pay.levels on)")
+
+
+def test_the_posted_source_carries_the_posted_top_so_the_page_needs_no_other_field():
+    posted = by_key(paysources.sources(job(120_000, 240_000)))["posted"]
+    assert (posted["value"], posted["amount"]) == ("$120K–$240K", 240_000)
+    assert by_key(paysources.sources(job(120_000, None)))["posted"]["amount"] == 120_000
+    assert by_key(paysources.sources(job(None, None)))["posted"]["amount"] is None
+
+
+def test_what_you_asked_a_recruiter_for_is_the_ask_chip():
+    comp = {"base": "210K", "bonus": "20% target", "equity": "40K (vesting not yet asked)", "asked": "240K"}
+    s = by_key(paysources.sources(job(), comp=comp, result=EST, levels_on=True))
+    assert s["recruiter"]["value"] == "base 210K, bonus 20% target, equity 40K (vesting not yet asked)"
+    assert s["ask"]["value"] == "240K"  # not Levels.fyi's $180K suggestion
+    assert "You asked for 240K" in s["ask"]["detail"]
+    s = by_key(paysources.sources(job(), comp={"base": "210K"}, result=EST, levels_on=True))
+    assert s["ask"]["value"] == "$180K"  # nothing asked: the suggestion stays
+
+
+def test_the_job_dialog_has_the_posted_top_and_what_a_recruiter_said(watchlist, web, capsys):
+    cli.main(["-c", str(watchlist), "fetch"])
+    cli.main(["-c", str(watchlist), "comp", "aaaa-1111", "--base", "210K", "--asked", "240K"])
+    capsys.readouterr()
+    got = App(watchlist).get_job({"key": ["lever:globex:aaaa-1111"]})  # the Details dialog's payload
+    assert got["salary_max"] == 210_000 and got["pay_per"] is None
+    s = by_key(got["pay_sources"])
+    assert s["posted"]["amount"] == 210_000
+    assert s["recruiter"]["value"] == "base 210K" and s["ask"]["value"] == "240K"
