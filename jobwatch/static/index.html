@@ -398,6 +398,16 @@ nav button .tab-clock { font-size: 11px; font-weight: 600; opacity: .8; }
 .psrc-est b { color: inherit; opacity: .75; }
 .psrc-unknown { background: color-mix(in srgb, var(--warn, #d97706) 14%, transparent); color: var(--warn, #b45309); font-weight: 600; }
 .psrc-none { background: transparent; border: 1px dashed var(--muted); color: var(--muted); opacity: .7; font-style: italic; cursor: help; }
+/* A chip whose figure can be checked somewhere is a real link: the chip's look, a small external-link icon, an underline on hover */
+a.psrc { text-decoration: none; cursor: pointer; transition: transform .15s, filter .15s; }
+a.psrc .ico { flex: none; align-self: center; opacity: .6; transition: opacity .15s; }
+a.psrc:hover, a.psrc:focus-visible { text-decoration: underline; text-underline-offset: 2px; filter: brightness(1.07) saturate(1.1); transform: translateY(-1px); }
+a.psrc:hover .ico, a.psrc:focus-visible .ico { opacity: 1; }
+a.psrc:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+a.paylink { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+a.paylink:hover { text-decoration: underline; color: var(--accent); }
+a.paylink .ico { vertical-align: -1px; margin-left: 3px; opacity: .65; }
+@media (prefers-reduced-motion: reduce) { a.psrc { transition: none; } a.psrc:hover, a.psrc:focus-visible { transform: none; } }
 .kv .advice { margin: 0; }
 .kv .advice .atext { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .kv .warns { margin: 0; }
@@ -3400,11 +3410,21 @@ function payClass(base, s) { return isRate(s) ? `${base} rate` : base; }
 
 // A job's pay, one small chip per source in a fixed order (Posted, Levels, LCA, Recruiter, Glassdoor, Ask; see
 // paysources.py). A source with nothing is a dimmed chip and its reason shows on hover, so a blank is never a mystery.
+// A chip with a source address (paysources.py: Posted, Levels, LCA, Glassdoor) is the link itself: the chip's look plus a
+// small external-link icon, opening the page where the figure can be checked in a new tab. The chip has no click of its
+// own, so link and chip never compete. Without an address (Recruiter and Ask, from your notes; a job added by hand) it
+// is a plain chip: never an empty or "#" link. Rendering a link sends nothing anywhere.
+function payChip(s) {
+  const cls = `psrc psrc-${s.key}${s.rate ? " rate" : ""}`, title = s.tip || s.detail || s.value, text = s.short || s.value;
+  if (!/^https?:\/\/\S+$/i.test(s.href || "")) return h("span", { class: cls, title }, h("b", {}, s.label), text);
+  return h("a", { class: cls, href: s.href, target: "_blank", rel: "noopener noreferrer", title, "data-src": s.key,
+    onclick: e => e.stopPropagation() }, h("b", {}, s.label), text, icon("external", 11));
+}
 function paySources(job) {
   const items = job.pay_sources;
   if (!items) return job.pay ? h("span", { class: payClass("paychip", job.pay) }, job.pay) : null;
   return h("div", { class: "psrcs", "data-pay": job.key }, [...items.map(s => s.value
-    ? h("span", { class: `psrc psrc-${s.key}${s.rate ? " rate" : ""}`, title: s.detail || s.value }, h("b", {}, s.label), s.short || s.value)
+    ? payChip(s)
     : h("span", { class: "psrc psrc-none", title: s.reason }, h("b", {}, s.label), s.blank)),
     // A guess for a posting with no pay (estimate.py): always marked Est., with its basis on hover.
     job.est_pay ? h("span", { class: "psrc psrc-est", title: `${job.est_pay.detail} An estimate, not a posted figure.`,
@@ -3429,8 +3449,12 @@ function payWhy(job) {
   const p = job.expected_pay && !job.expected_pay.pending && !job.expected_pay.refused ? job.expected_pay : null;
   const l = job.lca_pay;
   if (!p && !l) return h("span", { "data-paywhy": job.key });
+  const srcs = (job.pay_sources || []).filter(s => s.value && /^https?:\/\/\S+$/i.test(s.href || ""));
   return h("details", { class: "whyfit", "data-paywhy": job.key }, h("summary", {}, "How the pay was worked out"),
     h("ul", {},
+      // every chip that links, in one line, so a figure can be checked from here too
+      srcs.length ? h("li", { class: "paysrcs" }, h("b", {}, "Sources: "),
+        srcs.map((s, i) => [i ? " · " : null, link(s.href, `${s.label} ↗`)])) : null,
       p ? [p.why.map(w => h("li", {}, w)), h("li", {}, link(p.url, p.credit + " ↗"))] : null,
       l ? [h("li", {}, h("b", {}, l.line)), l.why.map(w => h("li", {}, w)),
         h("li", {}, l.label + ". ", link(l.url, l.credit + " ↗"))] : null));
@@ -9462,7 +9486,10 @@ const COMP_ROWS = [  // [label, the value (text or an element; null for none), t
   ["Sign-on", o => o.comp.signon],
   ["You asked", o => o.comp.asked],
   ["Offered", o => o.comp.offered, "offered"],
-  ["Glassdoor", o => o.comp.glassdoor],
+  ["Glassdoor", o => !o.comp.glassdoor ? null : !o.glassdoor_url ? o.comp.glassdoor
+    : h("a", { class: "paylink", href: o.glassdoor_url, target: "_blank", rel: "noopener noreferrer", "data-src": "glassdoor",
+      title: `Open a Glassdoor salary search for ${o.company}, ${o.title} to verify: the figure is the one you entered` },
+      o.comp.glassdoor, icon("external", 11))],
   ["Fit", o => o.fit ? `${Math.round(o.fit.score)}/100 · must-haves ${o.fit.met}/${o.fit.total}` + (o.fit.stale ? " (stale)" : "") : null, "fit"],
   ["Gaps", o => fitGaps(o.fit).length ? h("div", { class: "gapline" }, fitGaps(o.fit).join(" · ")) : null],
   ["You know", o => o.contacts.length ? o.contacts.map(p => p.name + (p.position ? ` (${p.position})` : "")).join("; ") : null],

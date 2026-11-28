@@ -6,8 +6,16 @@ line shows in the value's place ("TBD" while it will be known later, "none" when
 off). A source with a figure also has `detail`, the longer words for a hover. The page shows these as chips, `jobwatch
 show` as one line, get_job as the `pay_sources` object. Nothing here looks anything up: the callers pass what they
 have (levels.py's result, lca.py's estimate, the store's comp row).
+
+A source with a figure also has a `tip`, the hover sentence, and, when a reader can check the figure somewhere, an
+`href`: Posted links to the posting itself, Levels to the Levels.fyi page the figure came from, LCA to the Department of
+Labor's disclosure data it was read from, Glassdoor to Glassdoor's salary search for the company and title (the figure
+is typed in, and Glassdoor has no stable page per company, so it is a search link). Recruiter and Ask come from the
+person's own notes: never a link. An unknown address is no `href`, never an empty one. Building a link looks nothing up.
 """
 from __future__ import annotations
+
+from urllib.parse import quote, urlsplit
 
 from . import lca, levels
 from .models import Job
@@ -19,14 +27,42 @@ ORDER = (("posted", "Posted"), ("levels", "Levels"), ("lca", "LCA"), ("recruiter
 RECRUITER = (("base", "base"), ("bonus", "bonus"), ("equity", "equity"), ("signon", "sign-on"), ("offered", "offered"))
 
 
+GLASSDOOR_SEARCH = "https://www.glassdoor.com/Search/results.htm"
+
+
 def _k(n: float) -> str:
     return f"${n / 1000:.0f}K"
 
 
-def _src(key: str, value: str | None = None, reason: str = "", blank: str = "none", **more) -> dict:
+def web_url(url: str | None) -> str | None:
+    """`url` when it is a full http(s) address, else None: a job added by hand has none, and a link must never be
+    empty, relative or a script."""
+    if not url:
+        return None
+    parts = urlsplit(url.strip())
+    return url.strip() if parts.scheme in ("http", "https") and parts.netloc else None
+
+
+def glassdoor_url(company: str | None, title: str | None = "") -> str | None:
+    """Glassdoor's search for "<company> <title> salary", from words already on the page; None without a company."""
+    company = " ".join((company or "").split())
+    if not company:
+        return None
+    words = " ".join(f"{company} {title or ''} salary".split())
+    return f"{GLASSDOOR_SEARCH}?keyword={quote(words, safe='')}"
+
+
+def _src(key: str, value: str | None = None, reason: str = "", blank: str = "none", href: str | None = None,
+         tip: str | None = None, **more) -> dict:
     label = dict(ORDER)[key]
     return {"key": key, "label": label, "value": value, "reason": None if value else reason,
-            "blank": None if value else blank, **more}
+            "blank": None if value else blank, **({"href": href} if value and href else {}),
+            **({"tip": tip} if value and tip else {}), **more}
+
+
+def _tip(href: str | None, where: str, what: str) -> str:
+    """The hover sentence: where a link goes and what it shows, or just what it is when there is no link."""
+    return f"Open {where} to verify: {what}" if href else what
 
 
 def _levels(job: Job, result, on: bool) -> dict:
@@ -43,8 +79,11 @@ def _levels(job: Job, result, on: bool) -> dict:
             "no data for this title (Levels.fyi has no job family for it)"
         return _src("levels", reason=why)
     value = f"{_k(result.base)} base" if result.base else f"{_k(result.total)} total"
+    href = web_url(result.url)
     return _src("levels", value, detail=f"Levels.fyi {result.level} median {value} ({result.where})",
-                amount=result.base or result.total, url=result.url)
+                amount=result.base or result.total, url=result.url, href=href,
+                tip=_tip(href, "Levels.fyi", f"{result.level} median {value} for {result.family} at {result.company} "
+                                             f"({result.where}), the page this figure was read from"))
 
 
 def _lca(est: lca.Estimate | None, cached: bool) -> dict:
@@ -52,29 +91,44 @@ def _lca(est: lca.Estimate | None, cached: bool) -> dict:
         return _src("lca", reason="no H-1B filings cache yet; run jobwatch lca update", blank="off")
     if est is None:
         return _src("lca", reason=f"fewer than {lca.MIN_FILINGS} matching H-1B filings for this employer and title")
+    href = web_url(est.url)
+    years = "" if not est.years else f", starting {est.years[0]}" if est.years[0] == est.years[1] \
+        else f", starting {est.years[0]}–{est.years[1]}"
+    filings = f"{est.count} certified filing{'s' if est.count != 1 else ''}{years}"
+    base = "base pay only, not total compensation"
     if est.where.endswith(lca.MARKET):  # other employers' filings in the home state: never read as this one's pay
         return _src("lca", f"{_k(est.median)} median ({est.count} filings, {est.where}; not this employer's)",
-                    detail=est.line(), amount=est.median, short=f"{_k(est.median)} mkt", market=True, url=est.url)
+                    detail=est.line(), amount=est.median, short=f"{_k(est.median)} mkt", market=True, url=est.url,
+                    href=href, tip=_tip(href, "the U.S. Department of Labor's H-1B (LCA) disclosure data",
+                                        f"{filings} by other employers in {est.where.split(',')[0]}, "
+                                        f"not this employer's; {base}"))
     return _src("lca", f"{_k(est.median)} median ({est.count} filings)", detail=est.line(), amount=est.median,
-                short=f"{_k(est.median)} med", url=est.url)
+                short=f"{_k(est.median)} med", url=est.url, href=href,
+                tip=_tip(href, "the U.S. Department of Labor's H-1B (LCA) disclosure data",
+                         f"{filings} for {est.company} ({est.where}); {base}"))
 
 
 def _recruiter(comp: dict | None) -> dict:
     said = [(label, comp[k]) for k, label in RECRUITER if comp and comp.get(k)]
     if not said:
         return _src("recruiter", reason="no recruiter figures kept (jobwatch comp KEY --base 165-195K)")
-    return _src("recruiter", ", ".join(f"{label} {v}" for label, v in said))
+    value = ", ".join(f"{label} {v}" for label, v in said)
+    return _src("recruiter", value, tip=f"From your notes: {value}")
 
 
-def _glassdoor(comp: dict | None) -> dict:
+def _glassdoor(comp: dict | None, job: Job) -> dict:
     if comp and comp.get("glassdoor"):
-        return _src("glassdoor", comp["glassdoor"])
+        href = glassdoor_url(job.display_company, job.title)
+        return _src("glassdoor", comp["glassdoor"], href=href,
+                    tip=_tip(href, "Glassdoor", f"a Glassdoor salary search for {job.display_company}, {job.title}; "
+                                                f"the figure ({comp['glassdoor']}) is the one you entered"))
     return _src("glassdoor", reason="none entered; jobwatch never fetches Glassdoor (jobwatch comp KEY --glassdoor)")
 
 
 def _ask(comp: dict | None, result, on: bool) -> dict:
     if comp and comp.get("asked"):  # what the person told a recruiter they want beats the Levels.fyi suggestion
-        return _src("ask", comp["asked"], detail=f"You asked for {comp['asked']} (kept with jobwatch comp --asked)")
+        return _src("ask", comp["asked"], detail=f"You asked for {comp['asked']} (kept with jobwatch comp --asked)",
+                    tip=f"From your notes: you asked for {comp['asked']} (kept with jobwatch comp --asked)")
     if isinstance(result, levels.Estimate) and result.ask:
         return _src("ask", _k(result.ask), amount=result.ask,
                     detail=f"{_k(result.ask)} base: the Levels.fyi median plus room to meet in the middle")
@@ -92,11 +146,15 @@ def sources(job: Job, *, comp: dict | None = None, result=None, levels_on: bool 
     """The six sources for a job, in order. `result` is levels.py's answer (an Estimate, PENDING, REFUSED, LATER or
     None), `est` lca.py's, `comp` what store.comp kept."""
     top = job.salary_max or job.salary_min  # the page reads the posted top from here
-    posted = (_src("posted", job.pay(), rate=True, short=job.pay().split(", about ")[0], amount=top,
-                   detail=f"{job.pay()}: a rate worked out as a year's pay, not a salary")
-              if job.is_rate else _src("posted", job.pay(), reason="the posting lists no pay", amount=top))
+    href = web_url(job.url)
+    own = _tip(href, "the posting", "the posting's own range")
+    posted = (_src("posted", job.pay(), rate=True, short=job.pay().split(", about ")[0], amount=top, href=href,
+                   detail=f"{job.pay()}: a rate worked out as a year's pay, not a salary",
+                   tip=_tip(href, "the posting", "the posting's own rate, worked out here as a year's pay"))
+              if job.is_rate else _src("posted", job.pay(), reason="the posting lists no pay", amount=top, href=href,
+                                       tip=own))
     return [posted,
-            _levels(job, result, levels_on), _lca(est, lca_cached), _recruiter(comp), _glassdoor(comp),
+            _levels(job, result, levels_on), _lca(est, lca_cached), _recruiter(comp), _glassdoor(comp, job),
             _ask(comp, result, levels_on)]
 
 

@@ -189,6 +189,15 @@ def test_set_and_get_comps_tools(tracked, monkeypatch):
     assert {"get_comps", "set_comp"} <= {t.name for t in asyncio.run(mcp.server.list_tools())}
 
 
+def test_a_typed_in_glassdoor_figure_comes_with_its_search_link(tracked, monkeypatch):
+    mcp = pytest.importorskip("jobwatch.mcp_server")
+    monkeypatch.setenv("JOBWATCH_CONFIG", str(tracked))
+    mcp.set_comp("globex", glassdoor="150-190K")
+    rows = {o["company"]: o for o in mcp.get_comps()["opportunities"]}
+    assert rows["Globex"]["glassdoor_url"].startswith("https://www.glassdoor.com/Search/results.htm?keyword=Globex%20")
+    assert rows["Acme"]["glassdoor_url"] is None  # nothing typed in: nothing to check
+
+
 # -- company health, the company-only columns and the suggestion
 
 def test_health_is_kept_per_company_whatever_its_spelling(tmp_path):

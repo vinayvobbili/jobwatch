@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- New: **the pay chips link back to their sources**, so a figure can be checked and trusted. On every card and in a
+  job's details, the Posted chip opens the posting, Levels the Levels.fyi page the figure was read from, LCA the U.S.
+  Department of Labor's H-1B disclosure data (the hover says how many filings and from which years; base pay only),
+  and Glassdoor a Glassdoor salary search for the company and title (the figure is the one you typed in; Glassdoor has
+  no stable page per company, so it is a search link). Each opens in a new tab and shows a small arrow-out icon and an
+  underline on hover; the hover says what it shows. Recruiter and Ask come from your own notes: never a link ("From
+  your notes"). A job with no known address (one added by hand) has a plain chip, never an empty or "#" link. "How the
+  pay was worked out" gets a Sources line, and the Comps table's Glassdoor row links to the same search. Showing a
+  link contacts no site (nothing is prefetched); the Glassdoor search is built only from the company and title on the
+  card. Levels.fyi lookups stay off unless you turn on `pay.levels`. `get_job`'s `pay_sources` entries carry `href`
+  and `tip`; each Comps row has `glassdoor_url`. Guide: Comps, "Pay chips link to their sources".
+
 - New, off until you turn it on: **Read postings automatically** (Settings > Applying; guide: Reading postings by
   itself). For jobs from LinkedIn and Indeed alerts and lists that have no posting text, the browser extension (0.13.2)
   does what the Read posting button does without your pressing it: jobwatch picks the next job worth reading (it passes

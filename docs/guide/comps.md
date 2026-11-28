@@ -30,6 +30,25 @@ A field you leave out stays; `''` clears it; `--clear` forgets all of a job's or
 90 days (or with no date) is marked stale. Over MCP the tools are `set_comp`, `set_company_health` and
 `get_comps`.
 
+**Pay chips link to their sources.** A job's pay shows one small chip per source (Posted, Levels, LCA, Recruiter,
+Glassdoor, Ask). So that you never have to take a number on trust, each chip that has a public source is a link, marked
+with a small arrow-out icon, that opens the page where you can check it, in a new tab. Hover a chip for what it shows.
+- **Posted** opens the job posting itself, where the range was printed.
+- **Levels** opens the Levels.fyi page jobwatch read the figure from (the company's salary page for that kind of work,
+  or its regional page when your region is set), so you can see the level and median it picked. It only appears with
+  `pay.levels` on, which is off unless you turn it on.
+- **LCA** opens the U.S. Department of Labor's disclosure-data page, where the H-1B filings behind the figure are
+  published as downloadable files by year. The hover says how many filings and from which years. It is base pay only.
+- **Glassdoor** opens a Glassdoor salary search for the company and job title. The figure on the chip is the one you
+  typed in, and Glassdoor has no fixed page for a company that jobwatch could promise, so this is a search that you
+  read yourself, not the page the number came from. The link is built from the company and title already on the
+  card.
+- **Recruiter** and **Ask** are from your own notes and emails, so they are never links; their hover says "From your
+  notes". A job you added by hand with no posting link has no link on its Posted chip either.
+
+Showing a link sends nothing anywhere: no site is contacted until you click it. The same links are in the card's
+"How the pay was worked out" (a **Sources** line), and the Comps table's Glassdoor row links to the same search.
+
 **Est. pay.** When a posting lists no pay, jobwatch makes a guess from what it already holds and shows it as one:
 an "Est." chip on the job's card (hover for where it comes from), an "Est. pay" line in the digest and queue, a
 row on Comps, and `pay_estimate` in the MCP tools `get_comps` and `get_job` (always `estimate: true`, with its

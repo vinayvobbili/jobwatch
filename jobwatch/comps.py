@@ -18,7 +18,7 @@ import re
 import shlex
 from datetime import date
 
-from . import estimate, lca
+from . import estimate, lca, paysources
 from .config import COMP_WEIGHTS, Config, Goals
 from .contacts import company_key
 from .score import resume_id
@@ -479,6 +479,9 @@ def view(cfg: Config, store: Store, stages: tuple[str, ...] = LIVE, keys: list[s
             "contacts": [{k: p.get(k) for k in ("name", "position", "why")}
                          for p in (known.at(job.display_company, job.company) if known else [])[:MOST_CONTACTS]],
             "comp": {k: comp.get(k) for k in COMP_FIELDS},
+            # where a typed-in Glassdoor figure can be checked: a search link (see paysources.py)
+            "glassdoor_url": (paysources.glassdoor_url(job.display_company, job.title)
+                              if comp.get("glassdoor") else None),
             "health": aged(healths.get(company_key(job.display_company))),
             **ranges})
     if filings:

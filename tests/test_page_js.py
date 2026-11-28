@@ -145,7 +145,7 @@ def test_the_pay_chip_goes_by_the_best_pay_clue_and_unknown_pay_sorts_last(tmp_p
     ]
     js = tmp_path / "clue.js"
     js.write_text(page_const("payShown") + "\n" + page_const("cluesFirst") + "\n" + page_function("payTop") + "\n"
-                  + page_function("paySources") + f"""
+                  + page_function("paySources") + page_function("payChip") + f"""
 const h = (tag, attrs, ...kids) =>
   ({{ tag, attrs: attrs || {{}}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) }});
 const jobs = {json.dumps(jobs)};
@@ -183,7 +183,7 @@ def test_pay_unknown_shows_only_when_no_source_has_a_figure(tmp_path):
         "blank": blank,
     }
     js = tmp_path / "unknown.js"
-    js.write_text(page_function("payTop") + "\n" + page_function("paySources") + f"""
+    js.write_text(page_function("payTop") + "\n" + page_function("paySources") + page_function("payChip") + f"""
 const h = (tag, attrs, ...kids) =>
   ({{ tag, attrs: attrs || {{}}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) }});
 const jobs = {json.dumps(jobs)};
@@ -209,7 +209,7 @@ def test_no_pay_clue_is_hidden_under_a_pay_chip_unless_the_person_chose_show(tmp
     js = tmp_path / "noclue.js"
     source = "\n".join([page_function("remembered"), page_function("keptNoScore"), page_function("rolesOffKept"),
                         page_const("todayView"), page_const("payShown"), page_function("payTop"),
-                        page_function("paySources")])
+                        page_function("paySources"), page_function("payChip")])
     js.write_text(f"""const h = (tag, attrs, ...kids) => ({{ tag, attrs: attrs || {{}}, kids: kids.flat(Infinity) }});
 const load = saved => {{  // the page's script run once against a browser holding `saved`
   const store = new Map(Object.entries(saved).map(([k, v]) => ["jobwatch." + k, v]));
@@ -721,7 +721,8 @@ def test_a_jobs_pay_is_one_row_of_labelled_chips_and_empty_ones_say_why(tmp_path
     empty source is a dimmed chip showing its blank word with the reason on hover, and a job without sources (an
     older server) still gets the plain pay chip."""
     js = tmp_path / "pay.js"
-    js.write_text(page_function("paySources") + "\n" + page_function("payTop") + "\n" + page_function("isRate")
+    js.write_text(page_function("paySources") + "\n" + page_function("payChip") + "\n" + page_function("payTop")
+                  + "\n" + page_function("isRate")
                   + "\n" + page_function("payClass") + """
 const h = (tag, attrs, ...kids) =>
   ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
@@ -748,6 +749,58 @@ console.log(JSON.stringify({ attrs: row.attrs, chips: chips(row), old: paySource
         ["psrc psrc-none", "Recruiter", "none", "no recruiter figures kept"],
         ["psrc psrc-ask", "Ask", "$180K", "$180K"]]
     assert got["old"] == ["$1K"] and got["none"] is None
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_pay_chip_with_a_source_is_a_real_link_and_one_without_is_a_plain_chip(tmp_path):
+    """Posted, Levels, LCA and Glassdoor chips with an address are `a` links (new tab, noopener noreferrer, the hover
+    sentence, a small external-link icon, a click that stays out of the card); Recruiter, Ask, a blank chip and a chip
+    whose address is missing or not http(s) are plain spans: never an empty or "#" href."""
+    js = tmp_path / "paylink.js"
+    js.write_text(page_function("payChip") + "\n" + page_function("paySources") + "\n" + page_function("payTop")
+                  + "\n" + page_function("isRate") + "\n" + page_function("payClass") + """
+const h = (tag, attrs, ...kids) =>
+  ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const icon = (name, size) => ({ tag: "svg", name, size });
+const chips = row => row.kids.map(c => ({ tag: c.tag, href: c.attrs.href, target: c.attrs.target, rel: c.attrs.rel,
+  title: c.attrs.title, label: c.kids[0].kids[0], icon: c.kids.filter(k => k.tag === "svg").map(k => k.name),
+  stops: c.attrs.onclick ? (() => {
+    let s = false; c.attrs.onclick({ stopPropagation: () => { s = true; } }); return s; })() : null }));
+const LEVELS = "https://www.levels.fyi/companies/initech/salaries/software-engineer";
+const items = [
+  { key: "posted", label: "Posted", value: "$150K–$196K", href: "https://boards.example.com/initech/1",
+    tip: "Open the posting to verify: the posting's own range" },
+  { key: "levels", label: "Levels", value: "$170K base", href: LEVELS, tip: "Open Levels.fyi to verify: L5" },
+  { key: "lca", label: "LCA", value: "$165K median (14 filings)", short: "$165K med",
+    href: "https://www.dol.gov/agencies/eta/foreign-labor/performance", tip: "Open the DOL" },
+  { key: "recruiter", label: "Recruiter", value: "base 165-195K", tip: "From your notes: base 165-195K" },
+  { key: "glassdoor", label: "Glassdoor", value: "170-210K", tip: "Open Glassdoor to verify: salary search",
+    href: "https://www.glassdoor.com/Search/results.htm?keyword=Initech%20salary" },
+  { key: "ask", label: "Ask", value: "$180K", href: "", detail: "$180K" }];
+const only = src => chips(paySources({ key: "k", salary_max: 1, pay_sources: [src] }))[0];
+const odd = ["", "#", "javascript:alert(1)", "/relative", "https://", "ftp://x.example/a", undefined]
+  .map(href => only({ key: "posted", label: "Posted", value: "$1K", href }));
+console.log(JSON.stringify({ chips: chips(paySources({ key: "k", salary_max: 196000, pay_sources: items })), odd,
+  blank: [only({ key: "glassdoor", label: "Glassdoor", value: null, blank: "none", reason: "none entered",
+    href: "https://x.example/" })] }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    linked = {"tag": "a", "target": "_blank", "rel": "noopener noreferrer", "icon": ["external"], "stops": True}
+    plain = {"tag": "span", "icon": [], "stops": None}
+    posted, levels_, lca_, recruiter, glassdoor, ask = got["chips"]
+    assert posted == {**linked, "href": "https://boards.example.com/initech/1", "label": "Posted",
+                      "title": "Open the posting to verify: the posting's own range"}
+    assert levels_ == {**linked, "href": "https://www.levels.fyi/companies/initech/salaries/software-engineer",
+                       "label": "Levels", "title": "Open Levels.fyi to verify: L5"}
+    assert lca_ == {**linked, "href": "https://www.dol.gov/agencies/eta/foreign-labor/performance", "label": "LCA",
+                    "title": "Open the DOL"}
+    assert glassdoor["href"].startswith("https://www.glassdoor.com/Search/") and glassdoor["tag"] == "a"
+    assert recruiter == {**plain, "label": "Recruiter", "title": "From your notes: base 165-195K"}  # no href at all
+    assert ask == {**plain, "label": "Ask", "title": "$180K"}  # an empty address is no link
+    assert all(c["tag"] == "span" and c.get("href") is None for c in got["odd"])
+    assert got["blank"][0]["tag"] == "span" and got["blank"][0].get("href") is None
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")

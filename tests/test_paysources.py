@@ -148,3 +148,98 @@ def test_the_job_dialog_has_the_posted_top_and_what_a_recruiter_said(watchlist, 
     s = by_key(got["pay_sources"])
     assert s["posted"]["amount"] == 210_000
     assert s["recruiter"]["value"] == "base 210K" and s["ask"]["value"] == "240K"
+
+
+# -- links: each source points to where its figure can be checked (or nowhere), see paysources.py
+
+def linked_job(**kw):
+    return Job(source="greenhouse", company="initech", id="1", title="Senior Software Engineer",
+               url=kw.pop("url", "https://boards.example.com/initech/jobs/1"), company_name="Initech",
+               locations=["Boulder, CO"], salary_min=150_000, salary_max=196_000, currency="USD")
+
+
+def test_each_source_links_to_where_its_figure_can_be_checked():
+    comp = {"base": "165-195K", "asked": "210K", "glassdoor": "170-210K"}
+    s = by_key(paysources.sources(linked_job(), comp=comp, result=EST, levels_on=True, est=FILINGS, lca_cached=True))
+    assert s["posted"]["href"] == "https://boards.example.com/initech/jobs/1"
+    assert s["posted"]["tip"] == "Open the posting to verify: the posting's own range"
+    assert s["levels"]["href"] == "https://example.com/levels"  # the page the estimate was read from
+    assert s["levels"]["tip"].startswith("Open Levels.fyi to verify: L5 median $170K base for Software Engineer")
+    assert s["lca"]["href"] == lca.PAGE
+    assert s["lca"]["tip"] == ("Open the U.S. Department of Labor's H-1B (LCA) disclosure data to verify: 14 certified "
+                               "filings for Initech (Boulder, CO); base pay only, not total compensation")
+    assert s["glassdoor"]["href"] == ("https://www.glassdoor.com/Search/results.htm"
+                                      "?keyword=Initech%20Senior%20Software%20Engineer%20salary")
+    assert "Glassdoor salary search for Initech, Senior Software Engineer" in s["glassdoor"]["tip"]
+    assert "170-210K" in s["glassdoor"]["tip"]
+
+
+def test_what_comes_from_your_notes_is_never_a_link():
+    comp = {"base": "165-195K", "offered": "180K", "asked": "210K"}
+    s = by_key(paysources.sources(linked_job(), comp=comp, result=EST, levels_on=True))
+    for key in ("recruiter", "ask"):
+        assert "href" not in s[key]
+    assert s["recruiter"]["tip"] == "From your notes: base 165-195K, offered 180K"
+    assert s["ask"]["tip"].startswith("From your notes: you asked for 210K")
+    suggested = by_key(paysources.sources(linked_job(), result=EST, levels_on=True))["ask"]
+    assert "href" not in suggested  # Levels.fyi's suggestion is jobwatch's arithmetic, not a page to open
+
+
+def test_the_lca_tip_names_the_filing_count_and_years_and_says_when_it_is_other_employers():
+    years = lca.Estimate(**{**FILINGS.__dict__, "count": 1, "years": (2025, 2026)})
+    tip = by_key(paysources.sources(linked_job(), est=years, lca_cached=True))["lca"]["tip"]
+    assert "1 certified filing, starting 2025–2026 for Initech" in tip
+    one_year = lca.Estimate(**{**FILINGS.__dict__, "years": (2025, 2025)})
+    assert "14 certified filings, starting 2025 for" in by_key(
+        paysources.sources(linked_job(), est=one_year, lca_cached=True))["lca"]["tip"]
+    market = lca.Estimate(**{**FILINGS.__dict__, "where": f"CO, {lca.MARKET}", "count": 40})
+    s = by_key(paysources.sources(linked_job(), est=market, lca_cached=True))["lca"]
+    assert "40 certified filings by other employers in CO, not this employer's" in s["tip"]
+    assert s["href"] == lca.PAGE
+
+
+@pytest.mark.parametrize("url", ["", "u", "#", "javascript:alert(1)", "/relative/path", "https://", "manual:1"])
+def test_a_job_with_no_usable_address_has_a_posted_chip_with_no_link(url):
+    posted = by_key(paysources.sources(linked_job(url=url)))["posted"]
+    assert posted["value"] == "$150K–$196K" and "href" not in posted
+    assert posted["tip"] == "the posting's own range"
+
+
+def test_an_empty_source_has_no_link_and_no_tip():
+    s = by_key(paysources.sources(linked_job(), comp={"glassdoor": "170K"}, levels_on=True, result=levels.REFUSED))
+    assert "href" not in s["levels"] and "tip" not in s["levels"]
+    assert "href" not in s["lca"] and "tip" not in s["recruiter"]
+    blank = by_key(paysources.sources(linked_job(url="https://x.example/1"), levels_on=True))
+    assert "href" not in blank["glassdoor"]  # nothing typed in: nothing to check
+    nopay = by_key(paysources.sources(Job(source="a", company="b", id="1", title="t", url="https://x.example/1")))
+    assert "href" not in nopay["posted"]  # the posting lists no pay: no figure to verify
+
+
+def test_a_rate_links_to_the_posting_and_says_it_is_a_rate():
+    rate = Job(source="a", company="initech", id="1", title="Consultant", url="https://x.example/1", salary_min=40,
+               salary_max=80, pay_per="hour", currency="USD")
+    posted = by_key(paysources.sources(rate))["posted"]
+    assert posted["href"] == "https://x.example/1" and "rate" in posted["tip"]
+
+
+@pytest.mark.parametrize("company, title, want", [
+    ("Initech", "Senior Engineer", "Initech%20Senior%20Engineer%20salary"),
+    ("Globex & Sons", "C++ Dev / Ops", "Globex%20%26%20Sons%20C%2B%2B%20Dev%20%2F%20Ops%20salary"),
+    ("  Umbrella   Corp ", "", "Umbrella%20Corp%20salary"),
+    ("Initech", None, "Initech%20salary"),
+    ("Café Ünïcode", "Ingénieur", "Caf%C3%A9%20%C3%9Cn%C3%AFcode%20Ing%C3%A9nieur%20salary"),
+])
+def test_the_glassdoor_search_is_built_from_the_company_and_title_and_url_encoded(company, title, want):
+    assert paysources.glassdoor_url(company, title) == f"{paysources.GLASSDOOR_SEARCH}?keyword={want}"
+
+
+@pytest.mark.parametrize("company", ["", "   ", None])
+def test_no_company_means_no_glassdoor_link(company):
+    assert paysources.glassdoor_url(company, "Engineer") is None
+
+
+def test_only_full_web_addresses_count_as_links():
+    assert paysources.web_url(" https://a.example/x?y=1 ") == "https://a.example/x?y=1"
+    assert paysources.web_url("http://a.example") == "http://a.example"
+    for bad in (None, "", "ftp://a.example", "//a.example", "a.example/x", "mailto:a@b.example", "javascript:1"):
+        assert paysources.web_url(bad) is None
