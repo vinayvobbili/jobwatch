@@ -884,7 +884,12 @@ def read_text(store: Store, key: str, url: str, get=None) -> str:
                          "text here")
     try:
         posting = sources.posting(url, get) or sources.page_posting(url, get)
-    except sources.NotFound as e:  # HTTP 404 or 410: the posting is gone, a first look (checking), and it isn't scored
+    except sources.NotFound as e:
+        # The job's own link answering 404 or 410 says the posting is gone: a first look (checking), not scored. An
+        # address the person typed that answers 404 says nothing about the job (a typo): the old message, no mark.
+        if url.rstrip("/") != (job.url or "").split("#")[0].rstrip("/"):
+            raise ValueError(f"Couldn't read the posting for {who} from {host}: {str(e).removeprefix(f'{url}: ')}. "
+                             "Paste its text here instead.") from None
         if store.set_closed(key, True):
             store.add_note(key, f"Posting read: {host} answers not found (404 or 410), so it looks closed")
         raise ValueError(f"Couldn't read the posting for {who} from {host}: its page is gone (404 or 410), so the "

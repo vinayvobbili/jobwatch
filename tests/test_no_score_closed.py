@@ -364,9 +364,19 @@ def test_read_posting_on_an_open_board_job_still_scores(env, asked, served):
 def test_a_board_page_that_is_gone_marks_the_job_for_a_check_and_says_so(env, asked, served):
     cfg, store = env
     key = board_job(store)
-    with pytest.raises(ApiError, match=r"404 or 410.*not scored"):
-        App(cfg.path).post_posting({"key": key, "url": "https://globex.example/gone/"})
+    own = store.find(key)[0].url  # the job's own link answers 404: its posting is gone
+    with pytest.raises(ApiError, match=r"404 or 410.*not scored. Paste its text here if it is still open"):
+        App(cfg.path).post_posting({"key": key, "url": own})
     assert closed_state(store.find(key)[1]) == "checking" and asked == []
+
+
+def test_a_typed_address_that_answers_404_says_nothing_about_the_job(env, asked, served):
+    """A mistyped link is the person's slip, not evidence: the old message, and the job is not marked closed."""
+    cfg, store = env
+    key = board_job(store)
+    with pytest.raises(ApiError, match=r"Paste its text here instead"):
+        App(cfg.path).post_posting({"key": key, "url": "https://globex.example/gone/"})
+    assert closed_state(store.find(key)[1]) is None
 
 
 # -- the saving shows
