@@ -932,6 +932,7 @@ class Config:
     today_posted: int = 7      # display.today_defaults.posted: the Posted within chip Today loads on, in days (0: Any)
     age_decay: AgeDecay = field(default_factory=AgeDecay)  # display.age_decay: how age lowers Best fit's order
     company_view: str = "matches"  # display.company: which open roles a company's page lists (COMPANY_VIEWS)
+    story_fit: bool = False    # display.story_fit: count your stories' evidence toward the fit minimum (storyfit.py)
     pace: Pace = field(default_factory=Pace)
     calendar: Calendar = field(default_factory=Calendar)
     morning: Morning = field(default_factory=Morning)
@@ -1463,6 +1464,10 @@ def load(explicit: str | Path | None = None) -> Config:
                           "0 starts on Any")
     today_fit = _whole(chips.get("fit", 0), "display.today_defaults.fit", path, "0 starts on Any")
     today_pay = _whole(chips.get("pay", 0), "display.today_defaults.pay", path, "0 starts on Any")
+    story_fit = display.get("story_fit", False)
+    if not isinstance(story_fit, bool):
+        raise ConfigError(f"{path}: display.story_fit is true (count your stories toward must-haves and the fit "
+                          f"minimum) or false, got {story_fit!r}")
     company_view = str(display.get("company", "matches"))
     if company_view not in COMPANY_VIEWS:
         raise ConfigError(f"{path}: display.company must be one of {', '.join(COMPANY_VIEWS)}, got {company_view!r}")
@@ -1520,6 +1525,7 @@ def load(explicit: str | Path | None = None) -> Config:
         incoming=_incoming(raw.get("incoming"), path),
         theme=theme, width=width, today=today, today_fit=today_fit, today_pay=today_pay,
         today_posted=today_posted, age_decay=_age_decay(display.get("age_decay"), path), company_view=company_view,
+        story_fit=story_fit,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
         morning=_morning(raw.get("morning"), path),
         quiet=_quiet(raw.get("quiet"), path), follow_ups=_follow_ups(raw.get("follow_ups"), path),
@@ -1542,7 +1548,8 @@ def defaults() -> dict:
                      if k not in ("backend", "prompt", "keychain", "key_command")},
             "learning": {"timeline": "quarter", "jobs": Config.learn_jobs},
             "display": {"theme": "system", "width": "standard", "today": Config.today, "company": "matches",
-                        "today_defaults": {"posted": Config.today_posted}, "age_decay": asdict(AgeDecay())},
+                        "story_fit": False, "today_defaults": {"posted": Config.today_posted},
+                        "age_decay": asdict(AgeDecay())},
             "pace": asdict(Pace()),
             "calendar": asdict(Calendar()),
             "morning": asdict(Morning()),
@@ -1603,6 +1610,7 @@ filters:
 #   today: 10            # how many picks a day; 0 shows every match
 #   company: matches     # a company's page lists the open roles your filters pass; all lists every one
 #   today_defaults: {fit: 80, pay: 250000}   # the Fit score and Top pay chips Today opens on (0: Any)
+#   story_fit: true      # count your stories (`jobwatch scores --story-check --apply`) toward the fit minimum
 
 # How many applications to send a day: a few good ones beat a burst. Today and the queue say how many went
 # out today. Nothing is ever blocked. daily: 0 turns it off (when looking for work is your full-time job).

@@ -2069,6 +2069,49 @@ ol.vr-ops li::before { content: counter(op); position: absolute; left: 10px; top
 @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.95); } }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
   70%, 100% { box-shadow: 0 0 0 8px transparent; } }
+/* Your stories against the fit's gaps (storyfit.py): quiet green chips for a gap a story covers, amber for one it
+   partly covers, the must-haves with your stories beside the resume's, and the story itself in a large dialog. */
+.storychip { display: inline-flex; align-items: center; gap: 4px; margin: 1px 2px; padding: 2px 9px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--good) 38%, transparent); cursor: pointer; font: inherit; font-size: 12px;
+  font-weight: 600; color: var(--good); vertical-align: baseline; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; background: var(--gloss-sheen-chip), color-mix(in srgb, var(--good) 11%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35); transition: transform .12s, box-shadow .15s; }
+.storychip:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45),
+  0 6px 14px -8px color-mix(in srgb, var(--good) 80%, transparent); }
+.storychip:focus-visible { outline: 2px solid var(--good); outline-offset: 2px; }
+.storychip.partly { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 38%, transparent);
+  background: var(--gloss-sheen-chip), color-mix(in srgb, var(--warn) 11%, transparent); }
+.storychip.partly:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45), 0 6px 14px -8px color-mix(in srgb, var(--warn) 80%, transparent); }
+.storyline { font-size: 13.5px; color: var(--muted); margin: 2px 0 4px; line-height: 1.7; }
+.storyline > b { color: var(--good); font-weight: 600; }
+.storyline .storygap { color: var(--text); }
+.storyline .storygap + .storygap::before { content: "·"; color: var(--muted); margin: 0 6px; }
+.fitbox small.story-must { display: block; color: var(--good); font-weight: 600; }
+.card.job > .fitbox .story-must { grid-column: 2; margin-top: 2px; align-self: start; }
+.card.job > .fitbox .story-score { grid-column: 1 / -1; justify-self: start; }
+.story-score { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  color: #fff; background: var(--gloss-sheen), linear-gradient(135deg, #10b981, #0ea5e9); box-shadow: var(--gloss-edge); white-space: nowrap; }
+.storyfit-note { margin: 6px 0 8px; padding: 10px 12px; border-radius: 12px; font-size: 13.5px;
+  border: 1px solid color-mix(in srgb, var(--good) 26%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--good) 9%, transparent), color-mix(in srgb, #0ea5e9 6%, transparent)); }
+.storyfit-note .tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.storyfit-note .tile { padding: 6px 12px; border-radius: 10px; background: var(--gloss-sheen-chip), var(--panel-solid);
+  border: 1px solid var(--line); animation: rise .35s ease both; }
+.storyfit-note .tile b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+.storyfit-note .tile.with b { background: linear-gradient(135deg, #10b981, #0ea5e9); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.whyfit .storychip { margin-left: 6px; }
+.dialog.story-dialog { width: 90vw; max-width: 1000px; max-height: 88vh; overflow-y: auto; padding: 0; }
+:root[data-width="wide"] .dialog.story-dialog { max-width: 1400px; } :root[data-width="full"] .dialog.story-dialog { max-width: none; }
+.story-dialog .sd-head { position: sticky; top: 0; display: flex; align-items: center; gap: 12px; padding: 16px 24px;
+  border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--panel-solid) 90%, transparent); backdrop-filter: blur(10px); }
+.story-dialog .sd-head h2 { flex: 1; margin: 0; font-size: 20px; }
+.story-dialog .sd-body { padding: 18px 24px 24px; font-size: 15.5px; line-height: 1.65; }
+.story-dialog .sd-why { padding: 10px 14px; border-radius: 12px; margin-bottom: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--good) 12%, transparent), color-mix(in srgb, #0ea5e9 8%, transparent)); }
+.story-dialog .sd-part { margin: 0 0 14px; } .story-dialog .sd-part h3 { margin: 0 0 4px; font-size: 13px; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); }
+@media (max-width: 700px) { .dialog.story-dialog { width: 96vw; max-height: 94vh; } .story-dialog .sd-body { padding: 14px 16px; } }
+
 /* GLOSS. One layer over the page's own look, last so it wins: a top-edge highlight and a soft diagonal sheen on the
    chrome and containers (buttons, chips, badges, tiles, cards, panels, rings, the open tab, Close, dialogs), a sheen
    that sweeps across buttons and tiles once per hover, layered shadows with an indigo glow, and a coloured shiny
@@ -2699,6 +2742,7 @@ function fitBox(fit, key) {
     h("small", { class: fit.reconciled ? "reconciled" : null, "data-reconciled": fit.reconciled ? "1" : null,
                  title: fit.reconciled ? `Reconciled with your profile: ${fit.reconciled.join("; ")}` : null },
       `must-haves ${fit.must_haves_met}/${fit.must_haves_total}`),
+    storyMust(fit),
     scorerTag(fit));
 }
 
@@ -2867,12 +2911,92 @@ function fitGaps(fit) {
   return fit && fit.gaps && fit.gaps.length ? fit.gaps : (fit && fit.soft_gaps) || [];
 }
 function gapsLine(fit, bare = false) {
-  const gaps = fitGaps(fit);
-  if (!gaps.length) return null;
+  const gaps = openGaps(fit), covered = storyCovered(fit, bare);
+  if (!gaps.length) return covered;
   const el = h("div", { class: "gaps", title: bare ? gaps.join(" · ") : "Click to see every gap" },
-    bare ? null : h("b", {}, "Gaps: "), gaps.join(" · "));
+    bare ? null : h("b", {}, "Gaps: "), storyGapItems(fit, gaps));
   el.onclick = () => el.classList.toggle("open");
-  return el;
+  return covered ? [el, covered] : el;
+}
+
+// Your stories against the fit's gaps (storyfit.py, from what `jobwatch scores --story-check --apply` kept; the score
+// itself is never changed). A gap a story covers leaves the Gaps line for "Covered by your stories"; one a story only
+// partly covers keeps its place with an amber "partly" chip. Each chip opens the story in a large dialog.
+const normGap = s => String(s || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+function storyFor(fit, gap, kind) {
+  const g = normGap(gap);  // a soft gap reads "<requirement> (must-have, missing)"
+  return (fit?.story?.[kind] || []).find(r => { const q = normGap(r.requirement); return g === q || g.startsWith(q + " ("); }) || null;
+}
+function openGaps(fit) { return fitGaps(fit).filter(g => !storyFor(fit, g, "covered")); }
+const storyHow = s => s.by === "local" ? "checked by the local model" : "checked by tags only";
+// bare: the title alone, on the "Covered by your stories" line that already says what it is
+function storyChip(r, partly = false, bare = false) {
+  const b = h("button", { type: "button", class: "storychip" + (partly ? " partly" : ""), "data-story": r.story,
+    title: `${r.requirement}\n${partly ? "Partly shown" : "Shown"} by your story "${r.title}": ${r.reason}. Click to read it.` },
+    icon(partly ? "minus" : "check", 11), bare ? r.title : partly ? `partly: ${r.title}` : `Covered by your story: ${r.title}`);
+  b.onclick = e => { e.stopPropagation(); openStory(r); };
+  return b;
+}
+function storyGapItems(fit, gaps) {
+  if (!fit?.story) return gaps.join(" · ");
+  return gaps.map((g, n) => { const p = storyFor(fit, g, "partly"); return [n ? " · " : null, g, p ? [" ", storyChip(p, true)] : null]; });
+}
+function storyCovered(fit, bare = false) {
+  const s = fit?.story;
+  if (!s || !s.covered.length) return null;
+  return h("div", { class: "storyline", "data-story-covered": "1", title: `Your stories, ${storyHow(s)}; the fit score was not changed` },
+    h("b", {}, "Covered by your stories: "),
+    bare ? s.covered.map(r => storyChip(r, false, true))
+      : s.covered.map(r => h("span", { class: "storygap" }, r.requirement, " ", storyChip(r, false, true))));
+}
+// The ring's must-haves with your stories beside the resume's, and the fit with them when Settings counts them.
+function storyMust(fit) {
+  const s = fit?.story;
+  if (!s || s.must_met === fit.must_haves_met && !fit.story_score) return null;
+  return [s.must_met !== fit.must_haves_met ? h("small", { class: "story-must", "data-story-must": "1",
+      title: `${fit.must_haves_met}/${fit.must_haves_total} from the resume · ${s.must_met}/${s.must_total} with your stories (${storyHow(s)})` },
+    `${s.must_met}/${s.must_total} with stories`) : null,
+    fit.story_score ? h("span", { class: "story-score", "data-story-score": "1",
+      title: `Fit ${Math.round(fit.score)} from the resume; ${Math.round(fit.story_score)} with your stories (Settings > Display counts them toward the fit minimum)` },
+      `${Math.round(fit.score)} · ${Math.round(fit.story_score)} with stories`) : null];
+}
+// The Details dialog's summary: must-haves and fit from the resume and with your stories, side by side.
+function storyNote(fit) {
+  const s = fit?.story;
+  if (!s) return null;
+  const tile = (num, lbl, cls = "") => h("div", { class: "tile " + cls }, h("b", {}, num), h("span", { class: "small muted" }, lbl));
+  return h("div", { class: "storyfit-note", "data-story-note": "1" },
+    h("div", { class: "tiles" },
+      tile(`${fit.must_haves_met}/${fit.must_haves_total}`, "must-haves from the resume"),
+      tile(`${s.must_met}/${s.must_total}`, "with your stories", "with"),
+      fit.story_score ? [tile(Math.round(fit.score), "fit from the resume"), tile(Math.round(fit.story_score), "fit with your stories", "with")] : null),
+    h("div", { class: "small muted" }, `Must-haves: ${fit.must_haves_met}/${fit.must_haves_total} from the resume · ` +
+      `${s.must_met}/${s.must_total} with your stories. ${storyHow(s)[0].toUpperCase() + storyHow(s).slice(1)}` +
+      (s.note ? ` (${s.note})` : "") + "; the fit score itself was not changed" +
+      (fit.story_score ? ", and the fit minimum compares the one with your stories (Settings > Display)." : ".")));
+}
+// The fit the Fit chip compares: the one with your stories when Settings counts them (fit.story_score), else the score.
+const fitValue = fit => fit.story_score ?? fit.score;
+async function openStory(r) {
+  const shade = h("div", { class: "overlay story-shade", style: "display:flex", onclick: e => { if (e.target === shade) close(); } });
+  const box = h("div", { class: "dialog story-dialog", role: "dialog", "aria-modal": "true", "aria-label": r.title, tabindex: "-1" });
+  const close = () => { shade.remove(); document.removeEventListener("keydown", keys, true); };
+  const keys = e => { if (e.key === "Escape") { e.stopImmediatePropagation(); close(); } else if (e.key === "Tab") trapTab(box, e); };
+  document.addEventListener("keydown", keys, true);
+  const head = h("div", { class: "sd-head" }, icon("award", 18), h("h2", {}, r.title), closeButton(close));
+  const why = h("div", { class: "sd-why" }, h("b", {}, r.verdict === "partly" ? "Partly shows: " : "Shows: "), r.requirement,
+    h("div", { class: "small muted" }, `Why: ${r.reason} (${r.how === "local" ? "the local model" : "by tags"}).`));
+  const body = h("div", { class: "sd-body" }, why, h("p", { class: "muted" }, "Loading the story…"));
+  box.append(head, body);
+  shade.append(box);
+  document.body.append(shade);
+  box.focus();
+  try {
+    const { story } = await api("/api/story?id=" + encodeURIComponent(r.story));
+    const part = (t, v) => v ? h("div", { class: "sd-part" }, h("h3", {}, t), h("div", {}, v)) : null;
+    fill(body, why, part("What you did", story.did), part("The hard part", story.hard), part("What came of it", story.result),
+      story.skills?.length ? part("Skills", h("div", { class: "chips" }, story.skills.map(k => h("span", { class: "chip hit" }, k)))) : null);
+  } catch (e) { fill(body, why, h("p", { class: "error" }, e.message)); }
 }
 
 // Each requirement the fit score judged: its verdict and the resume's words behind it.
@@ -2886,7 +3010,14 @@ function whyScore(fit) {
       h("span", { class: `v ${r.verdict}` }, VERDICT[r.verdict] || r.verdict),
       r.requirement, r.kind === "must_have" ? h("span", { class: "muted small" }, " · must-have") : null,
       r.reconciled ? h("span", { class: "muted small" }, ` · ${r.reconciled}`) : null,
+      storyRowChip(fit, r),
       (r.evidence || []).slice(0, 2).map(q => h("q", {}, q))))));
+}
+// A requirement row's story chip in "Why this score", when a story covers or partly covers it.
+function storyRowChip(fit, r) {
+  if (r.verdict === "met") return null;
+  const c = storyFor(fit, r.requirement, "covered"), p = c ? null : storyFor(fit, r.requirement, "partly");
+  return c ? storyChip(c) : p ? storyChip(p, true) : null;
 }
 
 // A pay that is a rate worked out as a year's ("$40–$80/hr, about $83K–$166K a year": Job.pay in models.py) is
@@ -4015,6 +4146,7 @@ async function openDetails(key) {
         paySources(j),
         payWhy(j),
         gapsLine(j.fit),
+        storyNote(j.fit),
         whyScore(j.fit),
         knowLine(j, 10),
         h("div", { class: "row actions" }, j.url ? link(j.url, "Open the posting ↗") : h("span", { class: "small muted no-url" }, "This posting has no link of its own."), detailsScore(j),
@@ -5594,7 +5726,7 @@ const scoredFirst = (jobs, v) => !v.fit ? jobs : [...jobs.filter(j => j.fit), ..
 function quickNarrow(j, v) {
   const where = j.where || [];  // a server from before `where` sends none
   return roleShown(j, v) && (v.where === "any" || !where.length || where.includes(v.where)) &&
-    (!v.fit || (j.fit ? j.fit.score >= v.fit : v.noScore !== "hide")) &&  // not scored yet: shows unless set to Hide
+    (!v.fit || (j.fit ? fitValue(j.fit) >= v.fit : v.noScore !== "hide")) &&  // not scored yet: shows unless set to Hide
     payShown(j, v) &&
     (!v.posted || j.age_days == null || j.age_days <= v.posted);  // no posting date: still shows
 }
@@ -7578,7 +7710,8 @@ function displayCard(s) {
     applyDisplay(d);
     try {
       // display.today is saved with the rest of Settings: keep what's saved now
-      const display = { ...(settings.display || {}), theme: d.theme, width: d.width, company: d.company };
+      const display = { ...(settings.display || {}), theme: d.theme, width: d.width, company: d.company,
+        ...(d.story_fit !== undefined ? { story_fit: d.story_fit } : {}) };
       await api("/api/settings", { display });
       settings.display = display;
       msg.textContent = "Saved."; msg.className = "small muted";
@@ -7593,9 +7726,20 @@ function displayCard(s) {
         "Wider fits more on a big monitor."),
       field("Company page", segmented([["matches", "Your matches"], ["all", "Every role"]], d.company, v => set("company", v)),
         "Which open roles a company's page lists: the ones your filters pass (place, pay, title, text), or all of them."),
+      storyFitField(d, set),
       field("History", path(s.state, s.defaults.state), "Jobs seen, applied to and scored (state: in the watchlist file)."),
       field("Cache", path(s.cache, s.defaults.cache), "Posting text kept for fit scores (cache: in the file).")));
   return c;
+}
+
+// display.story_fit: whether your stories' evidence (storyfit.py) counts toward the fit minimum and Today's Fit chip.
+// Off (the default), it is shown only: chips on the gaps and the must-haves with your stories beside the resume's.
+function storyFitField(d, set) {
+  return field("Count your stories toward must-haves",
+    segmented([["off", "Show only"], ["on", "Count them"]], d.story_fit ? "on" : "off", v => set("story_fit", v === "on")),
+    "What `jobwatch scores --story-check --apply` found in your stories, checked on this computer only. Show only: the " +
+    "gaps a story covers are marked and the fit stays the resume's. Count them: the fit with your stories shows beside " +
+    "the score (\"68 · 74 with stories\") and is what the fit minimum and Today's Fit chip compare. The score itself never changes.");
 }
 
 // One prompt in a fold, closed until opened: its text to edit, "edited" while it isn't the default, "Reset to

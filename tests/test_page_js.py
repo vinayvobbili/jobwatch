@@ -96,7 +96,7 @@ def test_todays_quick_narrowing(tmp_path):
     }
     js = tmp_path / "narrow.js"
     js.write_text(page_const("roleShown") + "\n" + page_const("payShown") + "\n" + page_function("payTop") + "\n"
-                  + page_function("quickNarrow") + f"""
+                  + page_const("fitValue") + "\n" + page_function("quickNarrow") + f"""
 const jobs = {json.dumps(jobs)}, views = {json.dumps(views)};
 const out = {{}};
 for (const [v, view] of Object.entries(views)) out[v] = Object.keys(jobs).filter(k => quickNarrow(jobs[k], view));
@@ -334,7 +334,8 @@ def test_company_counts_follow_the_other_filters(tmp_path):
              "search": {**base, "q": "data"}, "python": {**base, "kws": ["python"]}}
     js = tmp_path / "counts.js"
     js.write_text(page_const("roleShown") + "\n" + page_const("payShown") + "\n" + page_function("payTop") + "\n"
-                  + page_function("quickNarrow") + "\n" + page_function("companyCounts") + f"""
+                  + page_const("fitValue") + "\n" + page_function("quickNarrow") + "\n"
+                  + page_function("companyCounts") + f"""
 const jobs = {json.dumps(jobs)}, views = {json.dumps(views)};
 const out = {{}}, kept = {{Umbrella: 4}};
 for (const [n, v] of Object.entries(views)) out[n] = companyCounts(jobs, {{...v, kws: new Set(v.kws)}});
@@ -1085,7 +1086,7 @@ def test_a_stale_score_is_a_small_clock_by_the_ring_with_the_reason_on_hover(tmp
     """The badge is an icon with no word (the word sat over the number), the amber one for an older resume and the
     rose one for a score marked stale, each with its reason as the tooltip."""
     js = tmp_path / "stale.js"
-    js.write_text(page_function("staleNote") + page_function("fitBox") + """
+    js.write_text(page_function("staleNote") + page_function("fitBox") + page_function("storyMust") + """
 const h = (tag, attrs, ...kids) =>
   ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
 const icon = name => ({ svg: name });

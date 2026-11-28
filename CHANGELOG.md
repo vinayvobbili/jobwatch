@@ -6,6 +6,17 @@
   (cards and table), Interviews and the Company tab's job cards the logo is a button ("See everything at Initech"; click,
   Enter or Space; it lifts and rings on hover and never opens the card's Details). Dialog heads, the Comps columns and
   Referrals (whose logo already goes there) keep a plain logo.
+- Your stories can answer a fit score's gaps. A fit score reads only the resume, so something you did that lives in
+  one of your stories came back as a gap. `jobwatch scores --story-check` checks each requirement a score judged
+  missing or partly met against your stories, on your computer only: by their skills and words, and by the local
+  model when it's on this computer or your network (any other address is refused; your stories never go to the fit
+  scorer). A dry run by default (how many jobs gain, the top 10 by change); `--apply KEY ...` or `--all` keeps the
+  result beside each score as story evidence, never in it. The page then moves a covered gap to "Covered by your
+  stories" (green chips that open the story in a large dialog; amber "partly" chips), the ring and Details show
+  "7/10 from the resume · 9/10 with your stories", and `jobwatch show` and the digest say the same. Settings →
+  Display → "Count your stories toward must-haves" (`display.story_fit`, off at first) shows the fit with your
+  stories beside the score ("68 · 74 with stories") and lets the fit minimum and Today's Fit chip compare it.
+  Scores are never changed or made again. See [Your stories and the gaps](docs/guide/fit-scores.md#your-stories-and-the-gaps).
 - The Referrals tab shows what suits you, one card per company, and explains itself to someone starting out.
   With no LinkedIn data it says what Referrals is (who could refer you to a job you track), how to get people
   here (LinkedIn's "Get a copy of your data", then the upload in Settings > People & pay, with links), and that your

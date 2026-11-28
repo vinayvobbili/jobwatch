@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from . import actjobs, linkedin, rounds, scorestate
+from . import actjobs, linkedin, rounds, scorestate, storyfit
 from .contacts import company_key
 from .degrees import reconcile
 from .models import Job
@@ -291,6 +291,11 @@ CREATE TABLE IF NOT EXISTS interview_rounds (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS interview_rounds_key ON interview_rounds (key);
+CREATE TABLE IF NOT EXISTS story_evidence (
+    key TEXT PRIMARY KEY,
+    result TEXT NOT NULL,
+    checked_at TEXT NOT NULL
+);
 """
 FETCHES_KEPT = 200  # the checks for new jobs remembered (when, and what they found)
 ACTIVITY_KEPT = 1000  # the things done in the background remembered, of each kind (see Store.log)
@@ -386,16 +391,20 @@ class Scores(Mapping):
     the baseline), or marked stale, reads as stale (see scorestate.flag); it is a score all the same."""
 
     def __init__(self, raw: dict[str, tuple[str, str]] | None = None, education: tuple = (), resume: str = "",
-                 kept: dict[str, str] | None = None, marks: dict[str, tuple[str, str]] | None = None):
+                 kept: dict[str, str] | None = None, marks: dict[str, tuple[str, str]] | None = None,
+                 evidence: dict[str, str] | None = None, story_fit: bool = False):
         self._raw = raw or {}  # key -> (result JSON, the resume id it was made under)
         self._education = education  # degrees.reconcile's: met degree requirements leave the gaps
         self._current = resume_family(resume) if resume else ""
         self._kept, self._marks = kept or {}, marks or {}
+        self._evidence, self._story_fit = evidence or {}, story_fit  # storyfit.annotate's: key -> evidence JSON
 
     def __getitem__(self, key: str) -> dict:
         text, rid = self._raw[key]
-        return scorestate.flag(reconcile(json.loads(text), self._education), rid, self._current, self._kept,
-                               self._marks.get(key))
+        fit = scorestate.flag(reconcile(json.loads(text), self._education), rid, self._current, self._kept,
+                              self._marks.get(key))
+        ev = self._evidence.get(key)
+        return storyfit.annotate(fit, json.loads(ev), self._story_fit) if ev else fit
 
     def __iter__(self):
         return iter(self._raw)
@@ -440,13 +449,16 @@ class KnownJobs(Mapping):
 
 
 class Store:
-    def __init__(self, path: Path | str, read_only: bool = False, education: tuple = ()):
+    def __init__(self, path: Path | str, read_only: bool = False, education: tuple = (), story_fit: bool = False):
         """read_only opens an existing state file without changing it, not even to add a newer version's columns
         (`jobwatch dupes` reads with it). education: the profile's degrees (Config.education): a fit score read
-        back has the degree requirements they meet taken out of its gaps (degrees.reconcile)."""
+        back has the degree requirements they meet taken out of its gaps (degrees.reconcile). story_fit
+        (display.story_fit): a fit score read back with story evidence also carries the score with your stories,
+        which the fit minimum compares (storyfit.annotate); without it the evidence is shown, never counted."""
         path = Path(path).expanduser()
         self.path = path
         self.education = education
+        self.story_fit = story_fit
         self.packages = path.parent / "packages"  # what was sent with each application (see package.py)
         self._titles: dict[str, str | None] = {}  # titles() remembers what it resolved, until a job is written
         if read_only:
@@ -1380,14 +1392,42 @@ class Store:
                               "ORDER BY scored_at DESC LIMIT 1", (key,)).fetchone()
         if not row:
             return None
-        return scorestate.flag(reconcile(json.loads(row["result"]), self.education), row["resume"],
-                               resume_family(resume), scorestate.kept_map(self.db),
-                               scorestate.marks(self.db, [key]).get(key))
+        fit = scorestate.flag(reconcile(json.loads(row["result"]), self.education), row["resume"],
+                              resume_family(resume), scorestate.kept_map(self.db),
+                              scorestate.marks(self.db, [key]).get(key))
+        ev = self._story_evidence([key]).get(key)
+        return storyfit.annotate(fit, json.loads(ev), self.story_fit) if ev else fit
 
     def scores(self, resume: str) -> Scores:
         """Every job's newest fit score by job key, one query for a whole list of jobs (see score)."""
         return Scores({r["key"]: (r["result"], r["resume"]) for r in self.newest_scores()}, self.education, resume,
-                      scorestate.kept_map(self.db), scorestate.marks(self.db))
+                      scorestate.kept_map(self.db), scorestate.marks(self.db), self._story_evidence(),
+                      self.story_fit)
+
+    def _story_evidence(self, keys: list[str] | None = None) -> dict[str, str]:
+        """The stored story evidence (storyfit.check) by job key, as JSON text: of these jobs, or of every job."""
+        try:
+            if keys is None:
+                return {r["key"]: r["result"] for r in self.db.execute("SELECT key, result FROM story_evidence")}
+            marks = ",".join("?" * len(keys))
+            return {r["key"]: r["result"] for r in self.db.execute(
+                f"SELECT key, result FROM story_evidence WHERE key IN ({marks})", keys)}
+        except sqlite3.OperationalError:  # a read-only open of a file from before story evidence
+            return {}
+
+    def story_evidence(self, key: str) -> dict | None:
+        """One job's stored story evidence (storyfit.check), or None."""
+        ev = self._story_evidence([key]).get(key)
+        return json.loads(ev) if ev else None
+
+    def save_story_evidence(self, key: str, evidence: dict | None):
+        """Keep what the story check found for a job, beside its fit score (never in it); None removes it."""
+        with self.db:
+            if evidence and evidence.get("items"):
+                self.db.execute("INSERT OR REPLACE INTO story_evidence (key, result, checked_at) VALUES (?, ?, ?)",
+                                (key, json.dumps(evidence), _now()))
+            else:
+                self.db.execute("DELETE FROM story_evidence WHERE key=?", (key,))
 
     def newest_scores(self) -> list[sqlite3.Row]:
         """Per job with a score, its newest: key, resume (the id it was made under), result (JSON), score and

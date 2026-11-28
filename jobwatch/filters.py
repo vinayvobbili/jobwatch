@@ -349,8 +349,10 @@ def rejection(job: Job, f: Filters, fit: dict | None = None, client: bool = True
     if f.max_age_days is not None and not kept_open(job) and (age := job.age_days()) is not None \
             and age > f.max_age_days:
         return "age", f"posted {age} days ago"
-    if f.min_fit and fit and fit.get("score") is not None and fit["score"] < f.min_fit:
-        return "fit", f"fit {fit['score']:.0f}/100"
+    # story_score: the fit with your stories, there only when display.story_fit counts them (storyfit.annotate)
+    if f.min_fit and fit and fit.get("score") is not None and fit.get("story_score", fit["score"]) < f.min_fit:
+        return "fit", f"fit {fit['score']:.0f}/100" + (f" ({fit['story_score']:.0f} with your stories)"
+                                                       if "story_score" in fit else "")
     return None
 
 

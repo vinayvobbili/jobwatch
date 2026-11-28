@@ -154,6 +154,35 @@ def load(path: Path | None) -> list[Story]:
     return parse(path.read_text(encoding="utf-8"), path)
 
 
+def load_usable(path: Path | None) -> tuple[list[Story], list[str]]:
+    """(the stories that pass the checks, what's wrong with each one that doesn't), for a reader that can go on
+    without a broken story (the story check, storyfit.py). A file that's missing or isn't a list of stories is still
+    an error, as in load."""
+    if not path:
+        return [], []
+    if not path.is_file():
+        raise ConfigError(f"{path}: no story file there (stories: in the watchlist names it)")
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise ConfigError(f"{path}: not valid YAML: {e}") from None
+    if isinstance(raw, dict) and set(raw) == {"stories"}:
+        raw = raw["stories"] or []
+    if raw is not None and not isinstance(raw, list):
+        raise ConfigError(f"{path}: a story file is a list of stories, each starting with '- id:'")
+    out, problems, seen = [], [], set()
+    for n, s in enumerate((raw or [])[:MAX_STORIES], 1):
+        try:
+            story = _story(s, f"{path.name}: story {n}")
+        except ConfigError as e:
+            problems.append(str(e))
+            continue
+        if story.id not in seen:
+            seen.add(story.id)
+            out.append(story)
+    return out, problems
+
+
 def _free_id(wanted: str, taken: set[str]) -> str:
     n, out = 2, wanted
     while out in taken:

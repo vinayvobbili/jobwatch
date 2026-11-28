@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import date
 
-from . import lca, levels
+from . import lca, levels, storyfit
 from .alerts import LABELS
 from .localday import local_day
 from .models import Job
@@ -51,6 +51,7 @@ def fit_lines(fit: dict) -> list[str]:
            + (f" (scored by {scorer_label(fit['scored_by'])})" if fit.get("scored_by") else "")]
     out += [f"Reconciled with your profile (the score was not made again): {note}"
             for note in fit.get("reconciled") or []]
+    out += storyfit.lines(fit)
     for r in fit.get("requirements") or []:
         kind = "must" if r["kind"] == "must_have" else "nice"
         quote = f'  "{_trim(r["evidence"][0], 90)}"' if r.get("evidence") else ""
@@ -98,8 +99,14 @@ def _line(e: Entry) -> list[str]:
         f = e.fit
         old = " (stale score)" if f.get("stale") else ""  # made again only once it's decided (jobwatch scores)
         by = f" (scored by {scorer_label(f['scored_by'])})" if f.get("scored_by") else ""
-        out.append(f"**Fit {f['score']:.0f}/100**{old}, must-haves {f['must_haves_met']}/{f['must_haves_total']}{by}. "
-                   + (f"Gaps: {'; '.join(f['gaps'])}" if f["gaps"] else "No must-have gaps."))
+        story = f.get("story") or {}
+        gaps = storyfit.open_gaps(f)
+        mine = f" · {story['must_met']}/{story['must_total']} with your stories" if story else ""
+        out.append(f"**Fit {f['score']:.0f}/100**{old}, must-haves {f['must_haves_met']}/{f['must_haves_total']}{mine}"
+                   f"{by}. " + (f"Gaps: {'; '.join(gaps)}" if gaps else "No must-have gaps."))
+        if story.get("covered"):
+            out.append("Covered by your stories: " + "; ".join(f"{r['requirement']} ({r['title']})"
+                                                                for r in story["covered"]))
     elif not scorable(j):
         out.append(f"{MANY_ROLES[1]}.")
     if isinstance(e.pay, levels.Estimate):  # set on queued jobs only, never in a digest

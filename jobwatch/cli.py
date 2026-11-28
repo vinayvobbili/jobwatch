@@ -74,6 +74,7 @@ from . import (
     speech,
     stories,
     storyfind,
+    storyfit,
     suggest,
     tailor,
     timeline,
@@ -736,6 +737,55 @@ def _scores_status(cfg, store):
               + (f" ({s['last']['reason']})" if s["last"]["reason"] else "") + ".")
 
 
+STORY_TOP = 10
+
+
+def _story_check(args, cfg, store):
+    """`scores --story-check`: the fit scores' gaps against your stories (storyfit.py), a dry run unless --apply."""
+    bank, problems = storyfit.load_bank(cfg)
+    for problem in problems:
+        print(f"Left out of the check: {problem}", file=sys.stderr)
+    if not bank:
+        print("No stories yet, so nothing to check: add some with Find a story on a job's prep sheet, the save_story "
+              "tool, or a story file (stories: in the watchlist; see examples/stories.yaml).")
+        return
+    if args.apply and not (args.keys or args.all):
+        raise ValueError("--apply keeps the evidence for the jobs you name: give KEY ... or --all")
+    fits = store.scores(resume_id(cfg.resume, cfg.prompts))
+    keys = [store.find(k)[0].key for k in args.keys] if args.keys else sorted(fits)
+    model = args.by == "local" or (args.by == "auto" and bool(args.keys))
+    run = storyfit.run(store, keys, {k: fits[k] for k in keys if k in fits}, bank, model=model,
+                       progress=lambda msg: print(msg, file=sys.stderr))
+    how = "your stories' skills and words and the local model" if model else "your stories' skills and words"
+    told = f"{len(bank)} stor{'y' if len(bank) == 1 else 'ies'}"
+    print(f"Checked {plural(run.checked, 'scored job')} against your {told} by {how}.")
+    notes = {ev["note"] for _, ev, *_ in run.found if ev.get("note")}
+    for note in sorted(notes):
+        print(f"Note: {note}.")
+    more = [r for r in run.found if r[3] > r[2]]
+    print(f"{plural(len(run.found), 'job')} would have gaps covered or partly covered; {len(more)} of them gain "
+          f"must-haves ({sum(r[3] - r[2] for r in more)} in all).")
+    total = {key: (fits[key].get("must_haves_total") or 0) for key, *_ in run.found}
+    top = sorted(run.found, key=lambda r: (-(r[3] - r[2]), -((r[5] or r[4]) - r[4]), r[0]))[:STORY_TOP]
+    if top:
+        print(f"Top {len(top)} by change:")
+    for key, _ev, before, after, score, adj in top:
+        job, _ = store.find(key)
+        fit_part = f"fit {score:.0f} -> {adj:.0f}" if adj else f"fit {score:.0f}"
+        print(f"  +{after - before} must-have{'s' if after - before != 1 else ''}  {before}/{total[key]} -> "
+              f"{after}/{total[key]}  {fit_part}  {job.display_company}: {job.title}  {key}")
+    if not args.apply:
+        print("Dry run: nothing was kept. `jobwatch scores --story-check --apply KEY ...` (or --all) keeps it for the "
+              "page, `show` and the digest; fit scores are never changed.")
+        return
+    found = {key: ev for key, ev, *_ in run.found}
+    for key in keys:
+        store.save_story_evidence(key, found.get(key))
+    print(f"Kept story evidence for {plural(len(found), 'job')} (and cleared it for "
+          f"{plural(len(keys) - len(found), 'other')} checked). Fit scores weren't changed"
+          + ("; Settings > Display counts it toward the fit minimum." if not cfg.story_fit else "."))
+
+
 def cmd_scores(args, cfg, store):
     """Whether the fit scores still stand against the resume, and the decision about them. A new resume leaves
     every score as it is, flagged stale on the page when made under an older one; nothing is scored again until
@@ -743,7 +793,11 @@ def cmd_scores(args, cfg, store):
     current resume is their baseline)."""
     if not (cfg.resume and cfg.resume.is_file()):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
-    if args.stale:
+    if (args.keys or args.all or args.apply) and not args.story_check:
+        raise ValueError("KEY, --all and --apply go with --story-check")
+    if args.story_check:
+        _story_check(args, cfg, store)
+    elif args.stale:
         n = scorestate.mark_stale(cfg, store, args.reason, args.min, args.queued)
         print(f"Marked {plural(n, 'score')} stale"
               + (": `jobwatch score --rescore` scores them again (the page does when background scoring is on)."
@@ -2180,6 +2234,18 @@ def build_parser() -> argparse.ArgumentParser:
                       help="keep the scores as made: the current resume becomes their baseline, nothing is scored")
     what.add_argument("--unmark", action="store_true", help="take back the marks still waiting to be scored again")
     what.add_argument("--log", action="store_true", help="the decisions made so far")
+    what.add_argument("--story-check", action="store_true",
+                      help="check the gaps fit scores found against your stories, on this computer only (a dry run "
+                      "unless --apply): how many jobs your stories would cover gaps for, the top 10 by change. "
+                      "Scores are never changed")
+    p.add_argument("keys", nargs="*", metavar="KEY", help="with --story-check: only these jobs")
+    p.add_argument("--all", action="store_true", help="with --story-check --apply: every scored job")
+    p.add_argument("--apply", action="store_true",
+                   help="with --story-check: keep what it finds for the jobs named (or --all), for the page, `show` "
+                   "and the digest")
+    p.add_argument("--by", choices=("auto", "tags", "local"), default="auto",
+                   help="with --story-check: tags (skills and words, fast), local (also the local model: slow, one "
+                   "call per job) or auto (the local model for jobs named, tags for every job)")
     p.add_argument("--min", type=float, default=None, metavar="SCORE",
                    help="with --stale: only scores of at least SCORE (and the --queued ones, with --queued)")
     p.add_argument("--queued", action="store_true", help="with --stale: the queued jobs' scores (and --min's)")
@@ -2893,12 +2959,13 @@ def main(argv: list[str] | None = None):
         if getattr(args, "needs_config", True) is False:
             return args.func(args)
         cfg = config.load(args.config)
-        # opened without changing the file at all (but `resolve --apply` and `--name` write)
-        read_only = getattr(args, "read_only", False) and not getattr(args, "apply", False) \
-            and not getattr(args, "name", None)
+        # opened without changing the file at all (but `resolve --apply` and `--name` write); so is the story check's
+        # dry run (`scores --story-check` without --apply)
+        read_only = (getattr(args, "read_only", False) or getattr(args, "story_check", False)) \
+            and not getattr(args, "apply", False) and not getattr(args, "name", None)
         if read_only and not Path(cfg.state).expanduser().is_file():
             raise ValueError(f"no jobs tracked yet: {cfg.state} doesn't exist")
-        store = Store(cfg.state, read_only=read_only, education=cfg.education)
+        store = Store(cfg.state, read_only=read_only, education=cfg.education, story_fit=cfg.story_fit)
         try:
             args.func(args, cfg, store)
         finally:

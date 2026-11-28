@@ -17,7 +17,7 @@ import shutil
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from jobwatch import logos
+from jobwatch import logos, stories, storyfit
 from jobwatch.contacts import TIES_FILE
 from jobwatch.models import Job
 from jobwatch.score import resume_id
@@ -220,7 +220,24 @@ STORIES = """\
   hard: Old articles contradicted new ones, so I added a freshness rule to the retrieval step.
   result: The agent answered 40% of tickets without a person, with a thumbs-up rate of 82%.
   skills: [Python, RAG, agents]
+- id: field-pilot
+  title: Ran an on-site pilot with a customer team
+  did: Spent two weeks with a customer's engineers putting our agent into their support workflow, fixing what they hit.
+  hard: Their security review allowed no cloud calls, so I ran the model on their own servers.
+  result: The pilot became a signed contract, and their feedback set the next quarter's roadmap.
+  skills: [customer-facing engineering, deployment]
 """
+# Globex's score with its requirement rows (Why this score), so the story check can show the fit with your stories.
+GLOBEX_ROWS = [
+    {"id": r, "requirement": text, "kind": kind, "verdict": verdict, "evidence": quote, "evidence_verified": True,
+     "reasoning": ""}
+    for r, text, kind, verdict, quote in (
+        ("python", "Production Python services", "must_have", "met", ["Python services"]),
+        ("agents", "Built LLM agents", "must_have", "met", ["LLM agents"]),
+        ("rag", "Retrieval-augmented generation", "must_have", "met", ["RAG"]),
+        ("apis", "Designing APIs", "must_have", "met", ["APIs"]),
+        ("customer", "Customer-facing engineering experience", "must_have", "not_met", []),
+        ("deploy", "On-premise deployment for enterprise customers", "nice_to_have", "partial", ["deployment"]))]
 SHEET = """<!doctype html><meta charset="utf-8"><title>Initech onsite</title>
 <style>body{font:16px/1.5 -apple-system,sans-serif;max-width:640px;margin:40px auto}</style>
 <h1>Initech: panel interview</h1>
@@ -276,6 +293,14 @@ def extras(out: Path, store: Store):
     for job_, _ in store.jobs(include_closed=True):  # no logo to look for on the web: the page draws initials
         store.save_logo(logos.key(job_.display_company), "", "", b"")
 
+    # The story check (storyfit.py) by tags: the field-pilot story covers Globex's customer-facing gap.
+    rid, bank = resume_id(out / "resume.txt"), stories.load(out / "stories.yaml")
+    score, met, total, gaps, summary = FIT["lever:globex:a7c2"]
+    store.save_score("lever:globex:a7c2", rid, {"score": score, "must_haves_met": met, "must_haves_total": total,
+                                                "gaps": gaps, "summary": summary, "flags": [],
+                                                "requirements": GLOBEX_ROWS})
+    for key in FIT:
+        store.save_story_evidence(key, storyfit.check(store.score(key, rid), bank, model=False))
     store.set_comp("ashby:initech:c0", base="190-220K", bonus="10% target", equity="40K RSUs over 4 years",
                    asked="220-240K", role="product", career_note="LLM apps, staff IC",
                    note="Recruiter said 220K is the top of the band")

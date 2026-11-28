@@ -293,6 +293,58 @@ aside), try them in a comparison first: `jobwatch score --compare 20 --stored-by
 tight.yaml (name: text, as `--show-prompts` names them), next to Claude's scores, with the mean size of the
 difference to aim down. Nothing is kept, the prompts included: put them in Settings when they're ready.
 
+## Your stories and the gaps
+
+A fit score reads your resume and nothing else. Something you did that lives in one of your stories (the story
+file you keep with **Find a story** or the `save_story` tool, see [interview prep](interview-prep.md)) and not in a
+resume line comes back as a gap: "driving adoption of new engineering practices" marked missing, when a story of
+yours is exactly that. The story check is a second look at those gaps, against your stories.
+
+It's optional. With no story file nothing changes, and nothing is shown.
+
+**Private by design.** Your stories never go to the fit scorer (Claude, agy or a provider): that stays resume-only.
+The check runs on your computer:
+
+- **By tags**: each story's skills, title and words against the requirement's words (with word endings and common
+  job-ad words like "experience" left out). A requirement is *covered* when one of a story's skills is named in it
+  whole and most of its words are in the story; *partly* when only some are. A requirement that asks for years
+  ("5+ years of Kafka") is at most partly covered: a story shows the work, not the years.
+- **By the local model**, when the local model server answers (the one chat and local scores use,
+  `LOCAL_LLM_URL`) and it is on this computer or your own network (localhost, a private address, a `.local` name):
+  it reads the stories closest to each gap and says covered, partly or no, with a one-line reason. Its verdict wins
+  where it gives one. Any other address, a hosted API say, is refused before anything is sent, and the check says
+  "checked by tags only".
+
+**Try it first.** `jobwatch scores --story-check` is a dry run over every scored job, by tags: how many jobs your
+stories would cover gaps for, how many must-haves they'd gain, and the ten that change most ("+2 must-haves 7/10 ->
+9/10 fit 68 -> 74 Globex: Staff Engineer"). Nothing is kept. Name jobs (`jobwatch scores --story-check KEY ...`)
+to have the local model look too; `--by local` asks it for every job (slow: one call per job, each kept so it's
+asked once), `--by tags` never.
+
+**Keep it.** `jobwatch scores --story-check --apply KEY ...` (or `--all`) keeps what it found beside each score, as
+story evidence: the requirement, covered or partly, the story and the reason. The fit score, its verdicts and its
+quotes are never changed, and nothing is scored again, so it costs nothing. Run it again after adding a story or
+after new scores come in; a gap a new score no longer lists drops out of the evidence by itself.
+
+**What you see.** On a job card and in its Details, a gap a story covers leaves the Gaps line for **Covered by your
+stories** (a green chip per story; an amber "partly: <story>" chip stays on a gap only partly covered). Each chip
+opens the story in a large dialog (Esc closes). Under the ring the must-haves read "8/10 with stories" beside the
+resume's 7/10, and Details says "7/10 from the resume · 9/10 with your stories". `jobwatch show` and the digest say
+the same.
+
+**Counting them.** Settings → Display → **Count your stories toward must-haves** is off at first (Show only): the
+fit stays the resume's, and the Fit filters and your fit minimum compare it. Turned on (**Count them**, or
+`display.story_fit: true`), the fit with your stories is worked out from the score's own verdicts with shortlist-ai's
+weights (a covered gap counted as met, a partly covered one as partly met, a core requirement's cap lifted when a
+story covers it) and shown beside the score, never in its place: "68 · 74 with stories". That second number is the
+one the fit minimum (`filters.min_fit`) and Today's Fit chip compare, so a job your stories lift over the line
+shows. Best fit's order and the score itself stay the resume's.
+
+```yaml
+display:
+  story_fit: true   # count your stories' evidence toward the fit minimum (shown as "68 · 74 with stories")
+```
+
 ## The fit score prompt
 
 Settings → **Fit score prompt** shows what the model is told: each of shortlist-ai's prompts (reading the

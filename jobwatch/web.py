@@ -632,7 +632,7 @@ class App:
 
     def _with_store(self, fn):
         cfg = self._cfg()
-        store = Store(cfg.state, education=cfg.education)
+        store = Store(cfg.state, education=cfg.education, story_fit=cfg.story_fit)
         try:
             return fn(cfg, store)
         finally:
@@ -2236,6 +2236,15 @@ class App:
             return session.where, storyfind.talk(session, body.get("messages") or [])
         return self._with_store(run)
 
+    def get_story(self, q) -> dict:
+        """One story from your story file (`id`), for the dialog a "Covered by your story" chip opens."""
+        sid = (q.get("id") or [""])[0]
+        found = next((s for s in stories.load(self._cfg().stories) if s.id == sid), None)
+        if not found:
+            raise ApiError(f"No story {sid!r} in your story file (it may have been renamed or removed since the "
+                           "check: run `jobwatch scores --story-check --apply` again).", HTTPStatus.NOT_FOUND)
+        return {"story": found.to_dict()}
+
     def post_story(self, body) -> dict:
         """Add a story you've checked (`story`: id, title, did, hard, result, optional skills and avoid) to your
         story file; returns it as saved, the file and how many stories it now has."""
@@ -2359,6 +2368,7 @@ ROUTES = {
     ("POST", "/api/mock/report/save"): App.post_mock_report_save,
     ("GET", "/api/storyfind"): App.get_storyfind,
     ("POST", "/api/stories/add"): App.post_story,
+    ("GET", "/api/story"): App.get_story,
     ("POST", "/api/tailor"): App.post_tailor,
     ("GET", "/api/ats"): App.get_ats,
     ("GET", "/api/cover"): App.get_cover,
