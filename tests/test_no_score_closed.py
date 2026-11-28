@@ -16,7 +16,7 @@ import yaml
 
 from jobwatch import autofill, cli, config, scorestats, sources, watch
 from jobwatch.store import Store, closed_state
-from jobwatch.web import App
+from jobwatch.web import ApiError, App
 
 from .test_page_js import page_const, page_function
 
@@ -295,6 +295,78 @@ def test_a_page_that_is_open_marks_nothing(env):
                                         "title": "Machine Learning Engineer",
                                         "text": "Train machine learning models for Globex. " * 8})
     assert "not_scored" not in got and closed_state(store.find(key)[1]) is None
+
+
+# -- a board job's Read posting (a fund's portfolio board lists the job with its link alone)
+
+BOARD_PAGE = "https://globex.example/job-detail/4711/"
+BOARD_TEXT = "Build detection pipelines in Python. You have 5+ years of experience. " * 4
+
+
+def board_job(store):
+    from jobwatch.models import Job
+    job = Job(source="vc", company="fund.example/jobs/portfolio-jobs/", id="globex-77", title="Staff Python Engineer",
+              url="https://jobs.fund.example/companies/globex/jobs/77", company_name="Globex")
+    store.keep(job)
+    return job.key
+
+
+def board_job_two(store):
+    from jobwatch.models import Job
+    job = Job(source="vc", company="fund.example/jobs/portfolio-jobs/", id="initech-12", title="Platform Engineer",
+              url="https://jobs.fund.example/companies/initech/jobs/12", company_name="Initech")
+    store.keep(job)
+    close(store, job.key)
+    return job.key
+
+
+@pytest.fixture
+def served(monkeypatch):
+    """The company's own posting page, as JobPosting markup; any other address is a 404."""
+    ld = json.dumps({"@type": "JobPosting", "title": "Staff Python Engineer", "description": BOARD_TEXT,
+                     "hiringOrganization": {"name": "Globex"}})
+    pages = {BOARD_PAGE: f'<html><head><script type="application/ld+json">{ld}</script></head><body>hi</body></html>'}
+
+    def get(url, timeout=30):
+        if url.endswith("/robots.txt"):
+            return ""
+        if url not in pages:
+            raise sources.NotFound(url)
+        return pages[url]
+
+    monkeypatch.setattr(sources, "get_text", get)
+    return pages
+
+
+def test_read_posting_on_a_closed_board_job_keeps_the_text_and_does_not_score(env, asked, served):
+    cfg, store = env
+    key = board_job(store)
+    close(store, key)
+    app = App(cfg.path)
+    got = app.post_posting({"key": key, "url": BOARD_PAGE})
+    assert got["has_text"] and got["not_scored"]["code"] == "closed" and got["scoring"] is False
+    assert got["said"].endswith("so it was not scored") and store.find(key)[0].description
+    assert asked == [] and not app.rescoring
+    other = board_job_two(store)  # pasted text goes the same way
+    pasted = app.post_posting({"key": other, "text": BOARD_TEXT})
+    assert pasted["not_scored"]["code"] == "closed" and pasted["scoring"] is False
+
+
+def test_read_posting_on_an_open_board_job_still_scores(env, asked, served):
+    cfg, store = env
+    key = board_job(store)
+    got = App(cfg.path).post_posting({"key": key, "url": BOARD_PAGE})
+    assert "not_scored" not in got and got["scoring"] is True
+    join("jobwatch-score-posted")
+    assert asked == [key]
+
+
+def test_a_board_page_that_is_gone_marks_the_job_for_a_check_and_says_so(env, asked, served):
+    cfg, store = env
+    key = board_job(store)
+    with pytest.raises(ApiError, match=r"404 or 410.*not scored"):
+        App(cfg.path).post_posting({"key": key, "url": "https://globex.example/gone/"})
+    assert closed_state(store.find(key)[1]) == "checking" and asked == []
 
 
 # -- the saving shows
