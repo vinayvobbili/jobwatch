@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Fixed: on a job from a VC portfolio board with no posting text, "Add the posting" did nothing. Pressing Save sent
+  the link to a rule that a board sets its job's link, which refused it with a message naming the job's internal key
+  that vanished in seconds. Now a job from a board offers only what can work. **Read posting** reads the posting at
+  the board's link when that is the company's own page, or (when the link only lists the job) asks for the company's
+  own page in a box labelled "only used to read the text"; the text can be pasted instead. The page is read for its
+  text, pay, places and posted day, and the job's link stays the board's ("Read 4,100 characters from globex.example;
+  the job's link stays the board's"). A page that carries the job as JobPosting markup is read where its robots.txt
+  allows it; one that can't be read says why in words and asks for the text. An error stays under the form, in plain
+  words with the company and title and never the job's key, until the next try; Save shows a spinner with the seconds
+  and then "Saved: now scoring". The button is on every card with a link and no text (Today, Queue, a company's page,
+  Applications, Details); LinkedIn and Indeed links still use the browser extension. A job added by hand keeps its
+  form, and its link can still be set; a board job's link can't be changed anywhere else, and those refusals now name
+  the company and title.
+
 - A company's logo on a card now goes to its Company tab, as the name beside it does: on Today, Queue, Applications
   (cards and table), Interviews and the Company tab's job cards the logo is a button ("See everything at Initech"; click,
   Enter or Space; it lifts and rings on hover and never opens the card's Details). Dialog heads, the Comps columns and

@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
+from urllib.parse import urlparse
 
 from . import (
     alerts,
@@ -855,6 +856,35 @@ def set_link(store: Store, key: str, url: str, get=None) -> str:
         return "link saved; jobwatch can't read postings on that site: paste the text to score it"
     store.set_description(key, posting.description, posting)
     return "link saved; posting read from it"
+
+
+def read_text(store: Store, key: str, url: str, get=None) -> str:
+    """Give a job from a board that has no posting text (a VC portfolio board lists a job with its link alone) the
+    text of the posting at `url`: a supported board's posting, else a page that carries the job as schema.org
+    JobPosting markup (a company's own careers page). Only the text, pay, places and posted day come from the page:
+    the job's link stays the board's. Says what happened, in a few words. Raises ValueError, in plain words, when
+    the job has its text already or the page can't be read (the person pastes the text instead)."""
+    job, _ = store.find(key)
+    who = f"{job.display_company}: {job.title}"
+    if job.description.strip():
+        raise ValueError(f"{who} already has its posting text")
+    url = url.strip()
+    host = urlparse(url if "//" in url else f"https://{url}").netloc.lower().removeprefix("www.")
+    if not host:
+        raise ValueError(f"{url!r} isn't a web address: give the link to the posting itself, or paste its text")
+    if site := filltext.browser_site(url):
+        raise ValueError(f"{filltext.SITES[site]} shows a posting only to a signed-in browser, so jobwatch can't read "
+                         f"it: open {who} there and press Read posting with the jobwatch extension, or paste the "
+                         "text here")
+    try:
+        posting = sources.posting(url, get) or sources.page_posting(url, get)
+    except sources.SourceError as e:
+        raise ValueError(f"Couldn't read the posting for {who} from {host}: {str(e).removeprefix(f'{url}: ')}. "
+                         "Paste its text here instead.") from None
+    if not posting.description.strip():
+        raise ValueError(f"The page at {host} has no posting text for {who}. Paste the text here instead.")
+    store.set_description(key, posting.description, posting)
+    return (f"Read {len(posting.description.strip()):,} characters from {host}; the job's link stays the board's")
 
 
 NO_RESUME = ("no_resume", "No resume to score against: add it in Settings (resume: in the watchlist)")

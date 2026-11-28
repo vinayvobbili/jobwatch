@@ -1163,3 +1163,45 @@ def test_home_page_carries_the_hero_headline_and_mono_captions():
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
     assert 'heroHead("Today"' in page and "h1 .grad-text" in page
     assert ".stat:not(.lead)" in page and ".mono-cap" in page and "fitChip(s)" in page
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_a_card_offers_only_what_can_work_for_a_job_with_no_posting_text(tmp_path):
+    """postingOffer: a board job (the board sets its link) reads its own link when that is the company's posting,
+    asks for the company's own page when its link only lists the job (an aggregator, the VC fund's own board), and
+    never offers to set a link; a job added by hand keeps "Add the posting"; LinkedIn and Indeed go to the browser
+    extension. An error is worded with the company and title, never the key."""
+    js = tmp_path / "offer.js"
+    js.write_text(page_const("BROWSER_POSTING") + page_const("LISTING_HOST") + page_const("isManual")
+                  + page_function("linkIsPosting") + page_function("postingOffer")
+                  + page_function("postingFailure") + """
+const board = (url, key = "greenhouse:globex:77") => ({ key, url, company: "Globex", title: "Staff Engineer" });
+const offer = j => { const o = postingOffer(j); return [o.direct, o.linkBox, o.browser, o.open]; };
+console.log(JSON.stringify({
+  own: offer(board("https://globex.example/careers/77")),
+  fund: offer(board("https://jobs.fund.example/companies/globex/77", "vc:fund.example/jobs/:abc")),
+  fundOwnLink: offer(board("https://boards.greenhouse.io/globex/jobs/77", "vc:fund.example/jobs/:abc")),
+  aggregator: offer(board("https://www.theladders.com/job/77")),
+  noLink: offer(board("")),
+  linkedin: offer(board("https://www.linkedin.com/jobs/view/4000000001/")),
+  hand: offer({ ...board("https://hooli.example/careers/3"), manual: true }),
+  handNoLink: offer({ ...board(""), key: "manual:x:1" }),
+  said: postingFailure(board("x"), "greenhouse:globex:77 comes from its board"),
+  named: postingFailure(board("x"), "Couldn't read the posting for Globex: Staff Engineer from globex.example."),
+  plain: postingFailure(board("x"), "HTTP 500"),
+}));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout)
+    assert out["own"] == [True, False, False, "Paste the text instead"]
+    assert out["fund"] == [False, True, False, "Read posting"]
+    assert out["fundOwnLink"] == [True, False, False, "Paste the text instead"]
+    assert out["aggregator"] == [False, True, False, "Read posting"]
+    assert out["noLink"] == [False, True, False, "Read posting"]
+    assert out["linkedin"] == [False, False, True, "Paste the text instead"]
+    assert out["hand"] == [True, True, False, "Add the posting"]
+    assert out["handNoLink"] == [False, True, False, "Add the posting"]
+    assert out["said"] == "Globex: Staff Engineer comes from its board"
+    assert out["named"].startswith("Couldn't read the posting for Globex: Staff Engineer")
+    assert out["plain"] == "Globex: Staff Engineer: HTTP 500"

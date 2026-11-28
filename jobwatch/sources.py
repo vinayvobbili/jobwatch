@@ -1742,6 +1742,21 @@ def _sitemap_posting(url: str, get, hosts=()) -> Job | None:
         return None
 
 
+def page_posting(url: str, get=None) -> Job:
+    """The one job a company's own page for it carries (schema.org JobPosting markup), whatever the page's address
+    looks like (/job-detail/4711/, /careers/engineering/...): for text to go with a job whose board gave none. Read
+    where robots.txt allows. Raises SourceError, saying why, when the page can't be read or carries no posting."""
+    parsed = urlparse(url if "//" in url else f"https://{url}")
+    if not parsed.netloc:
+        raise SourceError(f"{url} isn't a web address")
+    host, link = parsed.netloc.lower(), parsed._replace(scheme="https", fragment="").geturl()
+    get = get or get_text
+    if not _site_robots(host, get)[1](link):
+        raise SourceError(f"{host}'s robots.txt doesn't allow reading {link}")
+    return _sitemap_read(Job(source="sitemap", company=host, id="page", title="", url=link,
+                             company_name=_sitemap_company(host)), get)
+
+
 def _sitemap_peek(host: str, get) -> list[Job]:
     """The roles on a site if its sitemap links job pages and a few of them carry JobPosting markup, else []."""
     get = get or get_text

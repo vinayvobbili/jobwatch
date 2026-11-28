@@ -113,6 +113,7 @@ from .watch import (
     pools,
     queue,
     read_mail,
+    read_text,
     rescore_label,
     save_job,
     scorable,
@@ -1377,7 +1378,8 @@ class App:
                                                           "action")} for n in notices],
                     "applications": [
                 {"key": j.key, "title": j.title, "company": j.display_company, "url": j.url, "pay": j.pay(),
-                 "manual": j.source == MANUAL, "due": report.due(rec), "quiet": found.get(j.key),
+                 "manual": j.source == MANUAL, "has_text": bool(j.description.strip()),
+                 "due": report.due(rec), "quiet": found.get(j.key),
                  "closed_day": closed_notice.local_day(rec.get("closed")), "closed_new": j.key in new,
                  "closed_state": closed_state(rec),
                  "snoozed_until": quiet.snoozed_until(rec), "rounds": on_rounds.get(j.key),
@@ -1714,9 +1716,14 @@ class App:
 
     def post_posting(self, body) -> dict:
         """A job added by hand gets its posting: a link (read when it's to one job on a supported board) and/or
-        the text, pasted. Says what happened, and whether the job now has text to score."""
+        the text, pasted. Says what happened, and whether the job now has text to score. A job from a board has
+        its link set by the board, so a link sent for it is only read, for the posting's text (watch.read_text): the
+        job's link never changes. Not read, in plain words, when its page can't be read: the text can be pasted."""
         def run(cfg, store):
-            key = store.find(body.get("key") or "")[0].key
+            job = store.find(body.get("key") or "")[0]
+            key = job.key
+            if job.source != MANUAL:
+                return self._board_posting(store, job, body)
             said = []
             try:
                 if (text := (body.get("text") or "").strip()):
@@ -1731,7 +1738,26 @@ class App:
             job, _ = store.find(key)
             self.score_in_background()  # it may have text to score now
             return {"key": key, "said": "; ".join(said), "has_text": bool(job.description.strip())}
-        return self._with_store(run)
+        got = self._with_store(run)
+        if got.pop("board", False):  # text was just read for a board job: asking for it is asking for its score
+            got["scoring"] = self.score_posted_in_background(got["key"], replaced=True)
+        return got
+
+    def _board_posting(self, store, job, body) -> dict:
+        """post_posting for a job from a board: pasted text is saved as its text, else the link sent is read for it."""
+        who = f"{job.display_company}: {job.title}"
+        text, url = (body.get("text") or "").strip(), (body.get("url") or "").strip()
+        if not (text or url):
+            raise ApiError(f"Give the link to the posting for {who}, or paste its text")
+        try:
+            if text:
+                store.set_description(job.key, text)
+                said = "Saved the pasted text; the job's link stays the board's"
+            else:
+                said = read_text(store, job.key, url)
+        except ValueError as e:
+            raise ApiError(str(e)) from None
+        return {"key": job.key, "said": said, "has_text": True, "board": True}
 
     def post_pay(self, body) -> dict:
         """Expected pay for these jobs (`keys`) from what's kept, while the ones not known yet are looked up in

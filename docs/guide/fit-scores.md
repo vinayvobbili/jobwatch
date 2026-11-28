@@ -53,6 +53,18 @@ this posting came in, or a failure. A job from an alert email may have only its 
 takes a link to the company's posting (read when it's on a board jobwatch reads) or the pasted text, and so
 does `jobwatch mark <key> --url <link>`. `jobwatch unscored` lists them all.
 
+A job from a watched board can have no text too: a VC fund's portfolio board lists a job with its link alone. Such a
+job's link is the board's and never changes, so its card offers only what can work. When the board's link is the
+company's own posting, **Read posting** reads it in one press (and **Paste the text instead** is beside it). When
+that link only lists the job (the fund's own page, an aggregator), **Read posting** opens a box labelled "Link to the
+company's own posting (only used to read the text)", next to a box to paste the text. Either way the text is saved
+as the job's, its pay, places and posted day fill in, and the job is scored; the card says "Saved: now scoring", and
+"Read 4,100 characters from globex.example; the job's link stays the board's" says where it came from. A page that
+carries the job as standard JobPosting markup (most careers pages do) can be read, where its robots.txt allows it. If
+a page can't be read, the reason stays under the form (with the company and title, never an internal key) until your
+next try: paste the text instead. The same Read posting button is on every card whose job has a link and no text:
+Today, Queue, a company's page, Applications and Details.
+
 Why an alert job has no text: the email carries a title, company and place (sometimes pay), and LinkedIn and
 Indeed show a posting only to a signed-in browser, so jobwatch can't fetch it. `jobwatch fill-text` fills what
 it can without you: from the company's own board, then the job's own link. For a LinkedIn or Indeed link, the

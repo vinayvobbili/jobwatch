@@ -1117,7 +1117,8 @@ class Store:
         is gone (a Workday site's link is enough for its sign-in page). A fetched posting keeps the board's link."""
         job, _ = self.find(key)
         if job.source != MANUAL:
-            raise ValueError(f"{job.key} comes from its board, which sets its link")
+            raise ValueError(f"{job.display_company}: {job.title} comes from its board, which sets its link, so "
+                             "jobwatch keeps the board's link (a page you give for it is only read for its text)")
         job.url = url.strip()
         with self.db:
             self.db.execute("UPDATE jobs SET data=? WHERE key=?", (json.dumps(job.to_dict()), job.key))
@@ -1135,10 +1136,12 @@ class Store:
         posting is gone), so it can be scored and prepped. The pay is read from it if none is set, and the
         posting kept with the application is replaced: what was kept had no text to keep. With `posting` (the
         job read from its link later), its pay, places, remote flag, department and posted day fill in what
-        the application has none of."""
+        the application has none of. A job from a board takes text only when its board gave none (a VC portfolio
+        board lists a job with its link alone); it never changes the board's link."""
         job, rec = self.find(key)
-        if job.source != MANUAL:
-            raise ValueError(f"{job.key} comes from its board, which sets its text")
+        if job.source != MANUAL and job.description.strip():
+            raise ValueError(f"{job.display_company}: {job.title} comes from its board, which gave its text, so "
+                             "jobwatch keeps that")
         job.description = text.strip()
         if posting:
             if job.salary_min is None and posting.salary_min is not None:

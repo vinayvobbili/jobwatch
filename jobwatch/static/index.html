@@ -1115,7 +1115,21 @@ button.btn.prepare-go:disabled { opacity: .8; }  /* its look is act-prepare's, w
 .app-head select.stage { width: auto; min-width: 150px; flex: none; }
 .app-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px;
   padding-top: 8px; border-top: 1px dashed var(--line); }
-.app-foot .acts { display: flex; gap: 4px; align-items: center; }
+.app-foot { flex-wrap: wrap; }
+.app-foot .acts { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+/* The posting form (postingControls): a link box and a text box under the buttons, and what happened under them. An
+   error stays until the next try; a success shows a moment before the card changes. */
+input[type=url] { font: inherit; color: var(--text); background: var(--panel-solid); border: 1px solid var(--line);
+  border-radius: 10px; padding: 7px 11px; width: 100%; transition: border-color .15s, box-shadow .15s; }
+input[type=url]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.post-form { flex-basis: 100%; display: grid; gap: 8px; }
+.post-form label { margin: 4px 0 0; }
+.post-msg { flex-basis: 100%; font-size: 13.5px; line-height: 1.45; padding: 8px 12px; border-radius: 10px; color: var(--bad);
+  border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); background: color-mix(in srgb, var(--bad) 9%, transparent); }
+.post-msg[data-tone=ok] { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent);
+  background: color-mix(in srgb, var(--good) 9%, transparent); }
+.post-spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -2px;
+  border: 2px solid color-mix(in srgb, currentColor 35%, transparent); border-top-color: currentColor; animation: spin .8s linear infinite; }
 .sent-chip { display: inline-flex; gap: 5px; align-items: center; font-size: 12.5px; color: var(--muted); border: 0;
   background: none; cursor: pointer; padding: 3px 8px; border-radius: 8px; font-family: inherit; }
 .sent-chip:hover { background: var(--chip); color: var(--text); }
@@ -3362,25 +3376,91 @@ function unscoredNote(job) {
   if (scoringNow(job)) return null;  // the card's ring spot shows a spinner instead (noFitBox)
   return job.unscored ? h("span", { class: "muted small", title: job.unscored.text }, job.unscored.text) : null;
 }
-// A job with only a title (from an alert email) gets its posting here: a link jobwatch reads, or the text.
-function postingButton(job, done) {
-  const b = h("button", { class: "btn", title: "Add a link to the company's posting, or paste its text, so it can be scored" },
-    "Add the posting");
-  b.onclick = () => {
-    const url = h("input", { type: "url", placeholder: "Link to the company's posting" });
-    const text = h("textarea", { rows: 4, placeholder: "…or paste the posting's text" });
-    const save = h("button", { class: "btn primary" }, "Save");
-    save.onclick = async () => {
-      save.disabled = true;
-      try {
-        const r = await api("/api/posting", { key: job.key, url: url.value, text: text.value });
-        toast(r.said);
-        done(r);
-      } catch (e) { save.disabled = false; toast(e.message); }
-    };
-    b.replaceWith(h("div", { style: "flex-basis:100%; display:grid; gap:8px" }, url, text, h("div", {}, save)));
+// A job with no posting text gets it here. What a card offers depends on where the job came from (postingOffer):
+//  - a job from a board has its link set by the board, so a link is only ever READ for its text: when the board's link
+//    is the company's posting, "Read posting" reads it; when it only lists the job (an aggregator, the VC fund's own
+//    board), a link box asks for the company's own page; either way the text can be pasted
+//  - a job added by hand (or from an alert email) can have its link set too: the form is "Add the posting"
+//  - a LinkedIn or Indeed link is read by the browser extension (readButton), unchanged.
+// Hosts that list jobs without being the company's posting: a link there says where the job was found, not what it says.
+const LISTING_HOST = /(^|\.)(theladders|ziprecruiter|glassdoor|simplyhired|builtin|builtinsf|wellfound|monster|dice|jooble|adzuna|careerbuilder|lensa|workatastartup|ycombinator)\.(com|org)$/i;
+const isManual = job => job.manual ?? String(job.key).startsWith("manual:");
+// Whether a board job's own link goes to the company's posting, not to a page that lists jobs: an aggregator, or the VC
+// fund's own portfolio board (its key names the board: vc:<host/path>:<id>).
+function linkIsPosting(job) {
+  let host;
+  try { host = new URL(job.url).hostname.toLowerCase().replace(/^www\./, ""); } catch { return false; }
+  if (LISTING_HOST.test(host)) return false;
+  if (String(job.key).startsWith("vc:")) {
+    const board = job.key.slice(3).split("/")[0].toLowerCase().replace(/^www\./, "");
+    if (board && (host === board || host.endsWith("." + board))) return false;
+  }
+  return true;
+}
+function postingOffer(job) {
+  const manual = isManual(job), browser = BROWSER_POSTING.test(job.url || "");
+  const direct = !!job.url && !browser && (manual || linkIsPosting(job));  // a link to read now
+  const linkBox = manual || (!browser && !direct);  // a board's own link can't be replaced: a box only when it isn't the posting
+  return { manual, browser, direct, linkBox,
+    open: manual ? "Add the posting" : linkBox ? "Read posting" : "Paste the text instead" };
+}
+// An error from this form in plain words: the job's company and title (never its key) with what the server said.
+function postingFailure(job, message) {
+  const who = `${job.company}: ${job.title}`;
+  const text = String(message || "Something went wrong").split(job.key).join(who);
+  return text.includes(job.title) ? text : `${who}: ${text}`;
+}
+const SAVED_SHOWN_MS = 900;  // how long "Saved: now scoring" stays up before the card changes
+function postingControls(job, done) {
+  const offer = postingOffer(job);
+  // Under the buttons, until the next try: what went wrong, in words (also a toast, which is gone in seconds)
+  const msg = h("div", { class: "post-msg", role: "alert", hidden: true });
+  const say = (text, tone) => { msg.textContent = text || ""; msg.dataset.tone = tone || ""; msg.hidden = !text; };
+  // The one call every button of this form makes: spinner while it works, the answer shown, then the card changes.
+  const send = async (body, button, idle, working) => {
+    button.disabled = true;
+    const secs = h("span", { class: "post-secs" }, "0s"), began = Date.now();
+    button.replaceChildren(h("span", { class: "post-spin" }), working, " ", secs);  // the seconds say it is running, not stuck
+    const tick = setInterval(() => { secs.textContent = `${Math.round((Date.now() - began) / 1000)}s`; }, 500);
+    say("");
+    try {
+      const r = await api("/api/posting", { key: job.key, ...body }).finally(() => clearInterval(tick));
+      const saved = r.has_text ? (r.scoring === false ? "Saved" : "Saved: now scoring") : "Saved";
+      button.replaceChildren(saved);
+      say(`${saved}. ${r.said}`, "ok");
+      toast(r.said);
+      setTimeout(() => done(r, "form"), SAVED_SHOWN_MS);
+    } catch (e) {
+      const text = postingFailure(job, e.message);
+      say(text, "error");
+      toast(text);
+      button.disabled = false;
+      button.replaceChildren(...idle);
+    }
   };
-  return b;
+  const read = !offer.direct ? null : h("button", { class: "btn primary", title: `Read the posting at ${new URL(job.url).hostname.replace(/^www\./, "")}` +
+      ", save its text and score the job (the job's link is not changed)" }, "Read posting");
+  if (read) read.onclick = () => send({ url: job.url }, read, ["Read posting"], "Reading…");
+  const open = h("button", { class: offer.linkBox && !offer.manual ? "btn primary" : "btn",
+    title: offer.manual ? "Add a link to the company's posting, or paste its text, so it can be scored"
+      : offer.linkBox ? "Give the company's own page for this job, or paste its text, so it can be scored"
+      : "Paste the posting's text instead of reading it" }, offer.open);
+  open.onclick = () => {
+    const id = `post-url-${job.key.replace(/\W/g, "-")}`;
+    const url = !offer.linkBox ? null : h("input", { type: "url", id, placeholder: "https://…" });
+    const text = h("textarea", { rows: 4, placeholder: offer.linkBox ? "…or paste the posting's text" : "Paste the posting's text" });
+    const label = offer.manual ? "Link to the company's posting"
+      : "Link to the company's own posting (only used to read the text)";
+    const save = h("button", { class: "btn primary" }, offer.linkBox && !offer.manual ? "Read posting" : "Save");
+    const idle = [save.textContent];
+    save.onclick = () => send({ ...(url ? { url: url.value } : {}), text: text.value }, save, idle,
+      !offer.manual && url?.value.trim() && !text.value.trim() ? "Reading…" : "Saving…");
+    // Where a read button is also there, the form is only for pasting; the box only when a link can be given
+    const form = h("div", { class: "post-form" }, url ? h("label", { for: id }, label) : null, url, text, h("div", {}, save));
+    open.replaceWith(form);
+    (url || text).focus();
+  };
+  return [offer.browser ? readButton(job, (r) => done(r, "extension")) : read, open, msg];
 }
 
 // A job from a LinkedIn alert: opens its LinkedIn page in a new tab (jobwatch never reads linkedin.com itself). There,
@@ -3459,15 +3539,13 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   if (job.fit && !job.fit.stale) return null;
   const redraw = j => document.getElementById("job-" + j.key).replaceWith(card(j));
   if (job.unscored?.code === "no_text")
-    return [readButton(job, r => {  // read in the background: this card alone changes
+    return [postingControls(job, (r, how) => {  // read in the background: this card alone changes
       // jobwatch scores a job as soon as its posting is read (whatever scoring.auto says): the card waits for the
-      // "score" event (listenForEvents), or "score-failed"
-      if (r.has_text) job.unscored = { code: "scoring", text: "Posting read: scoring it now…" };
+      // "score" event (listenForEvents), or "score-failed". A text added by hand waits in the scorer's line.
+      if (r.has_text) job.unscored = how === "form" && !r.scoring ? { code: "queued", text: "Posting added: in line to score" }
+        : { code: "scoring", text: "Posting read: scoring it now…" };
       if (r.closed) Object.assign(job, { closed_state: "closed", closed: new Date().toISOString() });
       if (document.getElementById("job-" + job.key)) redraw(job);
-    }), postingButton(job, r => {
-      if (r.has_text) job.unscored = { code: "queued", text: "Posting added: in line to score" };
-      redraw(job);
     }), linkedinButton(job), unscoredNote(job)];
   if (!canScore || NO_SCORE_BUTTON.includes(job.unscored?.code)) return unscoredNote(job);
   // Two buttons, one handler and one label: the bottom row's "Score" and the card's corner one (jobCard puts that one
@@ -4202,7 +4280,7 @@ function detailsFacts(j) {
 }
 function detailsScore(j) {
   if (j.fit && !j.fit.stale) return null;
-  if (j.unscored?.code === "no_text" && j.manual) return [postingButton(j, () => openDetails(j.key)), unscoredNote(j)];
+  if (j.unscored?.code === "no_text") return [postingControls(j, () => openDetails(j.key)), unscoredNote(j)];
   if (!j.can_score || NO_SCORE_BUTTON.includes(j.unscored?.code)) return unscoredNote(j);
   const b = actButton("score", { title: "Compare this posting with your resume (can take a while)" });
   b.onclick = async () => {
@@ -7254,6 +7332,8 @@ function appCard(a, d, i = 0) {
       h("div", { class: "app-foot" },
         h("span", { class: "when" }, a.applied_at ? `Applied ${fmtDay(a.applied_at, d.today)} · ${relDay(a.applied_at, d.today)}` : ""),
         h("div", { class: "acts" }, sentChip(a), d.reminders ? bellButton(a) : null, draftBtn,
+          // an application whose posting text was never read (or is gone) can read it from its link, as Today's cards do
+          a.url && a.has_text === false ? postingControls(a, () => render()) : null,
           h("button", { class: "btn ghost", onclick: edit }, icon("pencil", 13), "Edit"),
           detailsButton(a))),
       draftBox)); };

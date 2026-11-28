@@ -458,7 +458,8 @@ def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
         if job.description.strip():
             return _posted(store, job, "jobwatch already has this posting's text", False)
         if job.source != MANUAL:
-            raise ValueError(f"{job.key} comes from its board, which sets its text")
+            raise ValueError(f"{job.display_company}: {job.title} comes from its board, which sets its link and text: "
+                             "press Read posting on its card in jobwatch")
         read = _read(links, get)
         if not (read or text):
             raise ValueError("jobwatch can't read postings on that site: use Save this posting to jobwatch on the page")
