@@ -425,9 +425,9 @@ def test_scoring_shows_a_spinner_that_clears_on_a_score_or_a_failure(jobs, page,
     reload(page)
     chip(page, "Posted within", "14d").click()
     spinner = card.locator(".fitbox.scoring-now")
-    sync_api.expect(spinner).to_have_attribute("aria-label", "Scoring…")
+    sync_api.expect(spinner).to_have_attribute("aria-label", re.compile(r"^Scoring, \d+ seconds? so far$"))
     sync_api.expect(spinner.locator(".score-spin")).to_be_visible()
-    sync_api.expect(spinner).to_have_text("")  # no small print
+    sync_api.expect(spinner).to_have_text(re.compile(r"^\d+s$"))  # no small print: only the seconds in the ring
     sync_api.expect(card.get_by_text("scoring it now")).to_have_count(0)
     assert page.errors == []
 

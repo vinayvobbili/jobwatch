@@ -60,7 +60,16 @@
   and takes `--copy` (time a copy of your store, leaving it alone), `--combined` (also the one-call forms Today and the
   Queue had), `--profile /api/queue` (the functions a call spends its time in) and `--cold` (a page opening on a
   freshly started server: page, API, Today's first data, then what building the indexes saves).
-
+- Every spinner and wait on the page now shows the seconds it has been running, so a slow job reads as working, not
+  stuck: "12s", then "1m 05s", with tabular digits so the width holds. It is inside the ring on a job being scored,
+  and beside the words on the pressed button of a card ("Queuing… 3s"), Check for new jobs, Score, Read posting,
+  Prepare, Draft follow-up, the chat's thinking line, a loading tab, dialog or panel, a save, an upload and the
+  model tests in Settings. Where there is a real estimate (the last few runs of the same job in this browser; the
+  chat's own record is the same one) it adds "of about 40s", and well past it says "taking longer than usual" in
+  the same calm voice. One shared timer drives every ticker, stops in a background tab and counts right when the
+  tab returns; screen readers hear when a wait starts and ends, never each second (the ticker is aria-live off; the
+  button's or ring's name changes every 10 seconds at most); with reduced motion the ring holds still and the
+  number keeps counting.
 - A company's logo on a card now goes to its Company tab, as the name beside it does: on Today, Queue, Applications
   (cards and table), Interviews and the Company tab's job cards the logo is a button ("See everything at Initech"; click,
   Enter or Space; it lifts and rings on hover and never opens the card's Details). Dialog heads, the Comps columns and

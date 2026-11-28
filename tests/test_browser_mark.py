@@ -57,7 +57,7 @@ def test_queue_shows_it_was_pressed_at_once_and_a_second_click_does_nothing(toda
     queue = card.locator(".act-queue")
     queue.click()
     expect(card).to_have_class(re.compile(r"\bpending\b"))
-    expect(queue).to_have_text("Queuing…")
+    expect(queue).to_have_text(re.compile(r"^Queuing… \d+s$"))  # the word, then the seconds it has been waiting
     expect(queue).to_have_class(re.compile(r"\bbusy\b"))
     expect(queue).to_be_disabled()
     expect(card.locator(".act-skip")).to_be_disabled()
@@ -75,7 +75,7 @@ def test_skip_says_what_it_is_doing(today):
     hold(today)
     card = first_card(today)
     card.locator(".act-skip").click()
-    expect(card.locator(".act-skip")).to_have_text("Skipping…")
+    expect(card.locator(".act-skip")).to_have_text(re.compile(r"^Skipping… \d+s$"))
     expect(card.locator(".act-queue")).to_be_disabled()
     today.marks[0].continue_()
     expect(card).to_have_count(0)

@@ -109,6 +109,12 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
   the file as it was.
 - **Ask jobwatch:** a chat on Today (about all of today's jobs and your applications) and beside each job's
   details (about that posting). See [Chat](chat.md).
+- **Waits show their seconds.** Whenever the page is working (Check for new jobs, scoring, reading a posting,
+  preparing an application, a tab or dialog loading, a save), the spinner counts how long it has run: `12s`, then
+  `1m 05s`, inside the score ring or beside the words ("Scoring… 12s"). So you can tell it is working, not stuck.
+  Where jobwatch has a real estimate, from how long the same job took the last few times in this browser, it adds
+  "of about 40s", and past it says "taking longer than usual" (never an error). Screen readers hear when the work
+  starts and ends, not every second; the count keeps running with reduced motion on, only the spinning stops.
 
 The page only talks to jobwatch on your own machine. The one exception is a model you choose: with
 `scoring.backend: claude`, fit scores and chat send the posting and your resume to Anthropic (and

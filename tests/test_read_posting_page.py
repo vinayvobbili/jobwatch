@@ -4,6 +4,7 @@ every other card alone; without it, it opens the posting in a tab and, when the 
 where it was. Every job and company is made up. Skipped where Playwright or its browser isn't installed."""
 
 import json
+import re
 
 import pytest
 
@@ -227,7 +228,7 @@ def test_a_card_read_says_it_is_scoring_and_shows_the_score_when_it_arrives(brow
         card_id = card.get_attribute("id")
         card.locator("button", has_text="Read posting").click()
         spinner = card.locator(".fitbox.scoring-now")
-        sync_api.expect(spinner).to_have_attribute("aria-label", "Scoring…")
+        sync_api.expect(spinner).to_have_attribute("aria-label", re.compile(r"^Scoring, \d+ seconds? so far$"))
         sync_api.expect(spinner.locator(".score-spin")).to_be_visible()
         sync_api.expect(card).not_to_contain_text("scoring it now")  # no small print
         assert card.locator("[data-fit]").count() == 0

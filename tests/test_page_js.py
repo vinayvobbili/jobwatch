@@ -384,8 +384,12 @@ def test_a_slow_tab_shows_it_is_loading(tmp_path):
     it's done; and when another tab is clicked meanwhile, the first one finishing doesn't clear the second's."""
     js = tmp_path / "loading.js"
     js.write_text("""
-const button = name => { const c = new Set(); return { name, classList: { add: x => c.add(x), remove: x => c.delete(x),
-  has: x => c.has(x) } }; };
+const button = name => {
+  const c = new Set();
+  const classList = { add: x => c.add(x), remove: x => c.delete(x), has: x => c.has(x) };
+  return { name, textContent: name, append() {}, classList };
+};
+const h = () => ({ remove() {} }), spinnerClock = () => () => {};  // the seconds beside the ring: test_spinner_clock.py
 const today = button("today"), queue = button("queue"), applied = button("applied"), all = [today, queue, applied];
 const attrs = {};
 const main = { setAttribute: (k, v) => { attrs[k] = v; }, removeAttribute: k => { delete attrs[k]; } };
@@ -928,7 +932,8 @@ def test_an_unscored_card_has_a_score_button_in_its_corner_that_runs_the_same_sc
     js.write_text(page_const("NO_SCORE_BUTTON") + page_const("SCORING_WORD") + page_const("scoringNow")
                   + page_function("unscoredNote") + page_function("scoreButton") + page_function("fetchAdvice")
                   + page_function("noFitBox") + page_const("ACT") + page_const("actLabel")
-                  + page_function("actButton") + """
+                  + page_function("actButton") + page_function("buttonBusy") + """
+const spinnerClock = () => () => {};  // the seconds in the button: test_spinner_clock.py
 const words = kids => kids.map(k => typeof k === "string" ? k : k.kids ? words(k.kids) : "").join("");
 const node = (tag, attrs, kids) => ({ tag, cls: attrs?.class, kids, disabled: false, text: words(kids),
   replaceChildren(...k) { this.text = words(k); this.kids = k; } });
@@ -970,7 +975,7 @@ const out = { cornerLabel: corner.text, cornerCls: corner.cls, cornerIcon: corne
     assert out["bottomLabel"] == "Score" and out["same"]
     assert out["boxCls"] == "fitbox noscore" and out["boxHolds"] and out["boxNote"] == "not scored yet"
     assert out["plainDash"] == "–"  # the details dialog has no card to score from: it keeps the dash
-    assert out["during"] == [True, True, "Scoring…", "Scoring…"]
+    assert out["during"] == [True, True, "Scoring… ", "Scoring… "]  # the seconds follow, in their own span
     assert out["failed"] == [False, False, "Score", "Score", ["agy is out of quota"], 0]
     assert out["retried"] == [[["/api/score", "k1"], ["/api/score", "k1"], ["/api/advice", "k1"]], 71, ["k1"],
                               {"call": "skip"}]
@@ -1062,24 +1067,28 @@ def test_a_job_being_scored_shows_a_spinner_in_the_ring_spot_and_no_small_print(
                   + page_function("noFitBox") + """
 const h = (tag, attrs, ...kids) =>
   ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const ticking = [];
+const spinnerClock = (el, opts) => { ticking.push([el.tag, opts.short, opts.say]); return () => {}; };
 const say = el => ({ cls: el.attrs.class, title: el.attrs.title, name: el.attrs["aria-label"], role: el.attrs.role,
   kids: el.kids.map(k => k.attrs?.class ?? k) });
 const scoring = { key: "k", unscored: { code: "scoring", text: "Posting read: scoring it now…" } };
 const waiting = { key: "k", unscored: { code: "queued", text: "In line to score · 1st of 3" } };
 console.log(JSON.stringify({ box: say(noFitBox(scoring)), cornerIgnored: say(noFitBox(scoring, { corner: true })),
-  note: unscoredNote(scoring), waitingNote: unscoredNote(waiting).kids, waiting: say(noFitBox(waiting)) }));
+  note: unscoredNote(scoring), waitingNote: unscoredNote(waiting).kids, waiting: say(noFitBox(waiting)), ticking }));
 """, encoding="utf-8")
     r = subprocess.run(["node", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
+    # the ring with its seconds inside (the spinner clock; a note that appears only when it takes longer than usual)
     spinner = {"cls": "fitbox noscore scoring-now", "title": "Scoring…", "name": "Scoring…", "role": "status",
-               "kids": ["score-spin"]}
+               "kids": ["score-spin-wrap", "spin-note"]}
     assert out["box"] == out["cornerIgnored"] == spinner  # no text node, only the spinner
+    assert out["ticking"] == [["span", True, "Scoring"]] * 2  # the ticker is a short one, inside the ring
     assert out["note"] is None  # no small print under the buttons
     assert out["waitingNote"] == ["In line to score · 1st of 3"]  # a job only waiting in line keeps its note
-    assert out["waiting"]["cls"] == "fitbox" and "score-spin" not in out["waiting"]["kids"]
+    assert out["waiting"]["cls"] == "fitbox" and "score-spin-wrap" not in out["waiting"]["kids"]
     page = resources.files("jobwatch").joinpath("static/index.html").read_text(encoding="utf-8")
-    assert ".score-spin" in page and "animation: score-dot 1.3s ease-in-out infinite !important" in page
+    assert ".score-spin" in page and ".score-spin { animation: none !important; }" in page  # reduced motion: still ring
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="needs node")

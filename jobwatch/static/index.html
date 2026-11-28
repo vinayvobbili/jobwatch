@@ -268,10 +268,23 @@ button.btn.btn-close.icon-only { width: 36px; height: 36px; padding: 0; justify-
   background: conic-gradient(from 0deg, transparent 0 10%, var(--accent-2), var(--accent));
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
   mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px)); }
-@keyframes score-dot { 50% { opacity: .3; transform: scale(.75); } }
+/* The seconds sit inside the ring (the spinner clock, see spinnerClock in the script); a ring that has run past a
+   minute gets smaller digits. With reduced motion the ring holds still and the number keeps ticking. */
+.score-spin-wrap { position: relative; width: 52px; height: 52px; margin: 7px auto; }
+.score-spin-wrap .score-spin { position: absolute; inset: 0; width: auto; height: auto; margin: 0; }
+.score-spin-wrap .spin-clock { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12.5px;
+  font-weight: 700; color: var(--accent); }
+.score-spin-wrap .spin-clock.long { font-size: 10px; }
+.score-spin-wrap .spin-clock.slow { color: var(--muted); }
+.spin-note { color: var(--muted); }
+.spin-note:empty { display: none; }
+.spin-clock { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.spin-clock.slow { font-style: italic; }
+.busy-note .spin-clock { color: var(--muted); }
+.btn .spin-clock { opacity: .85; }
+nav button .tab-clock { font-size: 11px; font-weight: 600; opacity: .8; }
 @media (prefers-reduced-motion: reduce) {
-  .score-spin { width: 16px; height: 16px; margin: 25px auto; -webkit-mask: none; mask: none; background: var(--accent);
-    animation: score-dot 1.3s ease-in-out infinite !important; }
+  .score-spin { animation: none !important; }
 }
 .btn.act-score .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid color-mix(in srgb, currentColor 35%, transparent);
   border-top-color: currentColor; animation: spin .8s linear infinite; }
@@ -2442,6 +2455,147 @@ function h(tag, attrs, ...kids) {
 }
 // replaceChildren doesn't flatten arrays of cards
 function fill(el, ...kids) { el.replaceChildren(...kids.flat(Infinity).filter(k => k !== null && k !== undefined && k !== false)); }
+
+// -- spinner clock: every spinner and busy state shows how long it has been running ("12s", then "1m 05s"), so a wait
+// never looks stuck and says how long to expect. ONE timer drives every ticker on the page (spinnerClock registers
+// one; busyNote and loadingNote build the common shapes), recomputing from Date.now() so the count is right when a
+// background tab comes back (no timer runs while the tab is hidden), and dropping a ticker once it leaves the page.
+// The ticker is aria-live off: a screen reader hears when the work starts and when it finishes, never each second,
+// and an `owner`'s aria-label ("Scoring, 12 seconds so far") changes every 10 seconds at most.
+// An estimate ("of about 40s") shows only where one is real: given by the caller, or `usual`: the average of this
+// browser's last 5 runs of that kind (rememberUsual, by stop(true)). Past it by half (and 10s), the ticker says
+// "taking longer than usual" in the same calm voice; it is never an error.
+// SPINNER-CLOCK-START
+const CLOCKS = new Map();         // ticker element -> its state
+const CLOCK_STARTS = new Map();   // key -> { at, seen }: the same work redrawn (a card drawn again) keeps counting
+const CLOCK_TICK_MS = 500, CLOCK_GAP_MS = 4000, CLOCK_MIN_ESTIMATE = 5;
+let clockTimer = 0;
+
+function elapsedWords(s) {
+  s = Math.max(0, Math.floor(s));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, "0")}s`;
+}
+function elapsedSpoken(s) {
+  s = Math.max(0, Math.floor(s));
+  const unit = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (s < 60) return unit(s, "second");
+  return s % 60 ? `${unit(Math.floor(s / 60), "minute")} ${unit(s % 60, "second")}` : unit(s / 60, "minute");
+}
+function usualSeconds(kind) {
+  try {
+    const t = JSON.parse(remembered(`${kind}-seconds`, "[]"));
+    return t.length ? Math.round(t.reduce((a, b) => a + b) / t.length) : null;
+  } catch { return null; }
+}
+function rememberUsual(kind, s) {
+  try { remember(`${kind}-seconds`, JSON.stringify([...JSON.parse(remembered(`${kind}-seconds`, "[]")), s].slice(-5))); }
+  catch { /* fine */ }
+}
+const clockSlow = (s, expected) => !!expected && s > Math.max(expected * 1.5, expected + 10);
+// What a ticker says: "12s", "12s of about 40s", and past the estimate "12s of about 40s · taking longer than usual".
+// Short (a ring too small for words): the seconds alone.
+function clockWords(s, expected = null, short = false) {
+  const out = elapsedWords(s);
+  if (short || !expected) return out;
+  return `${out} of about ${elapsedWords(expected)}` + (clockSlow(s, expected) ? " · taking longer than usual" : "");
+}
+// A hidden live region: the one place start and finish of a wait are spoken.
+function announce(text) {
+  let live = document.getElementById("announcer");
+  if (!live) {
+    live = h("div", { id: "announcer", class: "sr-only", role: "status", "aria-live": "polite" });
+    document.body.append(live);
+  }
+  live.textContent = text;
+}
+function paintClock(c, now) {
+  const s = Math.max(0, Math.floor((now - c.start) / 1000));
+  const text = clockWords(s, c.expected, c.short), slow = clockSlow(s, c.expected);
+  if (text !== c.text) {
+    c.text = text;
+    c.el.textContent = text;
+    c.el.classList.toggle("slow", slow);
+    c.el.classList.toggle("long", s >= 60);
+    if (c.short && c.expected) c.el.title = slow ? "Taking longer than usual" : `Usually about ${elapsedWords(c.expected)}`;
+    if (c.slowNote) c.slowNote.textContent = slow ? "taking longer than usual" : "";
+    if (c.onTick) c.onTick(s);
+  }
+  const bucket = Math.floor(s / 10);
+  if (c.owner && bucket !== c.bucket) {
+    c.bucket = bucket;
+    c.owner.setAttribute("aria-label", `${c.say || "Working"}, ${elapsedSpoken(s)} so far`);
+  }
+}
+function dropClock(c, finished) {
+  if (!CLOCKS.delete(c.el)) return;
+  if (c.owner) { if (c.ownerLabel === null) c.owner.removeAttribute("aria-label"); else c.owner.setAttribute("aria-label", c.ownerLabel); }
+  if (finished && c.key) CLOCK_STARTS.delete(c.key);
+  if (finished && c.say) announce(`${c.say} finished`);
+  if (!CLOCKS.size) stopClockTimer();
+}
+function tickClocks() {
+  const now = Date.now();
+  for (const c of [...CLOCKS.values()]) {
+    if (c.el.isConnected) c.seen = true;
+    else if (c.seen || now - c.start > 10000) { dropClock(c, false); continue; }  // left the page: no work, no leak
+    paintClock(c, now);
+    const k = c.key && CLOCK_STARTS.get(c.key);
+    if (k) k.seen = now;
+  }
+}
+function startClockTimer() {
+  if (!clockTimer && CLOCKS.size && !document.hidden) clockTimer = setInterval(tickClocks, CLOCK_TICK_MS);
+}
+function stopClockTimer() { clearInterval(clockTimer); clockTimer = 0; }
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return stopClockTimer();
+  tickClocks();  // the count is recomputed from the start time, so it's right after the tab returns
+  startClockTimer();
+});
+// Makes `el` a ticker. Options: expected (seconds), usual (a kind: its estimate from this browser's last runs, kept
+// by stop(true)), key (the same work drawn again keeps its start), short (seconds only, for a small ring), say (the
+// word for the work, "Scoring": spoken at start and finish), owner (the element whose aria-label says the count),
+// slowNote (an element that gets "taking longer than usual"). Returns stop(ok): ok keeps the time as a `usual` run.
+function spinnerClock(el, { expected = null, usual = null, key = null, short = false, say = "", owner = null,
+    slowNote = null, onTick = null } = {}) {
+  const now = Date.now();
+  let start = now;
+  if (key) {
+    const k = CLOCK_STARTS.get(key);
+    if (k && now - k.seen < CLOCK_GAP_MS) start = k.at;
+    CLOCK_STARTS.set(key, { at: start, seen: now });
+  }
+  if (expected == null && usual) expected = usualSeconds(usual);
+  const c = { el, start, expected: expected >= CLOCK_MIN_ESTIMATE ? expected : null, short, say, owner, slowNote, onTick, key,
+    bucket: -1, text: null, seen: false, ownerLabel: owner ? owner.getAttribute("aria-label") : null };
+  el.classList.add("spin-clock");
+  el.setAttribute("aria-live", "off");
+  CLOCKS.set(el, c);
+  paintClock(c, now);
+  if (say && start === now) announce(`${say}…`);  // work drawn again (same key) was announced when it began
+  startClockTimer();
+  return (ok = false) => {
+    if (ok && usual) rememberUsual(usual, Math.round((Date.now() - c.start) / 1000));
+    dropClock(c, true);
+  };
+}
+// A busy line: the words, then the ticker ("Saving… 4s"). node.stop(ok) ends it; removing it from the page does too.
+function busyNote(text, opts = {}) {
+  const tick = h("span", {});
+  const note = h("span", { class: "busy-note" }, text, " ", tick);
+  note.stop = spinnerClock(tick, { say: text.replace(/[….]+$/, ""), ...opts });
+  return note;
+}
+// The "Loading…" a panel shows while its data comes.
+const loadingNote = (text = "Loading…", opts = {}) => h("div", { class: "muted" }, busyNote(text, opts));
+// A button just pressed: a ring, its word and the ticker ("Scoring… 4s"). Returns stop(ok); putting the button's
+// own label back (replaceChildren) ends the ticker as well.
+function buttonBusy(btn, text, opts = {}) {
+  const tick = h("span", {});
+  btn.replaceChildren(h("span", { class: "spin" }), text, " ", tick);
+  return spinnerClock(tick, { say: text.replace(/[….]+$/, ""), owner: btn, ...opts });
+}
+// SPINNER-CLOCK-END
 function put(...kids) { fill(main, ...kids); }
 // A link's address: http(s) anywhere, or this page's own origin (a prep sheet's path, a blob download); a bare #fragment stays.
 function safeUrl(u) {
@@ -2957,7 +3111,7 @@ function rescoreButton(key) {
 async function openRescore(key) {
   const shade = h("div", { class: "overlay rescore-shade", style: "display:flex" });
   const box = h("div", { class: "dialog rescore-dialog", role: "dialog", "aria-modal": "true",
-    "aria-label": "Score again" }, h("p", { class: "muted" }, "Loading the models…"));
+    "aria-label": "Score again" }, h("p", { class: "muted" }, busyNote("Loading the models…")));
   const close = () => { shade.remove(); document.removeEventListener("keydown", esc); };
   const esc = e => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
   shade.onclick = e => { if (e.target === shade) close(); };
@@ -2989,7 +3143,7 @@ async function openRescore(key) {
   go.disabled = d.running || !picked;
   if (d.running) msg.textContent = "Already being scored again.";
   go.onclick = async () => {
-    go.disabled = true; msg.className = "small muted"; msg.textContent = "Starting…";
+    go.disabled = true; msg.className = "small muted"; fill(msg, busyNote("Starting…"));
     try {
       await api("/api/rescore", { key, backend: picked.backend, model: picked.model });
       RESCORING.add(key);
@@ -3107,9 +3261,15 @@ function showAdvice(said) {
 // "not scored yet" note beneath it.
 function noFitBox(job, corner = null) {
   // Being scored right now (Read posting just read it, or the background scorer has it): a ring spinner where the
-  // score goes, with no small print: "Scoring…" is only its tooltip and name. The score (or a failure) redraws the card.
-  if (scoringNow(job)) return h("div", { class: "fitbox noscore scoring-now", role: "status", title: SCORING_WORD,
-    "aria-label": SCORING_WORD }, h("div", { class: "score-spin", "aria-hidden": "true" }));
+  // score goes, with the seconds inside it (the spinner clock) and no small print: "Scoring…" is its tooltip and
+  // name, and "taking longer than usual" appears beneath only when it is. The score (or a failure) redraws the card.
+  if (scoringNow(job)) {
+    const clock = h("span", {}), note = h("small", { class: "spin-note" });
+    const box = h("div", { class: "fitbox noscore scoring-now", role: "status", title: SCORING_WORD, "aria-label": SCORING_WORD },
+      h("div", { class: "score-spin-wrap" }, h("div", { class: "score-spin", "aria-hidden": "true" }), clock), note);
+    spinnerClock(clock, { short: true, key: "scoring:" + job.key, usual: "score", say: "Scoring", owner: box, slowNote: note });
+    return box;
+  }
   const why = job.unscored?.code === "no_text" ? "no posting text" : "not scored yet";
   if (corner) return h("div", { class: "fitbox noscore", title: job.unscored?.text || "Not scored yet" },
     corner, h("small", {}, why));
@@ -3364,12 +3524,13 @@ function whoToContact(job) {
   const show = async () => {
     out.hidden = !out.hidden;
     if (out.hidden || found) return;
-    fill(out, h("div", { class: "muted" }, "Looking…"));
+    fill(out, loadingNote("Looking…"));
     try { found = await api(`/api/contact?key=${encodeURIComponent(job.key)}`); render(); }
     catch (e) { fill(out, h("div", { class: "problems" }, e.message)); }
   };
   const write = async index => {
     out.classList.add("spin");
+    out.prepend(h("div", { class: "muted small" }, busyNote("Writing the note…")));  // render() replaces it with the note
     try { render(await api("/api/contact", { key: job.key, index }), index); }
     catch (e) { render(null, null, e.message); }
     out.classList.remove("spin");
@@ -3495,15 +3656,18 @@ function pending(card, btn = lastAct, text = "") {
   for (const b of buttons) {
     if (b.tagName === "BUTTON") b.disabled = true; else { b.setAttribute("aria-disabled", "true"); b.tabIndex = -1; }
   }
-  let spin, label, before;
+  let spin, label, before, tick, stop;
   if (btn) {
     const kind = [...btn.classList].find(c => c.startsWith("act-"))?.slice(4);
     label = btn.querySelector(".label") || btn;
     before = label.textContent;
-    label.textContent = text || BUSY[kind] || "Working…";
+    label.textContent = (text || BUSY[kind] || "Working…") + " ";  // a space, then the seconds
     spin = h("span", { class: "busy-spin", "aria-hidden": "true" });
+    tick = h("span", {});  // the seconds, after the word (spinnerClock)
     btn.classList.add("busy");
     btn.prepend(spin);
+    btn.append(tick);
+    stop = spinnerClock(tick, { say: label.textContent.replace(/[….\s]+$/, ""), owner: btn });
   }
   return () => {
     card?.classList.remove("pending");
@@ -3511,7 +3675,7 @@ function pending(card, btn = lastAct, text = "") {
     for (const [b, off] of was) {
       if (b.tagName === "BUTTON") b.disabled = off; else { b.removeAttribute("aria-disabled"); b.removeAttribute("tabindex"); }
     }
-    if (btn) { spin.remove(); label.textContent = before; btn.classList.remove("busy"); }
+    if (btn) { stop(); spin.remove(); tick.remove(); label.textContent = before; btn.classList.remove("busy"); }
   };
 }
 // api() that gives up after SLOW_MS (the request itself can't be taken back; the message says to look again).
@@ -3731,9 +3895,10 @@ function readButton(job, done) {
   b.onclick = () => {
     if (!done || !readsInBackground()) return openInFront(document.documentElement.dataset.jobwatchBridge === "1" && !!done);
     b.disabled = true;
-    b.textContent = "Reading…";
+    const stop = buttonBusy(b, "Reading…", { usual: "read" });
     readWaiting.set(job.key, r => {
       readWaiting.delete(job.key);
+      stop(r.ok);
       b.disabled = false;
       b.textContent = "Read posting ↗";
       if (!r.ok && OLD_EXTENSION.test(r.error || "")) return openInFront(true);
@@ -3763,16 +3928,19 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   // Two buttons, one handler and one label: the bottom row's "Score" and the card's corner one (jobCard puts that one
   // where the empty score slot was and drops the bottom one). Either press sets both to "Scoring…".
   const title = "Compare this posting with your resume (can take a while)";
-  const idle = () => actLabel("score"), busy = () => [h("span", { class: "spin" }), "Scoring…"];
+  const idle = () => actLabel("score");
   const b = actButton("score", { title });
   const corner = actButton("score", { class: "score-corner", title });
   const run = async () => {
-    for (const x of [b, corner]) { x.disabled = true; x.replaceChildren(...busy()); }
+    // both buttons tick together (one key), and a score that comes back teaches the estimate for the next one
+    const stops = [b, corner].map(x => { x.disabled = true; return buttonBusy(x, SCORING_WORD, { key: "score-button:" + job.key, usual: "score" }); });
     try {
       job.fit = await api("/api/score", { key: job.key });
+      stops.forEach((stop, i) => stop(i === 0));  // one run, counted once
       Object.assign(job, (await fetchAdvice([job.key]))[job.key] || {});  // the card is drawn again from `job`
       redraw(job);
     } catch (e) {
+      stops.forEach(stop => stop());
       for (const x of [b, corner]) x.disabled = false;
       b.replaceChildren(...idle()); corner.replaceChildren(...idle()); toast(e.message);
     }
@@ -3943,7 +4111,7 @@ function coverPanel(job) {
     if (!c) return null;
     out.hidden = false; unread = true;
     out.dataset.tone = "ok";
-    fill(out, h("span", { class: "small muted" }, "Loading the letter…"));
+    fill(out, h("span", { class: "small muted" }, busyNote("Loading the letter…")));
     return ["ok", `Cover letter v${c.version}`, `${c.tone || "letter"}, ${c.words} words, drafted ${c.at}`];
   };
   const opened = async () => {
@@ -4016,15 +4184,18 @@ function prepareButton(job) {
     for (const [id, name] of steps) chip(id, "wait", name);
     sync();
     const done = [];
+    const tick = h("span", {});  // one clock for the whole run, moved to each step's label
+    const stop = spinnerClock(tick, { say: "Preparing", owner: b, usual: "prepare" });
     for (const [id, name, panel] of steps) {
       chip(id, "run", `${name}…`); sync();
-      b.replaceChildren(icon("refresh", 14), `Preparing: ${name.toLowerCase()}…`);
+      b.replaceChildren(icon("refresh", 14), `Preparing: ${name.toLowerCase()}… `, tick);
       let state, text, detail;
       try { [state, text, detail] = await panel.run(); } catch (e) { [state, text, detail] = ["err", `${name} failed`, e.message]; }
       chip(id, state, text, detail);
       sync();
       done.push(text);
     }
+    stop(steps.every(([id]) => chipOf(id).dataset.state === "ok"));  // a failed step's time isn't a usual one
     b.classList.remove("spin"); b.disabled = false;
     b.replaceChildren(icon("sparkle", 14), "Prepare again");
     status.textContent = `Prepared: ${done.join(", ")}.`;
@@ -4064,10 +4235,12 @@ function followupButton(a) {
     h("option", { value: "followup" }, "Follow-up"), h("option", { value: "thanks" }, "Thank-you"));
   kind.value = ["screening", "interviewing"].includes(a.status) ? "thanks" : "followup";
   const draft = async () => {
-    b.disabled = true; kind.disabled = true; b.classList.add("spin");
+    b.disabled = true; kind.disabled = true;
+    const stop = buttonBusy(b, "Drafting…", { usual: "followup" });
     out.hidden = false;
     try {
       const r = await api("/api/followup", { key: a.key, thanks: kind.value === "thanks" });
+      stop(r.drafted);
       const body = h("textarea", { rows: 8, "aria-label": "Email body" }); body.value = r.body;
       const subject = h("input", { type: "text", "aria-label": "Subject" }); subject.value = r.subject;
       out.dataset.tone = r.drafted && !r.warnings.length ? "ok" : "warn";
@@ -4089,7 +4262,9 @@ function followupButton(a) {
       fill(out, h("div", { class: "fu-head" }, kind), h("div", { class: "problems" }, e.message));
       out.dataset.tone = "warn";
     }
-    b.classList.remove("spin"); b.disabled = false; kind.disabled = false;
+    stop();
+    fill(b, icon("pencil", 13), "Draft follow-up");
+    b.disabled = false; kind.disabled = false;
   };
   kind.onchange = draft;
   b.onclick = draft;
@@ -4413,7 +4588,7 @@ function roundsLine(j) {
 async function openDetails(key) {
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
-  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  dialog.replaceChildren(loadingNote());
   overlay.style.display = "flex";
   try {
     const j = await api("/api/job?key=" + encodeURIComponent(key));
@@ -4496,9 +4671,10 @@ function detailsScore(j) {
   if (!j.can_score || NO_SCORE_BUTTON.includes(j.unscored?.code)) return unscoredNote(j);
   const b = actButton("score", { title: "Compare this posting with your resume (can take a while)" });
   b.onclick = async () => {
-    b.disabled = true; b.replaceChildren(h("span", { class: "spin" }), "Scoring…");
-    try { await api("/api/score", { key: j.key }); openDetails(j.key); }
-    catch (e) { b.disabled = false; b.replaceChildren(...actLabel("score")); toast(e.message); }
+    b.disabled = true;
+    const stop = buttonBusy(b, SCORING_WORD, { key: "score-button:" + j.key, usual: "score" });
+    try { await api("/api/score", { key: j.key }); stop(true); openDetails(j.key); }
+    catch (e) { stop(); b.disabled = false; b.replaceChildren(...actLabel("score")); toast(e.message); }
   };
   return [b, unscoredNote(j)];
 }
@@ -4539,8 +4715,9 @@ async function openPrepPage(key) {
 async function openPrep(key, draft = false, questions = false) {
   const dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
-  dialog.replaceChildren(h("div", { class: "muted" }, draft ? "Drafting questions and answers from your stories… "
-    + "(the first time can take a minute or two)" : "Loading…"));
+  dialog.replaceChildren(h("div", { class: "muted" },
+    busyNote(draft ? "Drafting questions and answers from your stories…" : "Loading…"),
+    draft ? " (the first time can take a minute or two)" : null));
   try {
     const p = await api("/api/prep?key=" + encodeURIComponent(key) + (draft ? "&draft=1" : "") + (questions ? "&questions=1" : ""));
     const list = items => h("ul", {}, ...items.map(i => h("li", {}, i)));
@@ -4637,7 +4814,7 @@ async function openPrep(key, draft = false, questions = false) {
 async function openMock(key, voice = false) {
   const dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
-  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  dialog.replaceChildren(loadingNote());
   let m;
   try { m = await api("/api/mock?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
   if (voice) return openVoice(key, m);
@@ -4661,7 +4838,7 @@ async function openMock(key, voice = false) {
       busy = new AbortController();
       go.disabled = box.disabled = skip.disabled = true;
       let reply = "", improved = "", note = "", failed = null;
-      fill(out, h("div", { class: "muted" }, `Thinking… (${m.where.label}: ${m.where.model})`));
+      fill(out, h("div", { class: "muted" }, busyNote(`Thinking… (${m.where.label}: ${m.where.model})`)));
       try {
         const r = await fetch("/api/mock/feedback", { method: "POST", signal: busy.signal,
           body: JSON.stringify({ key, question: q.question, answer }),
@@ -4833,7 +5010,7 @@ async function openVoice(key, m, among = null) {
   }
   async function sendAudio(blob, spoken) {
     working = true; paint();
-    const wait = note("Transcribing on this computer…");
+    const wait = note(busyNote("Transcribing on this computer…"));
     try {
       const r = await api("/api/mock/transcribe?name=answer.webm", undefined, blob);
       wait.remove(); working = false;
@@ -4915,7 +5092,7 @@ async function voiceReport(key, m, answers) {
       c.missing ? h("div", { class: "vr-line" }, h("b", {}, "Missing: "), c.missing) : null);
   }
   function draw() {
-    if (!d) return fill(out, h("div", { class: "muted" }, "Counting how you spoke…"));
+    if (!d) return fill(out, loadingNote("Counting how you spoke…", { key: "vr-count" }));
     const waiting = !content && !failed;
     const again = d.practise.map(i => d.answers[i]);
     const save = h("button", { class: "btn primary", disabled: !content || saved }, saved ? "Saved" : "Save transcripts and report to this job");
@@ -4937,7 +5114,7 @@ async function voiceReport(key, m, answers) {
         h("h3", {}, "Top opportunities to improve"),
         h("ol", { class: "vr-ops" }, content.opportunities.map((t, i) => h("li", { style: `animation-delay:${i * 60}ms` }, t))),
         why ? h("div", { class: "small muted" }, why) : null]
-        : h("div", { class: "vr-glow" }, waiting ? [h("span", { class: "vb" }, h("span", { class: "dots" }, h("span"), h("span"), h("span"))), ` Reading your answers (${m.where.label}: ${m.where.model})…`]
+        : h("div", { class: "vr-glow" }, waiting ? [h("span", { class: "vb" }, h("span", { class: "dots" }, h("span"), h("span"), h("span"))), " ", busyNote(`Reading your answers (${m.where.label}: ${m.where.model})…`, { key: "vr-feedback" })]
           : `The written feedback isn't available: ${failed}. The delivery numbers below are still yours.`),
       h("h3", {}, "How you delivered each answer"), d.answers.map(row),
       h("h3", {}, "What to rehearse next"),
@@ -4988,7 +5165,7 @@ function storyFromForm(f) {
 async function openStoryFind(key, gap = null) {
   const dialog = document.getElementById("dialog");
   dialog.classList.remove("with-chat");
-  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  dialog.replaceChildren(loadingNote());
   let s;
   try { s = await api("/api/storyfind?key=" + encodeURIComponent(key)); } catch (e) { return showError(dialog, e); }
   const top = (...more) => h("div", { class: "row no-print" }, h("button", { class: "btn ghost", onclick: () => openPrep(key) }, "← Prep sheet"),
@@ -5042,7 +5219,7 @@ async function openStoryFind(key, gap = null) {
     busy = new AbortController();
     send.disabled = writeUp.disabled = box.disabled = true;
     const bot = { role: "assistant", content: "" };
-    const live = h("div", { class: "msg bot" }, h("span", { class: "muted" }, `Thinking… (${s.where.label}: ${s.where.model})`));
+    const live = h("div", { class: "msg bot" }, h("span", { class: "muted" }, busyNote(`Thinking… (${s.where.label}: ${s.where.model})`)));
     log.append(live);
     let stats = {}, failed = null;
     try {
@@ -5301,13 +5478,9 @@ function replyMeta(m) {
     m.stats ? h("span", { title: m.stats.model || "" }, statsText(m.stats)) : null);
 }
 // How long replies took lately (kept in this browser), for "~20s expected" while the next one is written.
-function expectedSeconds() {
-  try { const t = JSON.parse(remembered("chat-seconds", "[]")); return t.length ? Math.round(t.reduce((a, b) => a + b) / t.length) : null; }
-  catch { return null; }
-}
-function rememberSeconds(s) {
-  try { remember("chat-seconds", JSON.stringify([...JSON.parse(remembered("chat-seconds", "[]")), s].slice(-5))); } catch { /* fine */ }
-}
+// The same record every spinner keeps (usualSeconds, the spinner clock), under the kind "chat".
+const expectedSeconds = () => usualSeconds("chat");
+const rememberSeconds = s => rememberUsual("chat", s);
 
 function chatBox({ key = null, title, intro, suggestions, onclose }) {
   const id = key || "home";
@@ -5361,18 +5534,17 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
     input.value = ""; grow();
     busy = new AbortController();
     draw();
-    const expect = expectedSeconds(), started = Date.now(), clock = h("span", {}, "0s");
+    const expect = expectedSeconds(), clock = h("span", {});
     const status = h("span", {}, expect ? `~${expect}s expected` : "");
     const out = h("div", { class: "msg bot" }, h("div", { class: "thinking" },
       h("span", { class: "dots", "aria-label": "Thinking" }, h("i"), h("i"), h("i")), clock, status));
     const turn = h("div", { class: "turn" }, out);
     let told = false;  // the server said what it waits for
-    const tick = setInterval(() => {
-      const s = Math.round((Date.now() - started) / 1000);
-      clock.textContent = s + "s";
+    // The shared spinner clock counts; the estimate is worded here, with what the shared local model is likely doing.
+    const stopClock = spinnerClock(clock, { say: "Thinking", onTick: s => {
       // Well past the estimate with no word from the server: the shared local model is likely on another job.
       if (expect && !told && s > 2 * expect) status.textContent = "taking longer than expected; the local model may be busy with another job, so your question is queued";
-    }, 1000);
+    } });
     log.append(turn); scroll();
     let reply = "", failed = null, queued = false, stats = null, finished = false;
     const paint = () => {  // the reply so far, with a caret while it's still being written
@@ -5398,7 +5570,7 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
         while ((nl = buf.indexOf("\n")) >= 0) {
           const msg = JSON.parse(buf.slice(0, nl));
           buf = buf.slice(nl + 1);
-          if (msg.text) { clearInterval(tick); reply += msg.text; if (!queued) { queued = true; requestAnimationFrame(paint); } }
+          if (msg.text) { stopClock(); reply += msg.text; if (!queued) { queued = true; requestAnimationFrame(paint); } }
           if (msg.stats) stats = msg.stats;
           if (msg.status) { told = true; status.textContent = msg.status + "…"; }
           if (msg.error) failed = msg.error;
@@ -5406,7 +5578,7 @@ function chatBox({ key = null, title, intro, suggestions, onclose }) {
       }
     } catch (e) { failed = e.name === "AbortError" ? "stopped" : e.message; }
     busy = null;
-    clearInterval(tick);
+    stopClock();
     if (reply) {
       const entry = { role: "assistant", content: reply, stats };
       history.push(entry);
@@ -5561,7 +5733,7 @@ function scoresLine(s) {
 async function openScoreDecision(done = () => {}) {
   const shade = h("div", { class: "overlay rescore-shade", style: "display:flex" });
   const box = h("div", { class: "dialog rescore-dialog", role: "dialog", "aria-modal": "true",
-    "aria-label": "Scores and your resume" }, h("p", { class: "muted" }, "Loading…"));
+    "aria-label": "Scores and your resume" }, h("p", { class: "muted" }, busyNote("Loading…")));
   const close = () => { shade.remove(); document.removeEventListener("keydown", esc); };
   const esc = e => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
   shade.onclick = e => { if (e.target === shade) close(); };
@@ -5580,7 +5752,7 @@ async function openScoreDecision(done = () => {}) {
   const msg = h("span", { class: "small muted", role: "status" });
   const decide = async (path, body, said) => {
     for (const b of box.querySelectorAll("button")) b.disabled = true;
-    msg.className = "small muted"; msg.textContent = "Saving…";
+    msg.className = "small muted"; fill(msg, busyNote("Saving…"));
     try {
       const r = await api(path, { reason: reason.value, ...body });
       close(); toast(said(r.count)); done(r);
@@ -5630,7 +5802,7 @@ function watchScoreState(el) {
   }, () => { /* the page may be restarting */ });
 }
 function scoresCard() {
-  const body = h("div", {}, h("p", { class: "small muted lead" }, "Loading…"));
+  const body = h("div", {}, h("p", { class: "small muted lead" }, busyNote("Loading…")));
   const el = setCard("stale", "Scores and your resume", "decide what a resume change means for them", body);
   const draw = () => api("/api/scores").then(s => fill(body,
     h("p", { class: "small", "data-scores-line": "1" }, scoresLine(s)),
@@ -5839,7 +6011,7 @@ function filterBar(hidden) {
     const saveBtn = h("button", { class: "btn primary" }, icon("check", 14), "Save");
     const save = async () => {
       const keys = groups.flatMap(g => FILTER_GROUPS[g].keys);
-      saveBtn.disabled = true; msg.textContent = "Saving…"; msg.className = "msg muted";
+      saveBtn.disabled = true; fill(msg, busyNote("Saving…")); msg.className = "msg muted";
       try {
         await api("/api/settings", { filters: mergeFilters(f, filterValues(inp), keys) });
         settings = await api("/api/settings");
@@ -5909,7 +6081,7 @@ async function openHidden(kind) {
   const overlay = document.getElementById("overlay"), dialog = document.getElementById("dialog");
   const info = HIDDEN[kind];
   dialog.classList.remove("with-chat");
-  dialog.replaceChildren(h("div", { class: "muted" }, "Loading…"));
+  dialog.replaceChildren(loadingNote());
   overlay.style.display = "flex";
   try {
     const d = await api("/api/hidden?kind=" + encodeURIComponent(kind));
@@ -6421,7 +6593,7 @@ function onboardActions(ctx, save) {
   const msg = h("span", { class: "small muted", role: "status" });
   const next = h("button", { class: "btn primary" }, ctx.last ? "Save and go to Today" : "Save and continue", icon("arrow", 14));
   next.onclick = async () => {
-    next.disabled = true; msg.textContent = "Saving…"; msg.className = "small muted";
+    next.disabled = true; fill(msg, busyNote("Saving…")); msg.className = "small muted";
     try { await save(); settings = await api("/api/settings"); ctx.next(); }
     catch (e) { msg.textContent = e.message; msg.className = "small error"; next.disabled = false; }
   };
@@ -6436,7 +6608,7 @@ function onboardAbout(ctx) {
   const pasteMsg = h("span", { class: "small muted" });
   const paste = h("button", { class: "btn", onclick: async () => {
     if (!pasted.value.trim()) return;
-    pasteMsg.textContent = "Saving…"; pasteMsg.className = "small muted";
+    fill(pasteMsg, busyNote("Saving…")); pasteMsg.className = "small muted";
     try {
       const r = await api("/api/upload?kind=resume&name=resume.txt", undefined, new Blob([pasted.value], { type: "text/plain" }));
       settings.resume = r.resume; settings.exists = true;
@@ -6486,7 +6658,7 @@ function onboardJobs(ctx) {
       `${o.where.local ? "" : " (not this computer)"} only when you press this.`);
     const out = h("div", {});
     ask.onclick = async () => {
-      ask.disabled = true; fill(out, h("div", { class: "muted small" }, "Thinking…"));
+      ask.disabled = true; fill(out, h("div", { class: "muted small" }, busyNote("Thinking…")));
       try {
         const r = await api("/api/onboarding/titles", {});
         fill(out, h("div", { class: "help" }, `Suggestions from ${r.where.label}, not facts about you. Click the ones you want.`),
@@ -6682,7 +6854,7 @@ function aiSetup(s) {
     const msg = h("span", { class: "small muted", role: "status" });
     const save = h("button", { class: "btn primary", type: "button" }, icon("lock", 13), "Save");
     save.onclick = async () => {
-      save.disabled = true; msg.className = "small muted"; msg.textContent = "Saving to your keychain…";
+      save.disabled = true; msg.className = "small muted"; fill(msg, busyNote("Saving to your keychain…"));
       try {
         const r = await api("/api/ai/key", { key: key.value, keychain: st.keychain });
         key.value = ""; scoring.keychain = r.keychain;
@@ -6750,7 +6922,7 @@ function aiSetup(s) {
 
   const tile = b => {
     const st = info && info[b], chosen = steps[0].b === b;  // the step a job meets first, a dated one included
-    const state = !st ? h("span", { class: "state wait" }, "Checking…")
+    const state = !st ? h("span", { class: "state wait" }, busyNote("Checking…"))
       : st.ready ? h("span", { class: "state ready" }, icon("check", 12), "Ready")
         : h("span", { class: "state setup" }, "Set up");
     const result = h("span", { class: "muted", role: "status" });
@@ -6758,7 +6930,7 @@ function aiSetup(s) {
     test.disabled = !st || !st.ready;
     test.onclick = async () => {
       test.disabled = true; result.className = "muted";
-      result.textContent = b === "local" ? "Loading the model (a minute or more the first time)…" : "Asking the model…";
+      fill(result, busyNote(b === "local" ? "Loading the model (a minute or more the first time)…" : "Asking the model…"));
       try {
         const r = await api("/api/ai/test", { backend: b, model: ((steps.find(st => st.b === b) || {}).m || "").split(" until ")[0] });
         result.className = r.ok ? "done-ok" : "error";
@@ -6882,7 +7054,7 @@ function providersCard(s, aiS) {
     };
     const load = h("button", { class: "btn", type: "button" }, icon("refresh", 13), "Load models");
     load.onclick = async () => {
-      load.disabled = true; found.className = "help"; found.textContent = "Asking the API…";
+      load.disabled = true; found.className = "help"; fill(found, busyNote("Asking the API…"));
       try { await loadList(); found.textContent = ""; }
       catch (e) { found.className = "help error"; found.textContent = e.message + " You can type the model's id instead."; }
       load.disabled = false;
@@ -6891,7 +7063,7 @@ function providersCard(s, aiS) {
     const test = h("button", { class: "btn", type: "button" }, icon("sparkle", 13), "Test");
     test.onclick = async () => {
       if (!m.value.trim()) { result.className = "error"; result.textContent = "Pick or type a model first."; return; }
-      test.disabled = true; result.className = "muted"; result.textContent = "Asking the model…";
+      test.disabled = true; result.className = "muted"; fill(result, busyNote("Asking the model…"));
       try {
         const r = await api("/api/ai/providers/test", { name: p.name, model: m.value.trim() });
         result.className = r.status === "ok" ? "done-ok" : "error";
@@ -6928,7 +7100,7 @@ function providersCard(s, aiS) {
       const msg = h("span", { class: "help", role: "status" });
       const save = h("button", { class: "btn", type: "button" }, icon("lock", 13), p.key ? "Replace" : "Save key");
       save.onclick = async () => {
-        save.disabled = true; msg.className = "help"; msg.textContent = "Saving to your keychain…";
+        save.disabled = true; msg.className = "help"; fill(msg, busyNote("Saving to your keychain…"));
         try {
           await api("/api/ai/providers/key", { name: p.name, key: key.value });
           key.value = ""; await draw(); aiS.refresh();
@@ -7939,7 +8111,7 @@ function uploadField(kind, accept, current, help) {
   const status = h("span", { class: "muted small" }, current ? `Using ${current}` : "Not set");
   input.onchange = async () => {
     const file = input.files[0]; if (!file) return;
-    status.textContent = "Uploading…";
+    fill(status, busyNote("Uploading…"));
     try {
       const r = await api(`/api/upload?kind=${kind}&name=${encodeURIComponent(file.name)}`, undefined, file);
       settings[kind] = r[kind];
@@ -7959,7 +8131,7 @@ function companyFinder(has, add) {
   const out = h("div", {});
   const button = h("button", { class: "btn" }, "Find");
   const find = async () => {
-    button.disabled = true; out.replaceChildren(h("div", { class: "muted small" }, "Looking…"));
+    button.disabled = true; out.replaceChildren(h("div", { class: "muted small" }, busyNote("Looking…")));
     try {
       const hits = await api("/api/find", { company: input.value });
       out.replaceChildren(...(hits.length ? hits.map(hit => h("div", { class: "list-item" },
@@ -10082,7 +10254,7 @@ function renderSettings() {
       today: numberOf(picksN),
       today_defaults: merged(shown.today_defaults, { posted: numberOf(postedN) }),
       age_decay: merged(shown.age_decay, { grace_days: numberOf(grace), per_day: numberOf(perDay), cutoff_days: numberOf(cutoff) }) });
-    saveMsg.textContent = "Saving…"; saveMsg.className = "small muted";
+    fill(saveMsg, busyNote("Saving…")); saveMsg.className = "small muted";
     try {
       await api("/api/settings", { companies: companies.map(c => ({ ...c, careers: c.careers || null })),
         filters, keywords, scoring: scoringValues(), chat: chatC.values(),
@@ -10565,14 +10737,21 @@ let loads = 0;
 async function loading(button, work, delay = 150) {
   const n = ++loads;
   for (const b of document.querySelectorAll("#tabs button.loading")) b.classList.remove("loading");
+  let tick = null, stop = null;  // the seconds beside the ring, once it shows (the spinner clock)
   const timer = setTimeout(() => {
     if (n !== loads) return;
     button?.classList.add("loading");
     main.setAttribute("aria-busy", "true");
+    if (button) {
+      tick = h("span", { class: "tab-clock" });
+      button.append(tick);
+      stop = spinnerClock(tick, { short: true, say: `Loading ${button.textContent.trim()}`.replace(/\s*\d+$/, "") });
+    }
   }, delay);
   try { return await work(); }
   finally {
     clearTimeout(timer);
+    stop?.(); tick?.remove();
     if (n === loads) {
       button?.classList.remove("loading");
       main.removeAttribute("aria-busy");
@@ -10596,12 +10775,21 @@ window.addEventListener("hashchange", () => {
   else if (tab === "settings" && to.sub && renderSettings.show) renderSettings.show(to.sub, { card: to.card, hash: false });
 });
 
-fill(document.getElementById("fetchBtn"), icon("refresh", 14), "Check for new jobs");
+const fetchLabel = () => [icon("refresh", 14), "Check for new jobs"];
+fill(document.getElementById("fetchBtn"), fetchLabel());
 document.getElementById("fetchBtn").onclick = async () => {
   const btn = document.getElementById("fetchBtn"), status = document.getElementById("fetchStatus");
-  btn.disabled = true; btn.classList.add("spin"); status.textContent = "Checking every company…";
+  btn.disabled = true; btn.classList.add("spin");
+  // The button's icon turns and its label counts ("Checking… 12s"); the line beside it says what's happening and
+  // how long a check usually takes in this browser. The button holds its width while its words change.
+  btn.style.minWidth = btn.offsetWidth + "px";
+  const tick = h("span", {});
+  fill(btn, icon("refresh", 14), "Checking… ", tick);
+  const stopBtn = spinnerClock(tick, { usual: "check", say: "Checking every company", owner: btn });
+  fill(status, busyNote("Checking every company…", { expected: usualSeconds("check"), say: "" }));  // the button speaks
   try {
     const r = await api("/api/fetch", {});
+    stopBtn(true);
     const failed = Object.keys(r.errors).length, warned = Object.keys(r.warnings || {}).length;
     status.textContent = `${r.new} new of ${r.jobs.toLocaleString()} open jobs` + (failed ? ` · ${failed} failed` : "") +
       (warned ? ` · ${warned} to look at` : "");
@@ -10609,8 +10797,9 @@ document.getElementById("fetchBtn").onclick = async () => {
     tab = "today"; lastTab = null; await render();
     if (r.new) { toast(`✨ ${r.new} new job${r.new === 1 ? "" : "s"} to look at`, null, "win"); confetti(btn, { count: 40, power: .6 }); }
     else toast("No new jobs since the last check. Fresh ones land every day.", null, "onward");
-  } catch (e) { status.textContent = e.message; }
-  btn.disabled = false; btn.classList.remove("spin");
+  } catch (e) { stopBtn(); status.textContent = e.message; }
+  fill(btn, fetchLabel());
+  btn.disabled = false; btn.classList.remove("spin"); btn.style.minWidth = "";
 };
 
 (async () => {
