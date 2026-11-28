@@ -81,6 +81,7 @@ from . import (
     variants,
 )
 from .config import BACKENDS, ConfigError, credit_entry, duration, fallback_entry
+from .contacts import REACH
 from .filters import KINDS, rejection, staffing_firm
 from .localday import local_day
 from .rounds import ROUNDS
@@ -1903,13 +1904,24 @@ def cmd_cover(args, cfg, store):
 
 
 def cmd_referrals(args, cfg, store):
+    if args.add:
+        if not args.company:
+            raise ValueError("--add needs --company: where they work")
+        p = referrals.add(cfg, store, args.add, args.company, args.title or "", args.note or "", args.reach or "",
+                          args.url or "", args.email or "", args.phone or "")
+        print(f"Added {p['name']} at {p['company']} (added by hand)."
+              + ("" if p["tracked"] else f" No job you track is at {p['company']} yet: they show in the list once "
+                 "one is."))
+    for name in args.remove or []:
+        p = referrals.remove(cfg, store, name)
+        print(f"Removed {p['name']} ({p['company']}).")
     for verdict, who in (("use", args.use), ("skip", args.skip), ("clear", args.clear)):
         for name in who or []:
             p = referrals.rate(cfg, store, name, verdict, args.note or "")
             print({"use": f"{p['name']} sorts first when suggesting who to ask.",
                    "skip": f"{p['name']} won't be suggested.",
                    "clear": f"{p['name']} is back to the usual order."}[verdict])
-    if args.use or args.skip or args.clear:
+    if args.use or args.skip or args.clear or args.add or args.remove:
         return
     v = referrals.view(cfg, store)
     print(json.dumps(v, indent=2, ensure_ascii=False) if args.format == "json" else referrals.text(v))
@@ -2777,17 +2789,30 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("referrals", help="the people you know at companies you're tracking, and whom to ask for "
                        "a referral: `--use NAME` puts someone first, `--skip NAME` never suggests them, "
-                       "`--clear NAME` undoes it",
-                       description="The connections (see `connections:` in the watchlist) who work at companies "
-                       "with a new, queued or open job, closest ties first. --use puts a person ahead of closer "
-                       "ties wherever 'You know...' is shown; --skip never suggests them (like connections_skip in "
-                       "the watchlist, but changeable here and in the page's Referrals tab); --clear forgets "
-                       "either. NAME is a full name or a linkedin.com/in/ link; --note keeps a few words with it.")
+                       "`--clear NAME` undoes it; `--add NAME --company CO` adds someone who isn't on LinkedIn",
+                       description="The connections (see `connections:` in the watchlist) and the people you added "
+                       "by hand who work at companies with a new, queued or open job, closest ties first. --use "
+                       "puts a person ahead of closer ties wherever 'You know...' is shown; --skip never suggests "
+                       "them (like connections_skip in the watchlist, but changeable here and in the page's "
+                       "Referrals tab); --clear forgets either. NAME is a full name or a linkedin.com/in/ link; "
+                       "--note keeps a few words with it. --add NAME --company COMPANY adds someone who isn't a "
+                       "LinkedIn connection (a friend, an ex-colleague), with --title, --note, --reach, --url, "
+                       "--email and --phone if you like; they are kept in jobwatch's own state, listed like a "
+                       "connection (marked 'added by hand') and never dropped by a fresh LinkedIn export. --remove "
+                       "NAME forgets someone added by hand (a LinkedIn connection can only be skipped).")
     p.add_argument("--use", action="append", metavar="NAME", help="ask this person first; repeatable")
     p.add_argument("--skip", action="append", metavar="NAME", help="never suggest this person; repeatable")
     p.add_argument("--clear", action="append", metavar="NAME", help="forget what was said about this person; "
                    "repeatable")
-    p.add_argument("--note", help="e.g. 'doesn't check LinkedIn; reach on WhatsApp' (with --use or --skip)")
+    p.add_argument("--note", help="e.g. 'doesn't check LinkedIn; reach on WhatsApp' (with --use, --skip or --add)")
+    p.add_argument("--add", metavar="NAME", help="add someone who isn't a LinkedIn connection; needs --company")
+    p.add_argument("--company", help="where the person you --add works (any spelling: 'Globex Corporation')")
+    p.add_argument("--title", help="their job title (with --add)")
+    p.add_argument("--reach", choices=list(REACH), help="how you reach them (with --add)")
+    p.add_argument("--url", help="their linkedin.com/in/ link (with --add)")
+    p.add_argument("--email", help="their email (with --add)")
+    p.add_argument("--phone", help="their phone number (with --add)")
+    p.add_argument("--remove", action="append", metavar="NAME", help="forget someone added by hand; repeatable")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_referrals)
 

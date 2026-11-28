@@ -44,6 +44,20 @@
   Scores are never changed or made again. See [Your stories and the gaps](docs/guide/fit-scores.md#your-stories-and-the-gaps).
 - A Referrals card's people pill is a small chip with the people icon and the count, on the company name's row at the
   right (the name is cut short, the stage badge stays clear), with the words in its label and tooltip.
+- Add someone who isn't a LinkedIn connection. A friend, an ex-colleague or someone you met in person can be added by
+  hand: `jobwatch referrals --add "Jane Doe" --company "Globex"` (with `--title`, `--note`, `--reach`, `--url`,
+  `--email`, `--phone`; `--remove` forgets one), the `add_contact` and `remove_contact` tools, or the **Add a person**
+  button in the Referrals toolbar and a **+** on each company card (and the Company tab). The dialog is large (Esc
+  closes it), asks for a name and a company (the box suggests the companies you track and takes any text), optionally a
+  title, a note and how you reach them (WhatsApp, Text, Email, Phone or In person: shown as "reach on WhatsApp"), a link,
+  an email and a phone, and says "Already in your connections" for someone already listed. A saved person is on the
+  company's card with the muted Ask? pill and an "added by hand" tag, and a toast with Undo for 8 seconds. Their dialog
+  edits or deletes them (Undo too); a LinkedIn connection can only be skipped. They are kept in jobwatch's own state, so a
+  new LinkedIn export never drops them, match a company by its normalized name like a connection ("Globex",
+  "Globex Corporation"), rank as a close tie (like five messages: above an endorsement or a bare connection, below real
+  correspondents and anyone you chose Ask first) and appear everywhere connections do: the Referrals tab, "You know"
+  lines and queue warnings, Who to contact, the Company tab and `jobwatch referrals`. They also work with no LinkedIn data
+  at all. A company with someone added by hand is never hidden by "Hide companies with no good fits".
 - The Referrals tab shows what suits you, one card per company, and explains itself to someone starting out.
   With no LinkedIn data it says what Referrals is (who could refer you to a job you track), how to get people
   here (LinkedIn's "Get a copy of your data", then the upload in Settings > People & pay, with links), and that your

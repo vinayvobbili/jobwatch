@@ -6,6 +6,9 @@ LinkedIn: Settings > Data privacy > Get a copy of your data. Either file works:
 - The full archive (.zip): the same, plus how well you know each person, counted from messages you exchanged,
   recommendations, and endorsements. Only counts and dates are used. Message text is never read or kept.
 
+Someone who isn't on LinkedIn (or isn't a connection) is added by hand and kept in jobwatch's own store, so a fresh
+LinkedIn export never drops them (see Store.add_person and referrals.add).
+
 Everything stays on your machine.
 """
 
@@ -27,6 +30,17 @@ _SUFFIXES = {"inc", "llc", "ltd", "corp", "corporation", "co", "com", "company",
 DIVISIONS = {"amazon web services": "amazon", "aws": "amazon"}
 
 TIES_FILE = "linkedin-ties.json"  # derived from an archive, kept next to Connections.csv
+
+# People you add by hand (a friend, an ex-colleague, someone met in person) live in jobwatch's own store, not in
+# LinkedIn's file, so a fresh export never drops them. They are listed wherever connections are. You added them on
+# purpose, so each ranks as a close tie: like someone you exchanged ADDED_STRENGTH messages with (see strength()),
+# above anyone who only accepted a request or endorsed you, below a recommendation (10) and your real correspondents.
+ADDED_STRENGTH = 5
+BY_HAND = "added by hand"
+NOTE_MAX = 200
+# How you reach someone, as the page's quick-pick offers it (key -> the words shown beside their name).
+REACH = {"whatsapp": "reach on WhatsApp", "text": "reach by text", "email": "reach by email", "phone": "reach by phone",
+         "in person": "see in person"}
 
 
 def company_key(name: str) -> str:
@@ -157,6 +171,36 @@ def why(tie: dict) -> str:
     return "; ".join(parts)
 
 
+def clean_person(name: str = "", company: str = "", title: str = "", note: str = "", reach: str = "", url: str = "",
+                 email: str = "", phone: str = "") -> dict:
+    """A person to add by hand, checked and tidied: {name, company, position (the title), about (the note), reach,
+    url, email, phone}. Raises ValueError, in words for the person who typed it, when something is missing or wrong."""
+    got = {"name": " ".join(name.split()), "company": " ".join(company.split()), "position": " ".join(title.split()),
+           "about": " ".join(note.split()), "reach": reach.strip().lower(), "url": url.strip(), "email": email.strip(),
+           "phone": phone.strip()}
+    if not got["name"]:
+        raise ValueError("a person needs a name")
+    if not company_key(got["company"]):
+        raise ValueError("a person needs a company")
+    if len(got["about"]) > NOTE_MAX:
+        raise ValueError(f"keep the note to {NOTE_MAX} characters or fewer")
+    if got["reach"] and got["reach"] not in REACH:
+        raise ValueError(f"how you reach them must be one of {', '.join(REACH)}")
+    if got["url"]:
+        if not (slug := profile_key(got["url"])):
+            raise ValueError("a LinkedIn link looks like linkedin.com/in/their-name")
+        got["url"] = "https://www.linkedin.com/in/" + slug
+    if got["email"] and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", got["email"]):
+        raise ValueError(f"{got['email']!r} isn't an email address")
+    return got
+
+
+def hand_note(person: dict) -> str:
+    """What is said beside someone added by hand: how you reach them, then your own words ("reach on WhatsApp; met
+    at a conference")."""
+    return "; ".join(filter(None, (REACH.get(person.get("reach", "")), (person.get("about") or "").strip())))
+
+
 def _order(p: dict) -> tuple:
     """People marked Use first, then the strongest ties."""
     return (p.get("verdict") != "use", -p.get("strength", 0))
@@ -164,11 +208,14 @@ def _order(p: dict) -> tuple:
 
 class Contacts:
     def __init__(self, people: list[dict], ties: dict[str, dict] | None = None, skip: list[str] | tuple = (),
-                 feedback: dict[str, dict] | None = None, employer: list[str] | tuple = ()):
+                 feedback: dict[str, dict] | None = None, employer: list[str] | tuple = (),
+                 added: list[dict] | tuple = ()):
         """skip: people never to suggest (a name, or a linkedin.com/in/ link), however close the tie.
         feedback: {person_key: {"verdict": "use" | "skip", "note": ...}} from the referrals page: skip is the same
         as above, use sorts a person ahead of closer ties, and the note goes with the person.
-        employer: where you work now; at() lists no one there (colleagues, not referrals)."""
+        employer: where you work now; at() lists no one there (colleagues, not referrals).
+        added: the people added by hand (Store.added_people), listed with the connections: same company matching,
+        same choices, a close tie (ADDED_STRENGTH) and "added by hand" among their reasons."""
         self.has_ties = bool(ties)
         self.employer = {k for e in employer if (k := company_key(e))}
         ties = ties or {}
@@ -178,12 +225,16 @@ class Contacts:
         self.by_company: dict[str, list[dict]] = {}
         self.everyone: list[dict] = []
         self.hidden: dict[str, list[dict]] = {}  # the people left out, to list them where they can be put back
-        for p in people:
+        for p in [*people, *({"by_hand": True, **a} for a in added)]:
             t = {**ties.get("name:" + _name_key(p["name"]), {}), **ties.get(profile_key(p.get("url", "")), {})}
             fb = feedback.get(person_key(p), {})
             in_file = _name_key(p["name"]) in skip_names or profile_key(p.get("url", "")) in skip_profiles
-            p = {**p, "key": person_key(p), "strength": strength(t), "why": why(t), "verdict": fb.get("verdict", ""),
-                 "note": fb.get("note", ""), "from_file": in_file}
+            by_hand = bool(p.get("by_hand"))
+            p = {"email": "", "phone": "", "reach": "", "about": "", "added_at": "", **p, "by_hand": by_hand,
+                 "key": person_key(p), "verdict": fb.get("verdict", ""), "from_file": in_file,
+                 "strength": max(strength(t), ADDED_STRENGTH) if by_hand else strength(t),
+                 "why": "; ".join(filter(None, (why(t), BY_HAND if by_hand else ""))),
+                 "note": fb.get("note") or (hand_note(p) if by_hand else "")}
             self.everyone.append(p)
             if key := company_key(p.get("company", "")):
                 left_out = in_file or p["verdict"] == "skip"
@@ -193,15 +244,23 @@ class Contacts:
 
     @classmethod
     def load(cls, path: Path | str, skip: list[str] | tuple = (), feedback: dict[str, dict] | None = None,
-             employer: list[str] | tuple = ()) -> Contacts:
-        """Connections.csv (with linkedin-ties.json beside it, if an archive was imported), or the archive .zip."""
+             employer: list[str] | tuple = (), added: list[dict] | tuple = ()) -> Contacts:
+        """Connections.csv (with linkedin-ties.json beside it, if an archive was imported), or the archive .zip,
+        and the people added by hand."""
         path = Path(path).expanduser()
         if path.suffix.lower() == ".zip":
-            return cls(*read_archive(path), skip=skip, feedback=feedback, employer=employer)
+            return cls(*read_archive(path), skip=skip, feedback=feedback, employer=employer, added=added)
         people = parse_connections(path.read_text(encoding="utf-8-sig"), str(path))
         ties_path = path.with_name(TIES_FILE)
         ties = json.loads(ties_path.read_text()) if ties_path.is_file() else None
-        return cls(people, ties, skip, feedback, employer)
+        return cls(people, ties, skip, feedback, employer, added)
+
+    def duplicate(self, name: str, company: str) -> dict | None:
+        """Someone already listed (a connection or added by hand, even one left out) with this name at this
+        company, or None."""
+        key = company_key(company)
+        return next((p for p in self.everyone if _name_key(p["name"]) == _name_key(name)
+                     and company_key(p.get("company", "")) == key), None)
 
     def at(self, *names: str) -> list[dict]:
         """Connections whose current company is any of these names (the board's name, its slug, ...),

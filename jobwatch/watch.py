@@ -441,16 +441,22 @@ def pace(cfg: Config, store: Store, today: date | None = None) -> dict | None:
 
 
 def load_contacts(cfg: Config) -> Contacts | None:
-    """The watchlist's connections file, if it has one. A missing file only warns: it's a hint, not a filter."""
-    if not cfg.connections:
-        return None
+    """The people you know: the watchlist's connections file, if it has one, and whoever was added by hand (kept in the
+    state file, so they are listed with or without a connections file). A missing file only warns: it's a hint,
+    not a filter. None when there is nobody."""
     try:
         store = Store(cfg.state)
         try:
             feedback = store.contact_feedback()  # whom to use and not to, from the page, CLI or an assistant
+            added = store.added_people()
         finally:
             store.close()
-        return Contacts.load(cfg.connections, cfg.connections_skip, feedback, cfg.employer)
+        if cfg.connections:
+            try:
+                return Contacts.load(cfg.connections, cfg.connections_skip, feedback, cfg.employer, added)
+            except (OSError, ValueError) as e:
+                print(f"jobwatch: connections skipped: {e}", file=sys.stderr)
+        return Contacts([], None, cfg.connections_skip, feedback, cfg.employer, added) if added else None
     except (OSError, ValueError, sqlite3.Error) as e:
         print(f"jobwatch: connections skipped: {e}", file=sys.stderr)
         return None

@@ -12,7 +12,7 @@ The details behind the [README](../../README.md), one topic a page.
 - [Tracking applications](tracking.md) - stages, quiet applications, calendar, interviews, and what you sent
 - [Prep sheets](interview-prep.md) - interview prep sheets, drafted answers, mock interviews, and drill videos
 - [Comparing opportunities](comps.md) - side-by-side pay, fit, and company health for live opportunities
-- [Who you know there](contacts.md) - LinkedIn connections, referrals, and the digest
+- [Who you know there](contacts.md) - LinkedIn connections, people added by hand, referrals, and the digest
 - [MCP server](mcp.md) - the tools, setup, and agent skill for AI assistants
 - [Getting more interviews](more-interviews.md) - what moves an application out of the pile
 - [Development](development.md) - tests, checks, screenshots, and releasing

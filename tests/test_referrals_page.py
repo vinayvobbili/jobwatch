@@ -158,7 +158,7 @@ console.log(JSON.stringify({ order: ini.people.map(p => p.name), words: [refPeop
 
 
 @node
-def test_a_company_with_no_good_fit_is_hidden_on_request_unless_an_application_is_in_flight_or_you_chose_a_person_and_the_count_says_so():
+def test_a_company_with_no_good_fit_is_hidden_on_request_unless_an_application_is_in_flight_or_you_chose_or_added_a_person_and_the_count_says_so():
     out = run(PEOPLE + """
 const qs = refCompanies({ min_fit: 70, details: { c1: { fit: 40 }, c2: { fit: 40 }, c3: { fit: 40 }, c4: { fit: 80 }, c5: { fit: 40 }, c6: { fit: 70, closed: true } }, people: [
   person("a", "Ann", "Hooli", "", { jobs: [jk("c1", "SRE", "Hooli")] }),             // a fit of 40 is under the minimum: no good fit
@@ -167,19 +167,21 @@ const qs = refCompanies({ min_fit: 70, details: { c1: { fit: 40 }, c2: { fit: 40
   person("d", "Dan", "Pied Piper", "", { jobs: [jk("c4", "SRE", "Pied Piper")] }),   // a good fit
   person("e", "Eve", "Gone", ""),                                                    // no job tracked at all: no good fit
   person("f", "Fay", "Acme", "", { verdict: "use", jobs: [jk("c5", "SRE", "Acme")] }), // no good fit, but Fay is chosen to ask first: stays
-  person("g", "Gil", "Soylent", "", { jobs: [jk("c6", "SRE", "Soylent")] })] });     // exactly the minimum: a good fit
+  person("g", "Gil", "Soylent", "", { jobs: [jk("c6", "SRE", "Soylent")] }),         // exactly the minimum: a good fit
+  person("name:hal", "Hal", "Globex", "", { by_hand: true })] });                   // added by hand, no good fit: stays, and counts
 const base = { q: "", sort: "name" };
 console.log(JSON.stringify({ quiet: qs.filter(refNoGoodFits).map(c => c.name), all: names(refVisible(qs, base)),
   hidden_on: names(refVisible(qs, { ...base, noGood: true })), hidden: names(refHidden(qs, { ...base, noGood: true })),
   searched: names(refHidden(qs, { ...base, q: "hooli", noGood: true })), other: names(refHidden(qs, { ...base, q: "wayne", noGood: true })),
-  line: [refCount([], 5), refCount(refVisible(qs, base), 7, 2), refCount([], 1, 1)],
+  line: [refCount([], 5), refCount(refVisible(qs, base), 8, 2), refCount([], 1, 1)],
   good: qs.map(c => [c.name, c.sum.good]) }));""")
     assert sorted(out["quiet"]) == ["Gone", "Hooli"]
-    assert out["all"] == ["Acme", "Gone", "Hooli", "Pied Piper", "Soylent", "Stark", "Wayne"]  # off: nothing is hidden
-    assert out["hidden_on"] == ["Acme", "Pied Piper", "Soylent", "Stark", "Wayne"]  # on: in-flight and ask-first companies stay
+    assert out["all"] == ["Acme", "Globex", "Gone", "Hooli", "Pied Piper", "Soylent", "Stark", "Wayne"]  # off: nothing is hidden
+    # on: in-flight, ask-first and hand-added-person companies stay
+    assert out["hidden_on"] == ["Acme", "Globex", "Pied Piper", "Soylent", "Stark", "Wayne"]
     assert out["hidden"] == ["Gone", "Hooli"]
     assert out["searched"] == ["Hooli"] and out["other"] == []  # what a search matches that the filter hides; a kept company is not
-    assert out["line"] == ["0 of 5 companies · 0 people", "7 of 7 companies · 7 people (2 hidden: no good fits)", "0 of 1 company · 0 people (1 hidden: no good fits)"]
+    assert out["line"] == ["0 of 5 companies · 0 people", "8 of 8 companies · 8 people (2 hidden: no good fits)", "0 of 1 company · 0 people (1 hidden: no good fits)"]
 
 
 @node
@@ -967,7 +969,8 @@ def test_with_no_linkedin_data_the_tab_explains_what_it_is_how_to_get_people_her
     sync_api.expect(first.locator("h2")).to_have_text("See who you know at the companies you're tracking")
     for words in ("referral", "Get a copy of your data", ".zip", "read on this computer only", "by hand"):
         sync_api.expect(first).to_contain_text(words)
-    sync_api.expect(page.locator(".ref-bar")).to_have_count(0)  # no search or sorts over nothing
+    sync_api.expect(page.locator(".ref-bar .ref-search")).to_have_count(0)  # no search or sorts over nothing: just the way to add someone
+    sync_api.expect(page.locator(".ref-bar").get_by_role("button", name="Add a person")).to_be_visible()
     sync_api.expect(page.locator(".card.ref")).to_have_count(0)
     first.get_by_role("link", name="Settings → People & pay").click()
     sync_api.expect(page.get_by_role("heading", name="People you know")).to_be_visible()

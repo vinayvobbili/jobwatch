@@ -731,6 +731,33 @@ a.ref-logo { cursor: pointer; } a.ref-logo:hover { transform: scale(1.06); box-s
   .ref-dialog .rk-head { padding: 10px 14px; gap: 8px; }
   .ref-dialog .rk-title { order: 5; flex: 1 0 100%; } .ref-dialog .rk-head .mono { order: 0; }
   .ref-dialog .rk-step { margin-left: auto; } }
+/* people added by hand: the toolbar's Add a person, the card's + Add, the tag on a person, and the add/change dialog (a form in the
+   Referrals dialogs' frame: a centred column of sections, so a wide window isn't a wide form) */
+.ref-add { display: inline-flex; align-items: center; gap: 6px; }
+.ref-addbtn { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 1px 10px 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 650;
+  color: var(--accent); border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent); background: transparent; cursor: pointer; white-space: nowrap; }
+.ref-addbtn:hover { color: #fff; background: var(--grad); border-color: transparent; transform: translateY(-1px); }
+.pp-name .chip.ref-hand { color: var(--accent-2, var(--accent)); background: color-mix(in srgb, var(--accent-2, var(--accent)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-2, var(--accent)) 40%, transparent); font-weight: 650; }
+/* on a card's name row: just a +, at the right beside the people chip (the chip keeps the far right) */
+.ref-addbtn.ref-addcard { margin-left: auto; padding: 0; width: 20px; height: 20px; justify-content: center; line-height: 18px; }
+.ref-addcard + .ref-know { margin-left: 0; }
+.ref-delete { color: var(--bad); }
+.ref-delete:hover { color: #fff; background: var(--bad); border-color: transparent; }
+.person-dialog .ref-over { max-width: 760px; }
+.person-dialog .rk-head .addp-av { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; color: #fff; background: var(--grad); flex: none; }
+.addp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 16px; }
+.addp-f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.addp-l { font-size: 12.5px; font-weight: 650; color: var(--muted); }
+.addp-f input[type=text] { width: 100%; box-sizing: border-box; padding: 8px 12px; border-radius: 12px; font: inherit; font-size: 14px; color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 32%, transparent); background: var(--panel-solid); }
+.addp-f input[aria-invalid="true"] { border-color: var(--bad); }
+.addp-f input:focus-visible, .person-dialog .ref-note:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.addp-reach { display: flex; flex-wrap: wrap; gap: 8px; }
+.addp-err { margin-top: 2px; }
+.addp-dup { margin-top: 2px; padding: 8px 12px; border-radius: 12px; font-size: 13.5px; font-weight: 600; color: var(--text);
+  background: color-mix(in srgb, var(--warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent); }
+.addp-actions { align-items: center; gap: 10px; flex-wrap: wrap; }
 /* comps: the opportunities as columns on a wide screen, as stacked cards on a phone */
 table.comps { border-collapse: separate; border-spacing: 0; font-size: 14px; min-width: 100%; }
 table.comps th, table.comps td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left;
@@ -8221,8 +8248,8 @@ function refVisible(companies, view) {
 }
 // A company with no good fits: the card would read "No good fit yet" (the same count as the card's pill and the Good fits tab,
 // so the Fit minimum decides). One you have an application in flight at (queued, applied, screening, interviewing, offer) never
-// is, nor one with a person you set to Ask first.
-const refNoGoodFits = c => c.sum.good === 0 && !c.sum.stage && !c.people.some(p => p.verdict === "use");
+// is, nor one with a person you set to Ask first or one you added by hand (you put them there on purpose).
+const refNoGoodFits = c => c.sum.good === 0 && !c.sum.stage && !c.people.some(p => p.verdict === "use" || p.by_hand);
 // The companies the "Hide companies with no good fits" filter alone is hiding now: those that pass the search and the other filters.
 const refHidden = (companies, view) => refVisible(companies, { ...view, noGood: false }).filter(refNoGoodFits);
 // "12 of 31 companies · 73 people": the companies on show of all of them, and the people on those cards; with hidden companies
@@ -8347,10 +8374,11 @@ function refFrame(n, at, o) {
   const box = h("div", { class: "dialog rank-dialog ref-dialog", role: "dialog", "aria-modal": "true", tabindex: "-1" });
   let cur = at;
   const close = () => {
-    shade.remove(); document.removeEventListener("keydown", keys, true);
+    shade.remove(); document.removeEventListener("keydown", keys, true); refClosers.delete(close);
     const back = o.back && o.back(cur);
     if (back && back.isConnected) back.focus();
   };
+  refClosers.add(close);
   const step = (label, to, text) => h("button", { class: "btn ghost rk-arrow", type: "button", "aria-label": label,
     title: label + " (arrow key)", disabled: to < 0 || to >= n, onclick: () => show(to) }, text);
   const head = (lead, title, sub) => h("div", { class: "rk-head" }, lead,
@@ -8379,6 +8407,187 @@ function refFrame(n, at, o) {
   document.body.append(shade);
   show(at);
   return { close, redraw: () => show(cur) };
+}
+// -- people added by hand: someone who isn't a LinkedIn connection (a friend, an ex-colleague, someone met in person). They are kept
+// in jobwatch's own state (never in the LinkedIn file, which a fresh export overwrites) and listed like any connection: the same
+// Ask? / Ask first / Skip pill, the same "You know" lines, matched to a company by its name however it is spelled. One large dialog
+// adds or edits one (openPersonForm); an added person's dialog has Edit and Delete (a connection can only be skipped).
+const REACH_PICK = [["whatsapp", "WhatsApp"], ["text", "Text"], ["email", "Email"], ["phone", "Phone"], ["in person", "In person"]];
+const REACH_LABEL = Object.fromEntries(REACH_PICK);
+// The company names the autocomplete offers before anything is typed: the cards on the page (set by renderReferrals).
+let refNames = [];
+// "Added Nov 2026", from an ISO time ("" when there is none).
+const refAdded = at => { const m = /^(\d{4})-(\d{2})/.exec(at || ""); return m ? `${MONTHS[m[2] - 1]} ${m[1]}` : ""; };
+// Every Referrals dialog still open, so one that is changed under them (a person removed) can close them all.
+const refClosers = new Set();
+const closeRefDialogs = () => [...refClosers].forEach(close => close());
+// The large dialog that adds a person (o.person: null) or changes one added by hand (o.person: them). o.company fills the company in,
+// o.names are company names to suggest (more are looked up as you type; any text is allowed), and o.done(saved) runs once saved. Esc and a
+// click outside close it, Tab stays inside, and focus goes back to the button that opened it. Name and company are required; someone already
+// listed with that name at that company is flagged as you type ("Already in your connections") and not saved.
+function openPersonForm(o = {}) {
+  const editing = o.person || null, opener = document.activeElement, v = editing || {};
+  const shade = h("div", { class: "overlay rank-shade ref-shade person-shade", style: "display:flex", onclick: e => { if (e.target === shade) close(); } });
+  const box = h("div", { class: "dialog rank-dialog ref-dialog person-dialog", role: "dialog", "aria-modal": "true", tabindex: "-1",
+    "aria-label": editing ? `Change ${editing.name}` : "Add a person" });
+  const close = () => {
+    shade.remove(); document.removeEventListener("keydown", keys, true); refClosers.delete(close);
+    if (opener && opener.isConnected) opener.focus();
+  };
+  const keys = e => {
+    if (topDialog() !== shade) return;  // a toast or another dialog on top takes the keys
+    if (e.key === "Escape") { e.stopImmediatePropagation(); close(); }
+    else if (e.key === "Tab") trapTab(box, e);
+  };
+  const names = h("datalist", { id: "addp-companies" }, refNames.map(n => h("option", { value: n })));
+  const text = (key, ph, extra = {}) => { const i = h("input", { type: "text", name: key, placeholder: ph, autocomplete: "off", spellcheck: "false", ...extra }); i.value = v[key] || ""; return i; };
+  const f = { name: text("name", "Jane Doe", { maxlength: 120, "aria-required": "true" }),
+    company: text("company", "Globex", { maxlength: 120, list: "addp-companies", "aria-required": "true" }),
+    title: text("title", "Staff Engineer (optional)", { maxlength: 120 }),
+    url: text("url", "linkedin.com/in/jane-doe (optional)", { inputmode: "url" }),
+    email: text("email", "jane@example.com (optional)", { inputmode: "email" }), phone: text("phone", "(optional)", { inputmode: "tel" }) };
+  f.title.value = v.position || "";
+  f.company.value = v.company || o.company || "";
+  const note = h("textarea", { class: "ref-note", name: "note", rows: 3, maxlength: 200, placeholder: "e.g. not on LinkedIn; met at a meetup; worked together at Initech" });
+  note.value = v.about || "";
+  let reach = v.reach || "";
+  const picks = h("div", { class: "addp-reach", role: "radiogroup", "aria-label": "How you reach them" }, REACH_PICK.map(([k, label]) =>
+    h("button", { class: "chip toggle" + (k === reach ? " on" : ""), type: "button", role: "radio", "data-reach": k, "aria-checked": String(k === reach),
+      title: k === reach ? "Click again to clear" : `You reach them by ${label.toLowerCase()}`,
+      onclick: () => { reach = reach === k ? "" : k; for (const b of picks.children) { const on = b.dataset.reach === reach; b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on)); } } }, label)));
+  const err = Object.fromEntries(["name", "company"].map(k => [k, h("div", { class: "addp-err small error", role: "alert", hidden: true })]));
+  const dupBox = h("div", { class: "addp-dup", role: "status", hidden: true });
+  const formErr = h("div", { class: "addp-err small error", role: "alert", hidden: true });
+  const save = h("button", { class: "btn primary", type: "submit" }, editing ? "Save" : "Add person");
+  let dup = null, asked = 0, timer = 0;
+  // asks the server whether this name is already listed at this company; the newest answer wins
+  const looksDuplicate = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const name = f.name.value.trim(), co = f.company.value.trim(), n = ++asked;
+      let found = null;
+      if (name && co) { try { found = (await api(`/api/referrals/duplicate?name=${encodeURIComponent(name)}&company=${encodeURIComponent(co)}`)).duplicate; } catch { found = null; } }
+      if (n !== asked) return;
+      dup = found && !(editing && found.name.toLowerCase() === editing.name.toLowerCase()) ? found : null;
+      dupBox.hidden = !dup;
+      dupBox.textContent = dup ? `Already ${dup.by_hand ? "added by hand" : "in your connections"}: ${dup.name} at ${dup.company}.` : "";
+      f.name.setAttribute("aria-invalid", String(!!dup));
+      save.disabled = !!dup;
+    }, 250);
+  };
+  // more company names as you type: the tracked ones that match
+  let looked = 0;
+  f.company.addEventListener("input", async () => {
+    looksDuplicate();
+    const q = f.company.value.trim(), n = ++looked;
+    if (q.length < 2) return;
+    try {
+      const found = await api(`/api/companies?q=${encodeURIComponent(q)}`);
+      if (n === looked) fill(names, [...new Set([...found.map(c => c.name), ...refNames])].map(c => h("option", { value: c })));
+    } catch { /* the page's own names stay */ }
+  });
+  f.name.addEventListener("input", looksDuplicate);
+  const check = () => {
+    let first = null;
+    for (const k of ["name", "company"]) {
+      const bad = !f[k].value.trim();
+      err[k].hidden = !bad;
+      err[k].textContent = bad ? (k === "name" ? "Their name is needed." : "Where they work is needed.") : "";
+      f[k].setAttribute("aria-invalid", String(bad));
+      if (bad && !first) first = f[k];
+    }
+    if (first) first.focus();
+    return !first;
+  };
+  const submit = async e => {
+    e.preventDefault();
+    formErr.hidden = true;
+    if (!check() || dup) return;
+    save.disabled = true;
+    save.textContent = "Saving…";
+    const body = { name: f.name.value, company: f.company.value, title: f.title.value, note: note.value, reach, url: f.url.value, email: f.email.value, phone: f.phone.value };
+    try {
+      const saved = editing ? await api("/api/referrals/person", { who: editing.key, ...body }) : await api("/api/referrals/add", body);
+      close();
+      await o.done(saved, editing);
+    } catch (x) {
+      formErr.textContent = x.message; formErr.hidden = false; save.disabled = !!dup; save.textContent = editing ? "Save" : "Add person";
+      if (/^Already /.test(x.message)) { dupBox.hidden = false; dupBox.textContent = x.message; }
+    }
+  };
+  const row = (label, input, help, ...extra) => h("label", { class: "addp-f" }, h("span", { class: "addp-l" }, label), input, ...extra, help ? h("span", { class: "small muted" }, help) : null);
+  document.addEventListener("keydown", keys, true);
+  refClosers.add(close);
+  fill(box,
+    h("div", { class: "rk-head" }, h("div", { class: "ref-av addp-av", "aria-hidden": "true" }, icon("users", 22)),
+      h("div", { class: "rk-title" }, h("h2", {}, editing ? `Change ${editing.name}` : "Add a person"),
+        h("div", { class: "muted small" }, editing ? "Added by hand: not from LinkedIn." : "Someone you know who isn't a LinkedIn connection: a friend, an ex-colleague, someone you met.")),
+      closeButton(close)),
+    h("form", { class: "ref-list over", novalidate: true, onsubmit: submit }, h("div", { class: "ref-over" },
+      h("section", { class: "ref-sec" }, h("h3", {}, "Who"),
+        h("div", { class: "addp-grid" },
+          row("Name *", f.name, null, err.name), row("Company *", f.company, "Any spelling of a tracked company's name matches (Globex, Globex Corporation).", names, err.company),
+          row("Title", f.title)),
+        dupBox),
+      h("section", { class: "ref-sec" }, h("h3", {}, "How you reach them"),
+        picks, h("div", { class: "small muted" }, "Shown beside their name on the cards. Pick one, or leave it and say how in the note.")),
+      h("section", { class: "ref-sec" }, h("h3", {}, "How you know them"),
+        note, h("div", { class: "small muted" }, "A few words, shown on the card and beside their name (up to 200 characters).")),
+      h("section", { class: "ref-sec" }, h("h3", {}, "Contact details (optional)"),
+        h("div", { class: "addp-grid" }, row("LinkedIn link", f.url), row("Email", f.email), row("Phone", f.phone))),
+      formErr,
+      h("div", { class: "row addp-actions" }, save, h("button", { class: "btn", type: "button", onclick: close }, "Cancel"),
+        h("span", { class: "small muted" }, "Kept in jobwatch on this computer, apart from your LinkedIn file."))
+    )));
+  shade.append(box);
+  document.body.append(shade);
+  f.name.focus();
+}
+// Add a person from anywhere (the Referrals toolbar, a company card, the Company tab); company fills the company field in.
+function openAddPerson(company = "") {
+  openPersonForm({ company, names: refNames, done: personAdded });
+}
+// After a person is added: "Added NAME at COMPANY. Undo" for 8 seconds, and a word when no job you track is at that company yet (so
+// they have no card yet); the page behind is drawn again.
+async function personAdded(got) {
+  const where = got.tracked ? "" : ` No job you track is at ${got.company} yet: they show on its card once one is.`;
+  toast(`Added ${got.name} at ${got.company}.${where}`, async () => {
+    try { await api("/api/referrals/remove", { who: got.key }); } catch (e) { toast(e.message); return; }
+    await render();
+  }, "win", "Undo", 8000);
+  await render();
+}
+// "+ Add" for a company: opens the add dialog with it filled in.
+function addPersonButton(company, cls = "") {
+  return h("button", { class: `btn ghost ref-addbtn ${cls}`.trim(), type: "button", "aria-haspopup": "dialog", title: `Add someone you know at ${company}, even if they aren't on LinkedIn`,
+    "aria-label": `Add a person at ${company}`, onclick: () => openAddPerson(company) }, icon("plus", 12), cls === "ref-addcard" ? null : "Add");
+}
+// Change a person added by hand, from their dialog. Saved, they are updated in place (redraw: the dialog again; the lists behind share the
+// object); one moved to another company closes the Referrals dialogs instead (close), since the company they were listed under is out of date.
+function changeAdded(p, redraw, close) {
+  openPersonForm({ person: p, names: refNames, done: async saved => {
+    const moved = saved.company !== p.company;
+    Object.assign(p, saved);
+    toast("Saved");
+    if (moved) close(); else redraw();
+    await render();
+  } });
+}
+// Delete a person added by hand: they go at once with "Removed NAME. Undo" for 8 seconds (Undo puts them back as they were, on the day
+// they were added, with their choice). The Referrals dialogs close, since the lists in them are out of date.
+async function removeAdded(p) {
+  let gone;
+  try { gone = await api("/api/referrals/remove", { who: p.key }); } catch (e) { toast(e.message); return; }
+  closeRefDialogs();
+  toast(`Removed ${gone.name}.`, async () => {
+    try {
+      const back = await api("/api/referrals/add", { name: gone.name, company: gone.company, title: gone.position, note: gone.about, reach: gone.reach,
+        url: gone.url, email: gone.email, phone: gone.phone, added_at: gone.added_at });
+      if (gone.verdict) await rateContact(back.key, gone.verdict, "");
+    } catch (e) { toast(e.message); return; }
+    await render();
+  }, "onward", "Undo", 8000);
+  await render();
 }
 // A company's overview (the dialog's first tab): the counts, what you are working there, the best good fits, the people you
 // know, what is kept of its health, and the way to its page. go(tab) switches tab; close shuts the dialog.
@@ -8432,8 +8641,14 @@ function openRefPerson(people, at, ctx) {
           : [refSegments(p, choose),
             p.verdict ? h("button", { class: "btn ghost ref-clearchoice", type: "button", title: "Back to no preference: the default order",
               onclick: () => choose("none") }, "Clear") : null,
-            note, h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: save }, "Save note"),
-              h("span", { class: "small muted" }, "Kept with their name, and shown on the cards."))]),
+            p.by_hand ? h("div", { class: "small muted" }, "Their note is kept with their details, under Added by hand below.")  // (a note box would only echo it)
+              : [note, h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: save }, "Save note"),
+                h("span", { class: "small muted" }, "Kept with their name, and shown on the cards."))]]),
+        p.by_hand ? sec("Added by hand", h("div", { class: "small muted" }, "Not from LinkedIn: kept in jobwatch, so a new LinkedIn export never drops them."),
+          h("div", { class: "ref-facts" }, fact("Added", refAdded(p.added_at) || "by hand"), fact("How you reach them", REACH_LABEL[p.reach] || "not said"),
+            fact("Note", p.about || "none"), p.email ? fact("Email", p.email) : null, p.phone ? fact("Phone", p.phone) : null),
+          h("div", { class: "row" }, h("button", { class: "btn", type: "button", onclick: () => changeAdded(p, () => frame.redraw(), closeRefDialogs) }, icon("pencil", 13), " Edit"),
+            h("button", { class: "btn ghost ref-delete", type: "button", title: "Remove them from jobwatch (Undo right after)", onclick: () => removeAdded(p) }, icon("trash", 13), " Delete"))) : null,
         sec("About", h("div", { class: "ref-facts" }, fact("Name", p.name), fact("Title", p.position || "not listed"), fact("Company", c ? c.name : p.company),
           fact("How close", refWhy(p.why)), fact("Last messaged", refLast(p) ? refWhy(refLast(p)) : "never in your data"))),
         sec("Links", p.url ? link(p.url, "LinkedIn profile ↗", "btn")
@@ -8517,10 +8732,13 @@ function refPerson(p, ctx) {
     title: p.note ? "Note: " + p.note : "Details and a note", onclick: open }, icon("note", 14));
   const act = p.from_file ? h("div", { class: "pp-act" }, h("span", { class: "small muted", title: "In your watchlist file (connections_skip): edit it there" }, "in your file"), more)
     : h("div", { class: "pp-act" }, refPill(p, rate, open), more);
-  const why = p.why ? refWhy(p.why) : "no messages or endorsements";
+  // someone added by hand has the tag beside the name, so their line says what else is known of how close you are (else when they were added)
+  const ties = p.by_hand ? (p.why || "").replace(/;?\s*added by hand/, "").replace(/^;\s*/, "") : p.why;
+  const why = p.by_hand ? (ties ? refWhy(ties) : refAdded(p.added_at) ? "added " + refAdded(p.added_at) : "") : p.why ? refWhy(p.why) : "no messages or endorsements";
   return h("div", { class: "ref-p" + (p.verdict === "use" ? " use" : ""), style: `--h:${nameHue(p.name)}` },
     h("button", { class: "ref-avbtn", type: "button", tabindex: "-1", "aria-hidden": "true", onclick: open }, refAvatar(p.name)),
-    h("div", { class: "pp-name" }, h("button", { class: "pp-namebtn", type: "button", title: p.name + ": details and a note", "aria-label": p.name + ": details and a note", onclick: open }, marked(p.name, tokens))),
+    h("div", { class: "pp-name" }, h("button", { class: "pp-namebtn", type: "button", title: p.name + ": details and a note", "aria-label": p.name + ": details and a note", onclick: open }, marked(p.name, tokens)),
+      p.by_hand ? h("span", { class: "chip ref-hand", title: "Added by hand: not one of your LinkedIn connections" }, "added by hand") : null),
     act,
     h("div", { class: "pp-sub", title: p.position || "" }, p.position ? marked(p.position, tokens) : h("span", { class: "muted" }, "no title listed")),
     h("button", { class: "pp-sub2", type: "button", title: [why, p.note && "Note: " + p.note].filter(Boolean).join("\n"), onclick: open },
@@ -8566,7 +8784,8 @@ function refCard(c, ctx, i) {
     h("div", { class: "ref-top" },
       h("a", { class: "ref-logo", ...toCompany, tabindex: "-1" }, monogram(c.name)),
       h("a", { class: "ref-name", ...toCompany }, marked(c.name, tokens)),
-      // just the people icon and the count, at the right of the name's row; the words are the label and the tooltip
+      // a small + to add someone here, then just the people icon and the count, at the right of the name's row; the words are the label and the tooltip
+      ctx.add ? addPersonButton(c.name, "ref-addcard") : null,
       reg("overview", h("button", { class: "ref-know", type: "button", "aria-haspopup": "dialog", "aria-label": people.known,
         title: `${people.known} at ${c.name}: open the list` }, icon("users", 12), h("span", { "aria-hidden": "true" }, String(c.people.length))))),
     jobs, list, foot);
@@ -8582,7 +8801,8 @@ function refFirstRun() {
         "whom you talk to, so those people come first). LinkedIn emails you a .zip."),
       h("li", {}, "Upload that .zip (or just its Connections.csv) in ", h("a", { href: "#settings/people" }, "Settings → People & pay"), "."),
       h("li", {}, "Come back here: each company with a tracked job and someone you know gets a card, with its best-fitting jobs and those people.")),
-    h("p", { class: "small muted" }, "jobwatch has no way to add a single contact by hand yet. Companies and their jobs come from the boards you watch (",
+    h("p", {}, "Someone who isn't on LinkedIn (a friend, an ex-colleague)? Add them by hand with ", h("b", {}, "Add a person"), " above: it works without any LinkedIn data."),
+    h("p", { class: "small muted" }, "Companies and their jobs come from the boards you watch (",
       h("a", { href: "#settings/search" }, "Settings → Your search"), ")."));
 }
 // What shows when you have connections but none works at a company with a tracked job.
@@ -8594,9 +8814,12 @@ function refNoCompany() {
 }
 async function renderReferrals() {
   const d = await api("/api/referrals");
-  const head = pagehead("Referrals", "People you know (from your LinkedIn connections) at the companies you're tracking: a referral gets read before " +
+  const head = pagehead("Referrals", "People you know (your LinkedIn connections, and anyone you add by hand) at the companies you're tracking: a referral gets read before " +
     "an application does. Set each person to Ask first or Skip with the pill beside their name.");
-  if (!d.has_connections) return put(head, refFirstRun());
+  // "Add a person": someone who isn't a LinkedIn connection (a friend, an ex-colleague); the first button of the toolbar, with or without LinkedIn data
+  const addBtn = h("button", { class: "btn primary ref-add", type: "button", "aria-haspopup": "dialog",
+    title: "Add someone you know who isn't a LinkedIn connection: a friend, an ex-colleague, someone you met", onclick: () => openAddPerson() }, icon("plus", 14), "Add a person");
+  if (!d.has_connections) return put(head, h("div", { class: "ref-bar" }, addBtn), refFirstRun());
   // Saves one person's choice. A new Skip says so, with Undo for 8 seconds; any other change says "Saved" (quiet: the note's own save says it too).
   const rate = async (p, verdict, note, quiet) => {
     const before = { verdict: p.verdict, note: p.note };
@@ -8616,6 +8839,7 @@ async function renderReferrals() {
     h("button", { class: "btn ghost ref-gotit", type: "button", "aria-label": "Hide this explanation", title: "Hide this explanation (it stays hidden)",
       onclick: () => { remember("referrals.legend", "1"); legend.remove(); } }, "Got it"));
   const companies = refCompanies(d), left = d.skipped;
+  refNames = [...new Set(companies.map(c => c.name))].sort((a, b) => a.localeCompare(b));
   const grid = h("div", { class: "cards ref-grid" }), moreHost = h("div", { class: "ref-morehost" }), foldHost = h("div"), noteHost = h("div");
   const total = h("span", { class: "ref-total small muted", "aria-live": "polite" });
   let shown = [], drawn = false;
@@ -8624,7 +8848,7 @@ async function renderReferrals() {
     refButtons.clear();
     const tokens = searchTokens(refView.q);
     shown = refVisible(companies, refView);
-    const ctx = { tokens, rate, navigable };
+    const ctx = { tokens, rate, navigable, add: true };
     // a long list shows REF_PAGE cards at a time (the cards are equal in height, so more is a button, not a long scroll to build)
     const hidden = refView.noGood ? refHidden(companies, refView) : [], quiet = companies.filter(refNoGoodFits).length;
     fill(grid, shown.length ? shown.slice(0, refView.limit).map((c, i) => refCard(c, ctx, i))
@@ -8693,10 +8917,11 @@ async function renderReferrals() {
   noGoodChip.classList.toggle("on", refView.noGood); noGoodChip.setAttribute("aria-pressed", String(refView.noGood));
   draw();
   put(head, legend,
-    companies.length || left.length ? h("div", { class: "ref-bar" },
+    companies.length || left.length ? h("div", { class: "ref-bar" }, addBtn,
       h("div", { class: "ref-search" }, icon("search", 15), input, h("kbd", { title: "Press / to search" }, "/"), clear),
       sort, toggle("ask", "Ask first", "Only the people you set to Ask first"),
-      toggle("working", "Working a job", "Only the companies where you queued or applied to a job"), noGoodChip, notSugChip, total) : null,
+      toggle("working", "Working a job", "Only the companies where you queued or applied to a job"), noGoodChip, notSugChip, total)
+      : h("div", { class: "ref-bar" }, addBtn),
     noteHost,
     d.min_fit_set === false && companies.length ? h("div", { class: "ref-hint ref-nofit ref-nomin" },
       `You have not set a Fit minimum, so a job counts as a good fit from a score of ${d.min_fit} (the default). Set your own in `,
@@ -9906,7 +10131,7 @@ async function renderCompany() {
     pagehead(c.company, "Everything tracked here, whatever its status.", careersChip(c.company, c.careers), jumpBox),
     layout([
       tiles,
-      c.contacts.length || c.find_referral ? panel("People you know", peopleRow(c, 8)) : null,
+      c.contacts.length || c.find_referral ? panel("People you know", peopleRow(c, 8), h("div", { class: "pmore" }, addPersonButton(c.company))) : null,
       w.watched ? null : panel("Not watched", h("div", { class: "warns" }, "Its board isn't on your watchlist, so new roles there aren't checked. "),
         w.suggested ? h("button", { class: "btn", onclick: e => watch(e.currentTarget),
           title: w.entry ? `Watch ${w.entry}` : "Look for its board by name and watch it" }, "Watch its board")

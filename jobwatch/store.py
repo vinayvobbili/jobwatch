@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from . import actjobs, linkedin, rounds, scorestate, storyfit
-from .contacts import company_key
+from .contacts import clean_person, company_key, person_key
 from .degrees import reconcile
 from .models import Job
 from .package import POSTING, Package
@@ -234,6 +234,18 @@ CREATE TABLE IF NOT EXISTS referral_feedback (
     verdict TEXT NOT NULL,
     note TEXT NOT NULL DEFAULT '',
     set_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS added_people (
+    person TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    company TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    reach TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    phone TEXT NOT NULL DEFAULT '',
+    added_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS comps (
     key TEXT PRIMARY KEY,
@@ -1989,6 +2001,70 @@ class Store:
         """{person: {verdict, note, set_at}} for everyone rated."""
         return {r["person"]: {"verdict": r["verdict"], "note": r["note"], "set_at": r["set_at"]}
                 for r in self.db.execute("SELECT * FROM referral_feedback")}
+
+    # -- people added by hand (a friend, an ex-colleague: not in LinkedIn's export, which a fresh export would
+    # overwrite): keyed like the feedback about them (contacts.person_key), so their choice and note go with them
+
+    def add_person(self, name: str, company: str, title: str = "", note: str = "", reach: str = "", url: str = "",
+                   email: str = "", phone: str = "", added_at: str | None = None) -> dict:
+        """Keep someone you know at a company. Returns them as Contacts lists them (key, name, company, position,
+        about, reach, url, email, phone, added_at). Raises ValueError for a missing name or company, a bad link,
+        email or reach, or someone already added (same name and link)."""
+        p = clean_person(name, company, title, note, reach, url, email, phone)
+        key = person_key(p)
+        try:
+            with self.db:
+                self.db.execute("INSERT INTO added_people (person, name, company, title, note, reach, url, email, "
+                                "phone, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                (key, p["name"], p["company"], p["position"], p["about"], p["reach"], p["url"],
+                                 p["email"], p["phone"], added_at or _now()))
+        except sqlite3.IntegrityError:
+            raise ValueError(f"{p['name']} is already added by hand: edit them instead") from None
+        return self.added_person(key)
+
+    def update_person(self, key: str, **fields: str | None) -> dict:
+        """Change what is kept of a person added by hand (name, company, title, note, reach, url, email, phone:
+        one left out stays; an empty one is cleared). Their key follows a changed name or link, with the choice
+        made about them. Returns the person."""
+        old = self.added_person(key)
+        if not old:
+            raise ValueError("no one added by hand matches that")
+        mine = {"name": old["name"], "company": old["company"], "title": old["position"], "note": old["about"],
+                "reach": old["reach"], "url": old["url"], "email": old["email"], "phone": old["phone"]}
+        new = clean_person(**mine | {k: v for k, v in fields.items() if v is not None})
+        new_key = person_key(new)
+        try:
+            with self.db:
+                self.db.execute("UPDATE added_people SET person=?, name=?, company=?, title=?, note=?, reach=?, url=?, "
+                                "email=?, phone=? WHERE person=?",
+                                (new_key, new["name"], new["company"], new["position"], new["about"], new["reach"],
+                                 new["url"], new["email"], new["phone"], key))
+                if new_key != key:  # the choice and note made about them follow
+                    self.db.execute("UPDATE OR REPLACE referral_feedback SET person=? WHERE person=?", (new_key, key))
+        except sqlite3.IntegrityError:
+            raise ValueError(f"{new['name']} is already added by hand") from None
+        return self.added_person(new_key)
+
+    def remove_person(self, key: str) -> bool:
+        """Forget someone added by hand, and what was said about them. Returns whether there was one."""
+        with self.db:
+            self.db.execute("DELETE FROM referral_feedback WHERE person=?", (key,))
+            return bool(self.db.execute("DELETE FROM added_people WHERE person=?", (key,)).rowcount)
+
+    def added_person(self, key: str) -> dict | None:
+        r = self.db.execute("SELECT * FROM added_people WHERE person=?", (key,)).fetchone()
+        return self._added(r) if r else None
+
+    def added_people(self) -> list[dict]:
+        """Everyone added by hand, the first added first."""
+        return [self._added(r) for r in self.db.execute("SELECT * FROM added_people ORDER BY added_at, person")]
+
+    @staticmethod
+    def _added(r: sqlite3.Row) -> dict:
+        return {"key": r["person"], "name": r["name"], "company": r["company"], "position": r["title"],
+                "about": r["note"],
+                "reach": r["reach"], "url": r["url"], "email": r["email"], "phone": r["phone"],
+                "added_at": r["added_at"]}
 
     def _backfill_unwatched(self):
         """Fill in the companies from jobs recorded before there were suggestions: those from job-alert emails

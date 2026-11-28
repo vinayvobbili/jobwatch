@@ -179,7 +179,8 @@ def _from_connections(cfg: Config, job: Job) -> list[dict]:
     if not known:
         return []
     return [{"name": p["name"], "role": _role_of(p.get("position", "")), "title": p.get("position", ""),
-             "email": "", "url": p.get("url", ""), "evidence": "", "key": p["key"], "verdict": p.get("verdict", ""),
+             "email": p.get("email", ""), "url": p.get("url", ""), "evidence": "", "key": p["key"],
+             "verdict": p.get("verdict", ""),
              "source": "connection",
              "why": "you know them" + (f" ({p['why']})" if p.get("why") else "")
              + (f": {p['note']}" if p.get("note") else "")}
@@ -246,7 +247,8 @@ def who(cfg: Config, store: Store, key: str) -> dict:
     ordered = sorted(seen.values(), key=_rank)[:MAX_PEOPLE]  # a stable sort: the first place that names one leads
     return {"key": job.key, "company": job.display_company, "title": job.title, "status": rec["status"],
             "existing": _existing(store, job, rec), "people": ordered,
-            "search": search_links(job.display_company, job.title), "has_connections": bool(cfg.connections)}
+            "search": search_links(job.display_company, job.title),
+            "has_connections": bool(cfg.connections or load_contacts(cfg))}
 
 
 def _rank(p: dict) -> int:

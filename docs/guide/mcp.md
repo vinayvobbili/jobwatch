@@ -12,7 +12,8 @@
   `get_rounds` and `set_round` (an application's interview rounds as a timeline: add, edit, finish or delete one),
   `find_duplicates` (`get_job` and `list_queued_jobs` give each job's `duplicate_of`), `get_company`,
   `tailor_resume` (with [resume-kit](https://github.com/vinayvobbili/resume-kit): a resume built for one job and
-  kept as its resume), `rate_contact`, `read_profile` (the roles on a LinkedIn experience page whose text you pasted: who the
+  kept as its resume), `rate_contact`, `add_contact` and `remove_contact` (someone you know who isn't a LinkedIn
+  connection, added by hand), `read_profile` (the roles on a LinkedIn experience page whose text you pasted: who the
   interviewer is; it never fetches linkedin.com)
 - **What was sent:** `save_application_package`, `get_application_package`, `find_past_answers`,
   `get_interview_prep`, `save_story`, `draft_followup` (a follow-up or thank-you email draft for an

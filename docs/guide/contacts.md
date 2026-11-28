@@ -47,7 +47,8 @@ LinkedIn connections who work at a company with a job you're tracking, so you ca
 until you've uploaded it, the tab explains this in plain words and links to the upload under Settings → People &
 pay. Second, tracked jobs: companies you watch (Settings → Your search) and jobs you added or queued. If you
 have connections but nobody works at a company you track yet, the tab says so and points to where to add
-companies. There is no way to add a single contact by hand yet. Nothing here assumes a particular setup: with no Fit
+companies. A person who isn't on LinkedIn can be added by hand (see below), with or without any LinkedIn data.
+Nothing here assumes a particular setup: with no Fit
 minimum set, a tracked company's jobs count as good fits from a fit score of 60, and a note under the search bar says so,
 with a link to where you set your own.
 
@@ -100,7 +101,7 @@ appears when someone is set to Skip: it opens that section at the foot of the pa
 skipped people too: the section opens by itself with them, each with the Skip pill. **Hide companies with no good
 fits** (the eye-off chip, remembered in your browser, off at first) hides the companies whose card reads "No good fit
 yet" (the Fit minimum decides); one you have an application in flight at (queued, applied, screening, interviewing) or
-a person you set to Ask first at is never hidden. Nothing disappears silently: the count reads "3 of 6 companies · 7
+a person you set to Ask first or added by hand at is never hidden. Nothing disappears silently: the count reads "3 of 6 companies · 7
 people (3 hidden: no good fits)", a search that matches a hidden company says "1 match hidden by 'no good fits'" with a
 **Show it** button, and when more than a quarter of your companies have no good fits the tab offers to hide them. A long list is not rendered at
 once: 24 cards at a time with a "Show 24 more companies" button (hundreds of companies stay quick, and a search always
@@ -117,6 +118,46 @@ jobwatch referrals --clear "Bo Chen"                # NAME is a full name or a l
 
 The MCP tool is `rate_contact` (who, verdict `use`, `skip` or `clear`, note). What you say is kept in the
 state file next to your jobs, keyed by profile link (or name when there is none).
+
+## People who aren't on LinkedIn
+
+A friend, an ex-colleague or someone you met in person may not be one of your LinkedIn connections, or not on LinkedIn
+at all. Add them by hand and jobwatch treats them like any connection: the Referrals tab, the "You know" lines on Today
+and the queue, the Company tab's people, **Who to contact** and the drafts all list them, with the same **Ask? / Ask
+first / Skip** choice and note.
+
+- **In the page.** The **Add a person** button in the Referrals toolbar, or the **+** on a company's card (the Company
+  tab has one too, with the company filled in), opens a large dialog (Esc closes it). Name and company are required;
+  title, a few words on how you know them (up to 200 characters), a LinkedIn link, an email and a phone are optional.
+  **How you reach them** is a quick pick: WhatsApp, Text, Email, Phone or In person. It shows beside their name, as
+  "reach on WhatsApp". The company box suggests the companies you track and takes any text. If someone is already
+  listed with that name at that company, the dialog says "Already in your connections" and does not save. Once saved,
+  the person is on the company's card with the muted **Ask?** pill and an **added by hand** tag, and a toast says
+  "Added Jane Doe at Globex" with **Undo** for 8 seconds. If no job you track is at that company yet, the toast says so:
+  they show on its card as soon as one is.
+- **Change or delete.** A person added by hand has an **Added by hand** section in their dialog with **Edit** (the same
+  dialog) and **Delete** ("Removed Jane Doe", with **Undo** for 8 seconds, which puts back everything, even your choice).
+  A person from your LinkedIn data cannot be deleted, only set to Skip.
+- **From the terminal.**
+
+```
+jobwatch referrals --add "Jane Doe" --company "Globex" --title "Staff Engineer" --note "met at a meetup" --reach whatsapp
+jobwatch referrals --add "Jane Doe" --company "Globex Corporation" --url linkedin.com/in/jane-doe --email jane@example.com --phone 555-0100
+jobwatch referrals --remove "Jane Doe"       # only people added by hand; a connection can only be skipped
+```
+
+  Only the name and `--company` are needed. The list marks them `[added by hand]`. The MCP tools are `add_contact` and
+  `remove_contact`.
+
+Added people are kept in jobwatch's own state file (next to your jobs), not in the LinkedIn file or the watchlist, so
+uploading a new LinkedIn export or replacing Connections.csv never drops them. They match a company the way
+connections do: "Globex", "Globex Corporation" and "globex" are one company. Your choice for them (Ask first or Skip)
+is kept with them, and a person you change to another name or LinkedIn link keeps it.
+
+**How close they rank.** Someone you added on purpose is a close tie: they rank like someone you exchanged five messages
+with, above a connection who only accepted a request or endorsed you, and below your real correspondents (people you
+have messaged often) and anyone you chose **Ask first** for, who always lead. If your LinkedIn archive also has messages
+with them, whichever is closer counts. "Added by hand" is the reason shown, in place of "messaged 5×".
 
 ## Who to contact, and what to say
 

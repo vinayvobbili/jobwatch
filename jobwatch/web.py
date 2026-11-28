@@ -1228,6 +1228,58 @@ class App:
             return {"key": p["key"], "name": p["name"], "verdict": p["verdict"], "note": p["note"]}
         return self._with_store(run)
 
+    PERSON = ("key", "name", "company", "position", "about", "reach", "note", "url", "email", "phone", "added_at",
+              "by_hand", "verdict")
+
+    def get_referral_duplicate(self, q) -> dict:
+        """Whether someone is already listed with this name at this company (`name`, `company`): the add dialog asks
+        as it is filled in. {"duplicate": {name, company, by_hand} or None}."""
+        name, company = ((q.get(k) or [""])[0] for k in ("name", "company"))
+
+        def run(cfg, store):
+            dup = referrals.duplicate(cfg, name, company) if name.strip() and company.strip() else None
+            return {"duplicate": dup and {k: dup[k] for k in ("name", "company", "by_hand")}}
+        return self._with_store(run)
+
+    def post_referral_add(self, body) -> dict:
+        """Add someone who isn't a LinkedIn connection (see referrals.add): name and company, and any of title, note,
+        reach, url, email, phone (and added_at, to put back someone just removed). 409 when already listed."""
+        def run(cfg, store):
+            try:
+                fields = [str(body.get(k) or "") for k in ("name", "company", "title", "note", "reach", "url", "email",
+                                                           "phone")]
+                p = referrals.add(cfg, store, *fields, body.get("added_at") or None)
+            except referrals.AlreadyKnown as e:
+                raise ApiError(str(e), HTTPStatus.CONFLICT) from None
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+            return {**{k: p[k] for k in self.PERSON}, "tracked": p["tracked"]}
+        return self._with_store(run)
+
+    def post_referral_person(self, body) -> dict:
+        """Change someone added by hand (who: their key or name): any of name, company, title, note, reach, url,
+        email, phone; one left out stays, an empty one is cleared."""
+        def run(cfg, store):
+            fields = {k: str(body[k]) for k in ("name", "company", "title", "note", "reach", "url", "email", "phone")
+                      if body.get(k) is not None}
+            try:
+                p = referrals.update(cfg, store, body.get("who") or "", **fields)
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+            return {k: p[k] for k in self.PERSON}
+        return self._with_store(run)
+
+    def post_referral_remove(self, body) -> dict:
+        """Forget someone added by hand (who: their key or name). 400 for a LinkedIn connection: they can only be
+        skipped. Returns them, so the page can offer Undo."""
+        def run(cfg, store):
+            try:
+                p = referrals.remove(cfg, store, body.get("who") or "")
+            except ValueError as e:
+                raise ApiError(str(e)) from None
+            return {k: p[k] for k in self.PERSON}
+        return self._with_store(run)
+
     def post_fetch(self, body) -> dict:
         """Check every board now; while a check is running already (the scheduled one), wait for it instead."""
         return self.refresher.fetch()
@@ -2358,6 +2410,10 @@ ROUTES = {
     ("POST", "/api/suggestions/dismiss"): App.post_suggestion_dismiss,
     ("GET", "/api/referrals"): App.get_referrals,
     ("POST", "/api/referrals/rate"): App.post_referral_rate,
+    ("GET", "/api/referrals/duplicate"): App.get_referral_duplicate,
+    ("POST", "/api/referrals/add"): App.post_referral_add,
+    ("POST", "/api/referrals/person"): App.post_referral_person,
+    ("POST", "/api/referrals/remove"): App.post_referral_remove,
     ("GET", "/api/comps"): App.get_comps,
     ("POST", "/api/comp"): App.post_comp,
     ("POST", "/api/health"): App.post_health,

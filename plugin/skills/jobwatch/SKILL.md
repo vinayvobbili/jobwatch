@@ -111,6 +111,10 @@ exactly what was sent.
 - `rate_contact`: record whom the user wants asked for a referral first (`use`) or never (`skip`, e.g. someone
   who doesn't check messages), with a short note; `clear` undoes it. Call it when the user says so about a
   person in a "you know" list.
+- `add_contact`: someone the user knows who isn't a LinkedIn connection (a friend, an ex-colleague), at a company,
+  so they are listed wherever the people the user knows are. Pass only what the user said: never guess a title,
+  email or phone. `remove_contact` forgets one added that way (a LinkedIn connection can only be skipped, with
+  `rate_contact`).
 - `read_profile`: the roles on a LinkedIn experience page, from page text the user copied or you got from their
   browser (never a link: jobwatch doesn't fetch linkedin.com). Use it for who an interviewer is.
 - `check_postings`: whether queued jobs and open applications are still posted.

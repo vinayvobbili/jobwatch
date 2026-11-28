@@ -108,7 +108,9 @@ server = MCPServer(
         "opening). find_duplicates lists such pairs already in the store. get_company looks one company up by name "
         "or domain across every status, closed postings too: its jobs, people the user knows there, and whether its "
         "board is watched. rate_contact records whom the user wants asked for referrals first (use) or never "
-        "(skip), with a short note, when they say so about someone in a contacts list. read_profile turns the text "
+        "(skip), with a short note, when they say so about someone in a contacts list. add_contact adds someone "
+        "the user knows who isn't a LinkedIn connection (a friend, an ex-colleague) at a company, and remove_contact "
+        "forgets one added that way. read_profile turns the text "
         "of a LinkedIn experience page that the person pasted or copied into a list of roles (who the interviewer "
         "is); it only parses that text, jobwatch never fetches linkedin.com. "
         "jobwatch never applies to anything by itself: the person reviews and submits every application."
@@ -1077,6 +1079,61 @@ def rate_contact(
         except ValueError as e:
             raise ToolError(str(e)) from None
         return {k: p[k] for k in ("name", "company", "position", "url", "verdict", "note")}
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(destructive=False))
+def add_contact(
+    name: Annotated[str, Field(description="Their full name (\"Jane Doe\").")],
+    company: Annotated[str, Field(description=(
+        "Where they work, as the person says it (\"Globex\", \"Globex Corporation\": any spelling of a "
+        "tracked company's name matches)."))],
+    title: Annotated[str | None, Field(description="Their job title, if the person knows it.")] = None,
+    note: Annotated[str | None, Field(description=(
+        "How the person knows them or any words to show beside their name, e.g. \"met at a meetup\"."))] = None,
+    reach: Annotated[Literal["whatsapp", "text", "email", "phone", "in person"] | None, Field(description=(
+        "How the person reaches them, if said."))] = None,
+    url: Annotated[str | None, Field(description="Their linkedin.com/in/ link, if they have one.")] = None,
+    email: Annotated[str | None, Field(description="Their email, if the person gave it.")] = None,
+    phone: Annotated[str | None, Field(description="Their phone number, if the person gave it.")] = None,
+) -> dict:
+    """Add someone the person knows who is not one of their LinkedIn connections (a friend, an ex-colleague,
+    someone met in person) so jobwatch lists them wherever it lists the people they know at a company: "You
+    know" lines, the Referrals tab, find_contact, get_company. Call it when the person asks to add someone. Give
+    only what they said: never guess a title, email or phone. Returns the person (name, company, position, note,
+    reach, url, email, phone, added_at) and tracked: whether a job they track is at that company (when not, the
+    person is listed once one is). Errors when someone with that name is already listed at that company; the
+    person can then be rated with rate_contact. Added people are kept in jobwatch's own state, so a new LinkedIn
+    export does not drop them; remove_contact forgets one."""
+    cfg, store = _open()
+    try:
+        try:
+            p = referrals.add(cfg, store, name, company, title or "", note or "", reach or "", url or "", email or "",
+                              phone or "")
+        except ValueError as e:
+            raise ToolError(str(e)) from None
+        return {k: p[k] for k in ("name", "company", "position", "note", "reach", "url", "email", "phone",
+                                  "added_at", "tracked")}
+    finally:
+        store.close()
+
+
+@server.tool(annotations=_hints(destructive=True))
+def remove_contact(
+    who: Annotated[str, Field(description=(
+        "The full name (\"Jane Doe\") or linkedin.com/in/ link of someone added by hand."))],
+) -> dict:
+    """Forget someone added with add_contact, with what was said about them (rate_contact's choice and note). Only
+    for people added by hand: a LinkedIn connection can't be removed here, only skipped with rate_contact. Returns
+    who was removed (name, company). Errors when no one added by hand has that name."""
+    cfg, store = _open()
+    try:
+        try:
+            p = referrals.remove(cfg, store, who)
+        except ValueError as e:
+            raise ToolError(str(e)) from None
+        return {k: p[k] for k in ("name", "company")}
     finally:
         store.close()
 
