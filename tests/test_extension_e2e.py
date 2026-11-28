@@ -1041,7 +1041,7 @@ def test_the_extension_answers_the_pages_ping_with_what_it_can_do(stack, ext):
         page.goto(f"{stack.api_url}/demo/today")
         harness.wait_until(lambda: page.evaluate("() => document.documentElement.dataset.jobwatchCaps") is not None,
                            what="the capabilities")
-        assert page.evaluate("() => document.documentElement.dataset.jobwatchCaps") == "readInBackground"
+        assert page.evaluate("() => document.documentElement.dataset.jobwatchCaps") == "readInBackground autoRead"
     finally:
         page.close()
 
