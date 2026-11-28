@@ -175,13 +175,41 @@ h1.hero-title { font-size: 40px; letter-spacing: -.035em; }
   border-radius: 999px; padding: 1px 10px; cursor: pointer; transition: background .15s, color .15s; }
 .hchip:hover { background: var(--accent-soft); color: var(--accent); }
 .hchip .n { font-variant-numeric: tabular-nums; font-weight: 750; margin-right: 4px; }
-.fpop { position: absolute; top: calc(100% + 6px); left: 0; width: min(420px, calc(100vw - 32px));
-  background: var(--panel-solid); border: 1px solid var(--line); border-radius: 14px; padding: 2px 16px 14px;
-  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .45); animation: pop .2s cubic-bezier(.2, .8, .2, 1) both; }
-.fpop.all { width: min(680px, calc(100vw - 32px)); }
-.fpop textarea { min-height: 88px; }
-.fpop .foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-.fpop .foot .msg { flex: 1; font-size: 13px; }
+/* by default one slim line: the Filters button, then what the filters hide */
+.fbar.slim { padding: 4px 8px; margin-bottom: 12px; gap: 4px 10px; flex-wrap: wrap; }
+.fbar.slim .fline:not(.bad) { flex: 1 1 320px; border-top: 0; margin: 0; padding: 0 2px; }
+.fbtn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 13.5px; }
+.fbtn .fcount { min-width: 20px; padding: 0 6px; border-radius: 999px; text-align: center; font-size: 12px; font-weight: 750;
+  font-variant-numeric: tabular-nums; color: #fff; background: var(--grad); }
+/* the Filters dialog: the parts as cards in plain words, Edit opens that part's editors in place */
+.dialog.rank-dialog.filters-dialog { height: auto; display: flex; flex-direction: column; overflow: hidden; }
+.filters-dialog .rk-head { position: static; flex: none; }
+.fs-av { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; color: #fff; background: var(--grad); flex: none; }
+.fs-body { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr));
+  gap: 14px; padding: 16px 22px; align-content: start; }
+.fs-card { min-width: 0; padding: 12px 16px 14px; }
+.fs-card.editing { border-color: color-mix(in srgb, var(--accent) 55%, transparent); grid-column: 1 / -1; }
+.fs-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--accent); }
+.fs-head h3 { margin: 0; flex: 1; font-size: 15px; color: var(--text); }
+.fs-edit { padding: 2px 10px; font-size: 13px; }
+.fs-row + .fs-row { margin-top: 10px; }
+.fs-k { font-size: 12px; font-weight: 650; color: var(--muted); margin-bottom: 3px; }
+.fs-pats { display: flex; flex-direction: column; gap: 6px; max-height: 9.5em; overflow-y: auto; }
+.fs-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 5px; }
+.fs-without { color: var(--muted); font-size: 12.5px; font-style: italic; margin: 0 2px; }
+.chip.pw { font-size: 12.5px; padding: 0 9px; }
+.chip.pw.no { background: color-mix(in srgb, var(--warn) 13%, transparent); color: var(--warn); }
+.pcode { display: block; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; background: var(--chip);
+  color: var(--chip-text); border-radius: 8px; padding: 3px 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.fs-form textarea { min-height: 88px; }
+.fs-form .foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.fs-form .foot .msg { flex: 1; font-size: 13px; }
+.fs-foot { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 18px;
+  padding: 10px 22px 14px; border-top: 1px solid var(--line); font-size: 13.5px; }
+.fs-foot a { color: var(--accent); }
+.fs-opt { margin: 0; font-weight: 500; font-size: 13.5px; cursor: pointer; }
+.fs-opt input { width: auto; margin: 0; }
+@media (max-width: 900px) { .fs-body { padding: 12px 14px; } .fs-foot { padding: 10px 14px 12px; } }
 .hidden-list .list-item { align-items: flex-start; }
 .hidden-list a.title { color: var(--text); font-weight: 650; text-decoration: none; }
 .hidden-list a.title:hover { color: var(--accent); text-decoration: underline; }
@@ -2279,11 +2307,10 @@ ol.vr-ops li::before { content: counter(op); position: absolute; left: 10px; top
 }
 @media screen {
   /* containers: the top-edge highlight comes with --shadow; the sheen is a layer over their own background */
-  .card, .fbar, .pipeline, .panel, .table-wrap, .fpop, .dialog { background-image: var(--gloss-sheen-panel); }
+  .card, .fbar, .pipeline, .panel, .table-wrap, .dialog { background-image: var(--gloss-sheen-panel); }
   .stat:not(.lead) { background-image: var(--gloss-sheen-panel), linear-gradient(160deg,
     color-mix(in srgb, var(--accent) 10%, var(--panel)), color-mix(in srgb, var(--accent-2) 5%, var(--panel)) 75%); }
   .dialog { box-shadow: var(--gloss-edge-panel), 0 30px 80px -20px rgba(0, 0, 0, .5), 0 0 70px -28px var(--accent); }
-  .fpop { box-shadow: var(--gloss-edge-panel), 0 24px 60px -20px rgba(0, 0, 0, .45), 0 0 50px -26px var(--accent); }
   header { box-shadow: var(--gloss-edge-panel), 0 12px 30px -26px var(--accent); }
   nav { box-shadow: inset 0 1px 3px rgba(20, 26, 46, .1); }
   nav button.on { background-image: var(--gloss-sheen-chip);
@@ -2633,6 +2660,7 @@ const ICONS = {
   external: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3",
   gauge: "M12 14l4-4M3.34 19a10 10 0 1 1 17.32 0",
   chevron: "M9 18l6-6-6-6",
+  filter: "M22 3H2l8 9.46V19l4 2v-8.54z",
   pencil: "M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z",
   check: "M20 6 9 17l-5-5",
   arrow: "M5 12h14M13 5l7 7-7 7",
@@ -5993,13 +6021,113 @@ const FILTER_GROUPS = {
 };
 
 function money(n) { return n >= 1e6 ? `$${+(n / 1e6).toFixed(2)}M` : `$${Math.round(n / 1000)}K`; }
-// A title pattern as words, for the bar: "\b(intern|new grad)\b" reads "intern, new grad". The tooltip keeps it as is.
-function readable(patterns) {
-  return patterns.flatMap(p => p.replace(/\\b/g, "").replace(/\\w[*+]/g, "…").replace(/\[[^\]]*\][?*+]?/g, "")
-    .replace(/(^|[^\\])[()^$]/g, "$1").replace(/\\(.)/g, "$1").split("|")).map(s => s.trim()).filter(Boolean);
+// One filter pattern read as words. The title and text filters are regular expressions: "\b(intern|new grad)\b" says
+// intern, new grad; "^(?!.*(?:product|program)).*\b(?:engineer|architect)\b" says engineer, architect, but not with
+// product or program. Returns {words, without, odd}: what it looks for, what a title must not contain (a negative
+// lookahead), and odd, true when it uses more than words, alternations, anchors and a lookahead (a character class like
+// \d, a count like {2,4}, a lookbehind): then the caller shows the pattern itself, whole, in a code chip.
+function plainPattern(p) {
+  let i = 0, odd = false;
+  const without = [];
+  const cross = (a, b) => {
+    const out = a.flatMap(x => b.map(y => x + y));
+    if (out.length > 60) { odd = true; return out.slice(0, 60); }  // (a|b|c)(d|e|f)...: too many to read as words
+    return out;
+  };
+  // the alternatives from here to the closing ")" (or the end): each a list of the texts it can spell
+  const alts = depth => {
+    const all = [];
+    let seq = [""];
+    const literal = ch => {  // a letter with its count: "s?" and "s*" are left out, "s+" is one
+      const q = p[i];
+      if (q === "?" || q === "*") i++;
+      else if (q === "+") { i++; seq = cross(seq, [ch]); }
+      else if (q === "{") odd = true;
+      else seq = cross(seq, [ch]);
+    };
+    while (i < p.length) {
+      const c = p[i];
+      if (c === ")") { if (!depth) odd = true; break; }
+      i++;
+      if (c === "|") { all.push(...seq); seq = [""]; }
+      else if (c === "(") {
+        let kind = "";
+        if (p.startsWith("?:", i)) i += 2;
+        else if (p.startsWith("?!", i)) { i += 2; kind = "not"; }
+        else if (p.startsWith("?i)", i)) { i += 3; continue; }
+        else if (p[i] === "?") { odd = true; kind = "skip"; i++; }  // a lookbehind, positive lookahead or named group
+        const inner = alts(depth + 1);
+        if (p[i] !== ")") odd = true;  // never closed
+        i++;  // the ")"
+        const q = p[i];
+        if (kind === "not") without.push(...inner);
+        else {
+          let sub = inner;
+          if (q === "?" || q === "*") { sub = ["", ...inner]; i++; }
+          else if (q === "+") i++;
+          else if (q === "{") odd = true;
+          if (kind !== "skip") seq = cross(seq, sub);
+        }
+      } else if (c === "\\") {
+        const n = p[i++] || "";
+        if (n === "b" || n === "B") continue;
+        if (n === "s") { if ("*+?".includes(p[i] || "x")) i++; seq = cross(seq, [" "]); }
+        else if (n === "w" && "*+".includes(p[i] || "x")) { i++; seq = cross(seq, ["…"]); }
+        else if (/[A-Za-z0-9]/.test(n)) odd = true;  // \d, \w, \1 ...
+        else literal(n);
+      } else if (c === "[") {
+        let j = i;
+        while (j < p.length && p[j] !== "]") j += p[j] === "\\" ? 2 : 1;
+        if (/^(?:\\s| |-|_|\.)+$/.test(p.slice(i, j))) seq = cross(seq, [" "]);  // "full[ -]stack": a gap
+        else odd = true;
+        i = j + 1;
+        if ("*+?".includes(p[i] || "x")) i++;
+      } else if (c === "^" || c === "$") continue;
+      else if (c === ".") {
+        const q = p[i];
+        if (q === "*" || q === "+" || q === "?") {
+          i++;
+          const edge = i >= p.length || "|)".includes(p[i]);
+          if (!edge) seq = cross(seq, [" … "]);  // "senior.*engineer": anything between, at the edges nothing
+        } else if (q === "{") odd = true;
+        else seq = cross(seq, ["."]);
+      } else if ("?*+{}]".includes(c)) odd = true;
+      else literal(c);
+    }
+    all.push(...seq);
+    return all;
+  };
+  const tidy = list => [...new Set(list.map(s => s.replace(/\s+/g, " ").trim().replace(/^…\s+|\s+…$/g, "")).filter(Boolean))];
+  const words = tidy(alts(0));
+  if (i < p.length) odd = true;
+  const not = tidy(without);
+  return { words, without: not, odd: odd || (!words.length && !not.length) };
+}
+// A list of patterns as words: those that share the same "without" make one group; the ones that are more than words
+// are kept whole in odd. => {groups: [{words, without}], odd: [pattern]}
+function readableGroups(patterns) {
+  const groups = new Map(), odd = [];
+  for (const p of patterns || []) {
+    const r = plainPattern(p);
+    if (r.odd) { odd.push(p); continue; }
+    const key = [...r.without].sort().join("\u0000");
+    if (!groups.has(key)) groups.set(key, { words: [], without: r.without });
+    const g = groups.get(key);
+    for (const w of r.words) if (!g.words.includes(w)) g.words.push(w);
+  }
+  return { groups: [...groups.values()], odd };
 }
 function some(list, most = 3) {
   return list.slice(0, most).join(", ") + (list.length > most ? ` +${list.length - most} more` : "");
+}
+const quoted = words => words.map(w => `“${w}”`);
+// A list of patterns as one line, for the summary and tooltips: 'engineer, architect, developer +9 more, without
+// “product”, “program”'. A pattern that is more than words counts as "a custom pattern" (the Filters dialog shows it whole).
+function readable(patterns, most = 3) {
+  const { groups, odd } = readableGroups(patterns);
+  const words = [...new Set(groups.flatMap(g => g.words))], not = [...new Set(groups.flatMap(g => g.without))];
+  return [words.length ? some(words, most) : "", not.length ? `without ${some(quoted(not), most)}` : "",
+    odd.length ? `${odd.length} custom pattern${odd.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(", ");
 }
 
 // Why a job was hidden, as rejection() in filters.py names it, and which part of the bar changes that filter.
@@ -6020,92 +6148,179 @@ const HIDDEN = {
   fit: { label: "fit", part: "fit", why: "Their fit score is below your minimum. Jobs not scored yet still show." },
 };
 
-let openFilter = () => {};  // opens a part of Today's filter bar: set by filterBar
-
-// Today's filter bar: "Titles: engineer, architect · Places: Remote (US), Denver · Pay ≥ $180K · Posted within
-// 45 days · Edit", each part opening a small editor in place. Saving redraws Today with the new filters.
-function filterBar(hidden) {
-  const f = settings.filters || {};
-  const bar = h("div", { class: "fbar", role: "group", "aria-label": "Filters" });
+// The places as the bar and the dialog say them: "remote" with its country and your state.
+function placeWords(f) {
   const remote = ((f.remote_country || "US").toLowerCase() === "any" ? "Remote (anywhere" : "Remote (US") +
     (f.home_state ? `, open to ${f.home_state})` : ")");
-  const places = (f.locations || []).map(p => p.toLowerCase() === "remote" ? remote : p);
-  const pay = [f.min_salary ? `≥ ${money(f.min_salary)}` : f.require_salary ? "" : "any",
-    f.require_salary ? "listed only" : ""].filter(Boolean).join(", ");
+  return (f.locations || []).map(p => p.toLowerCase() === "remote" ? remote : p);
+}
+function payWords(f) {
+  return [f.min_salary ? `≥ ${money(f.min_salary)}` : f.require_salary ? "" : "any", f.require_salary ? "listed only" : ""]
+    .filter(Boolean).join(", ");
+}
+// How many of the filters are doing something: the number on the Filters button.
+function activeFilters(f) {
+  return [f.titles, f.exclude_titles, f.exclude_text, f.exclude_companies, f.locations].filter(l => (l || []).length).length +
+    [f.min_salary || f.require_salary, f.max_age_days, f.min_fit].filter(Boolean).length;
+}
+const SUMMARY_KEY = "today.filterSummary";  // this browser's choice to show the long summary strip on Today (off by default)
+const showSummary = () => remembered(SUMMARY_KEY, "") === "1";
+let fbarBar = null, fbarHidden = null;  // the bar on the page now, and what its last draw said was hidden
+
+// The top of Today. By default one slim line: the Filters button (with how many are in force) and what they hide, each kind a
+// way to peek at those jobs. The filters themselves are edited in the Filters dialog, the same settings as Settings > Your
+// search. With "Show the filter summary on Today" on (the dialog has it), the long strip returns:
+// "Titles: engineer, architect · Places: Remote (US), Denver · Pay ≥ $180K · Posted within 45 days", each part opening
+// the dialog at that part.
+function filterBar(hidden) {
+  const f = settings.filters || {};
+  const strip = showSummary();
+  const bar = fbarBar = h("div", { class: "fbar" + (strip ? "" : " slim"), role: "group", "aria-label": "Filters" });
+  fbarHidden = hidden;
+  const n = activeFilters(f);
+  const button = h("button", { class: "btn ghost fbtn" + (strip ? " edit" : ""), type: "button", "aria-haspopup": "dialog",
+    "aria-label": `Filters, ${n} in force`, title: "What Today leaves out and why", onclick: () => openFilters() },
+    icon("filter", 14), "Filters", h("span", { class: "fcount" }, String(n)));
+  if (!strip) {
+    fill(bar, button, hiddenLine(hidden), brokenLine());
+    return bar;
+  }
+  const pays = payWords(f), places = placeWords(f);
+  const part = (patterns, most) => ({ v: readable(patterns, most), full: readable(patterns, Infinity) });
   const parts = [
-    ["titles", "Titles", (f.titles || []).length ? some(readable(f.titles)) : "any title", (f.titles || []).join("\n")],
-    (f.exclude_titles || []).length
-      ? ["exclude", "Not", some(readable(f.exclude_titles), 4), f.exclude_titles.join("\n")] : null,
-    (f.exclude_text || []).length
-      ? ["exclude_text", "Not in text", some(readable(f.exclude_text), 3), f.exclude_text.join("\n")] : null,
+    ["titles", "Titles", (f.titles || []).length ? part(f.titles, 3) : { v: "any title" }],
+    (f.exclude_titles || []).length ? ["exclude", "Not", part(f.exclude_titles, 4)] : null,
+    (f.exclude_text || []).length ? ["exclude_text", "Not in text", part(f.exclude_text, 3)] : null,
     (f.exclude_companies || []).length
-      ? ["companies", "Not from", some(f.exclude_companies, 3), f.exclude_companies.join("\n")] : null,
-    ["places", "Places", places.length ? some(places, 4) : "anywhere", places.join("\n")],
-    ["pay", "Pay", pay],
-    ["age", "Posted", f.max_age_days ? `within ${f.max_age_days} days` : "any time"],
-    ["fit", "Fit", f.min_fit ? `≥ ${f.min_fit}` : "any"],
+      ? ["companies", "Not from", { v: some(f.exclude_companies, 3), full: f.exclude_companies.join(", ") }] : null,
+    ["places", "Places", places.length ? { v: some(places, 4), full: places.join(", ") } : { v: "anywhere" }],
+    ["pay", "Pay", { v: pays }],
+    ["age", "Posted", { v: f.max_age_days ? `within ${f.max_age_days} days` : "any time" }],
+    ["fit", "Fit", { v: f.min_fit ? `≥ ${f.min_fit}` : "any" }],
   ].filter(Boolean);
-  const buttons = {};
-  let pop = null;
-  const close = () => {
-    if (!pop) return;
-    pop.remove(); pop = null;
-    for (const b of Object.values(buttons)) b.classList.remove("on");
-    document.removeEventListener("pointerdown", outside, true);
-  };
-  const outside = e => { if (pop && !pop.contains(e.target) && !e.target.closest(".fpart, .fbar .edit")) close(); };
-  const open = which => {
-    const again = pop && pop.dataset.which === which;
-    close();
-    if (again) return;
-    const group = which === "exclude" || which === "exclude_text" ? "titles" : which;
-    const groups = group === "all" ? Object.keys(FILTER_GROUPS) : [group];
-    const inp = filterInputs(f), msg = h("span", { class: "msg" });
-    const saveBtn = h("button", { class: "btn primary" }, icon("check", 14), "Save");
-    const save = async () => {
-      const keys = groups.flatMap(g => FILTER_GROUPS[g].keys);
-      saveBtn.disabled = true; fill(msg, busyNote("Saving…")); msg.className = "msg muted";
-      try {
-        await api("/api/settings", { filters: mergeFilters(f, filterValues(inp), keys) });
-        settings = await api("/api/settings");
-        close();
-        toast("Filters saved. Today shows what they match now.");
-        await render();
-      } catch (e) { saveBtn.disabled = false; msg.textContent = e.message; msg.className = "msg error"; }
-    };
-    saveBtn.onclick = save;
-    const body = group === "all"
-      ? h("div", { class: "grid" }, groups.map(g => h("div", {}, FILTER_GROUPS[g].fields(inp))))
-      : FILTER_GROUPS[group].fields(inp);
-    pop = h("div", { class: "fpop" + (group === "all" ? " all" : ""), role: "dialog", "aria-label": "Edit filters" },
-      body, h("div", { class: "foot" }, msg,
-        h("button", { class: "btn ghost", onclick: close }, "Cancel"), saveBtn));
-    pop.dataset.which = which;
-    pop.addEventListener("keydown", e => {
-      if (e.key === "Escape") { e.stopPropagation(); close(); buttons[which] && buttons[which].focus(); }
-      if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); save(); }
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); }
-    });
-    bar.append(pop);
-    const anchor = buttons[which];
-    if (anchor) {
-      anchor.classList.add("on");
-      pop.style.left = Math.max(0, Math.min(anchor.offsetLeft, bar.clientWidth - pop.offsetWidth)) + "px";
-    } else pop.style.left = Math.max(0, bar.clientWidth - pop.offsetWidth) + "px";
-    document.addEventListener("pointerdown", outside, true);
-    const first = which === "exclude" ? inp.exclude : which === "exclude_text" ? inp.excludeText : pop.querySelector("textarea, input");
-    if (first) first.focus();
-  };
-  openFilter = which => { bar.scrollIntoView({ block: "nearest" }); open(which); };
-  fill(bar, icon("sparkle", 15), parts.map(([which, k, v, full], i) => {
-    const b = buttons[which] = h("button", { class: "fpart" + (/^any/.test(v) ? " off" : ""),
-      title: full ? `${k}:\n${full}\n\nClick to change` : "Click to change", "aria-haspopup": "dialog",
-      onclick: () => open(which) }, h("span", { class: "k" }, k + (k === "Pay" || k === "Posted" || k === "Fit" ? "" : ":")),
-      h("span", { class: "v" }, v));
-    return [i ? h("span", { class: "sep" }, "·") : null, b];
-  }), buttons.all = h("button", { class: "btn ghost edit", onclick: () => open("all") }, icon("pencil", 13), "Edit"),
-  hiddenLine(hidden), brokenLine());
+  fill(bar, icon("sparkle", 15), parts.map(([which, k, p], i) =>
+    [i ? h("span", { class: "sep" }, "·") : null, h("button", { class: "fpart" + (/^any/.test(p.v) ? " off" : ""),
+      title: p.full ? `${k}:\n${p.full}\n\nClick to change` : "Click to change", "aria-haspopup": "dialog",
+      onclick: () => openFilters(which) }, h("span", { class: "k" }, k + (k === "Pay" || k === "Posted" || k === "Fit" ? "" : ":")),
+      h("span", { class: "v" }, p.v))]), button, hiddenLine(hidden), brokenLine());
   return bar;
+}
+// The bar drawn again in the same place (its summary setting changed).
+function redrawFilterBar() {
+  if (fbarBar && fbarBar.isConnected) fbarBar.replaceWith(filterBar(fbarHidden));
+}
+
+// A filter's patterns as words, for the dialog: each group of patterns that share a "without" is a row of word chips
+// ("engineer", "architect"), then "without" and its chips; a pattern that is more than words stays whole in a code chip.
+function patternView(patterns) {
+  const { groups, odd } = readableGroups(patterns);
+  return h("div", { class: "fs-pats" }, groups.map(g => h("div", { class: "fs-group" },
+    g.words.map(w => h("span", { class: "chip pw" }, w)),
+    g.without.length ? [h("span", { class: "fs-without" }, "without"), g.without.map(w => h("span", { class: "chip pw no" }, w))] : null)),
+    odd.map(p => h("code", { class: "pcode", title: "A pattern that is more than words: shown as it is written" }, p)));
+}
+const listView = items => h("div", { class: "fs-group" }, items.map(w => h("span", { class: "chip pw" }, w)));
+
+// What one part of the filters says, in plain words, for the dialog: [label, element] rows.
+const FILTER_PARTS = [
+  ["titles", "Titles", "briefcase", f => [
+    ["Looks for", (f.titles || []).length ? patternView(f.titles) : h("span", { class: "muted" }, "any title")],
+    (f.exclude_titles || []).length ? ["Leaves out titles with", patternView(f.exclude_titles)] : null,
+    (f.exclude_text || []).length ? ["Leaves out postings that mention", patternView(f.exclude_text)] : null]],
+  ["companies", "Companies left out", "building", f => [
+    [null, (f.exclude_companies || []).length ? listView(f.exclude_companies) : h("span", { class: "muted" }, "none")]]],
+  ["places", "Places", "pin", f => [
+    [null, placeWords(f).length ? listView(placeWords(f)) : h("span", { class: "muted" }, "anywhere")],
+    (f.nearby_offices || []).length ? ["Companies with an office near you", listView(f.nearby_offices)] : null]],
+  ["pay", "Pay", "dollar", f => [[null, h("b", {}, payWords(f))]]],
+  ["age", "Posted", "calendar", f => [[null, h("b", {}, f.max_age_days ? `within ${f.max_age_days} days` : "any time")]]],
+  ["fit", "Fit", "target", f => [[null, h("b", {}, f.min_fit ? `≥ ${f.min_fit}` : "any")]]],
+];
+const FILTER_PART_OF = { exclude: "titles", exclude_text: "titles" };
+
+// Saves the filters one part of the dialog edits (the keys of its FILTER_GROUPS, nothing else), with an Undo; Today redraws
+// with them. The same settings, and the same save, as Settings > Your search.
+async function saveFilterPart(group, inp) {
+  const before = settings.filters || {};
+  await api("/api/settings", { filters: mergeFilters(before, filterValues(inp), FILTER_GROUPS[group].keys) });
+  settings = await api("/api/settings");
+  toast("Filters saved. Today shows what they match now.", async () => {
+    await api("/api/settings", { filters: before });
+    settings = await api("/api/settings");
+    await render();
+    toast("Filters put back.");
+  });
+  await render();
+}
+
+// The Filters dialog: what Today leaves out, in plain words, a part at a time (Edit opens that part's editors in place).
+// `which` opens that part already in edit (the hidden-jobs peek's "Change this filter"). Esc and a click outside close it,
+// Tab stays inside, focus goes back to the button it came from.
+function openFilters(which) {
+  const opener = document.activeElement;
+  const shade = h("div", { class: "overlay rank-shade filters-shade", style: "display:flex", onclick: e => { if (e.target === shade) close(); } });
+  const box = h("div", { class: "dialog rank-dialog filters-dialog", role: "dialog", "aria-modal": "true", tabindex: "-1", "aria-label": "Filters" });
+  let editing = FILTER_PART_OF[which] || which || null;
+  const close = () => {
+    shade.remove(); document.removeEventListener("keydown", keys, true);
+    const back = opener && opener.isConnected && opener !== document.body ? opener : document.querySelector(".fbar .fbtn");
+    if (back) back.focus();
+  };
+  const keys = e => {
+    if (topDialog() !== shade) return;  // a toast or another dialog on top takes the keys
+    if (e.key === "Escape") { e.stopImmediatePropagation(); close(); }
+    else if (e.key === "Tab") trapTab(box, e);
+  };
+  const section = ([group, title, ico, rows]) => {
+    const f = settings.filters || {};
+    const card = h("section", { class: "rk-card fs-card" + (editing === group ? " editing" : ""), "data-part": group });
+    const head = h("div", { class: "fs-head" }, icon(ico, 16), h("h3", {}, title));
+    if (editing !== group) {
+      head.append(h("button", { class: "btn ghost fs-edit", type: "button", "aria-label": `Edit ${title.toLowerCase()}`,
+        onclick: () => { editing = group; draw(); const t = box.querySelector(`[data-part=${group}] textarea, [data-part=${group}] input`); if (t) t.focus(); } },
+        icon("pencil", 13), "Edit"));
+      fill(card, head, rows(f).filter(Boolean).map(([k, v]) => h("div", { class: "fs-row" },
+        k ? h("div", { class: "fs-k" }, k) : null, v)));
+      return card;
+    }
+    const inp = filterInputs(f), msg = h("span", { class: "msg" });
+    const saveBtn = h("button", { class: "btn primary", type: "submit" }, icon("check", 14), "Save");
+    const cancel = () => { editing = null; draw(); const b = box.querySelector(`[data-part=${group}] .fs-edit`); if (b) b.focus(); };
+    const form = h("form", { class: "fs-form", onsubmit: async e => {
+      e.preventDefault();
+      saveBtn.disabled = true; fill(msg, busyNote("Saving…")); msg.className = "msg muted";
+      try { await saveFilterPart(group, inp); editing = null; draw(); }
+      catch (x) { saveBtn.disabled = false; msg.textContent = x.message; msg.className = "msg error"; }
+    } }, FILTER_GROUPS[group].fields(inp), h("div", { class: "foot" }, msg,
+      h("button", { class: "btn ghost", type: "button", onclick: cancel }, "Cancel"), saveBtn));
+    form.addEventListener("keydown", e => {
+      if (e.key === "Enter" && e.target.tagName === "INPUT") { e.preventDefault(); form.requestSubmit(); }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); form.requestSubmit(); }
+    });
+    fill(card, head, form);
+    return card;
+  };
+  const draw = () => {
+    const f = settings.filters || {};
+    const summary = h("input", { type: "checkbox", id: "fs-summary", checked: showSummary(),
+      onchange: e => { remember(SUMMARY_KEY, e.target.checked ? "1" : ""); redrawFilterBar(); } });
+    fill(box,
+      h("div", { class: "rk-head" }, h("div", { class: "addp-av fs-av", "aria-hidden": "true" }, icon("filter", 22)),
+        h("div", { class: "rk-title" }, h("h2", {}, "Filters"),
+          h("div", { class: "muted small" }, `What Today leaves out and why: ${activeFilters(f)} in force`)),
+        closeButton(close)),
+      h("div", { class: "fs-body" }, FILTER_PARTS.map(section)),
+      h("div", { class: "fs-foot" },
+        h("a", { href: "#settings/search", onclick: close }, "Same settings as Settings → Your search"),
+        h("label", { class: "row fs-opt", for: "fs-summary" }, summary,
+          h("span", {}, "Show the filter summary on Today"))));
+  };
+  document.addEventListener("keydown", keys, true);
+  shade.append(box);
+  document.body.append(shade);
+  draw();
+  const fields = editing ? [...box.querySelectorAll(`[data-part=${editing}] textarea, [data-part=${editing}] input`)] : [];
+  (fields[{ exclude: 1, exclude_text: 2 }[which] || 0] || box).focus();
 }
 
 // "38 roles hidden by your filters: 20 title · 9 place · 5 pay", each a way to peek at those jobs.
@@ -6143,7 +6358,7 @@ async function openHidden(kind) {
       h("div", { class: "row", style: "align-items:flex-start;flex-wrap:nowrap" },
         h("div", { style: "flex:1" }, h("h2", {}, `${n.toLocaleString()} hidden by ${info.label}`),
           h("p", { class: "sub small" }, info.why)),
-        info.part ? h("button", { class: "btn", onclick: () => { closeDetails(); openFilter(info.part); } },
+        info.part ? h("button", { class: "btn", onclick: () => { closeDetails(); openFilters(info.part); } },
           icon("pencil", 13), "Change this filter") : null,
         closeButton(closeDetails, true)),
       h("div", { class: "hidden-list", style: "margin-top:10px" }, d.jobs.map(j => h("div", { class: "list-item" },
@@ -6522,7 +6737,7 @@ function drawTodayPage(d, state) {
       : emptyState(!jobs.length && older
         ? `Nothing posted in the last ${dayCount(v.posted)} matches your filters, and ${older} older posting${older === 1 ? " is" : "s are"} hidden by Posted within. Widen it to 14 days or Any to see ${older === 1 ? "it" : "them"}.`
         : todayJobs.length ? "No jobs match these filters. Loosen one and see what turns up."
-        : "Nothing to review right now. Press “Check for new jobs”, or widen the filters above: new roles open every day.",
+        : "Nothing to review right now. Press “Check for new jobs”, or loosen your filters (the Filters button above): new roles open every day.",
         widen || (v.q.trim() ? elsewhere(v.q) : null)));
     fill(pager, pg.nav);
   };
@@ -9819,7 +10034,8 @@ function rankWhyBody(r, n, ctx, nav) {
 function rankStep(at, total, key) { return key === "ArrowRight" ? Math.min(at + 1, total - 1) : key === "ArrowLeft" ? Math.max(at - 1, 0) : at; }
 // Tab stays inside the open dialog: from its last control to its first, and back.
 function trapTab(box, e) {
-  const items = [...box.querySelectorAll("button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])")];
+  const items = [...box.querySelectorAll("button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])")]
+    .filter(el => el.offsetParent !== null);
   if (!items.length) return;
   const first = items[0], last = items[items.length - 1], on = document.activeElement;
   if (e.shiftKey && (on === first || on === box || !box.contains(on))) { e.preventDefault(); last.focus(); }

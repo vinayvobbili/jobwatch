@@ -60,6 +60,14 @@ icon at the end of the address bar (or ⋮ → Cast, save and share → Install 
   to watch**, at the side, lists
   companies whose jobs keep coming in from alerts or Hacker News posts while you don't watch them (see
   [Companies to watch](applying.md#companies-to-watch)).
+  Today's top is one slim line: the **Filters** button, with how many of your filters are in force, and what they
+  leave out ("38 roles hidden by your filters: 20 title · 9 place · 5 pay"; each kind opens a peek at those jobs,
+  with a way to change that filter). **Filters** opens a large dialog that says each filter in plain words
+  (a title pattern like `^(?!.*(product|program)).*engineer` reads "engineer, without product, program"; a pattern
+  that is more than words stays whole in a code box) and edits a part in place: the same settings as
+  Settings → Your search. Its **Show the filter summary on Today** (kept in this browser) brings back the
+  long strip of every filter, each part opening the dialog on it. The side panels' **Narrow down** chips are
+  something else: they narrow what Today shows, without changing your filters.
   The **Companies** list beside Today has a checkbox on each company: untick one to leave its jobs out from now on
   (it waits unticked at the bottom of the list, and each change has Undo). Its box filters the list as you type,
   and **All** and **None** tick or untick every company shown, or just the ones that match what you typed.

@@ -15,6 +15,17 @@
   carries `files`, `search_url` and, per example, `case`, `employer`, `level`, `file` and `case_url`. Guide: Comps,
   "Pay chips link to their sources".
 
+- Changed: **Today's top is one slim line.** The long strip that repeated your filters (also in Settings, and the
+  sidebar's chips) is gone: you get a **Filters** button with how many filters are in force, and the "N roles hidden
+  by your filters" chips beside it (each still a peek at those jobs). **Filters** opens a large dialog (Esc or a
+  click outside closes it) that says each filter in plain words and edits a part in place with an Undo, the same
+  settings as Settings → Your search. **Show the filter summary on Today** in that dialog (kept in this browser)
+  brings the strip back; its parts open the dialog on that part.
+- Fixed: filter patterns are read as words, not regex. A title pattern like `^(?!.*(product|program)).*engineer` showed as
+  "(?!.*?:product, program)..."; it now reads "engineer, without “product”, “program”", `\b(intern|new grad)\b` reads
+  "intern, new grad", and a pattern that is more than words (a count, a character class) stays whole in a code box
+  instead of being cut up.
+
 - New: **the pay chips link back to their sources**, so a figure can be checked and trusted. On every card and in a
   job's details, the Posted chip opens the posting, Levels the Levels.fyi page the figure was read from, LCA the U.S.
   Department of Labor's H-1B disclosure data (the hover says how many filings and from which years; base pay only),

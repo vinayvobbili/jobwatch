@@ -250,5 +250,5 @@ is checked:
   and one open only in your state ("Remote - Colorado") counts as remote. The states come from the
   posting's places ("Remote - Texas", or a remote posting that lists only states) and its text ("Remote
   locations: California, USA; Nevada, USA", "remote in CA, NV, OR or WA", "must reside in one of the
-  following states: ..."). Today's filter bar says why: "remote only in CA, NV, OR, WA".
+  following states: ..."). Peeking at the jobs Today's "hidden by your filters" line counts says why: "remote only in CA, NV, OR, WA".
 - Any other entry matches as text, so `Denver` matches `Denver, CO, United States`.

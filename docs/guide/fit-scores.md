@@ -81,7 +81,7 @@ Each score keeps its reasons: every requirement, its verdict (met, partly, missi
 behind it. They're under "Why this score" in a job's details, at the end of `jobwatch show <key>`, and in
 the MCP `get_job` result. Scores saved before jobwatch kept these have only the summary.
 
-`filters.min_fit` (the Fit slider on Today's filter bar, and in Settings next to how many picks Today shows)
+`filters.min_fit` (the Fit slider in Today's Filters dialog, and in Settings next to how many picks Today shows)
 hides jobs scored below it, counted as "fit" in the hidden roles. Jobs not scored yet still show, since
 scoring catches up in the background.
 

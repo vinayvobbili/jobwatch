@@ -135,6 +135,7 @@ CLICKS = (("applied", ("Add an application",), "applied-add"),
           ("applied", ("Table",), "applied-table"),
           ("today", ("Show all",), "today-all"),
           ("today", ("Show all", "Next →"), "today-page2"),
+          ("today", ("Filters",), "today-filters"),
           ("today", ("Details",), "details"))
 # Settings with its folded editors open (the prompts, the IMAP account), the whole page.
 SETTINGS_OPEN = "for (const d of document.querySelectorAll('main details')) d.open = true"

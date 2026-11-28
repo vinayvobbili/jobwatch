@@ -272,7 +272,7 @@ def test_hidden_since_lists_what_just_came_in_from_every_filter(app, web):
 
 
 def test_a_filter_change_shows_at_once(app, watchlist, web):
-    """The filter bar saves through the settings API: the next digest uses the new filters."""
+    """The Filters dialog saves through the settings API: the next digest uses the new filters."""
     app.post_fetch({})
     before = {j["title"] for j in app.get_digest({})["jobs"]}
     filters = {**app.get_settings({})["filters"], "min_salary": 250_000}
@@ -329,9 +329,9 @@ def test_links_without_a_url_are_plain_text(server):
 
 
 def test_page_has_the_filter_bar(server):
-    """Today shows the filters in force, edits them in place, and says what they hide."""
+    """Today's top says what the filters hide (the Filters dialog edits them, saving the same setting as Settings)."""
     page = request(server, "GET", "/")[1].decode()
-    assert "function filterBar(" in page and "function hiddenLine(" in page
+    assert "function filterBar(" in page and "function hiddenLine(" in page and "function openFilters(" in page
     assert 'api("/api/hidden' in page and 'api("/api/settings", { filters' in page
     assert "c.error" in page  # an unknown source shows on its board in Settings
     ok = {"X-Jobwatch-Token": TOKEN}
