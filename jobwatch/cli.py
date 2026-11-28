@@ -112,12 +112,14 @@ from .watch import (
     HELD,
     MANY_ROLES,
     POOL,
+    Entry,
     _step,
     build_digest,
     chain_steps,
     check_daily,
     check_postings,
     claude_scores_first,
+    closed_why,
     compare_picks,
     compare_scores,
     counts_as_main,
@@ -136,6 +138,7 @@ from .watch import (
     save_job,
     scorable,
     score_entries,
+    scoring_line,
     set_link,
     unscored,
     unscored_reasons,
@@ -340,6 +343,10 @@ def cmd_score(args, cfg, store):
         return
     # scoring.daily and scoring.per_company hold back the page's background scoring, not what's asked for
     cfg = replace(cfg, score_daily=0, score_per_company=0)
+    if args.key:
+        return _score_one(args, cfg, store)
+    if args.force:
+        raise ValueError("--force goes with a job: jobwatch score KEY --force")
     if args.rescore is not None:
         # a fallback would only put one stand-in score for another, unless scoring.same_as counts its scores as
         # the backend's own (the same model through the API while agy's quota is out, say)
@@ -400,6 +407,35 @@ def cmd_score(args, cfg, store):
     print(f"Scored {scored} of {len(todo)} jobs." + (f" {len(failed)} failed:" if failed else ""))
     for key, err in failed.items():
         print(f"  {key}: {err}")
+
+
+def _score_one(args, cfg, store):
+    """`score KEY`: this one job, whatever the page's background scoring would do with it. A job whose posting is
+    closed (or found closed once, and being checked) is not scored without --force: nobody can apply to it, and a
+    score is a paid call. --force scores it anyway, and scores one that has a score again."""
+    job, rec = store.find(args.key)
+    if not scorable(job):
+        raise ValueError(f"{job.key}: {MANY_ROLES[1]}")
+    if not job.description.strip():
+        raise ValueError(f"{job.key}: no posting text to score")
+    rid = resume_id(cfg.resume, cfg.prompts)
+    if not args.force:
+        if why := closed_why(rec):
+            store.add_score_skipped(job.key, why["code"], "cli")
+            print(f"{job.display_company}: {job.title}: {why['said']}. "
+                  f"`jobwatch score {job.key} --force` scores it anyway.")
+            return
+        if (fit := store.score(job.key, rid)) and not fit.get("stale"):
+            print(f"{job.display_company}: {job.title}: already scored {fit['score']:.0f}/100 "
+                  f"(`jobwatch score {job.key} --force` scores it again).")
+            return
+    entry = next((e for e in scoring_line(cfg, store) if job.key in e.keys), None) or Entry(job, rec, 0.0, [])
+    _, errors = score_entries(cfg, store, [entry], by="cli", force=True, progress=lambda m: None)
+    if errors:
+        raise ValueError(f"{job.key}: {errors[job.key]}")
+    fit = entry.fit
+    print(f"{job.display_company}: {job.title}: {fit['score']:.0f}/100, must-haves "
+          f"{fit['must_haves_met']}/{fit['must_haves_total']}")
 
 
 def _compare(args, cfg, store):
@@ -477,6 +513,9 @@ def _cost(cfg, store):
              if c["estimated_usd"] else "")
           + (f", {c['not_recorded_jobs']} not recorded" if c["not_recorded_jobs"] else "") + ")"
           + (f"; no price for {', '.join(c['unpriced'])}" if c["unpriced"] else ""))
+    if (k := s["closed_skipped"])["total"]:
+        print(f"Spared for closed postings: {plural(k['month'], 'score')} this month, {k['total']} in all "
+              "(`jobwatch scores --closed`).")
     for r in store.score_costs():
         usd = scorestats.cost_usd(r)
         print(f"  {r['day']}  {r['model']}{' (batch)' if r['batch'] else ''}: {plural(r['jobs'], 'job')}, "
@@ -737,6 +776,22 @@ def _scores_status(cfg, store):
               + (f" ({s['last']['reason']})" if s["last"]["reason"] else "") + ".")
 
 
+def _closed_saved(store):
+    """`scores --closed`: the scores not made because the posting was closed (nothing automatic scores such a job:
+    see watch.closed_why), so the saving shows."""
+    s = scorestats.closed_skipped(store, scorestats.average_cost(store))
+    if not s["total"]:
+        print("No score has been skipped for a closed posting yet (a closed job is never scored on its own; "
+              "pressing Score on it still scores it).")
+        return
+    print(f"Scores not made because the posting was closed: {s['today']} today, {s['week']} in the last 7 days, "
+          f"{s['month']} this month, {s['total']} in all ({s['closed']} found closed twice, {s['checking']} found "
+          "closed once and being checked). Each job counts once a day.")
+    if s["saved_usd"] is not None:
+        print(f"At your recorded Claude cost per score that is about ${s['saved_usd']:.2f} not spent (an estimate; "
+              "a local or agy score costs nothing per call).")
+
+
 STORY_TOP = 10
 
 
@@ -791,6 +846,8 @@ def cmd_scores(args, cfg, store):
     every score as it is, flagged stale on the page when made under an older one; nothing is scored again until
     --stale (mark them: the page's scorer, the Score button and `score --rescore` pick them up) or --keep (the
     current resume is their baseline)."""
+    if args.closed:
+        return _closed_saved(store)
     if not (cfg.resume and cfg.resume.is_file()):
         raise ConfigError("set `resume:` in the watchlist to a resume file to score fit")
     if (args.keys or args.all or args.apply) and not args.story_check:
@@ -2128,6 +2185,11 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(func=func)
 
     p = sub.add_parser("score", help="score Today's unscored jobs against your resume, most relevant first")
+    p.add_argument("key", nargs="?", default=None, metavar="KEY",
+                   help="score only this job (a job whose posting is closed is not scored unless --force)")
+    p.add_argument("--force", action="store_true",
+                   help="with KEY: score it even though its posting is closed or being checked, or it has a score "
+                   "already; one call, your choice")
     p.add_argument("--limit", type=int, default=None, metavar="N", help="stop after N jobs")
     p.add_argument("--show-prompts", action="store_true",
                    help="print the prompts scoring sends (edited ones from scoring.prompts) and stop")
@@ -2234,6 +2296,9 @@ def build_parser() -> argparse.ArgumentParser:
                       help="keep the scores as made: the current resume becomes their baseline, nothing is scored")
     what.add_argument("--unmark", action="store_true", help="take back the marks still waiting to be scored again")
     what.add_argument("--log", action="store_true", help="the decisions made so far")
+    what.add_argument("--closed", action="store_true",
+                      help="how many scores were not made because the job's posting is closed (today, this week, this "
+                      "month, in all), and about what that saved")
     what.add_argument("--story-check", action="store_true",
                       help="check the gaps fit scores found against your stories, on this computer only (a dry run "
                       "unless --apply): how many jobs your stories would cover gaps for, the top 10 by change. "

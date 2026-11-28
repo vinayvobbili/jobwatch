@@ -101,6 +101,7 @@ from .watch import (
     build_digest,
     chain_after,
     claude_scores_first,
+    closed_why,
     entries_for,
     fallback_model,
     fetch_all,
@@ -1005,7 +1006,9 @@ class App:
             self.find_on_board_in_background(got["key"])  # the answer doesn't wait for network reads
         if got["has_text"]:
             self.score_in_background()  # it has text to score now
-            # Reading a posting is asking for its score: this job is scored now, whatever scoring.auto says
+            # Reading a posting is asking for its score: this job is scored now, whatever scoring.auto says,
+            # unless its posting is closed (got["not_scored"], from this read or an earlier one): nobody can apply
+            # to it. The check inside counts the score spared.
             got["scoring"] = self.score_posted_in_background(got["key"], replaced=got["saved"])
         return got
 
@@ -1015,11 +1018,14 @@ class App:
         who reads a posting wants its score. Only this job. `replaced`: its text was just saved or replaced, so
         any score it has is of older text; else only a job with no score, or one marked stale, is scored. Not when it
         can't be scored (several roles, no resume, no text) or is being scored already (a text replaced meanwhile
-        gets one more run after it). The score or why it failed comes as an event, as for post_rescore. Whether it
-        started."""
+        gets one more run after it). The score or why it failed comes as an event, as for post_rescore. Not when its
+        posting is closed or being checked (closed_why: Score on the card still scores it). Whether it started."""
         def check(cfg, store):
-            job, _ = store.find(key)
+            job, rec = store.find(key)
             if not (scorable(job) and job.description.strip() and cfg.resume and cfg.resume.is_file()):
+                return False
+            if why := closed_why(rec):
+                store.add_score_skipped(job.key, why["code"], "read posting")
                 return False
             fit = job_fit(cfg, store, key)
             return replaced or fit is None or scorestate.marked(fit)  # one made under an older resume stands
@@ -1047,10 +1053,17 @@ class App:
                         job, record = store.find(key)
                         entry = next((e for e in scoring_line(cfg, store) if key in e.keys), None) or \
                             Entry(job, record, 0.0, [])
-                        _, errors = score_entries(cfg, store, [entry], progress=lambda m: None, by="read posting")
-                        return entry, errors.get(key)
-                    entry, error = self._with_store(run)
-                    self._publish_score(key, entry, error)
+                        # checked again here: the job may have been found closed since it was lined up
+                        skipped: dict[str, dict] = {}
+                        _, errors = score_entries(cfg, store, [entry], progress=lambda m: None, by="read posting",
+                                                  skipped=skipped)
+                        return entry, errors.get(key), skipped.get(entry.job.key)
+                    entry, error, skipped = self._with_store(run)
+                    if skipped:
+                        self.events.publish("score-skipped", {"key": key, "code": skipped["code"],
+                                                              "text": skipped["text"], "said": skipped["said"]})
+                    else:
+                        self._publish_score(key, entry, error)
                 except Exception as e:  # never lose it silently: the page is waiting to hear
                     self._publish_score_failure(key, e)
                 with self._rescoring_lock:
@@ -1317,7 +1330,7 @@ class App:
                  "prepare": prepare.state(cfg, store, e.job, kept[e.job.key]),
                  # A job added by hand can be scored once it has the posting's text.
                  "can_score": resume and scorable(e.job) and bool(e.job.description.strip()),
-                 "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why),
+                 "unscored": None if e.fit else unscored_reason(cfg, store, e.job, why, e.record),
                  "waiting_on": store.waiting_on(e.job, open_now),
                  **pay.get(e.job.key, {}),
                  **({"advice": None, "verdict": None} if e.record.get("status") in STAGES
@@ -1674,7 +1687,7 @@ class App:
                     # Only queued and Today's jobs are in the scorer's line: working it out for any other (an
                     # application) reads every job through the filters and tells nothing more.
                     "unscored": None if fit else unscored_reason(
-                        cfg, store, job, self.scorer.reasons(cfg, store) if rec.get("status") in IN_LINE else {}),
+                        cfg, store, job, self.scorer.reasons(cfg, store) if rec.get("status") in IN_LINE else {}, rec),
                     "manual": job.source == MANUAL,
                     "duplicate_of": (same := dupes.check(store, job.key)) and same.to_dict(),
                     **interviews.sheet_fields(cfg.prep.sheets, job, rec),
@@ -1736,8 +1749,9 @@ class App:
             if not said:
                 raise ApiError("send a link to the posting, or its text")
             job, _ = store.find(key)
-            self.score_in_background()  # it may have text to score now
-            return {"key": key, "said": "; ".join(said), "has_text": bool(job.description.strip())}
+            self.score_in_background()  # it may have text to score now (a closed job is left out of the line)
+            return autofill.not_scored(store, {"key": key, "said": "; ".join(said),
+                                               "has_text": bool(job.description.strip())})
         got = self._with_store(run)
         if got.pop("board", False):  # text was just read for a board job: asking for it is asking for its score
             got["scoring"] = self.score_posted_in_background(got["key"], replaced=True)
@@ -1757,7 +1771,8 @@ class App:
                 said = read_text(store, job.key, url)
         except ValueError as e:
             raise ApiError(str(e)) from None
-        return {"key": job.key, "said": said, "has_text": True, "board": True}
+        # a job whose posting is closed or being checked is read but not scored (not_scored says why)
+        return autofill.not_scored(store, {"key": job.key, "said": said, "has_text": True, "board": True})
 
     def post_pay(self, body) -> dict:
         """Expected pay for these jobs (`keys`) from what's kept, while the ones not known yet are looked up in
@@ -1982,9 +1997,10 @@ class App:
             rid = resume_id(cfg.resume, cfg.prompts)
             if (cached := store.score(job.key, rid)) and not cached.get("stale"):
                 return cached  # a stale one is scored again: pressing Score on it is the decision
-            # through score_entries, so the score is an Activity row like every other (it saved none before)
+            # through score_entries, so the score is an Activity row like every other (it saved none before).
+            # force: pressing Score is the person's choice, even for a closed posting (one call, on that one job)
             done, errors = score_entries(cfg, store, [Entry(job, record, 0.0, [])], progress=lambda m: None,
-                                         by="page")
+                                         by="page", force=True)
             if not done:
                 raise ApiError(errors.get(job.key, "scoring failed"), HTTPStatus.BAD_GATEWAY)
             return store.score(job.key, rid)
@@ -2041,7 +2057,8 @@ class App:
                     Entry(job, record, 0.0, [])
                 one = replace(cfg, backend=backend, score_model=model, score_fallback=(), score_daily=0)
                 try:
-                    _, errors = score_entries(one, store, [entry], progress=lambda m: None, by="rescore")
+                    _, errors = score_entries(one, store, [entry], progress=lambda m: None, by="rescore",
+                                              force=True)  # the person's own choice, as Score is
                     error, note = errors.get(job.key), ""
                     why = (paused_until(error) or ("",))[0] if error else ""
                 except ScoringUnavailable as e:  # paused (no call made), or it can't score here at all
@@ -2052,7 +2069,8 @@ class App:
                     # made the score.
                     note = f"{rescore_label(backend, model)} failed: {why}"
                     again = replace(cfg, backend=backend, score_model=model, score_fallback=chain, score_daily=0)
-                    _, errors = score_entries(again, store, [entry], progress=lambda m: None, by="rescore")
+                    _, errors = score_entries(again, store, [entry], progress=lambda m: None, by="rescore",
+                                              force=True)
                     error = errors.get(job.key)
                     if error:
                         error = f"{note}; then {error}"

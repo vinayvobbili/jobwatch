@@ -15,6 +15,17 @@
   Applications, Details); LinkedIn and Indeed links still use the browser extension. A job added by hand keeps its
   form, and its link can still be set; a board job's link can't be changed anywhere else, and those refusals now name
   the company and title.
+- Closed postings are no longer fit-scored, so no tokens are spent on a job nobody can apply to. Pressing Read posting
+  on a card used to read the posting, find it closed and then score it anyway. Now a job whose posting is closed (found
+  closed on two looks) or being checked (found closed once) is skipped by everything automatic: the background scorer,
+  `jobwatch score` (and `--rescore`, `--redo-kept`, `--incomplete`), the digest's `--score N`, MCP's `score_top` and
+  Read posting. Read posting checks the page it just read first (the site's closed banner, a 404 or 410, a short page
+  saying the position is filled or no longer accepting applications, or the board's mark), keeps the text, marks the job
+  and says so: "Read it: the posting is closed (Nov 28), so it was not scored." The card says "Closed Nov 28: not
+  scored. Press Score to score it anyway." A job already lined up when it closed is dropped at its turn. Score on the
+  card, Score again, and the new `jobwatch score KEY --force` still score one on purpose; a job found open again scores
+  as any other. `jobwatch scores --closed` (and `score --cost`, and a line in Settings > Scoring) shows how many scores
+  this spared. See [Closed postings are not scored](docs/guide/fit-scores.md#closed-postings-are-not-scored).
 
 - A company's logo on a card now goes to its Company tab, as the name beside it does: on Today, Queue, Applications
   (cards and table), Interviews and the Company tab's job cards the logo is a button ("See everything at Initech"; click,

@@ -101,6 +101,13 @@ CREATE TABLE IF NOT EXISTS company_usage (
     jobs INTEGER NOT NULL,
     PRIMARY KEY (day, company)
 );
+CREATE TABLE IF NOT EXISTS score_skipped (
+    day TEXT NOT NULL,
+    key TEXT NOT NULL,
+    why TEXT NOT NULL,
+    by TEXT NOT NULL,
+    PRIMARY KEY (day, key)
+);
 CREATE TABLE IF NOT EXISTS scorer_down (
     scorer TEXT PRIMARY KEY,
     reason TEXT NOT NULL,
@@ -1547,6 +1554,20 @@ class Store:
         row = self.db.execute("SELECT jobs FROM score_usage WHERE day=? AND backend=?",
                               ((day or date.today()).isoformat(), backend)).fetchone()
         return row["jobs"] if row else 0
+
+    def add_score_skipped(self, key: str, why: str, by: str = "", day: date | None = None):
+        """A scoring call spared because the job's posting is closed (why: 'closed' or 'checking', see
+        watch.closed_why), counted once a job a day however often something asked for its score."""
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO score_skipped (day, key, why, by) VALUES (?, ?, ?, ?)",
+                            ((day or date.today()).isoformat(), key, why, by))
+
+    def scores_skipped(self, since: date | None = None) -> dict[str, int]:
+        """{why: jobs spared} from this local day on (default: ever), jobs counted once a day each."""
+        sql, args = "SELECT why, COUNT(*) AS n FROM score_skipped", ()
+        if since:
+            sql, args = sql + " WHERE day>=?", (since.isoformat(),)
+        return {r["why"]: r["n"] for r in self.db.execute(sql + " GROUP BY why", args)}
 
     def add_company_usage(self, company: str, jobs: int, day: date | None = None):
         """Count jobs of this company the background scorer scored on this local day (default today), for

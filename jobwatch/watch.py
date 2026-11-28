@@ -48,7 +48,7 @@ from .localday import local_day
 from .models import Job
 from .score import UNTIL_RESUMED, ScoringUnavailable, brief, collecting_usage, paused_until, resume_id, score_jobs
 from .scorestate import marked
-from .store import ENDED, MANUAL, STAGES, Store
+from .store import ENDED, MANUAL, STAGES, Store, closed_state
 from .text import local_salary, names_one_role
 
 
@@ -878,6 +878,11 @@ def read_text(store: Store, key: str, url: str, get=None) -> str:
                          "text here")
     try:
         posting = sources.posting(url, get) or sources.page_posting(url, get)
+    except sources.NotFound as e:  # HTTP 404 or 410: the posting is gone, a first look (checking), and it isn't scored
+        if store.set_closed(key, True):
+            store.add_note(key, f"Posting read: {host} answers not found (404 or 410), so it looks closed")
+        raise ValueError(f"Couldn't read the posting for {who} from {host}: its page is gone (404 or 410), so the "
+                         "job looks closed and is not scored. Paste its text here if it is still open.") from e
     except sources.SourceError as e:
         raise ValueError(f"Couldn't read the posting for {who} from {host}: {str(e).removeprefix(f'{url}: ')}. "
                          "Paste its text here instead.") from None
@@ -901,6 +906,27 @@ def scorable(job: Job) -> bool:
     portfolio board's job is one posting, scored like any other."""
     src = sources.SOURCES.get(job.source)
     return not (src and src.posts) or names_one_role(job.title)
+
+
+def closed_why(rec: dict | None) -> dict | None:
+    """Why a job's posting being closed keeps it from being scored, or None when it isn't closed. `code` is 'closed'
+    (found closed on two looks) or 'checking' (found closed once: not yet sure); `text` is the line the card shows
+    and `said` the clause for a message ("the posting is closed (Nov 28), so it was not scored"). Nothing automatic
+    scores such a job (nobody can apply to it, and every score costs a call); pressing Score on that one job, or
+    `jobwatch score KEY --force`, still does. A job found open again is scoreable again: this reads its record as it
+    is now."""
+    state = closed_state(rec or {})
+    if not state:
+        return None
+    d = local_day((rec or {}).get("closed"))
+    day = f"{date.fromisoformat(d):%b} {date.fromisoformat(d).day}" if d else ""
+    again = "Press Score to score it anyway."
+    if state == "closed":
+        return {"code": "closed", "text": f"Closed{f' {day}' if day else ''}: not scored. {again}",
+                "said": f"the posting is closed{f' ({day})' if day else ''}, so it was not scored"}
+    return {"code": "checking",
+            "text": f"Found closed once{f' ({day})' if day else ''}, being checked: not scored. {again}",
+            "said": f"the posting looks closed{f' ({day})' if day else ''} and is being checked, so it was not scored"}
 
 
 def _ordinal(n: int) -> str:
@@ -952,6 +978,8 @@ def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str]
         return NO_RESUME
     if not e.job.description.strip():
         return filltext.no_text_why(e.job)
+    if closed := closed_why(e.record):
+        return closed["code"], closed["text"]
     if e.job.key in failed:
         return "failed", f"Scoring failed: {failed[e.job.key]}"
     if e.job.key == current:
@@ -967,17 +995,23 @@ def _why_unscored(e: Entry, has_resume: bool, auto: bool, failed: dict[str, str]
     return "queued", f"In line to score · {_ordinal(line.index(e.job.key) + 1)} of {len(line)}"
 
 
-def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict] | None = None) -> dict | None:
+def unscored_reason(cfg: Config, store: Store, job: Job, reasons: dict[str, dict] | None = None,
+                    record: dict | None = None) -> dict | None:
     """Why this job, on Today or not, has no fit score (see unscored_reasons; pass `reasons` when you have them
-    already); None when it has one. A job that's neither queued nor on Today (applied, hidden by the filters)
-    isn't scored in the background."""
+    already, and `record` (its record) to save a read); None when it has one. A job that's neither queued nor on
+    Today (applied, hidden by the filters) isn't scored in the background, and a closed one (closed_why) isn't
+    scored by anything automatic."""
     if (why := (unscored_reasons(cfg, store) if reasons is None else reasons).get(job.key)) is not None:
         return why
     has_resume = bool(cfg.resume and cfg.resume.is_file())
     if has_resume and store.score(job.key, resume_id(cfg.resume, cfg.prompts)):
         return None
+    if record is None:
+        record = store.rows([job.key]).get(job.key, (job, {}))[1]
+    closed = closed_why(record)
     code, text = (MANY_ROLES if not scorable(job) else NO_RESUME if not has_resume
                   else filltext.no_text_why(job) if not job.description.strip()
+                  else (closed["code"], closed["text"]) if closed
                   else ("manual", "Only queued and Today's jobs are scored in the background: press Score"))
     return {"code": code, "text": text}
 
@@ -1122,7 +1156,7 @@ def unscored(cfg: Config, store: Store, skip: set[str] = frozenset(), again: set
     if limit and not cfg.score_fallback:
         return []  # nothing can score until tomorrow
     skip = {*skip, *failed_scores(cfg, store)}
-    todo = [e for e in scoring_line(cfg, store) if e.job.key not in skip and (
+    todo = [e for e in scoring_line(cfg, store) if e.job.key not in skip and not closed_why(e.record) and (
         _scorable(e) or (e.job.key in again and scorable(e.job) and bool(e.job.description.strip())))]
     kept, _ = _split_capped(cfg, store, todo, [e.job.key for e in todo])
     return [e for e in todo if e.job.key in set(kept)]
@@ -1182,7 +1216,8 @@ def rescore_line(cfg: Config, store: Store, at_least: float = 0) -> list[Entry]:
     if not (cfg.resume and cfg.resume.is_file()):
         return []
     line = [e for e in scoring_line(cfg, store) if (made_elsewhere(cfg, e.fit) or marked(e.fit))
-            and e.fit["score"] >= at_least and scorable(e.job) and e.job.description.strip()]
+            and e.fit["score"] >= at_least and scorable(e.job) and e.job.description.strip()
+            and not closed_why(e.record)]
     return sorted(line, key=lambda e: -e.fit["score"])
 
 
@@ -1209,8 +1244,10 @@ def _scorable(e: Entry) -> bool:
     """Without any fit score, or with one marked stale (see scorestate), scorable, and with a posting's text to
     score (a job from an alert email may have only its title). A score is never made again on its own: one from
     a fallback stays, saying who made it, until `jobwatch score --rescore`; one made under an older resume stays
-    until it is marked stale or kept (every score made again is paid for again)."""
-    return (e.fit is None or marked(e.fit)) and scorable(e.job) and bool(e.job.description.strip())
+    until it is marked stale or kept (every score made again is paid for again). A job whose posting is closed or
+    being checked (closed_why) is none of these: nothing automatic scores it."""
+    return ((e.fit is None or marked(e.fit)) and scorable(e.job) and bool(e.job.description.strip())
+            and not closed_why(e.record))
 
 
 DAILY_LIMIT = "daily limit"  # the start of a fallback score's reason when the backend was at scoring.daily
@@ -1529,13 +1566,38 @@ def reread_texts(store: Store, errors: dict[str, str], get=None) -> list[Job]:
     return again
 
 
+def without_closed(store: Store, entries: list[Entry], by: str = "",
+                   skipped: dict[str, dict] | None = None) -> list[Entry]:
+    """These entries without the jobs whose posting is closed or being checked now (closed_why), read from the
+    store as it is at this moment: a job found closed after it was queued for scoring (a fetch or a posting just
+    read) is dropped here, when its turn comes, not only when it was lined up. Each one dropped is counted
+    (Store.add_score_skipped) and, in `skipped`, kept as {key: closed_why}."""
+    records = store.rows(e.job.key for e in entries)
+    keep = []
+    for e in entries:
+        if why := closed_why(records.get(e.job.key, (None, e.record))[1]):
+            store.add_score_skipped(e.job.key, why["code"], by)
+            if skipped is not None:
+                skipped[e.job.key] = why
+        else:
+            keep.append(e)
+    return keep
+
+
 def score_entries(cfg: Config, store: Store, entries: list[Entry], progress: Callable[[str], None] | None = None,
-                  background: bool = False, batch: bool = False, by: str = "", get=None
-                  ) -> tuple[int, dict[str, str]]:
+                  background: bool = False, batch: bool = False, by: str = "", get=None, force: bool = False,
+                  skipped: dict[str, dict] | None = None) -> tuple[int, dict[str, str]]:
     """Score these jobs against the resume and store each result, for the job and its same-title postings.
     (how many were scored, {job key: error}). A fallback score for a job the backend failed on records that
     failure too, so the backend tries it again only after SCORE_RETRY (one over the daily limit, tomorrow).
-    What was scored, and by which model, goes in the Activity log (Store.log)."""
+    What was scored, and by which model, goes in the Activity log (Store.log).
+    Every way of scoring ends here, and a job whose posting is closed or being checked is not scored (see
+    without_closed; it is no error: `skipped` gets {key: why}) unless `force`: one person's press of Score on that
+    one job, or `jobwatch score KEY --force`. Nothing automatic passes force."""
+    if not force:
+        entries = without_closed(store, entries, by, skipped)
+    if not entries:
+        return 0, {}
     rid = resume_id(cfg.resume, cfg.prompts)
     before = {e.job.key: store.score(e.job.key, rid) for e in entries}  # a re-score's old result, for news()
     progress = progress or (lambda m: print(f"  {m}", file=sys.stderr))

@@ -247,6 +247,31 @@ by it, and the scores made before keep showing, unflagged: a new scorer never ma
 (`--compare` shows it), mark them stale (below) or, for the ones `jobwatch score --keep-old` kept from the
 scorer before, `jobwatch score --redo-kept --batch-api` scores them again with the new scorer, at half price.
 
+## Closed postings are not scored
+
+A score costs a call (a paid one with `claude`, a quota or minutes of your Mac otherwise), so nothing is spent on a
+posting nobody can apply to. A job is **closed** when jobwatch found its posting closed on two looks (the card says
+"closed" with the day), and **checking** when it found it closed once and is making sure (amber on the card). Neither
+is scored by anything automatic: the page's background scorer and its line, `jobwatch score`, `score --rescore`,
+`--redo-kept` and `--incomplete`, the digest's `--score N`, the MCP fetch with `score_top`, and Read posting. A job
+lined up before it closed is dropped when its turn comes, not only when it was lined up.
+
+The card says so, in place of "in line to score": "Closed Nov 28: not scored. Press Score to score it anyway." Reading
+a posting checks it first. If what Read posting just read says the posting is closed (the site's own banner, a page that
+answers 404 or 410, "no longer accepting applications" or "this position has been filled" on a short page, or the
+board's own mark), the posting's text is kept, the job is marked closed (a banner counts as sure; a 404 or a page's
+words mean "checking" until the next look), nothing is scored, and the toast says "Read it: the posting is closed
+(Nov 28), so it was not scored."
+
+You can still score one on purpose. **Score** on that job's card (or Score again in its dialog) scores it, and so does
+`jobwatch score KEY --force`: one call, your choice. Without `--force`, `jobwatch score KEY` for a closed job says why
+and scores nothing. A job found open again (a later check, or Read posting on its own page showing it open) is
+scoreable again at once: nothing about it stays marked.
+
+`jobwatch scores --closed` shows how many scores this spared (today, the last 7 days, this month, in all; a job counts
+once a day however often something asked for it) and, if Claude's cost per score is recorded, about what that saved.
+Settings > Scoring says the same in one line, and `jobwatch score --cost` ends with it.
+
 ## A new resume and the scores you already have
 
 A rebuilt resume doesn't change a score, hide one or ask for a new one. Every job keeps the score it has, and

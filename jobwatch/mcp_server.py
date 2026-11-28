@@ -419,7 +419,7 @@ def get_job(key: Key) -> dict:
                                                                               result=result)) else None,
                 "locations": job.places, "text": job.to_text(), **rec,
                 "duplicate_of": same.to_dict() if same else None, "staffing_firm": staffing_firm(job), "fit": fit,
-                "unscored_reason": None if fit else unscored_reason(cfg, store, job),
+                "unscored_reason": None if fit else unscored_reason(cfg, store, job, record=rec),
                 "contacts": known.at(job.display_company, job.company) if known else [],
                 "find_referral": contacts.linkedin_search(job.display_company),
                 "candidate_home": store.candidate_home(job),

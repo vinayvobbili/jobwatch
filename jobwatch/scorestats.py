@@ -83,6 +83,30 @@ def claude_cost(rows: list[dict], scored: int, average: float | None) -> dict:
             "unpriced": sorted({r["model"] for r in rows if r["model"] not in PRICES})}
 
 
+def closed_skipped(store: Store, average: float | None = None, today: date | None = None) -> dict:
+    """What not scoring closed jobs has saved (see watch.closed_why): the jobs spared a score, once a day each, today,
+    in the last 7 days, this calendar month and ever ({"today", "week", "month", "total", "closed", "checking"}: the
+    last two split the total by whether the posting was confirmed closed or found closed once), and, with `average`
+    (the Claude API's cost per recorded score), what those calls would have cost at it: "saved_usd" (an estimate, None
+    without an average)."""
+    today = today or date.today()
+    ever = store.scores_skipped()
+    total = sum(ever.values())
+    return {"today": sum(store.scores_skipped(today).values()),
+            "week": sum(store.scores_skipped(today - timedelta(days=6)).values()),
+            "month": sum(store.scores_skipped(today.replace(day=1)).values()), "total": total,
+            "closed": ever.get("closed", 0), "checking": ever.get("checking", 0),
+            "saved_usd": round(total * average, 4) if average is not None and total else None}
+
+
+def average_cost(store: Store) -> float | None:
+    """The Claude API's recorded cost per score, over every recorded run that has a price, or None when nothing is
+    recorded to average."""
+    priced = [(r["jobs"], c) for r in store.score_costs() if (c := cost_usd(r)) is not None]
+    jobs = sum(n for n, _ in priced)
+    return sum(c for _, c in priced) / jobs if jobs else None
+
+
 def summary(cfg: Config, store: Store, scoring: dict | None = None, today: date | None = None) -> dict:
     """Settings' Fit scoring panel: the backend in effect (model, fallbacks in order, daily cap and today's use,
     Batches API, background scoring from `scoring`, the Scorer's status), jobs scored per backend today, in the
@@ -115,4 +139,5 @@ def summary(cfg: Config, store: Store, scoring: dict | None = None, today: date 
         "claude": {**claude_cost(this_month, counts["claude"]["month"], average),
                    "average_usd": round(average, 4) if average is not None else None,
                    "since": month.isoformat()},
+        "closed_skipped": closed_skipped(store, average, today),
     }

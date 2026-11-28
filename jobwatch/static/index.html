@@ -2858,6 +2858,14 @@ function listenForEvents() {
     cardNote(d.key, `Scoring${again ? " again" : ""} failed: ${d.error}`, true);  // stays on the card: a toast is easy to miss
     redrawUnscored([d.key]);  // an unscored card now says why, and offers Score
   });
+  // A job found closed while it waited its turn is dropped from scoring, not failed: say so, and leave Score on the card
+  es.addEventListener("score-skipped", e => {
+    const d = JSON.parse(e.data);
+    RESCORING.delete(d.key);
+    toast(`Not scored: ${d.said}.`);
+    cardNote(d.key, d.text);
+    redrawUnscored([d.key]);
+  });
 }
 // Under the ring: the model that made the score and where it ran ("Sonnet 5.5 · agy", "Qwen3.5-9B · local"). A score
 // is never made again on its own, a fallback's included: `jobwatch score --rescore` does that when asked.
@@ -2879,6 +2887,12 @@ function shortModel(model) {
 }
 
 // Queue it or skip it, and why (advice.py). A queued job only shows a reason to hold off.
+// Settings > Scoring: closed postings are never scored on their own, and how many scores that spared (scorestats.closed_skipped)
+function closedSavedNote(k) {
+  const spared = k && k.total ? ` ${k.month} spared this month, ${k.total} in all${k.saved_usd ? `, about $${k.saved_usd.toFixed(2)} at your Claude cost per score` : ""}.` : "";
+  return h("div", { class: "small muted closed-saved", style: "grid-column:1 / -1" },
+    `A job whose posting is closed (or found closed once) is never scored on its own; Score on its card still scores it.${spared}`);
+}
 // A job card's Why row: the reasons for and against, ticked or crossed; the card's bottom line (verdictLine) makes
 // the call.
 function adviceLine(job) {
@@ -3423,10 +3437,10 @@ function postingControls(job, done) {
     say("");
     try {
       const r = await api("/api/posting", { key: job.key, ...body }).finally(() => clearInterval(tick));
-      const saved = r.has_text ? (r.scoring === false ? "Saved" : "Saved: now scoring") : "Saved";
+      const saved = r.has_text ? (r.scoring === false || r.not_scored ? "Saved" : "Saved: now scoring") : "Saved";
       button.replaceChildren(saved);
       say(`${saved}. ${r.said}`, "ok");
-      toast(r.said);
+      toast(readToast(r));
       setTimeout(() => done(r, "form"), SAVED_SHOWN_MS);
     } catch (e) {
       const text = postingFailure(job, e.message);
@@ -3504,6 +3518,16 @@ async function redrawInPlace() {
   await render();
   window.scrollTo(0, y);
 }
+// What Read posting says when it's done. A posting found closed (the site's banner, a 404 or 410, the board's mark) is
+// not scored: the server says so in not_scored ({code, text, said}), and the toast leads with it.
+const readToast = r => r.not_scored ? `Read it: ${r.not_scored.said}.` : r.said;
+// A read that scores (the job is open) leaves the card "scoring now"; one that found it closed leaves the reason, and
+// the card's Score button, which scores it anyway
+function afterRead(job, r, how = "") {
+  if (r.not_scored) job.unscored = { code: r.not_scored.code, text: r.not_scored.text };
+  else if (r.has_text) job.unscored = how === "form" && !r.scoring ? { code: "queued", text: "Posting added: in line to score" }
+    : { code: "scoring", text: "Posting read: scoring it now…" };
+}
 function readButton(job, done) {
   if (!BROWSER_POSTING.test(job.url || "")) return null;
   const site = /indeed/i.test(job.url) ? "Indeed" : "LinkedIn";
@@ -3525,7 +3549,7 @@ function readButton(job, done) {
       b.textContent = "Read posting ↗";
       if (!r.ok && OLD_EXTENSION.test(r.error || "")) return openInFront(true);
       if (!r.ok) return toast(`Couldn't read the posting: ${r.error}`);
-      toast(r.said);
+      toast(readToast(r));
       done(r);
     });
     window.postMessage({ type: "jobwatch:read-posting", key: job.key, url: job.url.split("#")[0] }, location.origin);
@@ -3539,10 +3563,11 @@ function scoreButton(job, canScore, card = j => todayCard(j, canScore, 0)) {
   if (job.unscored?.code === "no_text")
     return [postingControls(job, (r, how) => {  // read in the background: this card alone changes
       // jobwatch scores a job as soon as its posting is read (whatever scoring.auto says): the card waits for the
-      // "score" event (listenForEvents), or "score-failed". A text added by hand waits in the scorer's line.
-      if (r.has_text) job.unscored = how === "form" && !r.scoring ? { code: "queued", text: "Posting added: in line to score" }
-        : { code: "scoring", text: "Posting read: scoring it now…" };
+      // "score" event (listenForEvents), or "score-failed". A text added by hand waits in the scorer's line. A posting
+      // found closed is not scored: afterRead leaves the reason.
+      afterRead(job, r, how);
       if (r.closed) Object.assign(job, { closed_state: "closed", closed: new Date().toISOString() });
+      else if (r.not_scored) Object.assign(job, { closed_state: r.not_scored.code, closed: job.closed || new Date().toISOString() });
       if (document.getElementById("job-" + job.key)) redraw(job);
     }), linkedinButton(job), unscoredNote(job)];
   if (!canScore || NO_SCORE_BUTTON.includes(job.unscored?.code)) return unscoredNote(job);
@@ -6430,7 +6455,8 @@ function aiSetup(s) {
         cap ? h("div", { class: "use-bar" }, h("i", { style: `width:${Math.min(100, usage.used_today / cap * 100)}%` })) : null),
       h("div", {}, h("span", { class: "lbl" }, "Background scoring"),
         h("span", { class: "val" }, sc.error ? "stopped: " + sc.error : sc.running ? `${sc.left} to go` : "idle")),
-      h("div", { class: "chips" }, on(usage.batch_api, "Batches API (half price)"), on(usage.auto, "Auto")));
+      h("div", { class: "chips" }, on(usage.batch_api, "Batches API (half price)"), on(usage.auto, "Auto")),
+      closedSavedNote(usage.closed_skipped));
   };
   // a scoring.providers backend has no tile to pick, but its counts and cost still show: a compact card
   const compact = u => {

@@ -19,7 +19,7 @@ from .config import Config
 from .models import Job
 from .resume import resume_text
 from .store import MANUAL, STAGES, Store
-from .watch import save_job
+from .watch import closed_why, save_job
 
 TOKEN_FILE = "extension-token"
 # The last parts of an application form's address after the posting's own (Lever's /apply, Ashby's /application):
@@ -390,16 +390,28 @@ def _listing(store: Store, pid: str, links: list[str], company: str, title: str,
                 like[0] if like else None)
 
 
-def _read(links: list[str], get=None) -> Job | None:
-    """The first of these links that is a posting on a supported board and reads with its text."""
+def _read(links: list[str], get=None) -> tuple[Job | None, str]:
+    """(the first of these links that is a posting on a supported board and reads with its text, else None; and
+    what a link said that means the posting is gone, else ''): see _gone."""
+    gone = ""
     for link in links:
         try:
             read = sources.posting(link, get)
+        except sources.NotFound:  # HTTP 404 or 410, or the board no longer lists it: positive evidence, like a fetch's
+            gone = gone or "its page says it is not found (404 or 410)"
+            continue
         except sources.SourceError:
             continue
         if read and read.description.strip():
-            return read
-    return None
+            return read, ""
+    return None, gone
+
+
+def _gone(text: str) -> str:
+    """The words of a short posting page that say the posting is closed ('no longer accepting applications'), else
+    '' (see sources.closed_page: a long page is a real posting, which may say such things in passing)."""
+    found = sources.closed_page(text)
+    return f"the page says {found!r}" if found else ""
 
 
 def _said(job: Job) -> str:
@@ -417,6 +429,7 @@ def posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
     `closed` false (Read posting found no closed banner) on the job's own page, by its id, reopens a job marked
     closed: the site shows it taking applications, which is as positive as the banner was."""
     got = _posting(cfg, store, body, get)
+    gone = got.pop("gone", "")  # what reading the posting itself showed (a 404 or 410, a page that says so)
     site = filltext.SITES["indeed" if not body.get("linkedin") and body.get("indeed") else "linkedin"]
     if body.get("closed"):
         filltext.mark_closed(store, got["key"], site)
@@ -426,6 +439,22 @@ def posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
         store.add_note(got["key"], f"{site} shows it taking applications again: reopened")
         got["reopened"] = True
         got["said"] += f"; {site} shows this posting open, so it is no longer marked closed"
+    elif gone and body.get("closed") is not False:  # a first look, like a fetch's: marked, not yet confirmed
+        if store.set_closed(got["key"], True):
+            store.add_note(got["key"], f"Posting read: {gone}, so it looks closed")
+        got["said"] += f"; {gone}"
+    return not_scored(store, got)
+
+
+def not_scored(store: Store, got: dict) -> dict:
+    """What a read of the posting leaves for scoring: when the job's posting is closed or being checked (see
+    watch.closed_why: the site's banner, a 404 or 410, a page saying so, or the board's own mark), it is not scored.
+    `not_scored` ({code, text, said}) says why, for the toast and the card, and the "scoring now" in `said` gives
+    way to it. A job that is open is left as it is."""
+    why = closed_why(store.find(got["key"])[1])
+    if why:
+        got["not_scored"] = why
+        got["said"] = got["said"].replace("; scoring now", "") + f"; {why['said']}"
     return got
 
 
@@ -460,9 +489,10 @@ def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
         if job.source != MANUAL:
             raise ValueError(f"{job.display_company}: {job.title} comes from its board, which sets its link and text: "
                              "press Read posting on its card in jobwatch")
-        read = _read(links, get)
+        read, gone = _read(links, get)
         if not (read or text):
             raise ValueError("jobwatch can't read postings on that site: use Save this posting to jobwatch on the page")
+        gone = gone or (not read and _gone(text)) or ""
         # Where the posting lives now: the board's link, else the company's own page (never LinkedIn's)
         link = read.url if read else next((u for u in links if not sources.detect(u)), "")
         if link and link != job.url:
@@ -474,20 +504,26 @@ def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
         store.set_description(job.key, read.description if read else text, read)
         if not read:
             store.add_note(job.key, "Posting text sent from the page you had open, by the browser extension")
-        return _posted(store, store.find(job.key)[0], _said(read or job), False)
+        return {**_posted(store, store.find(job.key)[0], _said(read or job), False), **({"gone": gone} if gone else {})}
+    gone = ""
     for link in links:
         try:
             job, _ = save_job(store, link, company, title, note=came, boards=cfg.boards)
+        except sources.NotFound:
+            gone = "its page says it is not found (404 or 410)"
+            continue
         except (sources.SourceError, ValueError):
             continue
         if job.description.strip():
             return _posted(store, job, _said(job), True)
+    gone = gone or _gone(text)
     link = next((u for u in links if not sources.detect(u)), "") or (came or "").rpartition(": ")[2]
     # A job known only by its LinkedIn or Indeed id is kept with the text the page showed, at once; whether the same
     # job is on the company's own board is looked for after the answer (find_on_board): that is network reads.
     later = bool(came) and link == came.rpartition(": ")[2]
     job, _ = save_job(store, link, company, title, text, note=came, boards=cfg.boards, find_board=not later)
-    return {**_posted(store, job, _said(job), True), **({"find_on_board": True} if later else {})}
+    return {**_posted(store, job, _said(job), True), **({"find_on_board": True} if later else {}),
+            **({"gone": gone} if gone else {})}
 
 
 def find_on_board(cfg: Config, store: Store, key: str, get=None, page=None) -> str:
