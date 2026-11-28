@@ -90,6 +90,22 @@ With the newest extension that tab opens behind the one you are on and only that
 page checks) it opens in front as described, and jobwatch says once to update or reload the extension.
 `jobwatch fill-text --open` lists every such job's link.
 
+### Reading postings by itself (auto-read)
+
+Off until you turn on **Read postings automatically** in jobwatch's Settings (Applying), after its risk note: **LinkedIn may
+restrict accounts that look automated. These limits keep reading slow and small; you can turn it off anytime.** With it on,
+the extension asks jobwatch every few minutes for the next job worth reading (jobwatch chooses: a job that passes your filters,
+with no text, best first) and reads it the way Read posting does: one tab behind your others, one page load, closed right after
+the copy, no scrolling or clicking. Limits (defaults; Settings can only tighten them, up to hard ceilings in `auto-read.js`
+and jobwatch's `config.py`): one job at a time, a random 2 to 3 minute pause (never under 60 s), 25 a day for each site and
+never more than 50 a day together, only while Chrome is open and you are not on a LinkedIn or Indeed tab. At the first sign of
+trouble (a sign-in or security page, HTTP 429, 999 or 403, an account notice, two pages in a row with no posting) it stops for
+the day, the badge shows "!", and the panel, jobwatch's Today and its Activity say why; **Resume** continues after you have
+checked the site. The side panel and Today show "Reading postings: 3 of 12 today · next in 2m" with Pause, Resume and Off, and
+the options page has a checkbox that turns it off in this browser whatever jobwatch says. It needs the `alarms` permission (the
+pause between reads survives the service worker sleeping) and `idle` (not reading while you are active). Guide:
+[Reading postings by itself](../docs/guide/reading-postings.md).
+
 ## Drafting a reply to a recruiter
 
 On a LinkedIn conversation you have open (Messaging, or a message bubble), click the extension's icon and press **Draft reply
@@ -131,7 +147,7 @@ Nothing leaves your computer except to jobwatch, which runs on it. See [PRIVACY.
 ## For developers
 
 ```
-manifest.json       Manifest V3: activeTab, scripting, storage, sidePanel, tabs, http://127.0.0.1 / localhost, and
+manifest.json       Manifest V3: activeTab, alarms, idle, scripting, storage, sidePanel, tabs, http://127.0.0.1 / localhost, and
                     a content script on linkedin.com / indeed.com job lists (passive mode)
 background.js       service worker; the only code that talks to jobwatch (API.md); opens the side panel when the
                     icon is clicked; keeps pending submissions per tab
@@ -140,6 +156,8 @@ page.js             content script per frame: scan, fill, read company and title
 job-lists.js        reads LinkedIn / Indeed / Ladders job lists, paced like a person (PACING); a copy ships in jobwatch/static
 passive.js          content script on LinkedIn and Indeed: notes the job cards seen while browsing (passive mode)
 read-posting.js     content script on LinkedIn and Indeed: reads a job's description, only on a page opened with #jobwatch-read (Read posting)
+auto-read.js        the auto-read scheduler as pure functions: limits and ceilings, the pause, which job, when to stop, the status line
+auto-reader.js      the service worker's auto-read loop (alarms, idle, one inactive tab at a time); reads through read-posting.js
 reply.js            injected by Draft reply only: reads the one open LinkedIn conversation, types the draft into its box (never presses Send)
                     (ATS check and Cover letter inject no new script: the cover letter box is found with logic.js + page.js, and filled only on its own press)
 sidepanel.*         the review panel in Chrome's side panel: pairing status, the lead card and action tiles for the page, scan, rows, fill, drafts, results

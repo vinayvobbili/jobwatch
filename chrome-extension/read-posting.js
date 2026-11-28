@@ -29,10 +29,24 @@
   // The banner line saying the posting is closed (LinkedIn's red line under the title, Indeed's expired notice), on a line
   // of its own; a stray space, icon text or a closing dot around it doesn't hide it. Same as jobwatch/filltext.py's _CLOSED.
   const CLOSED = /^[^\w\n]*(?:Not currently accepting applications|No longer accepting applications|This job (?:has expired(?: on Indeed)?|is no longer available))[^\w\n]*$/im;
+  // What a page with no posting on it says instead: [pattern, why, kind]. The kind is for automatic reading, which stops
+  // for the day at the first of these (auto-read.js); a manual Read posting only shows the why. A restriction notice
+  // is looked for first: it names the account, which a sign-in wall does not.
   const WALLS = [
-    [/verify you are (?:a )?human|are you a robot|captcha|security check|just a moment|additional verification required/i, 'it shows a captcha or a security check'],
-    [/\b(?:sign in|log in|join now|authwall)\b/i, 'it asks to sign in'],
+    [/unusual activity|(?:account|profile)\b[^.\n]{0,40}\b(?:restricted|temporarily limited|suspended|locked)|we(?:'ve| have) (?:temporarily )?restricted/i, 'it shows an account notice (unusual activity or a restriction)', 'restricted'],
+    [/verify you are (?:a )?human|are you a robot|captcha|security check|just a moment|additional verification required/i, 'it shows a captcha or a security check', 'captcha'],
+    [/too many requests|request denied|access denied/i, 'it says too many requests or access denied', 'blocked'],
+    [/\b(?:sign in|log in|join now|authwall)\b/i, 'it asks to sign in', 'signin'],
   ];
+  const BLOCKED_STATUS = [403, 429, 999]; // an HTTP status that means the site is refusing the page
+
+  /** The HTTP status of the page this script runs in (Chrome's navigation timing), 0 when it is not known. */
+  function statusOf(perf) {
+    try {
+      const nav = perf && perf.getEntriesByType && perf.getEntriesByType('navigation')[0];
+      return (nav && Number(nav.responseStatus)) || 0;
+    } catch { return 0; }
+  }
 
   /** 'linkedin' or 'indeed' for the address of one job there, else ''. */
   function siteOf(url) {
@@ -84,10 +98,10 @@
       const text = (e ? rest.slice(0, e.index) : rest).trim();
       if (text.length >= MIN_TEXT) return { text, closed: CLOSED.test(pageText.slice(0, s.index)) };
     }
-    for (const [pattern, why] of WALLS) {
-      if (pattern.test(pageText.slice(0, 3000))) return { error: `the page doesn't show the posting: ${why}` };
+    for (const [pattern, why, wall] of WALLS) {
+      if (pattern.test(pageText.slice(0, 3000))) return { error: `the page doesn't show the posting: ${why}`, wall };
     }
-    return { error: "the page has no posting text on it (is it the job's own page?)" };
+    return { error: "the page has no posting text on it (is it the job's own page?)", wall: '' };
   }
 
   const textOf = (el) => (el ? String(el.innerText || el.textContent || '').trim() : '');
@@ -103,7 +117,7 @@
     const own = site === 'indeed' ? textOf(doc.querySelector('#jobDescriptionText')) : '';
     const page = String((doc.body && doc.body.innerText) || '');
     const read = own.length >= MIN_TEXT ? { text: own, closed: CLOSED.test(page.replace(own, '')) } : postingFromText(site, page);
-    if (read.error) return { error: read.error };
+    if (read.error) return { error: read.error, wall: read.wall || '' };
     const title = textOf(doc.querySelector('h1')).split('\n')[0];
     const company = textOf(doc.querySelector(site === 'indeed'
       ? '[data-testid="inlineHeader-companyName"], [data-company-name="true"]'
@@ -111,7 +125,7 @@
     return { site, id, title, company, text: read.text, closed: read.closed };
   }
 
-  const api = { siteOf, jobId, postingFromText, readPage, readUrl, sameJobwatch, HASH };
+  const api = { siteOf, jobId, postingFromText, readPage, readUrl, sameJobwatch, statusOf, BLOCKED_STATUS, HASH };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JWRead = api;
 
@@ -136,15 +150,23 @@
 
   async function run() {
     banner('reading this posting…', true);
+    // The site refusing the page (HTTP 403, 429, 999): say so at once and read nothing, so automatic reading stops
+    const status = statusOf(typeof performance === 'undefined' ? null : performance);
+    if (BLOCKED_STATUS.includes(status)) {
+      const error = `the site refused the page (HTTP ${status})`;
+      chrome.runtime.sendMessage({ type: 'readFailed', error: `${error}.`, status, wall: 'blocked' }).catch(() => {});
+      return banner(`${error}. Open the job on the site yourself to check.`, false);
+    }
     const until = Date.now() + WAIT_MS;
     let read = readPage(document, location.href);
-    while (read.error && Date.now() < until && /no posting text/.test(read.error)) {
+    // a page that shows a wall (sign-in, captcha, account notice) is not waited on: only one that is still drawing
+    while (read.error && !read.wall && Date.now() < until && /no posting text/.test(read.error)) {
       await new Promise((r) => setTimeout(r, POLL_MS)); // the page draws the description after it loads
       read = readPage(document, location.href);
     }
     if (read.error) {
       // a tab jobwatch's page opened behind the person's (see page-bridge.js) tells that page, which says so
-      chrome.runtime.sendMessage({ type: 'readFailed', error: `${read.error}.` }).catch(() => {});
+      chrome.runtime.sendMessage({ type: 'readFailed', error: `${read.error}.`, status, wall: read.wall || '' }).catch(() => {});
       return banner(`${read.error}. Sign in to the site in this tab if needed, then press Read posting again.`, false);
     }
     try { history.replaceState(null, '', location.pathname + location.search); } catch { /* the page is going away */ }

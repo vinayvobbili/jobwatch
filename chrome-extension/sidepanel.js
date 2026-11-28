@@ -10,6 +10,7 @@
 (function () {
   'use strict';
   const JW = globalThis.JW;
+  const JW_AUTO = globalThis.JWAuto; // auto-read.js: the words for the status of reading postings by itself
   // A service worker Chrome stopped mid-call drops the message: say so, or the panel waits for ever
   const send = (msg) => chrome.runtime.sendMessage(msg).then((r) => r || { ok: false, error: STOPPED }, () => ({ ok: false, error: STOPPED }));
   const STOPPED = 'The jobwatch extension stopped before jobwatch answered. Open jobwatch\'s Today to see what it did, then try again.';
@@ -184,6 +185,36 @@
         on, ' Note jobs while I browse'));
   };
 
+  // Reading postings by itself (auto-reader.js): where it stands, in a line, with Pause, Resume and Off. The service worker
+  // keeps the state (chrome.storage.local "autoRead"): the card follows it as it changes and counts the seconds to the next read.
+  const AUTO_BUTTONS = { pause: ['Pause', 'Pause reading for now'], resume: ['Resume', 'Read again, after a new pause'],
+    off: ['Off', 'Turn automatic reading off in this browser'], on: ['Turn on', 'Read postings automatically again'] };
+  function autoReadCard() {
+    const line = h('div', { class: 'auto-line', role: 'status' });
+    const buttons = h('div', { class: 'auto-buttons' });
+    const el = h('section', { id: 'auto-read', class: 'auto', hidden: true }, h('h3', { textContent: 'Reading postings' }), line, buttons);
+    let seen = null;
+    const draw = () => {
+      if (!seen || !seen.paired) { el.hidden = true; return; }
+      el.hidden = false;
+      el.dataset.state = seen.state;
+      line.textContent = JW_AUTO.statusLine(seen, Date.now());
+      buttons.replaceChildren(...seen.buttons.map((name) => h('button', {
+        class: 'ghost', title: AUTO_BUTTONS[name][1], textContent: AUTO_BUTTONS[name][0],
+        onclick: async () => { seen = await send({ type: 'autoReadCommand', command: name }); draw(); },
+      })));
+    };
+    const refresh = async () => { seen = await send({ type: 'autoReadStatus' }).catch(() => null); if (seen && seen.ok === false) seen = null; draw(); };
+    const tickTimer = setInterval(() => { if (!el.isConnected) { clearInterval(tickTimer); return; } draw(); }, 1000);
+    const onChange = (changes, area) => {
+      if (!el.isConnected) { chrome.storage.onChanged.removeListener(onChange); return; }
+      if (area === 'local' && changes.autoRead) refresh();
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    refresh();
+    return el;
+  }
+
   // What each lead card's big button says, and does (the same functions the tiles run).
   const LEAD = {
     scan: ['Fill this application', () => scan()],
@@ -229,7 +260,8 @@
     const s = await chrome.storage.local.get('passiveSeen');
     const seen = Object.keys(s.passiveSeen || {}).length;
     if (busy || mine !== homeToken) return; // the person pressed something, or the page changed again, while this was reading the page
-    const cards = [leadCard(ctx, tab, importing), ...tileGroups(ctx, tab, seen, importing)];
+    const cards = [leadCard(ctx, tab, importing), ...tileGroups(ctx, tab, seen, importing),
+      features.includes('auto-read') ? autoReadCard() : null];
     view(h('div', { class: 'scroll' }, h('div', { class: 'empty home' }, message ? h('div', { class: 'msg', textContent: message }) : null, cards)));
     homeShown = message || '';
   }

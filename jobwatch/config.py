@@ -683,6 +683,51 @@ def _morning(raw, path: Path) -> Morning:
                                     "matches named in the notification"))
 
 
+# Automatic reading of LinkedIn and Indeed postings by the browser extension (see autoread.py). These limits protect the
+# person's signed-in account from looking automated: the defaults are the safe ones, a setting may tighten them freely
+# and loosen them only up to the hard ceilings, which the extension (chrome-extension/auto-read.js) enforces again.
+AUTOREAD_PER_DAY = 25     # reads a day, per site (the default)
+AUTOREAD_DAILY_MAX = 50   # no setting reads more than this a day, the two sites together
+AUTOREAD_PAUSE_MIN = 120  # seconds between reads, at least (the default)...
+AUTOREAD_PAUSE_MAX = 180  # ...and at most: each pause is a random time in between
+AUTOREAD_PAUSE_FLOOR = 60  # no setting pauses less than this
+AUTOREAD_SPREAD = 30      # the pauses always differ by at least this much, so there is never a fixed interval
+
+
+@dataclass(frozen=True)
+class AutoRead:
+    """autoread in the watchlist: let the browser extension read the postings of jobs from LinkedIn and Indeed alerts
+    and lists that have no text, slowly, one at a time, in the background. Off until `enabled` (a new user opts in
+    after reading the note in Settings). per_day: reads a day for each site; pause_min and pause_max: the seconds
+    between two reads (a random time in between)."""
+    enabled: bool = False
+    per_day: int = AUTOREAD_PER_DAY
+    pause_min: int = AUTOREAD_PAUSE_MIN
+    pause_max: int = AUTOREAD_PAUSE_MAX
+
+
+def _autoread(raw, path: Path) -> AutoRead:
+    if raw is None:
+        return AutoRead()
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path}: autoread looks like "
+                          f"{{enabled: true, per_day: 25, pause_min: 120, pause_max: 180}}, got {raw!r}")
+    unknown = set(raw) - set(AutoRead.__dataclass_fields__)
+    if unknown:
+        raise ConfigError(f"{path}: unknown autoread setting(s): {', '.join(sorted(unknown))}")
+    enabled = raw.get("enabled", AutoRead.enabled)
+    if not isinstance(enabled, bool):
+        raise ConfigError(f"{path}: autoread.enabled must be on or off, got {enabled!r}")
+    per_day = _between(raw.get("per_day", AUTOREAD_PER_DAY), "autoread.per_day", path, 1, AUTOREAD_DAILY_MAX,
+                       "reads a day for each site, never more than 50 in all")
+    low = _between(raw.get("pause_min", AUTOREAD_PAUSE_MIN), "autoread.pause_min", path, AUTOREAD_PAUSE_FLOOR, 3600,
+                   "the fewest seconds between two reads")
+    high = _between(raw.get("pause_max", max(AUTOREAD_PAUSE_MAX, low + AUTOREAD_SPREAD)), "autoread.pause_max", path,
+                    low + AUTOREAD_SPREAD, 7200, f"the most seconds between two reads, at least {AUTOREAD_SPREAD} "
+                    "more than pause_min so the pace is never a fixed interval")
+    return AutoRead(enabled, per_day, low, high)
+
+
 FOLLOW_UPS = ("off", "reminders", "reminders-all")
 
 
@@ -937,7 +982,8 @@ class Config:
     calendar: Calendar = field(default_factory=Calendar)
     morning: Morning = field(default_factory=Morning)
     quiet: Quiet = field(default_factory=Quiet)
-    follow_ups: str = "off"    # follow_ups: reminders puts each follow-up day in Apple Reminders (see reminders.py)
+    autoread: AutoRead = field(default_factory=AutoRead)  # the extension reads postings by itself, slowly (off)
+    follow_ups: str = "off"   # follow_ups: reminders puts each follow-up day in Apple Reminders (see reminders.py)
     speech: Speech = field(default_factory=Speech)
     state: Path = DEFAULT_STATE
     cache: Path = DEFAULT_CACHE
@@ -1174,7 +1220,7 @@ SETTINGS = ("companies", "filters", "keywords", "focus", "resume", "connections"
             "stories", "resume_kit", "scoring",
             "chat", "prep", "reply",
             "learning", "display", "pace", "calendar", "morning", "pay", "comps", "goals", "applicant", "alerts",
-            "suggestions", "slow_boards", "ui", "incoming", "speech", "fetch_every", "follow_ups")
+            "suggestions", "slow_boards", "ui", "incoming", "speech", "fetch_every", "follow_ups", "autoread")
 TIMELINES = ("week", "month", "quarter", "any")  # this week, this month, the next few months, no rush
 THEMES = ("system", "light", "dark")          # the page's colors; system follows the computer's setting
 WIDTHS = ("standard", "wide", "full")         # how wide the page grows on a big monitor
@@ -1528,7 +1574,8 @@ def load(explicit: str | Path | None = None) -> Config:
         story_fit=story_fit,
         pace=_pace(raw.get("pace"), path), calendar=_calendar(raw.get("calendar"), path),
         morning=_morning(raw.get("morning"), path),
-        quiet=_quiet(raw.get("quiet"), path), follow_ups=_follow_ups(raw.get("follow_ups"), path),
+        quiet=_quiet(raw.get("quiet"), path), autoread=_autoread(raw.get("autoread"), path),
+        follow_ups=_follow_ups(raw.get("follow_ups"), path),
         speech=_speech(raw.get("speech"), path),
         state=_path(raw["state"], base) if raw.get("state") else DEFAULT_STATE,
         cache=_path(raw["cache"], base) if raw.get("cache") else DEFAULT_CACHE,
@@ -1551,6 +1598,7 @@ def defaults() -> dict:
                         "story_fit": False, "today_defaults": {"posted": Config.today_posted},
                         "age_decay": asdict(AgeDecay())},
             "pace": asdict(Pace()),
+            "autoread": asdict(AutoRead()),
             "calendar": asdict(Calendar()),
             "morning": asdict(Morning()),
             "speech": asdict(Speech()),
@@ -1617,6 +1665,15 @@ filters:
 # pace:
 #   daily: 3
 #   max: 5
+
+# The browser extension can read the postings of LinkedIn and Indeed jobs that have no text, by itself, slowly:
+# one at a time, a random 2 to 3 minutes apart, at most 25 a day for each site (50 in all, whatever you set),
+# only for jobs that pass your filters. LinkedIn may restrict accounts that look automated: off until you turn it on.
+# autoread:
+#   enabled: true
+#   per_day: 25
+#   pause_min: 120     # seconds; never below 60
+#   pause_max: 180     # at least 30 more than pause_min
 
 # `jobwatch calendar` writes your follow-up days and interviews as a .ics file; the page serves the same feed
 # to subscribe to. remind: minutes before an interview or call to be reminded (0: no reminder).

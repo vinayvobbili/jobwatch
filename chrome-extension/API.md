@@ -49,7 +49,9 @@ names what jobwatch offers beyond filling: the side panel shows **Save this post
 `posting` (`POST /ext/posting`), so an older jobwatch, which sends no `features`, gets no button that would fail. The
 other names: `import-list`, `reply`, `ats` (`POST /ext/ats`), `cover` (`POST /ext/cover`) and `list-ladders` (a jobwatch
 that takes Ladders records in `POST /ext/import-list`: it keeps a Ladders job's page only as a reference note and its pay
-estimate out of the job's pay; without it the panel offers no Read the jobs on this list on a Ladders list).
+estimate out of the job's pay; without it the panel offers no Read the jobs on this list on a Ladders list) and
+`auto-read` (`GET /ext/read-queue` and `POST /ext/read-report`, below: the extension offers reading postings by itself only
+to a jobwatch that has them).
 
 ### How a page is matched to a job
 
@@ -254,3 +256,26 @@ a link added by hand), else from `text`. No job found: one is added. → `{"key"
 "title": "…", "added": false, "has_text": true, "where": "queue", "said": "Filled in from Lever; scoring now"}`;
 `where` is the tab of jobwatch's page the job is on. A page jobwatch can't read, sent with no `text`, answers `400`
 saying to use **Save this posting to jobwatch** on it.
+
+`auto: true` (new, with feature `auto-read`) marks a read the extension started by itself (auto-read, below). jobwatch
+refuses it with `400` unless Settings has Read postings automatically on, saves the text exactly as for a pressed Read
+posting, logs "Read <title> at <company> from linkedin.com" (or `indeed.com`) in Activity, and does not start a score
+(`scoring: false`): only the usual automatic-scoring rules and caps apply.
+
+### `GET /ext/read-queue?linkedin=<n>&indeed=<n>&limit=<n>`
+
+Sent by auto-read (`auto-reader.js`) before each read. `linkedin` and `indeed` are how many reads the extension has left
+today for each site; a site with none gets no job. `limit` is at most 5. → `{"enabled": true, "limits": {"per_day": 25,
+"daily_max": 50, "pause_min": 120, "pause_max": 180}, "waiting": 12, "jobs": [{"key": "…", "site":
+"linkedin", "url": "https://www.linkedin.com/jobs/view/3900000123/", "title": "…", "company": "…"}]}`. jobwatch chooses:
+jobs that pass the title, place, pay and fit filters Today applies, with no text, not closed, a duplicate, snoozed or
+skipped, not tried in the last 3 days, and at a company with no own board it watches, best first. With the setting off:
+`enabled: false` and no jobs. The extension clamps `limits` to its own ceilings (25 a site by default, 50 in all, a
+pause never under 60 s) whatever this says.
+
+### `POST /ext/read-report`
+
+Tells jobwatch what auto-read did, for Activity (and so a job that gave no text is not handed over again at once).
+Either `{"outcome": "no_text" | "trouble" | "cancelled", "key": "…", "site": "linkedin", "reason": "…"}` (logged "Couldn't
+read <title> at <company> from linkedin.com: <reason>") or `{"event": "paused" | "resumed" | "off" | "on", "reason":
+"…"}`; a `paused` with a reason is a stop for the day, logged as worth a look. → `{"ok": true}`; anything else `400`.

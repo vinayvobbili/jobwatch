@@ -1767,6 +1767,26 @@ input[type=search]:focus { outline: none; border-color: var(--accent); box-shado
 .pace.met span::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
   background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--good) 22%, transparent), transparent 70%);
   animation: sheen 2.6s ease-in-out 3; }
+/* reading postings by itself (the extension's auto-reader): a glossy pill with Pause / Resume / Off, amber once it has stopped */
+.autoread { --k: var(--accent); display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 4px 6px 4px 12px; border-radius: 16px;
+  font-size: 13.5px; position: relative; overflow: hidden; color: var(--chip-text); border: 1px solid color-mix(in srgb, var(--k) 38%, transparent);
+  background: linear-gradient(180deg, rgba(255,255,255,.28), transparent 55%), color-mix(in srgb, var(--k) 12%, var(--chip));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45); animation: rise .35s both; }
+.autoread[hidden] { display: none; }
+.autoread[data-state="reading"] { --k: var(--good); }
+.autoread[data-state="stopped"] { --k: var(--warn); font-weight: 600; }
+.autoread[data-state="paused"], .autoread[data-state="off"] { --k: var(--muted); }
+.autoread .ar-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--k); box-shadow: 0 0 0 3px color-mix(in srgb, var(--k) 25%, transparent); }
+.autoread[data-state="reading"] .ar-dot, .autoread[data-state="waiting"] .ar-dot { animation: pulse 2.4s ease-in-out infinite; }
+.autoread .ar-buttons { display: inline-flex; gap: 4px; }
+.autoread .ar-buttons .btn { padding: 1px 10px; font-size: 12.5px; border-radius: 12px; }
+.autoread::after { content: ""; position: absolute; inset: 0 auto 0 -60%; width: 40%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.35), transparent); transition: left .6s; }
+.autoread:hover::after { left: 120%; }
+.status-row > .autoread { margin: 0; }
+.autoread-risk { margin: 8px 0; padding: 8px 12px; border-radius: 12px; font-size: 13.5px; font-weight: 600; color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); border-left-width: 4px;
+  background: linear-gradient(180deg, rgba(255,255,255,.25), transparent 60%), color-mix(in srgb, var(--warn) 10%, transparent); }
 .more-all { display: flex; justify-content: center; margin: 18px 0 4px; }
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(500px, 1fr)); gap: 14px; }
 .grid-cards > .card { margin: 0; }
@@ -5784,6 +5804,51 @@ function paceLine(el, p) {
   return el;
 }
 
+// Reading postings by itself (the extension's auto-reader, with "Read postings automatically" on in Settings): the status
+// the extension sends through its page bridge, in a line, with Pause / Resume / Off. The words are the extension's own
+// (chrome-extension/auto-read.js statusLine); tests/test_auto_read.py holds the two to the same text.
+function autoReadCountdown(ms) { const s = Math.max(1, Math.ceil(ms / 1000)); return s < 60 ? `${s}s` : `${Math.ceil(s / 60)}m`; }
+function autoReadLine(st, now = Date.now()) {
+  if (st.state === "off") return "Auto-read is off in this browser.";
+  if (st.state === "paused") return "Reading postings is paused. Press Resume to continue.";
+  if (st.state === "disabled") return "Reading postings is off in jobwatch's Settings.";
+  if (st.state === "stopped") return st.reason;
+  const head = `Reading postings: ${st.planned > st.done ? `${st.done} of ${st.planned} today` : `${st.done} today`}`;
+  const tail = { capped: "done for today, back tomorrow", reading: "reading one now", deferred: "waiting until you leave LinkedIn or Indeed",
+    empty: "nothing waiting" }[st.state] || `next in ${autoReadCountdown(Math.max(0, st.nextAt - now))}`;
+  return `${head} · ${tail}`;
+}
+const AUTO_READ_BUTTONS = { pause: ["Pause", "Pause reading for now"], resume: ["Resume", "Read again, after a new pause"],
+  off: ["Off", "Turn automatic reading off in this browser (jobwatch's Settings still has it on)"], on: ["Turn on", "Read postings automatically again"] };
+const autoReadHearers = new Set();
+window.addEventListener("message", e => {
+  if (e.source === window && e.data?.type === "jobwatch:auto-read-status") autoReadHearers.forEach(f => f(e.data.status));
+});
+function autoReadChip() {
+  const line = h("span", { role: "status" }), buttons = h("span", { class: "ar-buttons" });
+  const el = h("div", { class: "autoread", id: "autoread", hidden: true, title: "The jobwatch extension reads LinkedIn and Indeed postings by itself, " +
+    "one at a time, a few a day. Settings > Browser extension has the limits." }, h("span", { class: "ar-dot" }), line, buttons);
+  let st = null;
+  const draw = () => {
+    el.hidden = !st || st.state === "disabled";  // jobwatch's own setting is off: nothing to show
+    if (el.hidden) return;
+    el.dataset.state = st.state;
+    line.textContent = autoReadLine(st);
+    buttons.replaceChildren(...st.buttons.map(cmd => h("button", { class: "btn", title: AUTO_READ_BUTTONS[cmd][1], onclick: () => ask(cmd) }, AUTO_READ_BUTTONS[cmd][0])));
+  };
+  const ask = (command = "status") => window.postMessage({ type: "jobwatch:auto-read", command }, location.origin);
+  const hear = s => { st = s; draw(); };
+  autoReadHearers.add(hear);
+  let ticks = 0;
+  const timer = setInterval(() => {
+    if (!el.isConnected) { clearInterval(timer); autoReadHearers.delete(hear); return; }
+    if (++ticks % 15 === 0) ask();  // the extension changes it as it reads: asked again every 15 seconds
+    draw();
+  }, 1000);
+  if (document.documentElement.dataset.jobwatchBridge === "1") ask(); else setTimeout(() => document.documentElement.dataset.jobwatchBridge === "1" && ask(), 1500);
+  return el;
+}
+
 // "No score yet" as this browser keeps it: what it was set to with no fit chip on. A fit chip being on never changes it.
 function keptNoScore() { return remembered("today.noscore", "show") === "hide" ? "hide" : "show"; }
 // Choosing a fit minimum hides the jobs with no score yet (they can't meet it); the switch shows Hide, and a Show picked
@@ -6071,7 +6136,7 @@ async function renderToday() {
       panel("Companies", companies),
       Object.keys(byKw).length ? panel("Keywords", kwChips) : null,
       toWatchPanel(),
-    ], [h("div", { class: "status-row" }, paceLine(h("div", { class: "pace" }), d.pace), checked, scoring, staleScores, showing), list, pager]));
+    ], [h("div", { class: "status-row" }, paceLine(h("div", { class: "pace" }), d.pace), autoReadChip(), checked, scoring, staleScores, showing), list, pager]));
   drawToday();
   if (d.checked) watchChecked(d.checked, checked);
   if (d.scoring) watchScoring(d.scoring, scoring);
@@ -6957,7 +7022,7 @@ const SET_GROUPS = [
   { id: "ai", label: "AI & fit scores", cards: ["resume", "stale", "providers", "prompts", "chat"] },
   { id: "people", label: "People & pay", cards: ["people", "pay"] },
   { id: "alerts", label: "Alerts & skills", cards: ["alerts", "incoming", "suggestions", "skills"] },
-  { id: "apply", label: "Applying", cards: ["applicant", "tailor", "extension"] },
+  { id: "apply", label: "Applying", cards: ["applicant", "tailor", "extension", "autoread"] },
 ];
 // The sub tab a name points at: a tab id ("ai"), a card id ("pay") or a card's anchor ("set-pay"); null if none.
 function settingsGroupOf(name) {
@@ -8083,6 +8148,43 @@ function extensionCard() {
       field("Token", h("div", { class: "row" }, token, copy, renew),
         "Paste it into the extension's options, once.", "span3"),
       field("Server", textInput(where, ""), "The extension's options already have this address.")));
+  el.classList.add("full");
+  return el;
+}
+
+// The limits of reading postings by itself in plain words, from the numbers in the fields (the same words in the guide).
+function autoreadWords(perDay, low, high) {
+  const mins = s => (s % 60 ? (s / 60).toFixed(1).replace(/\.0$/, "") : String(s / 60));
+  return `One job at a time, a random ${mins(low)} to ${mins(high)} minutes apart. At most ${perDay} a day for each site, and ` +
+    "never more than 50 a day in all, whatever you set. Only jobs that pass your filters and have no text. Never while you are using " +
+    "LinkedIn or Indeed. It stops for the rest of the day at the first sign of trouble (a sign-in or security page, an error, " +
+    "an account notice, two pages in a row with no posting).";
+}
+// Read postings automatically (autoread): off until you turn it on after reading the risk note. The extension does the
+// reading (chrome-extension/auto-reader.js); the limits here can be tightened freely and loosened only up to the ceilings.
+function autoreadCard(s) {
+  const a = s.autoread || {}, d = s.defaults.autoread;
+  const on = checkLine(a.enabled, "Read postings automatically");
+  const perDay = numInput(a.per_day, d.per_day, { min: 1, max: 50 });
+  const low = numInput(a.pause_min, d.pause_min, { min: 60, max: 3600 }), high = numInput(a.pause_max, d.pause_max, { min: 90, max: 7200 });
+  const words = h("p", { class: "small muted", id: "autoread-words" });
+  const redraw = () => { words.textContent = autoreadWords(Number(perDay.value) || d.per_day, Number(low.value) || d.pause_min, Number(high.value) || d.pause_max); };
+  for (const i of [perDay, low, high]) i.addEventListener("input", redraw);
+  redraw();
+  const el = setCard("autoread", "Read postings automatically", "LinkedIn and Indeed jobs that have no text, slowly, by the extension",
+    h("p", { class: "small muted lead" }, "For a job that came from a LinkedIn or Indeed alert or list and has no text, the jobwatch " +
+      "extension opens the job's page in a tab behind your others, copies the posting to jobwatch and closes the tab: what the Read " +
+      "posting button does, without pressing it. Nothing but the posting's text goes to jobwatch, which keeps it on this computer."),
+    h("p", { class: "autoread-risk" }, "LinkedIn may restrict accounts that look automated. These limits keep reading slow and small; " +
+      "you can turn it off anytime."),
+    on.el, words,
+    h("div", { class: "fields" },
+      field("Reads a day for each site", perDay, "25 unless you change it. LinkedIn and Indeed count apart; both together never pass 50."),
+      field("Shortest pause (seconds)", low, "Never under 60. Each pause is a random time between this and the longest."),
+      field("Longest pause (seconds)", high, "At least 30 more than the shortest, so it is never a fixed interval.")),
+    h("p", { class: "small muted" }, "It also needs the browser extension (0.13.2 or newer) open in Chrome, and it can be paused or turned " +
+      "off there, in the side panel and on Today."));
+  el.values = () => merged(a, { enabled: on.box.checked || null, per_day: numberOf(perDay), pause_min: numberOf(low), pause_max: numberOf(high) });
   el.classList.add("full");
   return el;
 }
@@ -9674,7 +9776,7 @@ function renderSettings() {
     return out;
   };
   const chatC = chatCard(s), payC = payCard(s), alertsC = alertsCard(s), goalsC = goalsCard(s);
-  const applicantC = applicantCard(s), extensionC = extensionCard(), incomingC = incomingCard(s);
+  const applicantC = applicantCard(s), extensionC = extensionCard(), incomingC = incomingCard(s), autoreadC = autoreadCard(s);
   const resumeKit = textInput(s.resume_kit, "resume");
   const tailorC = setCard("tailor", "Tailor resumes", "optional",
     h("p", { class: "small muted lead" }, "The Prepare button on a queued job drafts a resume for it with resume-kit " +
@@ -9717,7 +9819,8 @@ function renderSettings() {
           : timeline.value, near: textOf(near), jobs: numberOf(exampleJobs) }),
         display, pace: merged(pace, { daily: numberOf(daily), max: numberOf(most) }),
         pay: merged(payC.values(), goalsC.payValues()), alerts: alertsC.values(), incoming: incomingC.values(),
-        goals: goalsC.goals(), comps: goalsC.weights(), applicant: applicantC.values(), resume_kit: textOf(resumeKit),
+        goals: goalsC.goals(), comps: goalsC.weights(), applicant: applicantC.values(), autoread: autoreadC.values(),
+        resume_kit: textOf(resumeKit),
         suggestions: merged(sug, { half_life: numberOf(halfLife), limit: numberOf(sugLimit) }),
         fetch_every: every.value === everyNow && (s.fetch_every === null || s.fetch_every === undefined) ? null : every.value });
       settings = await api("/api/settings");
@@ -9811,6 +9914,7 @@ function renderSettings() {
     applicantC,
     tailorC,
     extensionC,
+    autoreadC,
   ].filter(Boolean);
 
   // A bar that stays on screen: a link to each card, what's unsaved, and Save.

@@ -42,6 +42,7 @@ from . import (
     ai,
     ats,
     autofill,
+    autoread,
     backup,
     chat,
     closed_notice,
@@ -136,7 +137,7 @@ IN_LINE = ("queued", "new", "shown")  # the statuses of the jobs the background 
 UPLOADS = {"resume": (".pdf", ".docx", ".txt", ".md"), "connections": (".csv", ".zip")}
 # What the extension may offer beyond filling forms, named in /ext/ping: an extension paired with an older jobwatch
 # hides a button whose call that jobwatch doesn't have, instead of failing when it's pressed.
-EXT_FEATURES = ("posting", "import-list", "reply", "ats", "cover", "list-ladders")
+EXT_FEATURES = ("posting", "import-list", "reply", "ats", "cover", "list-ladders", "auto-read")
 
 
 class ApiError(Exception):
@@ -726,6 +727,7 @@ class App:
                 "tailor_ready": tailor.ready(str(raw.get("resume_kit") or "")),
                 "scoring": scoring, "chat": talk, "learning": raw.get("learning") or {},
                 "display": raw.get("display") or {}, "pace": raw.get("pace") or {}, "pay": raw.get("pay") or {},
+                "autoread": raw.get("autoread") or {},
                 "alerts": raw.get("alerts") or {}, "goals": raw.get("goals") or {},
                 # a bare No in the file is false to YAML: shown as the word it was, so a save writes text
                 "applicant": {k: config.applicant_text(k, v) for k, v in (applicant or {}).items()},
@@ -995,8 +997,29 @@ class App:
                 raise ApiError(str(e)) from None
         return self._with_store(run)
 
+    def ext_read_queue(self, query: dict) -> dict:
+        """The jobs the extension may read by itself now (see autoread.queue); `linkedin` and `indeed` are how many
+        reads it has left today on each site, `limit` how many jobs to hand over."""
+        def number(name: str, default: int) -> int:
+            try:
+                return int((query.get(name) or [default])[0])
+            except ValueError:
+                raise ApiError(f"{name} is a whole number") from None
+        left = {site: number(site, autoread.limits(self._cfg())["per_day"]) for site in ("linkedin", "indeed")}
+        limit = number("limit", autoread.QUEUE_MAX)
+        return self._with_store(lambda cfg, store: autoread.queue(cfg, store, left, limit))
+
+    def ext_read_report(self, body) -> dict:
+        """What the extension says about its own reading: a read with no text, a stop, a pause (autoread.report)."""
+        try:
+            return self._with_store(lambda cfg, store: autoread.report(store, body))
+        except ValueError as e:
+            raise ApiError(str(e)) from None
+
     def ext_posting(self, body) -> dict:
         def run(cfg, store):
+            if body.get("auto") is True and not cfg.autoread.enabled:
+                raise ApiError("Reading postings automatically is off: turn it on in jobwatch's Settings.")
             try:
                 return autofill.posting(cfg, store, body)
             except sources.SourceError as e:
@@ -1006,10 +1029,13 @@ class App:
             self.find_on_board_in_background(got["key"])  # the answer doesn't wait for network reads
         if got["has_text"]:
             self.score_in_background()  # it has text to score now
-            # Reading a posting is asking for its score: this job is scored now, whatever scoring.auto says,
-            # unless its posting is closed (got["not_scored"], from this read or an earlier one): nobody can apply
-            # to it. The check inside counts the score spared.
-            got["scoring"] = self.score_posted_in_background(got["key"], replaced=got["saved"])
+            if body.get("auto") is True:
+                got["scoring"] = False  # nobody asked for this read: the scoring rules and caps decide, as for new text
+            else:
+                # Reading a posting is asking for its score: this job is scored now, whatever scoring.auto says,
+                # unless its posting is closed (got["not_scored"], from this read or an earlier one): nobody can
+                # apply to it. The check inside counts the score spared.
+                got["scoring"] = self.score_posted_in_background(got["key"], replaced=got["saved"])
         return got
 
     def score_posted_in_background(self, key: str, replaced: bool = True) -> bool:
@@ -2894,9 +2920,11 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                     data = app.ext_context(page, company, title)
                 elif method == "GET" and url.path == "/ext/resume":
                     return self._send(HTTPStatus.OK, *app.ext_resume(page, company, title))
+                elif method == "GET" and url.path == "/ext/read-queue":
+                    data = app.ext_read_queue(query)
                 elif method == "POST" and url.path in ("/ext/draft", "/ext/submitted", "/ext/answers", "/ext/posting",
                                                        "/ext/tailor", "/ext/import-list", "/ext/reply", "/ext/ats",
-                                                       "/ext/cover"):
+                                                       "/ext/cover", "/ext/read-report"):
                     body = json.loads(raw or b"{}")
                     if not isinstance(body, dict):
                         raise ApiError("send a JSON object")
@@ -2904,7 +2932,8 @@ def make_handler(app: App, token: str, port_ref: list[int]):
                             "/ext/answers": app.ext_answers,
                             "/ext/posting": app.ext_posting, "/ext/tailor": app.ext_tailor,
                             "/ext/import-list": app.ext_import_list, "/ext/reply": app.ext_reply,
-                            "/ext/ats": app.ext_ats, "/ext/cover": app.ext_cover}[url.path](body)
+                            "/ext/ats": app.ext_ats, "/ext/cover": app.ext_cover,
+                            "/ext/read-report": app.ext_read_report}[url.path](body)
                 else:
                     raise ApiError("not found", HTTPStatus.NOT_FOUND)
                 self._json(HTTPStatus.OK, data)

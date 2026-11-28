@@ -215,7 +215,7 @@ JOB_TAB = {"id": 5, "url": "https://www.linkedin.com/jobs/view/4000000001/"}
 def background_case(tmp_path, body: str):
     """background.js (the service worker) loaded in node with a fake chrome and fetch: `send(msg, tab)` delivers a message
     as a content script in `tab` would, and answers its reply; `closed` lists the tabs chrome.tabs.remove was given."""
-    for name in ("background.js", "logic.js", "passive.js", "read-posting.js", "lib.js"):
+    for name in ("background.js", "logic.js", "passive.js", "read-posting.js", "auto-read.js", "auto-reader.js", "lib.js"):
         shutil.copy(EXT / name, tmp_path / name)
     (tmp_path / "package.json").write_text('{"type": "module"}', encoding="utf-8")
     (tmp_path / "case.mjs").write_text(f"""const kept = {{}};
@@ -225,11 +225,12 @@ let jobwatchAnswers = {{ ok: true, status: 200, body: {{ where: 'queue', closed:
 const none = {{ addListener() {{}} }};
 const keys = (k) => (Array.isArray(k) ? k : [k]);
 globalThis.chrome = {{
-  runtime: {{ onMessage: {{ addListener: (f) => {{ onMessage = f; }} }} }},
+  runtime: {{ onMessage: {{ addListener: (f) => {{ onMessage = f; }} }}, onInstalled: none, onStartup: none, getURL: (p) => `chrome-extension://x/${{p}}` }},
   action: {{ onClicked: none }}, sidePanel: {{ setOptions: async () => {{}} }}, windows: {{ onRemoved: none }},
-  tabs: {{ onRemoved: none, onCreated: none, onUpdated: none, remove: async (id) => {{ closed.push(id); }}, sendMessage: async () => {{}} }},
+  alarms: {{ onAlarm: none, get: async () => ({{}}), create() {{}} }}, idle: {{ onStateChanged: none, setDetectionInterval() {{}} }},
+  tabs: {{ onRemoved: none, onCreated: none, onUpdated: none, onActivated: none, remove: async (id) => {{ closed.push(id); }}, sendMessage: async () => {{}} }},
   storage: {{
-    local: {{ get: async () => ({{ settings: {{ serverUrl: 'http://127.0.0.1:8765', token: 'secret' }} }}) }},
+    local: {{ get: async (k) => (k === 'settings' ? {{ settings: {{ serverUrl: 'http://127.0.0.1:8765', token: 'secret' }} }} : {{}}), set: async () => {{}} }},
     session: {{
       get: async (k) => Object.fromEntries(keys(k).filter((x) => x in kept).map((x) => [x, kept[x]])),
       set: async (o) => Object.assign(kept, o),

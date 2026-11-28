@@ -480,12 +480,14 @@ def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
     links = [u for u in [str(body.get("page_url") or "").strip()] if _own_site(u)]
     if not (pid or jk or links or (company and title)):
         raise ValueError("send the posting's company and title, or its link")
+    # `auto`: the extension read this page by itself (see autoread.py), which the Activity entry says
+    auto = ("indeed.com" if jk and not pid else "linkedin.com") if body.get("auto") is True else ""
     came = (f"Found on LinkedIn: https://www.linkedin.com/jobs/view/{pid}/" if pid
             else f"Found on Indeed: https://www.indeed.com/viewjob?jk={jk}" if jk else None)
     if found := _listing(store, pid, links, company, title, jk):
         job = found[0]
         if job.description.strip():
-            return _posted(store, job, "jobwatch already has this posting's text", False)
+            return _posted(store, job, "jobwatch already has this posting's text", False, auto)
         if job.source != MANUAL:
             raise ValueError(f"{job.display_company}: {job.title} comes from its board, which sets its link and text: "
                              "press Read posting on its card in jobwatch")
@@ -504,7 +506,8 @@ def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
         store.set_description(job.key, read.description if read else text, read)
         if not read:
             store.add_note(job.key, "Posting text sent from the page you had open, by the browser extension")
-        return {**_posted(store, store.find(job.key)[0], _said(read or job), False), **({"gone": gone} if gone else {})}
+        return {**_posted(store, store.find(job.key)[0], _said(read or job), False, auto),
+                **({"gone": gone} if gone else {})}
     gone = ""
     for link in links:
         try:
@@ -515,14 +518,14 @@ def _posting(cfg: Config, store: Store, body: dict, get=None) -> dict:
         except (sources.SourceError, ValueError):
             continue
         if job.description.strip():
-            return _posted(store, job, _said(job), True)
+            return _posted(store, job, _said(job), True, auto)
     gone = gone or _gone(text)
     link = next((u for u in links if not sources.detect(u)), "") or (came or "").rpartition(": ")[2]
     # A job known only by its LinkedIn or Indeed id is kept with the text the page showed, at once; whether the same
     # job is on the company's own board is looked for after the answer (find_on_board): that is network reads.
     later = bool(came) and link == came.rpartition(": ")[2]
     job, _ = save_job(store, link, company, title, text, note=came, boards=cfg.boards, find_board=not later)
-    return {**_posted(store, job, _said(job), True), **({"find_on_board": True} if later else {}),
+    return {**_posted(store, job, _said(job), True, auto), **({"find_on_board": True} if later else {}),
             **({"gone": gone} if gone else {})}
 
 
@@ -544,14 +547,17 @@ def find_on_board(cfg: Config, store: Store, key: str, get=None, page=None) -> s
     return f"found on the company's own board: {found.url}"
 
 
-def _posted(store: Store, job: Job, said: str, added: bool) -> dict:
+def _posted(store: Store, job: Job, said: str, added: bool, auto: str = "") -> dict:
     job, rec = store.find(job.key)
     has_text = bool(job.description.strip())
     saved = has_text and "already has" not in said  # this read saved the text: any score is of older text
     if "already has" not in said:
         said += "; scoring now" if has_text else "; it has no posting text, so it can't be scored"
-        store.log("mail", f"{'Added' if added else 'Saved the posting text of'} {job.display_company}: {job.title} "
-                  "from the browser extension", jobs=[job.key])
+        if auto:
+            store.log("mail", f"Read {job.title} at {job.display_company} from {auto}", jobs=[job.key])
+        else:
+            store.log("mail", f"{'Added' if added else 'Saved the posting text of'} {job.display_company}: {job.title} "
+                      "from the browser extension", jobs=[job.key])
     return {"key": job.key, "company": job.display_company, "title": job.title, "added": added, "has_text": has_text,
             "saved": saved, "where": "today" if rec["status"] in ("new", "shown")
             else "queue" if rec["status"] == "queued" else "applied", "said": ("Added. " if added else "") + said}

@@ -24,7 +24,7 @@ def run_js(tmp_path, body: str):
 @needs_node
 def test_every_script_parses():
     """A syntax error in a content script gives a panel that never opens, with no test failing elsewhere."""
-    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "look.js", "job-lists.js", "passive.js", "read-posting.js", "page-bridge.js", "reply.js"):
+    for name in ("logic.js", "page.js", "sidepanel.js", "background.js", "lib.js", "options.js", "look.js", "job-lists.js", "passive.js", "read-posting.js", "page-bridge.js", "reply.js", "auto-read.js", "auto-reader.js"):
         r = subprocess.run(["node", "--check", str(EXT / name)], capture_output=True, text=True)
         assert r.returncode == 0, f"{name}: {r.stderr}"
 
@@ -32,8 +32,10 @@ def test_every_script_parses():
 def test_the_manifest_asks_for_little():
     manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["manifest_version"] == 3
-    # "tabs" only to see the address of the tab LinkedIn's Apply button opens (background.js, openCompany)
-    assert sorted(manifest["permissions"]) == ["activeTab", "scripting", "sidePanel", "storage", "tabs"]
+    # "tabs" only to see the address of the tab LinkedIn's Apply button opens (background.js, openCompany), and which tab
+    # the person is on for auto-read; "alarms" and "idle" only for reading postings by itself (auto-reader.js): the pause
+    # between two reads must survive the service worker stopping, and nothing is read while the person is busy on LinkedIn
+    assert sorted(manifest["permissions"]) == ["activeTab", "alarms", "idle", "scripting", "sidePanel", "storage", "tabs"]
     assert sorted(manifest["host_permissions"]) == ["http://127.0.0.1/*", "http://localhost/*"]
     # the only things that run unprompted, on the two job sites and nowhere else: passive mode's card note-taker (off
     # unless ticked) and read-posting.js, which reads only a page whose address jobwatch's Read posting button added

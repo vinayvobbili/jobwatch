@@ -184,6 +184,11 @@ CREATE TABLE IF NOT EXISTS backfill_tried (
     key TEXT PRIMARY KEY,
     tried_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS read_tried (
+    key TEXT PRIMARY KEY,
+    tried_at TEXT NOT NULL,
+    outcome TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS list_unplaced (
     key TEXT PRIMARY KEY,
     why TEXT NOT NULL,
@@ -752,6 +757,17 @@ class Store:
         """Note that the backfill looked for this job on its company's board now."""
         with self.db:
             self.db.execute("INSERT OR REPLACE INTO backfill_tried (key, tried_at) VALUES (?, ?)", (key, _now()))
+
+    def set_read_tried(self, key: str, outcome: str):
+        """Note that the browser extension tried to read this job's LinkedIn or Indeed page by itself now, and how it
+        went (no_text, trouble, cancelled), so the same job isn't handed to it again at once (see autoread.queue)."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO read_tried (key, tried_at, outcome) VALUES (?, ?, ?)",
+                            (key, _now(), outcome))
+
+    def read_tried(self) -> dict[str, str]:
+        """{job key: when} the extension last tried to read its page by itself."""
+        return {r["key"]: r["tried_at"] for r in self.db.execute("SELECT key, tried_at FROM read_tried")}
 
     def posting_checked(self) -> dict[str, str]:
         """When each job's posting was last checked (watch.check_daily), by key."""

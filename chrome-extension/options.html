@@ -30,6 +30,10 @@
       .top { display: flex; align-items: flex-start; gap: 12px; }
       .top > div:first-child { flex: 1; }
       .look { display: flex; gap: 8px; } .look select { width: auto; }
+      label.inline { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; }
+      label.inline input { width: auto; accent-color: var(--accent); }
+      #auto-read { border-left: 4px solid var(--accent-2); }
+      #auto-read p { margin: 6px 0 0; }
     </style>
   </head>
   <body>
@@ -63,6 +67,25 @@
         </div>
       </form>
 
+      <section class="card" id="auto-read">
+        <h2>Reading postings by itself</h2>
+        <p class="hint">
+          When "Read postings automatically" is on in jobwatch's Settings, this extension opens the LinkedIn and Indeed
+          pages of jobs that have no text, one at a time, and copies each posting to your jobwatch. It is slow and small:
+          one page every 2 to 3 minutes (a random time), at most 25 a day for each site (50 in all, whatever you set), only
+          for jobs that pass your filters, and never while you are using LinkedIn or Indeed. Anything unusual (a sign-in or
+          security page, an error, an account notice) stops it for the rest of the day.
+        </p>
+        <p class="hint">
+          LinkedIn may restrict accounts that look automated. These limits keep reading slow and small; you can turn it
+          off anytime. Nothing but the posting text and the job's key goes to jobwatch on this computer.
+        </p>
+        <div class="actions">
+          <label class="inline"><input id="auto-allow" type="checkbox" /> Allow automatic reading in this browser</label>
+          <span id="auto-state" class="hint" role="status"></span>
+        </div>
+      </section>
+
       <section class="card" id="appearance">
         <h2>Appearance</h2>
         <p class="hint">The side panel and this page follow your computer's light or dark setting unless you pick one here.</p>
@@ -75,6 +98,7 @@
       </section>
     </main>
     <script src="logic.js"></script>
+    <script src="auto-read.js"></script>
     <script src="look.js"></script>
     <script type="module" src="options.js"></script>
   </body>

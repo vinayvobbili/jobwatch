@@ -8,6 +8,8 @@
 import './logic.js';
 import './passive.js';
 import './read-posting.js';
+import './auto-read.js';
+import * as autoReader from './auto-reader.js';
 import { ApiError, api, getSettings, toBase64 } from './lib.js';
 
 const JW = globalThis.JW;
@@ -82,6 +84,7 @@ chrome.windows.onRemoved.addListener((windowId) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   chrome.storage.session.remove([pendingKey(tabId), ctxKey(tabId), readDoneKey(tabId)]);
   readTabEnded(tabId, 'The posting tab was closed before it was read.');
+  autoReader.onTabRemoved(tabId);
   const id = panelWindows.get(tabId);
   if (id) chrome.windows.remove(id).catch(() => {}); // its tab is gone, so is its panel
 });
@@ -89,11 +92,37 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // What jobwatch's own page may ask of this extension (page-bridge.js asks with `ping`). The page works with an older
 // extension too, which doesn't know `ping` and so counts as having none of these: a new one is added here when the
 // page starts to use it.
-const CAPABILITIES = ['readInBackground'];
+const CAPABILITIES = ['readInBackground', 'autoRead'];
+
+// --- Reading postings by itself (auto-reader.js): the alarms, and the events that make it look again ------------
+
+autoReader.ensureAlarms();
+chrome.runtime.onInstalled.addListener(() => autoReader.ensureAlarms());
+chrome.runtime.onStartup.addListener(() => autoReader.startup());
+chrome.alarms.onAlarm.addListener((alarm) => { if (autoReader.isAutoAlarm(alarm)) autoReader.tick(); });
+chrome.idle.onStateChanged.addListener(() => autoReader.tick()); // the person went idle, or came back: look again
+chrome.tabs.onActivated.addListener(() => autoReader.tick()); // ... or switched tabs
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => autoReader.onTabUpdated(tabId, change, tab));
+
+const AUTO_COMMANDS = ['pause', 'resume', 'off', 'on'];
+
+/** The popup, the options page and jobwatch's own page (through page-bridge.js) may look at the auto-read status and
+ * press Pause, Resume, Off and On; a page may do it only if it is the paired jobwatch's. Nothing else changes it. */
+async function autoReadControl(msg, sender) {
+  if (sender.tab && !String(sender.url || '').startsWith(chrome.runtime.getURL(''))) { // the options page opens in a tab
+    const settings = await getSettings();
+    if (!JWRead.sameJobwatch(sender.origin || sender.url, settings.serverUrl)) throw new Expected('Only your own jobwatch page can do that.');
+  }
+  if (msg.type === 'autoReadStatus') return autoReader.status();
+  if (!AUTO_COMMANDS.includes(msg.command)) throw new Expected('Unknown command.');
+  return autoReader.command(msg.command);
+}
 
 async function handle(msg, tabId, sender) {
   switch (msg.type) {
     case 'ping': return { capabilities: CAPABILITIES };
+    case 'autoReadStatus':
+    case 'autoReadCommand': return autoReadControl(msg, sender);
     case 'open': return open(tabId);
     case 'status': return status();
     case 'test': return { ...(await api('/ext/ping', { settings: msg.settings })) };
@@ -103,9 +132,10 @@ async function handle(msg, tabId, sender) {
     case 'draftReply': return draftReply(tabId, msg.followup);
     case 'fillReply': return fillReply(tabId, msg.text, msg.fingerprint, msg.replace);
     case 'posting': return posting(tabId);
-    case 'readPosting': return readPosting(msg, sender);
+    // a page read by itself (auto-reader.js) answers to the auto-reader; one jobwatch's Read posting button opened, as before
+    case 'readPosting': return (await autoReader.owns(sender)) ? autoReader.onPosting(msg, sender) : readPosting(msg, sender);
     case 'readInBackground': return readInBackground(msg, sender);
-    case 'readFailed': return readFailed(msg, sender);
+    case 'readFailed': return (await autoReader.owns(sender)) ? autoReader.onFailed(msg, sender) : readFailed(msg, sender);
     case 'closeReadTab': return closeReadTab(sender);
     case 'importList': return importList(tabId);
     case 'importState': return { running: [...listImports].map(([tabId, source]) => ({ tabId, source })) };

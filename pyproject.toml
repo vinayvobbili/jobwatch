@@ -64,6 +64,8 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.ruff.lint.per-file-ignores]
 # the page's own JavaScript, run in node, keeps its lines as long as the page's
 "tests/test_comps_page.py" = ["E501"]
+# the same, and fixtures imported from test_read_posting_page, which pytest wants as arguments of the same name
+"tests/test_autoread_page.py" = ["E501", "F811"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

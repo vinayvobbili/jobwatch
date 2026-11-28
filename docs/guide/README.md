@@ -9,6 +9,7 @@ The details behind the [README](../../README.md), one topic a page.
 - [Chat](chat.md) - asking questions about your jobs and applications in plain words
 - [Skills to build](skills.md) - skills your matches ask for, with courses to close gaps
 - [The apply queue](applying.md) - queueing, duplicates, alerts, status emails, and companies to watch
+- [Reading postings by itself](reading-postings.md) - the extension reading LinkedIn and Indeed postings slowly, its limits and risk
 - [Tracking applications](tracking.md) - stages, quiet applications, calendar, interviews, and what you sent
 - [Prep sheets](interview-prep.md) - interview prep sheets, drafted answers, mock interviews, and drill videos
 - [Comparing opportunities](comps.md) - side-by-side pay, fit, and company health for live opportunities

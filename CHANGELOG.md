@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- New, off until you turn it on: **Read postings automatically** (Settings > Applying; guide: Reading postings by
+  itself). For jobs from LinkedIn and Indeed alerts and lists that have no posting text, the browser extension (0.13.2)
+  does what the Read posting button does without your pressing it: jobwatch picks the next job worth reading (it passes
+  your filters, has no text, isn't closed, a duplicate, snoozed or skipped, and its company has no board jobwatch
+  watches; best first) and the extension opens it in a tab behind your others, copies the text and closes the tab.
+  Slow and small by design, with limits that Settings can only tighten, never pass: one job at a time, a random 2 to 3
+  minute pause, 25 a day for each site and never more than 50 a day together, only while Chrome is open and you aren't
+  using LinkedIn or Indeed. At the first sign of trouble (a sign-in or security page, HTTP 429/999/403, an account
+  notice, two pages in a row with no posting) it stops for the day with a badge and a message on Today and in the side
+  panel ("Auto-read paused: LinkedIn asked for a sign-in. Resumes tomorrow, or press Resume after you check LinkedIn.").
+  Today and the side panel show "Reading postings: 3 of 12 today · next in 2m" with Pause, Resume and Off; Activity
+  lists every read and every stop; the extension's options page has a kill switch. LinkedIn may restrict accounts that
+  look automated, which the Settings card and the guide say first. Only the posting's text and the job's number go to
+  jobwatch on your computer; the extension adds the `alarms` and `idle` permissions and no new site. Scoring follows
+  your usual automatic-scoring rules and caps.
+
 - Fixed: on a job from a VC portfolio board with no posting text, "Add the posting" did nothing. Pressing Save sent
   the link to a rule that a board sets its job's link, which refused it with a message naming the job's internal key
   that vanished in seconds. Now a job from a board offers only what can work. **Read posting** reads the posting at

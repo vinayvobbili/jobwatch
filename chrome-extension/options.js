@@ -68,3 +68,23 @@ getSettings().then((s) => {
   server.value = s.serverUrl;
   token.value = s.token;
 });
+
+// The kill switch for reading postings by itself: off here wins over jobwatch's own setting (auto-reader.js keeps it)
+{
+  const allow = document.getElementById('auto-allow');
+  const state = document.getElementById('auto-state');
+  const show = (r) => {
+    if (!r || r.ok === false || !r.paired) {
+      allow.disabled = true;
+      state.textContent = 'Pair with jobwatch first.';
+      return;
+    }
+    allow.disabled = false;
+    allow.checked = r.state !== 'off';
+    state.textContent = globalThis.JWAuto.statusLine(r, Date.now());
+  };
+  chrome.runtime.sendMessage({ type: 'autoReadStatus' }).then(show, () => show(null));
+  allow.addEventListener('change', async () => {
+    show(await chrome.runtime.sendMessage({ type: 'autoReadCommand', command: allow.checked ? 'on' : 'off' }).catch(() => null));
+  });
+}

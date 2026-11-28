@@ -11,6 +11,9 @@
  * Messages (window.postMessage, same page only):
  *   page -> bridge   { type: 'jobwatch:read-posting', key, url }
  *   bridge -> page   { type: 'jobwatch:read-posting-done', key, ok, said?, closed?, has_text?, error? }
+ *   page -> bridge   { type: 'jobwatch:auto-read', command: 'status' | 'pause' | 'resume' | 'off' | 'on' }
+ *   bridge -> page   { type: 'jobwatch:auto-read-status', status: { state, done, planned, nextAt, reason, buttons } | null }
+ * (the last two: reading postings by itself, see auto-reader.js; the page shows its status and the buttons)
  * The bridge marks the page (<html data-jobwatch-bridge="1">) so the page knows, without waiting, whether to ask, and
  * then asks the service worker what it can do (a `ping`) and writes the answer to <html data-jobwatch-caps="...">, a
  * space-separated list ("readInBackground"; empty for a service worker that does not know `ping`, which is an older
@@ -39,7 +42,28 @@
     return caps.filter((c) => typeof c === 'string' && /^\w+$/.test(c)).join(' ');
   }
 
-  const api = { REQUEST, DONE, doneMessage, capsText };
+  // Automatic reading (auto-reader.js): the page asks for the status, or presses Pause, Resume, Off or On, and gets the
+  // status back. Only these fields cross, whatever the service worker sent.
+  const AUTO_REQUEST = 'jobwatch:auto-read';
+  const AUTO_STATUS = 'jobwatch:auto-read-status';
+  const AUTO_COMMANDS = ['status', 'pause', 'resume', 'off', 'on'];
+  const AUTO_BUTTONS = ['pause', 'resume', 'off', 'on'];
+
+  function statusMessage(answer) {
+    const a = answer && answer.ok !== false && answer.paired ? answer : null;
+    if (!a) return { type: AUTO_STATUS, status: null };
+    const num = (n) => (Number.isFinite(Number(n)) ? Number(n) : 0);
+    return {
+      type: AUTO_STATUS,
+      status: {
+        state: /^\w+$/.test(String(a.state)) ? String(a.state) : '', done: num(a.done), planned: num(a.planned), nextAt: num(a.nextAt),
+        reason: typeof a.reason === 'string' ? a.reason.slice(0, 300) : '',
+        buttons: (Array.isArray(a.buttons) ? a.buttons : []).filter((b) => AUTO_BUTTONS.includes(b)),
+      },
+    };
+  }
+
+  const api = { REQUEST, DONE, doneMessage, capsText, AUTO_REQUEST, AUTO_STATUS, AUTO_COMMANDS, statusMessage };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.JWBridge = api;
 
@@ -62,6 +86,15 @@
     } catch (err) {
       tell({ key, ok: false, error: `couldn't reach the extension: ${err.message}` });
     }
+  });
+
+  window.addEventListener('message', async (e) => {
+    if (e.source !== window || !e.data || e.data.type !== AUTO_REQUEST || !AUTO_COMMANDS.includes(e.data.command)) return;
+    let r = null;
+    try {
+      r = await chrome.runtime.sendMessage(e.data.command === 'status' ? { type: 'autoReadStatus' } : { type: 'autoReadCommand', command: e.data.command });
+    } catch { /* the extension went away: no status */ }
+    window.postMessage(statusMessage(r), location.origin);
   });
 
   // The service worker tells the page how the read went: done (the posting is saved) or why not.

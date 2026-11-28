@@ -48,6 +48,18 @@ nothing is sent. So that this tab opens behind the page you are on, a small scri
 (localhost, 127.0.0.1): it passes jobwatch's Read posting request to the extension and the answer back, reads nothing else from
 that page, and the extension answers only your own jobwatch.
 
+**Reading postings by itself (off by default):** if you turn on **Read postings automatically** in your own jobwatch's Settings
+(and have not turned it off in the extension), the extension does what Read posting does without your pressing the button, for
+jobs your jobwatch picks (it asks your jobwatch for the next one). It opens that LinkedIn or Indeed job in a tab behind your
+others, reads the same things (the description, title, company and whether the posting is closed), gives them to your own
+jobwatch and closes the tab. It is slow and small by design: one job at a time, a random pause of 2 to 3 minutes, at most 25 a day
+for each site and 50 a day in all, only while you are not using LinkedIn or Indeed, and it stops for the day at the first sign of
+trouble. It never signs in, scrolls, clicks or follows a link. Nothing is sent to the developer or a third party and there is no
+analytics: the extension keeps only today's counts, its on, paused or off state and the keys of jobs it tried, in its local Chrome
+storage. It uses the `alarms` permission to time the pause between two reads and the `idle` permission to read only while you
+are away or on another site; neither reads anything. LinkedIn may restrict accounts that look automated: you can turn it off
+anytime, in the side panel, in jobwatch, or in the extension's options.
+
 **LinkedIn messages (Draft reply):** only when you press **Draft reply to this conversation** in the side panel, on a
 LinkedIn conversation you have open, it reads that one conversation as it is on the screen: the other person's name as the
 page shows it, and the text and times of the messages that are already there. It does not scroll, open another conversation,
