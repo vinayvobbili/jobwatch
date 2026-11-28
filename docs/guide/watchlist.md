@@ -128,7 +128,9 @@ Application (LCA) disclosure file of the current and the previous fiscal year (t
 hardcoded), reads robots.txt first, downloads each file (a few hundred MB; a progress line says how far along) and
 keeps only the certified, full-time filings and the columns an estimate needs in `lca.db`, next to the state
 file. Yearly wages are used as filed; hourly, weekly, bi-weekly and monthly ones become yearly (x 2080, 52, 26, 12).
-The Excel files are deleted once read, and a failed update keeps the cache it had. `jobwatch ui` refreshes the
+The cache also keeps each filing's case number and which file (fiscal year and quarter) it came from, and each
+file's address, so a figure can be traced to its filings (see [Pay chips link to their
+sources](comps.md)). The Excel files are deleted once read, and a failed update keeps the cache it had. `jobwatch ui` refreshes the
 cache about every 30 days, but only once you have run `jobwatch lca update` yourself.
 
 A job's estimate comes from filings by its company (matched the way `contacts.py` matches company names, so

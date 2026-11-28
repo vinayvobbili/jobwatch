@@ -13,10 +13,17 @@ every 30 days, once it has been asked for by hand. Nothing here is asked of the 
 
 An estimate is what an employer filed as the base wage for a title like the job's: a floor the employer promised
 an H-1B hire, not total compensation (no bonus or stock), and not a posted range.
+
+The DOL has no web page per filing: its Excel files are the public record. So an estimate links to the file its
+filings are in (the cache keeps each file's address and which file each filing came from) and names its example
+filings by case number, to find in that file's CASE_NUMBER column. h1bdata.info, an independent site that republishes
+the same files, has a page per case and a search by employer and title; those links are built here too, never
+fetched (see search_url and case_url).
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
@@ -25,7 +32,7 @@ from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import quote, urlencode, urljoin
 
 from . import sources
 from .contacts import company_key
@@ -35,6 +42,8 @@ from .text import us_states
 
 SITE = "https://www.dol.gov"
 PAGE = f"{SITE}/agencies/eta/foreign-labor/performance"
+THIRD_PARTY = "h1bdata.info"  # not the DOL: an independent site indexing the DOL's files, with a page per case
+THIRD_PARTY_SITE = f"https://{THIRD_PARTY}"
 CREDIT = "Data: U.S. DOL LCA disclosures"
 LABEL = "Base pay filed for H-1B hires (not total compensation)"
 FILE = "lca.db"
@@ -83,6 +92,27 @@ def find_files(html: str) -> list[tuple[int, int, str]]:
         if (int(q), href) > best.get(int(fy), (0, ""))[:2]:
             best[int(fy)] = (int(q), urljoin(PAGE, href))
     return [(fy, best[fy][0], best[fy][1]) for fy in sorted(best, reverse=True)[:YEARS]]
+
+
+def file_label(fy: int, quarter: int) -> str:
+    return f"FY{fy} Q{quarter}"
+
+
+def search_url(employer: str | None, title: str | None) -> str | None:
+    """h1bdata.info's search for the employer's filings with a title, as the filings spell them (form read from the
+    site's own links: index.php?em=&job=&city=&year=); None without both. Never fetched here."""
+    employer, title = " ".join((employer or "").split()), " ".join((title or "").split())
+    if not (employer and title):
+        return None
+    return f"{THIRD_PARTY_SITE}/index.php?" + urlencode({"em": employer, "job": title, "city": "", "year": "All Years"})
+
+
+def case_url(case: str | None) -> str | None:
+    """h1bdata.info's page for one case number (details.php?id=I-200-...); None for anything that is no case number."""
+    case = (case or "").strip()
+    if not re.fullmatch(r"[A-Za-z]-\d{3}-\d+(?:-\d+)?", case):
+        return None
+    return f"{THIRD_PARTY_SITE}/details.php?id={quote(case, safe='')}"
 
 
 # -- reading a file
@@ -155,12 +185,12 @@ def read_rows(path: Path):
 
 SCHEMA = """
 CREATE TABLE filings (case_no TEXT PRIMARY KEY, fy INTEGER, employer TEXT, ekey TEXT, title TEXT, city TEXT,
-                      state TEXT, low INTEGER, high INTEGER, level TEXT, year INTEGER);
+                      state TEXT, low INTEGER, high INTEGER, level TEXT, year INTEGER, q INTEGER);
 CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT);
-"""
+"""  # `q`: the quarter of the file a filing was read from; a cache from before it has no such column
 
 
-def index_file(db: sqlite3.Connection, path: Path, fy: int, say=print) -> int:
+def index_file(db: sqlite3.Connection, path: Path, fy: int, say=print, quarter: int | None = None) -> int:
     """Add a file's rows to the cache; how many were kept. A case in two files stays as the first one had it."""
     keys: dict[str, str] = {}
     kept = seen = 0
@@ -169,7 +199,7 @@ def index_file(db: sqlite3.Connection, path: Path, fy: int, say=print) -> int:
         seen += 1
         if employer not in keys:
             keys[employer] = employer_key(employer)
-        batch.append((case, fy, employer, keys[employer], title, city, state, low, high, level, year))
+        batch.append((case, fy, employer, keys[employer], title, city, state, low, high, level, year, quarter))
         if len(batch) >= 5000:
             kept += _insert(db, batch)
             batch = []
@@ -180,7 +210,7 @@ def index_file(db: sqlite3.Connection, path: Path, fy: int, say=print) -> int:
 
 def _insert(db: sqlite3.Connection, batch: list[tuple]) -> int:
     before = db.total_changes
-    db.executemany("INSERT OR IGNORE INTO filings VALUES (?,?,?,?,?,?,?,?,?,?,?)", batch)
+    db.executemany("INSERT OR IGNORE INTO filings VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", batch)
     return db.total_changes - before
 
 
@@ -256,7 +286,7 @@ def update(path: Path, say=print, get_text=None, fetch=None, robots=None, pause:
             say(f"FY{fy} Q{q}: {url}")
             try:
                 size = fetch(url, part)
-                n = index_file(db, part, fy, say)
+                n = index_file(db, part, fy, say, q)
             finally:
                 part.unlink(missing_ok=True)  # hundreds of MB, and everything needed is in the cache now
             db.commit()
@@ -264,6 +294,8 @@ def update(path: Path, say=print, get_text=None, fetch=None, robots=None, pause:
             done.append({"fy": fy, "quarter": q, "url": url, "bytes": size, "rows": n})
         db.execute("CREATE INDEX filings_ekey ON filings (ekey)")
         db.execute("INSERT INTO meta VALUES ('updated', ?)", (datetime.now(UTC).isoformat(),))
+        db.execute("INSERT INTO meta VALUES ('files', ?)",
+                   (json.dumps([{"fy": f["fy"], "quarter": f["quarter"], "url": f["url"]} for f in done]),))
         db.commit()
         rows = db.execute("SELECT COUNT(*) FROM filings").fetchone()[0]
     except BaseException:
@@ -352,10 +384,12 @@ class Estimate:
     p25: int
     p75: int
     levels: dict[str, int]      # prevailing wage levels (I to IV) the filings were at, and how many each
-    examples: list[dict]        # the newest few: title, city, state, wage, year
+    examples: list[dict]        # the newest few: case, employer, title, city, state, wage, level, year, file, case_url
     why: list[str]
     years: tuple[int, int] | None = None  # the years the jobs start in
-    url: str = PAGE
+    url: str = PAGE             # the newest disclosure file the filings are in, else the DOL's page of all of them
+    files: list[dict] = field(default_factory=list)  # {fy, quarter, label, url} of each file they are in, newest first
+    search_url: str | None = None  # h1bdata.info's search for this employer and title (never other employers')
     credit: str = CREDIT
     label: str = LABEL
     rows: list[dict] = field(default_factory=list, repr=False)  # every match, newest first (not in to_dict)
@@ -370,6 +404,13 @@ class Estimate:
         return {**{k: v for k, v in asdict(self).items() if k != "rows"}, "line": self.line()}
 
 
+def describe(e: dict) -> str:
+    """One example filing in a line: "Senior Engineer, Austin TX, $150,000 (2026), level II, case I-200-..." """
+    return (f"{e['title']}, {e['city'].title()} {e['state']}, ${e['wage']:,}" + (f" ({e['year']})" if e["year"] else "")
+            + (f", level {e['level']}" if e.get("level") else "") + (f", case {e['case']}" if e.get("case") else "")
+            + (f" in {e['file']}" if e.get("file") else ""))
+
+
 def _by_recency(row: dict):
     return row["year"] or 0, row["wage"]
 
@@ -381,6 +422,7 @@ class Index:
         self.db = db
         self.db.row_factory = sqlite3.Row
         self._states: dict[tuple[str, ...], list[dict]] = {}
+        self._files: dict[tuple[int, int], str] | None = None
 
     @classmethod
     def open(cls, path: Path) -> Index | None:
@@ -403,9 +445,22 @@ class Index:
         return {"updated": row[0] if row else None, "rows": sum(r["n"] for r in years),
                 "years": {r["fy"]: r["n"] for r in years}}
 
+    def files(self) -> dict[tuple[int, int], str]:
+        """{(fiscal year, quarter): address} of the files the cache was built from; empty for a cache from before
+        it kept them (the next `jobwatch lca update` fills them in)."""
+        if self._files is None:
+            self._files = {}
+            try:
+                row = self.db.execute("SELECT v FROM meta WHERE k='files'").fetchone()
+                self._files = {(f["fy"], f["quarter"]): f["url"] for f in json.loads(row[0])} if row else {}
+            except (sqlite3.Error, ValueError, KeyError, TypeError):
+                pass
+        return self._files
+
     def _rows(self, where: str, args: list) -> list[dict]:
-        return [{"employer": r["employer"], "title": r["title"], "city": r["city"], "state": r["state"],
-                 "wage": r["low"], "high": r["high"], "level": r["level"], "year": r["year"] or r["fy"],
+        return [{"case": r["case_no"], "employer": r["employer"], "title": r["title"], "city": r["city"],
+                 "state": r["state"], "wage": r["low"], "high": r["high"], "level": r["level"],
+                 "year": r["year"] or r["fy"], "fy": r["fy"], "q": r["q"] if "q" in r.keys() else None,
                  "words": title_words(r["title"]), "rank": (seniority(r["title"]) or (None,))[0]}
                 for r in self.db.execute(f"SELECT * FROM filings WHERE {where}", args)]
 
@@ -458,7 +513,12 @@ class Index:
         wages = [r["wage"] for r in near]
         common = lambda field_: Counter(r[field_] for r in near).most_common(1)[0][0]  # noqa: E731
         levels = dict(sorted(Counter(r["level"] for r in near if r["level"]).items()))
-        examples = [{k: r[k] for k in ("title", "city", "state", "wage", "year")} for r in near[:EXAMPLES]]
+        known = self.files()
+        label = lambda r: file_label(r["fy"], r["q"]) if (r["fy"], r["q"]) in known else None  # noqa: E731
+        examples = [{**{k: r[k] for k in ("case", "employer", "title", "city", "state", "wage", "level", "year")},
+                     "file": label(r), "case_url": case_url(r["case"])} for r in near[:EXAMPLES]]
+        files = [{"fy": fy, "quarter": q, "label": file_label(fy, q), "url": known[(fy, q)]}
+                 for fy, q in sorted({(r["fy"], r["q"]) for r in near if (r["fy"], r["q"]) in known}, reverse=True)]
         years = [r["year"] for r in near if r["year"]]
         seen = ", ".join(f"{lv} x{n}" for lv, n in levels.items())
         same = ", the same seniority as the job's title" if rank is not None else ""
@@ -469,12 +529,15 @@ class Index:
                "Each is the base wage the employer filed for an H-1B hire: no bonus or stock, and a floor rather "
                "than a negotiated number",
                *([f"Prevailing wage levels filed: {seen}"] if levels else []),
-               "Examples: " + "; ".join(f"{e['title']}, {e['city'].title()} {e['state']}, ${e['wage']:,}"
-                                        + (f" ({e['year']})" if e["year"] else "") for e in examples)]
-        return Estimate(company=common("employer"), title=common("title"), where=where, count=len(near),
+               "Examples: " + "; ".join(describe(e) for e in examples)]
+        company = common("employer")
+        return Estimate(company=company, title=common("title"), where=where, count=len(near),
                         median=percentile(wages, 0.5), p25=percentile(wages, 0.25), p75=percentile(wages, 0.75),
                         levels=levels, examples=examples, why=why,
-                        years=(min(years), max(years)) if years else None, rows=near)
+                        years=(min(years), max(years)) if years else None, rows=near,
+                        url=files[0]["url"] if files else PAGE, files=files,
+                        # other employers' filings in the home state are no one employer's: no search to offer
+                        search_url=None if where.endswith(MARKET) else search_url(company, common("title")))
 
 
 def places(job: Job, home_state: str = "") -> tuple[list[str], list[str]]:

@@ -9,9 +9,12 @@ have (levels.py's result, lca.py's estimate, the store's comp row).
 
 A source with a figure also has a `tip`, the hover sentence, and, when a reader can check the figure somewhere, an
 `href`: Posted links to the posting itself, Levels to the Levels.fyi page the figure came from, LCA to the Department of
-Labor's disclosure data it was read from, Glassdoor to Glassdoor's salary search for the company and title (the figure
-is typed in, and Glassdoor has no stable page per company, so it is a search link). Recruiter and Ask come from the
-person's own notes: never a link. An unknown address is no `href`, never an empty one. Building a link looks nothing up.
+Labor's data. The DOL has no page per filing, so the chip opens h1bdata.info's page of the employer's filings with
+the title (marked third-party in its tip; `site` names it) when it has one, else the DOL's disclosure file the filings
+are in (its fiscal year and quarter), else the page that lists the DOL's files. Glassdoor to Glassdoor's salary
+search for the company and title (the figure is typed in, and Glassdoor has no stable page per company, so it is a
+search link). Recruiter and Ask come from the person's own notes: never a link. An unknown address is no `href`,
+never an empty one. Building a link looks nothing up.
 """
 from __future__ import annotations
 
@@ -91,21 +94,38 @@ def _lca(est: lca.Estimate | None, cached: bool) -> dict:
         return _src("lca", reason="no H-1B filings cache yet; run jobwatch lca update", blank="off")
     if est is None:
         return _src("lca", reason=f"fewer than {lca.MIN_FILINGS} matching H-1B filings for this employer and title")
-    href = web_url(est.url)
     years = "" if not est.years else f", starting {est.years[0]}" if est.years[0] == est.years[1] \
         else f", starting {est.years[0]}–{est.years[1]}"
     filings = f"{est.count} certified filing{'s' if est.count != 1 else ''}{years}"
     base = "base pay only, not total compensation"
+    # The chip goes to the most specific page there is. The DOL has no page per filing, only its spreadsheets, so that
+    # is h1bdata.info's page listing this employer's filings with this title (an independent site that republishes
+    # the DOL's files; the figure itself is still computed from the DOL's data). Without one (other employers'
+    # filings, or an address that is no link) it is the DOL file the filings are in (the newest, when they span two),
+    # else, for a cache that kept no file addresses, the page that lists the DOL's files.
+    file = est.files[0] if est.files and web_url(est.files[0]["url"]) else None
+    source = (f"the DOL's {file['label']} disclosure file" if file else "the DOL's disclosure data")
+    search = web_url(est.search_url)
+    href = search or web_url(est.url)
+    cases = [e["case"] for e in est.examples if e.get("case")]
+    find = f"; examples by case number: {', '.join(cases)}" if cases else ""
+    if search:
+        where = f"{lca.THIRD_PARTY}, a third-party site that republishes the DOL's data (not the DOL)"
+        find = f"{find}; the figure itself comes from {source}, and the site may lag its newest filings"
+    elif file:
+        where = source + (f" (the newest of {len(est.files)} files it draws on)" if len(est.files) > 1 else "")
+    else:
+        where = "the U.S. Department of Labor's H-1B (LCA) disclosure data"
+        find = ""
+    extra = {"site": lca.THIRD_PARTY} if search else {}
     if est.where.endswith(lca.MARKET):  # other employers' filings in the home state: never read as this one's pay
         return _src("lca", f"{_k(est.median)} median ({est.count} filings, {est.where}; not this employer's)",
                     detail=est.line(), amount=est.median, short=f"{_k(est.median)} mkt", market=True, url=est.url,
-                    href=href, tip=_tip(href, "the U.S. Department of Labor's H-1B (LCA) disclosure data",
-                                        f"{filings} by other employers in {est.where.split(',')[0]}, "
-                                        f"not this employer's; {base}"))
+                    href=href, tip=_tip(href, where, f"{filings} by other employers in {est.where.split(',')[0]}, "
+                                                     f"not this employer's; {base}{find}"), **extra)
     return _src("lca", f"{_k(est.median)} median ({est.count} filings)", detail=est.line(), amount=est.median,
                 short=f"{_k(est.median)} med", url=est.url, href=href,
-                tip=_tip(href, "the U.S. Department of Labor's H-1B (LCA) disclosure data",
-                         f"{filings} for {est.company} ({est.where}); {base}"))
+                tip=_tip(href, where, f"{filings} for {est.company} ({est.where}); {base}{find}"), **extra)
 
 
 def _recruiter(comp: dict | None) -> dict:

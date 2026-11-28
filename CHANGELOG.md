@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Changed: **the LCA chip opens the filings behind the figure, not the DOL's generic page.** The DOL publishes H-1B
+  filings only as spreadsheets per fiscal year and quarter and has no page per filing, so the chip now opens
+  h1bdata.info (an independent site that republishes those files) on its search for the employer and job title, with
+  one row per filing and a page per case number; its hover says it is a third-party site, that the figure itself comes
+  from the DOL's data and from which file ("FY2026 Q4 disclosure file"), and lists the example case numbers. "How the
+  pay was worked out" shows **Source file: DOL FY2026 Q4** (the authoritative one), the example filings by case number
+  (employer, title, place, wage, level, start year, file; a copy button and a link to each case), and a "See these
+  filings on h1bdata.info" link. Other employers' filings (your home state's market) open the DOL file; a cache from
+  before this change opens the DOL page until `jobwatch lca update` records each filing's file. Only addresses are
+  built: nothing is fetched until you click. `lca.db` now keeps each filing's file and each file's address; `lca_pay`
+  carries `files`, `search_url` and, per example, `case`, `employer`, `level`, `file` and `case_url`. Guide: Comps,
+  "Pay chips link to their sources".
+
 - New: **the pay chips link back to their sources**, so a figure can be checked and trusted. On every card and in a
   job's details, the Posted chip opens the posting, Levels the Levels.fyi page the figure was read from, LCA the U.S.
   Department of Labor's H-1B disclosure data (the hover says how many filings and from which years; base pay only),

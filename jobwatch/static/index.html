@@ -1144,6 +1144,12 @@ button.btn.prepare-go:disabled { opacity: .8; }  /* its look is act-prepare's, w
 .whyfit .v { display: inline-block; min-width: 62px; font-size: 11.5px; font-weight: 600; text-transform: uppercase; }
 .whyfit .v.met { color: var(--good); } .whyfit .v.partial { color: var(--warn); }
 .whyfit .v.not_met { color: var(--bad); }
+/* the H-1B example filings: one per line, the case number in mono with a small copy button; a link to a site that is not the DOL is dashed */
+.whyfit .lcacases { list-style: none; margin: 4px 0 0; padding: 0; }
+.whyfit .lcacases li { margin: 3px 0; padding-left: 8px; border-left: 2px solid var(--accent-soft); }
+.whyfit .lcacases code { font-size: 12px; color: var(--accent); }
+.whyfit .casecopy { padding: 0 5px; min-height: 0; vertical-align: baseline; line-height: 1.4; }
+.whyfit a.third { text-decoration: underline dashed; text-underline-offset: 3px; }
 .whyfit q { display: block; color: var(--muted); margin-left: 66px; font-style: italic; }
 .fitrange { display: flex; align-items: center; gap: 10px; } .fitrange input { flex: 1; }
 .fitrange output { min-width: 34px; font-weight: 600; text-align: right; }
@@ -3456,8 +3462,31 @@ function payWhy(job) {
       srcs.length ? h("li", { class: "paysrcs" }, h("b", {}, "Sources: "),
         srcs.map((s, i) => [i ? " · " : null, link(s.href, `${s.label} ↗`)])) : null,
       p ? [p.why.map(w => h("li", {}, w)), h("li", {}, link(p.url, p.credit + " ↗"))] : null,
-      l ? [h("li", {}, h("b", {}, l.line)), l.why.map(w => h("li", {}, w)),
-        h("li", {}, l.label + ". ", link(l.url, l.credit + " ↗"))] : null));
+      l ? lcaWhy(l) : null));
+}
+// The H-1B (LCA) figure's working: the reasons, then the example filings by case number and the file they are in (the
+// DOL has no page per filing, so the case number is what finds one in the file's CASE_NUMBER column). Two small
+// links to h1bdata.info, an independent site that republishes the DOL's files (the LCA chip itself opens its search),
+// are marked as third-party; they are only addresses: nothing is fetched until one is clicked.
+function lcaWhy(l) {
+  const ok = u => /^https?:\/\/\S+$/i.test(u || ""), ex = (l.examples || []).filter(e => e.case);
+  const files = (l.files || []).filter(f => ok(f.url));
+  const copy = text => h("button", { class: "btn ghost casecopy", type: "button", title: "Copy the case number", "aria-label": `Copy case number ${text}`,
+    onclick: async e => { e.preventDefault(); try { await navigator.clipboard.writeText(text); toast("Copied the case number"); } catch { /* it is on the page to select */ } } },
+    icon("copy", 11));
+  return [h("li", {}, h("b", {}, l.line)),
+    l.why.filter(w => !(ex.length && w.startsWith("Examples: "))).map(w => h("li", {}, w)),
+    ex.length ? h("li", { class: "lcaex" }, h("b", {}, "Example filings: "), h("ol", { class: "lcacases" }, ex.map(e =>
+      h("li", { "data-case": e.case }, h("code", {}, e.case), " ", copy(e.case), " ",
+        `${e.employer} · ${e.title} · ${e.city.replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase())} ${e.state} · $${e.wage.toLocaleString("en-US")}`
+          + (e.level ? ` · level ${e.level}` : "") + (e.year ? ` · starts ${e.year}` : "") + (e.file ? ` · ${e.file} file` : ""),
+        ok(e.case_url) ? [" · ", link(e.case_url, "this case on h1bdata.info ↗ (third-party site)", "third")] : null)))) : null,
+    h("li", {}, l.label + ". ",
+      files.length ? [h("b", {}, "Source file: "), files.map((f, i) => [i ? " · " : null, link(f.url, `DOL ${f.label} ↗`)]),
+        ex.length ? " (the DOL has no page per filing: find each case number in the file's CASE_NUMBER column)" : null]
+        : [link(l.url, l.credit + " ↗"), " (the page that lists the DOL's files; run jobwatch lca update to keep the file each filing is in)"]),
+    ok(l.search_url) ? h("li", {}, link(l.search_url, "See these filings on h1bdata.info ↗", "third"),
+      " (a third-party site, not the DOL: it republishes the DOL's files and may lag the newest)") : null];
 }
 
 // Fills in expected pay that's still being looked up in the background, until none is left. One poll per

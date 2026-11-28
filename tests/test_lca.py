@@ -304,6 +304,88 @@ def test_fewer_than_three_filings_is_no_estimate(cache):
     index.close()
 
 
+# -- which filings, which file, which links
+
+FY25 = "https://www.dol.gov/sites/dolgov/files/ETA/oflc/pdfs/LCA_Disclosure_Data_FY2025_Q4.xlsx"
+
+
+def two_files(tmp_path):
+    """A cache made from two different files: Acme's first two Austin filings in FY2026 Q2, the third in FY2025 Q4."""
+    by_url = {FY26: workbook(tmp_path / "fy26.xlsx", rows=ROWS[:2]),
+              FY25: workbook(tmp_path / "fy25.xlsx", rows=ROWS[2:3])}
+
+    def fetch(url, dest):
+        dest.write_bytes(by_url[url].read_bytes())
+        return dest.stat().st_size
+    fake = FakeWeb({ROBOTS: "User-agent: *\nAllow: /\n", lca.PAGE: LINKS})
+    path = tmp_path / "lca.db"
+    lca.update(path, say=lambda s: None, get_text=fake, fetch=fetch)
+    return path
+
+
+def test_each_filing_keeps_the_file_it_came_from_and_the_estimate_links_that_file(tmp_path):
+    path = two_files(tmp_path)
+    index = lca.Index.open(path)
+    assert index.files() == {(2026, 2): FY26, (2025, 4): FY25}
+    est = lca.for_job(index, job())
+    assert est.count == 3 and est.url == FY26  # the newest file the filings are in
+    assert [(f["label"], f["url"]) for f in est.files] == [("FY2026 Q2", FY26), ("FY2025 Q4", FY25)]
+    assert [(e["case"], e["file"]) for e in est.examples] == [
+        ("I-200-00002", "FY2026 Q2"), ("I-200-00001", "FY2026 Q2"), ("I-200-00003", "FY2025 Q4")]
+    assert est.examples[0]["case_url"] == "https://h1bdata.info/details.php?id=I-200-00002"
+    assert (est.examples[0]["employer"], est.examples[0]["level"]) == ("Acme Corp", "II")
+    assert est.search_url == ("https://h1bdata.info/index.php?em=Acme+Corp&job=Senior+Software+Engineer"
+                              "&city=&year=All+Years")
+    d = est.to_dict()
+    assert d["url"] == FY26 and d["files"][1]["label"] == "FY2025 Q4" and d["search_url"] == est.search_url
+    assert "Examples: Senior Software Engineer, Austin TX, $160,000 (2026), level II, case I-200-00002 in FY2026 Q2" \
+        in est.why[-1]
+    index.close()
+
+
+def test_an_estimate_in_one_file_names_only_that_file(cache):
+    index = lca.Index.open(cache[0])
+    est = lca.for_job(index, job())
+    assert [f["label"] for f in est.files] == ["FY2026 Q2"] and est.url == FY26
+    index.close()
+
+
+def test_a_cache_from_before_files_were_kept_falls_back_to_the_page(cache):
+    path, *_ = cache
+    db = sqlite3.connect(path)
+    db.execute("ALTER TABLE filings DROP COLUMN q")
+    db.execute("DELETE FROM meta WHERE k='files'")
+    db.commit()
+    db.close()
+    index = lca.Index.open(path)
+    assert index.files() == {}
+    est = lca.for_job(index, job())
+    assert est.url == lca.PAGE and est.files == [] and est.count == 4  # still an estimate, just no file to open
+    assert [e["file"] for e in est.examples] == [None] * 3 and est.examples[0]["case"]
+    assert est.search_url and "Examples: " in est.why[-1] and " in FY" not in est.why[-1]
+    index.close()
+
+
+def test_other_employers_filings_get_no_search_link(cache):
+    index = lca.Index.open(cache[0])
+    market = lca.for_job(index, job(company="Umbrella", where=("Remote - United States",)), home_state="TX")
+    assert market.where.endswith(lca.MARKET) and market.search_url is None and market.url == FY26
+    index.close()
+
+
+def test_third_party_links_are_encoded_and_only_built_from_what_is_known():
+    assert lca.search_url("Initech, Inc.", "Sr. Engineer & Analyst/ML #2") == (
+        "https://h1bdata.info/index.php?em=Initech%2C+Inc.&job=Sr.+Engineer+%26+Analyst%2FML+%232&city=&year=All+Years")
+    assert lca.search_url("  Globex   Corp ", " Data  Analyst ").startswith(
+        "https://h1bdata.info/index.php?em=Globex+Corp&job=Data+Analyst&")
+    assert lca.search_url("", "Data Analyst") is None and lca.search_url("Globex", None) is None
+    assert lca.case_url("I-200-26044-639140") == "https://h1bdata.info/details.php?id=I-200-26044-639140"
+    assert lca.case_url(" I-200-26044-639140 ") == "https://h1bdata.info/details.php?id=I-200-26044-639140"
+    for bad in ("", None, "not a case", "I-200-26044-639140/../x", "javascript:alert(1)", "I-200-1&x=2"):
+        assert lca.case_url(bad) is None, bad
+    assert lca.file_label(2026, 4) == "FY2026 Q4"
+
+
 # -- where it shows
 
 def _cache_next_to_state(watchlist, tmp_path):

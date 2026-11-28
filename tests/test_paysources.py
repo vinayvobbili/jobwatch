@@ -198,6 +198,58 @@ def test_the_lca_tip_names_the_filing_count_and_years_and_says_when_it_is_other_
     assert s["href"] == lca.PAGE
 
 
+FILE26 = "https://www.dol.gov/sites/dolgov/files/ETA/oflc/pdfs/LCA_Disclosure_Data_FY2026_Q4.xlsx"
+FILE25 = "https://www.dol.gov/sites/dolgov/files/ETA/oflc/pdfs/LCA_Disclosure_Data_FY2025_Q4.xlsx"
+CASES = [{"case": f"I-200-26044-63914{n}", "employer": "Initech Inc", "title": "Senior Software Engineer",
+          "city": "Boulder", "state": "CO", "wage": 160_000 + n, "level": "II", "year": 2026, "file": "FY2026 Q4",
+          "case_url": f"https://h1bdata.info/details.php?id=I-200-26044-63914{n}"} for n in range(3)]
+
+
+def filed(**kw):
+    both = [{"fy": 2026, "quarter": 4, "label": "FY2026 Q4", "url": FILE26},
+            {"fy": 2025, "quarter": 4, "label": "FY2025 Q4", "url": FILE25}]
+    return lca.Estimate(**{**FILINGS.__dict__, "examples": CASES, "url": FILE26, "files": both[:1], **kw})
+
+
+SEARCH = lca.search_url("Initech", "Senior Software Engineer")
+
+
+def test_the_lca_chip_opens_the_third_party_page_of_these_filings_and_says_the_figure_is_the_dols():
+    s = by_key(paysources.sources(linked_job(), est=filed(search_url=SEARCH), lca_cached=True))["lca"]
+    assert s["href"] == SEARCH and s["url"] == FILE26 and s["site"] == "h1bdata.info"
+    assert s["tip"] == ("Open h1bdata.info, a third-party site that republishes the DOL's data (not the DOL) to "
+                        "verify: 14 certified filings for Initech (Boulder, CO); base pay only, not total "
+                        "compensation; examples by case number: I-200-26044-639140, I-200-26044-639141, "
+                        "I-200-26044-639142; the figure itself comes from the DOL's FY2026 Q4 disclosure file, "
+                        "and the site may lag its newest filings")
+
+
+def test_without_a_search_the_lca_chip_opens_the_dol_file_its_filings_are_in_and_names_it_and_the_cases():
+    s = by_key(paysources.sources(linked_job(), est=filed(), lca_cached=True))["lca"]  # no employer to search for
+    assert s["href"] == FILE26 and "site" not in s
+    assert s["tip"] == ("Open the DOL's FY2026 Q4 disclosure file to verify: 14 certified filings for Initech "
+                        "(Boulder, CO); base pay only, not total compensation; examples by case number: "
+                        "I-200-26044-639140, I-200-26044-639141, I-200-26044-639142")
+    two = by_key(paysources.sources(linked_job(), lca_cached=True, est=filed(
+        files=[{"fy": 2026, "quarter": 4, "label": "FY2026 Q4", "url": FILE26},
+               {"fy": 2025, "quarter": 4, "label": "FY2025 Q4", "url": FILE25}])))["lca"]
+    assert two["href"] == FILE26
+    assert two["tip"].startswith("Open the DOL's FY2026 Q4 disclosure file (the newest of 2 files it draws on) "
+                                 "to verify")
+    market = by_key(paysources.sources(linked_job(), lca_cached=True,
+                                       est=filed(where=f"CO, {lca.MARKET}", count=40)))["lca"]
+    assert market["href"] == FILE26 and "not this employer's" in market["tip"] and market["market"]
+
+
+def test_without_a_recorded_file_the_lca_chip_falls_back_to_the_page_that_lists_them():
+    s = by_key(paysources.sources(linked_job(), est=filed(url=lca.PAGE, files=[]), lca_cached=True))["lca"]
+    assert s["href"] == lca.PAGE
+    assert s["tip"].startswith("Open the U.S. Department of Labor's H-1B (LCA) disclosure data to verify: 14 certified")
+    assert "case number" not in s["tip"]  # no file to find them in
+    odd = by_key(paysources.sources(linked_job(), est=filed(search_url="javascript:alert(1)"), lca_cached=True))["lca"]
+    assert odd["href"] == FILE26  # a search address that is no web address is never the link
+
+
 @pytest.mark.parametrize("url", ["", "u", "#", "javascript:alert(1)", "/relative/path", "https://", "manual:1"])
 def test_a_job_with_no_usable_address_has_a_posted_chip_with_no_link(url):
     posted = by_key(paysources.sources(linked_job(url=url)))["posted"]

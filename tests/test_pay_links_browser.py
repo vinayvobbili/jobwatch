@@ -138,3 +138,48 @@ def test_a_job_added_by_hand_has_a_plain_posted_chip_with_no_link(watchlist, qui
     assert chips.locator(".psrc-posted").evaluate("e => e.tagName") == "SPAN"
     assert chips.locator("a").count() == 0  # nothing known to link to: no link, not even an empty one
     assert quiet.outside == [] and quiet.errors == []
+
+
+@pytest.fixture
+def filed(jobs, watchlist, tmp_path):
+    """A made-up H-1B cache next to the state file (Acme Corp's senior software engineer filings in Austin, from a
+    FY2026 Q2 file), built through lca.update() with the DOL's page and download faked."""
+    pytest.importorskip("openpyxl")
+    from .test_lca import update_from, workbook
+    update_from(tmp_path / "lca.db", workbook(tmp_path / "source.xlsx"), pause=0.0)
+
+
+def test_the_lca_chip_opens_the_filings_page_and_says_it_is_third_party_with_the_dol_file_in_the_working(filed, quiet):
+    from jobwatch import lca
+
+    from .test_lca import FY26
+    show(quiet)
+    card = acme_card_with(quiet, "lca")
+    chip = card.locator(".psrcs a.psrc[data-src=lca]")
+    want = lca.search_url("Acme Corp", "Senior Software Engineer")
+    assert chip.get_attribute("href") == want and want.startswith("https://h1bdata.info/index.php?em=Acme+Corp&job=")
+    tip = chip.get_attribute("title")
+    assert tip.startswith("Open h1bdata.info, a third-party site that republishes the DOL's data (not the DOL)")
+    assert "the figure itself comes from the DOL's FY2026 Q2 disclosure file" in tip
+    assert "I-200-00004" in tip  # each example by case number, to find in the file
+    assert chip.get_attribute("target") == "_blank" and chip.get_attribute("rel") == "noopener noreferrer"
+    card.get_by_role("button", name="Details", exact=True).click()
+    dialog = quiet.locator("#dialog")
+    sync_api.expect(dialog.locator(".psrcs a.psrc[data-src=lca]")).to_be_visible(timeout=15000)
+    dialog.locator("[data-paywhy] summary").click()
+    cases = dialog.locator("[data-paywhy] [data-case]")
+    sync_api.expect(cases).to_have_count(3)
+    assert cases.first.get_attribute("data-case") == "I-200-00004"
+    assert "Acme Corp · Senior Software Engineer · Austin TX · $166,400" in cases.first.inner_text()
+    hrefs = [a.get_attribute("href") for a in dialog.locator("[data-paywhy] a").all()]
+    assert FY26 in hrefs  # "Source file: DOL FY2026 Q2", the authoritative one
+    assert want in hrefs and "https://h1bdata.info/details.php?id=I-200-00004" in hrefs
+    assert dialog.locator("[data-paywhy] button.casecopy").count() == 3
+    assert quiet.outside == [] and quiet.errors == []  # drawing every link, third-party ones too, sent nothing
+
+
+def acme_card_with(page, key):
+    card = page.locator(".card.job", has=page.locator("b.co", has_text="Acme")).first
+    sync_api.expect(card).to_be_visible()
+    sync_api.expect(card.locator(f".psrcs a.psrc[data-src={key}]")).to_be_visible(timeout=15000)
+    return card

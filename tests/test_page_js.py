@@ -1268,3 +1268,64 @@ console.log(JSON.stringify({
     assert out["said"] == "Globex: Staff Engineer comes from its board"
     assert out["named"].startswith("Couldn't read the posting for Globex: Staff Engineer")
     assert out["plain"] == "Globex: Staff Engineer: HTTP 500"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="needs node")
+def test_the_h1b_working_lists_the_example_filings_by_case_number_and_the_file_they_are_in(tmp_path):
+    """The worked-out view names each example filing (case number with a copy button, employer, title, place, wage,
+    level, start year, file), the DOL source file as a link, and, as third-party links marked so, each case and the
+    search on h1bdata.info; a cache with no examples keeps the one-line version and the DOL page, and a case with
+    no usable address is plain text."""
+    js = tmp_path / "lcawhy.js"
+    js.write_text(page_function("lcaWhy") + """
+const h = (tag, attrs, ...kids) =>
+  ({ tag, attrs: attrs || {}, kids: kids.flat(Infinity).filter(k => k != null && k !== false) });
+const link = (url, text, cls) =>
+  ({ tag: url && url !== "#" ? "a" : "span", attrs: { href: url, class: cls }, kids: [text] });
+const icon = name => ({ tag: "svg", name });
+const toast = () => {};
+const text = n => n == null ? "" : typeof n === "string" ? n : (n.kids || []).map(text).join("");
+const find = (n, test, out = []) => { if (n == null || typeof n === "string") return out; if (test(n)) out.push(n);
+  (n.kids || []).forEach(k => find(k, test, out)); return out; };
+const base = { line: "H-1B filings: median $165K", label: "Base pay filed", credit: "Data: U.S. DOL LCA disclosures",
+  why: ["14 filings by Initech", "Examples: Senior Software Engineer, Boulder CO, $160,000"], url: "https://www.dol.gov/p",
+  examples: [
+    { case: "I-200-26044-639140", employer: "Initech Inc", title: "Senior Engineer", city: "BOULDER", state: "CO",
+      wage: 160000, level: "II", year: 2026, file: "FY2026 Q4",
+      case_url: "https://h1bdata.info/details.php?id=I-200-26044-639140" },
+    { case: "I-200-26044-639141", employer: "Initech Inc", title: "Senior Engineer", city: "Denver", state: "CO",
+      wage: 150000, level: "", year: null, file: null, case_url: null }],
+  files: [{ label: "FY2026 Q4", url: "https://www.dol.gov/f26.xlsx" },
+    { label: "FY2025 Q4", url: "https://www.dol.gov/f25.xlsx" }],
+  search_url: "https://h1bdata.info/index.php?em=Initech+Inc&job=Senior+Engineer&city=&year=All+Years" };
+const view = l => { const root = { tag: "ul", kids: lcaWhy(l).flat(Infinity) };
+  return { text: text(root),
+    hrefs: find(root, n => n.tag === "a").map(a => [a.attrs.href, a.attrs.class || null, text(a)]),
+    cases: find(root, n => n.attrs && n.attrs["data-case"]).map(li => [li.attrs["data-case"], text(li)]),
+    copy: find(root, n => n.tag === "button").map(b => b.attrs["aria-label"]) }; };
+console.log(JSON.stringify({ full: view(base), old: view({ ...base, files: [], search_url: null, examples: [] }) }));
+""", encoding="utf-8")
+    r = subprocess.run(["node", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    got = json.loads(r.stdout)
+    full = got["full"]
+    case = "this case on h1bdata.info ↗ (third-party site)"
+    # two spaces: the copy button sits between the number and the words
+    assert full["cases"][0] == ["I-200-26044-639140", "I-200-26044-639140  Initech Inc · Senior Engineer · "
+                                f"Boulder CO · $160,000 · level II · starts 2026 · FY2026 Q4 file · {case}"]
+    assert full["cases"][1][1].endswith("Initech Inc · Senior Engineer · Denver CO · $150,000")  # no more to say
+    assert full["copy"] == ["Copy case number I-200-26044-639140", "Copy case number I-200-26044-639141"]
+    assert full["hrefs"] == [
+        ["https://h1bdata.info/details.php?id=I-200-26044-639140", "third", case],
+        ["https://www.dol.gov/f26.xlsx", None, "DOL FY2026 Q4 ↗"],
+        ["https://www.dol.gov/f25.xlsx", None, "DOL FY2025 Q4 ↗"],
+        ["https://h1bdata.info/index.php?em=Initech+Inc&job=Senior+Engineer&city=&year=All+Years", "third",
+         "See these filings on h1bdata.info ↗"]]
+    assert "Source file: " in full["text"] and "find each case number in the file's CASE_NUMBER column" in full["text"]
+    assert "a third-party site, not the DOL" in full["text"]
+    assert "Examples: Senior Software Engineer" not in full["text"]  # the list replaces the one-line version
+    assert "14 filings by Initech" in full["text"]
+    old = got["old"]  # a cache from before the examples carried case numbers
+    assert "Examples: Senior Software Engineer" in old["text"] and old["cases"] == []
+    assert old["hrefs"] == [["https://www.dol.gov/p", None, "Data: U.S. DOL LCA disclosures ↗"]]
+    assert "no page per filing" not in old["text"] and "run jobwatch lca update" in old["text"]

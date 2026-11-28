@@ -37,8 +37,20 @@ with a small arrow-out icon, that opens the page where you can check it, in a ne
 - **Levels** opens the Levels.fyi page jobwatch read the figure from (the company's salary page for that kind of work,
   or its regional page when your region is set), so you can see the level and median it picked. It only appears with
   `pay.levels` on, which is off unless you turn it on.
-- **LCA** opens the U.S. Department of Labor's disclosure-data page, where the H-1B filings behind the figure are
-  published as downloadable files by year. The hover says how many filings and from which years. It is base pay only.
+- **LCA** opens a page of the filings behind the figure. The Department of Labor publishes H-1B filings only as big
+  spreadsheets, one per fiscal year and quarter, and has no web page for a single filing, so there is nothing more
+  specific on the DOL's own site to open. The chip therefore opens [h1bdata.info](https://h1bdata.info), an independent
+  site that republishes the DOL's files, on its search for that employer and job title: one row per filing, and a
+  page per case number. The hover says plainly that this is a third-party site, not the DOL, that the figure itself is
+  computed from the DOL's data (and which file: "FY2026 Q4 disclosure file"), how many filings and from which years,
+  and the case numbers of the examples. The site may lag the DOL's newest quarter, so the authoritative source is the
+  DOL file, linked in "How the pay was worked out" as **Source file: DOL FY2026 Q4**. There the example filings are
+  listed (case number with a copy button, employer, title, place, wage, level, start year, file), so each can be found
+  by case number in the file's CASE_NUMBER column; each also links to its page on h1bdata.info, and a "See these
+  filings" link repeats the search. When the figure is other employers' filings in your home state, there is no one
+  employer to search for, so the chip opens the DOL file instead. A cache made before jobwatch kept each filing's file
+  (run `jobwatch lca update` again) opens the DOL page that lists the files, the way this chip used to. It is base pay
+  only.
 - **Glassdoor** opens a Glassdoor salary search for the company and job title. The figure on the chip is the one you
   typed in, and Glassdoor has no fixed page for a company that jobwatch could promise, so this is a search that you
   read yourself, not the page the number came from. The link is built from the company and title already on the
