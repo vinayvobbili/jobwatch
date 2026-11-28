@@ -3359,7 +3359,7 @@ async function openStory(r) {
   const head = h("div", { class: "sd-head" }, icon("award", 18), h("h2", {}, r.title), closeButton(close));
   const why = h("div", { class: "sd-why" }, h("b", {}, r.verdict === "partly" ? "Partly shows: " : "Shows: "), r.requirement,
     h("div", { class: "small muted" }, `Why: ${r.reason} (${r.how === "local" ? "the local model" : "by tags"}).`));
-  const body = h("div", { class: "sd-body" }, why, h("p", { class: "muted" }, "Loading the story…"));
+  const body = h("div", { class: "sd-body" }, why, h("p", { class: "muted" }, busyNote("Loading the story…")));
   box.append(head, body);
   shade.append(box);
   document.body.append(shade);
