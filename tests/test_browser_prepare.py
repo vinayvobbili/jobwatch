@@ -435,5 +435,6 @@ def test_the_company_page_card_restores_its_chips_too(page, queued, watchlist):
     page.goto(f"http://127.0.0.1:{queued}/#company/Initech")
     card = page.locator(CARD)
     card.wait_for(timeout=15000)
-    assert chips(page)[0][1] == "Resume" and card.get_by_role("button", name="Prepare again").is_visible()
+    sync_api.expect(card.get_by_role("button", name="Prepare again")).to_be_visible(timeout=15000)
+    assert chips(page)[0][1] == "Resume"
     assert page.errors == []

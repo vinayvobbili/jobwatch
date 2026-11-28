@@ -92,6 +92,9 @@
   correspondents and anyone you chose Ask first) and appear everywhere connections do: the Referrals tab, "You know"
   lines and queue warnings, Who to contact, the Company tab and `jobwatch referrals`. They also work with no LinkedIn data
   at all. A company with someone added by hand is never hidden by "Hide companies with no good fits".
+- The Company tab shows the company's people once. The "People you know" panel on the left keeps them (Use, Don't use,
+  "more on LinkedIn"), and the job cards no longer repeat the same names under a People row. "Who to contact" is per job,
+  so it moved to each card's action row next to Details and opens as before. Cards on the other tabs are unchanged.
 - The Referrals tab shows what suits you, one card per company, and explains itself to someone starting out.
   With no LinkedIn data it says what Referrals is (who could refer you to a job you track), how to get people
   here (LinkedIn's "Get a copy of your data", then the upload in Settings > People & pay, with links), and that your

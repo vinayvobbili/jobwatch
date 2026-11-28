@@ -3325,8 +3325,8 @@ const CARD_ROWS = [["pay", "Pay", "dollar"], ["why", "Why", "bulb"], ["gaps", "G
   ["skills", "Skills", "zap"], ["people", "People", "users"], ["check", "Check", "alert", true], ["note", "Note", "pencil", true]];
 const hasKids = c => [c].flat(Infinity).some(k => k !== null && k !== undefined && k !== false);
 const none = () => h("span", { class: "kv-none" }, "—");
-function cardRows(parts) {
-  return CARD_ROWS.filter(([key, , , optional]) => !optional || hasKids(parts[key])).map(([key, label, ic]) =>
+function cardRows(parts, left = []) {  // `left`: rows this card leaves out (the Company tab's, for people shown beside it)
+  return CARD_ROWS.filter(([key, , , optional]) => !left.includes(key) && (!optional || hasKids(parts[key]))).map(([key, label, ic]) =>
     h("div", { class: "krow", "data-row": key }, h("div", { class: "klabel" }, icon(ic, 13), label),
       h("div", { class: "kv" }, hasKids(parts[key]) ? parts[key] : none())));
 }
@@ -3426,7 +3426,9 @@ function closedBadge(job) {
     : state === "checking" ? h("span", { class: "badge checking", title: "Found closed once. jobwatch looks again before calling it closed." },
       "checking") : null;
 }
-function jobCard(job, actions, i = 0, above = null, stage = null) {
+// opts.people false: no People row (the Company tab lists the company's people once, in its left panel); opts.after is
+// drawn under the rows (the "Who to contact" panel its action row opens).
+function jobCard(job, actions, i = 0, above = null, stage = null, opts = {}) {
   const sep = () => h("span", { class: "sep" }, "·");
   const meta = [h("b", { class: "co", title: `See everything at ${job.company}`, role: "link", tabindex: 0,
     onclick: () => openCompany(job.company),
@@ -3442,7 +3444,7 @@ function jobCard(job, actions, i = 0, above = null, stage = null) {
     gaps: gapsLine(job.fit, true),
     skills: job.keywords.length ? h("div", { class: "chips", title: job.keywords.join(", ") },
       job.keywords.map(k => h("span", { class: "chip hit" }, k))) : null,
-    people: peopleRow(job),
+    people: opts.people === false ? null : peopleRow(job),
     note: job.note && job.status !== "queued" ? h("div", { class: "note clamp", title: job.note }, job.note) : null,
   };
   return h("div", { class: `card job fit-${job.fit ? fitClass(job.fit.score) : "none"}`, id: "job-" + job.key,
@@ -3458,7 +3460,7 @@ function jobCard(job, actions, i = 0, above = null, stage = null) {
           `+${job.same_title}`) : null,
         Object.assign(link(job.url, job.title, "title"), { title: job.title })),
       h("div", { class: "meta jc-meta" }, meta.flatMap((m, n) => n ? [sep(), m] : [m]))),
-    h("div", { class: "jc-rows" }, cardRows(parts)),
+    h("div", { class: "jc-rows" }, cardRows(parts, opts.people === false ? ["people"] : []), opts.after),
     verdictLine(job),
     above ? h("div", { class: "jc-note" }, above) : null,
     h("div", { class: "row jc-foot" }, corner ? actions.flat(Infinity).filter(a => a !== scorer) : actions),
@@ -10405,16 +10407,19 @@ function companyCard(j, i, c) {
   const skipIt = () => actButton("skip", { onclick: () => act("skipped", `Skipped: ${j.title}. ${pick(SKIPPED)}`) });
   const posting = () => link(j.url, "Posting ↗");
   const score = () => scoreButton(j, j.can_score, x => companyCard(x, i, c));
-  const actions = APPLIED.includes(j.status) ? [detailsButton(j), posting(),
+  // The company's people are listed once, in the page's left panel; "Who to contact" is per job, so it sits by Details.
+  const [whoButton, whoPanel] = whoToContact(j);
+  const details = () => [detailsButton(j), whoButton];
+  const actions = APPLIED.includes(j.status) ? [details(), posting(),
       j.has_package ? h("span", { class: "sent-chip", title: "What you sent is saved with this job" }, icon("clip", 13), "package saved") : null]
     : j.status === "queued" ? [applyButton(j), prepareButton(j),
       actButton("applied", { onclick: () => act("applied") }),
-      snoozeButton(j, act), skipIt(), detailsButton(j), score()]
-    : j.status === "snoozed" ? [queueIt("Queue now"), applyButton(j), skipIt(), detailsButton(j), score()]
-    : j.status === "skipped" ? [queueIt(), applyButton(j), detailsButton(j), score()]
+      snoozeButton(j, act), skipIt(), details(), score()]
+    : j.status === "snoozed" ? [queueIt("Queue now"), applyButton(j), skipIt(), details(), score()]
+    : j.status === "skipped" ? [queueIt(), applyButton(j), details(), score()]
     : [queueIt(), applyButton(j, () => act("queued", `📌 Queued and opened: ${j.title}. Submit it there.`)),
-      snoozeButton(j, act), closedState(j) === "closed" ? null : skipIt(), detailsButton(j), score()];
-  return jobCard(j, actions, i, companyFacts(j, today), stageChip(j, today));
+      snoozeButton(j, act), closedState(j) === "closed" ? null : skipIt(), details(), score()];
+  return jobCard(j, actions, i, companyFacts(j, today), stageChip(j, today), { people: false, after: whoPanel });
 }
 
 // The jobs a company's page folds away: skipped ones, and postings found closed (their buttons stay on the cards). An
