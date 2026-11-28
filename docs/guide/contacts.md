@@ -36,11 +36,58 @@ employer and no one there is listed:
 employer: Initech        # or a list of its names
 ```
 
-Or say so as you go. The **Referrals** tab lists the people you know at companies with a new, queued or open
-job, closest ties first, with the jobs they're at. **Use** puts someone ahead of closer ties; **Don't use**
-stops suggesting them (they wait in a fold, to restore); a note keeps a few words with the name ("doesn't check
-LinkedIn; reach on WhatsApp") and shows beside it on the job cards, where a small **Don't use** does the same.
-People in `connections_skip` are listed there too, read-only. The same from the terminal, and for an assistant:
+Or say so as you go, in the **Referrals** tab.
+
+## The Referrals tab
+
+Referrals answers one question: *who could refer me to a job I'm tracking?* It lists the people from your
+LinkedIn connections who work at a company with a job you're tracking, so you can ask one of them before you apply.
+
+**Getting started.** The tab needs two things. First your LinkedIn data (the steps are at the top of this page):
+until you've uploaded it, the tab explains this in plain words and links to the upload under Settings → People &
+pay. Second, tracked jobs: companies you watch (Settings → Your search) and jobs you added or queued. If you
+have connections but nobody works at a company you track yet, the tab says so and points to where to add
+companies. There is no way to add a single contact by hand yet. Nothing here assumes a particular setup: with no Fit
+minimum set, a tracked company's jobs count as good fits from a fit score of 60, and a note under the search bar says so,
+with a link to where you set your own.
+
+**One card per company**, in a grid that fills the page (the Standard / Wide / Full width setting). Every card is the
+same size, so rows line up; room a company doesn't fill is left blank with a soft line ("No more good fits").
+A card has:
+
+- the company's logo and name (they open its page in the Company tab, as a company name on Today does), a
+  "12 people you know" pill, and a **Careers ↗** chip: its job board or careers page in a new tab. The chip's link is
+  the board jobwatch watches, else the company's own site its jobs link to (never LinkedIn's or another job site's),
+  else the website its logo was found at, else a web search for its careers page ("Search careers ↗"); only the
+  company's name goes in that search. The Company tab has the same chip;
+- its jobs as what suits you, never a wall: "23 good fits" (a job you queued or applied to, or a fit score at or above
+  your Fit minimum, `filters.min_fit`, else the fit chip Today opens on, else 60; never a job with no score yet, nor
+  one whose title your title filters turn down), the best five of them, and small grey text for the jobs not scored
+  yet and the total open. A company with no good fit says so and sorts below those that have one;
+- a slim row for each of the first four people you know there, the closest first (the ones you chose **Use** for,
+  then who messaged or endorsed you, the latest first, then A-Z), with their title, how close you are, **Use** /
+  **Don't use** and a note button. **Use** means "ask this person for a referral first": they lead the "You know"
+  lines everywhere. **Don't use** stops suggesting them (they wait under "Not suggested", to bring back). People in
+  `connections_skip` are listed there too, read-only;
+- two buttons: "See the 23 good fits" and "+ 8 more people".
+
+**Click for the details.** Everything but Use / Don't use and the two links opens a large dialog (most of the window;
+Esc or a click outside closes it; the arrow keys step to the next company or person, "3 of 12"). The "12 people you
+know" pill opens the company's Overview: counts, what you're working there, its best fits, the people, and the company
+health you kept in Comps. The buttons open its Good fits, Applied and queued, Not scored, All and People tabs, each
+with a search. A job opens its details above the dialog, and Esc closes the details first, then the dialog. A person's
+name, avatar or note button opens their dialog: title, how close you are, your choice, a note to save ("doesn't check
+LinkedIn; reach on WhatsApp", shown on the card in one line and beside the person on job cards), their LinkedIn
+profile, the jobs there and a draft referral request (see "Who to contact" below).
+
+**Finding people.** The search box above the cards (press `/`) finds a person by name, company or title, in any
+word order, ignoring accents; the company's card stays with just the people who matched, and Esc clears it. The sort is
+Best fit first, Most good fits, Most people you know, Last messaged or A-Z; **Ask first** shows only the people you
+chose **Use** for and **Working a job** only companies where you queued or applied. A long list is not rendered at
+once: 24 cards at a time with a "Show 24 more companies" button (hundreds of companies stay quick, and a search always
+runs over all of them), and a dialog lists 100 rows at a time.
+
+The same from the terminal, and for an assistant:
 
 ```
 jobwatch referrals                                  # the same rows

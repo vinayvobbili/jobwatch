@@ -9,7 +9,7 @@ from .config import Config
 from .filters import reject_reason, title_ok
 from .models import Job
 from .store import ENDED, STAGES, Store, closed_state
-from .watch import judged_pass, load_contacts
+from .watch import job_fits, judged_pass, load_contacts
 
 OPEN = ("new", "shown", "queued", *(s for s in STAGES if s not in ENDED))
 
@@ -38,7 +38,10 @@ def view(cfg: Config, store: Store) -> dict:
     and then the closest ties.
     skipped are those left out: marked Don't use, or in the watchlist file (from_file; edit the file to restore).
     Each has key, name, url, company, position, why, strength, verdict, note, from_file and jobs: [{key, title,
-    company, status}]."""
+    company, status}]. min_fit is the fit that makes a good fit (see good_fit) and details holds each listed job's
+    fit, place, pay, day first seen and whether its title is off-target, by key (see job_details), for the page
+    to show the good fits and keep the rest a click away; health is what is kept of each company's health, by name
+    (see company_health), and careers each company's "Careers" link (see company_careers)."""
     known = load_contacts(cfg)
     if not known:
         return {"people": [], "skipped": [], "has_connections": False}
@@ -65,10 +68,63 @@ def view(cfg: Config, store: Store) -> dict:
             if job.key not in {j["key"] for j in row["jobs"]}:
                 row["jobs"].append({"key": job.key, "title": job.title, "company": job.display_company,
                                     "status": rec["status"]})
-    rows = sorted(found.values(), key=lambda r: (r["verdict"] != "use", -r["strength"], r["name"].lower()))
+    people = sorted(found.values(), key=lambda r: (r["verdict"] != "use", -r["strength"], r["name"].lower()))
     left_out = lambda r: r["from_file"] or r["verdict"] == "skip"  # noqa: E731
-    return {"people": [r for r in rows if not left_out(r)], "skipped": [r for r in rows if left_out(r)],
-            "has_connections": True}
+    return {"people": [r for r in people if not left_out(r)], "skipped": [r for r in people if left_out(r)],
+            "has_connections": True, "min_fit": good_fit(cfg),
+            "min_fit_set": bool(cfg.filters.min_fit or cfg.today_fit),
+            "details": job_details(cfg, store, {j["key"] for r in people for j in r["jobs"]}, rows),
+            "health": company_health(store, {j["company"] for r in people for j in r["jobs"]}),
+            "careers": company_careers(store, {j["key"]: rows[j["key"]][0] for r in people for j in r["jobs"]})}
+
+
+def company_careers(store: Store, jobs: dict[str, Job]) -> dict[str, dict]:
+    """The "Careers ↗" link of each company the cards show, by the name its jobs carry: {"url", "kind"} (see
+    company.careers for the order it is found in)."""
+    from .company import careers  # company reads watch, as this module does
+    by_name: dict[str, list[Job]] = {}
+    for job in jobs.values():
+        by_name.setdefault(job.display_company, []).append(job)
+    return {name: careers(store, name, group) for name, group in sorted(by_name.items())}
+
+
+def company_health(store: Store, names: set[str]) -> dict[str, dict]:
+    """What is kept of each company's health (funding, headcount, layoffs, rating, risk, sources, as of when), by the
+    name its jobs carry, for the companies with some: the fields that hold a value only. The company dialog shows it."""
+    out = {}
+    for name in sorted(names):
+        health = store.health(name)
+        kept = {k: v for k, v in (health or {}).items() if v and k != "name"}
+        if kept:
+            out[name] = kept
+    return out
+
+
+GOOD_FIT = 60  # the fit a job needs to count as a good fit when the watchlist sets no minimum
+
+
+def good_fit(cfg: Config) -> int:
+    """The fit score from which a job is a good fit: the watchlist's filters.min_fit, else the fit chip Today
+    opens on (display.today_defaults.fit), else GOOD_FIT."""
+    return cfg.filters.min_fit or cfg.today_fit or GOOD_FIT
+
+
+def job_details(cfg: Config, store: Store, keys: set[str], rows: dict) -> dict[str, dict]:
+    """What the page's job lists show beside each title, once per job (people at one company share their jobs):
+    {key: {fit (0-100 or None), stale, place, pay, seen (the day first seen), off (the title filters turn the title
+    down: a job you queued or applied to is listed all the same, but is never a good fit by its score)}}. The jobs
+    a person lists stay as they were; these are looked up by key."""
+    fits = job_fits(cfg, store)
+    out = {}
+    for key in keys:
+        job, rec = rows[key]
+        fit = fits.get(key)
+        score = fit.get("score") if fit else None
+        out[key] = {"fit": None if score is None else round(score), "stale": bool(fit and fit.get("stale")),
+                    "place": "; ".join(job.places[:2]) + (f" +{len(job.places) - 2}" if len(job.places) > 2 else ""),
+                    "pay": job.pay(), "seen": str(rec["first_seen"])[:10],
+                    "off": not title_ok(job.title, cfg.filters_for(job))}
+    return out
 
 
 def resolve(cfg: Config, who: str) -> dict:

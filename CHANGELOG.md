@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+- The Referrals tab shows what suits you, one card per company, and explains itself to someone starting out.
+  With no LinkedIn data it says what Referrals is (who could refer you to a job you track), how to get people
+  here (LinkedIn's "Get a copy of your data", then the upload in Settings > People & pay, with links), and that your
+  file is read on your computer only; with connections but nobody at a tracked company it says that and where to add
+  companies. With no Fit minimum set it uses 60 and says so in a note with a link to where to set one. "Use" and
+  "ask first" now say what they mean in their tooltips and the page's subtitle.
+- Referrals cards group the people. People who know the same company are no longer repeated: the card has the
+  company's logo and name (they open its Company tab, as a name on Today does), "12 people you know", a "Careers"
+  chip (its job board or careers page in a new tab: the board you watch, else the company's own site its jobs link to,
+  else the site its logo came from, else a web search labelled "Search careers"; the Company tab has the chip too) and
+  its jobs once: "23 good fits" (a job you queued or applied to, or a fit at or above your Fit minimum, else the fit
+  chip Today opens on, else 60; never an unscored job, nor one the title filters turn down), the best five of
+  them, then "112 not scored yet" and "of 270 open" as small grey text. Below the jobs, a slim row for each of the
+  first four people (avatar, name, title, "messaged 4x, last Jun 2022", "ask first", Use / Don't use, a note button),
+  the closest first, then "+ 8 more people". Every card is the same size; what a company doesn't fill is left with a
+  soft line ("No more good fits"). Names and titles are cut with an ellipsis, the whole of them on hover.
+- Everything on a Referrals card but Use / Don't use and the Careers chip opens a large dialog: the "12 people you
+  know" pill opens the company's Overview (counts, what you're working, best fits, people, the health kept in Comps),
+  the buttons its Good fits, Applied and queued, Not scored, All and People tabs (each searchable), a person's name,
+  avatar or note button their details (title, how close you are, Use / Don't use, a note to save, LinkedIn, their jobs
+  and a draft referral request), a job its details. Esc, a click outside and Tab work in each, the arrow keys step to
+  the next company or person ("3 of 12"). Dialogs now stack properly: the newest is in front and alone takes Esc and
+  focus, so a job opened from a list shows its details above it (they used to open behind), and Esc peels them off one
+  at a time. A posting with no link says so instead of showing a dead link.
+- Referrals stays quick at any size: 24 cards at a time with "Show 24 more companies", a dialog lists 100 rows at a
+  time, and the search folds each person's text once, so typing over hundreds of companies is instant. A search box
+  above the cards (press / to focus, Esc to clear) finds a person by name, company or title, in any word order,
+  ignoring accents; the company's card stays with just the people who matched, highlighted. A sort (Best fit first,
+  Most good fits, Most people you know, Last messaged, A-Z) and Ask first / Working a job filters sit beside it, and
+  the count reads "12 of 31 companies · 73 people". /api/referrals sends the fit minimum used (and whether you set
+  it), each listed job's fit, place, pay, day and whether its title is off-target once by key, the company health
+  you kept, and each company's careers link; /api/company sends careers too.
+- Settings > Applying no longer refuses its own save with "applicant.hispanic is text, got False". YAML 1.1
+  (what reads the watchlist) takes an unquoted No, Yes, on or off for a boolean, and the page wrote a typed "No"
+  bare. Now every applicant field accepts a boolean as the word it was (Yes or No; yes or no for the yes/no
+  questions; NO and ON as a country and a state code), a save writes any text that would misread (No, off, NO, 2)
+  in double quotes, also when the file already carried it bare, and the page shows a bare No as "No". Other text
+  settings (a company called On, employer, focus, locations, remote_country, learning.near) read NO and ON as
+  codes where that is what they mean, and elsewhere say which field is wrong and to put it in quotes.
 - The Comps tab reads at a glance. The suggestion is a strip of four gradient tiles (jobs compared, best score,
   highest pay told, closest to your target) over one card per job: a gold, silver or bronze rank medal, the company's
   logo, a score ring coloured by value, the stage as a badge, five slim bars (Career, Pay, Fit, Progress, Health), a
@@ -9,21 +48,20 @@
   short headline, with the rules under "How ranks are worked out". "Why this rank" opens a large dialog (Esc, the
   backdrop or Close shut it; the arrow keys step through the ranked jobs, "2 of 5"): the score ring, each part's bar
   with its input, share and points, the missing-part fixes, the enlarged pay gauge and the company health the rank
-  used, so the cards stay compact and line up. The compare columns carry the same medal, ring and stage badge. A part
-  with no real value still takes the default 50, but never quietly: its bar is hatched amber, the ring has an
-  asterisk, the card says how many are assumed, and a button per missing part (Add health, Add kind and role, Add
-  pay, Read posting to score fit) opens the editor that supplies the real value, which removes the default.
-  `jobwatch comps` says "not found, default 50 assumed" for each, and `jobwatch comps --missing` lists, per job, what
-  to run to find each real value. The suggestion's API rows gain `status`, `url`, `pay` (the figure on the gauge),
-  `assumed` and `fill`, and the suggestion `target_low` and `target_high`. The dialog's left column ends with the
-  missing-part fixes, or, when nothing is missing, with "What would move this score" (the next stage, pay at your
-  target, a weak part at 70, as points from the same weights). The compare table's head row (medal, logo, company,
-  score ring, title, stage) stays under the nav while you scroll down a long comparison, with the row labels staying
-  at the left; the buttons sit in the row below it and scroll away. The row labels each have a tinted icon chip,
-  coloured by group (money green, process purple, fit amber, people blue, the company teal). A company's Sources are
-  one link per line wherever they show (the table, the dialog), labelled by site, opening in a new tab; only http and
-  https addresses become links. Every dialog's Close chip is lighter, with an accent edge and X and a glow on hover
-  and focus, in both themes (a test checks its contrast).
+  used, so the cards stay compact and line up. The
+  compare columns carry the same medal, ring and stage badge. A part with no real value still takes the default 50,
+  but never quietly: its bar is hatched amber, the ring has an asterisk, the card says how many are assumed, and a
+  button per missing part (Add health, Add kind and role, Add pay, Read posting to score fit) opens the editor that
+  supplies the real value, which removes the default. `jobwatch comps` says "not found, default 50 assumed" for each,
+  and `jobwatch comps --missing` lists, per job, what to run to find each real value. The suggestion's API rows gain
+  `status`, `url`, `pay` (the figure on the gauge), `assumed` and `fill`, and the suggestion `target_low` and
+  `target_high`. The dialog's left column ends with the missing-part fixes, or, when nothing is missing, with
+  "What would move this score" (the next stage, pay at your target, a weak part at 70, as points from the same
+  weights). The compare table's row labels each have a tinted icon chip, coloured by group (money green, process
+  purple, fit amber, people blue, the company teal). A company's Sources are one link per line wherever they show
+  (the table, the dialog), labelled by site, opening in a new tab; only http and https addresses become links.
+  Every dialog's Close chip is lighter, with an accent edge and X and a glow on hover and focus, in both themes
+  (a test checks its contrast).
 
 - The pay chips no longer say "pay unknown" when a source has a figure. The job's Details dialog now gets the
   posting's top pay, and the Posted chip carries it, so a posting that states its range only in its text (a Workday

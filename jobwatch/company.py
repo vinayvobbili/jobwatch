@@ -14,7 +14,7 @@ import re
 import shlex
 from collections import Counter
 from dataclasses import replace
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urlparse
 
 from . import contacts as people
 from . import dupes, jobpass, report, rounds, sources, suggest
@@ -228,7 +228,32 @@ def view(cfg: Config, store: Store, text: str, every: bool | None = None,
             "left_out": len(hide), "left_out_by": {k: by[k] for k in KINDS if by[k]}, "every": every,
             "contacts": known.at(*names) if known else [],
             "find_referral": people.linkedin_search(best["name"]), "watch": _watch(cfg, store, best["name"], jobs),
-            "also": [f["name"] for f in found[1:]]}
+            "careers": careers(store, best["name"], jobs), "also": [f["name"] for f in found[1:]]}
+
+
+def careers(store: Store, name: str, jobs: list[Job]) -> dict:
+    """Where a company's careers link goes: {"url", "kind"}. The first that holds: "board" (the job board jobwatch
+    fetches its jobs from), "jobs" (the origin of its jobs' own links, not one posting), "site" (the website its logo
+    was found at) or "search" (a web search for its careers page, the last resort). Nothing personal is in any of
+    them: the company's name only. The Company tab and the Referrals cards both show it as "Careers ↗"."""
+    for job in jobs:  # a board that lists many companies (HN, a fund's portfolio) is not this company's
+        if job.source in sources.SOURCES and not sources.SOURCES[job.source].many_companies:
+            try:
+                return {"url": sources.careers_url(job.source, job.company), "kind": "board"}
+            except (KeyError, ValueError, IndexError):
+                continue
+    from . import logos  # logos reads company's helpers
+    # the company's own site among its jobs' links (careers.acme.com for Acme), never an aggregator's (linkedin.com)
+    own = [site for site, guess in logos.sites(jobs) if not guess]
+    parsed = [urlparse(j.url) for j in jobs]
+    origins = Counter(f"{p.scheme}://{p.netloc}/" for p in parsed
+                      if p.scheme in ("http", "https") and own and logos.site_of(p.hostname or "") == own[0])
+    if origins:
+        return {"url": origins.most_common(1)[0][0], "kind": "jobs"}
+    logo = store.logo(logos.key(name))
+    if logo and logo[0]:
+        return {"url": f"https://{logo[0]}/", "kind": "site"}
+    return {"url": "https://www.google.com/search?q=" + quote_plus(f"{name} careers"), "kind": "search"}
 
 
 NOTE_SHOWN = 200  # characters of a note the text view prints

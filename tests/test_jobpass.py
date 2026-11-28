@@ -175,6 +175,70 @@ def test_referrals_use_the_same_people_and_jobs_as_before(setup):
                                                             "greenhouse:globex:14"}
 
 
+def test_referrals_carry_each_jobs_fit_place_pay_and_day_once_by_key(setup):
+    """The page shows a person's best few jobs by fit: it needs each listed job's score, place, pay and day, sent
+    once per job (not once per person) with filters.min_fit, and the jobs a person lists stay as they were."""
+    from jobwatch.score import resume_id
+    cfg, store, _ = setup
+    store.sync("greenhouse", "globex", [job(8, "Security Engineer", "globex", locations=["Remote", "Paris", "Oslo"],
+                                            salary_min=150000, salary_max=190000),
+                                        job(9, "Analyst", "globex"), job(10, "SRE", "globex"),
+                                        job(20, "Chef", "globex")])
+    store.set_status(["greenhouse:globex:20"], "queued")  # queued by hand: listed though the title filters turn it down
+    store.save_score("greenhouse:globex:9", resume_id(cfg.resume, cfg.prompts), {**FIT, "score": 77.4})
+    jobpass.forget()
+    got = referrals.view(cfg, store)
+    assert got["min_fit"] == 50 and got["min_fit_set"]
+    assert {j["key"] for p in got["people"] for j in p["jobs"]} == set(got["details"])
+    nine, eight = got["details"]["greenhouse:globex:9"], got["details"]["greenhouse:globex:8"]
+    assert nine["fit"] == 77 and nine["place"] == "Remote" and nine["pay"] == "" and nine["seen"] == str(NOW.date())
+    assert eight["fit"] is None and eight["place"] == "Remote; Paris +1" and eight["pay"].startswith("$150K")
+    assert not nine["off"] and not eight["off"] and got["details"]["greenhouse:globex:20"]["off"]
+    assert set(got["people"][0]["jobs"][0]) == {"key", "title", "company", "status"}
+
+
+def test_referrals_carry_what_is_kept_of_each_companys_health_by_the_name_its_jobs_carry(setup):
+    cfg, store, _ = setup
+    jobpass.forget()
+    name = referrals.view(cfg, store)["people"][0]["jobs"][0]["company"]
+    assert referrals.view(cfg, store)["health"] == {}  # nothing kept: nothing sent
+    store.set_health(name, raised="$40M Series B", headcount="about 300", layoffs=None)
+    got = referrals.view(cfg, store)["health"]
+    assert list(got) == [name] and got[name]["raised"] == "$40M Series B" and got[name]["headcount"] == "about 300"
+    assert "layoffs" not in got[name] and "name" not in got[name]  # the empty fields and the name are left out
+
+
+def test_a_companys_careers_link_is_its_board_then_its_jobs_site_then_its_logos_site_then_a_search(setup):
+    from jobwatch import logos
+    _, store, _ = setup
+    own = lambda i, company, url, source="greenhouse": Job(  # noqa: E731
+        source=source, company=company, id=str(i), title="Engineer", url=url, company_name=company.title())
+    jobs = {j.key: j for j in (
+        own(1, "globex", "https://boards.example.com/globex/jobs/1"),  # a watched board: its own page, not the posting
+        own(2, "hooli", "https://careers.hooli.example/openings/2?x=1", source="hn"),  # shared board: jobs' origin
+        own(3, "hooli", "https://careers.hooli.example/openings/3", source="hn"),
+        own(4, "pied piper", "", source="hn"),  # no link at all: the website its logo came from
+        own(5, "umbrella corp", "", source="hn"),  # nothing known: a search, with the name only
+        own(6, "stark", "https://www.linkedin.com/jobs/view/6", source="hn"))}  # an aggregator's link is not its site
+    store.save_logo(logos.key("Pied Piper"), "piedpiper.example", "image/png", b"x")
+    got = referrals.company_careers(store, jobs)
+    assert got["Globex"] == {"url": "https://job-boards.greenhouse.io/globex", "kind": "board"}
+    assert got["Hooli"] == {"url": "https://careers.hooli.example/", "kind": "jobs"}
+    assert got["Pied Piper"] == {"url": "https://piedpiper.example/", "kind": "site"}
+    assert got["Umbrella Corp"] == {"url": "https://www.google.com/search?q=Umbrella+Corp+careers", "kind": "search"}
+    assert got["Stark"] == {"url": "https://www.google.com/search?q=Stark+careers", "kind": "search"}
+    assert list(got) == sorted(got)  # and the payload carries them by company name
+    jobpass.forget()
+    assert set(referrals.view(setup[0], store)["careers"]) == {"Globex"}
+
+
+def test_a_good_fit_is_the_watchlists_minimum_else_todays_fit_chip_else_a_default(setup):
+    cfg, _, _ = setup
+    assert referrals.good_fit(cfg) == 50
+    assert referrals.good_fit(replace(cfg, filters=replace(cfg.filters, min_fit=0), today_fit=80)) == 80
+    assert referrals.good_fit(replace(cfg, filters=replace(cfg.filters, min_fit=0))) == referrals.GOOD_FIT == 60
+
+
 def test_digest_hidden_line_and_referrals_judge_the_table_once(setup, judgings):
     cfg, store, _ = setup
     watch.build_digest(cfg, store, include_seen=True, score_top=0)

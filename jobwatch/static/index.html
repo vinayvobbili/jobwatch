@@ -507,10 +507,199 @@ button.btn.btn-close.icon-only { width: 36px; height: 36px; padding: 0; justify-
   border-radius: 999px; color: var(--muted); cursor: pointer; }
 .know .dont:hover, .person .dont:hover { color: var(--bad); border-color: var(--bad); }
 .know .pnote { color: var(--muted); font-style: italic; }
-.card.ref { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: start; }
-.card.ref .rate { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 230px; }
-.card.ref .rate input { width: 100%; box-sizing: border-box; }
-@media (max-width: 700px) { .card.ref { grid-template-columns: 1fr; } }
+/* referrals: a card per company in a grid that fills the width; its jobs are a summary and the people you know there slim
+   rows; the rest opens in a large dialog (rank-dialog's frame) */
+.ref-bar { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin: 2px 0 16px; }
+.ref-search { position: relative; flex: 1 1 280px; max-width: 460px; }
+.ref-search .ico { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.ref-search input[type=text] { padding: 8px 34px 8px 36px; border-radius: 999px; }
+.ref-search kbd { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; font: inherit; font-size: 12px;
+  color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+.ref-search input:focus ~ kbd, .ref-search input:not(:placeholder-shown) ~ kbd { display: none; }
+.ref-clear { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; border-radius: 50%; border: 0;
+  display: grid; place-items: center; cursor: pointer; color: var(--muted); background: var(--chip); transition: color .15s, background .15s; }
+.ref-clear[hidden] { display: none; }
+.ref-clear:hover, .ref-clear:focus-visible { color: #fff; background: var(--grad); outline: none; }
+select.ref-sort { width: auto; border-radius: 999px; padding: 7px 14px; }
+.ref-total { margin-left: auto; font-variant-numeric: tabular-nums; }
+.ref-bar mark, .ref-grid mark, .ref-list mark { background: color-mix(in srgb, var(--accent-2) 28%, transparent); color: inherit; border-radius: 4px; padding: 0 1px; }
+.ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); grid-auto-rows: 1fr; gap: 14px; align-items: stretch; }
+.ref-grid > .empty { grid-column: 1 / -1; }
+.ref-grid.again > .card { animation: none; }
+.ref-grid > .card { margin: 0; }
+/* a card stands off the page: a mid-tone edge and a left bar in its company's colour (--h; edges 3:1 or more against the page,
+   tests/test_referrals_page.py checks), a tinted band behind the name, a layered shadow, and a coloured glow on hover; a job
+   you are working there turns the bar green (queued) or amber (in progress) and hangs a ribbon from the top */
+:root { --ref-page: #e3e7f6; --ref-tint-a: #eceffb; --ref-tint-b: #dbe0f3; --ref-edge-s: 38%; --ref-edge-l: 37%; --ref-ac-l: 48%; --ref-band: .13;
+  --ref-shadow: 0 1px 2px rgba(20, 26, 46, .12), 0 8px 16px -8px rgba(20, 26, 46, .22), 0 22px 36px -22px rgba(50, 60, 140, .34); }
+:root[data-theme="dark"] { --ref-page: #0a0d16; --ref-tint-a: #0d111d; --ref-tint-b: #090b13; --ref-edge-s: 42%; --ref-edge-l: 54%; --ref-ac-l: 62%;
+  --ref-band: .17; --ref-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset, 0 12px 26px -14px rgba(0, 0, 0, .95), 0 2px 6px rgba(0, 0, 0, .5); }
+body:has(.ref-grid) { background-color: var(--ref-page);
+  background-image: radial-gradient(1100px 560px at 8% -12%, var(--glow-1), transparent 62%),
+    radial-gradient(900px 520px at 102% -6%, var(--glow-2), transparent 60%), linear-gradient(180deg, var(--ref-tint-a), var(--ref-tint-b)); }
+.card.ref { --h: 230; --ac: hsl(var(--h) 66% var(--ref-ac-l)); --edge: hsl(var(--h) var(--ref-edge-s) var(--ref-edge-l)); --stripe: var(--ac);
+  --rj: 28px; --rp: 60px; container: refcard / inline-size;  /* a job row and a person row: the same height in every card */
+  display: flex; flex-direction: column; gap: 8px; padding: 0 16px 14px 18px; border: 1px solid var(--edge); box-shadow: var(--ref-shadow);
+  background: radial-gradient(120% 70% at 100% 0%, hsl(var(--h) 80% 60% / .10), transparent 60%), var(--panel-solid); }
+.card.ref::before { width: 5px; }
+.card.ref.live-queued { --stripe: var(--good); }
+.card.ref.live-working { --stripe: var(--warn); }
+.card.ref:hover { transform: translateY(-3px); border-color: var(--ac);
+  box-shadow: 0 0 0 1px var(--ac), 0 0 0 5px color-mix(in srgb, var(--ac) 20%, transparent), 0 22px 40px -18px color-mix(in srgb, var(--ac) 60%, transparent); }
+.ref-ribbon { position: absolute; top: 0; right: 14px; z-index: 1; padding: 3px 10px 4px; border-radius: 0 0 10px 10px; color: #fff; font-size: 11.5px;
+  font-weight: 800; letter-spacing: .03em; background: var(--rb, #0a7a56); box-shadow: 0 5px 10px -5px var(--rb, #0a7a56); }
+.card.ref.live-queued .ref-ribbon { --rb: #0a7a56; } .card.ref.live-working .ref-ribbon { --rb: #b45309; }
+.card.ref.live .ref-top { padding-right: 100px; }
+.ref-top { display: flex; gap: 12px; align-items: center; margin: 0 -16px 0 -18px; padding: 15px 16px 12px 18px;
+  background: linear-gradient(100deg, hsl(var(--h) 80% 55% / var(--ref-band)), hsl(var(--h) 80% 55% / 0) 88%);
+  border-bottom: 1px solid color-mix(in srgb, var(--edge) 28%, transparent); }
+.ref-av { flex: none; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 16px;
+  letter-spacing: .02em; background: linear-gradient(135deg, hsl(var(--h) 75% 58%), hsl(calc(var(--h) + 45) 80% 50%));
+  box-shadow: 0 6px 14px -6px hsl(var(--h) 80% 50%), inset 0 1px 0 rgba(255, 255, 255, .35); }
+.ref-top .mono, .ref-dialog .rk-head .mono { display: grid; }  /* a phone hides the other lists' logos; here the logo is the card's face */
+.ref-top .mono { flex: none; width: 46px; height: 46px; border-radius: 14px; font-size: 16px; box-shadow: 0 6px 14px -8px hsl(var(--h) 80% 40%); }
+.ref-top { height: 76px; flex: none; box-sizing: border-box; overflow: hidden; }
+.ref-logo { flex: none; display: grid; border: 0; padding: 0; background: none; border-radius: 14px; text-decoration: none; transition: transform .15s, box-shadow .15s; }
+a.ref-logo { cursor: pointer; } a.ref-logo:hover { transform: scale(1.06); box-shadow: 0 8px 18px -8px hsl(var(--h) 80% 40%); }
+.ref-id { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.ref-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 750; letter-spacing: -.01em;
+  color: var(--text); text-decoration: none; cursor: pointer; }
+.ref-name:hover { text-decoration: underline; text-decoration-color: var(--ac); text-underline-offset: 3px; }
+.ref-sub { max-width: 100%; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ref-careers { flex: none; white-space: nowrap; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 650; text-decoration: none; cursor: pointer;
+  color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); background: transparent; transition: background .15s, color .15s; }
+.ref-careers:hover, .ref-careers:focus-visible { color: #fff; background: var(--grad); border-color: transparent; }
+.pagehead .ref-careers { padding: 3px 12px; font-size: 13px; align-self: center; }
+.ref-know { display: inline-flex; align-items: center; gap: 5px; padding: 1px 10px 1px 8px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
+  color: var(--chip-text); background: var(--chip); border: 1px solid color-mix(in srgb, hsl(var(--h) 60% 50%) 35%, transparent); }
+.ref-know:hover { border-color: var(--ac); color: var(--ac); }
+/* the people at the company: four rows of one height, then a soft line; each a grid of three lines: name and buttons, title,
+   how close you are and the note; it is the same in every card, so the cards line up across the page */
+.ref-people { flex: none; display: flex; flex-direction: column; border-top: 1px solid var(--line); padding-top: 6px; height: calc(4 * var(--rp) + 8px); overflow: hidden; }
+.ref-p { height: var(--rp); flex: none; box-sizing: border-box; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-rows: 22px 17px 17px; grid-template-areas: "av name act" "av sub sub" "av sub2 sub2"; gap: 0 10px; align-items: center; padding: 2px 0; }
+.ref-p > .ref-avbtn { grid-area: av; align-self: start; margin-top: 3px; display: grid; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 50%; }
+.ref-p .ref-av { width: 34px; height: 34px; font-size: 12px; }
+.pp-name { grid-area: name; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; }
+.pp-namebtn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; color: var(--text); background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+.pp-namebtn:hover { color: var(--accent); text-decoration: underline; }
+.pp-name .chip { flex: none; white-space: nowrap; font-size: 11px; padding: 0 7px; }
+.pp-act .pp-clear { padding: 3px 6px; display: inline-grid; place-items: center; color: var(--muted); border: 1px solid color-mix(in srgb, var(--text) 25%, transparent); }
+.pp-sub { grid-area: sub; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--muted); }
+.pp-sub2 { grid-area: sub2; min-width: 0; display: flex; align-items: baseline; gap: 6px; overflow: hidden; font: inherit; font-size: 12px; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; }
+.pp-sub2:hover .pp-notetxt { text-decoration: underline; }
+.pp-why { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-notetxt { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; color: var(--accent); }
+.pp-notetxt::before { content: "· "; color: var(--muted); font-style: normal; }
+.ref-soft { padding: 3px 0; font-size: 12.5px; color: var(--muted); opacity: .8; font-style: italic; }
+.pp-act { grid-area: act; display: flex; gap: 5px; align-items: center; }
+.pp-act .btn { padding: 2px 10px; font-size: 12.5px; }
+.pp-act .ref-use { color: var(--accent); border: 1.5px solid var(--accent); background: transparent; font-weight: 650; }
+.pp-act .ref-skip { color: var(--text); border: 1.5px solid color-mix(in srgb, var(--text) 38%, transparent); background: transparent; }
+.pp-act .ref-use:hover { background: var(--accent-soft); } .pp-act .ref-skip:hover { background: var(--chip); }
+.pp-act .btn.primary { color: #fff; border-color: transparent; background: var(--grad); }
+.pp-act .pp-notebtn { padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--text) 25%, transparent); color: var(--muted); display: inline-grid; place-items: center; }
+.pp-act .pp-notebtn.has { color: var(--accent); border-color: var(--accent); }
+.pp-act .pp-notebtn:hover { color: var(--accent); }
+.pp-note { grid-area: note; margin-top: 4px; } .pp-note[hidden] { display: none; }
+.pp-note input[type=text] { width: 100%; box-sizing: border-box; padding: 5px 11px; font-size: 13px; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text) 32%, transparent); background: var(--panel-solid); }
+.ref-list, .ref-left { container-type: inline-size; }
+/* a narrow card (a phone) gives each person a fourth line for Use / Don't use, so the name keeps its room; every card does it */
+@container refcard (max-width: 410px) {
+  .ref-people { --rp: 84px; }
+  .ref-p { grid-template-columns: 34px minmax(0, 1fr); grid-template-rows: 22px 17px 17px 26px; grid-template-areas: "av name" "av sub" "av sub2" "av act"; }
+  .ref-p .pp-act { flex-wrap: nowrap; }
+}
+/* in a dialog a person's row is as tall as it needs, with more room around it */
+.ref-list .ref-p, .ref-left .ref-p { height: auto; grid-template-rows: auto auto auto; padding: 10px 6px; border-bottom: 1px solid var(--line); }
+.ref-list .ref-p > .ref-avbtn, .ref-left .ref-p > .ref-avbtn { margin-top: 2px; }
+.ref-list .ref-p .ref-av, .ref-left .ref-p .ref-av { width: 40px; height: 40px; font-size: 14px; }
+.ref-list .ref-p, .ref-left .ref-p { grid-template-columns: 40px minmax(0, 1fr) auto; }
+@container (max-width: 440px) {
+  .ref-list .ref-p, .ref-left .ref-p { grid-template-columns: 40px minmax(0, 1fr); grid-template-areas: "av name" "av sub" "av sub2" "av act"; }
+  .ref-list .ref-p .pp-act, .ref-left .ref-p .pp-act { margin: 4px 0 2px; flex-wrap: wrap; }
+}
+.ref-more { padding: 3px 12px; font-size: 13px; color: var(--accent); }
+.ref-more:hover { color: #fff; background: var(--grad); border-color: transparent; }
+.ref-left { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 0 28px; padding: 6px 4px; }
+/* the jobs: a head line, five rows of one height, then a soft line; the same in every card */
+.ref-jobs { flex: none; display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--line); padding-top: 8px;
+  height: calc(26px + 5 * var(--rj) + 26px + 8px); overflow: hidden; }
+.ref-jobs > .ref-job { height: var(--rj); flex: none; box-sizing: border-box; }
+.ref-foot { flex: none; margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: nowrap; }
+.ref-foot .btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ref-jhead { height: 26px; flex: none; box-sizing: border-box; display: flex; align-items: center; gap: 4px 10px; overflow: hidden; }
+.ref-jhead > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-n { cursor: pointer; font: inherit; border: 0; }
+.ref-n { font-size: 12px; font-weight: 700; color: #fff; background: var(--grad); border-radius: 999px; padding: 2px 11px; }
+.ref-n.none { color: var(--muted); background: var(--chip); border: 1px dashed color-mix(in srgb, var(--muted) 55%, transparent); padding: 1px 10px; }
+.ref-of { font-size: 12px; color: var(--muted); opacity: .85; cursor: help; }
+.ref-tabs { flex: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 22px 0; border-bottom: 1px solid var(--line); }
+.ref-tab { font: inherit; font-size: 13.5px; font-weight: 600; color: var(--muted); background: transparent; border: 0; border-bottom: 3px solid transparent;
+  padding: 7px 12px 9px; margin-bottom: -1px; cursor: pointer; border-radius: 10px 10px 0 0; transition: color .15s, background .15s; }
+.ref-tab:hover { color: var(--text); background: var(--accent-soft); }
+.ref-tab.on { color: var(--accent); border-bottom-color: var(--accent); background: var(--accent-soft); }
+.ref-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ref-hint { grid-column: 1 / -1; margin: 4px 0 8px; padding: 9px 14px; border-radius: 12px; font-size: 13.5px; color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 9%, transparent); border: 1px dashed color-mix(in srgb, var(--warn) 50%, transparent); }
+.ref-job, .ref-row { font: inherit; color: var(--text); text-align: left; border: 0; background: transparent; cursor: pointer; border-radius: 10px;
+  display: flex; align-items: center; gap: 10px; min-width: 0; transition: background .12s, transform .12s; }
+.ref-job { padding: 3px 6px; margin: 0 -6px; }
+.ref-job .t { flex: 1; min-width: 0; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-job:hover, .ref-row:hover { background: var(--accent-soft); }
+.ref-job:hover { transform: translateX(2px); }
+.ref-job:focus-visible, .ref-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fitpill { flex: none; min-width: 36px; text-align: center; font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; border-radius: 999px;
+  padding: 1px 8px; color: var(--c1); background: color-mix(in srgb, var(--c1) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c1) 38%, transparent); }
+.fitpill.none { --c1: var(--muted); border-style: dashed; font-weight: 600; }
+.ref-job .stagebadge { flex: none; padding: 0 8px; font-size: 11.5px; }
+.empty.ref-first { max-width: 720px; margin: 28px auto; padding: 28px 30px; text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+  border-radius: 18px; border: 1px solid var(--line); background: radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%), var(--panel-solid); }
+.empty.ref-first h2 { margin: 6px 0 0; font-size: 21px; } .empty.ref-first p { margin: 0; line-height: 1.5; }
+.empty.ref-first ol { margin: 4px 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; line-height: 1.5; }
+.empty.ref-first a { color: var(--accent); font-weight: 650; }
+.ref-nofit { margin: 0 0 12px; color: var(--muted); background: color-mix(in srgb, var(--accent) 7%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.ref-nofit a { color: var(--accent); font-weight: 650; }
+.ref-morehost { display: flex; justify-content: center; } .ref-morehost:not(:empty) { margin: 16px 0 6px; }
+.ref-showmore { padding: 7px 22px; font-size: 14px; color: var(--accent); }
+.ref-showmore:hover { color: #fff; background: var(--grad); border-color: transparent; }
+.ref-list > .ref-showmore { justify-self: center; grid-column: 1 / -1; margin: 10px 0; }
+.ref-list.over { display: block; }
+.ref-over { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; padding-bottom: 12px; }
+.ref-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.ref-tile { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 14px; color: #fff; background: var(--grad);
+  box-shadow: 0 10px 20px -14px var(--accent); }
+.ref-tile b { font-size: 24px; font-variant-numeric: tabular-nums; } .ref-tile span { font-size: 12.5px; opacity: .92; }
+.ref-sec { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel-solid) 88%, var(--accent) 3%); }
+.ref-sec h3 { margin: 0; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.ref-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 18px; }
+.ref-fact { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+.ref-fact > span { font-size: 12px; color: var(--muted); } .ref-fact.wide { grid-column: 1 / -1; }
+.ref-note { width: 100%; box-sizing: border-box; padding: 8px 12px; border-radius: 12px; font: inherit; font-size: 14px; resize: vertical;
+  border: 1px solid color-mix(in srgb, var(--text) 32%, transparent); background: var(--panel-solid); color: var(--text); }
+.pp-act.big { flex-wrap: wrap; gap: 8px; } .pp-act.big .btn { padding: 6px 16px; font-size: 14px; }
+.who-host { display: flex; flex-direction: column; gap: 10px; }
+.ref-all { padding: 4px 12px; font-size: 13px; color: var(--accent); }
+.ref-all:hover { color: #fff; background: var(--grad); border-color: transparent; }
+.dialog.rank-dialog.ref-dialog { display: flex; flex-direction: column; overflow: hidden; max-width: 1500px; }
+.ref-dialog .rk-head { position: static; flex: none; }
+.ref-tools { flex: none; display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; padding: 12px 22px; border-bottom: 1px solid var(--line); }
+.ref-tools input[type=text] { flex: 1 1 260px; max-width: 420px; width: auto; border-radius: 999px; padding: 7px 14px; }
+.ref-list { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 22px 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px 28px;
+  align-content: start; }
+.ref-list > .empty { grid-column: 1 / -1; margin-top: 20px; }
+.ref-list:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ref-row { padding: 8px 10px; border-bottom: 1px solid var(--line); border-radius: 12px; }
+.ref-row .rt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ref-row .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-row .s { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; color: var(--muted); font-size: 13px; }
+.ref-row .paychip { font-size: 12px; padding: 0 8px; }
+@media (min-width: 1100px) { .ref-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .ref-tabs { padding: 8px 14px 0; } .ref-tools { padding: 10px 14px; } .ref-list { padding: 8px 12px 16px; }
+  .ref-dialog .rk-head { padding: 10px 14px; gap: 8px; }
+  .ref-dialog .rk-title { order: 5; flex: 1 0 100%; } .ref-dialog .rk-head .mono { order: 0; }
+  .ref-dialog .rk-step { margin-left: auto; } }
 /* comps: the opportunities as columns on a wide screen, as stacked cards on a phone */
 table.comps { border-collapse: separate; border-spacing: 0; font-size: 14px; min-width: 100%; }
 table.comps th, table.comps td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left;
@@ -3384,7 +3573,7 @@ async function openDetails(key) {
         gapsLine(j.fit),
         whyScore(j.fit),
         knowLine(j, 10),
-        h("div", { class: "row actions" }, link(j.url, "Open the posting ↗"), detailsScore(j),
+        h("div", { class: "row actions" }, j.url ? link(j.url, "Open the posting ↗") : h("span", { class: "small muted no-url" }, "This posting has no link of its own."), detailsScore(j),
           j.candidate_home ? h("span", { title: "This company's own Workday account: sign in to see where your application stands" },
             link(j.candidate_home, "Your applications there ↗")) : null,
           APPLIED.includes(j.status) ? [j.sheets?.length && j.sheets_base
@@ -4056,10 +4245,37 @@ function closeDetails() {
   sentChanged = false; detailsDirty = false;
 }
 document.getElementById("overlay").addEventListener("click", e => { if (e.target.id === "overlay") closeDetails(); });
+// Stacked dialogs: an overlay dialog is lifted above every one already open as it opens (so a job's details are never behind
+// the list they were opened from), its backdrop covers everything below, and only it is live: the mouse can't reach what is
+// under it, focus is held inside it (a Tab, or a click on a toast, cannot leave it) and it alone takes Esc; closing it hands
+// all of that back to the one below. Dialogs only have to show themselves (display: flex, or be added to the body) and go
+// away; this watches for both.
+let dialogLevel = 40;  // above the highest z-index the stylesheet gives an overlay
+const allDialogs = () => [...document.querySelectorAll(".overlay")];
+const openDialogs = () => allDialogs().filter(o => o.style.display === "flex");
+const levelOf = o => +o.dataset.level || 0;
+const topDialog = () => { syncDialogs(); return openDialogs().reduce((top, o) => !top || levelOf(o) >= levelOf(top) ? o : top, null); };
+function syncDialogs() {
+  const open = openDialogs();
+  for (const o of allDialogs()) {
+    if (!open.includes(o)) { delete o.dataset.level; o.style.zIndex = ""; }
+    else if (!o.dataset.level) { o.dataset.level = String(++dialogLevel); o.style.zIndex = o.dataset.level; }
+  }
+}
+const dialogWatch = new MutationObserver(syncDialogs);
+dialogWatch.observe(document.body, { childList: true });
+dialogWatch.observe(document.getElementById("overlay"), { attributes: true, attributeFilter: ["style"] });
+document.addEventListener("focusin", e => {
+  const top = topDialog(), box = top && top.firstElementChild;
+  if (!top || top.contains(e.target) || !box) return;
+  if (box.tabIndex < 0 && !box.hasAttribute("tabindex")) box.tabIndex = -1;
+  box.focus({ preventScroll: true });
+});
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  if (document.getElementById("overlay").style.display === "flex") closeDetails();
-  else homeChat(false);
+  const top = topDialog();
+  if (top && top.id === "overlay") closeDetails();
+  else if (!top) homeChat(false);
 });
 
 // -- what you sent: copies of the resume, letter and form answers for an application, kept with the job
@@ -7155,47 +7371,545 @@ function extensionCard() {
 // -- referrals: the people you know at companies with jobs you're tracking, and whom to ask. Use puts someone
 // ahead of closer ties, Don't use hides them from every "You know" line (they wait in the fold to be restored);
 // people in the watchlist's connections_skip are listed there too, but only that file changes them.
+// One card per company, in a grid that fills the width, so what the people there share is said once. It shows what suits
+// you, not what exists: the good fits at the company (a job you queued or applied to, or a fit at or above the Fit
+// minimum, and not a title the watchlist's filters turn down), the best five of them, then the jobs not scored yet and the
+// total as small text. Below, a slim row per person you know there (the closest first), the first four and "+ N more
+// people". "See the good fits" opens a large dialog on its Good fits tab, with Applied and queued, Not scored, All and
+// People a click away (search, sort; the arrow keys step through the companies). The search box finds a person by name,
+// company or title and keeps the company's card with just the people it matched. The jobs you are working are always
+// worth a line.
+const REF_LIVE = ["queued", "applied", "screening", "interviewing", "offer"];
+const REF_TOP = 5;
+const REF_CAP = 4;
+// A long list shows this many at a time, with a button for more: the cards (500 companies are 500 cards), the people left out and a dialog's rows.
+const REF_PAGE = 24;
+const REF_ROWS = 100;
+// The furthest a company's jobs have got comes first.
+const REF_FURTHEST = ["offer", "interviewing", "screening", "applied", "queued"];
+const REF_SORTS = { fit: "Best fit first", count: "Most good fits", people: "Most people you know", recent: "Last messaged", name: "A-Z" };
+const refView = { q: remembered("referrals.q", ""), sort: remembered("referrals.sort", "fit"), ask: false, working: false, foldOpen: false,
+  limit: REF_PAGE, leftLimit: REF_ROWS };
+if (!REF_SORTS[refView.sort]) refView.sort = "fit";
+const refButtons = new Map();  // company key + ":jobs" or ":people" -> that button now on the page, for focus to return to
+let refSearchBox = null;       // the page's search box while the tab is open (the "/" key focuses it)
+
+// One character for one, lower case and without accents, so a match found in the folded text sits at the same place in
+// the original (which is what gets highlighted).
+function foldChar(c) {
+  const f = c.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+  return f.length === 1 ? f : c.toLowerCase().length === 1 ? c.toLowerCase() : c;
+}
+function foldText(s) { return Array.from(String(s ?? ""), foldChar).join(""); }
+function searchTokens(q) { return foldText(q).split(/\s+/).filter(Boolean); }
+// Every word typed must be somewhere in the name, company or title (or the card's company name, extra): any order, any
+// case, accents ignored.
+// What is searched in a person is folded once (a search runs on every key, over thousands of people).
+const refHays = new WeakMap();
+const refFolds = new Map();
+function personMatches(p, tokens, extra = "") {
+  if (!tokens.length) return true;
+  let hay = refHays.get(p);
+  if (hay === undefined) refHays.set(p, hay = foldText([p.name, p.company, p.position].join(" ")));
+  if (extra) {
+    let f = refFolds.get(extra);
+    if (f === undefined) refFolds.set(extra, f = foldText(extra));
+    hay = hay + " " + f;
+  }
+  return tokens.every(t => hay.includes(t));
+}
+function markRanges(text, tokens) {
+  const f = foldText(text), spans = [], merged = [];
+  for (const t of tokens) for (let i = f.indexOf(t); i >= 0; i = f.indexOf(t, i + t.length)) spans.push([i, i + t.length]);
+  for (const s of spans.sort((a, b) => a[0] - b[0])) {
+    const last = merged[merged.length - 1];
+    if (last && s[0] <= last[1]) last[1] = Math.max(last[1], s[1]); else merged.push([...s]);
+  }
+  return merged;
+}
+// The text with what the search matched in <mark>.
+function marked(text, tokens) {
+  const s = String(text ?? ""), out = [];
+  let at = 0;
+  for (const [a, b] of markRanges(s, tokens)) {
+    if (a > at) out.push(s.slice(at, a));
+    out.push(h("mark", {}, s.slice(a, b)));
+    at = b;
+  }
+  if (at < s.length) out.push(s.slice(at));
+  return out;
+}
+// Best fit first, an unscored job after every scored one, then the freshest.
+const byFit = (a, b) => (b.fit ?? -1) - (a.fit ?? -1) || (b.seen || "").localeCompare(a.seen || "") || a.title.localeCompare(b.title);
+// A good fit: a job you queued or applied to, or one with a fit at or above the minimum unless the watchlist's title
+// filters turn its title down (j.off). A job with no score yet is never one by its score.
+const refGood = (j, minFit) => REF_LIVE.includes(j.status) || (!j.off && j.fit != null && j.fit >= minFit);
+// A company's jobs boiled down: how many there are, the good fits best first and the top five of them, how many are
+// not scored yet, the best fit among the good ones (0 when only a job you are working has none), and the furthest stage.
+function refSummary(jobs, minFit) {
+  const good = jobs.filter(j => refGood(j, minFit)).sort(byFit), top = good.slice(0, REF_TOP);
+  return { total: jobs.length, good: good.length, top, more: good.length - top.length, unscored: jobs.filter(j => j.fit == null).length,
+    best: good.length ? Math.max(0, ...good.map(j => j.fit ?? 0)) : -1, stage: REF_FURTHEST.find(s => jobs.some(j => j.status === s)) || null };
+}
+// "1 job", "2 jobs": the count with its noun (a plural of more than an "s" is given).
+function plural(n, one, many = one + "s") { return `${n} ${n === 1 ? one : many}`; }
+// The card's words: "12 good fits" or "No good fit yet", "262 not scored yet", "of 313 open" (only when there are others), "+ 7 more"
+// and the button ("See the 12 good fits", "See the good fit"; with none, every job: "See all 313 jobs", "See the job").
+function refLabels(sum) {
+  return { good: sum.good ? plural(sum.good, "good fit") : "No good fit yet", unscored: sum.unscored ? `${sum.unscored} not scored yet` : null,
+    of: sum.total > sum.good ? `of ${sum.total} open` : null, more: sum.more ? `+ ${sum.more} more` : null,
+    button: sum.good ? (sum.good === 1 ? "See the good fit" : `See the ${sum.good} good fits`) : sum.total === 1 ? "See the job" : `See all ${sum.total} jobs` };
+}
+// The accent a card takes from the jobs you are working there: a job in progress (amber) outranks one only queued (green),
+// and the ribbon names the furthest stage.
+const refAccent = stage => !stage ? "" : stage === "queued" ? "live live-queued" : "live live-working";
+// The people with their jobs filled in from d.details (what a job lists is sent once per job, not per person).
+function refEntries(d) {
+  const det = d.details || {};
+  return d.people.map(p => ({ p, jobs: p.jobs.map(j => ({ fit: null, stale: false, place: "", pay: "", seen: "", off: false, ...det[j.key], ...j })) }));
+}
+// The day of the last message, from "messaged 9×, last 2026-06-23" ("" when there is none).
+const refLast = p => (/last (\d{4}-\d{2}-\d{2})/.exec(p.why || "") || [])[1] || "";
+// The people at a company, the closest first: those you chose to ask first, then those who messaged or endorsed you (the
+// latest first), then the rest A-Z.
+function refPeopleOrder(a, b) {
+  const known = !!a.why && !!b.why;
+  return (b.verdict === "use") - (a.verdict === "use") || !!b.why - !!a.why ||
+    (known ? refLast(b).localeCompare(refLast(a)) || (b.strength || 0) - (a.strength || 0) : 0) || a.name.localeCompare(b.name);
+}
+// The companies: people who share a tracked job are one company, whatever each one's LinkedIn employer says ("Amazon", "Amazon
+// Web Services (AWS)"). Each has its people, its jobs once, the summary of them and its name (the one its jobs carry).
+function refCompanies(d) {
+  const cut = d.min_fit || 60, groups = [], owner = new Map();
+  for (const { p, jobs } of refEntries(d)) {
+    const keys = jobs.length ? jobs.map(j => j.key) : ["co:" + foldText(p.company)];
+    const found = [...new Set(keys.map(k => owner.get(k)).filter(Boolean))];
+    let g = found[0];
+    if (!g) groups.push(g = { people: [], jobs: new Map() });
+    for (const other of found.slice(1)) {  // a person who bridges two companies' jobs joins them
+      g.people.push(...other.people);
+      for (const [k, j] of other.jobs) { g.jobs.set(k, j); owner.set(k, g); }
+      other.people = []; other.jobs = new Map();
+    }
+    g.people.push(p);
+    for (const j of jobs) g.jobs.set(j.key, j);
+    for (const k of keys) owner.set(k, g);
+  }
+  return groups.filter(g => g.people.length).map(g => {
+    const jobs = [...g.jobs.values()], seen = {};
+    for (const j of jobs) seen[j.company] = (seen[j.company] || 0) + 1;
+    const name = Object.keys(seen).sort((a, b) => seen[b] - seen[a])[0] || g.people[0].company;
+    const people = g.people.sort(refPeopleOrder);
+    return { key: jobs.length ? jobs.map(j => j.key).sort()[0] : "co:" + foldText(name), name, people, jobs, cut, cutSet: d.min_fit_set !== false,
+      sum: refSummary(jobs, cut), last: people.map(refLast).sort().pop() || "", health: (d.health || {})[name] || null,
+      careers: (d.careers || {})[name] || null };
+  });
+}
+// The companies to show: the search words, then the filters, then the sort (stable). A company stays while one of its
+// people matches the words (and, with Ask first, is one you chose) and then lists just those in c.shown; the company's
+// own name counts as part of each person's text. Best fit first puts a company with a good fit above those with none, the
+// best fit leading.
+function refVisible(companies, view) {
+  const tokens = searchTokens(view.q), keep = [];
+  for (const c of companies) {
+    if (view.working && !c.sum.stage) continue;
+    const shown = c.people.filter(p => (!view.ask || p.verdict === "use") && personMatches(p, tokens, c.name));
+    if (shown.length) keep.push({ ...c, shown });
+  }
+  const fit = (a, b) => b.sum.best - a.sum.best || b.sum.good - a.sum.good;
+  const by = { fit, count: (a, b) => b.sum.good - a.sum.good || fit(a, b), people: (a, b) => b.people.length - a.people.length || fit(a, b),
+    recent: (a, b) => b.last.localeCompare(a.last) || fit(a, b), name: (a, b) => a.name.localeCompare(b.name) }[view.sort];
+  return by ? keep.sort(by) : keep;
+}
+// "12 of 31 companies · 73 people": the companies on show of all of them, and the people on those cards.
+function refCount(shown, total) {
+  return `${shown.length} of ${total} ${total === 1 ? "company" : "companies"} · ${plural(shown.reduce((n, c) => n + c.shown.length, 0), "person", "people")}`;
+}
+// A card's words about its people: "3 people you know", past the first four "+ 2 more people", else "See the 3 people".
+function refPeopleWords(c) {
+  const more = (c.shown || c.people).length - REF_CAP, n = c.people.length;
+  return { known: `${plural(n, "person", "people")} you know`, more: more > 0 ? `+ ${more} more ${more === 1 ? "person" : "people"}` : null,
+    all: n === 1 ? "See the person" : `See the ${n} people` };
+}
+// The dialog's tabs, each a test of a job (cut: the fit that makes a good fit).
+const REF_TABS = { good: (j, cut) => refGood(j, cut), working: j => REF_LIVE.includes(j.status), unscored: j => j.fit == null, all: () => true };
+const REF_TAB_NAMES = { good: "Good fits", working: "Applied and queued", unscored: "Not scored", all: "All" };
+// The tab the dialog opens on: Good fits, or with none the first of the others that holds a job.
+const refFirstTab = (jobs, cut) => ["good", "working", "unscored", "all"].find(t => jobs.some(j => REF_TABS[t](j, cut))) || "good";
+// The dialog's list: o.tab (REF_TABS) and o.cut, o.q (words, in the title, place, pay or stage), o.sort (fit, new or title).
+function refListJobs(jobs, o) {
+  const tokens = searchTokens(o.q), tab = REF_TABS[o.tab || "good"];
+  const order = { fit: byFit, new: (a, b) => (b.seen || "").localeCompare(a.seen || "") || byFit(a, b), title: (a, b) => a.title.localeCompare(b.title) };
+  return jobs.filter(j => {
+    const hay = foldText([j.title, j.place, j.pay, j.status].join(" "));
+    return tab(j, o.cut) && tokens.every(t => hay.includes(t));
+  }).sort(order[o.sort] || byFit);
+}
+// "messaged 9×, last 2026-06-23" as "messaged 9×, last Jun 2026".
+const refWhy = why => why ? why.replace(/(\d{4})-(\d{2})-\d{2}/g, (_, y, m) => `${MONTHS[m - 1]} ${y}`) : "no messages or endorsements in your data";
+const nameHue = name => { let n = 11; for (const c of (name || "").toLowerCase()) n = (n * 31 + c.charCodeAt(0)) >>> 0; return n % 360; };
+function refAvatar(name) {
+  const w = (name || "?").replace(/[^\p{L}\p{N} ]+/gu, " ").trim().split(/\s+/).filter(Boolean);
+  return h("div", { class: "ref-av", style: `--h:${nameHue(name)}`, "aria-hidden": "true" },
+    (w.length > 1 ? w[0][0] + w[w.length - 1][0] : (w[0] || "?").slice(0, 2)).toUpperCase());
+}
+function fitPill(j) {
+  return h("span", { class: "fitpill " + (j.fit == null ? "none" : "tone-" + scoreTone(j.fit)),
+    title: j.fit == null ? "Not scored yet" : `Fit ${j.fit}/100` + (j.stale ? " (stale: scored under an older resume)" : "") }, j.fit == null ? "–" : j.fit);
+}
+const REF_STAGES = { queued: "Queued", new: "Open", shown: "Open" };
+function refStatus(j, always) {
+  if (!always && ["new", "shown"].includes(j.status)) return null;
+  const k = ["new", "shown"].includes(j.status) ? "new" : j.status;
+  return h("span", { class: "stagebadge", style: `--sc:var(--s-${k})` }, REF_STAGES[j.status] || STAGE_NAMES[j.status] || j.status);
+}
+// A job in the card's summary: slim, with its fit; it opens the job's details like a chip always did.
+function refJob(j) {
+  return h("button", { class: "ref-job", type: "button", title: `${j.title}\n${j.place || ""}`.trim(), onclick: () => openDetails(j.key) },
+    fitPill(j), h("span", { class: "t" }, j.title), refStatus(j));
+}
+// A job in the dialog: fit, title, place and pay, and its stage.
+function refRow(j, tokens) {
+  return h("button", { class: "ref-row", type: "button", title: j.title, onclick: () => openDetails(j.key) },
+    fitPill(j),
+    h("span", { class: "rt" }, h("span", { class: "t" }, marked(j.title, tokens)),
+      h("span", { class: "s" }, j.place ? marked(j.place, tokens) : h("span", { class: "muted" }, "no place listed"),
+        j.pay ? h("span", { class: "paychip" }, j.pay) : null)),
+    refStatus(j, true));
+}
+// The shell of every Referrals dialog: a large dialog (rank-dialog's frame) over the page for one of n siblings; at: which it
+// opens on. Esc and a click outside close it, the arrow keys go to the previous or next sibling (not while typing in a box),
+// Tab stays inside, and focus goes back to o.back(i), the button it was opened from. o.noun names the siblings ("company").
+// o.draw(i, put, head, close) builds one: head(lead, title, sub) is its header (with "3 of 12" and the arrows) and
+// put(label, ...kids) puts the header and the rest in the dialog. A job's details open above it, and a dialog opened from
+// another one takes the keys while it is on top. Returns { close, redraw }.
+function refFrame(n, at, o) {
+  const shade = h("div", { class: "overlay rank-shade ref-shade", style: "display:flex", onclick: e => { if (e.target === shade) close(); } });
+  const box = h("div", { class: "dialog rank-dialog ref-dialog", role: "dialog", "aria-modal": "true", tabindex: "-1" });
+  let cur = at;
+  const close = () => {
+    shade.remove(); document.removeEventListener("keydown", keys, true);
+    const back = o.back && o.back(cur);
+    if (back && back.isConnected) back.focus();
+  };
+  const step = (label, to, text) => h("button", { class: "btn ghost rk-arrow", type: "button", "aria-label": label,
+    title: label + " (arrow key)", disabled: to < 0 || to >= n, onclick: () => show(to) }, text);
+  const head = (lead, title, sub) => h("div", { class: "rk-head" }, lead,
+    h("div", { class: "rk-title" }, h("h2", {}, title), h("div", { class: "muted small" }, sub)),
+    h("div", { class: "rk-step" }, step(`Previous ${o.noun}`, cur - 1, "‹"),
+      h("span", { class: "rk-count", "aria-live": "polite" }, `${cur + 1} of ${n}`), step(`Next ${o.noun}`, cur + 1, "›")),
+    closeButton(close));
+  const show = i => {
+    cur = i;
+    o.draw(i, (label, ...kids) => { fill(box, ...kids); box.setAttribute("aria-label", label); }, head, close);
+    box.focus();
+  };
+  const keys = e => {
+    if (topDialog() !== shade) return;  // a job's details, or another of these, is open on top: it takes the keys
+    if (e.key === "Escape") { e.stopImmediatePropagation(); close(); }
+    else if (e.key === "/" && !e.target.closest?.("input, textarea, select")) {
+      const box2 = [...box.querySelectorAll(".ref-jq")].find(i => !i.hidden);
+      if (box2) { e.preventDefault(); e.stopImmediatePropagation(); box2.focus(); }
+    } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !e.target.closest?.("input, textarea, select")) {
+      const to = rankStep(cur, n, e.key);
+      if (to !== cur) { e.preventDefault(); show(to); }
+    } else if (e.key === "Tab") trapTab(box, e);
+  };
+  document.addEventListener("keydown", keys, true);
+  shade.append(box);
+  document.body.append(shade);
+  show(at);
+  return { close, redraw: () => show(cur) };
+}
+// A company's overview (the dialog's first tab): the counts, what you are working there, the best good fits, the people you
+// know, what is kept of its health, and the way to its page. go(tab) switches tab; close shuts the dialog.
+const REF_HEALTH = { listing: "Listing", stage: "Stage", raised: "Raised", revenue: "Revenue", headcount: "Headcount", layoffs: "Layoffs",
+  rating: "Rating", risk: "Risk", as_of: "As of" };
+function refOverview(c, ctx, go, close) {
+  const live = c.jobs.filter(j => REF_LIVE.includes(j.status)).sort(byFit), health = c.health || {};
+  const tile = (n, label) => h("div", { class: "ref-tile" }, h("b", {}, n), h("span", {}, label));
+  const sec = (title, ...kids) => h("section", { class: "ref-sec" }, h("h3", {}, title), ...kids);
+  const more = (label, tab) => h("button", { class: "btn ref-all", type: "button", onclick: () => go(tab) }, label);
+  const rows = Object.entries(REF_HEALTH).filter(([k]) => health[k]).map(([k, label]) => h("div", { class: "ref-fact" }, h("span", {}, label), h("b", {}, health[k])));
+  return [
+    h("div", { class: "ref-tiles" }, tile(c.people.length, c.people.length === 1 ? "person you know" : "people you know"),
+      tile(c.sum.good, c.sum.good === 1 ? "good fit" : "good fits"), tile(live.length, "applied or queued"), tile(c.jobs.length, "open jobs")),
+    sec("Applications and interviews here", live.length ? live.map(j => refRow(j, [])) : h("div", { class: "muted small" }, "Nothing queued or applied to here yet.")),
+    sec("The best good fits", c.sum.top.length ? [c.sum.top.map(j => refRow(j, [])), c.sum.good > c.sum.top.length ? more(`All ${c.sum.good} good fits`, "good") : null]
+      : h("div", { class: "muted small" }, "No good fit yet: the not-scored jobs are a tab away."), null),
+    sec("People you know", c.people.slice(0, 6).map(p => refPerson(p, ctx)), c.people.length > 6 ? more(`All ${c.people.length} people`, "people") : null),
+    sec("Company health", rows.length ? h("div", { class: "ref-facts" }, rows, health.sources ? h("div", { class: "ref-fact wide" }, h("span", {}, "Sources"), sourceLinks(health.sources)) : null)
+      : h("div", { class: "muted small" }, "Nothing kept yet: add it from the Comps tab.")),
+    sec("Links", h("button", { class: "btn", type: "button", title: "Everything tracked at this company, whatever its status",
+      onclick: () => { close(); openCompany(c.name); } }, `Everything tracked at ${c.name} ›`)),
+  ];
+}
+// A person's details: name, title and company, how close you are, your choice (Use / Don't use / Clear) and a note to save, their
+// LinkedIn link, the jobs there you are working or the best fits, and a way to draft a referral request (the job's "Who to
+// contact"). people: the siblings the arrows step through; ctx: { rate, company } (company is null for someone left out).
+function openRefPerson(people, at, ctx) {
+  const opener = document.activeElement;
+  const frame = refFrame(people.length, at, { noun: "person", back: () => opener, draw: (i, put, head) => {
+    const p = people[i], c = ctx.company, live = c ? c.jobs.filter(j => REF_LIVE.includes(j.status)).sort(byFit) : [];
+    const shown = live.length ? live : c ? c.sum.top : [];
+    const note = h("textarea", { class: "ref-note", rows: 3, maxlength: 200, "aria-label": "Note about " + p.name, placeholder: "e.g. reach on WhatsApp" });
+    note.value = p.note;
+    const choose = (label, verdict, title) => h("button", { class: `btn ref-${verdict}` + (p.verdict === verdict ? " primary" : ""), type: "button", title,
+      "aria-pressed": String(p.verdict === verdict), onclick: async () => { await ctx.rate(p, verdict, note.value); frame.redraw(); } }, label);
+    const save = () => p.verdict ? ctx.rate(p, p.verdict, note.value).then(() => frame.redraw()) : toast("Choose Use or Don't use first, then the note is kept");
+    const sec = (title, ...kids) => h("section", { class: "ref-sec" }, h("h3", {}, title), ...kids);
+    const fact = (label, ...kids) => h("div", { class: "ref-fact" }, h("span", {}, label), h("b", {}, ...kids));
+    const best = live[0] || (c && (c.sum.top[0] || c.jobs[0]));
+    const [who, whoPanel] = best ? whoToContact({ key: best.key }) : [null, null];
+    put(`${p.name}, ${i + 1} of ${people.length}`,
+      head(refAvatar(p.name), p.name, [p.position, p.company].filter(Boolean).join(" · ")),
+      h("div", { class: "ref-list over" }, h("div", { class: "ref-over" },
+        sec("About", h("div", { class: "ref-facts" }, fact("Name", p.name), fact("Title", p.position || "not listed"), fact("Company", c ? c.name : p.company),
+          fact("How close", refWhy(p.why)), fact("Last messaged", refLast(p) ? refWhy(refLast(p)) : "never in your data"))),
+        sec("Your choice", h("div", { class: "small muted" }, "Use puts this person first (\"ask first\") wherever jobwatch lists who you know. Don't use stops suggesting them."),
+          h("div", { class: "pp-act big" }, p.from_file ? h("span", { class: "small muted" }, "In your watchlist file (connections_skip): edit it there")
+          : [choose("Use", "use", "Ask this person for a referral first"), choose("Don't use", "skip", "Never suggest this person"),
+            p.verdict ? h("button", { class: "btn ghost", type: "button", onclick: async () => { await ctx.rate(p, "clear"); frame.redraw(); } }, "Clear") : null]),
+        p.from_file ? null : [note, h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: save }, "Save note"),
+          h("span", { class: "small muted" }, "Kept with their name, and shown on the cards."))]),
+        sec("Links", p.url ? link(p.url, "LinkedIn profile ↗", "btn")
+          : link(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(p.name + " " + p.company)}`, "Search LinkedIn for them ↗", "btn")),
+        c ? sec(live.length ? `Jobs at ${c.name} you are working` : `The best fits at ${c.name}`,
+          shown.length ? shown.map(j => refRow(j, [])) : h("div", { class: "muted small" }, "No good fit yet: the company's other jobs are in its dialog.")) : null,
+        best ? sec("Draft a referral request", h("div", { class: "small muted" }, `For ${best.title}: Who to contact lists them among the people you know, with a note to write.`),
+          h("div", { class: "who-host" }, who, whoPanel)) : null)));
+  } });
+}
+// The large dialog for one company: tabs Overview, Good fits, Applied and queued, Not scored, All and People (everyone you know
+// there, with Use / Don't use; a name opens their details). list: the companies the arrows step through; at: which it opens on;
+// start: "overview", "people" or (the default) the Good fits to open on (and stay on when stepping); rate: what Use / Don't use call.
+function openRefJobs(list, at, start, rate) {
+  const st = { q: "", pq: start === "people" ? refView.q : "", sort: "fit", tab: "good", cut: 60, n: REF_ROWS };
+  refFrame(list.length, at, { noun: "company", back: i => refButtons.get(list[i].key + ":" + (start || "jobs")) || refButtons.get(list[i].key + ":jobs"),
+    draw: (i, put, head, close) => {
+    const c = list[i], { jobs, cut } = c, list2 = h("div", { class: "ref-list", tabindex: "0", "aria-label": `Jobs at ${c.name}` });
+    const total = h("span", { class: "ref-total small muted", "aria-live": "polite" });
+    st.cut = cut; st.n = REF_ROWS;
+    st.tab = start === "people" || start === "overview" ? start : refFirstTab(jobs, cut);  // each company opens on its Good fits (or the first tab with a job when there are none)
+    const go = k => { st.tab = k; st.n = REF_ROWS; for (const b of tabsEl.children) { const on = b.dataset.tab === k; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); } draw(); };
+    const tabs = [["overview", "Overview"], ...Object.entries(REF_TAB_NAMES).map(([k, name]) => [k, `${name} (${jobs.filter(j => REF_TABS[k](j, cut)).length})`]),
+      ["people", `People (${c.people.length})`]].map(([k, label]) =>
+      h("button", { class: "ref-tab" + (k === st.tab ? " on" : ""), type: "button", role: "tab", "data-tab": k,
+        "aria-selected": String(k === st.tab), onclick: () => go(k) }, label));
+    const tabsEl = h("div", { class: "ref-tabs", role: "tablist", "aria-label": "Overview, which jobs, or the people" }, tabs);
+    const rateHere = async (...args) => { await rate(...args); draw(); };  // the page behind redraws too; this list keeps up
+    // a long list shows REF_ROWS rows at a time (a company with hundreds of jobs or people), then a button for more
+    const moreRows = n => n <= st.n ? null : h("button", { class: "btn ref-showmore", type: "button",
+      onclick: () => { st.n += REF_ROWS; draw(); } }, `Show ${Math.min(REF_ROWS, n - st.n)} more (${n - st.n} not shown)`);
+    const draw = () => {
+      const people = st.tab === "people", over = st.tab === "overview";
+      q.hidden = people || over; sort.hidden = people || over; pq.hidden = !people;
+      list2.classList.toggle("over", over);
+      if (over) {
+        fill(list2, h("div", { class: "ref-over" }, refOverview(c, { tokens: [], rate: rateHere, people: c.people, company: c }, go, close)));
+        total.textContent = "";
+        return;
+      }
+      if (people) {
+        const tokens = searchTokens(st.pq), rows = c.people.filter(p => p.verdict !== "skip" && personMatches(p, tokens, c.name));
+        fill(list2, rows.length ? [rows.slice(0, st.n).map(p => refPerson(p, { tokens, rate: rateHere, people: c.people, company: c })), moreRows(rows.length)]
+          : h("div", { class: "empty" }, st.pq ? `No one matches '${st.pq}'` : "No one here."));
+        total.textContent = plural(rows.length, "person", "people");
+        return;
+      }
+      const tokens = searchTokens(st.q), rows = refListJobs(jobs, st);
+      fill(list2,
+        st.tab === "unscored" && rows.length ? h("div", { class: "ref-hint" },
+          "No fit score yet, so they are not counted as good fits. The scorer reaches them in time; or open one and press Read posting to score it now.") : null,
+        rows.length ? [rows.slice(0, st.n).map(j => refRow(j, tokens)), moreRows(rows.length)]
+          : h("div", { class: "empty" }, st.q ? `No jobs match '${st.q}'` : st.tab === "good" ? "No good fit yet: the other tabs hold the rest." : "Nothing here."));
+      total.textContent = plural(rows.length, "job");
+    };
+    const q = h("input", { type: "text", class: "ref-jq", placeholder: "Search these jobs", "aria-label": "Search these jobs", autocomplete: "off" });
+    q.value = st.q;
+    q.oninput = () => { st.q = q.value; st.n = REF_ROWS; draw(); };
+    const pq = h("input", { type: "text", class: "ref-jq", placeholder: "Search these people", "aria-label": "Search these people", autocomplete: "off" });
+    pq.value = st.pq;
+    pq.oninput = () => { st.pq = pq.value; st.n = REF_ROWS; draw(); };
+    const sort = h("select", { class: "ref-sort", "aria-label": "Sort these jobs" },
+      Object.entries({ fit: "Best fit", new: "Newest", title: "Title" }).map(([k, v]) => h("option", { value: k }, v)));
+    sort.value = st.sort;
+    sort.onchange = () => { st.sort = sort.value; st.n = REF_ROWS; draw(); };
+    draw();
+    put(`Jobs at ${c.name}, ${i + 1} of ${list.length}`,
+      head(monogram(c.name), `Jobs at ${c.name}`, `${refPeopleWords(c).known} · ${refLabels(c.sum).good}`),
+      tabsEl, h("div", { class: "ref-tools" }, q, pq, sort, total), list2);
+  } });
+}
+// One person as a slim row of three lines: avatar, name and "ask first" with Use / Don't use and a details button; their title
+// (the whole of it on hover); how close you are and, in accent, their note (one line each, cut with an ellipsis). A click on the
+// avatar, name, note line or button opens their details (openRefPerson); Use / Don't use work in the row itself. ctx: tokens
+// (the search words to mark), rate, people (the siblings the details step through), company (null for someone left out) and
+// restore (a person left out: Restore in place of the choice).
+function refPerson(p, ctx) {
+  const { tokens, rate, restore } = ctx;
+  const open = () => openRefPerson(ctx.people || [p], Math.max(0, (ctx.people || [p]).indexOf(p)), ctx);
+  const btn = (label, verdict, title) => h("button", { class: `btn ref-${verdict}` + (p.verdict === verdict ? " primary" : ""), type: "button", title,
+    "aria-pressed": String(p.verdict === verdict), onclick: () => rate(p, verdict, p.note) }, label);
+  const more = h("button", { class: "btn ghost pp-notebtn" + (p.note ? " has" : ""), type: "button", "aria-label": "Open the details and note for " + p.name,
+    title: p.note ? "Note: " + p.note : "Details and a note", onclick: open }, icon("note", 14));
+  const act = p.from_file ? h("div", { class: "pp-act" }, h("span", { class: "small muted", title: "In your watchlist file (connections_skip): edit it there" }, "in your file"), more)
+    : restore ? h("div", { class: "pp-act" }, h("button", { class: "btn", type: "button", onclick: () => rate(p, "clear") }, "Restore"), more)
+    : h("div", { class: "pp-act" }, btn("Use", "use", "Use: ask this person for a referral first. They are put first wherever jobwatch lists who you know."),
+      btn("Don't use", "skip", "Don't use: never suggest this person (you can bring them back from Not suggested below)"),
+      p.verdict ? h("button", { class: "btn ghost pp-clear", type: "button", title: "Forget what you chose", "aria-label": "Clear the choice for " + p.name,
+        onclick: () => rate(p, "clear") }, icon("x", 12)) : null, more);
+  const why = p.why ? refWhy(p.why) : "no messages or endorsements";
+  return h("div", { class: "ref-p" + (p.verdict === "use" ? " use" : ""), style: `--h:${nameHue(p.name)}` },
+    h("button", { class: "ref-avbtn", type: "button", tabindex: "-1", "aria-hidden": "true", onclick: open }, refAvatar(p.name)),
+    h("div", { class: "pp-name" }, h("button", { class: "pp-namebtn", type: "button", title: p.name + ": details and a note", "aria-label": p.name + ": details and a note", onclick: open }, marked(p.name, tokens)),
+      p.verdict === "use" ? h("span", { class: "chip hit", title: "You chose Use for this person: they come first wherever jobwatch lists who you know" }, "ask first") : null),
+    act,
+    h("div", { class: "pp-sub", title: p.position || "" }, p.position ? marked(p.position, tokens) : h("span", { class: "muted" }, "no title listed")),
+    h("button", { class: "pp-sub2", type: "button", title: [why, p.note && "Note: " + p.note].filter(Boolean).join("\n"), onclick: open },
+      h("span", { class: "pp-why small muted" }, why), p.note ? h("span", { class: "pp-notetxt" }, p.note) : null));
+}
+// The "Careers ↗" chip: the company's job board or careers site in a new tab (kind "search": a web search for its careers page).
+// careers: { url, kind } from the server (see company.careers).
+function careersChip(name, careers) {
+  if (!careers) return null;
+  const search = careers.kind === "search";
+  const tip = search ? `Search careers: look for ${name}'s careers page on the web, in a new tab` : `Open ${name} careers in a new tab`;
+  return h("a", { class: "ref-careers", href: careers.url, target: "_blank", rel: "noopener noreferrer", title: tip, "aria-label": tip,
+    onclick: e => e.stopPropagation() }, search ? "Search careers" : "Careers", h("span", { "aria-hidden": "true" }, " ↗"));
+}
+// One company, every card the same size: logo, name and "3 people you know" (buttons that open the company's dialog), the
+// good-fits pill with the not-scored and open counts, room for the best five jobs and a line after them, room for four
+// people and a line after them, and the two buttons pinned to the foot ("See the 23 good fits", "+ 8 more people"). Fewer
+// jobs or people leave their space blank with a soft line saying so; every text is cut with an ellipsis (the whole of it on hover).
+function refCard(c, ctx, i) {
+  const { sum } = c, { tokens, rate } = ctx, words = refLabels(sum), people = refPeopleWords(c);
+  const go = start => () => { const list = ctx.navigable(), at = list.findIndex(x => x.key === c.key); if (at >= 0) openRefJobs(list, at, start, rate); };
+  const reg = (start, el) => { refButtons.set(c.key + ":" + start, el); el.onclick = go(start); return el; };
+  const stage = sum.stage, fewer = c.shown.length < c.people.length;
+  // the name and the logo take you to the Company tab, as a company on a Today card does (no dialog); its board or careers site is the chip
+  const toCompany = { href: "#company/" + encodeURIComponent(c.name), title: `See everything at ${c.name}`, "aria-label": `${c.name}: everything tracked there`,
+    onclick: e => { e.preventDefault(); e.stopPropagation(); openCompany(c.name); } };
+  const jobs = h("div", { class: "ref-jobs" },
+    h("div", { class: "ref-jhead" }, h("button", { class: "ref-n" + (sum.good ? "" : " none"), type: "button", onclick: go("jobs"),
+      title: `A good fit is a job you queued or applied to, or one with a fit score of ${c.cut} or more (${c.cutSet ? "your Fit minimum" : "the default: you have not set a Fit minimum"}), whose title your filters do not turn down. Click for the list.` }, words.good),
+    words.unscored ? h("span", { class: "small muted", title: "No fit score yet, so not counted as good fits: the scorer reaches them in time, or Read posting scores one" }, words.unscored) : null,
+    words.of ? h("span", { class: "ref-of", title: `${sum.total} open jobs at ${c.name} in all: the rest score below ${c.cut}, are not scored yet or are not a title you look for` }, words.of) : null),
+    sum.top.map(refJob),
+    words.more ? h("div", { class: "ref-soft", title: "More good fits: they are in the list" }, words.more)
+      : h("div", { class: "ref-soft" }, sum.top.length ? "No more good fits" : "Nothing to list yet: the other jobs are a click away"));
+  const list = h("div", { class: "ref-people" }, c.shown.slice(0, REF_CAP).map(p => refPerson(p, { tokens, rate, people: c.people, company: c })),
+    c.shown.length < REF_CAP ? h("div", { class: "ref-soft" }, fewer ? `The other ${c.people.length - c.shown.length} you know there don't match` : "No other people yet") : null);
+  const foot = h("div", { class: "ref-foot" },
+    reg("jobs", h("button", { class: "btn ref-all", type: "button", "aria-haspopup": "dialog",
+      title: `The good fits at ${c.name}, with the jobs you applied to or queued, the ones not scored yet and all of them a tab away` }, words.button)),
+    reg("people", h("button", { class: "btn ref-more", type: "button", "aria-haspopup": "dialog", title: `Everyone you know at ${c.name}, with search` },
+      people.more || people.all)));
+  return h("article", { class: "card ref " + refAccent(stage), style: `--i:${Math.min(i, 12)};--h:${nameHue(c.name)}` },
+    stage ? h("span", { class: "ref-ribbon", title: `Your furthest job here: ${(REF_STAGES[stage] || STAGE_NAMES[stage] || stage).toLowerCase()}` }, REF_STAGES[stage] || STAGE_NAMES[stage] || stage) : null,
+    h("div", { class: "ref-top" },
+      h("a", { class: "ref-logo", ...toCompany, tabindex: "-1" }, monogram(c.name)),
+      h("div", { class: "ref-id" },
+        h("a", { class: "ref-name", ...toCompany }, marked(c.name, tokens)),
+        h("div", { class: "ref-sub" },
+          reg("overview", h("button", { class: "ref-know", type: "button", "aria-haspopup": "dialog",
+            title: `${c.name}: the overview, the good fits and the people you know` }, icon("users", 13), people.known)),
+          careersChip(c.name, c.careers)))),
+    jobs, list, foot);
+}
+// What a first-time person sees with no LinkedIn data yet: what Referrals is, how to get the data in, what happens next.
+function refFirstRun() {
+  return h("div", { class: "empty ref-first" }, icon("users", 34),
+    h("h2", {}, "See who you know at the companies you're tracking"),
+    h("p", {}, "Referrals lists the people from your LinkedIn connections who work at a company with a job you are tracking, so you can ask one of them " +
+      "for a referral before you apply. It starts once jobwatch has your LinkedIn data. It is read on this computer only."),
+    h("ol", {},
+      h("li", {}, "On LinkedIn, open Settings → Data privacy → Get a copy of your data and ask for your connections (the full archive also tells jobwatch " +
+        "whom you talk to, so those people come first). LinkedIn emails you a .zip."),
+      h("li", {}, "Upload that .zip (or just its Connections.csv) in ", h("a", { href: "#settings/people" }, "Settings → People & pay"), "."),
+      h("li", {}, "Come back here: each company with a tracked job and someone you know gets a card, with its best-fitting jobs and those people.")),
+    h("p", { class: "small muted" }, "jobwatch has no way to add a single contact by hand yet. Companies and their jobs come from the boards you watch (",
+      h("a", { href: "#settings/search" }, "Settings → Your search"), ")."));
+}
+// What shows when you have connections but none works at a company with a tracked job.
+function refNoCompany() {
+  return h("div", { class: "empty ref-first" }, icon("inbox", 30),
+    h("p", {}, "None of the people you know works at a company with a job you are tracking yet."),
+    h("p", { class: "small muted" }, "Add the companies you are interested in and check for new jobs: ",
+      h("a", { href: "#settings/search" }, "Settings → Your search"), ". Their cards appear here as soon as a tracked job is at a company where you know someone."));
+}
 async function renderReferrals() {
   const d = await api("/api/referrals");
+  const head = pagehead("Referrals", "People you know (from your LinkedIn connections) at the companies you're tracking: a referral gets read before " +
+    "an application does. Use puts someone first in the \"You know\" lines everywhere; Don't use stops suggesting them.");
+  if (!d.has_connections) return put(head, refFirstRun());
   const rate = async (p, verdict, note) => {
     try {
       await rateContact(p.key, verdict, note);
+      p.verdict = verdict === "clear" ? "" : verdict;  // a dialog still open keeps this list; the page behind is redrawn from the server
+      p.note = verdict === "clear" ? "" : (note || "").trim();
       if (verdict === "skip") toast(`${p.name} won't be suggested`, async () => { await rateContact(p.key, "clear"); render(); }, "onward");
       render();
     } catch (e) { toast(e.message); }
   };
-  const row = (p, restore) => {
-    const note = h("input", { type: "text", placeholder: "Note: e.g. doesn't check LinkedIn; reach on WhatsApp",
-      "aria-label": "Note about " + p.name, maxlength: 200 });
-    note.value = p.note;
-    note.onchange = () => p.verdict ? rate(p, p.verdict, note.value) : toast("Choose Use or Don't use first, then the note is kept");
-    const btn = (label, verdict, title) => h("button", { class: "btn" + (p.verdict === verdict ? " primary" : ""), title,
-      onclick: () => rate(p, verdict, note.value) }, label);
-    const controls = p.from_file ? h("div", { class: "rate small muted" }, "In your watchlist file (connections_skip): edit it there")
-      : restore ? h("div", { class: "rate" }, note, h("button", { class: "btn", onclick: () => rate(p, "clear") }, "Restore"))
-      : h("div", { class: "rate" },
-        h("div", { style: "display:flex;gap:6px" }, btn("Use", "use", "Ask this person first"),
-          btn("Don't use", "skip", "Never suggest this person"),
-          p.verdict ? h("button", { class: "btn ghost", onclick: () => rate(p, "clear") }, "Clear") : null),
-        note);
-    return h("div", { class: "card ref" },
-      h("div", {},
-        h("div", {}, p.url ? link(p.url, p.name, "title") : h("b", {}, p.name),
-          p.verdict === "use" ? h("span", { class: "chip hit", style: "margin-left:8px" }, "ask first") : null),
-        h("div", { class: "small muted" }, [p.position, p.company].filter(Boolean).join(" at ")),
-        h("div", { class: "small", style: "color:var(--good)" }, p.why || "no messages or endorsements in your data"),
-        h("div", { class: "chips" }, p.jobs.map(j => h("button", { class: "chip", style: "border:0;cursor:pointer",
-          title: j.status, onclick: () => openDetails(j.key) }, `${j.company}: ${j.title}`)))),
-      controls);
+  const companies = refCompanies(d), left = d.skipped;
+  const grid = h("div", { class: "cards ref-grid" }), moreHost = h("div", { class: "ref-morehost" }), foldHost = h("div");
+  const total = h("span", { class: "ref-total small muted", "aria-live": "polite" });
+  let shown = [], drawn = false;
+  const navigable = () => shown.filter(c => c.jobs.length);
+  const draw = () => {
+    refButtons.clear();
+    const tokens = searchTokens(refView.q);
+    shown = refVisible(companies, refView);
+    const ctx = { tokens, rate, navigable };
+    // a long list shows REF_PAGE cards at a time (the cards are equal in height, so more is a button, not a long scroll to build)
+    fill(grid, shown.length ? shown.slice(0, refView.limit).map((c, i) => refCard(c, ctx, i))
+      : !companies.length ? refNoCompany()
+      : emptyState(refView.q.trim() ? `No one matches '${refView.q.trim()}'` : "No one matches these filters."));
+    fill(moreHost, shown.length > refView.limit ? h("button", { class: "btn ref-showmore", type: "button",
+      onclick: () => { refView.limit += REF_PAGE; draw(); } }, `Show ${Math.min(REF_PAGE, shown.length - refView.limit)} more companies (${shown.length - refView.limit} not shown)`) : null);
+    grid.classList.toggle("again", drawn);
+    drawn = true;
+    total.textContent = refCount(shown, companies.length);
+    const lefts = left.filter(p => personMatches(p, tokens)).sort(refPeopleOrder);
+    fill(foldHost, lefts.length ? h("details", { class: "fold", open: refView.foldOpen, ontoggle: e => { refView.foldOpen = e.target.open; } },
+      h("summary", { title: "People you marked Don't use, or listed under connections_skip in your watchlist file" }, `Not suggested (${lefts.length})`),
+      h("div", { class: "ref-left again" }, lefts.slice(0, refView.leftLimit).map(p => refPerson(p, { tokens, rate, restore: true, people: lefts, company: null }))),
+      lefts.length > refView.leftLimit ? h("button", { class: "btn ref-showmore", type: "button",
+        onclick: () => { refView.leftLimit += REF_ROWS; draw(); } }, `Show ${Math.min(REF_ROWS, lefts.length - refView.leftLimit)} more (${lefts.length - refView.leftLimit} not shown)`) : null) : null);
   };
-  const folded = d.skipped.length ? h("details", { class: "fold" },
-    h("summary", {}, `Not suggested (${d.skipped.length})`), h("div", { class: "cards" }, d.skipped.map(p => row(p, true)))) : null;
-  put(pagehead("Referrals", "People you know at companies you're tracking. Say whom to ask first and whom not to: " +
-      "it changes the \"You know\" lines everywhere."),
-    d.has_connections ? h("div", {}, section("Where you know someone", d.people.length),
-      h("div", { class: "cards" }, d.people.length ? d.people.map(p => row(p, false))
-        : emptyState("Nobody you know works at a company with a tracked job.")), folded)
-      : emptyState("No LinkedIn connections yet: upload your data in Settings.", null));
+  const restart = () => { refView.limit = REF_PAGE; refView.leftLimit = REF_ROWS; };  // a new search, filter or order starts at the top
+  const input = h("input", { type: "text", class: "ref-q", placeholder: "Search name, company or title", autocomplete: "off", spellcheck: "false",
+    "aria-label": "Search people by name, company or title" });
+  input.value = refView.q;
+  const clear = h("button", { class: "ref-clear", type: "button", "aria-label": "Clear the search", title: "Clear (Esc)", hidden: !refView.q,
+    onclick: () => { setQ(""); input.focus(); } }, icon("x", 13));
+  const setQ = v => { refView.q = v; input.value = v; clear.hidden = !v; remember("referrals.q", v); restart(); draw(); };
+  input.addEventListener("input", () => { refView.q = input.value; clear.hidden = !input.value; remember("referrals.q", input.value); restart(); draw(); });
+  input.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (input.value) { e.stopPropagation(); setQ(""); } else input.blur();
+  });
+  refSearchBox = input;
+  const sort = h("select", { class: "ref-sort", "aria-label": "Sort people", title: "Sort the people" },
+    Object.entries(REF_SORTS).map(([k, v]) => h("option", { value: k }, v)));
+  sort.value = refView.sort;
+  sort.onchange = () => { refView.sort = sort.value; remember("referrals.sort", sort.value); restart(); draw(); };
+  const toggle = (key, label, title) => {
+    const b = h("button", { class: "chip toggle" + (refView[key] ? " on" : ""), type: "button", title, "aria-pressed": String(refView[key]),
+      onclick: () => { refView[key] = !refView[key]; b.classList.toggle("on", refView[key]); b.setAttribute("aria-pressed", String(refView[key])); restart(); draw(); } }, label);
+    return b;
+  };
+  draw();
+  put(head,
+    companies.length || left.length ? h("div", { class: "ref-bar" },
+      h("div", { class: "ref-search" }, icon("search", 15), input, h("kbd", { title: "Press / to search" }, "/"), clear),
+      sort, toggle("ask", "Ask first", "Only the people you marked Use, to ask for a referral first"),
+      toggle("working", "Working a job", "Only the companies where you queued or applied to a job"), total) : null,
+    d.min_fit_set === false && companies.length ? h("div", { class: "ref-hint ref-nofit" },
+      `You have not set a Fit minimum, so a job counts as a good fit from a score of ${d.min_fit} (the default). Set your own in `,
+      h("a", { href: "#settings/search" }, "Settings → Your search"), ".") : null,
+    grid, moreHost, foldHost);
 }
 
 // -- comps: opportunities and companies side by side (comps.py), and a ranked suggestion above them. A best
@@ -8234,6 +8948,7 @@ document.addEventListener("keydown", e => {
   if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || t.closest?.("input, textarea, select, [contenteditable]") ||
     document.getElementById("overlay").style.display === "flex") return;
   e.preventDefault();
+  if (tab === "referrals" && refSearchBox && refSearchBox.isConnected) { refSearchBox.focus(); refSearchBox.select(); return; }  // its own box
   if (tab === "company") { jump.focus(); jump.select(); return; }
   jumpNext = true;  // once the Company tab has drawn its box
   go("company");
@@ -8395,7 +9110,7 @@ async function renderCompany() {
     c.closed_unacted ? h("div", { class: "small muted" }, `${c.closed_unacted} closed posting${c.closed_unacted === 1 ? "" : "s"} you never acted on, not listed`) : null,
   ].filter(Boolean);
   putCompany(
-    pagehead(c.company, "Everything tracked here, whatever its status.", jumpBox),
+    pagehead(c.company, "Everything tracked here, whatever its status.", careersChip(c.company, c.careers), jumpBox),
     layout([
       tiles,
       c.contacts.length || c.find_referral ? panel("People you know", peopleRow(c, 8)) : null,

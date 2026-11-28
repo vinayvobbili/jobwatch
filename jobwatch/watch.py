@@ -1001,6 +1001,13 @@ def _fits(store: Store, rid: str) -> dict[str, dict]:
     return store.scores(rid)
 
 
+def job_fits(cfg: Config, store: Store) -> dict[str, dict]:
+    """Every job's fit score as the page shows it (see _fits), read once for a list; none without a resume."""
+    if not (cfg.resume and cfg.resume.is_file()):
+        return {}
+    return _fits(store, resume_id(cfg.resume, cfg.prompts))
+
+
 def job_fit(cfg: Config, store: Store, key: str) -> dict | None:
     """One job's fit score as the page shows it: its newest, flagged "stale" when it is (see _fits)."""
     if not (cfg.resume and cfg.resume.is_file()):
