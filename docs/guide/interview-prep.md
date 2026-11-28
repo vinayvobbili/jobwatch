@@ -38,7 +38,7 @@ of no kind is dropped, and the order is the code's, from the model's 1 to 5 like
 posting, so the next open of the sheet shows them without asking again. To practise them out loud:
 
 ```
-jobwatch prep c1 --ranked --rehearse        # writes a rehearsal page and opens it
+jobwatch prep c1 --ranked --rehearse        # writes a rehearsal page and, at a terminal, opens it
 ```
 
 The page is the one `jobwatch rehearse` makes: each question read aloud, a countdown, an optional recording. The
@@ -147,8 +147,9 @@ loud, with an optional **Record me** that plays your answer back and keeps it in
 gives the sheet's answer as a few short key points to say in your own words (a toggle shows it in full). Rate each
 card Smooth, OK or Shaky: shaky ones come back a few cards later, and Round 2 goes through the ones still shaky.
 Space starts and stops, 1/2/3 rate, the right arrow moves on. It is one local file with no server, and nothing is
-sent anywhere (it does not use the browser's speech recognition, which is a cloud service). `--no-open` writes
-it without opening it, `-o PATH` says where.
+sent anywhere (it does not use the browser's speech recognition, which is a cloud service). The page opens only
+when you run the command at a terminal; from an agent, a script or a pipe it is written quietly, and `--open`
+opens it anyway. `--no-open` writes it without opening it even at a terminal, `-o PATH` says where.
 
 **Say it** (or M) records you answering out loud and shows how it sounded, so the answer flows instead of being
 recited. It needs `jobwatch ui` running: the recording goes to it (at `http://jobwatch.localhost:8765`, or the

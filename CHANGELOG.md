@@ -8,6 +8,10 @@
   you asked a recruiter for (`jobwatch comp KEY --asked 240K`) instead of Levels.fyi's suggested ask. The chips are
   read when a card or the dialog opens: after `jobwatch comp`, reopen the job to see the new Recruiter and Ask chips.
 
+- `jobwatch rehearse` and `jobwatch prep --rehearse` open the rehearsal page only when you run them at a terminal.
+  From an agent, a script, CI or a pipe they write the page and open nothing, so regenerating it no longer pops a
+  browser tab. `--open` opens it anyway; `--no-open` still suppresses it at a terminal.
+
 - `jobwatch grep COMPANY -t TERM...` lists a company's tracked jobs whose saved posting text holds any of the terms
   as whole words ("ITAR" is not found in "military"; a term in capitals matches in capitals only, so "EAR" is not
   "ear"; "U.S. Person" also finds "U.S. Persons"). Closed postings are left out (`--closed` adds them, `--open` keeps

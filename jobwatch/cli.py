@@ -149,6 +149,18 @@ def _write(text: str, out: Path | None):
         sys.stdout.write(text if text.endswith("\n") else text + "\n")
 
 
+def _at_a_terminal() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _should_open(args) -> bool:
+    """Whether a command that wrote a page should also open it: --no-open says no, --open says yes, and otherwise
+    only a person at a terminal gets a browser tab (agents, scripts, CI and pipes regenerate pages quietly)."""
+    if args.no_open:
+        return False
+    return bool(args.open) or _at_a_terminal()
+
+
 def cmd_init(args):
     path = Path(args.path)
     if path.exists() and not args.force:
@@ -1630,7 +1642,7 @@ def cmd_prep(args, cfg, store):
         page = args.out or Path(tempfile.mkdtemp(prefix="jobwatch-")) / "rehearse.html"
         out = rehearse.write_cards(f"{sheet.company}: {sheet.title}", cards, page, args.ui)
         print(f"wrote {out}", file=sys.stderr)
-        if not args.no_open:
+        if _should_open(args):
             webbrowser.open(out.resolve().as_uri())
         return
     if args.open:  # the browser needs a file to open; --out names it, otherwise it's a temp file
@@ -1642,10 +1654,10 @@ def cmd_prep(args, cfg, store):
 
 
 def cmd_rehearse(args):
-    """A rehearsal page from a hand-written prep sheet, opened in the browser."""
+    """A rehearsal page from a hand-written prep sheet, opened in the browser when a person runs it at a terminal."""
     out = rehearse.write(args.sheet, args.out, args.ui)
     print(f"wrote {out}", file=sys.stderr)
-    if not args.no_open:
+    if _should_open(args):
         webbrowser.open(out.resolve().as_uri())
 
 
@@ -2424,7 +2436,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--format", choices=["md", "html"], default="md",
                    help="html is a standalone page that prints on Letter paper")
     p.add_argument("--open", action="store_true", help="write the HTML page (to -o, or a temp file) and open it "
-                                                       "in the browser")
+                                                       "in the browser; with --rehearse, open that page even when "
+                                                       "not run at a terminal")
     p.add_argument("--draft", action="store_true", help="also draft likely questions for this role, with answer "
                    "outlines from your stories and resume only, with the chat's model (slow; kept for next time)")
     p.add_argument("--questions", action="store_true", help="also have the chat's model write questions for this "
@@ -2433,9 +2446,10 @@ def build_parser() -> argparse.ArgumentParser:
                    "leaves this computer) write likely questions, technical, behavioral and why-us, ranked most "
                    "likely first for this stage; from the posting's asks only, kept for next time")
     p.add_argument("--rehearse", action="store_true", help="with --ranked (implied): instead of the sheet, write "
-                   "a rehearsal page from the ranked questions (to -o, or a temp file) and open it; each answer "
-                   "side is your closest resume line, never written by a model")
-    p.add_argument("--no-open", action="store_true", help="with --rehearse: write the page without opening it")
+                   "a rehearsal page from the ranked questions (to -o, or a temp file) and open it when run at a "
+                   "terminal; each answer side is your closest resume line, never written by a model")
+    p.add_argument("--no-open", action="store_true", help="with --rehearse: write the page without opening it "
+                   "(it is opened only when run at a terminal, unless --open forces it)")
     p.add_argument("--ui", default=rehearse.UI, metavar="URL", help=f"with --rehearse: `jobwatch ui`'s address, which "
                    f"the page's mic sends recordings to (default {rehearse.UI})")
     p.add_argument("-o", "--out", type=Path)
@@ -2454,6 +2468,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("sheet", type=Path, help="the prep sheet, as HTML")
     p.add_argument("-o", "--out", type=Path, help="where to write the page (default: next to the sheet, "
                                                   "<name>-rehearse.html)")
+    p.add_argument("--open", action="store_true", help="open the page even when not run at a terminal (by default "
+                   "it opens only when a person runs this at one, never from an agent, script or pipe)")
     p.add_argument("--no-open", action="store_true", help="write the page without opening it")
     p.add_argument("--ui", default=rehearse.UI, metavar="URL",
                    help=f"`jobwatch ui`'s address, which the page's mic sends recordings to for feedback "

@@ -135,12 +135,57 @@ def test_command_no_open_writes_without_a_browser(sheet, monkeypatch, capsys):
     assert "wrote" in capsys.readouterr().err
 
 
-def test_command_opens_the_page_by_default(sheet, tmp_path, monkeypatch):
-    opened = []
-    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+@pytest.fixture
+def opened(monkeypatch):
+    urls = []
+    monkeypatch.setattr(cli.webbrowser, "open", urls.append)
+    return urls
+
+
+def at_terminal(monkeypatch, yes):
+    monkeypatch.setattr(cli, "_at_a_terminal", lambda: yes)
+
+
+def test_command_opens_the_page_at_a_terminal(sheet, tmp_path, opened, monkeypatch):
+    at_terminal(monkeypatch, True)
     out = tmp_path / "page.html"
     cli.main(["rehearse", str(sheet), "-o", str(out)])
     assert opened == [out.resolve().as_uri()]
+
+
+def test_command_does_not_open_the_page_when_not_at_a_terminal(sheet, tmp_path, opened, monkeypatch):
+    at_terminal(monkeypatch, False)
+    out = tmp_path / "page.html"
+    cli.main(["rehearse", str(sheet), "-o", str(out)])
+    assert opened == [] and out.is_file()
+
+
+def test_command_open_flag_forces_the_browser_without_a_terminal(sheet, tmp_path, opened, monkeypatch):
+    at_terminal(monkeypatch, False)
+    out = tmp_path / "page.html"
+    cli.main(["rehearse", str(sheet), "-o", str(out), "--open"])
+    assert opened == [out.resolve().as_uri()]
+
+
+def test_command_no_open_suppresses_the_browser_even_at_a_terminal(sheet, tmp_path, opened, monkeypatch):
+    at_terminal(monkeypatch, True)
+    cli.main(["rehearse", str(sheet), "-o", str(tmp_path / "page.html"), "--no-open"])
+    assert opened == []
+
+
+@pytest.mark.parametrize("stdin, stdout, expected", [(True, True, True), (True, False, False),
+                                                     (False, True, False), (False, False, False)])
+def test_a_terminal_needs_both_stdin_and_stdout_to_be_ttys(monkeypatch, stdin, stdout, expected):
+    class Stream:
+        def __init__(self, tty):
+            self.tty = tty
+
+        def isatty(self):
+            return self.tty
+
+    monkeypatch.setattr(cli.sys, "stdin", Stream(stdin))
+    monkeypatch.setattr(cli.sys, "stdout", Stream(stdout))
+    assert cli._at_a_terminal() is expected
 
 
 def test_command_points_the_mic_at_another_ui(sheet, monkeypatch):

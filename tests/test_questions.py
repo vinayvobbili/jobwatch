@@ -183,10 +183,29 @@ def test_the_command_prints_the_sheet_and_the_note(setup, fake_model, capsys):
     assert fake_model["backends"] == ["local"]
 
 
+def test_rehearse_opens_the_page_only_at_a_terminal_or_with_open(setup, fake_model, tmp_path, monkeypatch):
+    _, _, key, path = setup
+    opened = []
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    out = tmp_path / "ranked-rehearse.html"
+    base = ["-c", str(path), "prep", key, "--rehearse", "-o", str(out)]
+    monkeypatch.setattr(cli, "_at_a_terminal", lambda: False)
+    cli.main(base)
+    assert opened == [] and out.is_file()
+    cli.main([*base, "--open"])
+    assert opened == [out.resolve().as_uri()]
+    monkeypatch.setattr(cli, "_at_a_terminal", lambda: True)
+    cli.main(base)
+    assert len(opened) == 2
+    cli.main([*base, "--no-open"])
+    assert len(opened) == 2
+
+
 def test_rehearse_writes_the_page_from_the_ranked_questions(setup, fake_model, tmp_path, capsys, monkeypatch):
     _, _, key, path = setup
     opened = []
     monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    monkeypatch.setattr(cli, "_at_a_terminal", lambda: True)
     out = tmp_path / "ranked-rehearse.html"
     cli.main(["-c", str(path), "prep", key, "--rehearse", "-o", str(out)])
     page = out.read_text()
