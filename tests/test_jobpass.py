@@ -195,6 +195,14 @@ def test_referrals_carry_each_jobs_fit_place_pay_and_day_once_by_key(setup):
     assert eight["fit"] is None and eight["place"] == "Remote; Paris +1" and eight["pay"].startswith("$150K")
     assert not nine["off"] and not eight["off"] and got["details"]["greenhouse:globex:20"]["off"]
     assert set(got["people"][0]["jobs"][0]) == {"key", "title", "company", "status"}
+    # an application in progress stays listed when its posting closes, and says so (the page can hide a company)
+    assert not nine["closed"] and not eight["closed"]
+    store.set_status(["greenhouse:globex:9"], "applied")
+    store.set_closed("greenhouse:globex:9", True)
+    store.confirm_closed(["greenhouse:globex:9"])
+    jobpass.forget()
+    got = referrals.view(cfg, store)
+    assert got["details"]["greenhouse:globex:9"]["closed"] and not got["details"]["greenhouse:globex:8"]["closed"]
 
 
 def test_referrals_carry_what_is_kept_of_each_companys_health_by_the_name_its_jobs_carry(setup):
@@ -209,27 +217,36 @@ def test_referrals_carry_what_is_kept_of_each_companys_health_by_the_name_its_jo
 
 
 def test_a_companys_careers_link_is_its_board_then_its_jobs_site_then_its_logos_site_then_a_search(setup):
-    from jobwatch import logos
-    _, store, _ = setup
-    own = lambda i, company, url, source="greenhouse": Job(  # noqa: E731
-        source=source, company=company, id=str(i), title="Engineer", url=url, company_name=company.title())
-    jobs = {j.key: j for j in (
-        own(1, "globex", "https://boards.example.com/globex/jobs/1"),  # a watched board: its own page, not the posting
-        own(2, "hooli", "https://careers.hooli.example/openings/2?x=1", source="hn"),  # shared board: jobs' origin
-        own(3, "hooli", "https://careers.hooli.example/openings/3", source="hn"),
-        own(4, "pied piper", "", source="hn"),  # no link at all: the website its logo came from
-        own(5, "umbrella corp", "", source="hn"),  # nothing known: a search, with the name only
-        own(6, "stark", "https://www.linkedin.com/jobs/view/6", source="hn"))}  # an aggregator's link is not its site
+    from jobwatch import company, logos
+    from jobwatch.config import Board
+    cfg, store, _ = setup
+    own = lambda i, name, url, source="greenhouse": Job(  # noqa: E731
+        source=source, company=name, id=str(i), title="Engineer", url=url, company_name=name.title())
+    cfg = replace(cfg, boards=[*cfg.boards, Board("hn", "initrode", "", "https://initrode.example/careers")])
     store.save_logo(logos.key("Pied Piper"), "piedpiper.example", "image/png", b"x")
-    got = referrals.company_careers(store, jobs)
-    assert got["Globex"] == {"url": "https://job-boards.greenhouse.io/globex", "kind": "board"}
-    assert got["Hooli"] == {"url": "https://careers.hooli.example/", "kind": "jobs"}
-    assert got["Pied Piper"] == {"url": "https://piedpiper.example/", "kind": "site"}
-    assert got["Umbrella Corp"] == {"url": "https://www.google.com/search?q=Umbrella+Corp+careers", "kind": "search"}
-    assert got["Stark"] == {"url": "https://www.google.com/search?q=Stark+careers", "kind": "search"}
-    assert list(got) == sorted(got)  # and the payload carries them by company name
+
+    def careers(job):
+        return company.careers(cfg, store, job.display_company, [job])
+
+    # a watched board: its own page, not the posting
+    assert careers(own(1, "globex", "https://boards.example.com/globex/jobs/1")) == {
+        "url": "https://job-boards.greenhouse.io/globex", "kind": "board"}
+    # a shared board (HN): the origin of the company's own site its jobs link to, not one posting
+    assert careers(own(2, "hooli", "https://careers.hooli.example/openings/2?x=1", source="hn")) == {
+        "url": "https://careers.hooli.example/", "kind": "jobs"}
+    # no link: the careers site the watchlist gives its board, else the website its logo came from
+    assert careers(own(3, "initrode", "", source="hn")) == {"url": "https://initrode.example/careers", "kind": "site"}
+    assert careers(own(4, "pied piper", "", source="hn")) == {"url": "https://piedpiper.example/", "kind": "site"}
+    # nothing known, or only an aggregator's link: a web search with the company's name and nothing else
+    assert careers(own(5, "umbrella corp", "", source="hn")) == {
+        "url": "https://www.google.com/search?q=Umbrella+Corp+careers", "kind": "search"}
+    assert careers(own(6, "stark", "https://www.linkedin.com/jobs/view/6", source="hn")) == {
+        "url": "https://www.google.com/search?q=Stark+careers", "kind": "search"}
+    # the Company tab gets it with the company; the Referrals payload carries none
+    assert company.view(cfg, store, "initech")["careers"] == {
+        "url": "https://job-boards.greenhouse.io/initech", "kind": "board"}
     jobpass.forget()
-    assert set(referrals.view(setup[0], store)["careers"]) == {"Globex"}
+    assert "careers" not in referrals.view(cfg, store)
 
 
 def test_a_good_fit_is_the_watchlists_minimum_else_todays_fit_chip_else_a_default(setup):

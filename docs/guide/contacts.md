@@ -51,27 +51,29 @@ companies. There is no way to add a single contact by hand yet. Nothing here ass
 minimum set, a tracked company's jobs count as good fits from a fit score of 60, and a note under the search bar says so,
 with a link to where you set your own.
 
-**One card per company**, in a grid that fills the page (the Standard / Wide / Full width setting). Every card is the
-same size, so rows line up; room a company doesn't fill is left blank with a soft line ("No more good fits").
-A card has:
+**One card per company**, in a grid that fills the page (the Standard / Wide / Full width setting). A card is as tall
+as its content needs, and the cards in a row are as tall as the tallest of them, so rows line up and a row of small
+companies stays compact; no room is kept for what a company doesn't have. A card has:
 
 - the company's logo and name (they open its page in the Company tab, as a company name on Today does), a
-  "12 people you know" pill, and a **Careers ↗** chip: its job board or careers page in a new tab. The chip's link is
-  the board jobwatch watches, else the company's own site its jobs link to (never LinkedIn's or another job site's),
-  else the website its logo was found at, else a web search for its careers page ("Search careers ↗"); only the
-  company's name goes in that search. The Company tab has the same chip;
+  "12 people you know" pill. The company's job board or careers page is not here: it is the **Careers ↗** chip in the
+  Company tab's header (a new tab). Its link is the board jobwatch watches, else the company's own site its jobs link
+  to (never LinkedIn's or another job site's), else the careers site your watchlist gives its board, or the website
+  its logo was found at, else a web search for its careers page ("Search careers ↗"); only the company's name goes in
+  that search;
 - its jobs as what suits you, never a wall: "23 good fits" (a job you queued or applied to, or a fit score at or above
   your Fit minimum, `filters.min_fit`, else the fit chip Today opens on, else 60; never a job with no score yet, nor
-  one whose title your title filters turn down), the best five of them, and small grey text for the jobs not scored
-  yet and the total open. A company with no good fit says so and sorts below those that have one;
-- a slim row for each of the first four people you know there, the closest first (the ones you chose **Use** for,
+  one whose title your title filters turn down), the best three of them ("+ 20 more"), and small grey text for the jobs not
+  scored yet and the total open. A company with no good fit says so in that one line and sorts below those that have
+  one;
+- a slim row for each of the first three people you know there, the closest first (the ones you chose **Use** for,
   then who messaged or endorsed you, the latest first, then A-Z), with their title, how close you are, **Use** /
   **Don't use** and a note button. **Use** means "ask this person for a referral first": they lead the "You know"
   lines everywhere. **Don't use** stops suggesting them (they wait under "Not suggested", to bring back). People in
   `connections_skip` are listed there too, read-only;
 - two buttons: "See the 23 good fits" and "+ 8 more people".
 
-**Click for the details.** Everything but Use / Don't use and the two links opens a large dialog (most of the window;
+**Click for the details.** Everything but Use / Don't use and the company's name and logo (which go to its Company tab) opens a large dialog (most of the window;
 Esc or a click outside closes it; the arrow keys step to the next company or person, "3 of 12"). The "12 people you
 know" pill opens the company's Overview: counts, what you're working there, its best fits, the people, and the company
 health you kept in Comps. The buttons open its Good fits, Applied and queued, Not scored, All and People tabs, each
@@ -83,7 +85,12 @@ profile, the jobs there and a draft referral request (see "Who to contact" below
 **Finding people.** The search box above the cards (press `/`) finds a person by name, company or title, in any
 word order, ignoring accents; the company's card stays with just the people who matched, and Esc clears it. The sort is
 Best fit first, Most good fits, Most people you know, Last messaged or A-Z; **Ask first** shows only the people you
-chose **Use** for and **Working a job** only companies where you queued or applied. A long list is not rendered at
+chose **Use** for and **Working a job** only companies where you queued or applied. **Hide companies with no
+openings** (the eye-off chip, remembered in your browser, off at first) hides the companies none of whose postings is
+open any more; one you have an application in flight at (queued, applied, screening, interviewing) is never hidden,
+even when its posting closed. Nothing disappears silently: the count reads "3 of 6 companies · 7 people (3 hidden: no
+openings)", a search that matches a hidden company says "1 match hidden by 'no openings'" with a **Show it** button, and
+when more than a quarter of your companies have no openings the tab offers to hide them. A long list is not rendered at
 once: 24 cards at a time with a "Show 24 more companies" button (hundreds of companies stay quick, and a search always
 runs over all of them), and a dialog lists 100 rows at a time.
 

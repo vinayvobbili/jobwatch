@@ -9,16 +9,25 @@
   companies. With no Fit minimum set it uses 60 and says so in a note with a link to where to set one. "Use" and
   "ask first" now say what they mean in their tooltips and the page's subtitle.
 - Referrals cards group the people. People who know the same company are no longer repeated: the card has the
-  company's logo and name (they open its Company tab, as a name on Today does), "12 people you know", a "Careers"
-  chip (its job board or careers page in a new tab: the board you watch, else the company's own site its jobs link to,
-  else the site its logo came from, else a web search labelled "Search careers"; the Company tab has the chip too) and
+  company's logo and name (they open its Company tab, as a name on Today does), "12 people you know", and
   its jobs once: "23 good fits" (a job you queued or applied to, or a fit at or above your Fit minimum, else the fit
-  chip Today opens on, else 60; never an unscored job, nor one the title filters turn down), the best five of
+  chip Today opens on, else 60; never an unscored job, nor one the title filters turn down), the best three of
   them, then "112 not scored yet" and "of 270 open" as small grey text. Below the jobs, a slim row for each of the
-  first four people (avatar, name, title, "messaged 4x, last Jun 2022", "ask first", Use / Don't use, a note button),
-  the closest first, then "+ 8 more people". Every card is the same size; what a company doesn't fill is left with a
-  soft line ("No more good fits"). Names and titles are cut with an ellipsis, the whole of them on hover.
-- Everything on a Referrals card but Use / Don't use and the Careers chip opens a large dialog: the "12 people you
+  first three people (avatar, name, title, "messaged 4x, last Jun 2022", "ask first", Use / Don't use, a note button),
+  the closest first, then "+ 8 more people". A card is as tall as its content needs and the cards in a row match the
+  tallest, so a row of small companies stays short: a company with no good fit is just its header strip and its people,
+  with no empty block or sentence. Names and titles are cut with an ellipsis, the whole of them on hover.
+- A "Hide companies with no openings" chip (eye-off icon, remembered in the browser, off at first) hides the companies
+  whose postings are all closed or gone; one with an application in flight (queued, applied, screening, interviewing)
+  is never hidden. The count says "(3 hidden: no openings)", a search matching a hidden company offers "Show it", and
+  when over a quarter of the companies have none the tab offers to hide them. /api/referrals marks each job's posting
+  closed or not. The page's scrollbars are the themed thick ones throughout (a test checks no Referrals scroller
+  overrides them).
+- The Company tab has a "Careers ↗" chip in its header: the company's job board or careers page in a new tab (the
+  board you watch, else the company's own site its jobs link to, never LinkedIn's or another job site's, else the
+  careers site your watchlist gives its board or the website its logo came from, else a web search labelled
+  "Search careers" with only the company's name in it). /api/company sends it as careers.
+- Everything on a Referrals card but Use / Don't use and the company's name and logo (the Company tab) opens a large dialog: the "12 people you
   know" pill opens the company's Overview (counts, what you're working, best fits, people, the health kept in Comps),
   the buttons its Good fits, Applied and queued, Not scored, All and People tabs (each searchable), a person's name,
   avatar or note button their details (title, how close you are, Use / Don't use, a note to save, LinkedIn, their jobs
@@ -33,7 +42,7 @@
   Most good fits, Most people you know, Last messaged, A-Z) and Ask first / Working a job filters sit beside it, and
   the count reads "12 of 31 companies · 73 people". /api/referrals sends the fit minimum used (and whether you set
   it), each listed job's fit, place, pay, day and whether its title is off-target once by key, the company health
-  you kept, and each company's careers link; /api/company sends careers too.
+  you kept.
 - Settings > Applying no longer refuses its own save with "applicant.hispanic is text, got False". YAML 1.1
   (what reads the watchlist) takes an unquoted No, Yes, on or off for a boolean, and the page wrote a typed "No"
   bare. Now every applicant field accepts a boolean as the word it was (Yes or No; yes or no for the yes/no

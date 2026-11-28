@@ -523,7 +523,7 @@ button.btn.btn-close.icon-only { width: 36px; height: 36px; padding: 0; justify-
 select.ref-sort { width: auto; border-radius: 999px; padding: 7px 14px; }
 .ref-total { margin-left: auto; font-variant-numeric: tabular-nums; }
 .ref-bar mark, .ref-grid mark, .ref-list mark { background: color-mix(in srgb, var(--accent-2) 28%, transparent); color: inherit; border-radius: 4px; padding: 0 1px; }
-.ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); grid-auto-rows: 1fr; gap: 14px; align-items: stretch; }
+.ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); grid-auto-rows: auto; gap: 14px; align-items: stretch; }  /* a row is as tall as its tallest card, which the others match */
 .ref-grid > .empty { grid-column: 1 / -1; }
 .ref-grid.again > .card { animation: none; }
 .ref-grid > .card { margin: 0; }
@@ -539,7 +539,7 @@ body:has(.ref-grid) { background-color: var(--ref-page);
     radial-gradient(900px 520px at 102% -6%, var(--glow-2), transparent 60%), linear-gradient(180deg, var(--ref-tint-a), var(--ref-tint-b)); }
 .card.ref { --h: 230; --ac: hsl(var(--h) 66% var(--ref-ac-l)); --edge: hsl(var(--h) var(--ref-edge-s) var(--ref-edge-l)); --stripe: var(--ac);
   --rj: 28px; --rp: 60px; container: refcard / inline-size;  /* a job row and a person row: the same height in every card */
-  display: flex; flex-direction: column; gap: 8px; padding: 0 16px 14px 18px; border: 1px solid var(--edge); box-shadow: var(--ref-shadow);
+  display: flex; flex-direction: column; gap: 6px; padding: 0 16px 10px 18px; border: 1px solid var(--edge); box-shadow: var(--ref-shadow);
   background: radial-gradient(120% 70% at 100% 0%, hsl(var(--h) 80% 60% / .10), transparent 60%), var(--panel-solid); }
 .card.ref::before { width: 5px; }
 .card.ref.live-queued { --stripe: var(--good); }
@@ -558,7 +558,7 @@ body:has(.ref-grid) { background-color: var(--ref-page);
   box-shadow: 0 6px 14px -6px hsl(var(--h) 80% 50%), inset 0 1px 0 rgba(255, 255, 255, .35); }
 .ref-top .mono, .ref-dialog .rk-head .mono { display: grid; }  /* a phone hides the other lists' logos; here the logo is the card's face */
 .ref-top .mono { flex: none; width: 46px; height: 46px; border-radius: 14px; font-size: 16px; box-shadow: 0 6px 14px -8px hsl(var(--h) 80% 40%); }
-.ref-top { height: 76px; flex: none; box-sizing: border-box; overflow: hidden; }
+.ref-top { min-height: 66px; flex: none; box-sizing: border-box; padding-top: 11px; padding-bottom: 9px; overflow: hidden; }
 .ref-logo { flex: none; display: grid; border: 0; padding: 0; background: none; border-radius: 14px; text-decoration: none; transition: transform .15s, box-shadow .15s; }
 a.ref-logo { cursor: pointer; } a.ref-logo:hover { transform: scale(1.06); box-shadow: 0 8px 18px -8px hsl(var(--h) 80% 40%); }
 .ref-id { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
@@ -566,16 +566,16 @@ a.ref-logo { cursor: pointer; } a.ref-logo:hover { transform: scale(1.06); box-s
   color: var(--text); text-decoration: none; cursor: pointer; }
 .ref-name:hover { text-decoration: underline; text-decoration-color: var(--ac); text-underline-offset: 3px; }
 .ref-sub { max-width: 100%; display: flex; align-items: center; gap: 6px; min-width: 0; }
-.ref-careers { flex: none; white-space: nowrap; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 650; text-decoration: none; cursor: pointer;
+/* the Company tab's "Careers ↗" chip, beside the company's name */
+.co-careers { flex: none; white-space: nowrap; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 650; text-decoration: none; cursor: pointer; align-self: center;
   color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); background: transparent; transition: background .15s, color .15s; }
-.ref-careers:hover, .ref-careers:focus-visible { color: #fff; background: var(--grad); border-color: transparent; }
-.pagehead .ref-careers { padding: 3px 12px; font-size: 13px; align-self: center; }
+.co-careers:hover, .co-careers:focus-visible { color: #fff; background: var(--grad); border-color: transparent; }
 .ref-know { display: inline-flex; align-items: center; gap: 5px; padding: 1px 10px 1px 8px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
   color: var(--chip-text); background: var(--chip); border: 1px solid color-mix(in srgb, hsl(var(--h) 60% 50%) 35%, transparent); }
 .ref-know:hover { border-color: var(--ac); color: var(--ac); }
 /* the people at the company: four rows of one height, then a soft line; each a grid of three lines: name and buttons, title,
    how close you are and the note; it is the same in every card, so the cards line up across the page */
-.ref-people { flex: none; display: flex; flex-direction: column; border-top: 1px solid var(--line); padding-top: 6px; height: calc(4 * var(--rp) + 8px); overflow: hidden; }
+.ref-people { flex: none; display: flex; flex-direction: column; border-top: 1px solid var(--line); padding-top: 6px; }
 .ref-p { height: var(--rp); flex: none; box-sizing: border-box; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto;
   grid-template-rows: 22px 17px 17px; grid-template-areas: "av name act" "av sub sub" "av sub2 sub2"; gap: 0 10px; align-items: center; padding: 2px 0; }
 .ref-p > .ref-avbtn { grid-area: av; align-self: start; margin-top: 3px; display: grid; border: 0; padding: 0; background: none; cursor: pointer; border-radius: 50%; }
@@ -623,9 +623,8 @@ a.ref-logo { cursor: pointer; } a.ref-logo:hover { transform: scale(1.06); box-s
 .ref-more { padding: 3px 12px; font-size: 13px; color: var(--accent); }
 .ref-more:hover { color: #fff; background: var(--grad); border-color: transparent; }
 .ref-left { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 0 28px; padding: 6px 4px; }
-/* the jobs: a head line, five rows of one height, then a soft line; the same in every card */
-.ref-jobs { flex: none; display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--line); padding-top: 8px;
-  height: calc(26px + 5 * var(--rj) + 26px + 8px); overflow: hidden; }
+/* the jobs: a head line, up to three rows of one height and "+ N more"; a card with no good fit has the head line alone */
+.ref-jobs { flex: none; display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--line); padding-top: 6px; }
 .ref-jobs > .ref-job { height: var(--rj); flex: none; box-sizing: border-box; }
 .ref-foot { flex: none; margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: nowrap; }
 .ref-foot .btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -661,6 +660,8 @@ a.ref-logo { cursor: pointer; } a.ref-logo:hover { transform: scale(1.06); box-s
 .empty.ref-first a { color: var(--accent); font-weight: 650; }
 .ref-nofit { margin: 0 0 12px; color: var(--muted); background: color-mix(in srgb, var(--accent) 7%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 .ref-nofit a { color: var(--accent); font-weight: 650; }
+.ref-noopen { display: inline-flex; align-items: center; gap: 6px; }
+.ref-hint .ref-showmore { padding: 2px 12px; margin-left: 8px; font-size: 13px; }
 .ref-morehost { display: flex; justify-content: center; } .ref-morehost:not(:empty) { margin: 16px 0 6px; }
 .ref-showmore { padding: 7px 22px; font-size: 14px; color: var(--accent); }
 .ref-showmore:hover { color: #fff; background: var(--grad); border-color: transparent; }
@@ -2281,6 +2282,7 @@ function link(url, text, cls) {
 }
 
 const ICONS = {
+  eyeoff: "M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22",
   refresh: "M21 12a9 9 0 1 1-2.64-6.36L21 8M21 3v5h-5",
   calendar: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
   users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
@@ -7777,8 +7779,8 @@ function extensionCard() {
 // company or title and keeps the company's card with just the people it matched. The jobs you are working are always
 // worth a line.
 const REF_LIVE = ["queued", "applied", "screening", "interviewing", "offer"];
-const REF_TOP = 5;
-const REF_CAP = 4;
+const REF_TOP = 3;
+const REF_CAP = 3;
 // A long list shows this many at a time, with a button for more: the cards (500 companies are 500 cards), the people left out and a dialog's rows.
 const REF_PAGE = 24;
 const REF_ROWS = 100;
@@ -7786,7 +7788,7 @@ const REF_ROWS = 100;
 const REF_FURTHEST = ["offer", "interviewing", "screening", "applied", "queued"];
 const REF_SORTS = { fit: "Best fit first", count: "Most good fits", people: "Most people you know", recent: "Last messaged", name: "A-Z" };
 const refView = { q: remembered("referrals.q", ""), sort: remembered("referrals.sort", "fit"), ask: false, working: false, foldOpen: false,
-  limit: REF_PAGE, leftLimit: REF_ROWS };
+  noOpen: remembered("referrals.noopen", "") === "1", limit: REF_PAGE, leftLimit: REF_ROWS };
 if (!REF_SORTS[refView.sort]) refView.sort = "fit";
 const refButtons = new Map();  // company key + ":jobs" or ":people" -> that button now on the page, for focus to return to
 let refSearchBox = null;       // the page's search box while the tab is open (the "/" key focuses it)
@@ -7845,7 +7847,7 @@ const refGood = (j, minFit) => REF_LIVE.includes(j.status) || (!j.off && j.fit !
 // not scored yet, the best fit among the good ones (0 when only a job you are working has none), and the furthest stage.
 function refSummary(jobs, minFit) {
   const good = jobs.filter(j => refGood(j, minFit)).sort(byFit), top = good.slice(0, REF_TOP);
-  return { total: jobs.length, good: good.length, top, more: good.length - top.length, unscored: jobs.filter(j => j.fit == null).length,
+  return { total: jobs.length, open: jobs.filter(j => !j.closed).length, good: good.length, top, more: good.length - top.length, unscored: jobs.filter(j => j.fit == null).length,
     best: good.length ? Math.max(0, ...good.map(j => j.fit ?? 0)) : -1, stage: REF_FURTHEST.find(s => jobs.some(j => j.status === s)) || null };
 }
 // "1 job", "2 jobs": the count with its noun (a plural of more than an "s" is given).
@@ -7863,7 +7865,7 @@ const refAccent = stage => !stage ? "" : stage === "queued" ? "live live-queued"
 // The people with their jobs filled in from d.details (what a job lists is sent once per job, not per person).
 function refEntries(d) {
   const det = d.details || {};
-  return d.people.map(p => ({ p, jobs: p.jobs.map(j => ({ fit: null, stale: false, place: "", pay: "", seen: "", off: false, ...det[j.key], ...j })) }));
+  return d.people.map(p => ({ p, jobs: p.jobs.map(j => ({ fit: null, stale: false, place: "", pay: "", seen: "", off: false, closed: false, ...det[j.key], ...j })) }));
 }
 // The day of the last message, from "messaged 9×, last 2026-06-23" ("" when there is none).
 const refLast = p => (/last (\d{4}-\d{2}-\d{2})/.exec(p.why || "") || [])[1] || "";
@@ -7898,8 +7900,7 @@ function refCompanies(d) {
     const name = Object.keys(seen).sort((a, b) => seen[b] - seen[a])[0] || g.people[0].company;
     const people = g.people.sort(refPeopleOrder);
     return { key: jobs.length ? jobs.map(j => j.key).sort()[0] : "co:" + foldText(name), name, people, jobs, cut, cutSet: d.min_fit_set !== false,
-      sum: refSummary(jobs, cut), last: people.map(refLast).sort().pop() || "", health: (d.health || {})[name] || null,
-      careers: (d.careers || {})[name] || null };
+      sum: refSummary(jobs, cut), last: people.map(refLast).sort().pop() || "", health: (d.health || {})[name] || null };
   });
 }
 // The companies to show: the search words, then the filters, then the sort (stable). A company stays while one of its
@@ -7910,6 +7911,7 @@ function refVisible(companies, view) {
   const tokens = searchTokens(view.q), keep = [];
   for (const c of companies) {
     if (view.working && !c.sum.stage) continue;
+    if (view.noOpen && refNoOpenings(c)) continue;
     const shown = c.people.filter(p => (!view.ask || p.verdict === "use") && personMatches(p, tokens, c.name));
     if (shown.length) keep.push({ ...c, shown });
   }
@@ -7918,9 +7920,16 @@ function refVisible(companies, view) {
     recent: (a, b) => b.last.localeCompare(a.last) || fit(a, b), name: (a, b) => a.name.localeCompare(b.name) }[view.sort];
   return by ? keep.sort(by) : keep;
 }
-// "12 of 31 companies · 73 people": the companies on show of all of them, and the people on those cards.
-function refCount(shown, total) {
-  return `${shown.length} of ${total} ${total === 1 ? "company" : "companies"} · ${plural(shown.reduce((n, c) => n + c.shown.length, 0), "person", "people")}`;
+// A company with no openings: none of its tracked postings is open. One you have an application in flight at (queued, applied,
+// screening, interviewing, offer) never is, even when its posting closed.
+const refNoOpenings = c => c.sum.open === 0 && !c.sum.stage;
+// The companies the "Hide companies with no openings" filter alone is hiding now: those that pass the search and the other filters.
+const refHidden = (companies, view) => refVisible(companies, { ...view, noOpen: false }).filter(refNoOpenings);
+// "12 of 31 companies · 73 people": the companies on show of all of them, and the people on those cards; with hidden companies
+// "(4 hidden: no openings)", so none goes without a word.
+function refCount(shown, total, hidden = 0) {
+  return `${shown.length} of ${total} ${total === 1 ? "company" : "companies"} · ${plural(shown.reduce((n, c) => n + c.shown.length, 0), "person", "people")}` +
+    (hidden ? ` (${hidden} hidden: no openings)` : "");
 }
 // A card's words about its people: "3 people you know", past the first four "+ 2 more people", else "See the 3 people".
 function refPeopleWords(c) {
@@ -8166,37 +8175,36 @@ function refPerson(p, ctx) {
     h("button", { class: "pp-sub2", type: "button", title: [why, p.note && "Note: " + p.note].filter(Boolean).join("\n"), onclick: open },
       h("span", { class: "pp-why small muted" }, why), p.note ? h("span", { class: "pp-notetxt" }, p.note) : null));
 }
-// The "Careers ↗" chip: the company's job board or careers site in a new tab (kind "search": a web search for its careers page).
-// careers: { url, kind } from the server (see company.careers).
+// The Company tab's "Careers ↗" chip, next to the company's name: its job board or careers site in a new tab (kind "search": a
+// web search for its careers page). careers: { url, kind } from the server (see company.careers).
 function careersChip(name, careers) {
   if (!careers) return null;
   const search = careers.kind === "search";
   const tip = search ? `Search careers: look for ${name}'s careers page on the web, in a new tab` : `Open ${name} careers in a new tab`;
-  return h("a", { class: "ref-careers", href: careers.url, target: "_blank", rel: "noopener noreferrer", title: tip, "aria-label": tip,
-    onclick: e => e.stopPropagation() }, search ? "Search careers" : "Careers", h("span", { "aria-hidden": "true" }, " ↗"));
+  return h("a", { class: "co-careers", href: careers.url, target: "_blank", rel: "noopener noreferrer", title: tip, "aria-label": tip },
+    search ? "Search careers" : "Careers", h("span", { "aria-hidden": "true" }, " ↗"));
 }
-// One company, every card the same size: logo, name and "3 people you know" (buttons that open the company's dialog), the
-// good-fits pill with the not-scored and open counts, room for the best five jobs and a line after them, room for four
-// people and a line after them, and the two buttons pinned to the foot ("See the 23 good fits", "+ 8 more people"). Fewer
-// jobs or people leave their space blank with a soft line saying so; every text is cut with an ellipsis (the whole of it on hover).
+// One company: logo, name and "3 people you know", the good-fits pill with the not-scored and open counts (all
+// a card with no good fit has of the jobs), the best three jobs and "+ 8 more", the first three people, and the two buttons
+// pinned to the foot ("See the 23 good fits", "+ 8 more people"). A card is as tall as its content needs and the cards in a
+// row of the grid are as tall as the tallest of them; no room is kept for what a company doesn't have. Every text is cut with
+// an ellipsis (the whole of it on hover).
 function refCard(c, ctx, i) {
   const { sum } = c, { tokens, rate } = ctx, words = refLabels(sum), people = refPeopleWords(c);
   const go = start => () => { const list = ctx.navigable(), at = list.findIndex(x => x.key === c.key); if (at >= 0) openRefJobs(list, at, start, rate); };
   const reg = (start, el) => { refButtons.set(c.key + ":" + start, el); el.onclick = go(start); return el; };
-  const stage = sum.stage, fewer = c.shown.length < c.people.length;
-  // the name and the logo take you to the Company tab, as a company on a Today card does (no dialog); its board or careers site is the chip
+  const stage = sum.stage;
+  // the name and the logo take you to the Company tab, as a company on a Today card does (no dialog)
   const toCompany = { href: "#company/" + encodeURIComponent(c.name), title: `See everything at ${c.name}`, "aria-label": `${c.name}: everything tracked there`,
     onclick: e => { e.preventDefault(); e.stopPropagation(); openCompany(c.name); } };
   const jobs = h("div", { class: "ref-jobs" },
     h("div", { class: "ref-jhead" }, h("button", { class: "ref-n" + (sum.good ? "" : " none"), type: "button", onclick: go("jobs"),
-      title: `A good fit is a job you queued or applied to, or one with a fit score of ${c.cut} or more (${c.cutSet ? "your Fit minimum" : "the default: you have not set a Fit minimum"}), whose title your filters do not turn down. Click for the list.` }, words.good),
+      title: `A good fit is a job you queued or applied to, or one with a fit score of ${c.cut} or more (${c.cutSet ? "your Fit minimum" : "the default: you have not set a Fit minimum"}), whose title your filters do not turn down.${sum.good ? "" : " None yet: the other jobs are a click away."} Click for the list.` }, words.good),
     words.unscored ? h("span", { class: "small muted", title: "No fit score yet, so not counted as good fits: the scorer reaches them in time, or Read posting scores one" }, words.unscored) : null,
     words.of ? h("span", { class: "ref-of", title: `${sum.total} open jobs at ${c.name} in all: the rest score below ${c.cut}, are not scored yet or are not a title you look for` }, words.of) : null),
     sum.top.map(refJob),
-    words.more ? h("div", { class: "ref-soft", title: "More good fits: they are in the list" }, words.more)
-      : h("div", { class: "ref-soft" }, sum.top.length ? "No more good fits" : "Nothing to list yet: the other jobs are a click away"));
-  const list = h("div", { class: "ref-people" }, c.shown.slice(0, REF_CAP).map(p => refPerson(p, { tokens, rate, people: c.people, company: c })),
-    c.shown.length < REF_CAP ? h("div", { class: "ref-soft" }, fewer ? `The other ${c.people.length - c.shown.length} you know there don't match` : "No other people yet") : null);
+    words.more ? h("div", { class: "ref-soft", title: "More good fits: they are in the list" }, words.more) : null);
+  const list = h("div", { class: "ref-people" }, c.shown.slice(0, REF_CAP).map(p => refPerson(p, { tokens, rate, people: c.people, company: c })));
   const foot = h("div", { class: "ref-foot" },
     reg("jobs", h("button", { class: "btn ref-all", type: "button", "aria-haspopup": "dialog",
       title: `The good fits at ${c.name}, with the jobs you applied to or queued, the ones not scored yet and all of them a tab away` }, words.button)),
@@ -8210,8 +8218,7 @@ function refCard(c, ctx, i) {
         h("a", { class: "ref-name", ...toCompany }, marked(c.name, tokens)),
         h("div", { class: "ref-sub" },
           reg("overview", h("button", { class: "ref-know", type: "button", "aria-haspopup": "dialog",
-            title: `${c.name}: the overview, the good fits and the people you know` }, icon("users", 13), people.known)),
-          careersChip(c.name, c.careers)))),
+            title: `${c.name}: the overview, the good fits and the people you know` }, icon("users", 13), people.known))))),
     jobs, list, foot);
 }
 // What a first-time person sees with no LinkedIn data yet: what Referrals is, how to get the data in, what happens next.
@@ -8250,7 +8257,7 @@ async function renderReferrals() {
     } catch (e) { toast(e.message); }
   };
   const companies = refCompanies(d), left = d.skipped;
-  const grid = h("div", { class: "cards ref-grid" }), moreHost = h("div", { class: "ref-morehost" }), foldHost = h("div");
+  const grid = h("div", { class: "cards ref-grid" }), moreHost = h("div", { class: "ref-morehost" }), foldHost = h("div"), noteHost = h("div");
   const total = h("span", { class: "ref-total small muted", "aria-live": "polite" });
   let shown = [], drawn = false;
   const navigable = () => shown.filter(c => c.jobs.length);
@@ -8260,14 +8267,25 @@ async function renderReferrals() {
     shown = refVisible(companies, refView);
     const ctx = { tokens, rate, navigable };
     // a long list shows REF_PAGE cards at a time (the cards are equal in height, so more is a button, not a long scroll to build)
+    const hidden = refView.noOpen ? refHidden(companies, refView) : [], quiet = companies.filter(refNoOpenings).length;
     fill(grid, shown.length ? shown.slice(0, refView.limit).map((c, i) => refCard(c, ctx, i))
       : !companies.length ? refNoCompany()
+      : hidden.length && !refView.q.trim() ? emptyState(`Every company here has no openings (${hidden.length} hidden).`,
+        h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoOpen(false) }, "Show them"))
       : emptyState(refView.q.trim() ? `No one matches '${refView.q.trim()}'` : "No one matches these filters."));
+    // what the filter is doing, in words: a search that matches a company it hides says so; many quiet companies offer to hide them
+    fill(noteHost,
+      refView.q.trim() && hidden.length ? h("div", { class: "ref-hint ref-nofit ref-hidden" },
+        `${plural(hidden.length, "match", "matches")} hidden by 'no openings'. `,
+        h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoOpen(false) }, hidden.length === 1 ? "Show it" : "Show them")) : null,
+      !refView.noOpen && quiet && quiet / companies.length > .25 ? h("div", { class: "ref-hint ref-nofit ref-quiet" },
+        `${plural(quiet, "company", "companies")} ${quiet === 1 ? "has" : "have"} no openings: hide them? `,
+        h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoOpen(true) }, "Hide them")) : null);
     fill(moreHost, shown.length > refView.limit ? h("button", { class: "btn ref-showmore", type: "button",
       onclick: () => { refView.limit += REF_PAGE; draw(); } }, `Show ${Math.min(REF_PAGE, shown.length - refView.limit)} more companies (${shown.length - refView.limit} not shown)`) : null);
     grid.classList.toggle("again", drawn);
     drawn = true;
-    total.textContent = refCount(shown, companies.length);
+    total.textContent = refCount(shown, companies.length, hidden.length);
     const lefts = left.filter(p => personMatches(p, tokens)).sort(refPeopleOrder);
     fill(foldHost, lefts.length ? h("details", { class: "fold", open: refView.foldOpen, ontoggle: e => { refView.foldOpen = e.target.open; } },
       h("summary", { title: "People you marked Don't use, or listed under connections_skip in your watchlist file" }, `Not suggested (${lefts.length})`),
@@ -8297,12 +8315,24 @@ async function renderReferrals() {
       onclick: () => { refView[key] = !refView[key]; b.classList.toggle("on", refView[key]); b.setAttribute("aria-pressed", String(refView[key])); restart(); draw(); } }, label);
     return b;
   };
+  // "Hide companies with no openings": remembered in this browser; a company you have an application in flight at is never hidden
+  const noOpenChip = h("button", { class: "chip toggle ref-noopen", type: "button", "aria-pressed": "false",
+    title: "Hide the companies none of whose postings is open. One you queued or applied to a job at stays, even when its posting closed." },
+    icon("eyeoff", 14), "Hide companies with no openings");
+  const setNoOpen = v => {
+    refView.noOpen = v; remember("referrals.noopen", v ? "1" : "");
+    noOpenChip.classList.toggle("on", v); noOpenChip.setAttribute("aria-pressed", String(v));
+    restart(); draw();
+  };
+  noOpenChip.onclick = () => setNoOpen(!refView.noOpen);
+  noOpenChip.classList.toggle("on", refView.noOpen); noOpenChip.setAttribute("aria-pressed", String(refView.noOpen));
   draw();
   put(head,
     companies.length || left.length ? h("div", { class: "ref-bar" },
       h("div", { class: "ref-search" }, icon("search", 15), input, h("kbd", { title: "Press / to search" }, "/"), clear),
       sort, toggle("ask", "Ask first", "Only the people you marked Use, to ask for a referral first"),
-      toggle("working", "Working a job", "Only the companies where you queued or applied to a job"), total) : null,
+      toggle("working", "Working a job", "Only the companies where you queued or applied to a job"), noOpenChip, total) : null,
+    noteHost,
     d.min_fit_set === false && companies.length ? h("div", { class: "ref-hint ref-nofit" },
       `You have not set a Fit minimum, so a job counts as a good fit from a score of ${d.min_fit} (the default). Set your own in `,
       h("a", { href: "#settings/search" }, "Settings → Your search"), ".") : null,

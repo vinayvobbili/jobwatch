@@ -41,7 +41,7 @@ def view(cfg: Config, store: Store) -> dict:
     company, status}]. min_fit is the fit that makes a good fit (see good_fit) and details holds each listed job's
     fit, place, pay, day first seen and whether its title is off-target, by key (see job_details), for the page
     to show the good fits and keep the rest a click away; health is what is kept of each company's health, by name
-    (see company_health), and careers each company's "Careers" link (see company_careers)."""
+    (see company_health)."""
     known = load_contacts(cfg)
     if not known:
         return {"people": [], "skipped": [], "has_connections": False}
@@ -74,18 +74,7 @@ def view(cfg: Config, store: Store) -> dict:
             "has_connections": True, "min_fit": good_fit(cfg),
             "min_fit_set": bool(cfg.filters.min_fit or cfg.today_fit),
             "details": job_details(cfg, store, {j["key"] for r in people for j in r["jobs"]}, rows),
-            "health": company_health(store, {j["company"] for r in people for j in r["jobs"]}),
-            "careers": company_careers(store, {j["key"]: rows[j["key"]][0] for r in people for j in r["jobs"]})}
-
-
-def company_careers(store: Store, jobs: dict[str, Job]) -> dict[str, dict]:
-    """The "Careers ↗" link of each company the cards show, by the name its jobs carry: {"url", "kind"} (see
-    company.careers for the order it is found in)."""
-    from .company import careers  # company reads watch, as this module does
-    by_name: dict[str, list[Job]] = {}
-    for job in jobs.values():
-        by_name.setdefault(job.display_company, []).append(job)
-    return {name: careers(store, name, group) for name, group in sorted(by_name.items())}
+            "health": company_health(store, {j["company"] for r in people for j in r["jobs"]})}
 
 
 def company_health(store: Store, names: set[str]) -> dict[str, dict]:
@@ -111,8 +100,9 @@ def good_fit(cfg: Config) -> int:
 
 def job_details(cfg: Config, store: Store, keys: set[str], rows: dict) -> dict[str, dict]:
     """What the page's job lists show beside each title, once per job (people at one company share their jobs):
-    {key: {fit (0-100 or None), stale, place, pay, seen (the day first seen), off (the title filters turn the title
-    down: a job you queued or applied to is listed all the same, but is never a good fit by its score)}}. The jobs
+    {key: {fit (0-100 or None), stale, place, pay, seen (the day first seen), closed (the posting is confirmed
+    closed: an application in progress is listed all the same), off (the title filters turn the title down: a job
+    you queued or applied to is listed all the same, but is never a good fit by its score)}}. The jobs
     a person lists stay as they were; these are looked up by key."""
     fits = job_fits(cfg, store)
     out = {}
@@ -122,7 +112,7 @@ def job_details(cfg: Config, store: Store, keys: set[str], rows: dict) -> dict[s
         score = fit.get("score") if fit else None
         out[key] = {"fit": None if score is None else round(score), "stale": bool(fit and fit.get("stale")),
                     "place": "; ".join(job.places[:2]) + (f" +{len(job.places) - 2}" if len(job.places) > 2 else ""),
-                    "pay": job.pay(), "seen": str(rec["first_seen"])[:10],
+                    "pay": job.pay(), "seen": str(rec["first_seen"])[:10], "closed": closed_state(rec) == "closed",
                     "off": not title_ok(job.title, cfg.filters_for(job))}
     return out
 

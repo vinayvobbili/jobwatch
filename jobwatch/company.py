@@ -228,14 +228,15 @@ def view(cfg: Config, store: Store, text: str, every: bool | None = None,
             "left_out": len(hide), "left_out_by": {k: by[k] for k in KINDS if by[k]}, "every": every,
             "contacts": known.at(*names) if known else [],
             "find_referral": people.linkedin_search(best["name"]), "watch": _watch(cfg, store, best["name"], jobs),
-            "careers": careers(store, best["name"], jobs), "also": [f["name"] for f in found[1:]]}
+            "careers": careers(cfg, store, best["name"], jobs), "also": [f["name"] for f in found[1:]]}
 
 
-def careers(store: Store, name: str, jobs: list[Job]) -> dict:
+def careers(cfg: Config, store: Store, name: str, jobs: list[Job]) -> dict:
     """Where a company's careers link goes: {"url", "kind"}. The first that holds: "board" (the job board jobwatch
-    fetches its jobs from), "jobs" (the origin of its jobs' own links, not one posting), "site" (the website its logo
-    was found at) or "search" (a web search for its careers page, the last resort). Nothing personal is in any of
-    them: the company's name only. The Company tab and the Referrals cards both show it as "Careers ↗"."""
+    fetches its jobs from), "jobs" (the origin of its jobs' own links, not one posting), "site" (the careers site the
+    watchlist gives its board, else the website its logo was found at) or "search" (a web search for its careers
+    page, the last resort). Nothing personal is in any of them: the company's name only. The Company tab shows it
+    as "Careers ↗" next to the company's name."""
     for job in jobs:  # a board that lists many companies (HN, a fund's portfolio) is not this company's
         if job.source in sources.SOURCES and not sources.SOURCES[job.source].many_companies:
             try:
@@ -250,6 +251,10 @@ def careers(store: Store, name: str, jobs: list[Job]) -> dict:
                       if p.scheme in ("http", "https") and own and logos.site_of(p.hostname or "") == own[0])
     if origins:
         return {"url": origins.most_common(1)[0][0], "kind": "jobs"}
+    on = {(j.source, j.company) for j in jobs}
+    given = next((b.careers for b in cfg.boards if (b.source, b.board) in on and b.careers), "")
+    if given:
+        return {"url": given, "kind": "site"}
     logo = store.logo(logos.key(name))
     if logo and logo[0]:
         return {"url": f"https://{logo[0]}/", "kind": "site"}
