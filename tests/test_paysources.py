@@ -123,8 +123,8 @@ def test_show_prints_the_pay_sources_on_one_line(web, watchlist, capsys):
 
 
 def test_the_posted_source_carries_the_posted_top_so_the_page_needs_no_other_field():
-    posted = by_key(paysources.sources(job(120_000, 240_000)))["posted"]
-    assert (posted["value"], posted["amount"]) == ("$120K–$240K", 240_000)
+    posted = by_key(paysources.sources(job(120_000, 190_000)))["posted"]
+    assert (posted["value"], posted["amount"]) == ("$120K–$190K", 190_000)
     assert by_key(paysources.sources(job(120_000, None)))["posted"]["amount"] == 120_000
     assert by_key(paysources.sources(job(None, None)))["posted"]["amount"] is None
 
