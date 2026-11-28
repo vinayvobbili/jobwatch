@@ -594,10 +594,35 @@ a.ref-logo { cursor: pointer; } a.ref-logo:hover { transform: scale(1.06); box-s
 .ref-soft { padding: 3px 0; font-size: 12.5px; color: var(--muted); opacity: .8; font-style: italic; }
 .pp-act { grid-area: act; display: flex; gap: 5px; align-items: center; }
 .pp-act .btn { padding: 2px 10px; font-size: 12.5px; }
-.pp-act .ref-use { color: var(--accent); border: 1.5px solid var(--accent); background: transparent; font-weight: 650; }
-.pp-act .ref-skip { color: var(--text); border: 1.5px solid color-mix(in srgb, var(--text) 38%, transparent); background: transparent; }
-.pp-act .ref-use:hover { background: var(--accent-soft); } .pp-act .ref-skip:hover { background: var(--chip); }
 .pp-act .btn.primary { color: #fff; border-color: transparent; background: var(--grad); }
+/* a person's choice, one pill: Ask? (nothing chosen: grey outline), ★ Ask first (purple, filled), Skip (muted, struck through) */
+.ref-pill { position: relative; overflow: hidden; display: inline-flex; align-items: center; white-space: nowrap; padding: 1px 10px; border-radius: 999px; font: inherit;
+  font-size: 12.5px; font-weight: 650; cursor: pointer; transition: transform .12s, background .15s, color .15s, box-shadow .15s; }
+.ref-pill::after { content: ""; position: absolute; inset: 0 0 50% 0; background: linear-gradient(rgba(255, 255, 255, .28), transparent); pointer-events: none; opacity: 0; transition: opacity .15s; }
+.ref-pill:hover { transform: translateY(-1px); } .ref-pill:hover::after, .ref-pill:focus-visible::after { opacity: 1; }
+.ref-pill.none { color: var(--muted); background: transparent; border: 1.5px solid color-mix(in srgb, var(--text) 30%, transparent); }
+.ref-pill.use { color: #fff; border: 1.5px solid transparent; background: var(--grad); box-shadow: 0 2px 8px -3px var(--accent); }
+.ref-pill.skip { color: var(--muted); background: var(--chip); border: 1.5px solid color-mix(in srgb, var(--text) 18%, transparent); text-decoration: line-through; }
+.ref-pill:hover.none { color: var(--accent); border-color: var(--accent); }
+/* the editor at the top of a person's dialog: a segmented control of three, each with a line saying what it does */
+.ref-seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0 12px; }
+.ref-opt { position: relative; overflow: hidden; text-align: left; font: inherit; cursor: pointer; padding: 11px 14px; border-radius: 14px; color: var(--text);
+  background: var(--panel); border: 1.5px solid color-mix(in srgb, var(--text) 22%, transparent); transition: transform .12s, border-color .15s, background .15s; }
+.ref-opt:hover { transform: translateY(-1px); border-color: var(--accent); }
+.ref-opt b { display: block; font-size: 15px; }
+.ref-opt span { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+.ref-opt[aria-checked="true"] { border-color: transparent; background: var(--grad); }
+.ref-opt[aria-checked="true"].skip { background: var(--chip); border-color: var(--muted); }
+.ref-opt[aria-checked="true"]:not(.skip) b, .ref-opt[aria-checked="true"]:not(.skip) span { color: #fff; }
+.ref-opt[aria-checked="true"].none { background: var(--accent-soft); border-color: var(--accent); }
+.ref-opt[aria-checked="true"].none b, .ref-opt[aria-checked="true"].none span { color: var(--text); }
+@media (max-width: 640px) { .ref-seg { grid-template-columns: 1fr; } }
+/* the one-line legend under the page's subtitle */
+.ref-legend { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; margin: 0 0 12px; padding: 7px 8px 7px 14px; border-radius: 12px; font-size: 13px; color: var(--muted);
+  background: linear-gradient(100deg, var(--accent-soft), transparent 70%); border: 1px solid var(--line); }
+.ref-legend .ref-pill { cursor: default; padding: 0 9px; font-size: 12px; } .ref-legend .ref-pill:hover { transform: none; }
+.ref-legend .ref-gotit { margin-left: auto; padding: 1px 12px; font-size: 12.5px; }
+.ref-notsug { white-space: nowrap; }
 .pp-act .pp-notebtn { padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--text) 25%, transparent); color: var(--muted); display: inline-grid; place-items: center; }
 .pp-act .pp-notebtn.has { color: var(--accent); border-color: var(--accent); }
 .pp-act .pp-notebtn:hover { color: var(--accent); }
@@ -2593,6 +2618,14 @@ function people(list, most = 3) {
 async function rateContact(who, verdict, note) {
   return api("/api/referrals/rate", { who, verdict, note: note || "" });
 }
+// "Won't suggest NAME. Undo", for 8 seconds, every time someone is set to Don't use: Undo puts them back as they were
+// (before: { verdict, note }); then(): what to redraw.
+function skippedToast(p, before, then) {
+  toast(`Won't suggest ${p.name}.`, async () => {
+    try { await rateContact(p.key, before.verdict || "clear", before.note); } catch (e) { toast(e.message); return; }
+    await then();
+  }, "onward", "Undo", 8000);
+}
 
 // Who you know there, people you chose to ask first and then the strongest ties, and a way to find an introduction
 // when you know nobody.
@@ -2611,11 +2644,11 @@ function contactBit(p, tag = "span") {
   const el = h(tag, { class: tag === "div" ? "person" : null },
     h("span", { class: "ptext", title: text + (p.note ? ` “${p.note}”` : "") }, text,
       p.note ? h("span", { class: "pnote" }, ` “${p.note}”`) : null),
-    h("button", { class: "dont", title: "Never suggest this person (undo in the Referrals tab)", onclick: async () => {
+    h("button", { class: "dont", title: "Never suggest this person: hidden from \"You know\" lines and referral drafts (undo right after, or in the Referrals tab under Not suggested)", onclick: async () => {
       try {
         await rateContact(p.key, "skip", p.note);
         el.remove();
-        toast(`${p.name} won't be suggested`, async () => { await rateContact(p.key, "clear"); render(); }, "onward");
+        skippedToast(p, { verdict: p.verdict, note: p.note }, render);
       } catch (e) { toast(e.message); }
     } }, "Don't use"));
   return el;
@@ -7963,6 +7996,59 @@ function fitPill(j) {
   return h("span", { class: "fitpill " + (j.fit == null ? "none" : "tone-" + scoreTone(j.fit)),
     title: j.fit == null ? "Not scored yet" : `Fit ${j.fit}/100` + (j.stale ? " (stale: scored under an older resume)" : "") }, j.fit == null ? "–" : j.fit);
 }
+// A person's choice: what each of the three states is called and does. use and skip are stored as such (see rateContact); no
+// choice is none, saved as "clear". REF_KEYS: the keys U, S and N set one from a pill without opening its dialog.
+const REF_STATES = {
+  use: { pill: "★ Ask first", word: "ask first", option: "Ask first",
+    tip: "Ask this person first: they are listed first in \"You know\" lines and in referral drafts.",
+    about: "Listed first in \"You know\" lines and used in referral drafts." },
+  none: { pill: "Ask?", word: "no preference", option: "No preference",
+    tip: "No choice yet: the people you have messaged most are listed first.",
+    about: "The default order: the people you have messaged most come first." },
+  skip: { pill: "Skip", word: "skipped", option: "Don't use",
+    tip: "Never suggest this person: hidden from \"You know\" lines and referral drafts. Skipped people move to Not suggested; undo anytime.",
+    about: "Never suggested: hidden from \"You know\" lines and referral drafts. They wait under Not suggested; undo anytime." },
+};
+const REF_VERDICT = { use: "use", skip: "skip", none: "clear" };
+const REF_KEYS = { u: "use", s: "skip", n: "none" };
+const refState = p => p.verdict === "use" || p.verdict === "skip" ? p.verdict : "none";
+const REF_PILL_TIP = " Click to change · U ask first · S skip · N none";
+// After a change the page is drawn again: focus goes back to that person's pill (in the dialog on top, else on the page).
+function refFocusPill(key) {
+  const root = topDialog() || document;
+  root.querySelector?.(`.ref-pill[data-who="${CSS.escape(key)}"]`)?.focus();
+}
+const refSegFocus = () => (topDialog() || document).querySelector?.(".ref-opt[aria-checked=true]")?.focus();
+// A person's choice as one small pill (see REF_STATES). A click opens their dialog on the editor; the keys U, S and N set the
+// choice from the pill itself, without opening anything. rate(p, verdict, note) saves; open() opens the dialog.
+function refPill(p, rate, open) {
+  const s = refState(p), st = REF_STATES[s];
+  return h("button", { class: `ref-pill ${s}`, type: "button", "data-who": p.key, "data-state": s, "aria-haspopup": "dialog",
+    "aria-label": `${p.name}: ${st.word}. Change`, title: st.tip + REF_PILL_TIP, onclick: open,
+    onkeydown: e => {
+      const to = !e.ctrlKey && !e.metaKey && !e.altKey && REF_KEYS[e.key.toLowerCase()];
+      if (!to) return;
+      e.preventDefault(); e.stopPropagation();
+      if (to !== refState(p)) rate(p, REF_VERDICT[to], p.note).then(() => refFocusPill(p.key));
+    } }, st.pill);
+}
+// The three choices of the person's dialog as one segmented control (a radio group: the arrow keys change the choice, which saves
+// at once). choose(state) saves it.
+function refSegments(p, choose) {
+  const states = ["use", "none", "skip"], now = refState(p);
+  const seg = h("div", { class: "ref-seg", role: "radiogroup", "aria-label": `Your choice for ${p.name}` },
+    states.map(s => h("button", { class: `ref-opt ${s}`, type: "button", role: "radio", "data-state": s, "aria-checked": String(s === now),
+      tabindex: s === now ? "0" : "-1", onclick: () => s === now || choose(s) },
+    h("b", {}, REF_STATES[s].option), h("span", {}, REF_STATES[s].about))));
+  seg.onkeydown = e => {
+    const by = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+    if (!by) return;
+    e.preventDefault(); e.stopPropagation();
+    const to = states[Math.max(0, Math.min(2, states.indexOf(now) + by))];
+    if (to !== now) choose(to);
+  };
+  return seg;
+}
 const REF_STAGES = { queued: "Queued", new: "Open", shown: "Open" };
 function refStatus(j, always) {
   if (!always && ["new", "shown"].includes(j.status)) return null;
@@ -8016,7 +8102,7 @@ function refFrame(n, at, o) {
     else if (e.key === "/" && !e.target.closest?.("input, textarea, select")) {
       const box2 = [...box.querySelectorAll(".ref-jq")].find(i => !i.hidden);
       if (box2) { e.preventDefault(); e.stopImmediatePropagation(); box2.focus(); }
-    } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !e.target.closest?.("input, textarea, select")) {
+    } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && !e.target.closest?.("input, textarea, select, .ref-seg")) {  // the choice's own keys
       const to = rankStep(cur, n, e.key);
       if (to !== cur) { e.preventDefault(); show(to); }
     } else if (e.key === "Tab") trapTab(box, e);
@@ -8060,9 +8146,14 @@ function openRefPerson(people, at, ctx) {
     const shown = live.length ? live : c ? c.sum.top : [];
     const note = h("textarea", { class: "ref-note", rows: 3, maxlength: 200, "aria-label": "Note about " + p.name, placeholder: "e.g. reach on WhatsApp" });
     note.value = p.note;
-    const choose = (label, verdict, title) => h("button", { class: `btn ref-${verdict}` + (p.verdict === verdict ? " primary" : ""), type: "button", title,
-      "aria-pressed": String(p.verdict === verdict), onclick: async () => { await ctx.rate(p, verdict, note.value); frame.redraw(); } }, label);
-    const save = () => p.verdict ? ctx.rate(p, p.verdict, note.value).then(() => frame.redraw()) : toast("Choose Use or Don't use first, then the note is kept");
+    // a choice saves at once (and the pill behind updates); the dialog is drawn again and focus stays on the choice
+    const choose = async state => {
+      await ctx.rate(p, REF_VERDICT[state], note.value);
+      frame.redraw();
+      refSegFocus();
+    };
+    const save = () => p.verdict ? ctx.rate(p, p.verdict, note.value, true).then(() => { toast("Saved"); frame.redraw(); })
+      : toast("Choose Ask first or Don't use first, then the note is kept");
     const sec = (title, ...kids) => h("section", { class: "ref-sec" }, h("h3", {}, title), ...kids);
     const fact = (label, ...kids) => h("div", { class: "ref-fact" }, h("span", {}, label), h("b", {}, ...kids));
     const best = live[0] || (c && (c.sum.top[0] || c.jobs[0]));
@@ -8070,14 +8161,14 @@ function openRefPerson(people, at, ctx) {
     put(`${p.name}, ${i + 1} of ${people.length}`,
       head(refAvatar(p.name), p.name, [p.position, p.company].filter(Boolean).join(" · ")),
       h("div", { class: "ref-list over" }, h("div", { class: "ref-over" },
+        sec("Your choice", p.from_file ? h("div", { class: "small muted" }, "In your watchlist file (connections_skip): edit it there to bring them back.")
+          : [refSegments(p, choose),
+            p.verdict ? h("button", { class: "btn ghost ref-clearchoice", type: "button", title: "Back to no preference: the default order",
+              onclick: () => choose("none") }, "Clear") : null,
+            note, h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: save }, "Save note"),
+              h("span", { class: "small muted" }, "Kept with their name, and shown on the cards."))]),
         sec("About", h("div", { class: "ref-facts" }, fact("Name", p.name), fact("Title", p.position || "not listed"), fact("Company", c ? c.name : p.company),
           fact("How close", refWhy(p.why)), fact("Last messaged", refLast(p) ? refWhy(refLast(p)) : "never in your data"))),
-        sec("Your choice", h("div", { class: "small muted" }, "Use puts this person first (\"ask first\") wherever jobwatch lists who you know. Don't use stops suggesting them."),
-          h("div", { class: "pp-act big" }, p.from_file ? h("span", { class: "small muted" }, "In your watchlist file (connections_skip): edit it there")
-          : [choose("Use", "use", "Ask this person for a referral first"), choose("Don't use", "skip", "Never suggest this person"),
-            p.verdict ? h("button", { class: "btn ghost", type: "button", onclick: async () => { await ctx.rate(p, "clear"); frame.redraw(); } }, "Clear") : null]),
-        p.from_file ? null : [note, h("div", { class: "row" }, h("button", { class: "btn primary", type: "button", onclick: save }, "Save note"),
-          h("span", { class: "small muted" }, "Kept with their name, and shown on the cards."))]),
         sec("Links", p.url ? link(p.url, "LinkedIn profile ↗", "btn")
           : link(`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(p.name + " " + p.company)}`, "Search LinkedIn for them ↗", "btn")),
         c ? sec(live.length ? `Jobs at ${c.name} you are working` : `The best fits at ${c.name}`,
@@ -8147,29 +8238,22 @@ function openRefJobs(list, at, start, rate) {
       tabsEl, h("div", { class: "ref-tools" }, q, pq, sort, total), list2);
   } });
 }
-// One person as a slim row of three lines: avatar, name and "ask first" with Use / Don't use and a details button; their title
-// (the whole of it on hover); how close you are and, in accent, their note (one line each, cut with an ellipsis). A click on the
-// avatar, name, note line or button opens their details (openRefPerson); Use / Don't use work in the row itself. ctx: tokens
-// (the search words to mark), rate, people (the siblings the details step through), company (null for someone left out) and
-// restore (a person left out: Restore in place of the choice).
+// One person as a slim row of three lines: avatar, name, their choice as one pill (Ask? / ★ Ask first / Skip: refPill) and a
+// details button; their title (the whole of it on hover); how close you are and, in accent, their note (one line each, cut with
+// an ellipsis). A click on the avatar, name, pill, note line or button opens their details (openRefPerson, the pill on the editor).
+// ctx: tokens (the search words to mark), rate, people (the siblings the details step through) and company (null for someone
+// left out: their pill says Skip and changes them back).
 function refPerson(p, ctx) {
-  const { tokens, rate, restore } = ctx;
+  const { tokens, rate } = ctx;
   const open = () => openRefPerson(ctx.people || [p], Math.max(0, (ctx.people || [p]).indexOf(p)), ctx);
-  const btn = (label, verdict, title) => h("button", { class: `btn ref-${verdict}` + (p.verdict === verdict ? " primary" : ""), type: "button", title,
-    "aria-pressed": String(p.verdict === verdict), onclick: () => rate(p, verdict, p.note) }, label);
   const more = h("button", { class: "btn ghost pp-notebtn" + (p.note ? " has" : ""), type: "button", "aria-label": "Open the details and note for " + p.name,
     title: p.note ? "Note: " + p.note : "Details and a note", onclick: open }, icon("note", 14));
   const act = p.from_file ? h("div", { class: "pp-act" }, h("span", { class: "small muted", title: "In your watchlist file (connections_skip): edit it there" }, "in your file"), more)
-    : restore ? h("div", { class: "pp-act" }, h("button", { class: "btn", type: "button", onclick: () => rate(p, "clear") }, "Restore"), more)
-    : h("div", { class: "pp-act" }, btn("Use", "use", "Use: ask this person for a referral first. They are put first wherever jobwatch lists who you know."),
-      btn("Don't use", "skip", "Don't use: never suggest this person (you can bring them back from Not suggested below)"),
-      p.verdict ? h("button", { class: "btn ghost pp-clear", type: "button", title: "Forget what you chose", "aria-label": "Clear the choice for " + p.name,
-        onclick: () => rate(p, "clear") }, icon("x", 12)) : null, more);
+    : h("div", { class: "pp-act" }, refPill(p, rate, open), more);
   const why = p.why ? refWhy(p.why) : "no messages or endorsements";
   return h("div", { class: "ref-p" + (p.verdict === "use" ? " use" : ""), style: `--h:${nameHue(p.name)}` },
     h("button", { class: "ref-avbtn", type: "button", tabindex: "-1", "aria-hidden": "true", onclick: open }, refAvatar(p.name)),
-    h("div", { class: "pp-name" }, h("button", { class: "pp-namebtn", type: "button", title: p.name + ": details and a note", "aria-label": p.name + ": details and a note", onclick: open }, marked(p.name, tokens)),
-      p.verdict === "use" ? h("span", { class: "chip hit", title: "You chose Use for this person: they come first wherever jobwatch lists who you know" }, "ask first") : null),
+    h("div", { class: "pp-name" }, h("button", { class: "pp-namebtn", type: "button", title: p.name + ": details and a note", "aria-label": p.name + ": details and a note", onclick: open }, marked(p.name, tokens))),
     act,
     h("div", { class: "pp-sub", title: p.position || "" }, p.position ? marked(p.position, tokens) : h("span", { class: "muted" }, "no title listed")),
     h("button", { class: "pp-sub2", type: "button", title: [why, p.note && "Note: " + p.note].filter(Boolean).join("\n"), onclick: open },
@@ -8245,17 +8329,26 @@ function refNoCompany() {
 async function renderReferrals() {
   const d = await api("/api/referrals");
   const head = pagehead("Referrals", "People you know (from your LinkedIn connections) at the companies you're tracking: a referral gets read before " +
-    "an application does. Use puts someone first in the \"You know\" lines everywhere; Don't use stops suggesting them.");
+    "an application does. Set each person to Ask first or Skip with the pill beside their name.");
   if (!d.has_connections) return put(head, refFirstRun());
-  const rate = async (p, verdict, note) => {
+  // Saves one person's choice. A new Skip says so, with Undo for 8 seconds; any other change says "Saved" (quiet: the note's own save says it too).
+  const rate = async (p, verdict, note, quiet) => {
+    const before = { verdict: p.verdict, note: p.note };
     try {
       await rateContact(p.key, verdict, note);
       p.verdict = verdict === "clear" ? "" : verdict;  // a dialog still open keeps this list; the page behind is redrawn from the server
       p.note = verdict === "clear" ? "" : (note || "").trim();
-      if (verdict === "skip") toast(`${p.name} won't be suggested`, async () => { await rateContact(p.key, "clear"); render(); }, "onward");
-      render();
+      if (verdict === "skip" && before.verdict !== "skip") skippedToast(p, before, async () => { p.verdict = before.verdict; p.note = before.note; await render(); });
+      else if (!quiet) toast("Saved");
+      await render();
     } catch (e) { toast(e.message); }
   };
+  const legend = remembered("referrals.legend", "") === "1" ? null : h("div", { class: "ref-legend", role: "note" },
+    h("span", { class: "ref-pill use" }, REF_STATES.use.pill), "listed first in \"You know\" lines and referral drafts",
+    h("span", { class: "ref-pill skip" }, REF_STATES.skip.pill), "never suggested: they move to Not suggested, undo anytime",
+    h("span", { class: "small" }, "Click a pill to change it."),
+    h("button", { class: "btn ghost ref-gotit", type: "button", "aria-label": "Hide this explanation", title: "Hide this explanation (it stays hidden)",
+      onclick: () => { remember("referrals.legend", "1"); legend.remove(); } }, "Got it"));
   const companies = refCompanies(d), left = d.skipped;
   const grid = h("div", { class: "cards ref-grid" }), moreHost = h("div", { class: "ref-morehost" }), foldHost = h("div"), noteHost = h("div");
   const total = h("span", { class: "ref-total small muted", "aria-live": "polite" });
@@ -8272,7 +8365,8 @@ async function renderReferrals() {
       : !companies.length ? refNoCompany()
       : hidden.length && !refView.q.trim() ? emptyState(`Every company here has no openings (${hidden.length} hidden).`,
         h("button", { class: "btn ref-showmore", type: "button", onclick: () => setNoOpen(false) }, "Show them"))
-      : emptyState(refView.q.trim() ? `No one matches '${refView.q.trim()}'` : "No one matches these filters."));
+      : emptyState(refView.q.trim() ? (left.some(p => personMatches(p, tokens)) ? `No company card matches '${refView.q.trim()}'; the people it finds are under Not suggested below.`
+        : `No one matches '${refView.q.trim()}'`) : "No one matches these filters."));
     // what the filter is doing, in words: a search that matches a company it hides says so; many quiet companies offer to hide them
     fill(noteHost,
       refView.q.trim() && hidden.length ? h("div", { class: "ref-hint ref-nofit ref-hidden" },
@@ -8286,9 +8380,10 @@ async function renderReferrals() {
     grid.classList.toggle("again", drawn);
     drawn = true;
     total.textContent = refCount(shown, companies.length, hidden.length);
-    const lefts = left.filter(p => personMatches(p, tokens)).sort(refPeopleOrder);
-    fill(foldHost, lefts.length ? h("details", { class: "fold", open: refView.foldOpen, ontoggle: e => { refView.foldOpen = e.target.open; } },
-      h("summary", { title: "People you marked Don't use, or listed under connections_skip in your watchlist file" }, `Not suggested (${lefts.length})`),
+    // a search finds the people left out too: the section opens by itself with them, the muted Skip pill on each
+    const lefts = left.filter(p => personMatches(p, tokens)).sort(refPeopleOrder), searching = tokens.length > 0;
+    fill(foldHost, lefts.length ? h("details", { class: "fold ref-fold", open: refView.foldOpen || searching, ontoggle: e => { if (!searching) refView.foldOpen = e.target.open; } },
+      h("summary", { title: "People you chose Skip for, or listed under connections_skip in your watchlist file. Open one to bring them back." }, `Not suggested (${lefts.length})`),
       h("div", { class: "ref-left again" }, lefts.slice(0, refView.leftLimit).map(p => refPerson(p, { tokens, rate, restore: true, people: lefts, company: null }))),
       lefts.length > refView.leftLimit ? h("button", { class: "btn ref-showmore", type: "button",
         onclick: () => { refView.leftLimit += REF_ROWS; draw(); } }, `Show ${Math.min(REF_ROWS, lefts.length - refView.leftLimit)} more (${lefts.length - refView.leftLimit} not shown)`) : null) : null);
@@ -8324,14 +8419,18 @@ async function renderReferrals() {
     noOpenChip.classList.toggle("on", v); noOpenChip.setAttribute("aria-pressed", String(v));
     restart(); draw();
   };
+  // "Not suggested (N)": the way back to the people set to Skip (hidden when there are none): opens that section and goes to it
+  const notSugChip = left.length ? h("button", { class: "chip toggle ref-notsug", type: "button", title: "People you chose Skip for: they wait here, and one click on a pill brings them back",
+    onclick: () => { refView.foldOpen = true; draw(); const f = foldHost.querySelector("summary"); f?.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" }); f?.focus(); } },
+    `Not suggested (${left.length})`) : null;
   noOpenChip.onclick = () => setNoOpen(!refView.noOpen);
   noOpenChip.classList.toggle("on", refView.noOpen); noOpenChip.setAttribute("aria-pressed", String(refView.noOpen));
   draw();
-  put(head,
+  put(head, legend,
     companies.length || left.length ? h("div", { class: "ref-bar" },
       h("div", { class: "ref-search" }, icon("search", 15), input, h("kbd", { title: "Press / to search" }, "/"), clear),
-      sort, toggle("ask", "Ask first", "Only the people you marked Use, to ask for a referral first"),
-      toggle("working", "Working a job", "Only the companies where you queued or applied to a job"), noOpenChip, total) : null,
+      sort, toggle("ask", "Ask first", "Only the people you set to Ask first"),
+      toggle("working", "Working a job", "Only the companies where you queued or applied to a job"), noOpenChip, notSugChip, total) : null,
     noteHost,
     d.min_fit_set === false && companies.length ? h("div", { class: "ref-hint ref-nofit" },
       `You have not set a Fit minimum, so a job counts as a good fit from a score of ${d.min_fit} (the default). Set your own in `,

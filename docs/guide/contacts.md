@@ -66,26 +66,38 @@ companies stays compact; no room is kept for what a company doesn't have. A card
   one whose title your title filters turn down), the best three of them ("+ 20 more"), and small grey text for the jobs not
   scored yet and the total open. A company with no good fit says so in that one line and sorts below those that have
   one;
-- a slim row for each of the first three people you know there, the closest first (the ones you chose **Use** for,
-  then who messaged or endorsed you, the latest first, then A-Z), with their title, how close you are, **Use** /
-  **Don't use** and a note button. **Use** means "ask this person for a referral first": they lead the "You know"
-  lines everywhere. **Don't use** stops suggesting them (they wait under "Not suggested", to bring back). People in
-  `connections_skip` are listed there too, read-only;
+- a slim row for each of the first three people you know there, the closest first (the ones you chose **Ask first**
+  for, then who messaged or endorsed you, the latest first, then A-Z), with their title, how close you are, one **pill**
+  for your choice and a note button;
+- **The pill** is the whole choice, in three states. **Ask?** (grey outline) means nothing chosen: the people you have
+  messaged most come first. **★ Ask first** (purple) means "ask this person for a referral first": they lead the "You
+  know" lines everywhere and the referral drafts. **Skip** (muted, struck through) means never suggest them: they are
+  hidden from "You know" lines and drafts and move to **Not suggested**, where you can bring them back. A one-line
+  legend under the page's subtitle says so (dismiss it with **Got it**; it stays dismissed). A click on a pill opens
+  the person's dialog on the editor; with the pill focused, **U** sets Ask first, **S** Skip and **N** no preference
+  without opening anything. Setting Skip shows "Won't suggest Jane Doe. Undo" for 8 seconds, the same on a job card's
+  "Don't use" on Today and the Company tab. People in `connections_skip` are listed under Not suggested too,
+  read-only;
 - two buttons: "See the 23 good fits" and "+ 8 more people".
 
-**Click for the details.** Everything but Use / Don't use and the company's name and logo (which go to its Company tab) opens a large dialog (most of the window;
+**Click for the details.** Everything but the company's name and logo (which go to its Company tab) opens a large dialog (most of the window;
 Esc or a click outside closes it; the arrow keys step to the next company or person, "3 of 12"). The "12 people you
 know" pill opens the company's Overview: counts, what you're working there, its best fits, the people, and the company
 health you kept in Comps. The buttons open its Good fits, Applied and queued, Not scored, All and People tabs, each
 with a search. A job opens its details above the dialog, and Esc closes the details first, then the dialog. A person's
-name, avatar or note button opens their dialog: title, how close you are, your choice, a note to save ("doesn't check
-LinkedIn; reach on WhatsApp", shown on the card in one line and beside the person on job cards), their LinkedIn
-profile, the jobs there and a draft referral request (see "Who to contact" below).
+name, avatar, pill or note button opens their dialog. At the top is your choice as a large control of three: **Ask
+first**, **No preference** and **Don't use**, each with a line saying what it does; a choice saves at once ("Saved")
+and the pill behind updates, the arrow keys change it (they step between people only outside the control) and
+**Clear** returns to No preference. Below it: a note to save ("doesn't check LinkedIn; reach on WhatsApp", shown on the
+card in one line and beside the person on job cards), title, how close you are, their LinkedIn profile, the jobs there
+and a draft referral request (see "Who to contact" below).
 
 **Finding people.** The search box above the cards (press `/`) finds a person by name, company or title, in any
 word order, ignoring accents; the company's card stays with just the people who matched, and Esc clears it. The sort is
 Best fit first, Most good fits, Most people you know, Last messaged or A-Z; **Ask first** shows only the people you
-chose **Use** for and **Working a job** only companies where you queued or applied. **Hide companies with no
+set to Ask first and **Working a job** only companies where you queued or applied. A **Not suggested (3)** chip
+appears when someone is set to Skip: it opens that section at the foot of the page and goes to it. A search finds
+skipped people too: the section opens by itself with them, each with the Skip pill. **Hide companies with no
 openings** (the eye-off chip, remembered in your browser, off at first) hides the companies none of whose postings is
 open any more; one you have an application in flight at (queued, applied, screening, interviewing) is never hidden,
 even when its posting closed. Nothing disappears silently: the count reads "3 of 6 companies · 7 people (3 hidden: no

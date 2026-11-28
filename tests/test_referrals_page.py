@@ -502,9 +502,9 @@ def test_use_stays_on_the_persons_row_and_the_note_is_in_their_dialog(referrals_
     page = referrals_page
     bo = row(page, "Bo Chen")
     assert page.locator(".ref-note").count() == 0  # there is no note box on a card: the note is written in the person's dialog
-    bo.get_by_role("button", name="Use", exact=True).click()
-    sync_api.expect(row(page, "Bo Chen").locator(".chip.hit")).to_have_text("ask first")
-    sync_api.expect(page.locator(".ref-dialog")).to_have_count(0)  # Use works in place, no dialog
+    bo.get_by_role("button", name="Bo Chen: no preference. Change").press("u")  # the key sets it in place, no dialog
+    sync_api.expect(row(page, "Bo Chen").locator(".ref-pill")).to_have_text("★ Ask first")
+    sync_api.expect(page.locator(".ref-dialog")).to_have_count(0)
     assert company_names(page)[0].startswith("Initech")
     # a person you asked first comes first in their company
     assert card(page, "Initech").locator(".ref-p .pp-name").first.inner_text().startswith("Bo Chen")
@@ -519,8 +519,8 @@ def test_use_stays_on_the_persons_row_and_the_note_is_in_their_dialog(referrals_
     sync_api.expect(row(page, "Bo Chen").locator(".pp-notetxt")).to_have_text("reach on WhatsApp")  # one cut line on the card
     page.reload()
     sync_api.expect(row(page, "Bo Chen").locator(".pp-notetxt")).to_have_text("reach on WhatsApp")
-    row(page, "Bo Chen").get_by_role("button", name="Clear the choice for Bo Chen").click()
-    sync_api.expect(row(page, "Bo Chen").locator(".chip.hit")).to_have_count(0)
+    row(page, "Bo Chen").get_by_role("button", name="Bo Chen: ask first. Change").press("n")
+    sync_api.expect(row(page, "Bo Chen").locator(".ref-pill")).to_have_text("Ask?")
     assert page.errors == []
 
 
@@ -539,7 +539,7 @@ def test_a_name_an_avatar_or_the_note_button_opens_the_person_in_a_big_dialog_wi
     assert box["width"] >= view["width"] * 0.8 and box["height"] >= view["height"] * 0.8
     sync_api.expect(dialog.locator(".rk-count")).to_have_text("1 of 5")
     sync_api.expect(dialog).to_contain_text("Staff Engineer")  # their title, and the jobs there
-    sync_api.expect(dialog.get_by_role("button", name="Use", exact=True)).to_be_visible()
+    sync_api.expect(dialog.get_by_role("radio", name=re.compile("Ask first"))).to_be_visible()  # the editor, at the top
     sync_api.expect(dialog.get_by_role("link", name=re.compile("LinkedIn"))).to_have_attribute("target", "_blank")
     sync_api.expect(dialog.get_by_role("link", name=re.compile("LinkedIn"))).to_have_attribute("rel", "noopener noreferrer")
     sync_api.expect(dialog.locator(".ref-sec h3", has_text="Draft a referral request")).to_be_visible()
@@ -583,7 +583,7 @@ def test_the_careers_link_is_on_the_company_tab_and_not_on_the_referrals_cards(r
     sync_api.expect(page.locator(".card.ref a[target=_blank]")).to_have_count(0)  # a card's header is the logo, the name and the pill
     assert page.locator(".card.ref").first.get_by_text("Careers").count() == 0
     sync_api.expect(page.locator(".co-careers, .ref-careers")).to_have_count(0)
-    assert "careers" not in page.evaluate("fetch('/api/referrals').then(r => r.json()).then(d => Object.keys(d))")
+    assert "careers" not in page.evaluate("api('/api/referrals').then(d => Object.keys(d))")
     card(page, "Initech").locator("a.ref-name").click()
     chip = page.locator(".pagehead a.co-careers")
     sync_api.expect(chip).to_have_count(1)
@@ -834,8 +834,8 @@ def test_more_people_opens_the_dialog_on_everyone_you_know_there_with_the_same_c
     dialog.get_by_label("Search these people").fill("")
     # Use works in the dialog, and the list keeps up; the name opens their details, where the note is written
     ed = dialog.locator(".ref-p", has_text="Ed Fox")
-    ed.get_by_role("button", name="Use", exact=True).click()
-    sync_api.expect(dialog.locator(".ref-p", has_text="Ed Fox").locator(".chip.hit")).to_have_text("ask first")
+    ed.get_by_role("button", name="Ed Fox: no preference. Change").press("u")
+    sync_api.expect(dialog.locator(".ref-p", has_text="Ed Fox").locator(".ref-pill")).to_have_text("★ Ask first")
     dialog.locator(".ref-p", has_text="Ed Fox").get_by_role("button", name="Ed Fox: details and a note").click()
     person = page.locator(".ref-dialog >> nth=1")
     sync_api.expect(person.locator("h2")).to_have_text("Ed Fox")
@@ -967,13 +967,155 @@ def test_with_a_fit_minimum_set_there_is_no_hint_and_the_tooltips_name_it(referr
     assert "your Fit minimum" in card(referrals_page, "Initech").locator(".ref-n").get_attribute("title")
 
 
-def test_ask_first_is_explained_where_it_shows(referrals_page):
+def test_the_pills_tooltips_and_the_legend_say_what_each_choice_does(referrals_page):
     page = referrals_page
-    sync_api.expect(page.locator(".pagehead .sub")).to_contain_text("Use puts someone first")
-    row(page, "Bo Chen").get_by_role("button", name="Use", exact=True).click()
-    assert "come first" in row(page, "Bo Chen").locator(".chip.hit").get_attribute("title")
-    assert "referral" in row(page, "Bo Chen").get_by_role("button", name="Use", exact=True).get_attribute("title")
-    sync_api.expect(page.get_by_role("button", name="Ask first", exact=True)).to_have_attribute("title", re.compile("marked Use"))
+    legend = page.locator(".ref-legend")
+    sync_api.expect(page.locator(".pagehead .sub")).to_contain_text("pill beside their name")
+    sync_api.expect(legend).to_contain_text("listed first in \"You know\" lines and referral drafts")
+    sync_api.expect(legend).to_contain_text("never suggested: they move to Not suggested, undo anytime")
+    assert legend.bounding_box()["height"] < 80  # one line (the pills and the words), not a block
+    row(page, "Bo Chen").get_by_role("button", name="Bo Chen: no preference. Change").press("u")
+    tips = {"Bo Chen: ask first. Change": "listed first in \"You know\" lines and in referral drafts",
+            "Cy Diaz: no preference. Change": "the people you have messaged most are listed first"}
+    for name, words in tips.items():
+        pill = page.get_by_role("button", name=name)
+        assert words in pill.get_attribute("title")
+        assert "Click to change · U ask first · S skip · N none" in pill.get_attribute("title")
+    row(page, "Bo Chen").get_by_role("button", name="Bo Chen: ask first. Change").press("s")
+    page.get_by_role("button", name="Not suggested (1)").click()
+    skipped = page.get_by_role("button", name="Bo Chen: skipped. Change")
+    assert "Never suggest this person" in skipped.get_attribute("title") and "undo anytime" in skipped.get_attribute("title")
+    assert page.errors == []
+
+
+def test_the_legend_is_dismissed_for_good_with_got_it(referrals_page):
+    page = referrals_page
+    sync_api.expect(page.locator(".ref-legend")).to_be_visible()
+    page.get_by_role("button", name="Hide this explanation").click()
+    sync_api.expect(page.locator(".ref-legend")).to_have_count(0)
+    page.reload()
+    sync_api.expect(page.locator(".card.ref").first).to_be_visible()
+    sync_api.expect(page.locator(".ref-legend")).to_have_count(0)  # remembered in this browser
+    assert page.evaluate("localStorage.getItem('jobwatch.referrals.legend')") == "1"
+    page.evaluate("localStorage.removeItem('jobwatch.referrals.legend')")
+    page.reload()
+    sync_api.expect(page.locator(".ref-legend")).to_be_visible()
+    assert page.errors == []
+
+
+def test_each_state_is_one_pill_with_its_own_look_and_no_inline_buttons_are_left(referrals_page):
+    page = referrals_page
+    row(page, "Bo Chen").get_by_role("button", name="Bo Chen: no preference. Change").press("u")
+    states = {"Bo Chen": ("use", "★ Ask first", "ask first"), "Cy Diaz": ("none", "Ask?", "no preference")}
+    for name, (state, text, word) in states.items():
+        pill = row(page, name).locator(".ref-pill")
+        sync_api.expect(pill).to_have_count(1)
+        sync_api.expect(pill).to_have_text(text)
+        sync_api.expect(pill).to_have_class(re.compile(rf"\b{state}\b"))
+        sync_api.expect(pill).to_have_attribute("aria-label", f"{name}: {word}. Change")
+    look = page.evaluate("""(() => { const s = n => getComputedStyle(document.querySelector(n));
+        return [s('.ref-pill.use').backgroundImage.includes('gradient'), s('.ref-pill.skip, .ref-legend .ref-pill.skip').textDecorationLine, s('.ref-pill.none').backgroundImage] })()""")
+    assert look[0] and "line-through" in look[1] and look[2] == "none"
+    for old in ("Use", "Don't use"):
+        sync_api.expect(page.locator(".ref-p").get_by_role("button", name=old, exact=True)).to_have_count(0)
+    sync_api.expect(page.locator(".pp-clear")).to_have_count(0)
+    page.get_by_role("button", name="+ 2 more people").first.click()  # the same in the People tab
+    sync_api.expect(page.locator(".ref-dialog .ref-p .ref-pill")).to_have_count(5)
+    assert page.errors == []
+
+
+def test_a_click_on_the_pill_opens_the_editor_and_a_choice_saves_once_and_updates_the_pill(referrals_page):
+    page = referrals_page
+    saved = []
+    page.on("request", lambda r: saved.append(r.post_data) if r.url.endswith("/api/referrals/rate") else None)
+    row(page, "Bo Chen").get_by_role("button", name="Bo Chen: no preference. Change").click()
+    dialog = page.locator(".ref-dialog")
+    sync_api.expect(dialog).to_be_visible()
+    sync_api.expect(dialog.locator("h2")).to_have_text("Bo Chen")
+    group = dialog.get_by_role("radiogroup", name="Your choice for Bo Chen")
+    options = group.get_by_role("radio")
+    assert [o.inner_text().split("\n")[0] for o in options.all()] == ["Ask first", "No preference", "Don't use"]
+    sync_api.expect(options.nth(1)).to_have_attribute("aria-checked", "true")
+    for text in ("Listed first", "messaged most come first", "Never suggested"):  # a line under each option, in plain words
+        sync_api.expect(group).to_contain_text(text)
+    first_section = dialog.locator(".ref-sec").first
+    sync_api.expect(first_section.locator("h3")).to_have_text("Your choice")  # at the top, above About
+    options.nth(0).click()
+    sync_api.expect(page.locator("#toastText")).to_have_text("Saved")
+    sync_api.expect(options.nth(0)).to_have_attribute("aria-checked", "true")
+    sync_api.expect(row(page, "Bo Chen").locator(".ref-pill")).to_have_text("★ Ask first")  # the card behind updated
+    assert len(saved) == 1 and '"verdict":"use"' in saved[0]  # once, the stored value unchanged
+    group.get_by_role("radio", name=re.compile("Ask first")).press("ArrowRight")  # arrows change the choice and save
+    sync_api.expect(options.nth(1)).to_have_attribute("aria-checked", "true")
+    sync_api.expect(row(page, "Bo Chen").locator(".ref-pill")).to_have_text("Ask?")
+    sync_api.expect(dialog.locator(".rk-count")).to_have_text("2 of 5")  # and did not step to the next person
+    page.keyboard.press("Escape")
+    sync_api.expect(dialog).to_have_count(0)
+    assert page.errors == []
+
+
+def test_u_s_and_n_on_a_focused_pill_set_it_without_a_dialog_and_esc_closes_only_the_top_dialog(referrals_page):
+    page = referrals_page
+    pill = lambda: row(page, "Cy Diaz").locator(".ref-pill")  # noqa: E731
+    pill().focus()
+    page.keyboard.press("u")
+    sync_api.expect(pill()).to_have_text("★ Ask first")
+    assert page.evaluate("document.activeElement.dataset.who !== undefined")  # focus stays on the pill after the page redraws
+    page.keyboard.press("n")
+    sync_api.expect(pill()).to_have_text("Ask?")
+    page.keyboard.press("x")  # any other key does nothing
+    sync_api.expect(pill()).to_have_text("Ask?")
+    sync_api.expect(page.locator(".ref-dialog")).to_have_count(0)
+    card(page, "Initech").get_by_role("button", name="+ 2 more people").click()
+    page.locator(".ref-dialog .ref-p", has_text="Di Evans").get_by_role("button", name=re.compile("Di Evans: no preference")).click()  # Di is only in the list
+    sync_api.expect(page.locator(".ref-dialog")).to_have_count(2)
+    page.keyboard.press("Escape")
+    sync_api.expect(page.locator(".ref-dialog")).to_have_count(1)  # only the top one
+    page.keyboard.press("Escape")
+    sync_api.expect(page.locator(".ref-dialog")).to_have_count(0)
+    assert page.errors == []
+
+
+def test_a_skip_says_so_with_undo_for_eight_seconds_and_the_person_waits_under_not_suggested(referrals_page):
+    page = referrals_page
+    row(page, "Bo Chen").get_by_role("button", name="Bo Chen: no preference. Change").press("s")
+    sync_api.expect(page.locator("#toastText")).to_have_text("Won't suggest Bo Chen.")
+    sync_api.expect(page.locator("#toastUndo")).to_have_text("Undo")
+    sync_api.expect(row(page, "Bo Chen")).to_have_count(0)  # off the card
+    chip = page.get_by_role("button", name="Not suggested (1)")  # the way back, in the toolbar
+    sync_api.expect(chip).to_be_visible()
+    page.locator("#toastUndo").click()
+    sync_api.expect(row(page, "Bo Chen").locator(".ref-pill")).to_have_text("Ask?")  # as it was
+    sync_api.expect(page.get_by_role("button", name=re.compile("Not suggested"))).to_have_count(0)  # no chip at 0
+    row(page, "Bo Chen").get_by_role("button", name="Bo Chen: no preference. Change").press("s")
+    page.get_by_role("button", name="Not suggested (1)").click()
+    fold = page.locator("details.ref-fold")
+    sync_api.expect(fold).to_have_attribute("open", "")
+    skipped = fold.locator(".ref-p", has_text="Bo Chen")
+    sync_api.expect(skipped.locator(".ref-pill")).to_have_text("Skip")
+    skipped.locator(".ref-pill").click()  # the modal changes it back
+    page.locator(".ref-dialog").get_by_role("radio", name=re.compile("No preference")).click()
+    page.keyboard.press("Escape")
+    sync_api.expect(row(page, "Bo Chen").locator(".ref-pill")).to_have_text("Ask?")
+    assert page.errors == []
+
+
+def test_the_undo_toast_lasts_eight_seconds_and_a_search_finds_a_skipped_person(referrals_page):
+    page = referrals_page
+    page.clock.install()
+    row(page, "Cy Diaz").get_by_role("button", name="Cy Diaz: no preference. Change").press("s")
+    sync_api.expect(page.locator("#toastUndo")).to_be_visible()
+    page.clock.run_for(7000)
+    sync_api.expect(page.locator("#toastUndo")).to_be_visible()
+    page.clock.run_for(1500)
+    sync_api.expect(page.locator("#toast")).to_be_hidden()
+    page.get_by_label("Search people by name, company or title").fill("cy diaz")
+    sync_api.expect(page.locator("details.ref-fold")).to_have_attribute("open", "")  # opens by itself on a match
+    sync_api.expect(page.locator("details.ref-fold .ref-p", has_text="Cy Diaz").locator(".ref-pill")).to_have_text("Skip")
+    sync_api.expect(page.locator(".card.ref .ref-p", has_text="Cy Diaz")).to_have_count(0)
+    sync_api.expect(page.locator(".card.ref")).to_have_count(0)  # no card has anyone else matching
+    sync_api.expect(page.locator(".empty")).to_contain_text("the people it finds are under Not suggested below")
+    assert page.errors == []
 
 
 def test_one_person_at_one_company_reads_as_one_and_the_dialog_has_nowhere_to_step(page, watchlist):
@@ -1135,4 +1277,18 @@ def test_the_filter_works_with_the_paging(page, watchlist):
     page.get_by_role("button", name=re.compile("Show 6 more companies")).click()
     sync_api.expect(page.locator(".card.ref")).to_have_count(30)
     sync_api.expect(page.locator(".ref-morehost")).to_be_empty()
+    assert page.errors == []
+
+
+def test_dont_use_on_a_job_cards_you_know_line_also_says_so_with_undo(referrals_page):
+    page = referrals_page
+    page.goto(page.url.split("#")[0] + "#today")
+    person = page.locator(".card.job .person", has=page.locator("button.dont")).first
+    sync_api.expect(person).to_be_visible()
+    name = person.locator(".ptext").inner_text().split(" (")[0].split(" —")[0].strip()
+    person.locator("button.dont").click()
+    sync_api.expect(page.locator("#toastText")).to_have_text(f"Won't suggest {name}.")
+    sync_api.expect(page.locator("#toastUndo")).to_have_text("Undo")
+    page.locator("#toastUndo").click()
+    sync_api.expect(page.locator(".card.job .ptext", has_text=name).first).to_be_visible()  # back on the card
     assert page.errors == []

@@ -6,14 +6,25 @@
   With no LinkedIn data it says what Referrals is (who could refer you to a job you track), how to get people
   here (LinkedIn's "Get a copy of your data", then the upload in Settings > People & pay, with links), and that your
   file is read on your computer only; with connections but nobody at a tracked company it says that and where to add
-  companies. With no Fit minimum set it uses 60 and says so in a note with a link to where to set one. "Use" and
-  "ask first" now say what they mean in their tooltips and the page's subtitle.
+  companies. With no Fit minimum set it uses 60 and says so in a note with a link to where to set one.
+- A person's choice on Referrals is one pill in place of the Use / Don't use buttons and the clear x: "Ask?" (grey
+  outline, nothing chosen), "★ Ask first" (purple) and "Skip" (muted, struck through). A click opens the person's
+  dialog on a large three-way control, Ask first / No preference / Don't use, each with a line saying what it does to
+  the "You know" lines, the order and referral drafts; a choice saves at once ("Saved"), the arrow keys change it and
+  Clear returns to no preference. With a pill focused, U, S and N set Ask first, Skip or no preference without opening
+  anything. The tooltips and a one-line legend under the subtitle (dismiss it with Got it, remembered) explain it, and
+  the pills carry the person's name for screen readers ("Jane Doe: ask first. Change"). The stored values (use, skip)
+  are unchanged, so Today, Queue, Company and the "You know" lines work as before.
+- Setting someone to Skip no longer makes them vanish: a toast says "Won't suggest Jane Doe. Undo" for 8 seconds (on
+  Referrals, and on a job card's "Don't use" on Today and Company), a "Not suggested (N)" chip in the Referrals
+  toolbar (hidden at 0) opens and scrolls to that section, each person there has the Skip pill and opens the dialog
+  to change it, and a search finds skipped people too (the section opens by itself).
 - Referrals cards group the people. People who know the same company are no longer repeated: the card has the
   company's logo and name (they open its Company tab, as a name on Today does), "12 people you know", and
   its jobs once: "23 good fits" (a job you queued or applied to, or a fit at or above your Fit minimum, else the fit
   chip Today opens on, else 60; never an unscored job, nor one the title filters turn down), the best three of
   them, then "112 not scored yet" and "of 270 open" as small grey text. Below the jobs, a slim row for each of the
-  first three people (avatar, name, title, "messaged 4x, last Jun 2022", "ask first", Use / Don't use, a note button),
+  first three people (avatar, name, the choice pill, title, "messaged 4x, last Jun 2022", a note button),
   the closest first, then "+ 8 more people". A card is as tall as its content needs and the cards in a row match the
   tallest, so a row of small companies stays short: a company with no good fit is just its header strip and its people,
   with no empty block or sentence. Names and titles are cut with an ellipsis, the whole of them on hover.
@@ -27,10 +38,10 @@
   board you watch, else the company's own site its jobs link to, never LinkedIn's or another job site's, else the
   careers site your watchlist gives its board or the website its logo came from, else a web search labelled
   "Search careers" with only the company's name in it). /api/company sends it as careers.
-- Everything on a Referrals card but Use / Don't use and the company's name and logo (the Company tab) opens a large dialog: the "12 people you
+- Everything on a Referrals card but the company's name and logo (the Company tab) opens a large dialog: the "12 people you
   know" pill opens the company's Overview (counts, what you're working, best fits, people, the health kept in Comps),
   the buttons its Good fits, Applied and queued, Not scored, All and People tabs (each searchable), a person's name,
-  avatar or note button their details (title, how close you are, Use / Don't use, a note to save, LinkedIn, their jobs
+  avatar, pill or note button their details (your choice first, a note to save, title, how close you are, LinkedIn, their jobs
   and a draft referral request), a job its details. Esc, a click outside and Tab work in each, the arrow keys step to
   the next company or person ("3 of 12"). Dialogs now stack properly: the newest is in front and alone takes Esc and
   focus, so a job opened from a list shows its details above it (they used to open behind), and Esc peels them off one
