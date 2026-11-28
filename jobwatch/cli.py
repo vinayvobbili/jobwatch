@@ -1794,6 +1794,10 @@ def cmd_health(args, cfg, store):
 def cmd_comps(args, cfg, store):
     stages = tuple(s for s in STAGES if s in comps.LIVE + (("applied",) if args.applied else ()))
     v = comps.view(cfg, store, stages, args.keys, args.company)
+    if args.missing:
+        print(json.dumps(comps.missing(v), indent=2, ensure_ascii=False) if args.format == "json"
+              else comps.missing_text(v))
+        return
     print(json.dumps(v, indent=2, ensure_ascii=False) if args.format == "json" else comps.text(v))
 
 
@@ -2644,6 +2648,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--company", action="append", metavar="NAME", help="add a company's health to the comparison, "
                    "even one with no job here (see `health`); repeatable")
     p.add_argument("--applied", action="store_true", help="include applications still at applied")
+    p.add_argument("--missing", action="store_true", help="instead of the comparison, list per job each part of its "
+                   "score with no real value (scored by the default 50) and what to run to find the real one")
     p.add_argument("--format", choices=["text", "json"], default="text")
     p.set_defaults(func=cmd_comps)
 

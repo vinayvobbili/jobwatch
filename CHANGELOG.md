@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- The Comps tab reads at a glance. The suggestion is a strip of four gradient tiles (jobs compared, best score,
+  highest pay told, closest to your target) over one card per job: a gold, silver or bronze rank medal, the company's
+  logo, a score ring coloured by value, the stage as a badge, five slim bars (Career, Pay, Fit, Progress, Health), a
+  pay gauge (Offered, Told, Posted or Est., against your target as a shaded band; a contract rate in amber) and one
+  short headline, with the rules under "How ranks are worked out". "Why this rank" opens a large dialog (Esc, the
+  backdrop or Close shut it; the arrow keys step through the ranked jobs, "2 of 5"): the score ring, each part's bar
+  with its input, share and points, the missing-part fixes, the enlarged pay gauge and the company health the rank
+  used, so the cards stay compact and line up. The compare columns carry the same medal, ring and stage badge. A part
+  with no real value still takes the default 50, but never quietly: its bar is hatched amber, the ring has an
+  asterisk, the card says how many are assumed, and a button per missing part (Add health, Add kind and role, Add
+  pay, Read posting to score fit) opens the editor that supplies the real value, which removes the default.
+  `jobwatch comps` says "not found, default 50 assumed" for each, and `jobwatch comps --missing` lists, per job, what
+  to run to find each real value. The suggestion's API rows gain `status`, `url`, `pay` (the figure on the gauge),
+  `assumed` and `fill`, and the suggestion `target_low` and `target_high`. The dialog's left column ends with the
+  missing-part fixes, or, when nothing is missing, with "What would move this score" (the next stage, pay at your
+  target, a weak part at 70, as points from the same weights). The compare table's head row (medal, logo, company,
+  score ring, title, stage) stays under the nav while you scroll down a long comparison, with the row labels staying
+  at the left; the buttons sit in the row below it and scroll away. The row labels each have a tinted icon chip,
+  coloured by group (money green, process purple, fit amber, people blue, the company teal). A company's Sources are
+  one link per line wherever they show (the table, the dialog), labelled by site, opening in a new tab; only http and
+  https addresses become links. Every dialog's Close chip is lighter, with an accent edge and X and a glow on hover
+  and focus, in both themes (a test checks its contrast).
+
 - The pay chips no longer say "pay unknown" when a source has a figure. The job's Details dialog now gets the
   posting's top pay, and the Posted chip carries it, so a posting that states its range only in its text (a Workday
   "Pay Range" block) is a pay clue wherever the chips show; a recruiter's figures count too. The Ask chip shows what

@@ -61,6 +61,10 @@ select = ["E", "W", "F", "I", "B", "UP", "RUF"]
 # Curly quotes and en dashes are deliberate: report typography.
 ignore = ["RUF001", "RUF002", "RUF003"]
 
+[tool.ruff.lint.per-file-ignores]
+# the page's own JavaScript, run in node, keeps its lines as long as the page's
+"tests/test_comps_page.py" = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["network: reaches the real internet; skipped unless its environment variable is set",

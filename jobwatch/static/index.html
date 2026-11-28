@@ -22,6 +22,9 @@
   --s-applied: #3b82f6; --s-screening: #8b5cf6; --s-interviewing: #f59e0b; --s-offer: #10b981;
   --s-rejected: #94a3b8; --s-withdrawn: #a8a29e; --s-closed: #64748b;
   --s-queued: #06b6d4; --s-skipped: #a8a29e; --s-snoozed: #8b5cf6; --s-new: #5a5cf2; --s-shown: #5a5cf2;
+  /* a dialog's Close chip: a solid tint (light) or a white wash (dark), its edge and X in the accent; tests/test_close_chip.py
+     checks the contrast against the dialog (text 4.5:1, edge and X 3:1) */
+  --close-bg: #eceeff; --close-fg: #141a2e; --close-edge: #5457f0; --close-x: #5457f0;
   color-scheme: light;
 }
 /* dark: set by the Theme setting, or by the computer's when that is System (applyDisplay) */
@@ -32,6 +35,7 @@
     --good: #3ddc97; --warn: #fbbf24; --bad: #ff7a93; --chip: #1e2333; --chip-text: #c3c9e0;
     --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 12px 32px -20px rgba(0, 0, 0, .9);
     --shadow-hover: 0 1px 0 rgba(255, 255, 255, .05) inset, 0 22px 48px -20px rgba(110, 100, 255, .5);
+    --close-bg: rgba(255, 255, 255, .10); --close-fg: #f4f6ff; --close-edge: #7f81f5; --close-x: #a9abff;
     color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -186,17 +190,19 @@ button.ghost:hover { color: var(--text); background: var(--chip); border-color: 
 button.btn:disabled { opacity: .55; cursor: default; }
 /* A dialog's Close (closeButton): a quiet secondary button, a translucent chip with a hairline border, an X and the word
    (a round X alone in the small dialogs). Hover lifts it and lights it in the accent; Esc closes the dialog too. */
-button.btn.btn-close { color: var(--chip-text); padding: 6px 13px 6px 10px; font-weight: 600; border-radius: 999px;
-  background: color-mix(in srgb, var(--chip) 72%, transparent); border-color: color-mix(in srgb, var(--accent) 16%, var(--line));
-  backdrop-filter: blur(6px); transition: transform .15s, box-shadow .15s, border-color .15s, background .15s, color .15s; }
-button.btn.btn-close .ico { transition: transform .2s; }
-button.btn.btn-close:hover { color: var(--accent); transform: translateY(-1px);
-  background: color-mix(in srgb, var(--accent) 12%, var(--panel-solid)); border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
-  box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--accent) 85%, transparent); }
+button.btn.btn-close { min-height: 36px; font-size: 14px; gap: 7px; color: var(--close-fg); padding: 6px 15px 6px 11px; font-weight: 650;
+  border-radius: 999px; background: var(--close-bg); border: 1px solid var(--close-edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 1px 2px rgba(20, 26, 46, .12);
+  transition: transform .15s, box-shadow .15s, border-color .15s, background .15s, color .15s; }
+button.btn.btn-close .ico { width: 15px; height: 15px; stroke-width: 2.4; color: var(--close-x); transition: transform .2s; }
+button.btn.btn-close:hover { color: var(--close-fg); transform: translateY(-1px); border-color: var(--close-x);
+  background: color-mix(in srgb, var(--close-x) 22%, var(--close-bg));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--close-x) 32%, transparent), 0 8px 18px -10px color-mix(in srgb, var(--close-x) 85%, transparent); }
 button.btn.btn-close:hover .ico { transform: rotate(90deg); }
-button.btn.btn-close:active { transform: translateY(0); box-shadow: none; }
-button.btn.btn-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button.btn.btn-close.icon-only { width: 34px; height: 34px; padding: 0; justify-content: center; }
+button.btn.btn-close:active { transform: translateY(0); box-shadow: 0 0 0 2px color-mix(in srgb, var(--close-x) 32%, transparent); }
+button.btn.btn-close:focus-visible { outline: 2px solid var(--close-x); outline-offset: 2px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--close-x) 30%, transparent); }
+button.btn.btn-close.icon-only { width: 36px; height: 36px; padding: 0; justify-content: center; }
 @media (prefers-reduced-motion: reduce) { button.btn.btn-close, button.btn.btn-close .ico { transition: none; }
   button.btn.btn-close:hover .ico { transform: none; } }
 /* The action buttons (actButton), one icon and one color each, the same on every view and card state: Queue purple
@@ -509,14 +515,33 @@ button.btn.btn-close.icon-only { width: 34px; height: 34px; padding: 0; justify-
 table.comps { border-collapse: separate; border-spacing: 0; font-size: 14px; min-width: 100%; }
 table.comps th, table.comps td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left;
   min-width: 190px; max-width: 280px; }
-table.comps th.lbl { position: sticky; left: 0; z-index: 1; min-width: 110px; max-width: 130px; background: var(--panel-solid);
+table.comps th.lbl { position: sticky; left: 0; z-index: 1; min-width: 150px; max-width: 175px; background: var(--panel-solid);
   font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; }
 table.comps thead th { border-top: 3px solid var(--sc); padding-top: 12px; }
+/* the head row sticks under the nav (--head is its height), opaque with a tint of the stage's colour, over the rows and under
+   the nav (z 5) and dialogs; the label column sticks to the left as well. A table wider than its box scrolls inside it
+   (.hscroll), where the head sticks to that box's top; the row of buttons below the head is not sticky. */
+.comp-table:not(.hscroll) { overflow: visible; }
+table.comps thead tr.hd th { position: sticky; top: var(--head, 64px); z-index: 3; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(color-mix(in srgb, var(--sc) 10%, transparent), transparent 80%), var(--panel-solid); }
+table.comps thead tr.hd th.lbl { z-index: 4; border-top-color: transparent; background: var(--panel-solid); }
+table.comps thead tr.acts th { border-top: 0; padding-top: 0; padding-bottom: 10px; background: var(--panel-solid); }
+table.comps thead tr.acts th:not(.lbl) { background: linear-gradient(transparent, color-mix(in srgb, var(--sc) 5%, transparent)), var(--panel-solid); }
+.comp-table.hscroll { overflow: auto; max-height: calc(100vh - var(--head, 64px) - 20px); }
+.comp-table.hscroll table.comps thead tr.hd th { top: 0; }
+.comp-table.stuck table.comps thead tr.hd th { box-shadow: 0 10px 14px -10px rgba(20, 26, 46, .45); transition: box-shadow .2s; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .comp-table.stuck table.comps thead tr.hd th { box-shadow: 0 10px 14px -10px rgba(0, 0, 0, .8); } }
+:root[data-theme="dark"] .comp-table.stuck table.comps thead tr.hd th { box-shadow: 0 10px 14px -10px rgba(0, 0, 0, .8); }
+@media (prefers-reduced-motion: reduce) { .comp-table.stuck table.comps thead tr.hd th { transition: none; } }
+table.comps thead .co-sub { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-width: 0; }
+table.comps thead .co-sub .co-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.comps thead .co-sub .stagebadge { flex: none; }
 table.comps thead .co-cell { display: flex; align-items: center; gap: 10px; }
 table.comps thead .co-cell .mono { width: 30px; height: 30px; border-radius: 9px; font-size: 12px; }
 table.comps thead a { color: var(--text); font-weight: 600; text-decoration: none; }
 table.comps tbody tr:last-child th, table.comps tbody tr:last-child td { border-bottom: 0; }
-.comps .best { color: var(--good); font-weight: 700; }
+.comps .best { color: var(--good); font-weight: 700; border-radius: 999px; padding: 1px 9px;
+  background: color-mix(in srgb, var(--good) 13%, transparent); }
 .comps .best::after { content: " \2605"; font-size: 12px; }
 .comps .none { color: var(--muted); }
 .comps .stagechip { display: inline-block; margin-top: 6px; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 650;
@@ -524,10 +549,192 @@ table.comps tbody tr:last-child th, table.comps tbody tr:last-child td { border-
   color: color-mix(in srgb, var(--sc) 75%, var(--text)); }
 .comps .gapline { font-size: 13px; color: var(--muted); }
 .comps .stale, .comp-cards .stale { color: var(--warn); font-weight: 650; }
-ol.suggest { margin: 8px 0 0; padding-left: 22px; display: flex; flex-direction: column; gap: 10px; }
+/* comps suggestion: stat tiles, then ranked cards (medal, company, score ring, part bars, pay gauge); the columns share it */
+.cmp-suggest { margin: 0 0 18px; }
+.cmp-title { display: flex; align-items: baseline; gap: 10px; margin: 0 0 10px; }
+.cmp-title h3 { font-size: 20px; letter-spacing: -.01em; }
+.cmp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 12px; margin: 0 0 14px; }
+.cmp-stat { --tc: var(--accent); --tc2: var(--accent-2); min-width: 0; border-radius: var(--radius); padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--tc) 30%, var(--line)); box-shadow: var(--shadow);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--tc) 17%, var(--panel)), color-mix(in srgb, var(--tc2) 6%, var(--panel)) 80%);
+  animation: rise .5s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(var(--i, 0) * 55ms); transition: transform .2s ease, box-shadow .2s ease; }
+.cmp-stat:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
+.cmp-stat .num { font-size: 32px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums;
+  background: linear-gradient(120deg, var(--tc), var(--tc2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.cmp-stat .num small { font-size: 14px; font-weight: 700; letter-spacing: 0; }
+.cmp-stat .lbl { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em;
+  font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+.cmp-stat .sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-stat.t-best { --tc: #10b981; --tc2: #22d3ee; } .cmp-stat.t-pay { --tc: #f59e0b; --tc2: #ef4444; }
+.cmp-stat.t-near { --tc: #06b6d4; --tc2: #6366f1; }
+details.cmp-how { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+details.cmp-how > summary { cursor: pointer; font-weight: 650; color: var(--accent); list-style: none; width: fit-content; border-radius: 6px; }
+details.cmp-how > summary::-webkit-details-marker { display: none; }
+details.cmp-how > summary::before { content: "\25B8"; display: inline-block; margin-right: 6px; transition: transform .15s; }
+details[open].cmp-how > summary::before { transform: rotate(90deg); }
+details.cmp-how > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.why-btn { font: inherit; font-size: 13px; font-weight: 650; color: var(--accent); background: none; border: 0; padding: 4px 8px; margin: 8px -8px 0;
+  border-radius: 8px; cursor: pointer; width: fit-content; transition: background .15s; }
+.why-btn::after { content: " \2192"; display: inline-block; transition: transform .15s; }
+.why-btn:hover { background: var(--accent-soft); } .why-btn:hover::after { transform: translateX(3px); }
+.why-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cmp-card { display: flex; flex-direction: column; } .cmp-card .why-btn { margin-top: auto; align-self: flex-start; }
+.cmp-card .pgauge { margin-bottom: 8px; }
+.cmp-weights { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.wchip { border-radius: 999px; padding: 2px 11px; font-size: 12.5px; background: var(--accent-soft); color: var(--chip-text); }
+.wchip b { margin-left: 5px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.cmp-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); }
+.cmp-card { --sc: var(--line); --glow: transparent; position: relative; min-width: 0; padding: 14px 16px 12px; border-radius: var(--radius);
+  border: 1px solid var(--line); border-top: 3px solid var(--sc); box-shadow: var(--shadow);
+  background: radial-gradient(260px 130px at 0 0, var(--glow), transparent 70%), var(--panel);
+  animation: rise .5s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(var(--i, 0) * 60ms);
+  transition: transform .2s ease, box-shadow .2s ease; }
+.cmp-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
+.cmp-card.m-gold { --glow: rgba(245, 185, 66, .22); } .cmp-card.m-silver { --glow: rgba(148, 163, 184, .2); }
+.cmp-card.m-bronze { --glow: rgba(205, 127, 70, .2); }
+.cmp-top { display: flex; align-items: center; gap: 10px; }
+.cmp-top .mono { width: 38px; height: 38px; border-radius: 11px; font-size: 14px; }
+.cmp-who { flex: 1; min-width: 0; line-height: 1.3; }
+.cmp-who b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-who a, .cmp-who .ttl { color: var(--muted); font-size: 13px; text-decoration: none; display: block; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.cmp-who a:hover { color: var(--accent); text-decoration: underline; }
+.medal { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 14px;
+  color: #3b2a00; background: linear-gradient(145deg, #ffe08a, #f0a500);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 4px 10px -4px #f0a500; }
+.medal.silver { color: #1e293b; background: linear-gradient(145deg, #f1f5f9, #94a3b8); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 4px 10px -4px #94a3b8; }
+.medal.bronze { color: #3a1d08; background: linear-gradient(145deg, #f3c9a0, #b8693a); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 4px 10px -4px #b8693a; }
+.medal.plain { color: var(--chip-text); background: var(--chip); box-shadow: none; font-weight: 700; }
+.tone-hi { --c1: var(--good); --c2: color-mix(in srgb, var(--good) 50%, #22d3ee); }
+.tone-mid { --c1: var(--warn); --c2: color-mix(in srgb, var(--warn) 55%, #fde047); }
+.tone-lo { --c1: var(--bad); --c2: color-mix(in srgb, var(--bad) 55%, #fb923c); }
+@property --pp { syntax: "<number>"; inherits: false; initial-value: 0; }
+@keyframes ringfill { from { --pp: 0; } }
+.cmp-ring { --pp: var(--p); position: relative; flex: none; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--c1), var(--c2) calc(var(--pp) * 1%), color-mix(in srgb, var(--line) 85%, transparent) 0);
+  box-shadow: 0 6px 16px -8px var(--c1); animation: ringfill .9s cubic-bezier(.2, .7, .2, 1) both; }
+.cmp-ring::before { content: ""; position: absolute; inset: 6px; border-radius: 50%; background: var(--panel-solid); }
+.cmp-ring b { position: relative; font-size: 18px; font-weight: 800; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.cmp-ring sup { font-size: 12px; color: var(--warn); }
+.cmp-ring.assumed::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px dashed var(--warn); opacity: .75; }
+.cmp-ring.mini { width: 36px; height: 36px; } .cmp-ring.mini::before { inset: 4px; } .cmp-ring.mini b { font-size: 12.5px; }
+.cmp-ring.mini.assumed::after { inset: -3px; border-width: 1.5px; }
+.cmp-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 9px 0 0; }
+.stagebadge { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 650; text-transform: capitalize;
+  color: color-mix(in srgb, var(--sc) 75%, var(--text)); background: color-mix(in srgb, var(--sc) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sc) 35%, transparent); }
+.asm-badge { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 650; color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 13%, transparent); border: 1px dashed color-mix(in srgb, var(--warn) 55%, transparent); }
+.asm-badge.heavy { background: color-mix(in srgb, var(--warn) 24%, transparent); }
+.cmp-head { margin: 8px 0 0; font-size: 13.5px; line-height: 1.4; }
+.pbars { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+.pbar { display: grid; grid-template-columns: 58px 1fr 30px; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.pbar .pt { height: 7px; border-radius: 99px; overflow: hidden; background: color-mix(in srgb, var(--line) 85%, transparent); }
+.pbar .pt i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--c1), var(--c2)); transform-origin: left;
+  animation: grow .7s cubic-bezier(.2, .7, .2, 1) both; }
+.pbar .pv { text-align: right; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.pbar.assumed, .pbar.assumed .pv { color: var(--warn); }
+.pbar.assumed .pt { background: none; border: 1px dashed color-mix(in srgb, var(--warn) 65%, transparent); }
+.pbar.assumed .pt i { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 65%, transparent) 0 4px, transparent 4px 8px); }
+.nudges { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 9px; font-size: 12px; color: var(--warn); }
+.nudge { font: inherit; font-size: 12px; font-weight: 650; color: var(--warn); cursor: pointer; border-radius: 999px; padding: 2px 10px;
+  background: color-mix(in srgb, var(--warn) 12%, transparent); border: 1px dashed color-mix(in srgb, var(--warn) 55%, transparent);
+  transition: background .15s, transform .12s; }
+.nudge:hover { background: color-mix(in srgb, var(--warn) 24%, transparent); transform: translateY(-1px); }
+.nudge:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pgauge { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; margin-top: 8px; }
+.pgauge .pk { border-radius: 999px; padding: 2px 9px; font-size: 11.5px; font-weight: 700; white-space: nowrap; color: var(--accent);
+  background: var(--accent-soft); }
+.pgauge .pk.w2 { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.pgauge.none { display: flex; font-size: 12.5px; color: var(--muted); }
+.pg-wrap { padding: 22px 24px 0; }
+.pg-track { position: relative; height: 8px; border-radius: 99px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--bad) 24%, var(--line)), color-mix(in srgb, var(--warn) 24%, var(--line)),
+    color-mix(in srgb, var(--good) 30%, var(--line))); }
+.pg-band { position: absolute; top: -3px; bottom: -3px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 26%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 65%, transparent); }
+.pg-mark { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--grad);
+  border: 2px solid var(--panel-solid); box-shadow: 0 2px 8px -2px var(--accent); }
+.pg-mark.w2 { background: linear-gradient(135deg, #f59e0b, #f97316); }
+.pg-mark.est { background: var(--panel-solid); border: 2px dashed var(--accent); }
+.pg-mark em { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 4px; font-style: normal; font-weight: 700; font-size: 12px;
+  line-height: 1; white-space: nowrap; color: var(--text); }
+.pg-mark.w2 em { color: var(--warn); }
+.pg-ends { display: flex; justify-content: space-between; gap: 6px; margin-top: 5px; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pg-ends .tg { color: var(--accent); white-space: nowrap; }
+@media (max-width: 480px) { .pgauge { grid-template-columns: 1fr; gap: 4px; } .pgauge .pk { justify-self: start; } }
+/* "Why this rank": a large dialog (about 90% of the screen, scrolling inside), two columns on a wide one */
+.rank-shade { align-items: center; padding: 4vh 3vw; }
+.dialog.rank-dialog { width: 90vw; max-width: 1240px; height: 88vh; max-height: 88vh; padding: 0; overflow-y: auto; }
+:root[data-width="wide"] .dialog.rank-dialog { max-width: 1900px; } :root[data-width="full"] .dialog.rank-dialog { max-width: none; }
+.rk-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 14px 22px;
+  background: color-mix(in srgb, var(--panel-solid) 90%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.rk-head .mono { width: 40px; height: 40px; border-radius: 12px; }
+.rk-title { flex: 1; min-width: 0; } .rk-title h2 { margin: 0; font-size: 20px; }
+.rk-title a { color: var(--muted); text-decoration: none; } .rk-title a:hover { color: var(--accent); text-decoration: underline; }
+.rk-step { display: flex; align-items: center; gap: 2px; }
+.rk-count { min-width: 56px; text-align: center; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--muted); }
+.rk-arrow { font-size: 20px; line-height: 1; padding: 2px 10px; }
+.rk-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 22px 32px; padding: 22px 24px 30px; align-items: start; }
+.rk-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.rk-lead { display: flex; align-items: center; gap: 20px; }
+.rk-lead h3 { font-size: 22px; line-height: 1.25; margin: 0 0 4px; } .rk-lead p { margin: 0; }
+.cmp-ring.big { width: 104px; height: 104px; } .cmp-ring.big::before { inset: 10px; } .cmp-ring.big b { font-size: 32px; }
+.cmp-ring.big.assumed::after { inset: -7px; }
+.rk-h { margin: 0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em;
+  font-size: 11.5px; color: var(--muted); }
+.rk-callout { border-radius: 14px; padding: 12px 16px; color: var(--warn); border: 1px dashed color-mix(in srgb, var(--warn) 55%, transparent);
+  background: color-mix(in srgb, var(--warn) 9%, transparent); }
+.rk-callout p { margin: 4px 0 8px; font-size: 13.5px; }
+.rk-callout .nudges { margin: 0; }
+.pwhy { padding: 10px 0 8px; border-top: 1px dashed var(--line); }
+.pwhy .pbar { grid-template-columns: 84px 1fr 38px; font-size: 14px; } .pwhy .pbar .pt { height: 10px; }
+.pwhy .pw-txt { margin: 4px 0 0 92px; font-size: 13px; color: var(--muted); } .pwhy .pw-txt.assumed { color: var(--warn); }
+.rk-card { border: 1px solid var(--line); border-radius: 16px; padding: 14px 18px 16px; box-shadow: var(--shadow);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 7%, var(--panel)), var(--panel) 70%); }
+.rk-card .rk-h { margin-bottom: 8px; }
+.rk-facts { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 14px; margin: 0; font-size: 14px; }
+.rk-facts dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; padding-top: 3px; }
+.rk-facts dd { margin: 0; overflow-wrap: anywhere; }
+.src-list { display: flex; flex-direction: column; gap: 3px; }
+.src-list a { color: var(--accent); text-decoration: none; width: fit-content; max-width: 100%; overflow-wrap: anywhere; }
+.src-list a::after { content: " \2197"; font-size: 12px; }
+.src-list a:hover { text-decoration: underline; }
+.rk-moves { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.rk-moves b { display: inline-block; min-width: 38px; margin-right: 6px; padding: 0 8px; border-radius: 999px; text-align: center; color: var(--good);
+  background: color-mix(in srgb, var(--good) 14%, transparent); font-variant-numeric: tabular-nums; }
+.pgauge.big { grid-template-columns: 1fr; gap: 8px; } .pgauge.big .pk { justify-self: start; font-size: 13.5px; padding: 3px 12px; }
+.pgauge.big .pg-wrap { padding: 28px 30px 0; } .pgauge.big .pg-track { height: 12px; }
+.pgauge.big .pg-band { top: -4px; bottom: -4px; } .pgauge.big .pg-mark { width: 22px; height: 22px; margin: -11px 0 0 -11px; }
+.pgauge.big .pg-mark em { font-size: 16px; margin-bottom: 7px; } .pgauge.big .pg-ends { font-size: 13px; margin-top: 8px; }
+@media (max-width: 900px) { .rk-body { grid-template-columns: 1fr; } .dialog.rank-dialog { width: 96vw; height: 94vh; max-height: 94vh; }
+  .rank-shade { padding: 2vh 2vw; } .rk-head { flex-wrap: wrap; } .rk-lead { flex-direction: column; align-items: flex-start; } }
+.comps thead th { background: linear-gradient(180deg, color-mix(in srgb, var(--sc) 14%, var(--panel-solid)), var(--panel-solid) 75%); }
+.comps thead .co-cell .medal { width: 24px; height: 24px; font-size: 12px; }
+.comps thead .co-cell b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.comps thead .co-cell .cmp-ring { margin-left: auto; }
+.comp-cards .co-cell { display: flex; align-items: center; gap: 10px; }
+.comp-cards .co-cell .cmp-ring { margin-left: auto; }
+.comp-cards .co-cell .medal { width: 24px; height: 24px; font-size: 12px; }
+@media (max-width: 760px) { .cmp-stat .num { font-size: 26px; } .pbar { grid-template-columns: 54px 1fr 28px; } }
 .comp-cards { display: none; flex-direction: column; gap: 14px; }
 .comp-cards .panel { border-left: 4px solid var(--sc); }
-.comp-cards dl { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; margin: 10px 0 0; font-size: 14px; }
+/* a row's label: a tinted icon chip and the words, coloured by group (money green, process purple, fit amber, people blue,
+   the company teal); a thin rule of the group's colour starts each block and a row lights up under the pointer */
+.rowlab { --gc: var(--accent); }
+.g-money { --gc: var(--good); } .g-process { --gc: var(--s-screening); } .g-fit { --gc: var(--warn); }
+.g-people { --gc: var(--s-applied); } .g-company { --gc: var(--s-queued); }
+.rowlab { display: inline-flex; align-items: center; gap: 8px; }
+.rl-chip { flex: none; width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; color: var(--gc);
+  background: color-mix(in srgb, var(--gc) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gc) 30%, transparent);
+  transition: transform .15s; }
+table.comps tbody tr:hover .rl-chip { transform: scale(1.1); }
+table.comps tbody tr.g-first:not(:first-child) th, table.comps tbody tr.g-first:not(:first-child) td {
+  border-top: 2px solid color-mix(in srgb, var(--gc) 45%, var(--line)); }
+table.comps tbody tr:hover td { background: color-mix(in srgb, var(--gc) 6%, transparent); }
+table.comps tbody tr:hover th.lbl { background: color-mix(in srgb, var(--gc) 9%, var(--panel-solid)); }
+.comp-cards dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 6px 12px; margin: 10px 0 0; font-size: 14px; }
 .comp-cards dt { font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; padding-top: 2px; }
 .comp-cards dd { margin: 0; overflow-wrap: anywhere; }
 .comp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; margin-top: 10px; }
@@ -1681,6 +1888,7 @@ const ICONS = {
   send: "M12 19V5M5 12l7-7 7 7",
   stop: "M7 7h10v10H7z",
   x: "M18 6 6 18M6 6l12 12",
+  search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35",
   clip: "M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48",
   file: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
   copy: "M9 9h11v11H9zM5 15H4V4h11v1",
@@ -1695,6 +1903,24 @@ const ICONS = {
   mic: "M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8",
   volume: "M11 5 6 9H2v6h4l5 4zM19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07",
   mute: "M11 5 6 9H2v6h4l5 4zM23 9l-6 6M17 9l6 6",
+  // the Comps table's row labels
+  pin: "M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zM12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  datecheck: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 16l2 2 4-4",
+  flag: "M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7",
+  banknote: "M2 6h20v12H2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 12h.01M18 12h.01",
+  gift: "M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z",
+  pie: "M21.21 15.89A10 10 0 1 1 8 2.83M22 12A10 10 0 0 0 12 2v10z",
+  badge: "M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3",
+  chat: "M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z",
+  award: "M12 15a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM8.21 13.89 7 23l5-3 5 3-1.21-9.12",
+  star: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z",
+  note: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8",
+  briefcase: "M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16",
+  building: "M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9v.01M9 12v.01M9 15v.01M9 18v.01",
+  layers: "M12 2 2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5",
+  trendup: "M23 6l-9.5 9.5-5-5L1 18M17 6h6v6",
+  trenddown: "M23 18l-9.5-9.5-5 5L1 6M17 18h6v-6",
+  link: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
 };
 function icon(name, size = 15) {
   const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
@@ -1707,7 +1933,7 @@ function icon(name, size = 15) {
 // the dialog as well (the keydown handler near closeDetails), which the tooltip says.
 function closeButton(onclick, iconOnly = false) {
   return h("button", { class: "btn btn-close" + (iconOnly ? " icon-only" : ""), type: "button", title: "Close (Esc)",
-    ...(iconOnly ? { "aria-label": "Close" } : {}), onclick }, icon("x", iconOnly ? 15 : 13), iconOnly ? null : "Close");
+    ...(iconOnly ? { "aria-label": "Close" } : {}), onclick }, icon("x", 15), iconOnly ? null : "Close");
 }
 
 // A company's logo from its own site once jobwatch has found it (see logos.py), else its initials on a color
@@ -4557,7 +4783,7 @@ const dayCount = n => `${n} day${n === 1 ? "" : "s"}`;
 let worthShown = false;
 const byWorth = (a, b) => (b.worth?.score ?? -1) - (a.worth?.score ?? -1);
 // A part with nothing to go on shows "?", not its neutral 50, so an unknown doesn't read as middling.
-const partText = ([k, p]) => p.known === false ? `${k} ? (${p.input}, counts as ${p.score})` : `${k} ${p.score} (${p.input})`;
+const partText = ([k, p]) => p.known === false ? `${k}: not found, default ${p.score} assumed (${p.input})` : `${k} ${p.score} (${p.input})`;
 function worthChip(job) {
   if (!worthShown || !job.worth) return null;
   const parts = Object.entries(job.worth.parts).map(partText).join("\n");
@@ -6848,7 +7074,8 @@ async function renderReferrals() {
 function pickedNow() {
   try { const v = JSON.parse(remembered("comps.picked", "null")); return Array.isArray(v) ? v : null; } catch { return null; }
 }
-const compView = { applied: remembered("comps.applied", "") === "1", picked: pickedNow(), editing: null, health: null };
+const compView = { applied: remembered("comps.applied", "") === "1", picked: pickedNow(), editing: null, health: null,
+  ranks: null, reveal: false };
 function pickSave(list) { compView.picked = list; remember("comps.picked", JSON.stringify(list)); }
 const MOST_PLACES = 3;
 const COMP_ROWS = [  // [label, the value (text or an element; null for none), the row of d.best to mark]
@@ -6879,10 +7106,29 @@ const COMP_ROWS = [  // [label, the value (text or an element; null for none), t
   ["Layoffs", o => o.health?.layoffs],
   ["Rating", o => o.health?.rating],
   ["Risk", o => o.health?.risk],
-  ["Sources", o => o.health?.sources ? h("div", { class: "gapline" }, o.health.sources.split(/\s+/).map(s => /^https?:\/\//.test(s) ? [link(s, s.replace(/^https?:\/\/(www\.)?/, "").slice(0, 36)), " "] : s + " ")) : null],
+  ["Sources", o => o.health?.sources ? sourceLinks(o.health.sources) : null],
   ["Health as of", o => !o.health ? null : h("span", { class: o.health.stale ? "stale" : "", title: o.health.stale ? "Older than 90 days (or no date): look it up again" : "" },
     (o.health.as_of ? fmtDay(o.health.as_of, todayIso()) : "no date") + (o.health.stale ? " · stale" : ""))],
 ];
+// Each row's icon and group: money green, process purple, fit and career amber, people and notes blue, the company teal.
+const ROW_STYLE = {
+  "Applied": ["datecheck", "process"], "Next step": ["flag", "process"], "Place": ["pin", "process"],
+  "Posted pay": ["dollar", "money"], "Base": ["banknote", "money"], "Bonus": ["gift", "money"], "Equity": ["pie", "money"],
+  "Sign-on": ["badge", "money"], "You asked": ["chat", "money"], "Offered": ["award", "money"], "Glassdoor": ["star", "money"],
+  "Fit": ["target", "fit"], "Gaps": ["alert", "fit"], "Role": ["briefcase", "fit"], "Career note": ["bulb", "fit"],
+  "You know": ["users", "people"], "Note": ["note", "people"],
+  "Company": ["building", "company"], "Kind": ["layers", "company"], "Raised": ["trendup", "company"], "Revenue": ["dollar", "company"],
+  "Headcount": ["users", "company"], "Layoffs": ["trenddown", "company"], "Rating": ["star", "company"], "Risk": ["alert", "company"],
+  "Sources": ["link", "company"], "Health as of": ["clock", "company"],
+};
+function rowGroup(label) { return (ROW_STYLE[label] || ["info", "people"])[1]; }
+// The table row's classes: its group, and g-first on the first row of each block (a thin rule of the group's colour above it).
+function compRowClass(i) { const g = rowGroup(COMP_ROWS[i][0]); return "g-" + g + (i && rowGroup(COMP_ROWS[i - 1][0]) === g ? "" : " g-first"); }
+// A row's label: a small tinted chip with its icon (decorative), then the words.
+function compLabel(label) {
+  const [name, group] = ROW_STYLE[label] || ["info", "people"];
+  return h("span", { class: "rowlab g-" + group }, h("i", { class: "rl-chip", "aria-hidden": "true" }, icon(name, 13)), h("span", { class: "rl-txt" }, label));
+}
 function compValue(o, d, [, get, best]) {
   const v = get(o, d);
   if (v === null || v === undefined || v === "") return h("span", { class: "none" }, "—");
@@ -6896,11 +7142,29 @@ function compActions(o) {
     compView.picked ? h("button", { class: "btn ghost", title: "Take out of the comparison", "aria-label": "Take " + o.company + " out",
       onclick: () => { pickSave(compView.picked.filter(p => p.id !== o.key && !(p.kind === "company" && o.kind === "company" && p.id === o.company))); render(); } }, "Remove") : null);
 }
-function compHead(o) {
-  return [h("div", { class: "co-cell" }, monogram(o.company), h("b", {}, o.company)),
-    o.kind === "job" ? h("div", {}, o.url ? link(o.url, o.title) : o.title) : h("div", { class: "muted small" }, "company only"),
-    o.status ? h("span", { class: "stagechip" }, o.status) : null, compActions(o)];
+// A column's head: medal, logo, company, score ring, then the title and the stage badge on one line. The table keeps this
+// part sticky under the nav (no buttons: compActions sit in the row below, which scrolls away); a phone's card adds them.
+function compHead(o, withActions = true) {
+  const rk = compView.ranks && compView.ranks.get(o.key);  // set by renderComps: where the suggestion put this job
+  return [h("div", { class: "co-cell" }, rk ? rankMedal(rk.n) : null, monogram(o.company), h("b", {}, o.company),
+      rk ? scoreRing(rk.r, "mini") : null),
+    h("div", { class: "co-sub" },
+      o.kind === "job" ? h("span", { class: "co-title", title: o.title }, o.url ? link(o.url, o.title) : o.title) : h("span", { class: "muted small" }, "company only"),
+      o.status ? h("span", { class: "stagebadge stagechip", style: `--sc:var(--s-${o.status})` }, o.status) : null),
+    withActions ? compActions(o) : null];
 }
+// While the table's head row is stuck under the nav it gets .stuck (a soft shadow under it), and a table wider than its box
+// scrolls inside it (.hscroll, the head then sticks to that box's top) because a scroll box would stop the head sticking to the page.
+function stickCompHead() {
+  const wrap = document.querySelector(".comp-table");
+  if (!wrap || wrap.offsetParent === null) return;
+  const head = wrap.querySelector("thead tr.hd"), nav = document.querySelector("header").offsetHeight;
+  wrap.classList.toggle("hscroll", wrap.querySelector("table").offsetWidth > wrap.clientWidth + 1);
+  const top = wrap.classList.contains("hscroll") ? wrap.getBoundingClientRect().top : nav;  // where the head sticks
+  wrap.classList.toggle("stuck", head.getBoundingClientRect().top <= top + 1 && wrap.getBoundingClientRect().bottom > top + head.offsetHeight);
+}
+addEventListener("scroll", () => requestAnimationFrame(stickCompHead), { passive: true });
+addEventListener("resize", () => requestAnimationFrame(stickCompHead));
 function compFormBox(title, hint, fields, extra, onsave) {
   const inputs = Object.fromEntries(fields.map(([k, , ph]) => [k, textInput(extra.values[k], ph)]));
   const note = extra.note ? areaInput([], extra.note.placeholder) : null;
@@ -6936,16 +7200,259 @@ function healthForm(name, h0) {
     "Typed in by you (jobwatch looks nothing up). Leave As of blank for today; health older than 90 days shows as stale.",
     fields, { values: { ...(h0 || {}), as_of: "" } }, values => api("/api/health", { company: name, ...values, as_of: values.as_of || null }));
 }
-// The ranking above the table: how it was worked out is on show (weights, each part's score and input).
-function suggestionPanel(s) {
+// The ranking above the table, as cards a glance can read: stat tiles, then per job a rank medal, the company, a score
+// ring, five slim bars (one per part of the score) and its pay on a gauge against your target; the long reason is folded
+// under "Why this rank" and in tooltips. A part with no real value is scored by the default 50 only as the last
+// resort, never quietly: its bar is hatched amber, the ring has an asterisk and the card says how many are assumed,
+// with one button per missing part that opens the editor to supply the real value (the default and its marks then go).
+const SUGGEST_PARTS = { career: "Career", pay: "Pay", fit: "Fit", progress: "Progress", health: "Health" };
+const SUGGEST_NUDGES = { career: "Add kind and role", pay: "Add pay", fit: "Read posting to score fit", progress: "Set the stage",
+  health: "Add health" };
+const HEAD_GOOD = { career: "strong career value", pay: "pay holds up", fit: "strong fit", progress: "well along", health: "a healthy company" };
+const HEAD_BAD = { career: "career value is modest", pay: "pay is under target", fit: "fit is thin", progress: "still early",
+  health: "health worries" };
+const PAY_KINDS = { offered: "Offered", base: "Told", posted: "Posted", est: "Est." };
+const MEDALS = ["gold", "silver", "bronze"];
+const GAUGE_STEP = 10000;
+function scoreTone(n) { return n >= 70 ? "hi" : n >= 50 ? "mid" : "lo"; }
+// One short sentence from the parts with a real value: the strongest, and the weakest when it is a worry.
+function rankHeadline(r) {
+  const known = Object.entries(r.parts).filter(([, p]) => p.known !== false);
+  if (!known.length) return "Little is known about it yet.";
+  const best = known.reduce((a, b) => b[1].score > a[1].score ? b : a), worst = known.reduce((a, b) => b[1].score < a[1].score ? b : a);
+  const good = best[1].score >= 60 ? HEAD_GOOD[best[0]] : null, bad = worst[1].score < 50 && (worst[0] !== best[0] || !good) ? HEAD_BAD[worst[0]] : null;
+  const text = good && bad ? `${good}, but ${bad}` : good || bad || "middling so far";
+  return text[0].toUpperCase() + text.slice(1) + ".";
+}
+// The gauge's low and high ends, shared by every card so they compare: a tenth of room each side, on round numbers.
+function gaugeScale(figures, band) {
+  const all = [...figures, ...(band || [])].filter(n => n > 0);
+  if (!all.length) return null;
+  const min = Math.floor(Math.round(Math.min(...all) * 0.9) / GAUGE_STEP) * GAUGE_STEP;
+  return { min, max: Math.max(Math.ceil(Math.round(Math.max(...all) * 1.1) / GAUGE_STEP) * GAUGE_STEP, min + 2 * GAUGE_STEP) };
+}
+function gaugePct(scale, v) { return Math.round(Math.max(0, Math.min(100, (v - scale.min) / (scale.max - scale.min) * 100)) * 10) / 10; }
+// A job's pay marker: what the pay part reads (offered, base told, posted middle), else the estimate (never scored).
+function payMarker(r, opp) {
+  if (r.pay) return { ...r.pay, label: PAY_KINDS[r.pay.kind] };
+  const e = opp && opp.pay_estimate;
+  return e ? { kind: "est", label: PAY_KINDS.est, figure: e.mid, rate: null, w2: false } : null;
+}
+// The tiles across the top, from the ranking alone: [{key, value, unit, label, sub}].
+function suggestStats(s) {
+  const rank = s.ranking, lo = s.target_low, hi = s.target_high, mid = lo ? (lo + hi) / 2 : 0;
+  const told = rank.filter(r => r.pay && r.pay.kind !== "posted");
+  const top = told.reduce((a, r) => !a || r.pay.figure > a.pay.figure ? r : a, null);
+  const gap = r => !r.pay || !lo ? null : r.pay.figure < lo ? lo - r.pay.figure : r.pay.figure > hi ? r.pay.figure - hi : 0;
+  const near = rank.filter(r => gap(r) !== null).reduce((a, r) => !a || gap(r) < gap(a) ||
+    (gap(r) === gap(a) && Math.abs(r.pay.figure - mid) < Math.abs(a.pay.figure - mid)) ? r : a, null);
+  const best = rank[0];
+  return [
+    { key: "count", value: String(rank.length), label: "Jobs compared", sub: rank.length === 1 ? "one in the running" : "side by side" },
+    { key: "best", value: best ? String(best.total) : "—", unit: best ? "/100" : "", label: "Best score", sub: best ? best.company : "" },
+    { key: "pay", value: top ? money(top.pay.figure) : "—", label: "Highest pay told", sub: top ? top.company : "none told yet" },
+    { key: "near", label: "Closest to target", sub: near ? near.company : lo ? "no pay known yet" : "no pay target set",
+      value: !near ? "—" : gap(near) === 0 ? "In band" : `${money(gap(near))} ${near.pay.figure < lo ? "under" : "over"}` },
+  ];
+}
+function statTile(t, i) {
+  return h("div", { class: "cmp-stat t-" + (t.key === "count" ? "count" : t.key === "best" ? "best" : t.key === "pay" ? "pay" : "near"),
+    style: `--i:${i}` }, h("div", { class: "num" }, t.value, t.unit ? h("small", {}, t.unit) : null),
+    h("div", { class: "lbl" }, t.label), h("div", { class: "sub", title: t.sub }, t.sub));
+}
+function rankMedal(n) { return h("div", { class: "medal " + (MEDALS[n] || "plain"), title: "Rank " + (n + 1) }, n + 1); }
+// The score as a gradient ring, coloured by value; an asterisk and a dashed outer ring when it includes assumed values.
+function scoreRing(r, size) {  // size: "mini" (a column's head), "big" (the dialog) or none
+  const assumed = r.assumed || [];
+  const tip = `Score ${r.total}/100` + (assumed.length ? "\nIncludes assumed values (not found, default 50 assumed): " +
+    assumed.map(k => SUGGEST_PARTS[k]).join(", ") : "");
+  return h("div", { class: `cmp-ring tone-${scoreTone(r.total)}` + (assumed.length ? " assumed" : "") + (size ? " " + size : ""),
+    style: `--p:${r.total}`, role: "img", "aria-label": tip.replace("\n", ". "), title: tip },
+  h("b", {}, r.total, assumed.length ? h("sup", {}, "*") : null));
+}
+function partBar(k, p) {
+  const assumed = p.known === false, tip = partText([k, p]);
+  return h("div", { class: "pbar " + (assumed ? "assumed" : "tone-" + scoreTone(p.score)), title: tip, role: "img", "aria-label": tip },
+    h("span", { class: "pl" }, SUGGEST_PARTS[k]), h("span", { class: "pt" }, h("i", { style: `width:${p.score}%` })),
+    h("span", { class: "pv" }, (assumed ? "~" : "") + p.score));
+}
+// One click from a missing part to the editor that supplies it (the same Pay details and Company health forms).
+// before: what to do first (the "Why this rank" dialog closes itself, so the editor behind it can be seen).
+function nudge(k, r, before) {
+  const toForm = set => () => { set(); compView.reveal = true; render(); };
+  const act = k === "pay" ? toForm(() => { compView.editing = r.key; compView.health = null; })
+    : k === "fit" || k === "progress" ? () => openDetails(r.key)
+      : toForm(() => { compView.health = r.company; compView.editing = null; });
+  return h("button", { class: "nudge", type: "button", title: partText([k, r.parts[k]]), onclick: () => { if (before) before(); act(); } },
+    "+ ", SUGGEST_NUDGES[k]);
+}
+function payGauge(m, scale, lo, hi, big) {
+  if (!m || !scale) return h("div", { class: "pgauge none" + (big ? " big" : "") }, h("span", { class: "pk" }, "Pay"), "No pay known yet");
+  const per = m.rate ? `${m.rate}, about ${money(m.figure)} a year${m.w2 ? " as W-2" : " (a contract rate: no benefits or paid time off)"}` : "";
+  const tip = `${m.label} ${money(m.figure)}` + (per ? ` (${per})` : "") + (lo ? `; your target ${money(lo)}-${money(hi)}` : "");
+  const band = lo ? h("i", { class: "pg-band", title: `Your target ${money(lo)}-${money(hi)}`,
+    style: `left:${gaugePct(scale, lo)}%;width:${Math.max(1.5, Math.round((gaugePct(scale, hi) - gaugePct(scale, lo)) * 10) / 10)}%` }) : null;
+  return h("div", { class: "pgauge" + (big ? " big" : ""), title: tip, role: "img", "aria-label": tip },
+    h("span", { class: "pk" + (m.rate ? " w2" : "") }, m.label + (m.rate ? " " + m.rate : "")),
+    h("div", { class: "pg-wrap" }, h("div", { class: "pg-track" }, band,
+      h("span", { class: "pg-mark" + (m.rate ? " w2" : "") + (m.kind === "est" ? " est" : ""), style: `left:${gaugePct(scale, m.figure)}%` },
+        h("em", {}, money(m.figure)))),
+    h("div", { class: "pg-ends" }, h("span", {}, money(scale.min)), lo ? h("span", { class: "tg" }, `target ${money(lo)}-${money(hi)}`) : null,
+      h("span", {}, money(scale.max)))));
+}
+// A source link per line, labelled by its site (the whole address on hover), for the health facts.
+function sourceLabel(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } }
+// The one place a company's Sources are shown as links (the Comps table and the "Why this rank" dialog): http(s) addresses
+// split on spaces, commas, semicolons and new lines, trailing punctuation left off; anything else (another scheme, a few
+// words) stays plain text. Anchors are built with DOM calls, so nothing in the data becomes markup.
+function sourceLinks(text) {
+  const urls = [], words = [];
+  for (const bit of String(text).split(/[\s,;]+/).filter(Boolean)) {
+    let url = bit.replace(/[.:!?'">\]}]+$/, "");
+    while (url.endsWith(")") && url.split(")").length > url.split("(").length) url = url.slice(0, -1).replace(/[.:!?'">\]}]+$/, "");
+    let web = false;
+    try { web = /^https?:\/\//i.test(url) && /^https?:$/.test(new URL(url).protocol); } catch { web = false; }
+    (web ? urls : words).push(web ? url : bit);
+  }
+  if (!urls.length) return text;
+  return h("div", { class: "src-list" }, urls.map(u => h("a", { href: u, target: "_blank", rel: "noopener noreferrer", title: u, "aria-label": u },
+    sourceLabel(u))), words.length ? h("span", { class: "muted" }, words.join(" ")) : null);
+}
+// What would add to the score, by plain arithmetic on the weights and parts the rank already has: the next stage, a pay at
+// your target (80 on the pay part), and any other known part raised to 70. [{points, text}], most points first.
+const NEXT_STAGE = { applied: "screening", screening: "interviewing", interviewing: "offer" };
+const STAGE_SCORE = { applied: 15, screening: 40, interviewing: 70, offer: 100 };
+function scoreMoves(r, s) {
+  const w = k => s.weights[k] || 0, known = k => r.parts[k] && r.parts[k].known !== false, moves = [];
+  const add = (points, text) => { if (points >= 1) moves.push({ points, text }); };
+  const next = NEXT_STAGE[r.status];
+  if (next && known("progress")) add(Math.round(w("progress") * (STAGE_SCORE[next] - r.parts.progress.score)), `Reaching ${next}, from ${r.status}`);
+  if (s.target && known("pay") && r.parts.pay.score < 80)
+    add(Math.round(w("pay") * (80 - r.parts.pay.score)), `Pay at your ${s.target} target (the pay part is ${r.parts.pay.score}, 80 at target)`);
+  for (const k of ["career", "fit", "health"])
+    if (known(k) && r.parts[k].score < 70) add(Math.round(w(k) * (70 - r.parts[k].score)), `${SUGGEST_PARTS[k]} at 70, from ${r.parts[k].score}`);
+  return moves.sort((a, b) => b.points - a.points).slice(0, 4);
+}
+// What the rank used, for the dialog's right side: [{title, rows: [[label, value]]}], leaving out what isn't kept.
+function rankFacts(r, opp, s) {
+  const o = opp || {}, c = o.comp || {}, hl = o.health, m = payMarker(r, o), day = x => x ? String(x).slice(0, 10) : null;
+  const kinds = { tech: "Tech company", consulting: "Consulting", enterprise: "Enterprise" };
+  const sections = [
+    ["Pay", [[m && m.label, m && money(m.figure) + (m.rate ? ` (${m.rate}${m.w2 ? ", W-2" : ", a contract rate"})` : "")],
+      ["Posted", o.pay], ["Base told", c.base], ["Offered", c.offered], ["You asked", c.asked], ["Your target", s.target]]],
+    ["Company health the rank used", hl ? [["Listing", hl.listing], ["Stage", hl.stage], ["Kind", kinds[hl.kind]], ["Layoffs", hl.layoffs],
+      ["Headcount", hl.headcount], ["Rating", hl.rating], ["Risk", hl.risk], ["Sources", hl.sources && sourceLinks(hl.sources)],
+      ["As of", (day(hl.as_of) || "no date") + (hl.stale ? " (stale: look it up again)" : "")]] : []],
+    ["The job and where it stands", [["Stage", o.status], ["Applied", day(o.applied_at)], ["Next step", o.next_step],
+      ["Place", (o.places || []).join("; ")], ["Fit", o.fit ? `${Math.round(o.fit.score)}/100, must-haves ${o.fit.met}/${o.fit.total}` : null],
+      ["Gaps", ((o.fit && o.fit.gaps) || []).join(", ")], ["Role", c.role], ["Career note", c.career_note]]],
+  ];
+  return sections.map(([title, rows]) => ({ title, rows: rows.filter(([, v]) => v) })).filter(sec => sec.rows.length);
+}
+// One part of the score with its full reasoning: the bar, the input it came from, its share and what it adds.
+function partWhy(k, p, w) {
+  const assumed = p.known === false;
+  return h("div", { class: "pwhy" }, partBar(k, p),
+    h("p", { class: "pw-txt" + (assumed ? " assumed" : "") },
+      (assumed ? `Not found, default ${p.score} assumed (${p.input})` : p.input[0].toUpperCase() + p.input.slice(1)) +
+      ` · ${Math.round(w * 100)}% of the score · adds ${Math.round(w * p.score)} points`));
+}
+// The dialog's contents for one ranked job: header with the "2 of 5" stepper, then two columns.
+function rankWhyBody(r, n, ctx, nav) {
+  const { s, byKey, scale } = ctx, opp = byKey.get(r.key), total = s.ranking.length, assumed = r.assumed || [], moves = scoreMoves(r, s);
+  const step = (label, to, text) => h("button", { class: "btn ghost rk-arrow", type: "button", "aria-label": label,
+    title: label + " (arrow key)", disabled: to < 0 || to >= total, onclick: () => nav.go(to) }, text);
+  return [
+    h("div", { class: "rk-head" }, rankMedal(n), monogram(r.company),
+      h("div", { class: "rk-title" }, h("h2", {}, r.company), h("div", { class: "muted small" }, r.url ? link(r.url, r.title) : r.title)),
+      r.status ? h("span", { class: "stagebadge", style: `--sc:var(--s-${r.status})` }, r.status) : null,
+      h("div", { class: "rk-step" }, step("Previous job", n - 1, "‹"), h("span", { class: "rk-count", "aria-live": "polite" }, `${n + 1} of ${total}`),
+        step("Next job", n + 1, "›")),
+      closeButton(nav.close)),
+    h("div", { class: "rk-body" },
+      h("div", { class: "rk-col" },
+        h("div", { class: "rk-lead" }, scoreRing(r, "big"),
+          h("div", {}, h("h3", {}, rankHeadline(r)), h("p", { class: "muted" }, r.reason))),
+        h("h4", { class: "rk-h" }, "How the score adds up"),
+        Object.entries(r.parts).map(([k, p]) => partWhy(k, p, s.weights[k] || 0)),
+        assumed.length ? h("div", { class: "rk-callout" },
+          h("b", {}, `${assumed.length} of the 5 parts ${assumed.length === 1 ? "has" : "have"} no real value`),
+          h("p", {}, "Each takes the default 50, which is in the score above until you supply the real one:"),
+          h("div", { class: "nudges" }, assumed.map(k => nudge(k, r, nav.close))))
+          : moves.length ? h("div", { class: "rk-card" }, h("h4", { class: "rk-h" }, "What would move this score"),
+            h("ul", { class: "rk-moves" }, moves.map(m => h("li", {}, h("b", {}, `+${m.points}`), " " + m.text)))) : null),
+      h("div", { class: "rk-col" },
+        h("div", { class: "rk-card" }, h("h4", { class: "rk-h" }, "Pay against your target"),
+          payGauge(payMarker(r, opp), scale, s.target_low, s.target_high, true)),
+        rankFacts(r, opp, s).map(sec => h("div", { class: "rk-card" }, h("h4", { class: "rk-h" }, sec.title),
+          h("dl", { class: "rk-facts" }, sec.rows.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])))))),
+  ];
+}
+// The next index for an arrow key, stopping at the ends.
+function rankStep(at, total, key) { return key === "ArrowRight" ? Math.min(at + 1, total - 1) : key === "ArrowLeft" ? Math.max(at - 1, 0) : at; }
+// Tab stays inside the open dialog: from its last control to its first, and back.
+function trapTab(box, e) {
+  const items = [...box.querySelectorAll("button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])")];
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1], on = document.activeElement;
+  if (e.shiftKey && (on === first || on === box || !box.contains(on))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (on === last || !box.contains(on))) { e.preventDefault(); first.focus(); }
+}
+// "Why this rank": a large dialog over the page (Esc, the backdrop and the Close chip shut it; the arrow keys step through
+// the ranked jobs; focus goes back to the card's button). ctx: {s, byKey, scale, buttons} from suggestionPanel.
+function openRankWhy(ctx, n) {
+  const total = ctx.s.ranking.length;
+  const shade = h("div", { class: "overlay rank-shade", style: "display:flex", onclick: e => { if (e.target === shade) close(); } });
+  const box = h("div", { class: "dialog rank-dialog", role: "dialog", "aria-modal": "true", "aria-label": "Why this rank", tabindex: "-1" });
+  let at = n;
+  const close = () => {
+    shade.remove(); document.removeEventListener("keydown", keys, true);
+    const back = ctx.buttons[at];
+    if (back) back.focus();
+  };
+  const show = i => { at = i; fill(box, rankWhyBody(ctx.s.ranking[i], i, ctx, { go: show, close })); box.scrollTop = 0; box.focus(); };
+  const keys = e => {
+    if (e.key === "Escape") { e.stopImmediatePropagation(); close(); }
+    else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const to = rankStep(at, total, e.key);
+      if (to !== at) { e.preventDefault(); show(to); }
+    } else if (e.key === "Tab") trapTab(box, e);
+  };
+  document.addEventListener("keydown", keys, true);
+  shade.append(box);
+  document.body.append(shade);
+  show(n);
+}
+function suggestCard(r, n, ctx) {
+  const { s, byKey, scale } = ctx, opp = byKey.get(r.key), assumed = r.assumed || [];
+  const sub = r.url ? link(r.url, r.title) : h("span", { class: "ttl" }, r.title);
+  return h("li", { class: "cmp-card" + (MEDALS[n] ? " m-" + MEDALS[n] : ""), style: `--i:${n};--sc:var(--s-${r.status})` },
+    h("div", { class: "cmp-top" }, rankMedal(n), monogram(r.company), h("div", { class: "cmp-who" }, h("b", { title: r.company }, r.company), sub),
+      scoreRing(r)),
+    h("div", { class: "cmp-meta" }, r.status ? h("span", { class: "stagebadge" }, r.status) : null,
+      assumed.length ? h("span", { class: "asm-badge" + (r.mostly_assumed ? " heavy" : ""),
+        title: "Parts with no real value, scored by the default 50: " + assumed.map(k => SUGGEST_PARTS[k]).join(", ") },
+      r.mostly_assumed ? `mostly assumed (${assumed.length})` : `${assumed.length} assumed`) : null),
+    h("p", { class: "cmp-head" }, rankHeadline(r)),
+    h("div", { class: "pbars" }, Object.entries(r.parts).map(([k, p]) => partBar(k, p))),
+    assumed.length ? h("div", { class: "nudges" }, "Not found, default 50 assumed:", assumed.map(k => nudge(k, r))) : null,
+    payGauge(payMarker(r, opp), scale, s.target_low, s.target_high),
+    (ctx.buttons[n] = h("button", { class: "why-btn", type: "button", "aria-haspopup": "dialog",
+      title: "The full reasoning behind this rank", onclick: () => openRankWhy(ctx, n) }, "Why this rank")));
+}
+function suggestionPanel(s, opps) {
   if (!s.ranking.length) return null;
-  const w = Object.entries(s.weights).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(" · ");
-  return panel("Suggestion",
-    h("p", { class: "small muted" }, `Rules, no model: ${w}. Pay is measured against ` + (s.target ? `your ${s.target} target` : "the best of these (set pay.target in the watchlist for yours)") + "."),
-    h("ol", { class: "suggest" }, s.ranking.map(r => h("li", {},
-      h("div", {}, h("b", {}, `${r.company}: ${r.title}`), h("span", { class: "chip hit", style: "margin-left:8px" }, `${r.total}/100`)),
-      h("div", {}, r.reason),
-      h("div", { class: "small muted" }, Object.entries(r.parts).map(partText).join(" · "))))));
+  const byKey = new Map(opps.map(o => [o.key, o])), band = s.target_low ? [s.target_low, s.target_high] : null;
+  const scale = gaugeScale(s.ranking.map(r => payMarker(r, byKey.get(r.key))).filter(Boolean).map(m => m.figure), band);
+  const ctx = { s, byKey, scale, buttons: [] };  // buttons: each card's "Why this rank", for focus to return to
+  return h("section", { class: "cmp-suggest" },
+    h("div", { class: "cmp-title" }, h("h3", {}, "Suggestion"), h("span", { class: "mono-cap muted" }, "best first")),
+    h("div", { class: "cmp-stats" }, suggestStats(s).map(statTile)),
+    h("details", { class: "cmp-how" }, h("summary", {}, "How ranks are worked out"),
+      h("div", { class: "cmp-weights" }, Object.entries(s.weights).map(([k, v]) => h("span", { class: "wchip" }, SUGGEST_PARTS[k], h("b", {}, Math.round(v * 100) + "%")))),
+      h("p", { class: "small" }, "Rules, no model. Pay is measured against " + (s.target ? `your ${s.target} target` : "the best of these (set pay.target in the watchlist for yours)") +
+        ". A part with no real value takes a default of 50, flagged on its card until you supply it.")),
+    h("ol", { class: "cmp-cards" }, s.ranking.map((r, n) => suggestCard(r, n, ctx))));
 }
 // Choose what to compare: chips to take out, a box to add a tracked job or any company by name.
 function comparePicker(d) {
@@ -6977,21 +7484,28 @@ async function renderComps() {
   try { d = await api("/api/comps?" + query); }
   catch (e) { if (!picked) throw e; pickSave(null); toast("Something picked is gone: back to the live ones"); return renderComps(); }
   const rows = d.opportunities, editing = rows.find(o => o.key === compView.editing);
+  compView.ranks = new Map(d.suggestion.ranking.map((r, n) => [r.key, { n, r }]));
   const include = checkLine(compView.applied, "Include applications still at applied");
   include.box.onchange = () => { compView.applied = include.box.checked; remember("comps.applied", compView.applied ? "1" : ""); render(); };
   const colour = o => o.status ? `--sc:var(--s-${o.status})` : "--sc:var(--line)";
   const table = h("div", { class: "table-wrap comp-table" }, h("table", { class: "comps" },
-    h("thead", {}, h("tr", {}, h("th", { class: "lbl" }, ""), rows.map(o => h("th", { style: colour(o) }, compHead(o))))),
-    h("tbody", {}, COMP_ROWS.map(r => h("tr", {}, h("th", { class: "lbl" }, r[0]), rows.map(o => h("td", {}, compValue(o, d, r))))))));
+    h("thead", {}, h("tr", { class: "hd" }, h("th", { class: "lbl" }, ""), rows.map(o => h("th", { style: colour(o) }, compHead(o, false)))),
+      h("tr", { class: "acts" }, h("th", { class: "lbl" }, ""), rows.map(o => h("th", { style: colour(o) }, compActions(o))))),
+    h("tbody", {}, COMP_ROWS.map((r, i) => h("tr", { class: compRowClass(i) },
+      h("th", { class: "lbl" }, compLabel(r[0])), rows.map(o => h("td", {}, compValue(o, d, r))))))));
   const cards = h("div", { class: "comp-cards" }, rows.map(o => h("div", { class: "panel", style: colour(o) },
-    compHead(o), h("dl", {}, COMP_ROWS.map(r => [h("dt", {}, r[0]), h("dd", {}, compValue(o, d, r))])))));
+    compHead(o), h("dl", {}, COMP_ROWS.map(r => [h("dt", {}, compLabel(r[0])), h("dd", {}, compValue(o, d, r))])))));
   const company = compView.health && rows.find(o => o.company === compView.health);
+  const form = editing ? compForm(editing) : company ? healthForm(company.company, company.health) : null;
   put(pagehead("Comps", "Opportunities and companies side by side. Pay as posted comes from the job; what recruiters told you " +
       "and what you know of a company you add with Pay details and Company health (or `jobwatch comp` and `jobwatch health`)."),
-    suggestionPanel(d.suggestion), comparePicker(d),
+    suggestionPanel(d.suggestion, rows), comparePicker(d),
     picked ? null : h("div", { style: "margin:10px 0" }, include.el),
-    editing ? compForm(editing) : null, company ? healthForm(company.company, company.health) : null,
+    form,
     rows.length ? [table, cards] : emptyState("Nothing to compare yet: add a job or a company above."));
+  if (form && compView.reveal) form.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "center" });
+  compView.reveal = false;
+  stickCompHead();
 }
 
 // -- skills: what the matching jobs ask for that the resume doesn't show, and where to learn it

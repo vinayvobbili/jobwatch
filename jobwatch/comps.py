@@ -15,6 +15,7 @@ can change; the career part follows the watchlist's goals, when it has them); th
 from __future__ import annotations
 
 import re
+import shlex
 from datetime import date
 
 from . import estimate, lca
@@ -45,7 +46,8 @@ _EARLY = re.compile(r"\b(?:pre-?seed|seed|angel|series\s*[ab])\b", re.I)
 _LATER = re.compile(r"\b(?:series\s*[c-z]|late[- ]stage|pre-?ipo)\b", re.I)
 PROGRESS = {"offer": 100, "interviewing": 70, "screening": 40, "applied": 15}
 THIN = 20_000_000  # a private company that raised less than this in all counts as thinly funded
-NEUTRAL = 50  # a part with nothing to go on: neither for nor against
+NEUTRAL = 50  # the default of a part with no real value to be found (always said): neither for nor against
+MOSTLY_ASSUMED = 3  # this many parts scored by the default and the card says its score is mostly assumed
 # the inputs of a part with nothing to go on
 UNKNOWN = ("no pay known", "not scored", "no company health kept", "no kind or role kept")
 _NONE = re.compile(r"\s*(none|no|nil|n/a|0)\b", re.I)
@@ -176,23 +178,45 @@ def _career(row: dict, goals: Goals | None = None) -> tuple[int, str, str]:
     return part, words, f"its career value is {part}/100 ({words})" + (", by your goals" if g.scores else "")
 
 
+def _per_hour(rate: tuple[float, float]) -> str:
+    return f"${rate[0]:g}" + (f"-{rate[1]:g}" if rate[1] != rate[0] else "") + "/hr"
+
+
+def _figure(row: dict) -> tuple[float | None, str]:
+    """(middle in dollars, kind) of the pay the pay part reads: offered, else the base they gave ("base"), else
+    the posted range's middle ("posted")."""
+    return next(((row[f"{k}_mid"], k) for k in ("offered", "base") if row[f"{k}_mid"]), (row["pay_mid"], "posted"))
+
+
+def pay_marker(row: dict) -> dict | None:
+    """The pay figure the pay part reads, for the page's gauge: {kind: offered, base or posted, figure: yearly
+    dollars, rate: "$90/hr" for a contract rate (else None), w2: the rate is said to be W-2}; None with no pay known."""
+    figure, kind = _figure(row)
+    if not figure:
+        return None
+    said = (row.get("comp") or {}).get(kind) if kind != "posted" else None
+    rate = hourly(said)
+    return {"kind": kind, "figure": round(figure), "rate": _per_hour(rate) if rate else None,
+            "w2": bool(rate and re.search(r"\bw-?2\b", said, re.I))}
+
+
 def _pay(row: dict, target: tuple[float, str] | None, top: float) -> tuple[int, str, str]:
     """(part, input, phrase): the pay known for the job (offered, else the base they gave, else as posted), the
     middle of its range, against your target; with no target, against the highest of these. The middle, not the top:
     a nationwide band ("$94K-$316K") isn't what anyone is paid. At the target is 80, 10% over 100, 10% under 50,
     30% under 0."""
-    figure, what = next(((row[f"{k}_mid"], w) for k, w in (("offered", "offered"), ("base", "base told"))
-                         if row[f"{k}_mid"]), (row["pay_mid"], "posted"))
+    figure, kind = _figure(row)
     if not figure:
         return NEUTRAL, "no pay known", "no pay is known yet"
+    what = "base told" if kind == "base" else kind
     ratio = figure / target[0] if target else figure / top
     part = max(0, min(100, round(80 + (ratio - 1) * 300)))
     against = f"your {target[1]} target" if target else "the best of these"
     gap = abs(ratio - 1)
     where = "about at" if gap < 0.03 else f"{gap:.0%} {'over' if ratio > 1 else 'under'}"
-    said = (row.get("comp") or {}).get("offered" if what == "offered" else "base") if what != "posted" else None
+    said = (row.get("comp") or {}).get(kind) if kind != "posted" else None
     if rate := hourly(said):
-        per = f"${rate[0]:g}" + (f"-{rate[1]:g}" if rate[1] != rate[0] else "") + "/hr"
+        per = _per_hour(rate)
         w2 = " as W-2" if re.search(r"\bw-?2\b", said, re.I) else ""
         yearly = f"{per}, about {_k(figure)} a year{w2}"
         return (part, f"{yearly} {what} vs {against}",
@@ -266,12 +290,56 @@ def _shown(p: tuple) -> dict:
 
 
 def part_text(k: str, p: dict) -> str:
-    """'health 80 (public)', or 'health ? (no company health kept, counts as 50)' when nothing is known."""
-    return f"{k} {p['score']} ({p['input']})" if p.get("known", True) else f"{k} ? ({p['input']}, counts as {NEUTRAL})"
+    """'health 80 (public)', or 'health: not found, default 50 assumed (no company health kept)' when no real
+    value could be found (the default is the last resort, and always said)."""
+    if p.get("known", True):
+        return f"{k} {p['score']} ({p['input']})"
+    return f"{k}: not found, default {p['score']} assumed ({p['input']})"
+
+
+def fill_steps(row: dict, assumed: list[str]) -> list[dict]:
+    """What to run to find the real value of each part scored by its default: [{part, what, command}]. The career
+    part needs the company's kind (health) and the job's role (comp); pay what a recruiter told you; fit a read
+    posting; health what you know of the company."""
+    key, company = shlex.quote(row["key"]), shlex.quote(row["company"])
+    kind = f"jobwatch health {company} --kind tech|consulting|enterprise"
+    role = f"jobwatch comp {key} --role product|customer|internal"
+    steps = {
+        "career": ("the company's kind and the job's role", f"{kind}; {role}"),
+        "pay": ("the base or offer a recruiter gave (the posting lists none)", f"jobwatch comp {key} --base 165-195K"),
+        "fit": ("a fit score: read the posting and score it", f"open {key} in the page: Details, Read posting"),
+        "progress": ("the application's stage", f"jobwatch mark {key} screening"),
+        "health": ("what you know of the company's health",
+                   f"jobwatch health {company} --listing private --rating 4.1 --layoffs none"),
+    }
+    return [{"part": k, "what": steps[k][0], "command": steps[k][1]} for k in assumed]
+
+
+def missing(v: dict) -> list[dict]:
+    """[{key, company, title, status, steps}] for each compared job with a part scored by its default (the
+    parts with no real value, and what to run to fill each, see fill_steps)."""
+    return [{"key": r["key"], "company": r["company"], "title": r["title"], "status": r["status"], "steps": r["fill"]}
+            for r in v["suggestion"]["ranking"] if r["assumed"]]
+
+
+def missing_text(v: dict) -> str:
+    """The same for the terminal."""
+    rows = missing(v)
+    if not v["suggestion"]["ranking"]:
+        return "No jobs compared."
+    if not rows:
+        return "Every part of every compared job has a real value."
+    out = []
+    for r in rows:
+        out.append(f"{r['company']}: {r['title']}  [{r['status']}]")
+        for s in r["steps"]:
+            out += [f"  {s['part']}: not found, default {NEUTRAL} assumed. Needs {s['what']}", f"    {s['command']}"]
+    return "\n".join(out)
 
 
 def suggest(cfg: Config, rows: list[dict]) -> dict:
-    """{"weights", "target", "ranking"}: the opportunities best first, by the weighted sum of five parts (career
+    """{"weights", "target", "target_low", "target_high" (dollars, for the page's gauge), "ranking"}: the
+    opportunities best first (each with its pay marker, see pay_marker), by the weighted sum of five parts (career
     value, pay against your target, fit, how far along, company health), each part 0-100 with the input it came
     from, and a sentence on why: the strongest reason for it, and the weakest if that is a worry. The weights are
     the watchlist's comps.weights (see WEIGHTS for the default). Only rules, no model: the same data gives the
@@ -292,11 +360,16 @@ def suggest(cfg: Config, rows: list[dict]) -> dict:
         reason = reason[0].upper() + reason[1:]
         if parts[worst][0] < 50 and worst != best:
             reason += f", but {parts[worst][2]}"
-        ranking.append({"key": r["key"], "company": r["company"], "title": r["title"], "total": total,
-                        "reason": reason + ".",
+        assumed = [k for k in parts if k not in known]  # scored by the default: no real value was found
+        ranking.append({"key": r["key"], "company": r["company"], "title": r["title"], "status": r["status"],
+                        "url": r.get("url"), "total": total,
+                        "reason": reason + ".", "pay": pay_marker(r), "assumed": assumed,
+                        "mostly_assumed": len(assumed) >= MOSTLY_ASSUMED, "fill": fill_steps(r, assumed),
                         "parts": {k: _shown(p) for k, p in parts.items()}})
     ranking.sort(key=lambda x: -x["total"])
-    return {"weights": weights, "target": target[1] if target else None, "ranking": ranking}
+    return {"weights": weights, "target": target[1] if target else None,
+            "target_low": cfg.pay.target or None, "target_high": (cfg.pay.target_max or cfg.pay.target) or None,
+            "ranking": ranking}
 
 
 def worth(cfg: Config, store: Store, jobs: list[tuple]) -> dict[str, dict]:
@@ -304,7 +377,8 @@ def worth(cfg: Config, store: Store, jobs: list[tuple]) -> dict[str, dict]:
     order. The same rules as the Comps suggestion (career, pay, fit, company health; the comps.weights, scaled to
     add up to 1 without progress, which a job not applied to yet has none of), from what is kept: the pay is the
     middle of the posted range (or what a recruiter told you, if kept), the career and health those of its
-    company, and a part with nothing to go on is NEUTRAL. fit is the stored score as the lists carry it, or None.
+    company, and a part with no real value to be found takes the NEUTRAL default (listed in "assumed"). fit is
+    the stored score as the lists carry it, or None.
     Health and comp details are read once for all of them, so thousands of jobs are cheap."""
     healths, kept, target = store.healths(), store.comps(), _target(cfg)
     aged_by: dict[str, dict | None] = {}
@@ -329,7 +403,8 @@ def worth(cfg: Config, store: Store, jobs: list[tuple]) -> dict[str, dict]:
     for r in rows:
         parts = {"career": _career(r, cfg.goals), "pay": _pay(r, target, top), "fit": _fit(r), "health": _health(r)}
         score = sum(weights[k] * p[0] for k, p in parts.items()) / scale if scale else NEUTRAL
-        out[r["key"]] = {"score": round(score), "parts": {k: _shown(p) for k, p in parts.items()}}
+        out[r["key"]] = {"score": round(score), "parts": {k: _shown(p) for k, p in parts.items()},
+                         "assumed": [k for k, p in parts.items() if p[1] in UNKNOWN]}
     return out
 
 
@@ -476,7 +551,11 @@ def suggestion_text(s: dict) -> str:
            f"weights: {weights})"]
     for n, r in enumerate(s["ranking"], 1):
         parts = ", ".join(part_text(k, p) for k, p in r["parts"].items())
-        out += [f"  {n}. {r['company']}: {r['title']}  {r['total']}/100", f"     {r['reason']}", f"     {parts}"]
+        assumed = f"  ({len(r['assumed'])} assumed)" if r["assumed"] else ""
+        out += [f"  {n}. {r['company']}: {r['title']}  {r['total']}/100{assumed}", f"     {r['reason']}",
+                f"     {parts}"]
+    if any(r["assumed"] for r in s["ranking"]):
+        out.append("  `jobwatch comps --missing` says what to run to find each real value.")
     return "\n".join(out)
 
 

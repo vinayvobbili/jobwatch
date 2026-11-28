@@ -259,9 +259,11 @@ def test_the_suggestion_weighs_pay_fit_progress_and_health(tracked):
     assert initech["parts"]["pay"]["input"] == "$190K offered vs your $180K-$210K target"
     assert initech["parts"]["progress"] == {"score": 100, "input": "offer", "known": True}
     assert initech["total"] == round(sum(comps.WEIGHTS[k] * p["score"] for k, p in initech["parts"].items()))
-    # nothing known: neutral, and marked so it shows as "?", not a middling 50
+    # no real value found: the default 50 is the last resort, marked, never quietly counted
     assert acme["parts"]["health"] == {"score": 50, "input": "no company health kept", "known": False}
-    assert "health ? (no company health kept, counts as 50)" in comps.suggestion_text(s)
+    assert "health: not found, default 50 assumed (no company health kept)" in comps.suggestion_text(s)
+    assert "counts as 50" not in comps.suggestion_text(s)
+    assert acme["assumed"] == ["career", "health"] and not acme["mostly_assumed"] and initech["assumed"] == ["career"]
     assert "health 20 (recent layoffs" in comps.suggestion_text(s)
     assert acme["parts"]["fit"]["score"] == 84 and "fit is 84/100" not in initech["reason"]
     # layoffs -25, shrinking -10, thin funding -15 from 70
@@ -272,6 +274,50 @@ def test_the_suggestion_weighs_pay_fit_progress_and_health(tracked):
                                 "it: recent layoffs, shrinking headcount, thin funding ($12.0M raised).")
     assert comps.suggestion_text(s).startswith("Suggestion (pay vs your $180K-$210K target; weights: career 25%, "
                                                "pay 30%, fit 20%, progress 10%, health 15%)")
+    store.close()
+
+
+def test_a_default_is_called_out_with_what_fills_it_and_goes_when_the_real_value_is_kept(tracked, capsys):
+    c = ["-c", str(tracked)]
+    cfg = config.load(tracked)
+    store = Store(cfg.state)
+    v = comps.view(cfg, store)
+    initech = next(r for r in v["suggestion"]["ranking"] if r["company"] == "Initech")
+    # Initech has a fit and an offer's progress, but no pay, kind, role or health
+    assert initech["assumed"] == ["career", "pay", "health"] and initech["mostly_assumed"] is True
+    by_part = {s["part"]: s for s in initech["fill"]}
+    assert by_part["health"]["command"].startswith("jobwatch health Initech --listing")
+    assert by_part["career"]["command"] == ("jobwatch health Initech --kind tech|consulting|enterprise; "
+                                            "jobwatch comp manual:initech:ml-engineer --role product|customer|internal")
+    assert by_part["pay"]["command"] == "jobwatch comp manual:initech:ml-engineer --base 165-195K"
+    cli.main([*c, "comps", "--missing"])
+    out = capsys.readouterr().out
+    assert "Initech: ML Engineer  [offer]" in out
+    assert "  health: not found, default 50 assumed. Needs what you know" in out
+    assert "Globex: Data Lead" in out and "fit: not found, default 50 assumed" in out
+    cli.main([*c, "comp", "initech", "--role", "product", "--base", "190K"])
+    cli.main([*c, "health", "initech", "--kind", "tech", "--listing", "public", "--rating", "4.2"])
+    capsys.readouterr()
+    cli.main([*c, "comps", "--missing", "initech"])
+    assert capsys.readouterr().out == "Every part of every compared job has a real value.\n"
+    cli.main([*c, "comps", "--missing", "--format", "json", "globex"])
+    [row] = json.loads(capsys.readouterr().out)
+    assert row["company"] == "Globex" and [s["part"] for s in row["steps"]] == ["career", "fit", "health"]
+    store.close()
+
+
+def test_the_pay_marker_is_the_figure_the_pay_part_reads(tracked):
+    cfg = config.load(tracked)
+    store = Store(cfg.state)
+    store.set_comp("acme", base="$90/hr W-2, 12 months")
+    store.set_comp("initech", offered="190K")
+    tracked.write_text(tracked.read_text() + "pay:\n  target: 150000-170000\n")
+    s = comps.view(config.load(tracked), store)["suggestion"]
+    assert (s["target_low"], s["target_high"]) == (150000, 170000)
+    pay = {r["company"]: r["pay"] for r in s["ranking"]}
+    assert pay["Initech"] == {"kind": "offered", "figure": 190000, "rate": None, "w2": False}
+    assert pay["Acme"] == {"kind": "base", "figure": 187200, "rate": "$90/hr", "w2": True}
+    assert pay["Globex"] == {"kind": "posted", "figure": 175000, "rate": None, "w2": False}
     store.close()
 
 

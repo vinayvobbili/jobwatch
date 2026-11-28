@@ -52,8 +52,10 @@ range, since a nationwide band's top isn't what anyone is paid. Career value
 starts from the company's `--kind` (`tech` 80, `consulting` 55, `enterprise` 40: a non-tech business whose IT
 builds for itself, like a bank or insurer) and adds the job's `--role` (`product` +15 for building the company's
 own product, `customer` +5 for forward-deployed or customer-facing engineering, `internal` -5 for internal tools),
-kept between 0 and 100; `--career-note` is a few words of your own, shown but not scored. A part with nothing
-to go on counts as 50. Those numbers are one person's goals; say yours with `goals:` (below) and the career part
+kept between 0 and 100; `--career-note` is a few words of your own, shown but not scored. A part with no real
+value to be found takes a default of 50, only as the last resort and never quietly: the page marks its bar as
+"not found, default 50 assumed", the card says how many are assumed, and `jobwatch comps` says the same. Store
+the real value (Pay details, Company health, a fit score) and the default and its mark go away. Those numbers are one person's goals; say yours with `goals:` (below) and the career part
 follows them. Change the weights in the
 watchlist; any numbers 0 or more, scaled to add up to 1 (a part you leave out keeps its default, so give all five
 to be exact):
@@ -64,7 +66,8 @@ comps:
 ```
 
 Each opportunity shows its score, every part with the input it came from, and a sentence
-on why.
+on why. `jobwatch comps --missing` lists, per job, each part scored by the default and the exact step that finds
+the real value (`jobwatch health ...`, `jobwatch comp ... --role ...`, reading the posting for a fit score).
 
 **Your goals.** Say what you want next, and the career part scores against it instead of the fixed numbers
 above (Settings → Your goals, or the watchlist):
@@ -94,4 +97,4 @@ five weights as sliders.
 per browser). Each card then shows `worth N`, and hovering it lists the parts. A job isn't applied to yet, so the
 progress part is left out and the other weights are scaled up to add to 1; pay is the middle of the posted range
 (or what a recruiter told you, if kept), career and health come from the company's kept `kind` and health, and
-anything unknown counts as 50. Only the order changes: fit scores and `filters.min_fit` work as before.
+anything with no real value takes the default 50 (the chip's hover says "not found, default 50 assumed"). Only the order changes: fit scores and `filters.min_fit` work as before.

@@ -831,8 +831,10 @@ def get_comps(
     suggestion ranks them by rules (career value from the company's kind and the job's role, pay against the
     person's target, fit, how far along, company health) with the weights, each part's score and input, and a
     reason: explain it, and say what is missing (no health kept, no kind or role, no pay known) rather than
-    guessing. Use it when the person asks how their opportunities compare; for one application's status use
-    list_applications."""
+    guessing. A part with no real value is scored by the default 50 and listed in the ranking row's "assumed" (its
+    part has known: false: say "not found, default 50 assumed"); "fill" says what to look up and run to replace
+    each default with the real value: look for it first, then set_comp or set_company_health. Use it when the
+    person asks how their opportunities compare; for one application's status use list_applications."""
     cfg, store = _open()
     try:
         try:
